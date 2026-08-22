@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fuzzy search now folds uppercase accented letters ("ÉMILE" matches
+  "emile"); previously only lowercase accents were stripped
+- Quick-create opens the patient by the id returned from the insert
+  instead of relying on unspecified row order
+- The team documentation pane is never shown on the lock screen, and a
+  dirty document auto-saves even while the pane is hidden
+
 ## [0.3.0] - 2026-08-22
 
 ### Added
