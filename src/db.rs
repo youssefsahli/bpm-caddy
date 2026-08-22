@@ -21,14 +21,17 @@ CREATE TABLE IF NOT EXISTS interviews (
     kind        TEXT NOT NULL,
     state       TEXT NOT NULL DEFAULT 'IDENTIFIED',
     duration_minutes INTEGER NOT NULL DEFAULT 0,
+    scheduled_date TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ";
 
 /// Idempotent migrations for databases created by older versions.
-const MIGRATIONS: &[&str] =
-    &["ALTER TABLE interviews ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0"];
+const MIGRATIONS: &[&str] = &[
+    "ALTER TABLE interviews ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE interviews ADD COLUMN scheduled_date TEXT",
+];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
 /// act is ever lost.
@@ -132,6 +135,8 @@ pub struct Interview {
     pub kind: InterviewKind,
     pub state: InterviewState,
     pub duration_minutes: i64,
+    /// ISO `YYYY-MM-DD`, set when the interview is scheduled.
+    pub scheduled_date: Option<String>,
     pub created_at: String,
 }
 
@@ -224,7 +229,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, kind, state, duration_minutes, created_at
+                "SELECT id, kind, state, duration_minutes, scheduled_date, created_at
                  FROM interviews WHERE patient_id = ?1 ORDER BY created_at DESC, id DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -235,16 +240,19 @@ impl Db {
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, i64>(3)?,
-                    r.get::<_, String>(4)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, String>(5)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, kind, state, duration_minutes, created_at) = row.map_err(|e| e.to_string())?;
+            let (id, kind, state, duration_minutes, scheduled_date, created_at) =
+                row.map_err(|e| e.to_string())?;
             out.push(Interview {
                 id,
                 duration_minutes,
+                scheduled_date,
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 state: InterviewState::parse(&state)
@@ -310,6 +318,17 @@ impl Db {
             });
         }
         Ok(out)
+    }
+
+    /// Set (or clear) the planned date of an interview (ISO `YYYY-MM-DD`).
+    pub fn set_scheduled_date(&self, id: i64, date: Option<&str>) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE interviews SET scheduled_date = ?1 WHERE id = ?2",
+                (date, id),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Record the time spent on an interview, for the hourly ROI metric.
