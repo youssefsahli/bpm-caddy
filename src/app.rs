@@ -241,14 +241,6 @@ impl App {
                     }
                 });
             });
-
-        // Debounced auto-save: write once the user pauses typing.
-        if self.doc_dirty && self.doc_last_edit.elapsed() > Duration::from_millis(1200) {
-            self.save_doc();
-        }
-        if self.doc_dirty {
-            ctx.request_repaint_after(Duration::from_millis(300));
-        }
     }
 
     fn unlock_screen(&mut self, ctx: &egui::Context) {
@@ -913,8 +905,18 @@ impl eframe::App for App {
             }
         }
 
-        if self.show_docs {
+        // The docs pane may hold patient-adjacent notes: never show it on
+        // the lock screen.
+        if self.show_docs && matches!(self.state, State::Unlocked(_)) {
             self.docs_pane(ctx);
+        }
+
+        // Debounced auto-save runs even when the pane is hidden.
+        if self.doc_dirty && self.doc_last_edit.elapsed() > Duration::from_millis(1200) {
+            self.save_doc();
+        }
+        if self.doc_dirty {
+            ctx.request_repaint_after(Duration::from_millis(300));
         }
 
         match self.state {
