@@ -152,7 +152,12 @@ impl App {
             .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()));
         if let Some(pw) = stored_pw {
             match Db::open(&config.db_path(), &pw).and_then(Session::new) {
-                Ok(session) => {
+                Ok(mut session) => {
+                    // Demo hook: land on a specific view (screenshots, e2e).
+                    if std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("dashboard") {
+                        session.summaries = session.db.interview_summaries().unwrap_or_default();
+                        session.view = MainView::Dashboard;
+                    }
                     state = State::Unlocked(Box::new(session));
                     remember_password = true;
                 }
@@ -626,8 +631,8 @@ impl App {
     }
 
     /// A raised KPI box: title on top, big value below.
-    fn kpi_box(ui: &mut egui::Ui, title: &str, value: &str) {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(190.0, 74.0), egui::Sense::hover());
+    fn kpi_box(ui: &mut egui::Ui, width: f32, title: &str, value: &str) {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 74.0), egui::Sense::hover());
         ui.painter().rect_filled(rect, 0.0, motif::BG);
         motif::bevel(ui.painter(), rect, true);
         ui.painter().text(
@@ -685,12 +690,14 @@ impl App {
             "— €/h".to_owned()
         };
 
+        let kpi_w = ((ui.available_width() - 70.0) / 4.0).clamp(110.0, 190.0);
         ui.horizontal(|ui| {
-            ui.add_space(ui.available_width() / 2.0 - 400.0);
-            Self::kpi_box(ui, "CA facturé", &format!("{billed:.0} €"));
-            Self::kpi_box(ui, "CA en attente", &format!("{pending:.0} €"));
-            Self::kpi_box(ui, "Entretiens facturés", &billed_count.to_string());
-            Self::kpi_box(ui, "Taux horaire", &roi);
+            let total = kpi_w * 4.0 + 30.0;
+            ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
+            Self::kpi_box(ui, kpi_w, "CA facturé", &format!("{billed:.0} €"));
+            Self::kpi_box(ui, kpi_w, "CA en attente", &format!("{pending:.0} €"));
+            Self::kpi_box(ui, kpi_w, "Entretiens facturés", &billed_count.to_string());
+            Self::kpi_box(ui, kpi_w, "Taux horaire", &roi);
         });
         ui.add_space(18.0);
 
@@ -802,10 +809,15 @@ impl App {
             );
             ui.painter().rect_filled(billed_rect, 0.0, motif::ACCENT);
             ui.painter().rect_filled(pending_rect, 0.0, motif::BG_DARK);
+            // "2026-08" → "08/26"
+            let label = match (month.get(5..7), month.get(2..4)) {
+                (Some(mm), Some(yy)) => format!("{mm}/{yy}"),
+                _ => month.clone(),
+            };
             ui.painter().text(
                 egui::pos2(x0 + slot / 2.0, plot.bottom() - 6.0),
                 egui::Align2::CENTER_CENTER,
-                month.get(2..).unwrap_or(month),
+                label,
                 egui::FontId::proportional(10.0),
                 motif::TEXT,
             );
