@@ -44,12 +44,16 @@ impl Default for DatabaseConfig {
 #[serde(default)]
 pub struct UiConfig {
     pub show_docs_on_start: bool,
+    /// Mask revenue amounts on the dashboard until explicitly revealed,
+    /// so figures are not readable over a shoulder at the counter.
+    pub discreet_finances: bool,
 }
 
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
             show_docs_on_start: true,
+            discreet_finances: true,
         }
     }
 }
@@ -153,5 +157,6 @@ mod tests {
         let cfg: Config = toml::from_str("").unwrap();
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
         assert!(cfg.ui.show_docs_on_start);
+        assert!(cfg.ui.discreet_finances);
     }
 }

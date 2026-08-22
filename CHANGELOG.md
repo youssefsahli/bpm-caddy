@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Discreet finances (on by default, `[ui] discreet_finances`): dashboard
+  amounts are masked ("•••") and the monthly revenue chart hidden; a
+  small unlabeled control in the dashboard corner reveals them, and they
+  re-mask on leaving the dashboard or locking
+
 ### Fixed
 - Fuzzy search now folds uppercase accented letters ("ÉMILE" matches
   "emile"); previously only lowercase accents were stripped

@@ -61,6 +61,9 @@ struct Session {
     summaries: Vec<InterviewSummary>,
     /// In-progress text of the per-interview date fields, keyed by id.
     date_edits: std::collections::HashMap<i64, String>,
+    /// Discreet mode: revenue amounts stay masked until explicitly
+    /// revealed, and re-mask when leaving the dashboard.
+    show_amounts: bool,
     error: Option<String>,
 }
 
@@ -86,6 +89,7 @@ impl Session {
             view: MainView::Search,
             summaries: Vec::new(),
             date_edits: std::collections::HashMap::new(),
+            show_amounts: false,
             error: None,
         })
     }
@@ -318,6 +322,7 @@ impl App {
         if focus_search {
             session.view = MainView::Search;
             session.viewing = None;
+            session.show_amounts = false;
         }
 
         let config = self.config.clone();
@@ -666,7 +671,32 @@ impl App {
         ui.vertical_centered(|ui| {
             ui.heading("Tableau de bord");
         });
-        ui.add_space(10.0);
+        ui.add_space(6.0);
+
+        // Discreet finances: amounts stay masked at the counter. The
+        // reveal control is deliberately unobtrusive — a small unlabeled
+        // square in the corner, raised while masked, sunken while shown.
+        let masked = config.ui.discreet_finances && !session.show_amounts;
+        if config.ui.discreet_finances {
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(ui.max_rect().right() - 36.0, ui.max_rect().top() + 4.0),
+                egui::vec2(26.0, 18.0),
+            );
+            let resp = ui.interact(rect, ui.id().with("discreet_toggle"), egui::Sense::click());
+            ui.painter()
+                .rect_filled(rect, 0.0, if masked { motif::BG } else { motif::TROUGH });
+            motif::bevel(ui.painter(), rect, masked);
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "•••",
+                egui::FontId::proportional(10.0),
+                motif::BG_DARK,
+            );
+            if resp.clicked() {
+                session.show_amounts = !session.show_amounts;
+            }
+        }
 
         let billed: f64 = session
             .summaries
@@ -702,10 +732,22 @@ impl App {
         ui.horizontal(|ui| {
             let total = kpi_w * 4.0 + 30.0;
             ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
-            Self::kpi_box(ui, kpi_w, "CA facturé", &format!("{billed:.0} €"));
-            Self::kpi_box(ui, kpi_w, "CA en attente", &format!("{pending:.0} €"));
+            let money = |v: &str| {
+                if masked {
+                    "•••".to_owned()
+                } else {
+                    v.to_owned()
+                }
+            };
+            Self::kpi_box(ui, kpi_w, "CA facturé", &money(&format!("{billed:.0} €")));
+            Self::kpi_box(
+                ui,
+                kpi_w,
+                "CA en attente",
+                &money(&format!("{pending:.0} €")),
+            );
             Self::kpi_box(ui, kpi_w, "Entretiens facturés", &billed_count.to_string());
-            Self::kpi_box(ui, kpi_w, "Taux horaire", &roi);
+            Self::kpi_box(ui, kpi_w, "Taux horaire", &money(&roi));
         });
         ui.add_space(18.0);
 
@@ -744,6 +786,12 @@ impl App {
             ui.label(egui::RichText::new("CA mensuel — facturé vs en attente").strong());
         });
         ui.add_space(6.0);
+        if masked {
+            ui.vertical_centered(|ui| {
+                ui.label("• • •");
+            });
+            return;
+        }
         let mut months: Vec<String> = session
             .summaries
             .iter()
@@ -900,7 +948,10 @@ impl eframe::App for App {
                         }
                         MainView::Dashboard
                     }
-                    MainView::Dashboard => MainView::Search,
+                    MainView::Dashboard => {
+                        session.show_amounts = false;
+                        MainView::Search
+                    }
                 };
             }
         }
