@@ -862,6 +862,11 @@ impl eframe::App for App {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("BPM-Caddy").strong());
+                ui.label(
+                    egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if motif::button(ui, "Documentation (F1)").clicked() {
                         self.show_docs = !self.show_docs;
