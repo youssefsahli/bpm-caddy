@@ -1,0 +1,16 @@
+[package]
+name = "bpm-caddy"
+version = "0.1.0"
+edition = "2021"
+description = "Clinical pharmacy workflow & analytics — fast, local, encrypted."
+license-file = "LICENSE"
+repository = "https://github.com/youssefsahli/bpm-caddy"
+publish = false
+
+[dependencies]
+eframe = "0.29"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

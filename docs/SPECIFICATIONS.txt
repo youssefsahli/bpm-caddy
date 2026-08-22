@@ -1,0 +1,100 @@
+SOFTWARE REQUIREMENTS SPECIFICATION
+Project: "BPM-Caddy" – Clinical Pharmacy Workflow & Analytics
+================================================================================
+
+1. EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+This document outlines the architecture and requirements for a localized, highly 
+performant desktop application designed to streamline pharmaceutical consultations 
+(BPMs, AODs, Asthma). The software emphasizes instantaneous UI rendering, robust 
+cryptographic data protection for health records, cross-platform portability, 
+and comprehensive financial tracking to demonstrate the return on investment (ROI) 
+of clinical activities.
+
+2. CORE ARCHITECTURAL PRINCIPLES
+--------------------------------------------------------------------------------
+* Frictionless UX: Zero loading screens. The application must launch instantly 
+  and rely heavily on keyboard navigation and fuzzy searching to prevent workflow 
+  interruption at the dispensing counter.
+* Data Security (Zero Trust Local): Patient data is highly sensitive. The database 
+  must be encrypted at rest. No cloud syncing or external APIs will be used for 
+  core data storage.
+* Portability & Customization: The software must compile to a single standalone 
+  executable (Windows/macOS/Linux) with configurable paths to allow the database 
+  to sit on a secure local pharmacy network drive (e.g., Z:\pharmacy_data\).
+
+3. FUNCTIONAL REQUIREMENTS
+--------------------------------------------------------------------------------
+3.1. Rapid Input & Patient Retrieval
+* Fuzzy Search Engine: Global search bar focused by default on application launch. 
+  Typing "jndp" should immediately retrieve "Jean Dupont".
+* Quick Creation: If a search yields no results, the UI seamlessly transitions 
+  into a creation form requiring only: Last Name, First Name, and Date of Birth.
+* Shortcut Driven: Ctrl+F for search, Enter to select the top result, Ctrl+N 
+  to add a new interview.
+
+3.2. Document Generation (Typst Engine Integration)
+The application will utilize Typst as the primary typesetting and PDF generation 
+engine. By embedding the `typst` Rust crate directly, the application ensures 
+native, lightning-fast compilation of documents without relying on external 
+dependencies like HTML-to-PDF wrappers or LaTeX installations.
+* Dynamic Templating: Generation of aesthetically pleasing, ready-to-print 
+  clinical templates (BPM/AOD frameworks) populated in real-time with the 
+  selected patient's demographic data.
+* Vector Graphics API: Native Typst shapes and layout functions will be scripted 
+  to draw crisp "rounded boxes", perfectly tailored for handwritten clinical notes 
+  during the interview.
+* Zero-Overhead Spooling: In-memory PDF byte generation seamlessly handed off to 
+  the OS default PDF viewer (via the `open` crate) or sent directly to the local 
+  printer queue.
+
+3.3. Financial & Statistical Dashboard (Analytics)
+A dedicated dashboard page to track the financial viability and clinical volume 
+of the pharmacist's activities.
+* Monthly Revenue (CA): Bar Chart - Track billed vs. pending revenue.
+* Pipeline Status: Funnel/Kanban - Visualize patients: Eligible -> Planned -> Done -> Billed.
+* Hourly ROI Rate: KPI Box - Calculated metric: Total Revenue / Total Time Spent.
+
+4. NON-FUNCTIONAL REQUIREMENTS & TECHNOLOGY STACK
+--------------------------------------------------------------------------------
+4.1. Application Framework & UI
+The application will be built using Rust and the egui (immediate mode GUI) 
+framework. This guarantees startup times under 50ms, minimal memory footprint, 
+and native cross-platform compilation without heavy runtimes (like Electron). 
+Document generation will seamlessly interface with the Typst ecosystem in pure Rust.
+* Data Visualization: Integration of egui_plot or plotters to render native, 
+  interactive financial charts directly within the application window.
+
+4.2. Database & Cryptography
+Given the requirement for robust health data processing, standard SQLite is 
+insufficient. The application will use SQLCipher (via the `rusqlite` crate 
+bundled with the `sqlcipher` feature).
+* Encryption Standard: 256-bit AES encryption applied to the entire SQLite 
+  database file transparently.
+* Key Management: The encryption key can be derived from a master password 
+  prompted at startup, or securely stored in the OS credential manager.
+
+4.3. Customizability & Configuration
+A config.toml file located in the user's local AppData/Config directory will 
+dictate environmental behaviors:
+
+    [database]
+    path = "Z:\LGO_Shared\bpm_caddy.db"
+    auto_lock_timeout_minutes = 15
+
+    [ui]
+    theme = "dark"
+    default_view = "search"
+
+    [templates]
+    bpm_template_path = "templates/bpm_layout.typ"
+
+5. WORKFLOW LIFECYCLE (STATE MACHINE)
+--------------------------------------------------------------------------------
+Each patient interview entry is strictly typed into a finite state machine to 
+ensure no billing is lost:
+1. IDENTIFIED: Patient flagged at the counter. Needs scheduling.
+2. SCHEDULED: Date/Time set. (Calculates into pipeline forecast).
+3. PERFORMED: Interview completed. Awaiting MD report.
+4. REPORT_SENT: MSSanté sent. Awaiting LGO billing.
+5. BILLED: Finalized. Revenue officially added to the Dashboard metrics.
