@@ -154,9 +154,18 @@ impl App {
             match Db::open(&config.db_path(), &pw).and_then(Session::new) {
                 Ok(mut session) => {
                     // Demo hook: land on a specific view (screenshots, e2e).
-                    if std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("dashboard") {
-                        session.summaries = session.db.interview_summaries().unwrap_or_default();
-                        session.view = MainView::Dashboard;
+                    match std::env::var("BPM_CADDY_START_VIEW").as_deref() {
+                        Ok("dashboard") => {
+                            session.summaries =
+                                session.db.interview_summaries().unwrap_or_default();
+                            session.view = MainView::Dashboard;
+                        }
+                        Ok("patient") => {
+                            if let Some(p) = session.patients.first().cloned() {
+                                session.open_patient(p);
+                            }
+                        }
+                        _ => {}
                     }
                     state = State::Unlocked(Box::new(session));
                     remember_password = true;
@@ -483,7 +492,7 @@ impl App {
         }
         ui.add_space(16.0);
         ui.horizontal(|ui| {
-            if motif::button(ui, "← Retour (Échap)").clicked() {
+            if motif::button(ui, "Retour (Échap)").clicked() {
                 session.viewing = None;
             }
         });
@@ -549,11 +558,11 @@ impl App {
                                 .background_color(motif::ACCENT),
                         );
                         if let Some(next) = itv.state.next() {
-                            if motif::button(ui, &format!("→ {}", next.label())).clicked() {
+                            if motif::button(ui, &format!("» {}", next.label())).clicked() {
                                 advance = Some((itv.id, itv.state));
                             }
                         } else {
-                            ui.label("✓ terminé");
+                            ui.label("Terminé");
                         }
                         if motif::button(ui, "Fiche PDF").clicked() {
                             print_kind = Some(itv.kind);
