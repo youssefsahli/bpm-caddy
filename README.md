@@ -8,6 +8,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![BPM-Caddy — recherche de patients et documentation d'équipe, thème X/Motif](docs/screenshot.png)
 
+![Tableau de bord — KPIs, pipeline des entretiens, CA mensuel](docs/screenshot_dashboard.png)
+
 ## Key features
 
 - **Instant fuzzy search** — the app launches straight into a global search bar; typing `jndp` finds *Jean Dupont*. No result? The search seamlessly becomes a patient-creation form.
