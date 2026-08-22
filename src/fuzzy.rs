@@ -3,7 +3,10 @@
 
 /// Lowercase and strip the accents used in French names.
 fn fold(c: char) -> char {
-    match c.to_ascii_lowercase() {
+    // Full Unicode lowercasing: 'É' → 'é' ('to_ascii_lowercase' would
+    // leave uppercase accented letters untouched).
+    let c = c.to_lowercase().next().unwrap_or(c);
+    match c {
         'à' | 'â' | 'ä' => 'a',
         'é' | 'è' | 'ê' | 'ë' => 'e',
         'î' | 'ï' => 'i',
@@ -60,6 +63,9 @@ mod tests {
     #[test]
     fn diacritics_are_ignored() {
         assert!(score("helene", "Hélène Lefèvre").is_some());
+        // Uppercase accented letters must fold too.
+        assert!(score("emile", "ÉMILE LEFÈVRE").is_some());
+        assert!(score("lefevre", "LEFÈVRE Émile").is_some());
     }
 
     #[test]

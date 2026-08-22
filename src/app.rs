@@ -446,12 +446,12 @@ impl App {
                             .add_patient(form.last_name.trim(), form.first_name.trim(), &iso)
                     });
                     match outcome {
-                        Ok(_) => {
+                        Ok(new_id) => {
                             match session.db.patients() {
                                 Ok(list) => session.patients = list,
                                 Err(e) => session.error = Some(e),
                             }
-                            let created = session.patients.last().cloned();
+                            let created = session.patients.iter().find(|p| p.id == new_id).cloned();
                             session.query.clear();
                             session.new_patient = None;
                             if let Some(p) = created {
