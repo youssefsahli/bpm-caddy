@@ -7,12 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-22
+
 ### Added
 - Time tracking per interview (inline "min" field) feeding the hourly ROI
   KPI ("Taux horaire") on the dashboard
 - Master password can be remembered in the OS credential manager (Windows
   Credential Manager, macOS Keychain, Secret Service on Linux) for silent
   unlock at startup; unchecking the box removes the stored copy
+- Planned interview dates ("RDV JJ/MM/AAAA" per interview row)
+- "Verrouiller" toolbar button and Ctrl+F back-to-search shortcut
+- Screenshots in the README, captured from the running app
+
+### Fixed
+- Dashboard KPI row no longer overflows narrow windows; monthly chart
+  labels months as MM/YY
 
 ## [0.2.0] - 2026-08-22
 
