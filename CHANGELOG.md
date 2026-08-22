@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Time tracking per interview (inline "min" field) feeding the hourly ROI
+  KPI ("Taux horaire") on the dashboard
+- Master password can be remembered in the OS credential manager (Windows
+  Credential Manager, macOS Keychain, Secret Service on Linux) for silent
+  unlock at startup; unchecking the box removes the stored copy
+
 ## [0.2.0] - 2026-08-22
 
 ### Added

@@ -21,6 +21,7 @@ typst = "0.13"
 typst-pdf = "0.13"
 typst-assets = { version = "0.13", features = ["fonts"] }
 open = "5.4.1"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 [profile.release]
 lto = true
