@@ -109,6 +109,17 @@ impl InterviewKind {
     }
 }
 
+/// Dashboard aggregate: one row per interview, month-granular.
+#[derive(Clone, Debug)]
+pub struct InterviewSummary {
+    pub kind: InterviewKind,
+    pub state: InterviewState,
+    /// `YYYY-MM` of creation — used to place pending revenue.
+    pub created_month: String,
+    /// `YYYY-MM` of the last state change — used to place billed revenue.
+    pub updated_month: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct Interview {
     pub id: i64,
@@ -239,6 +250,40 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Every interview reduced to what the dashboard needs.
+    pub fn interview_summaries(&self) -> Result<Vec<InterviewSummary>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT kind, state, substr(created_at, 1, 7), substr(updated_at, 1, 7)
+                 FROM interviews",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (kind, state, created_month, updated_month) = row.map_err(|e| e.to_string())?;
+            out.push(InterviewSummary {
+                kind: InterviewKind::parse(&kind)
+                    .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
+                state: InterviewState::parse(&state)
+                    .ok_or_else(|| format!("état d'entretien inconnu : {state}"))?,
+                created_month,
+                updated_month,
+            });
+        }
+        Ok(out)
     }
 
     /// Advance an interview to the next pipeline state; no-op once billed.

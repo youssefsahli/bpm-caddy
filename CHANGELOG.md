@@ -24,3 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diacritic-insensitive fuzzy patient search ("jndp" finds "Jean Dupont"),
   keyboard navigation (arrows + Enter), and seamless quick-creation form
   (Nom / Prénom / Date de naissance) when no patient matches
+- Interview lifecycle state machine (Identifié → Planifié → Réalisé →
+  CR envoyé → Facturé) with one-click advancement from the patient view
+- `config.toml` support: database path (shareable network drive — the team
+  documentation follows the database), auto-lock timeout, per-kind billing
+  fees, UI defaults
+- Auto-lock: the app returns to the password screen after the configured
+  inactivity timeout
+- Financial dashboard (F2): billed vs pending revenue KPIs, pipeline
+  funnel, and a monthly billed/pending bar chart, all Motif-styled

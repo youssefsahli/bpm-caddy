@@ -1,20 +1,10 @@
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::db::{self, Db, Interview, InterviewKind, Patient};
+use crate::config::Config;
+use crate::db::{self, Db, Interview, InterviewKind, InterviewState, InterviewSummary, Patient};
 use crate::fuzzy;
-
-/// Shared team documentation, editable in the docked pane. The file lives in
-/// the application data directory; pointing it at the pharmacy network drive
-/// (like the database) will be handled by `config.toml`.
-fn team_doc_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("bpm-caddy")
-        .join("notes_equipe.md")
-}
 
 const TEAM_DOC_TEMPLATE: &str = "\
 # Notes d'équipe — BPM-Caddy
@@ -43,6 +33,12 @@ enum State {
     Unlocked(Box<Session>),
 }
 
+#[derive(PartialEq, Clone, Copy)]
+enum MainView {
+    Search,
+    Dashboard,
+}
+
 struct Session {
     db: Db,
     patients: Vec<Patient>,
@@ -51,6 +47,8 @@ struct Session {
     viewing: Option<Patient>,
     viewing_interviews: Vec<Interview>,
     new_patient: Option<NewPatientForm>,
+    view: MainView,
+    summaries: Vec<InterviewSummary>,
     error: Option<String>,
 }
 
@@ -73,6 +71,8 @@ impl Session {
             viewing: None,
             viewing_interviews: Vec::new(),
             new_patient: None,
+            view: MainView::Search,
+            summaries: Vec::new(),
             error: None,
         })
     }
@@ -110,6 +110,8 @@ impl Session {
 
 pub struct App {
     state: State,
+    config: Config,
+    last_activity: Instant,
     show_docs: bool,
     doc_text: String,
     doc_dirty: bool,
@@ -119,14 +121,18 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let doc_text = std::fs::read_to_string(team_doc_path())
+        let config = Config::load();
+        let doc_text = std::fs::read_to_string(config.team_doc_path())
             .unwrap_or_else(|_| TEAM_DOC_TEMPLATE.to_owned());
+        let show_docs = config.ui.show_docs_on_start;
         Self {
             state: State::Locked {
                 password: String::new(),
                 error: None,
             },
-            show_docs: true,
+            config,
+            last_activity: Instant::now(),
+            show_docs,
             doc_text,
             doc_dirty: false,
             doc_last_edit: Instant::now(),
@@ -135,7 +141,7 @@ impl App {
     }
 
     fn save_doc(&mut self) {
-        let path = team_doc_path();
+        let path = self.config.team_doc_path();
         let result = path
             .parent()
             .map(std::fs::create_dir_all)
@@ -232,7 +238,7 @@ impl App {
         });
 
         if let Some(pw) = attempt {
-            match Db::open(&db::default_path(), &pw).and_then(Session::new) {
+            match Db::open(&self.config.db_path(), &pw).and_then(Session::new) {
                 Ok(session) => self.state = State::Unlocked(Box::new(session)),
                 Err(e) => {
                     let State::Locked { password, error } = &mut self.state else {
@@ -250,7 +256,12 @@ impl App {
             return;
         };
 
+        let config = self.config.clone();
         egui::CentralPanel::default().show(ctx, |ui| {
+            if session.view == MainView::Dashboard {
+                Self::dashboard_view(ui, session, &config);
+                return;
+            }
             if let Some(patient) = session.viewing.clone() {
                 Self::patient_view(ui, ctx, session, &patient);
                 return;
@@ -488,13 +499,207 @@ impl App {
             }
         }
     }
+
+    /// A raised KPI box: title on top, big value below.
+    fn kpi_box(ui: &mut egui::Ui, title: &str, value: &str) {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(190.0, 74.0), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, motif::BG);
+        motif::bevel(ui.painter(), rect, true);
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.top() + 18.0),
+            egui::Align2::CENTER_CENTER,
+            title,
+            egui::FontId::proportional(13.0),
+            motif::TEXT,
+        );
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.top() + 48.0),
+            egui::Align2::CENTER_CENTER,
+            value,
+            egui::FontId::proportional(22.0),
+            motif::ACCENT,
+        );
+    }
+
+    /// Financial & statistical dashboard (spec 3.3): KPIs, pipeline funnel,
+    /// monthly billed vs pending revenue.
+    fn dashboard_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        ui.add_space(10.0);
+        ui.vertical_centered(|ui| {
+            ui.heading("Tableau de bord");
+        });
+        ui.add_space(10.0);
+
+        let billed: f64 = session
+            .summaries
+            .iter()
+            .filter(|s| s.state == InterviewState::Billed)
+            .map(|s| config.fee(s.kind))
+            .sum();
+        let pending: f64 = session
+            .summaries
+            .iter()
+            .filter(|s| s.state != InterviewState::Billed)
+            .map(|s| config.fee(s.kind))
+            .sum();
+        let billed_count = session
+            .summaries
+            .iter()
+            .filter(|s| s.state == InterviewState::Billed)
+            .count();
+
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 300.0);
+            Self::kpi_box(ui, "CA facturé", &format!("{billed:.0} €"));
+            Self::kpi_box(ui, "CA en attente", &format!("{pending:.0} €"));
+            Self::kpi_box(ui, "Entretiens facturés", &billed_count.to_string());
+        });
+        ui.add_space(18.0);
+
+        // Pipeline funnel: one sunken bar per state.
+        ui.vertical_centered(|ui| {
+            ui.label(egui::RichText::new("Pipeline des entretiens").strong());
+        });
+        ui.add_space(6.0);
+        let max_count = InterviewState::ALL
+            .iter()
+            .map(|st| session.summaries.iter().filter(|s| s.state == *st).count())
+            .max()
+            .unwrap_or(0)
+            .max(1);
+        for st in InterviewState::ALL {
+            let count = session.summaries.iter().filter(|s| s.state == st).count();
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 250.0);
+                ui.add_sized([110.0, 20.0], egui::Label::new(st.label()));
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::vec2(300.0, 20.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
+                motif::bevel(ui.painter(), rect, false);
+                let mut fill = rect.shrink(3.0);
+                fill.set_width(fill.width() * (count as f32 / max_count as f32));
+                if count > 0 {
+                    ui.painter().rect_filled(fill, 0.0, motif::ACCENT);
+                }
+                ui.label(count.to_string());
+            });
+        }
+        ui.add_space(18.0);
+
+        // Monthly revenue: billed (dark blue) vs pending (grey), last 12 months.
+        ui.vertical_centered(|ui| {
+            ui.label(egui::RichText::new("CA mensuel — facturé vs en attente").strong());
+        });
+        ui.add_space(6.0);
+        let mut months: Vec<String> = session
+            .summaries
+            .iter()
+            .map(|s| {
+                if s.state == InterviewState::Billed {
+                    s.updated_month.clone()
+                } else {
+                    s.created_month.clone()
+                }
+            })
+            .collect();
+        months.sort();
+        months.dedup();
+        let months: Vec<String> = months.into_iter().rev().take(12).rev().collect();
+
+        if months.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.label("Aucun entretien enregistré pour l'instant.");
+            });
+            return;
+        }
+
+        let per_month: Vec<(String, f64, f64)> = months
+            .iter()
+            .map(|m| {
+                let b: f64 = session
+                    .summaries
+                    .iter()
+                    .filter(|s| s.state == InterviewState::Billed && &s.updated_month == m)
+                    .map(|s| config.fee(s.kind))
+                    .sum();
+                let p: f64 = session
+                    .summaries
+                    .iter()
+                    .filter(|s| s.state != InterviewState::Billed && &s.created_month == m)
+                    .map(|s| config.fee(s.kind))
+                    .sum();
+                (m.clone(), b, p)
+            })
+            .collect();
+        let max_val = per_month
+            .iter()
+            .map(|(_, b, p)| b.max(*p))
+            .fold(1.0_f64, f64::max);
+
+        let chart_w = (per_month.len() as f32 * 70.0).min(ui.available_width() - 40.0);
+        let (chart, _) =
+            ui.allocate_exact_size(egui::vec2(chart_w.max(140.0), 190.0), egui::Sense::hover());
+        let chart = egui::Rect::from_center_size(
+            egui::pos2(ui.max_rect().center().x, chart.center().y),
+            chart.size(),
+        );
+        ui.painter().rect_filled(chart, 0.0, motif::TROUGH);
+        motif::bevel(ui.painter(), chart, false);
+        let plot = chart.shrink(10.0);
+        let slot = plot.width() / per_month.len() as f32;
+        for (i, (month, b, p)) in per_month.iter().enumerate() {
+            let x0 = plot.left() + i as f32 * slot;
+            let bar_w = (slot - 18.0).clamp(6.0, 24.0);
+            let scale = |v: f64| (v / max_val) as f32 * (plot.height() - 26.0);
+            let billed_rect = egui::Rect::from_min_max(
+                egui::pos2(
+                    x0 + slot / 2.0 - bar_w - 1.0,
+                    plot.bottom() - 16.0 - scale(*b),
+                ),
+                egui::pos2(x0 + slot / 2.0 - 1.0, plot.bottom() - 16.0),
+            );
+            let pending_rect = egui::Rect::from_min_max(
+                egui::pos2(x0 + slot / 2.0 + 1.0, plot.bottom() - 16.0 - scale(*p)),
+                egui::pos2(x0 + slot / 2.0 + bar_w + 1.0, plot.bottom() - 16.0),
+            );
+            ui.painter().rect_filled(billed_rect, 0.0, motif::ACCENT);
+            ui.painter().rect_filled(pending_rect, 0.0, motif::BG_DARK);
+            ui.painter().text(
+                egui::pos2(x0 + slot / 2.0, plot.bottom() - 6.0),
+                egui::Align2::CENTER_CENTER,
+                month.get(2..).unwrap_or(month),
+                egui::FontId::proportional(10.0),
+                motif::TEXT,
+            );
+        }
+        ui.add_space(6.0);
+        ui.vertical_centered(|ui| {
+            ui.label("■ facturé (bleu)   ■ en attente (gris)");
+        });
+    }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Auto-lock after inactivity (spec 4.3).
+        if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {
+            self.last_activity = Instant::now();
+        }
+        if let State::Unlocked(_) = self.state {
+            let timeout = self.config.database.auto_lock_timeout_minutes;
+            if timeout > 0 && self.last_activity.elapsed() > Duration::from_secs(timeout * 60) {
+                self.state = State::Locked {
+                    password: String::new(),
+                    error: None,
+                };
+            }
+            ctx.request_repaint_after(Duration::from_secs(30));
+        }
+
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
             self.show_docs = !self.show_docs;
         }
+        let mut toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -504,10 +709,30 @@ impl eframe::App for App {
                     if motif::button(ui, "Documentation (F1)").clicked() {
                         self.show_docs = !self.show_docs;
                     }
+                    if matches!(self.state, State::Unlocked(_))
+                        && motif::button(ui, "Tableau de bord (F2)").clicked()
+                    {
+                        toggle_dashboard = true;
+                    }
                 });
             });
             ui.add_space(4.0);
         });
+
+        if toggle_dashboard {
+            if let State::Unlocked(session) = &mut self.state {
+                session.view = match session.view {
+                    MainView::Search => {
+                        match session.db.interview_summaries() {
+                            Ok(s) => session.summaries = s,
+                            Err(e) => session.error = Some(e),
+                        }
+                        MainView::Dashboard
+                    }
+                    MainView::Dashboard => MainView::Search,
+                };
+            }
+        }
 
         if self.show_docs {
             self.docs_pane(ctx);
