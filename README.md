@@ -15,6 +15,9 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **Billing pipeline state machine** — every interview moves through `Identified → Scheduled → Performed → Report sent → Billed`, so no billable act is ever lost.
 - **Financial dashboard** — monthly billed vs. pending revenue, pipeline funnel, and an hourly ROI rate computed from time spent.
 - **Portable** — a single standalone executable for Windows, macOS, and Linux. The database path is configurable, so it can live on a secure pharmacy network drive.
+- **Auto-updating launcher** — `bpm-caddy-launcher` checks GitHub Releases on startup, downloads the latest version if needed (with an offline fallback to the installed copy), then starts the app. Install the launcher once; the app stays current.
+- **Team documentation pane** — a docked, editable French documentation panel (`F1` to toggle) with auto-save, for shared day-to-day notes and team syncing at the counter.
+- **Old-school X/Motif theme** — the classic `mwm` blue-grey look with square corners and raised/sunken bevels, implemented as a reusable `motif` crate for egui.
 
 ## Technology
 
@@ -27,6 +30,18 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 | Charts | `egui_plot` |
 
 The full requirements document lives in [`docs/SPECIFICATIONS.txt`](docs/SPECIFICATIONS.txt).
+
+The repository is a Cargo workspace:
+
+| Crate | Purpose |
+|---|---|
+| `bpm-caddy` (root) | The main application |
+| `launcher/` | Auto-updating launcher (`bpm-caddy-launcher`) |
+| `motif/` | X/Motif look-and-feel for egui (palette, bevels, widgets) |
+
+## Installing
+
+Download **`bpm-caddy-launcher`** for your platform from the [Releases](../../releases) page and run it. It fetches the latest BPM-Caddy binary into your local data directory, keeps it up to date on every start, and launches it. If the network is unavailable, it starts the already-installed version.
 
 ## Configuration
 
@@ -47,6 +62,9 @@ bpm_template_path = "templates/bpm_layout.typ"
 
 ## Roadmap
 
+- [x] Auto-updating launcher (GitHub Releases, offline fallback)
+- [x] X/Motif theme (`motif` crate)
+- [x] Docked team documentation pane (French, auto-saved)
 - [ ] Application shell: instant-launch egui window, global fuzzy search
 - [ ] Patient records: quick creation, encrypted SQLCipher storage
 - [ ] Interview lifecycle state machine

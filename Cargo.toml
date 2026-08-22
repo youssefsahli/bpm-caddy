@@ -1,3 +1,6 @@
+[workspace]
+members = ["motif", "launcher"]
+
 [package]
 name = "bpm-caddy"
 version = "0.1.0"
@@ -9,6 +12,8 @@ publish = false
 
 [dependencies]
 eframe = "0.29"
+motif = { path = "motif" }
+dirs = "5"
 
 [profile.release]
 lto = true
