@@ -49,15 +49,20 @@ BPM-Caddy reads a `config.toml` from the platform config directory:
 
 ```toml
 [database]
+# Point this at the pharmacy network drive to share the database — the
+# team documentation file (notes_equipe.md) lives next to it and is
+# shared the same way.
 path = "Z:/LGO_Shared/bpm_caddy.db"
 auto_lock_timeout_minutes = 15
 
 [ui]
-theme = "dark"
-default_view = "search"
+show_docs_on_start = true
 
-[templates]
-bpm_template_path = "templates/bpm_layout.typ"
+[billing]
+# Fees in euros per interview cycle — adjust to the convention in force.
+bpm_fee = 60.0
+aod_fee = 40.0
+asthme_fee = 40.0
 ```
 
 ## Roadmap
@@ -67,11 +72,11 @@ bpm_template_path = "templates/bpm_layout.typ"
 - [x] Docked team documentation pane (French, auto-saved)
 - [x] Application shell: instant-launch egui window, global fuzzy search
 - [x] Patient records: quick creation, encrypted SQLCipher storage
-- [ ] Interview lifecycle state machine
+- [x] Interview lifecycle state machine
 - [ ] Typst template engine integration and PDF spooling
-- [ ] Financial dashboard (revenue chart, pipeline funnel, hourly ROI)
-- [ ] Configuration file and OS credential-manager key storage
-- [ ] Packaged releases for Windows / macOS / Linux
+- [x] Financial dashboard (revenue chart, pipeline funnel; hourly ROI pending time tracking)
+- [x] Configuration file (database path, auto-lock, fees); OS credential-manager key storage pending
+- [x] Packaged releases for Windows / macOS / Linux
 
 ## License
 
