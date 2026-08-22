@@ -467,9 +467,10 @@ impl App {
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut print_kind: Option<InterviewKind> = None;
+        let mut set_duration: Option<(i64, i64)> = None;
         ui.vertical_centered(|ui| {
             egui::Grid::new("interviews")
-                .num_columns(5)
+                .num_columns(6)
                 .spacing([18.0, 8.0])
                 .show(ui, |ui| {
                     for itv in &interviews {
@@ -493,12 +494,27 @@ impl App {
                         if motif::button(ui, "Fiche PDF").clicked() {
                             print_kind = Some(itv.kind);
                         }
+                        let mut minutes = itv.duration_minutes;
+                        let drag = ui.add(
+                            egui::DragValue::new(&mut minutes)
+                                .range(0..=480)
+                                .suffix(" min"),
+                        );
+                        if drag.changed() {
+                            set_duration = Some((itv.id, minutes));
+                        }
                         ui.end_row();
                     }
                 });
         });
         if let Some((id, state)) = advance {
             match session.db.advance_interview(id, state) {
+                Ok(()) => session.reload_interviews(patient.id),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some((id, minutes)) = set_duration {
+            match session.db.set_duration(id, minutes) {
                 Ok(()) => session.reload_interviews(patient.id),
                 Err(e) => session.error = Some(e),
             }
@@ -571,12 +587,25 @@ impl App {
             .iter()
             .filter(|s| s.state == InterviewState::Billed)
             .count();
+        // Hourly ROI (spec 3.3): billed revenue over the time actually spent.
+        let billed_minutes: i64 = session
+            .summaries
+            .iter()
+            .filter(|s| s.state == InterviewState::Billed)
+            .map(|s| s.duration_minutes)
+            .sum();
+        let roi = if billed_minutes > 0 {
+            format!("{:.0} €/h", billed / (billed_minutes as f64 / 60.0))
+        } else {
+            "— €/h".to_owned()
+        };
 
         ui.horizontal(|ui| {
-            ui.add_space(ui.available_width() / 2.0 - 300.0);
+            ui.add_space(ui.available_width() / 2.0 - 400.0);
             Self::kpi_box(ui, "CA facturé", &format!("{billed:.0} €"));
             Self::kpi_box(ui, "CA en attente", &format!("{pending:.0} €"));
             Self::kpi_box(ui, "Entretiens facturés", &billed_count.to_string());
+            Self::kpi_box(ui, "Taux horaire", &roi);
         });
         ui.add_space(18.0);
 

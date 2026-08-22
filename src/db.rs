@@ -20,10 +20,15 @@ CREATE TABLE IF NOT EXISTS interviews (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
     kind        TEXT NOT NULL,
     state       TEXT NOT NULL DEFAULT 'IDENTIFIED',
+    duration_minutes INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ";
+
+/// Idempotent migrations for databases created by older versions.
+const MIGRATIONS: &[&str] =
+    &["ALTER TABLE interviews ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0"];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
 /// act is ever lost.
@@ -118,6 +123,7 @@ pub struct InterviewSummary {
     pub created_month: String,
     /// `YYYY-MM` of the last state change — used to place billed revenue.
     pub updated_month: String,
+    pub duration_minutes: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -125,6 +131,7 @@ pub struct Interview {
     pub id: i64,
     pub kind: InterviewKind,
     pub state: InterviewState,
+    pub duration_minutes: i64,
     pub created_at: String,
 }
 
@@ -172,6 +179,10 @@ impl Db {
         .map_err(|_| "Mot de passe incorrect (ou fichier illisible).".to_owned())?;
         conn.execute_batch(SCHEMA)
             .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        for migration in MIGRATIONS {
+            // Fails harmlessly when the column already exists.
+            let _ = conn.execute(migration, []);
+        }
         Ok(Self { conn })
     }
 
@@ -213,7 +224,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, kind, state, created_at
+                "SELECT id, kind, state, duration_minutes, created_at
                  FROM interviews WHERE patient_id = ?1 ORDER BY created_at DESC, id DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -223,15 +234,17 @@ impl Db {
                     r.get::<_, i64>(0)?,
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(3)?,
+                    r.get::<_, String>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, kind, state, created_at) = row.map_err(|e| e.to_string())?;
+            let (id, kind, state, duration_minutes, created_at) = row.map_err(|e| e.to_string())?;
             out.push(Interview {
                 id,
+                duration_minutes,
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 state: InterviewState::parse(&state)
@@ -266,7 +279,8 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT kind, state, substr(created_at, 1, 7), substr(updated_at, 1, 7)
+                "SELECT kind, state, substr(created_at, 1, 7), substr(updated_at, 1, 7),
+                        duration_minutes
                  FROM interviews",
             )
             .map_err(|e| e.to_string())?;
@@ -277,13 +291,16 @@ impl Db {
                     r.get::<_, String>(1)?,
                     r.get::<_, String>(2)?,
                     r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (kind, state, created_month, updated_month) = row.map_err(|e| e.to_string())?;
+            let (kind, state, created_month, updated_month, duration_minutes) =
+                row.map_err(|e| e.to_string())?;
             out.push(InterviewSummary {
+                duration_minutes,
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 state: InterviewState::parse(&state)
@@ -293,6 +310,17 @@ impl Db {
             });
         }
         Ok(out)
+    }
+
+    /// Record the time spent on an interview, for the hourly ROI metric.
+    pub fn set_duration(&self, id: i64, minutes: i64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE interviews SET duration_minutes = ?1 WHERE id = ?2",
+                (minutes, id),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Advance an interview to the next pipeline state; no-op once billed.
