@@ -6,6 +6,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 > **Status: in development.** This repository hosts the specification, roadmap, and source code as the project is built. Binaries will be published on the [Releases](../../releases) page.
 
+![BPM-Caddy — recherche de patients et documentation d'équipe, thème X/Motif](docs/screenshot.png)
+
 ## Key features
 
 - **Instant fuzzy search** — the app launches straight into a global search bar; typing `jndp` finds *Jean Dupont*. No result? The search seamlessly becomes a patient-creation form.
