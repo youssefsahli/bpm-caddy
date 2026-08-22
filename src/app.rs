@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::db::{self, Db, Patient};
+use crate::db::{self, Db, Interview, InterviewKind, Patient};
 use crate::fuzzy;
 
 /// Shared team documentation, editable in the docked pane. The file lives in
@@ -49,6 +49,7 @@ struct Session {
     query: String,
     selected: usize,
     viewing: Option<Patient>,
+    viewing_interviews: Vec<Interview>,
     new_patient: Option<NewPatientForm>,
     error: Option<String>,
 }
@@ -70,6 +71,7 @@ impl Session {
             query: String::new(),
             selected: 0,
             viewing: None,
+            viewing_interviews: Vec::new(),
             new_patient: None,
             error: None,
         })
@@ -88,6 +90,21 @@ impl Session {
             .collect();
         scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
         scored.into_iter().take(20).map(|(_, p)| p).collect()
+    }
+
+    fn open_patient(&mut self, patient: Patient) {
+        match self.db.interviews_for(patient.id) {
+            Ok(list) => self.viewing_interviews = list,
+            Err(e) => self.error = Some(e),
+        }
+        self.viewing = Some(patient);
+    }
+
+    fn reload_interviews(&mut self, patient_id: i64) {
+        match self.db.interviews_for(patient_id) {
+            Ok(list) => self.viewing_interviews = list,
+            Err(e) => self.error = Some(e),
+        }
     }
 }
 
@@ -279,7 +296,7 @@ impl App {
                     session.selected = session.selected.saturating_sub(1);
                 }
                 if enter {
-                    session.viewing = Some(results[session.selected].clone());
+                    session.open_patient(results[session.selected].clone());
                 }
 
                 ui.vertical_centered(|ui| {
@@ -300,7 +317,7 @@ impl App {
                         };
                         let row = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
                         if row.clicked() {
-                            session.viewing = Some(p.clone());
+                            session.open_patient(p.clone());
                         }
                     }
                 });
@@ -362,7 +379,9 @@ impl App {
                             let created = session.patients.last().cloned();
                             session.query.clear();
                             session.new_patient = None;
-                            session.viewing = created;
+                            if let Some(p) = created {
+                                session.open_patient(p);
+                            }
                         }
                         Err(e) => form.error = Some(e),
                     }
@@ -404,8 +423,70 @@ impl App {
                 db::format_french_date(&patient.birth_date)
             ));
             ui.add_space(16.0);
-            ui.label("Entretiens : à venir (cycle Identifié → Facturé).");
+
+            // Ctrl+N or the buttons below start a new interview (spec 3.1).
+            ui.label("Nouvel entretien (Ctrl+N) :");
+            let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
+            let mut new_kind: Option<InterviewKind> = None;
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 130.0);
+                for kind in InterviewKind::ALL {
+                    if motif::button(ui, kind.label()).clicked() {
+                        new_kind = Some(kind);
+                    }
+                }
+            });
+            if ctrl_n && new_kind.is_none() {
+                new_kind = Some(InterviewKind::Bpm);
+            }
+            if let Some(kind) = new_kind {
+                match session.db.add_interview(patient.id, kind) {
+                    Ok(_) => session.reload_interviews(patient.id),
+                    Err(e) => session.error = Some(e),
+                }
+            }
+
+            ui.add_space(16.0);
+            if session.viewing_interviews.is_empty() {
+                ui.label("Aucun entretien pour ce patient.");
+            }
         });
+
+        let interviews = session.viewing_interviews.clone();
+        let mut advance: Option<(i64, db::InterviewState)> = None;
+        ui.vertical_centered(|ui| {
+            egui::Grid::new("interviews")
+                .num_columns(4)
+                .spacing([18.0, 8.0])
+                .show(ui, |ui| {
+                    for itv in &interviews {
+                        ui.label(egui::RichText::new(itv.kind.label()).strong());
+                        ui.label(format!(
+                            "créé le {}",
+                            &itv.created_at[..10.min(itv.created_at.len())]
+                        ));
+                        ui.label(
+                            egui::RichText::new(itv.state.label())
+                                .color(egui::Color32::WHITE)
+                                .background_color(motif::ACCENT),
+                        );
+                        if let Some(next) = itv.state.next() {
+                            if motif::button(ui, &format!("→ {}", next.label())).clicked() {
+                                advance = Some((itv.id, itv.state));
+                            }
+                        } else {
+                            ui.label("✓ terminé");
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+        if let Some((id, state)) = advance {
+            match session.db.advance_interview(id, state) {
+                Ok(()) => session.reload_interviews(patient.id),
+                Err(e) => session.error = Some(e),
+            }
+        }
     }
 }
 
