@@ -33,6 +33,13 @@ enum State {
     Unlocked(Box<Session>),
 }
 
+/// The master password can be kept in the OS credential manager
+/// (spec 4.2): Windows Credential Manager, macOS Keychain, or the
+/// Secret Service on Linux.
+fn keyring_entry() -> Option<keyring::Entry> {
+    keyring::Entry::new("bpm-caddy", "master-password").ok()
+}
+
 #[derive(PartialEq, Clone, Copy)]
 enum MainView {
     Search,
@@ -112,6 +119,7 @@ pub struct App {
     state: State,
     config: Config,
     last_activity: Instant,
+    remember_password: bool,
     show_docs: bool,
     doc_text: String,
     doc_dirty: bool,
@@ -125,13 +133,33 @@ impl App {
         let doc_text = std::fs::read_to_string(config.team_doc_path())
             .unwrap_or_else(|_| TEAM_DOC_TEMPLATE.to_owned());
         let show_docs = config.ui.show_docs_on_start;
+
+        // Silent unlock when the OS credential manager holds the password.
+        let mut state = State::Locked {
+            password: String::new(),
+            error: None,
+        };
+        let mut remember_password = false;
+        if let Some(pw) = keyring_entry().and_then(|e| e.get_password().ok()) {
+            match Db::open(&config.db_path(), &pw).and_then(Session::new) {
+                Ok(session) => {
+                    state = State::Unlocked(Box::new(session));
+                    remember_password = true;
+                }
+                Err(e) => {
+                    state = State::Locked {
+                        password: String::new(),
+                        error: Some(format!("Mot de passe mémorisé refusé : {e}")),
+                    };
+                }
+            }
+        }
+
         Self {
-            state: State::Locked {
-                password: String::new(),
-                error: None,
-            },
+            state,
             config,
             last_activity: Instant::now(),
+            remember_password,
             show_docs,
             doc_text,
             doc_dirty: false,
@@ -200,6 +228,7 @@ impl App {
     }
 
     fn unlock_screen(&mut self, ctx: &egui::Context) {
+        let mut remember = self.remember_password;
         let State::Locked { password, error } = &mut self.state else {
             return;
         };
@@ -225,6 +254,7 @@ impl App {
 
                 let submitted = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.add_space(10.0);
+                ui.checkbox(&mut remember, "Mémoriser dans le trousseau du système");
                 if (motif::button(ui, "Déverrouiller").clicked() || submitted)
                     && !password.is_empty()
                 {
@@ -237,9 +267,20 @@ impl App {
             });
         });
 
+        self.remember_password = remember;
         if let Some(pw) = attempt {
             match Db::open(&self.config.db_path(), &pw).and_then(Session::new) {
-                Ok(session) => self.state = State::Unlocked(Box::new(session)),
+                Ok(session) => {
+                    self.state = State::Unlocked(Box::new(session));
+                    if let Some(entry) = keyring_entry() {
+                        if self.remember_password {
+                            let _ = entry.set_password(&pw);
+                        } else {
+                            // Unchecked: make sure no stale copy remains.
+                            let _ = entry.delete_credential();
+                        }
+                    }
+                }
                 Err(e) => {
                     let State::Locked { password, error } = &mut self.state else {
                         return;

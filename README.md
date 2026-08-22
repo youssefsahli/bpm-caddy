@@ -74,8 +74,8 @@ asthme_fee = 40.0
 - [x] Patient records: quick creation, encrypted SQLCipher storage
 - [x] Interview lifecycle state machine
 - [x] Typst template engine integration and PDF spooling
-- [x] Financial dashboard (revenue chart, pipeline funnel; hourly ROI pending time tracking)
-- [x] Configuration file (database path, auto-lock, fees); OS credential-manager key storage pending
+- [x] Financial dashboard (revenue chart, pipeline funnel, hourly ROI)
+- [x] Configuration file (database path, auto-lock, fees) and OS credential-manager key storage
 - [x] Packaged releases for Windows / macOS / Linux
 
 ## License
