@@ -63,6 +63,8 @@ auto_lock_timeout_minutes = 15
 
 [ui]
 show_docs_on_start = true
+# Mask dashboard amounts until revealed via the small corner control.
+discreet_finances = true
 
 [billing]
 # Fees in euros per interview cycle — adjust to the convention in force.
