@@ -19,3 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   applied to both the app and the launcher
 - Docked team documentation pane in the app (French, `F1` to toggle,
   debounced auto-save) for shared notes at the counter
+- Encrypted patient database: SQLCipher (256-bit AES) with a master-password
+  unlock screen; wrong passwords are rejected before any data is touched
+- Diacritic-insensitive fuzzy patient search ("jndp" finds "Jean Dupont"),
+  keyboard navigation (arrows + Enter), and seamless quick-creation form
+  (Nom / Prénom / Date de naissance) when no patient matches

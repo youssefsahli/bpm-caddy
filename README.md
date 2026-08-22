@@ -65,8 +65,8 @@ bpm_template_path = "templates/bpm_layout.typ"
 - [x] Auto-updating launcher (GitHub Releases, offline fallback)
 - [x] X/Motif theme (`motif` crate)
 - [x] Docked team documentation pane (French, auto-saved)
-- [ ] Application shell: instant-launch egui window, global fuzzy search
-- [ ] Patient records: quick creation, encrypted SQLCipher storage
+- [x] Application shell: instant-launch egui window, global fuzzy search
+- [x] Patient records: quick creation, encrypted SQLCipher storage
 - [ ] Interview lifecycle state machine
 - [ ] Typst template engine integration and PDF spooling
 - [ ] Financial dashboard (revenue chart, pipeline funnel, hourly ROI)

@@ -14,6 +14,7 @@ publish = false
 eframe = "0.29"
 motif = { path = "motif" }
 dirs = "5"
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 
 [profile.release]
 lto = true
