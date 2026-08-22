@@ -312,6 +312,13 @@ impl App {
             return;
         };
 
+        // Ctrl+F returns to the search from anywhere (spec 3.1).
+        let focus_search = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F));
+        if focus_search {
+            session.view = MainView::Search;
+            session.viewing = None;
+        }
+
         let config = self.config.clone();
         egui::CentralPanel::default().show(ctx, |ui| {
             if session.view == MainView::Dashboard {
@@ -336,7 +343,7 @@ impl App {
                 );
                 motif::bevel(ui.painter(), search.rect.expand(2.0), false);
                 // Search is the default view: keep the bar focused.
-                if !ctx.wants_keyboard_input() {
+                if focus_search || !ctx.wants_keyboard_input() {
                     search.request_focus();
                 }
                 if search.changed() {
