@@ -59,6 +59,8 @@ struct Session {
     new_patient: Option<NewPatientForm>,
     view: MainView,
     summaries: Vec<InterviewSummary>,
+    /// In-progress text of the per-interview date fields, keyed by id.
+    date_edits: std::collections::HashMap<i64, String>,
     error: Option<String>,
 }
 
@@ -83,6 +85,7 @@ impl Session {
             new_patient: None,
             view: MainView::Search,
             summaries: Vec::new(),
+            date_edits: std::collections::HashMap::new(),
             error: None,
         })
     }
@@ -516,9 +519,10 @@ impl App {
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut print_kind: Option<InterviewKind> = None;
         let mut set_duration: Option<(i64, i64)> = None;
+        let mut set_date: Option<(i64, Option<String>)> = None;
         ui.vertical_centered(|ui| {
             egui::Grid::new("interviews")
-                .num_columns(6)
+                .num_columns(7)
                 .spacing([18.0, 8.0])
                 .show(ui, |ui| {
                     for itv in &interviews {
@@ -551,6 +555,30 @@ impl App {
                         if drag.changed() {
                             set_duration = Some((itv.id, minutes));
                         }
+                        // Planned date: free text, committed when it parses
+                        // (or empties) and the field loses focus.
+                        let text = session.date_edits.entry(itv.id).or_insert_with(|| {
+                            itv.scheduled_date
+                                .as_deref()
+                                .map(db::format_french_date)
+                                .unwrap_or_default()
+                        });
+                        let field = ui.add(
+                            egui::TextEdit::singleline(text)
+                                .hint_text("RDV JJ/MM/AAAA")
+                                .desired_width(120.0),
+                        );
+                        if field.lost_focus() {
+                            if text.trim().is_empty() {
+                                if itv.scheduled_date.is_some() {
+                                    set_date = Some((itv.id, None));
+                                }
+                            } else if let Ok(iso) = db::parse_french_date(text) {
+                                if itv.scheduled_date.as_deref() != Some(iso.as_str()) {
+                                    set_date = Some((itv.id, Some(iso)));
+                                }
+                            }
+                        }
                         ui.end_row();
                     }
                 });
@@ -564,6 +592,15 @@ impl App {
         if let Some((id, minutes)) = set_duration {
             match session.db.set_duration(id, minutes) {
                 Ok(()) => session.reload_interviews(patient.id),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some((id, date)) = set_date {
+            match session.db.set_scheduled_date(id, date.as_deref()) {
+                Ok(()) => {
+                    session.date_edits.remove(&id);
+                    session.reload_interviews(patient.id);
+                }
                 Err(e) => session.error = Some(e),
             }
         }
@@ -814,6 +851,14 @@ impl eframe::App for App {
                         && motif::button(ui, "Tableau de bord (F2)").clicked()
                     {
                         toggle_dashboard = true;
+                    }
+                    if matches!(self.state, State::Unlocked(_))
+                        && motif::button(ui, "Verrouiller").clicked()
+                    {
+                        self.state = State::Locked {
+                            password: String::new(),
+                            error: None,
+                        };
                     }
                 });
             });
