@@ -423,6 +423,37 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Not a test of behavior: seeds a demo database when the env asks for
+    /// one (screenshots, manual demos). `cargo test` without the env is a
+    /// no-op.
+    #[test]
+    fn seed_demo_db_if_requested() {
+        let Some(path) = std::env::var_os("BPM_CADDY_SEED_DB") else {
+            return;
+        };
+        let pw = std::env::var("BPM_CADDY_SEED_PW").unwrap_or_else(|_| "demo".to_owned());
+        let db = Db::open(Path::new(&path), &pw).unwrap();
+        let seed = [
+            ("Dupont", "Jean", "1958-07-03", InterviewKind::Bpm, 4, 45),
+            ("Martin", "Claire", "1949-02-11", InterviewKind::Bpm, 2, 50),
+            ("Lefèvre", "Hélène", "1952-09-27", InterviewKind::Aod, 1, 30),
+            ("Bernard", "Paul", "1946-12-05", InterviewKind::Asthme, 0, 0),
+            ("Moreau", "Lucie", "1961-03-18", InterviewKind::Aod, 3, 35),
+        ];
+        for (last, first, dob, kind, advances, minutes) in seed {
+            let pid = db.add_patient(last, first, dob).unwrap();
+            let iid = db.add_interview(pid, kind).unwrap();
+            let mut state = InterviewState::Identified;
+            for _ in 0..advances {
+                db.advance_interview(iid, state).unwrap();
+                state = state.next().unwrap();
+            }
+            if minutes > 0 {
+                db.set_duration(iid, minutes).unwrap();
+            }
+        }
+    }
+
     #[test]
     fn encrypted_db_rejects_wrong_password() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-test-{}", std::process::id()));

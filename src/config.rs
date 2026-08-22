@@ -92,6 +92,10 @@ impl Config {
     }
 
     pub fn db_path(&self) -> PathBuf {
+        // Test/demo hook: BPM_CADDY_DB overrides everything.
+        if let Ok(p) = std::env::var("BPM_CADDY_DB") {
+            return PathBuf::from(p);
+        }
         self.database
             .path
             .clone()

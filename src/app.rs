@@ -37,6 +37,9 @@ enum State {
 /// (spec 4.2): Windows Credential Manager, macOS Keychain, or the
 /// Secret Service on Linux.
 fn keyring_entry() -> Option<keyring::Entry> {
+    if std::env::var_os("BPM_CADDY_NO_KEYRING").is_some() {
+        return None;
+    }
     keyring::Entry::new("bpm-caddy", "master-password").ok()
 }
 
@@ -140,7 +143,11 @@ impl App {
             error: None,
         };
         let mut remember_password = false;
-        if let Some(pw) = keyring_entry().and_then(|e| e.get_password().ok()) {
+        // Demo/e2e hook first, then the OS credential manager.
+        let stored_pw = std::env::var("BPM_CADDY_PASSWORD")
+            .ok()
+            .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()));
+        if let Some(pw) = stored_pw {
             match Db::open(&config.db_path(), &pw).and_then(Session::new) {
                 Ok(session) => {
                     state = State::Unlocked(Box::new(session));
