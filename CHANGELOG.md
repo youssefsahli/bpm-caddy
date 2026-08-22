@@ -11,3 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Project specification (`docs/SPECIFICATIONS.txt`)
 - Application skeleton (egui shell)
 - Release build pipeline for Windows / macOS / Linux
+- `bpm-caddy-launcher`: auto-updating launcher that fetches the latest release
+  on startup, with a download progress bar and an offline fallback to the
+  installed version
+- `motif` crate: old-school X/Motif theme for egui (mwm blue-grey palette,
+  square corners, raised/sunken bevels, Motif-style buttons and progress bars),
+  applied to both the app and the launcher
+- Docked team documentation pane in the app (French, `F1` to toggle,
+  debounced auto-save) for shared notes at the counter

@@ -1,0 +1,10 @@
+[package]
+name = "motif"
+version = "0.1.0"
+edition = "2021"
+description = "Old-school X/Motif look-and-feel for egui: mwm palette, beveled widgets."
+license-file = "../LICENSE"
+publish = false
+
+[dependencies]
+eframe = "0.29"
