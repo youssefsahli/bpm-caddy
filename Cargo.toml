@@ -17,6 +17,10 @@ dirs = "5"
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
+typst = "0.13"
+typst-pdf = "0.13"
+typst-assets = { version = "0.13", features = ["fonts"] }
+open = "5.4.1"
 
 [profile.release]
 lto = true

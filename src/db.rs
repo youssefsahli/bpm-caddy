@@ -252,6 +252,15 @@ impl Db {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Today's date as `JJ/MM/AAAA`, from SQLite's clock (local time).
+    pub fn today_french(&self) -> Result<String, String> {
+        self.conn
+            .query_row("SELECT strftime('%d/%m/%Y', 'now', 'localtime')", [], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())
+    }
+
     /// Every interview reduced to what the dashboard needs.
     pub fn interview_summaries(&self) -> Result<Vec<InterviewSummary>, String> {
         let mut stmt = self

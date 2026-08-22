@@ -73,7 +73,7 @@ asthme_fee = 40.0
 - [x] Application shell: instant-launch egui window, global fuzzy search
 - [x] Patient records: quick creation, encrypted SQLCipher storage
 - [x] Interview lifecycle state machine
-- [ ] Typst template engine integration and PDF spooling
+- [x] Typst template engine integration and PDF spooling
 - [x] Financial dashboard (revenue chart, pipeline funnel; hourly ROI pending time tracking)
 - [x] Configuration file (database path, auto-lock, fees); OS credential-manager key storage pending
 - [x] Packaged releases for Windows / macOS / Linux
