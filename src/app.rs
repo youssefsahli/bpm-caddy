@@ -263,7 +263,7 @@ impl App {
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
-                Self::patient_view(ui, ctx, session, &patient);
+                Self::patient_view(ui, ctx, session, &patient, &config);
                 return;
             }
 
@@ -412,6 +412,7 @@ impl App {
         ctx: &egui::Context,
         session: &mut Session,
         patient: &Patient,
+        config: &Config,
     ) {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             session.viewing = None;
@@ -465,9 +466,10 @@ impl App {
 
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
+        let mut print_kind: Option<InterviewKind> = None;
         ui.vertical_centered(|ui| {
             egui::Grid::new("interviews")
-                .num_columns(4)
+                .num_columns(5)
                 .spacing([18.0, 8.0])
                 .show(ui, |ui| {
                     for itv in &interviews {
@@ -488,6 +490,9 @@ impl App {
                         } else {
                             ui.label("✓ terminé");
                         }
+                        if motif::button(ui, "Fiche PDF").clicked() {
+                            print_kind = Some(itv.kind);
+                        }
                         ui.end_row();
                     }
                 });
@@ -497,6 +502,25 @@ impl App {
                 Ok(()) => session.reload_interviews(patient.id),
                 Err(e) => session.error = Some(e),
             }
+        }
+        if let Some(kind) = print_kind {
+            let today = session
+                .db
+                .today_french()
+                .unwrap_or_else(|_| "__ / __ / ____".to_owned());
+            if let Err(e) = crate::pdf::open_interview_sheet(
+                patient,
+                kind,
+                &today,
+                config.templates.bpm_template_path.as_deref(),
+            ) {
+                session.error = Some(e);
+            }
+        }
+        if let Some(err) = &session.error {
+            ui.vertical_centered(|ui| {
+                ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+            });
         }
     }
 

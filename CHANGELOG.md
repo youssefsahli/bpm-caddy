@@ -33,3 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inactivity timeout
 - Financial dashboard (F2): billed vs pending revenue KPIs, pipeline
   funnel, and a monthly billed/pending bar chart, all Motif-styled
+- Embedded Typst engine: one-click "Fiche PDF" from the patient view
+  compiles a single-page A4 interview sheet (patient header + rounded
+  boxes for handwritten notes) in memory and opens it in the OS PDF
+  viewer; the template is overridable via `[templates]` in `config.toml`

@@ -4,6 +4,7 @@ mod app;
 mod config;
 mod db;
 mod fuzzy;
+mod pdf;
 
 use eframe::egui;
 

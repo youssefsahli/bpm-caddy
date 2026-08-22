@@ -12,6 +12,14 @@ pub struct Config {
     pub database: DatabaseConfig,
     pub ui: UiConfig,
     pub billing: BillingConfig,
+    pub templates: TemplatesConfig,
+}
+
+/// Custom Typst templates; the embedded default is used when unset.
+#[derive(Deserialize, Clone, Default)]
+#[serde(default)]
+pub struct TemplatesConfig {
+    pub bpm_template_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Clone)]
