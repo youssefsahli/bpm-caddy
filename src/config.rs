@@ -30,10 +30,13 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # operator = "CL"
 
 [billing]
-# Honoraires en euros par cycle d'entretien.
+# Honoraires en euros par acte.
 # bpm_fee = 60.0
 # aod_fee = 40.0
 # asthme_fee = 40.0
+# trod_angine_fee = 10.0
+# trod_cystite_fee = 12.0
+# prevention_fee = 30.0
 
 [templates]
 # Modèle Typst personnalisé pour la fiche PDF.
@@ -99,14 +102,17 @@ impl Default for UiConfig {
     }
 }
 
-/// Fees in euros per interview cycle. Defaults are placeholders — adjust
-/// them in `config.toml` to the convention currently in force.
+/// Fees in euros per act. Defaults are placeholders — adjust them in
+/// `config.toml` to the convention currently in force.
 #[derive(Deserialize, Clone)]
 #[serde(default)]
 pub struct BillingConfig {
     pub bpm_fee: f64,
     pub aod_fee: f64,
     pub asthme_fee: f64,
+    pub trod_angine_fee: f64,
+    pub trod_cystite_fee: f64,
+    pub prevention_fee: f64,
 }
 
 impl Default for BillingConfig {
@@ -115,6 +121,9 @@ impl Default for BillingConfig {
             bpm_fee: 60.0,
             aod_fee: 40.0,
             asthme_fee: 40.0,
+            trod_angine_fee: 10.0,
+            trod_cystite_fee: 12.0,
+            prevention_fee: 30.0,
         }
     }
 }
@@ -172,11 +181,24 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("notes_equipe.md"))
     }
 
+    /// The Typst template for the interview sheet: the configured path,
+    /// or the editable default next to `config.toml`. The embedded
+    /// template is used when the file does not exist.
+    pub fn template_path(&self) -> PathBuf {
+        self.templates
+            .bpm_template_path
+            .clone()
+            .unwrap_or_else(|| Self::path().with_file_name("bpm_layout.typ"))
+    }
+
     pub fn fee(&self, kind: crate::db::InterviewKind) -> f64 {
         match kind {
             crate::db::InterviewKind::Bpm => self.billing.bpm_fee,
             crate::db::InterviewKind::Aod => self.billing.aod_fee,
             crate::db::InterviewKind::Asthme => self.billing.asthme_fee,
+            crate::db::InterviewKind::TrodAngine => self.billing.trod_angine_fee,
+            crate::db::InterviewKind::TrodCystite => self.billing.trod_cystite_fee,
+            crate::db::InterviewKind::Prevention => self.billing.prevention_fee,
         }
     }
 }

@@ -123,23 +123,69 @@ impl World for PdfWorld {
 }
 
 /// Compile the interview sheet for a patient and hand it to the OS PDF
-/// viewer. `template_override` comes from `config.toml`; `today` is the
-/// interview date shown on the sheet (JJ/MM/AAAA).
+/// viewer. `template_path` is [`crate::config::Config::template_path`]:
+/// when the file does not exist, the embedded template is used.
 pub fn open_interview_sheet(
     patient: &Patient,
     kind: InterviewKind,
     today: &str,
-    template_override: Option<&std::path::Path>,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    let template = match template_override {
-        Some(path) => std::fs::read_to_string(path)
-            .map_err(|e| format!("modèle {} illisible : {e}", path.display()))?,
-        None => DEFAULT_TEMPLATE.to_owned(),
+    let template = if template_path.exists() {
+        std::fs::read_to_string(template_path)
+            .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
+    } else {
+        DEFAULT_TEMPLATE.to_owned()
     };
     let filled = fill_interview_template(&template, patient, kind, today);
 
     let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
     compile_and_open(filled, &stem)
+}
+
+/// The embedded interview-sheet template, as a starting point for the
+/// in-app editor.
+pub fn default_template() -> &'static str {
+    DEFAULT_TEMPLATE
+}
+
+fn sample_patient() -> Patient {
+    Patient {
+        id: 0,
+        last_name: "Dupont".to_owned(),
+        first_name: "Jean".to_owned(),
+        birth_date: "1958-07-03".to_owned(),
+        phone: String::new(),
+        notes: String::new(),
+    }
+}
+
+/// Compile `template` with sample data, reporting Typst errors —
+/// validation for the in-app template editor.
+pub fn check_template(template: &str) -> Result<(), String> {
+    let filled = fill_interview_template(
+        template,
+        &sample_patient(),
+        InterviewKind::Bpm,
+        "24/08/2026",
+    );
+    let world = PdfWorld::new(filled);
+    typst::compile::<PagedDocument>(&world)
+        .output
+        .map(|_| ())
+        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
+}
+
+/// Compile `template` with sample data and open the result — the
+/// editor's preview button.
+pub fn preview_template(template: &str) -> Result<PathBuf, String> {
+    let filled = fill_interview_template(
+        template,
+        &sample_patient(),
+        InterviewKind::Bpm,
+        "24/08/2026",
+    );
+    compile_and_open(filled, "apercu")
 }
 
 /// Compile Typst source to a PDF in the temp dir and open it in the OS
@@ -269,6 +315,13 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("fiche_exemple.pdf"), &pdf);
         }
+    }
+
+    #[test]
+    fn template_check_accepts_default_and_reports_errors() {
+        assert!(check_template(DEFAULT_TEMPLATE).is_ok());
+        let err = check_template("#broken(").unwrap_err();
+        assert!(err.contains("compilation Typst"));
     }
 
     #[test]
