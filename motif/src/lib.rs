@@ -19,6 +19,24 @@ pub const ACCENT: Color32 = Color32::from_rgb(0x3a, 0x54, 0x7e);
 /// Hover tint, slightly lighter than `BG`.
 pub const BG_HOVER: Color32 = Color32::from_rgb(0xbb, 0xbf, 0xcf);
 pub const TEXT: Color32 = Color32::BLACK;
+/// Errors and destructive warnings (Motif dark red).
+pub const ALERT: Color32 = Color32::from_rgb(0x8b, 0x1a, 0x1a);
+
+/// Lay content out in a fixed-width column centered in the available
+/// space — the page grid every view aligns to. Content inside is
+/// normal top-down, left-aligned layout.
+pub fn column<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let avail = ui.available_rect_before_wrap();
+    // Always keep side margins, even when the panel is narrower than
+    // the requested column.
+    let w = width.min(avail.width() - 48.0).max(200.0);
+    let rect = egui::Rect::from_min_size(
+        egui::pos2(avail.center().x - w / 2.0, avail.top()),
+        Vec2::new(w, avail.height()),
+    );
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect), add)
+        .inner
+}
 
 /// Programmatic 32×32 window icon: a raised Motif bevel square with a
 /// sunken accent centre — no embedded asset needed.

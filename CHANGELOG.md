@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-24
+
+### Added
+- Drug pages: each card grows into a two-column page — "Fiche
+  clinique" (identity, dosage, interactions, IUP, antidote, notes) and
+  "Pharmacocinétique" (demi-vie, AUC / exposition, élimination,
+  adaptation DFG, grossesse / allaitement); all team-filled, saved with
+  compare-and-set like the rest
+
+### Changed
+- Professional layout pass: every view now aligns to a fixed-width
+  centered content column (`motif::column`) — headings centered,
+  content on one left grid; the last dozen magic centering offsets are
+  gone, form grids share a common label column width, the alert color
+  is a single `motif::ALERT`, and the window has a minimum size so
+  layouts cannot collapse
+- The note-stamp timestamp is only queried on click instead of every
+  frame (was one SQLite query per frame with the docs pane open)
+
 ## [0.10.0] - 2026-08-24
 
 ### Added
