@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the drugs — for debugging and demos.
 - `BPM_CADDY_WINDOW=1280x1100` opens the window at a given size
   (screenshots, e2e).
+- The drug view warns when the base holds only a handful of cards and
+  points at the top-up button.
 
 ### Changed
 - The Options dialog now sizes itself to the window instead of a fixed
