@@ -287,7 +287,9 @@ struct Session {
     act_theme: String,
     /// A new act refused by the yearly-quota rule: (kind, message),
     /// with an explicit override offered.
-    rule_block: Option<(InterviewKind, String)>,
+    /// (kind, thematic, French notice) of an act the yearly quota
+    /// blocked, kept so the explicit override creates the same act.
+    rule_block: Option<(InterviewKind, String, String)>,
     /// The viewed patient's current treatments (from the drug base).
     patient_treats: Vec<Drug>,
     /// The viewed patient's dated notes, newest first.
@@ -672,15 +674,23 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                 close = true;
             }
         });
-    for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
-        if ctx.input(|inp| inp.key_pressed(DIGITS[i])) {
-            chosen = Some(kind);
+    // The picker is not modal — the table behind it still takes text.
+    // Only claim the digits when nothing else wants the keyboard, or
+    // typing a duration would create acts behind the dialog.
+    if !ctx.wants_keyboard_input() {
+        for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
+            if ctx.input(|inp| inp.key_pressed(DIGITS[i])) {
+                chosen = Some(kind);
+            }
         }
     }
-    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-        close = true;
+    if close {
+        session.act_picker = false;
+        // An armed theme belongs to the act being picked; dropping the
+        // picker drops it too, so it cannot leak onto a later act.
+        session.act_theme.clear();
     }
-    if close || chosen.is_some() {
+    if chosen.is_some() {
         session.act_picker = false;
     }
     chosen
@@ -1439,9 +1449,16 @@ impl App {
         // focus it only drops that focus (egui's own behavior); acting on
         // both at once would throw away an in-progress date edit.
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.wants_keyboard_input() {
-            session.flush_date_edits();
-            session.viewing = None;
-            return;
+            // The quick picker is on top: Escape dismisses it first,
+            // and leaves the patient view where it was.
+            if session.act_picker {
+                session.act_picker = false;
+                session.act_theme.clear();
+            } else {
+                session.flush_date_edits();
+                session.viewing = None;
+                return;
+            }
         }
         ui.add_space(16.0);
         ui.horizontal(|ui| {
@@ -1721,11 +1738,13 @@ impl App {
                 }
             });
             let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
-            let mut new_kind: Option<InterviewKind> = None;
+            // (kind, thematic): the direct buttons create a themeless
+            // act, the picker attaches the theme chosen with it.
+            let mut new_act: Option<(InterviewKind, String)> = None;
             ui.horizontal_wrapped(|ui| {
                 for kind in InterviewKind::ALL {
                     if motif::button(ui, kind.label()).clicked() {
-                        new_kind = Some(kind);
+                        new_act = Some((kind, String::new()));
                     }
                 }
             });
@@ -1733,9 +1752,11 @@ impl App {
                 session.act_picker = true;
             }
             if session.act_picker {
-                new_kind = act_picker_window(ctx, session).or(new_kind);
+                if let Some(kind) = act_picker_window(ctx, session) {
+                    new_act = Some((kind, std::mem::take(&mut session.act_theme)));
+                }
             }
-            if let Some(kind) = new_kind {
+            if let Some((kind, theme)) = new_act {
                 // Convention rule: N acts per année d'accompagnement,
                 // next cycle at least 12 months after the first act.
                 let per_year = config.per_year(kind);
@@ -1753,6 +1774,7 @@ impl App {
                     Some(next) => {
                         session.rule_block = Some((
                             kind,
+                            theme,
                             trn(
                                 "rule_blocked",
                                 &[&kind.label(), &per_year, &db::format_french_date(&next)],
@@ -1761,28 +1783,20 @@ impl App {
                     }
                     None => {
                         session.rule_block = None;
-                        let theme = session.act_theme.clone();
                         match session.db.add_interview_themed(patient.id, kind, &theme) {
-                            Ok(_) => {
-                                session.act_theme.clear();
-                                session.reload_interviews(patient.id);
-                            }
+                            Ok(_) => session.reload_interviews(patient.id),
                             Err(e) => session.error = Some(e),
                         }
                     }
                 }
             }
-            if let Some((kind, msg)) = session.rule_block.clone() {
+            if let Some((kind, theme, msg)) = session.rule_block.clone() {
                 ui.add_space(4.0);
                 ui.colored_label(motif::ALERT, msg.as_str());
                 if motif::button(ui, tr("rule_override")).clicked() {
                     session.rule_block = None;
-                    let theme = session.act_theme.clone();
                     match session.db.add_interview_themed(patient.id, kind, &theme) {
-                        Ok(_) => {
-                            session.act_theme.clear();
-                            session.reload_interviews(patient.id);
-                        }
+                        Ok(_) => session.reload_interviews(patient.id),
                         Err(e) => session.error = Some(e),
                     }
                 }

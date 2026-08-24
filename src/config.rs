@@ -180,7 +180,7 @@ impl Default for UiConfig {
 /// The fee schedule of one act kind: the convention pays the entretien
 /// initial, the 1er suivi and the 2e suivi (and beyond) of an année
 /// d'accompagnement differently.
-#[derive(Serialize, Clone, Copy, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 pub struct ActFees {
     pub initial: f64,
     pub suivi_1: f64,
@@ -214,63 +214,100 @@ impl ActFees {
     }
 }
 
-/// Accepts both the nested form (`{ initial = 60, suivi_1 = 20,
-/// suivi_2 = 20 }`) and the legacy flat number (`bpm_fee = 60.0`),
-/// which fills all three slots.
-impl<'de> Deserialize<'de> for ActFees {
-    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Repr {
-            Flat(f64),
-            Full {
-                #[serde(default)]
-                initial: f64,
-                #[serde(default)]
-                suivi_1: f64,
-                #[serde(default)]
-                suivi_2: f64,
+/// One fee entry as written in `config.toml`: either the flat number
+/// of the older format (`bpm_fee = 60.0`), or a table where each rank
+/// is optional (`bpm = { initial = 65.0 }`). Slots left out — and keys
+/// that are misspelt, which serde ignores — keep the default fee of
+/// that act rather than silently becoming 0 €.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum FeesRepr {
+    Flat(f64),
+    Table {
+        #[serde(default)]
+        initial: Option<f64>,
+        #[serde(default)]
+        suivi_1: Option<f64>,
+        #[serde(default)]
+        suivi_2: Option<f64>,
+    },
+}
+
+impl FeesRepr {
+    /// Apply what the file specified on top of the act's default fees.
+    fn merge(this: Option<Self>, default: ActFees) -> ActFees {
+        match this {
+            None => default,
+            Some(Self::Flat(v)) => ActFees::flat(v),
+            Some(Self::Table {
+                initial,
+                suivi_1,
+                suivi_2,
+            }) => ActFees {
+                initial: initial.unwrap_or(default.initial),
+                suivi_1: suivi_1.unwrap_or(default.suivi_1),
+                suivi_2: suivi_2.unwrap_or(default.suivi_2),
             },
         }
-        Ok(match Repr::deserialize(de)? {
-            Repr::Flat(v) => ActFees::flat(v),
-            Repr::Full {
-                initial,
-                suivi_1,
-                suivi_2,
-            } => ActFees {
-                initial,
-                suivi_1,
-                suivi_2,
-            },
-        })
     }
 }
 
 /// Fees in euros per act and per rank within the année
 /// d'accompagnement. Defaults are placeholders — adjust them in
 /// `config.toml` to the convention currently in force.
-#[derive(Deserialize, Serialize, Clone)]
-#[serde(default)]
+#[derive(Serialize, Clone)]
 pub struct BillingConfig {
-    #[serde(alias = "bpm_fee")]
     pub bpm: ActFees,
-    #[serde(alias = "aod_fee")]
     pub aod: ActFees,
-    #[serde(alias = "avk_fee")]
     pub avk: ActFees,
-    #[serde(alias = "asthme_fee")]
     pub asthme: ActFees,
-    #[serde(alias = "anticancereux_fee")]
     pub anticancereux: ActFees,
-    #[serde(alias = "trod_angine_fee")]
     pub trod_angine: ActFees,
-    #[serde(alias = "trod_cystite_fee")]
     pub trod_cystite: ActFees,
-    #[serde(alias = "vaccination_fee")]
     pub vaccination: ActFees,
-    #[serde(alias = "prevention_fee")]
     pub prevention: ActFees,
+}
+
+/// Every act is optional in the file and merged onto its default, so a
+/// partial edit never zeroes the ranks it did not mention.
+impl<'de> Deserialize<'de> for BillingConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct Partial {
+            #[serde(alias = "bpm_fee")]
+            bpm: Option<FeesRepr>,
+            #[serde(alias = "aod_fee")]
+            aod: Option<FeesRepr>,
+            #[serde(alias = "avk_fee")]
+            avk: Option<FeesRepr>,
+            #[serde(alias = "asthme_fee")]
+            asthme: Option<FeesRepr>,
+            #[serde(alias = "anticancereux_fee")]
+            anticancereux: Option<FeesRepr>,
+            #[serde(alias = "trod_angine_fee")]
+            trod_angine: Option<FeesRepr>,
+            #[serde(alias = "trod_cystite_fee")]
+            trod_cystite: Option<FeesRepr>,
+            #[serde(alias = "vaccination_fee")]
+            vaccination: Option<FeesRepr>,
+            #[serde(alias = "prevention_fee")]
+            prevention: Option<FeesRepr>,
+        }
+        let p = Partial::deserialize(de)?;
+        let d = BillingConfig::default();
+        Ok(BillingConfig {
+            bpm: FeesRepr::merge(p.bpm, d.bpm),
+            aod: FeesRepr::merge(p.aod, d.aod),
+            avk: FeesRepr::merge(p.avk, d.avk),
+            asthme: FeesRepr::merge(p.asthme, d.asthme),
+            anticancereux: FeesRepr::merge(p.anticancereux, d.anticancereux),
+            trod_angine: FeesRepr::merge(p.trod_angine, d.trod_angine),
+            trod_cystite: FeesRepr::merge(p.trod_cystite, d.trod_cystite),
+            vaccination: FeesRepr::merge(p.vaccination, d.vaccination),
+            prevention: FeesRepr::merge(p.prevention, d.prevention),
+        })
+    }
 }
 
 impl Default for BillingConfig {
@@ -439,6 +476,29 @@ mod tests {
         // Unset fields keep their defaults.
         assert_eq!(cfg.billing.asthme, ActFees::staged(40.0, 20.0));
         assert!(cfg.team_doc_path().ends_with("notes_equipe.md"));
+    }
+
+    #[test]
+    fn partial_fee_tables_keep_the_other_ranks() {
+        // The natural minimal edit — raise the initial BPM fee only —
+        // must not zero the suivi fees (they would bill 0 €).
+        let cfg: Config = toml::from_str(
+            r#"
+            [billing]
+            bpm = { initial = 65.0 }
+            asthme = { }
+            # A misspelt key is ignored, defaults kept.
+            aod = { initail = 99.0 }
+            trod_angine = 11.0
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.billing.bpm, ActFees::staged(65.0, 20.0));
+        assert_eq!(cfg.billing.asthme, ActFees::staged(40.0, 20.0));
+        assert_eq!(cfg.billing.aod, ActFees::staged(40.0, 20.0));
+        assert_eq!(cfg.billing.trod_angine, ActFees::flat(11.0));
+        // Acts never mentioned keep their defaults too.
+        assert_eq!(cfg.billing.prevention, ActFees::flat(30.0));
     }
 
     #[test]
