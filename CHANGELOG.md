@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-08-24
+
+### Added
+- Carnet de transmissions ("Carnet", F5): the end-of-day team handover
+  logbook — one page per day, entries stamped heure · opérateur,
+  chronological within the day, browsable day by day (‹ jumps to the
+  previous day with entries, "Aujourd'hui" returns), and printable as
+  an A4 page for the binder. Past pages are read-only: new entries
+  always land on today's page
+
+### Changed
+- The toolbar gained "Carnet (F5)"; the version number moved into the
+  BPM-Caddy tooltip (with the database and config paths) so all eight
+  buttons fit at the default width; "Modèle PDF…" became "Modèles…"
+
 ## [0.12.0] - 2026-08-24
 
 ### Added

@@ -22,8 +22,17 @@ toolbar_drugs = "Médic. (F3)"
 toolbar_agenda = "Agenda (F4)"
 toolbar_lock = "Verrouiller"
 toolbar_paths = "Base : {}\nConfiguration : {}"
-toolbar_template = "Modèle PDF…"
+toolbar_template = "Modèles…"
 toolbar_options = "Options…"
+toolbar_trans = "Carnet (F5)"
+
+# --- Carnet de transmissions ---
+trans_title = "Carnet de transmissions"
+trans_subtitle = "Transmissions de fin de journée, jour par jour"
+trans_prev = "Jour précédent (avec entrées)"
+trans_next = "Jour suivant"
+trans_readonly = "Page d'un jour passé — les nouvelles entrées s'écrivent sur la page du jour."
+trans_print_tooltip = "Imprimer la page du jour affiché"
 
 # --- Options globales ---
 opts_title = "Options"

@@ -424,6 +424,34 @@ pub fn open_conversion_tables() -> Result<PathBuf, String> {
     compile_and_open(conversion_tables_source(), "tables")
 }
 
+/// One day of the transmission logbook as a printable A4 page.
+pub fn open_transmission_day(
+    day_title: &str,
+    entries: &[crate::db::Note],
+) -> Result<PathBuf, String> {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 2cm)\n#set text(size: 11pt)\n\
+         #align(center)[#text(15pt, weight: \"bold\")[Carnet de transmissions]]\n#v(1mm)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#{}]\n#v(4mm)\n#line(length: 100%, stroke: 0.6pt)\n#v(2mm)\n",
+        typst_str(day_title)
+    ));
+    for n in entries {
+        let head = if n.operator.is_empty() {
+            n.stamp()
+        } else {
+            format!("{} · {}", n.stamp(), n.operator)
+        };
+        src.push_str(&format!(
+            "#text(size: 9pt, weight: \"bold\")[#{}]\n#v(0.5mm)\n#{}\n#v(2.5mm)\n",
+            typst_str(&head),
+            typst_str(&n.body)
+        ));
+    }
+    compile_and_open(src, "carnet")
+}
+
 /// Compile Typst source to a PDF in the temp dir and open it in the OS
 /// viewer. The file name is unique per generation: the previous PDF may
 /// still be open in the viewer (Windows locks it, and reusing the name
