@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Written on first launch; every option commented out at its default.
 const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé au premier lancement).
@@ -49,9 +49,19 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # address = "1 place de la Mairie, 34000 Montpellier"
 # phone = "04 67 00 00 00"
 # pharmacist = "Dr Claire Leroy, pharmacien titulaire"
+
+[rules]
+# Nombre maximal d'actes par année d'accompagnement (12 mois glissants
+# à partir du premier acte du cycle ; 0 = sans limite).
+# bpm_per_year = 3
+# aod_per_year = 3
+# asthme_per_year = 3
+# trod_angine_per_year = 0
+# trod_cystite_per_year = 0
+# prevention_per_year = 1
 "#;
 
-#[derive(Deserialize, Default, Clone)]
+#[derive(Deserialize, Serialize, Default, Clone)]
 #[serde(default)]
 pub struct Config {
     pub database: DatabaseConfig,
@@ -59,11 +69,39 @@ pub struct Config {
     pub billing: BillingConfig,
     pub templates: TemplatesConfig,
     pub pharmacy: PharmacyConfig,
+    pub rules: RulesConfig,
+}
+
+/// Convention rules: how many acts of each kind per "année
+/// d'accompagnement" (12 months from the cycle's first act; the next
+/// cycle starts at least 12 months later). 0 disables the rule.
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct RulesConfig {
+    pub bpm_per_year: u32,
+    pub aod_per_year: u32,
+    pub asthme_per_year: u32,
+    pub trod_angine_per_year: u32,
+    pub trod_cystite_per_year: u32,
+    pub prevention_per_year: u32,
+}
+
+impl Default for RulesConfig {
+    fn default() -> Self {
+        Self {
+            bpm_per_year: 3,
+            aod_per_year: 3,
+            asthme_per_year: 3,
+            trod_angine_per_year: 0,
+            trod_cystite_per_year: 0,
+            prevention_per_year: 1,
+        }
+    }
 }
 
 /// The pharmacy's identity, used on the CR letter to the médecin
 /// traitant.
-#[derive(Deserialize, Default, Clone)]
+#[derive(Deserialize, Serialize, Default, Clone)]
 #[serde(default)]
 pub struct PharmacyConfig {
     pub name: String,
@@ -74,14 +112,14 @@ pub struct PharmacyConfig {
 }
 
 /// Custom Typst templates; the embedded default is used when unset.
-#[derive(Deserialize, Clone, Default)]
+#[derive(Deserialize, Serialize, Clone, Default)]
 #[serde(default)]
 pub struct TemplatesConfig {
     pub bpm_template_path: Option<PathBuf>,
     pub cr_template_path: Option<PathBuf>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct DatabaseConfig {
     /// Where the encrypted database lives. Point this at the pharmacy
@@ -103,7 +141,7 @@ impl Default for DatabaseConfig {
     }
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct UiConfig {
     pub show_docs_on_start: bool,
@@ -126,7 +164,7 @@ impl Default for UiConfig {
 
 /// Fees in euros per act. Defaults are placeholders — adjust them in
 /// `config.toml` to the convention currently in force.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct BillingConfig {
     pub bpm_fee: f64,
@@ -221,6 +259,29 @@ impl Config {
             .unwrap_or_else(|| Self::path().with_file_name("cr_layout.typ"))
     }
 
+    /// The yearly quota for an act kind (0 = no rule).
+    pub fn per_year(&self, kind: crate::db::InterviewKind) -> u32 {
+        match kind {
+            crate::db::InterviewKind::Bpm => self.rules.bpm_per_year,
+            crate::db::InterviewKind::Aod => self.rules.aod_per_year,
+            crate::db::InterviewKind::Asthme => self.rules.asthme_per_year,
+            crate::db::InterviewKind::TrodAngine => self.rules.trod_angine_per_year,
+            crate::db::InterviewKind::TrodCystite => self.rules.trod_cystite_per_year,
+            crate::db::InterviewKind::Prevention => self.rules.prevention_per_year,
+        }
+    }
+
+    /// Serialize and persist the configuration (the options editor).
+    /// Note: rewrites `config.toml`, replacing any hand-written comments.
+    pub fn save(&self) -> Result<(), String> {
+        let text = toml::to_string_pretty(self).map_err(|e| e.to_string())?;
+        let path = Self::path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, text).map_err(|e| e.to_string())
+    }
+
     pub fn fee(&self, kind: crate::db::InterviewKind) -> f64 {
         match kind {
             crate::db::InterviewKind::Bpm => self.billing.bpm_fee,
@@ -276,5 +337,22 @@ mod tests {
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
         assert_eq!(cfg.billing.bpm_fee, 60.0);
         assert!(cfg.templates.bpm_template_path.is_none());
+        assert_eq!(cfg.rules.bpm_per_year, 3);
+        assert_eq!(cfg.rules.trod_angine_per_year, 0);
+    }
+
+    #[test]
+    fn config_roundtrips_through_toml() {
+        let mut cfg = Config::default();
+        cfg.pharmacy.name = "Pharmacie du Centre".to_owned();
+        cfg.billing.bpm_fee = 55.5;
+        cfg.rules.prevention_per_year = 2;
+        cfg.ui.operator = "CL".to_owned();
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.pharmacy.name, "Pharmacie du Centre");
+        assert_eq!(back.billing.bpm_fee, 55.5);
+        assert_eq!(back.rules.prevention_per_year, 2);
+        assert_eq!(back.ui.operator, "CL");
     }
 }

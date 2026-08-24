@@ -21,9 +21,32 @@ toolbar_dashboard = "Tableau (F2)"
 toolbar_drugs = "Médic. (F3)"
 toolbar_agenda = "Agenda (F4)"
 toolbar_lock = "Verrouiller"
-toolbar_password = "Mot de passe…"
 toolbar_paths = "Base : {}\nConfiguration : {}"
 toolbar_template = "Modèle PDF…"
+toolbar_options = "Options…"
+
+# --- Options globales ---
+opts_title = "Options"
+opts_pharmacy = "Officine"
+opts_pharmacist = "Pharmacien signataire"
+opts_ui = "Interface"
+opts_show_docs = "Documentation ouverte au démarrage"
+opts_discreet = "Mode discret (montants masqués)"
+opts_db = "Base de données"
+opts_autolock = "Verrouillage auto (minutes, 0 = jamais)"
+opts_backups = "Sauvegardes quotidiennes conservées (0 = désactivées)"
+opts_db_path = "Chemin de la base (vide = défaut)"
+opts_db_note = "Un changement de chemin prend effet au redémarrage. L'enregistrement réécrit config.toml (commentaires remplacés)."
+opts_fees = "Honoraires (€ / acte)"
+opts_rules = "Règles (actes / année d'accompagnement, 0 = sans limite)"
+opts_security = "Sécurité"
+opts_change_pw = "Changer le mot de passe maître…"
+opts_saved = "Options enregistrées."
+opts_save_error = "Enregistrement impossible : {}"
+
+# --- Règles conventionnelles ---
+rule_blocked = "Règle {} : {} acte(s) max par année d'accompagnement — prochaine année possible le {}."
+rule_override = "Créer quand même"
 
 # --- Éditeur de modèle Typst ---
 tpl_title = "Modèles PDF (Typst)"
