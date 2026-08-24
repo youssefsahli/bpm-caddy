@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-08-24
+
+### Added
+- Standalone dated notes: an append-only journal (date · heure ·
+  opérateur, deletable with confirmation) attached to each patient
+  ("Notes de suivi" on the patient page), each drug ("Notes datées" on
+  the drug page), and each operator (personal notes at the bottom of
+  the documentation pane, keyed by the operator initials). Patient and
+  drug journals are removed with their subject; operator notes are
+  personal and survive
+
 ## [0.11.0] - 2026-08-24
 
 ### Added

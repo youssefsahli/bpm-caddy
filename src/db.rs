@@ -51,6 +51,14 @@ CREATE TABLE IF NOT EXISTS patient_drugs (
     drug_id     INTEGER NOT NULL REFERENCES drugs(id),
     PRIMARY KEY (patient_id, drug_id)
 );
+CREATE TABLE IF NOT EXISTS notes (
+    id           INTEGER PRIMARY KEY,
+    subject_kind TEXT NOT NULL,
+    subject_id   INTEGER NOT NULL DEFAULT 0,
+    operator     TEXT NOT NULL DEFAULT '',
+    body         TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 ";
 
 /// Idempotent migrations for databases created by older versions.
@@ -284,6 +292,47 @@ pub struct Patient {
 impl Patient {
     pub fn full_name(&self) -> String {
         format!("{} {}", self.first_name, self.last_name)
+    }
+}
+
+/// What a standalone note is attached to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteSubject {
+    Patient,
+    Drug,
+    /// Personal notes, keyed by the operator initials.
+    Operator,
+}
+
+impl NoteSubject {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Patient => "PATIENT",
+            Self::Drug => "DRUG",
+            Self::Operator => "OPERATOR",
+        }
+    }
+}
+
+/// One dated, author-stamped note (append-only journal).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Note {
+    pub id: i64,
+    pub operator: String,
+    pub body: String,
+    /// `YYYY-MM-DD HH:MM:SS` local time.
+    pub created_at: String,
+}
+
+impl Note {
+    /// "24/08 14:32" for display.
+    pub fn stamp(&self) -> String {
+        let date = self.created_at.get(..10).unwrap_or("");
+        let time = self.created_at.get(11..16).unwrap_or("");
+        match (date.get(8..10), date.get(5..7)) {
+            (Some(d), Some(m)) => format!("{d}/{m} {time}"),
+            _ => self.created_at.clone(),
+        }
     }
 }
 
@@ -707,6 +756,78 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Append a note. For [`NoteSubject::Operator`], `subject_id` is 0
+    /// and the operator string itself is the key.
+    pub fn add_note(
+        &self,
+        subject: NoteSubject,
+        subject_id: i64,
+        operator: &str,
+        body: &str,
+    ) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO notes (subject_kind, subject_id, operator, body)
+                 VALUES (?1, ?2, ?3, ?4)",
+                (subject.as_str(), subject_id, operator, body),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// The notes of a patient or drug, newest first.
+    pub fn notes_for(&self, subject: NoteSubject, subject_id: i64) -> Result<Vec<Note>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, operator, body, created_at FROM notes
+                 WHERE subject_kind = ?1 AND subject_id = ?2
+                 ORDER BY created_at DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map((subject.as_str(), subject_id), |r| {
+                Ok(Note {
+                    id: r.get(0)?,
+                    operator: r.get(1)?,
+                    body: r.get(2)?,
+                    created_at: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// The personal notes of one operator, newest first.
+    pub fn notes_for_operator(&self, operator: &str) -> Result<Vec<Note>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, operator, body, created_at FROM notes
+                 WHERE subject_kind = 'OPERATOR' AND operator = ?1
+                 ORDER BY created_at DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([operator], |r| {
+                Ok(Note {
+                    id: r.get(0)?,
+                    operator: r.get(1)?,
+                    body: r.get(2)?,
+                    created_at: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn delete_note(&self, id: i64) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM notes WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Link a drug to a patient's current treatments (idempotent).
     pub fn add_patient_drug(&self, patient_id: i64, drug_id: i64) -> Result<(), String> {
         self.conn
@@ -738,6 +859,11 @@ impl Db {
             .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM patient_drugs WHERE patient_id = ?1", [id])
             .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM notes WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM patients WHERE id = ?1", [id])
             .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())
@@ -911,14 +1037,26 @@ impl Db {
     }
 
     /// Remove a drug card; refused (`false`) if it was renamed meanwhile.
+    /// Its dated notes go with it, atomically.
     pub fn delete_drug(&self, id: i64, expected_name: &str) -> Result<bool, String> {
-        let changed = self
+        let tx = self
             .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let changed = tx
             .execute(
                 "DELETE FROM drugs WHERE id = ?1 AND name = ?2",
                 (id, expected_name),
             )
             .map_err(|e| e.to_string())?;
+        if changed == 1 {
+            tx.execute(
+                "DELETE FROM notes WHERE subject_kind = 'DRUG' AND subject_id = ?1",
+                [id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(changed == 1)
     }
 
@@ -1684,6 +1822,51 @@ mod tests {
     }
 
     #[test]
+    fn standalone_notes_journal() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-note-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("notes.db");
+        let _ = std::fs::remove_file(&path);
+
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let did = db.add_drug("Eliquis").unwrap();
+
+        db.add_note(NoteSubject::Patient, pid, "CL", "Préfère le matin.")
+            .unwrap();
+        let n2 = db
+            .add_note(NoteSubject::Patient, pid, "YS", "Allergie pénicilline ?")
+            .unwrap();
+        db.add_note(NoteSubject::Drug, did, "CL", "Rupture fournisseur.")
+            .unwrap();
+        db.add_note(NoteSubject::Operator, 0, "CL", "Rappeler le grossiste.")
+            .unwrap();
+
+        let pnotes = db.notes_for(NoteSubject::Patient, pid).unwrap();
+        assert_eq!(pnotes.len(), 2);
+        // Newest first, author kept.
+        assert_eq!(pnotes[0].id, n2);
+        assert_eq!(pnotes[0].operator, "YS");
+        assert!(!pnotes[0].stamp().is_empty());
+        assert_eq!(db.notes_for(NoteSubject::Drug, did).unwrap().len(), 1);
+        assert_eq!(db.notes_for_operator("CL").unwrap().len(), 1);
+        assert!(db.notes_for_operator("YS").unwrap().is_empty());
+
+        db.delete_note(n2).unwrap();
+        assert_eq!(db.notes_for(NoteSubject::Patient, pid).unwrap().len(), 1);
+
+        // Deleting the patient / drug removes their journals.
+        db.delete_patient(pid).unwrap();
+        assert!(db.notes_for(NoteSubject::Patient, pid).unwrap().is_empty());
+        assert!(db.delete_drug(did, "Eliquis").unwrap());
+        assert!(db.notes_for(NoteSubject::Drug, did).unwrap().is_empty());
+        // Operator notes are personal and survive.
+        assert_eq!(db.notes_for_operator("CL").unwrap().len(), 1);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn drug_base_crud_is_cas() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-drug-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -2040,8 +2223,38 @@ mod tests {
                 for name in ["Eliquis", "Tahor"] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();
+                        if name == "Eliquis" {
+                            db.add_note(
+                                NoteSubject::Drug,
+                                d.id,
+                                "CL",
+                                "Rupture fournisseur — retour annoncé sous 10 j.",
+                            )
+                            .unwrap();
+                        }
                     }
                 }
+                db.add_note(
+                    NoteSubject::Patient,
+                    pid,
+                    "CL",
+                    "Préfère les RDV le matin ; fille à prévenir (06 …).",
+                )
+                .unwrap();
+                db.add_note(
+                    NoteSubject::Patient,
+                    pid,
+                    "YS",
+                    "Confusion doses AOD à revoir.",
+                )
+                .unwrap();
+                db.add_note(
+                    NoteSubject::Operator,
+                    0,
+                    "CL",
+                    "Rappeler le grossiste lundi.",
+                )
+                .unwrap();
             }
             // Extra acts with RDVs so the agenda's week view shows
             // several colors.
