@@ -220,6 +220,8 @@ struct Session {
     drug_form: Option<Drug>,
     drug_base: Option<Drug>,
     confirm_delete_drug: bool,
+    /// Patients currently on the drug whose card is open.
+    drug_patients: Vec<Patient>,
     error: Option<String>,
 }
 
@@ -279,10 +281,20 @@ impl Session {
             drug_form: None,
             drug_base: None,
             confirm_delete_drug: false,
+            drug_patients: Vec::new(),
             error: None,
         };
         session.set_patients(patients);
         Ok(session)
+    }
+
+    /// Open a drug card: load its baseline for CAS and the patients
+    /// currently on it (recall / alert lookup).
+    fn open_drug_card(&mut self, d: Drug) {
+        self.drug_patients = self.db.patients_for_drug(d.id).unwrap_or_default();
+        self.drug_base = Some(d.clone());
+        self.drug_form = Some(d);
+        self.confirm_delete_drug = false;
     }
 
     /// Re-point `viewing` at the freshly loaded patient row (or close
@@ -445,9 +457,24 @@ pub struct App {
     pw_change: Option<PwChangeForm>,
     /// Operator initials for note stamps (default from config.toml).
     operator: String,
-    /// Typst template editor, when open: (source text, status message
-    /// where `true` marks an error).
-    tpl_editor: Option<(String, Option<(bool, String)>)>,
+    /// Typst template editor, when open.
+    tpl_editor: Option<TplEditor>,
+}
+
+struct TplEditor {
+    target: TplTarget,
+    text: String,
+    /// Status line; `true` marks an error.
+    message: Option<(bool, String)>,
+}
+
+/// Which Typst template the editor is showing.
+#[derive(Clone, Copy, PartialEq)]
+enum TplTarget {
+    /// The interview sheet ("Fiche PDF").
+    Fiche,
+    /// The CR letter to the médecin traitant.
+    Courrier,
 }
 
 #[derive(Default)]
@@ -516,8 +543,9 @@ impl App {
                                 .find(|d| d.name == "Eliquis")
                                 .or(session.drugs.first())
                                 .cloned();
-                            session.drug_base = card.clone();
-                            session.drug_form = card;
+                            if let Some(d) = card {
+                                session.open_drug_card(d);
+                            }
                             session.view = MainView::Drugs;
                         }
                         _ => {}
@@ -536,7 +564,11 @@ impl App {
 
         // Screenshot/e2e hook: open the template editor directly.
         let tpl_editor = if std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("template") {
-            Some((crate::pdf::default_template().to_owned(), None))
+            Some(TplEditor {
+                target: TplTarget::Fiche,
+                text: crate::pdf::default_template().to_owned(),
+                message: None,
+            })
         } else {
             None
         };
@@ -1250,9 +1282,7 @@ impl App {
                         session.db.drugs_for_patient(patient.id).unwrap_or_default();
                 }
                 if let Some(d) = open_card {
-                    session.drug_base = Some(d.clone());
-                    session.drug_form = Some(d);
-                    session.confirm_delete_drug = false;
+                    session.open_drug_card(d);
                     session.view = MainView::Drugs;
                 }
             }
@@ -1379,6 +1409,7 @@ impl App {
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut regress: Option<(i64, db::InterviewState)> = None;
         let mut print_req: Option<(InterviewKind, Option<String>)> = None;
+        let mut cr_req: Option<(InterviewKind, Option<String>)> = None;
         // (interview id, new minutes, the minutes this PC saw — CAS).
         let mut set_duration: Option<(i64, i64, i64)> = None;
         // (interview id, new date, the date this PC saw — CAS expected).
@@ -1442,12 +1473,20 @@ impl App {
                                         ui.label(tr("itv_done"));
                                     }
                                 });
-                                if motif::button(ui, tr("itv_pdf"))
-                                    .on_hover_text(tr("itv_pdf_tooltip"))
-                                    .clicked()
-                                {
-                                    print_req = Some((itv.kind, itv.scheduled_date.clone()));
-                                }
+                                ui.horizontal(|ui| {
+                                    if motif::button(ui, tr("itv_pdf"))
+                                        .on_hover_text(tr("itv_pdf_tooltip"))
+                                        .clicked()
+                                    {
+                                        print_req = Some((itv.kind, itv.scheduled_date.clone()));
+                                    }
+                                    if motif::button(ui, tr("itv_cr"))
+                                        .on_hover_text(tr("itv_cr_tooltip"))
+                                        .clicked()
+                                    {
+                                        cr_req = Some((itv.kind, itv.scheduled_date.clone()));
+                                    }
+                                });
                                 let mut minutes = itv.duration_minutes;
                                 let drag = ui.add(
                                     egui::DragValue::new(&mut minutes)
@@ -1601,6 +1640,29 @@ impl App {
             if let Err(e) =
                 crate::pdf::open_interview_sheet(patient, kind, &date, &config.template_path())
             {
+                session.error = Some(e);
+            }
+        }
+        if let Some((kind, scheduled)) = cr_req {
+            // The CR letter to the médecin traitant, with the patient's
+            // known treatments; dated like the interview sheet.
+            let date = scheduled
+                .as_deref()
+                .map(db::format_french_date)
+                .unwrap_or_else(|| {
+                    session
+                        .db
+                        .today_french()
+                        .unwrap_or_else(|_| tr("itv_date_fallback").to_owned())
+                });
+            if let Err(e) = crate::pdf::open_cr_letter(
+                patient,
+                kind,
+                &date,
+                &session.patient_treats,
+                &config.pharmacy,
+                &config.cr_template_path(),
+            ) {
                 session.error = Some(e);
             }
         }
@@ -1900,6 +1962,7 @@ impl App {
             let mut close = false;
             let mut delete = false;
             let mut insert_note = false;
+            let mut open_patient_id: Option<i64> = None;
             ui.vertical_centered(|ui| {
                 ui.add_space(18.0);
                 // Identity header: brand name big, DCI underneath.
@@ -1967,6 +2030,34 @@ impl App {
                         );
                         ui.end_row();
                     });
+                // Reverse lookup: who is on this drug (recalls, alerts).
+                if !session.drug_patients.is_empty() {
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        let approx = 160.0 + session.drug_patients.len().min(6) as f32 * 110.0;
+                        ui.add_space(((ui.available_width() - approx) / 2.0).max(0.0));
+                        ui.label(
+                            egui::RichText::new(tr("drug_patients_label")).color(motif::BG_DARK),
+                        );
+                        for p in session.drug_patients.iter().take(6) {
+                            let chip = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("  {}  ", p.full_name()))
+                                        .size(12.0)
+                                        .color(egui::Color32::WHITE)
+                                        .background_color(motif::BG_DARK),
+                                )
+                                .sense(egui::Sense::click()),
+                            );
+                            if chip.on_hover_text(tr("dash_open_patient")).clicked() {
+                                open_patient_id = Some(p.id);
+                            }
+                        }
+                        if session.drug_patients.len() > 6 {
+                            ui.label(trf("dash_more", session.drug_patients.len() - 6));
+                        }
+                    });
+                }
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.add_space(ui.available_width() / 2.0 - 230.0);
@@ -2070,6 +2161,12 @@ impl App {
                 session.drug_base = None;
                 session.confirm_delete_drug = false;
                 session.error = None;
+            }
+            if let Some(id) = open_patient_id {
+                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                    session.view = MainView::Search;
+                    session.open_patient(p);
+                }
             }
             return;
         }
@@ -2183,9 +2280,7 @@ impl App {
             }
         });
         if let Some(d) = open_drug {
-            session.drug_base = Some(d.clone());
-            session.drug_form = Some(d);
-            session.confirm_delete_drug = false;
+            session.open_drug_card(d);
             session.error = None;
         }
     }
@@ -2738,7 +2833,11 @@ impl eframe::App for App {
                             let path = self.config.template_path();
                             let text = std::fs::read_to_string(&path)
                                 .unwrap_or_else(|_| crate::pdf::default_template().to_owned());
-                            Some((text, None))
+                            Some(TplEditor {
+                                target: TplTarget::Fiche,
+                                text,
+                                message: None,
+                            })
                         };
                     }
                 });
@@ -2865,14 +2964,39 @@ impl eframe::App for App {
             self.tpl_editor = None;
         }
         let mut close_tpl = false;
-        if let Some((text, message)) = &mut self.tpl_editor {
-            let path = self.config.template_path();
+        let mut switch_tpl: Option<TplTarget> = None;
+        if let Some(TplEditor {
+            target,
+            text,
+            message,
+        }) = &mut self.tpl_editor
+        {
+            let path = match target {
+                TplTarget::Fiche => self.config.template_path(),
+                TplTarget::Courrier => self.config.cr_template_path(),
+            };
             egui::Window::new(tr("tpl_title"))
                 .collapsible(false)
                 .resizable(true)
-                .default_size([680.0, 520.0])
+                .default_size([680.0, 540.0])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
+                    // Which template: the interview sheet or the CR letter.
+                    ui.horizontal(|ui| {
+                        for (t, label) in [
+                            (TplTarget::Fiche, tr("tpl_target_fiche")),
+                            (TplTarget::Courrier, tr("tpl_target_cr")),
+                        ] {
+                            let btn = motif::button(ui, label);
+                            if *target == t {
+                                // Sunken bevel marks the active template.
+                                motif::bevel(ui.painter(), btn.rect, false);
+                            }
+                            if btn.clicked() && *target != t {
+                                switch_tpl = Some(t);
+                            }
+                        }
+                    });
                     ui.label(
                         egui::RichText::new(trf("tpl_path", path.display()))
                             .size(11.0)
@@ -2892,7 +3016,11 @@ impl eframe::App for App {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if motif::button(ui, tr("form_save")).clicked() {
-                            match crate::pdf::check_template(text) {
+                            let check = match target {
+                                TplTarget::Fiche => crate::pdf::check_template(text),
+                                TplTarget::Courrier => crate::pdf::check_cr_template(text),
+                            };
+                            match check {
                                 Ok(()) => {
                                     let result = path
                                         .parent()
@@ -2911,7 +3039,11 @@ impl eframe::App for App {
                             .on_hover_text(tr("tpl_preview_tooltip"))
                             .clicked()
                         {
-                            if let Err(e) = crate::pdf::preview_template(text) {
+                            let preview = match target {
+                                TplTarget::Fiche => crate::pdf::preview_template(text),
+                                TplTarget::Courrier => crate::pdf::preview_cr_template(text),
+                            };
+                            if let Err(e) = preview {
                                 *message = Some((true, e));
                             }
                         }
@@ -2919,7 +3051,10 @@ impl eframe::App for App {
                             .on_hover_text(tr("tpl_reset_tooltip"))
                             .clicked()
                         {
-                            *text = crate::pdf::default_template().to_owned();
+                            *text = match target {
+                                TplTarget::Fiche => crate::pdf::default_template().to_owned(),
+                                TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
+                            };
                             *message = None;
                         }
                         if motif::button(ui, tr("tpl_close")).clicked() {
@@ -2939,6 +3074,22 @@ impl eframe::App for App {
         }
         if close_tpl {
             self.tpl_editor = None;
+        }
+        if let Some(t) = switch_tpl {
+            // Load the other template (unsaved edits are discarded).
+            let path = match t {
+                TplTarget::Fiche => self.config.template_path(),
+                TplTarget::Courrier => self.config.cr_template_path(),
+            };
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|_| match t {
+                TplTarget::Fiche => crate::pdf::default_template().to_owned(),
+                TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
+            });
+            self.tpl_editor = Some(TplEditor {
+                target: t,
+                text,
+                message: None,
+            });
         }
 
         // The docs pane may hold patient-adjacent notes: never show it on

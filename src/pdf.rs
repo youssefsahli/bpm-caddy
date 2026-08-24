@@ -12,7 +12,8 @@ use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, World};
 
-use crate::db::{Appointment, InterviewKind, Patient};
+use crate::config::PharmacyConfig;
+use crate::db::{Appointment, Drug, InterviewKind, Patient};
 
 /// Default A4 interview sheet: patient header plus rounded boxes sized for
 /// handwritten notes during the interview.
@@ -53,6 +54,49 @@ const DEFAULT_TEMPLATE: &str = r#"
    #v(2mm)
    #box(width: 100%, height: 2cm, stroke: 0.8pt, radius: 5pt)],
 )
+"#;
+
+/// Default CR letter to the médecin traitant: pharmacy letterhead,
+/// patient and act, known treatments, and boxes for the handwritten
+/// synthesis and signature.
+const DEFAULT_CR_TEMPLATE: &str = r#"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt)
+
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold", size: 13pt)[{{PHARMACY_NAME}}] \
+   {{PHARMACY_ADDRESS}} \
+   {{PHARMACY_PHONE}}],
+  [#align(right)[À l'attention du \ #text(weight: "bold")[{{PHYSICIAN}}]]],
+)
+#v(8mm)
+#align(right)[Le {{DATE}}]
+#v(4mm)
+#text(weight: "bold")[Objet : {{KIND}} — {{PATIENT_NAME}} (né(e) le {{BIRTH_DATE}})]
+#v(4mm)
+Docteur,
+
+Dans le cadre d'un accompagnement à l'officine ({{KIND}}), nous avons reçu
+votre patient(e) {{PATIENT_NAME}}. Vous trouverez ci-dessous les éléments
+issus de cet échange.
+
+#v(2mm)
+#text(weight: "bold")[Traitements connus à l'officine :]
+
+{{TREATMENTS}}
+
+#v(2mm)
+#text(weight: "bold")[Synthèse et points d'attention :]
+#v(1mm)
+#box(width: 100%, height: 7cm, stroke: 0.8pt, radius: 5pt)
+
+#v(1fr)
+Restant à votre disposition, nous vous prions d'agréer, Docteur,
+l'expression de nos salutations confraternelles.
+
+#align(right)[{{PHARMACIST}}
+#v(2mm)
+#box(width: 6.5cm, height: 2.2cm, stroke: 0.8pt, radius: 5pt)]
 "#;
 
 /// A self-contained Typst world: one in-memory source, embedded fonts.
@@ -185,6 +229,161 @@ pub fn preview_template(template: &str) -> Result<PathBuf, String> {
         "24/08/2026",
     );
     compile_and_open(filled, "apercu")
+}
+
+/// The embedded CR-letter template, for the in-app editor.
+pub fn default_cr_template() -> &'static str {
+    DEFAULT_CR_TEMPLATE
+}
+
+/// One markup list line per treatment, each value escaped.
+fn treatments_markup(treats: &[Drug]) -> String {
+    if treats.is_empty() {
+        return format!("- #{}", typst_str("(aucun traitement enregistré)"));
+    }
+    treats
+        .iter()
+        .map(|d| {
+            let mut s = d.name.clone();
+            if !d.dci.is_empty() {
+                s.push_str(&format!(" ({})", d.dci));
+            }
+            if !d.class.is_empty() {
+                s.push_str(&format!(" — {}", d.class));
+            }
+            if !d.dosage.is_empty() {
+                s.push_str(&format!(" — {}", d.dosage));
+            }
+            format!("- #{}", typst_str(&s))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Substitute the CR-letter placeholders, all values escaped.
+fn fill_cr_template(
+    template: &str,
+    patient: &Patient,
+    kind: InterviewKind,
+    date: &str,
+    treats: &[Drug],
+    pharmacy: &PharmacyConfig,
+) -> String {
+    let physician = if patient.physician.trim().is_empty() {
+        "Médecin traitant"
+    } else {
+        patient.physician.trim()
+    };
+    template
+        .replace(
+            "{{PHARMACY_NAME}}",
+            &format!("#{}", typst_str(&pharmacy.name)),
+        )
+        .replace(
+            "{{PHARMACY_ADDRESS}}",
+            &format!("#{}", typst_str(&pharmacy.address)),
+        )
+        .replace(
+            "{{PHARMACY_PHONE}}",
+            &format!("#{}", typst_str(&pharmacy.phone)),
+        )
+        .replace(
+            "{{PHARMACIST}}",
+            &format!("#{}", typst_str(&pharmacy.pharmacist)),
+        )
+        .replace("{{PHYSICIAN}}", &format!("#{}", typst_str(physician)))
+        .replace(
+            "{{PATIENT_NAME}}",
+            &format!("#{}", typst_str(&patient.full_name())),
+        )
+        .replace(
+            "{{BIRTH_DATE}}",
+            &format!(
+                "#{}",
+                typst_str(&crate::db::format_french_date(&patient.birth_date))
+            ),
+        )
+        .replace("{{KIND}}", &format!("#{}", typst_str(kind.label())))
+        .replace("{{DATE}}", &format!("#{}", typst_str(date)))
+        .replace("{{TREATMENTS}}", &treatments_markup(treats))
+}
+
+/// Compile the CR letter for a patient and open it in the OS viewer.
+/// `template_path` behaves like the interview sheet's: the file when it
+/// exists, the embedded default otherwise.
+pub fn open_cr_letter(
+    patient: &Patient,
+    kind: InterviewKind,
+    date: &str,
+    treats: &[Drug],
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let template = if template_path.exists() {
+        std::fs::read_to_string(template_path)
+            .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
+    } else {
+        DEFAULT_CR_TEMPLATE.to_owned()
+    };
+    let filled = fill_cr_template(&template, patient, kind, date, treats, pharmacy);
+    compile_and_open(filled, &format!("cr_{}", patient.id))
+}
+
+fn sample_pharmacy() -> PharmacyConfig {
+    PharmacyConfig {
+        name: "Pharmacie du Centre".to_owned(),
+        address: "1 place de la Mairie, 34000 Montpellier".to_owned(),
+        phone: "04 67 00 00 00".to_owned(),
+        pharmacist: "Dr Claire Leroy, pharmacien titulaire".to_owned(),
+    }
+}
+
+fn sample_treatments() -> Vec<Drug> {
+    vec![
+        Drug {
+            name: "Eliquis".to_owned(),
+            dci: "apixaban".to_owned(),
+            class: "AOD".to_owned(),
+            dosage: "5 mg x2/j".to_owned(),
+            ..Default::default()
+        },
+        Drug {
+            name: "Tahor".to_owned(),
+            dci: "atorvastatine".to_owned(),
+            class: "statine".to_owned(),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Validation for the CR template editor.
+pub fn check_cr_template(template: &str) -> Result<(), String> {
+    let filled = fill_cr_template(
+        template,
+        &sample_patient(),
+        InterviewKind::Bpm,
+        "24/08/2026",
+        &sample_treatments(),
+        &sample_pharmacy(),
+    );
+    let world = PdfWorld::new(filled);
+    typst::compile::<PagedDocument>(&world)
+        .output
+        .map(|_| ())
+        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
+}
+
+/// Sample-data preview for the CR template editor.
+pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
+    let filled = fill_cr_template(
+        template,
+        &sample_patient(),
+        InterviewKind::Bpm,
+        "24/08/2026",
+        &sample_treatments(),
+        &sample_pharmacy(),
+    );
+    compile_and_open(filled, "apercu_cr")
 }
 
 /// Compile Typst source to a PDF in the temp dir and open it in the OS
@@ -320,6 +519,36 @@ mod tests {
         assert!(check_template(DEFAULT_TEMPLATE).is_ok());
         let err = check_template("#broken(").unwrap_err();
         assert!(err.contains("compilation Typst"));
+    }
+
+    #[test]
+    fn cr_letter_compiles_with_treatments_and_hostile_names() {
+        assert!(check_cr_template(DEFAULT_CR_TEMPLATE).is_ok());
+        assert!(check_cr_template("#broken(").is_err());
+        // Hostile patient name through the real fill path.
+        let mut patient = sample_patient();
+        patient.last_name = "#eval \"X\" *gras*".to_owned();
+        patient.physician = "Dr #strike[Y]".to_owned();
+        let filled = fill_cr_template(
+            DEFAULT_CR_TEMPLATE,
+            &patient,
+            InterviewKind::Prevention,
+            "24/08/2026",
+            &sample_treatments(),
+            &sample_pharmacy(),
+        );
+        let world = PdfWorld::new(filled);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le courrier CR doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("cr_exemple.pdf"), &pdf);
+        }
+        // An empty treatments list renders the placeholder line.
+        assert!(treatments_markup(&[]).contains("aucun traitement"));
     }
 
     #[test]

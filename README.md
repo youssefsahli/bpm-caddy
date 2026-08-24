@@ -34,7 +34,9 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **Agenda** — `F4` opens on the current week as a colored grid (one block per rendez-vous, colored by act kind, today highlighted, click-through to the patient), with week navigation and the day-grouped list (overdue included) below. Printable.
 - **Six billable acts** — BPM, AOD, asthma, TROD angine, TROD cystite, and RDV prévention, each with its own configurable fee and agenda color.
 - **Full patient record** — phone, médecin traitant, e-mail, address, counter notes, and the patient's **current treatments** linked straight to the drug base (chips on the patient view, one click from the drug card).
-- **Editable PDF template** — the Typst source of the interview sheet is editable in-app ("Modèle PDF…"), with compile validation and a sample preview; no recompilation needed.
+- **CR letter in one click** — each interview generates the report letter to the médecin traitant: pharmacy letterhead, patient, act, known treatments (DCI, class, dosage), synthesis and signature boxes.
+- **Editable PDF templates** — the Typst sources of the interview sheet *and* the CR letter are editable in-app ("Modèle PDF…"), with compile validation and sample previews; no recompilation needed.
+- **Recall-ready** — every drug card lists the patients currently on it, one click from their record.
 - **Customizable wording** — every UI string lives in an embedded TOML; drop a `strings.toml` next to `config.toml` to adapt any text (or translate the app) without recompiling.
 - **Old-school X/Motif theme** — the classic `mwm` blue-grey look with square corners and raised/sunken bevels, implemented as a reusable `motif` crate for egui.
 

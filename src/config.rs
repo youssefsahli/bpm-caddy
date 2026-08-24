@@ -39,8 +39,16 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # prevention_fee = 30.0
 
 [templates]
-# Modèle Typst personnalisé pour la fiche PDF.
+# Modèles Typst personnalisés (fiche d'entretien et courrier CR).
 # bpm_template_path = "templates/bpm_layout.typ"
+# cr_template_path = "templates/cr_layout.typ"
+
+[pharmacy]
+# Identité de l'officine, pour l'en-tête du courrier au médecin.
+# name = "Pharmacie du Centre"
+# address = "1 place de la Mairie, 34000 Montpellier"
+# phone = "04 67 00 00 00"
+# pharmacist = "Dr Claire Leroy, pharmacien titulaire"
 "#;
 
 #[derive(Deserialize, Default, Clone)]
@@ -50,6 +58,19 @@ pub struct Config {
     pub ui: UiConfig,
     pub billing: BillingConfig,
     pub templates: TemplatesConfig,
+    pub pharmacy: PharmacyConfig,
+}
+
+/// The pharmacy's identity, used on the CR letter to the médecin
+/// traitant.
+#[derive(Deserialize, Default, Clone)]
+#[serde(default)]
+pub struct PharmacyConfig {
+    pub name: String,
+    pub address: String,
+    pub phone: String,
+    /// Signing pharmacist ("Dr Claire Leroy, pharmacien titulaire").
+    pub pharmacist: String,
 }
 
 /// Custom Typst templates; the embedded default is used when unset.
@@ -57,6 +78,7 @@ pub struct Config {
 #[serde(default)]
 pub struct TemplatesConfig {
     pub bpm_template_path: Option<PathBuf>,
+    pub cr_template_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -189,6 +211,14 @@ impl Config {
             .bpm_template_path
             .clone()
             .unwrap_or_else(|| Self::path().with_file_name("bpm_layout.typ"))
+    }
+
+    /// The Typst template for the CR letter to the médecin traitant.
+    pub fn cr_template_path(&self) -> PathBuf {
+        self.templates
+            .cr_template_path
+            .clone()
+            .unwrap_or_else(|| Self::path().with_file_name("cr_layout.typ"))
     }
 
     pub fn fee(&self, kind: crate::db::InterviewKind) -> f64 {

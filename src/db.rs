@@ -520,6 +520,37 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Patients currently on a given drug — the recall / alert question
+    /// ("qui est sous Eliquis ?").
+    pub fn patients_for_drug(&self, drug_id: i64) -> Result<Vec<Patient>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.id, p.last_name, p.first_name, p.birth_date, p.phone, p.notes,
+                        p.physician, p.email, p.address
+                 FROM patient_drugs pd JOIN patients p ON p.id = pd.patient_id
+                 WHERE pd.drug_id = ?1
+                 ORDER BY p.last_name COLLATE NOCASE, p.first_name COLLATE NOCASE",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([drug_id], |r| {
+                Ok(Patient {
+                    id: r.get(0)?,
+                    last_name: r.get(1)?,
+                    first_name: r.get(2)?,
+                    birth_date: r.get(3)?,
+                    phone: r.get(4)?,
+                    notes: r.get(5)?,
+                    physician: r.get(6)?,
+                    email: r.get(7)?,
+                    address: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Link a drug to a patient's current treatments (idempotent).
     pub fn add_patient_drug(&self, patient_id: i64, drug_id: i64) -> Result<(), String> {
         self.conn
@@ -1476,6 +1507,10 @@ mod tests {
         let treats = db.drugs_for_patient(pid).unwrap();
         assert_eq!(treats.len(), 1);
         assert_eq!(treats[0].name, "Eliquis");
+        // …and the reverse lookup finds the patient from the drug.
+        let on_drug = db.patients_for_drug(did).unwrap();
+        assert_eq!(on_drug.len(), 1);
+        assert_eq!(on_drug[0].full_name(), "Jean Dupont");
         db.remove_patient_drug(pid, did).unwrap();
         assert!(db.drugs_for_patient(pid).unwrap().is_empty());
         db.add_patient_drug(pid, did).unwrap();
