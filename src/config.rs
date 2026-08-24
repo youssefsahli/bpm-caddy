@@ -6,6 +6,40 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 
+/// Written on first launch; every option commented out at its default.
+const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé au premier lancement).
+# Décommentez et adaptez les options utiles ; les valeurs indiquées
+# sont les valeurs par défaut.
+
+[database]
+# Chemin de la base chiffrée. Pointez vers le lecteur réseau de la
+# pharmacie pour la partager entre postes (les notes d'équipe et les
+# sauvegardes automatiques suivent la base).
+# path = "Z:/LGO_Shared/bpm_caddy.db"
+# Verrouillage automatique après inactivité (minutes, 0 = jamais).
+# auto_lock_timeout_minutes = 15
+# Nombre de sauvegardes quotidiennes conservées (0 = désactivées).
+# backups_keep = 14
+
+[ui]
+# Afficher le panneau de documentation d'équipe au démarrage.
+# show_docs_on_start = true
+# Masquer les montants du tableau de bord (mode discret au comptoir).
+# discreet_finances = true
+# Initiales de l'opérateur par défaut pour les entrées de notes.
+# operator = "CL"
+
+[billing]
+# Honoraires en euros par cycle d'entretien.
+# bpm_fee = 60.0
+# aod_fee = 40.0
+# asthme_fee = 40.0
+
+[templates]
+# Modèle Typst personnalisé pour la fiche PDF.
+# bpm_template_path = "templates/bpm_layout.typ"
+"#;
+
 #[derive(Deserialize, Default, Clone)]
 #[serde(default)]
 pub struct Config {
@@ -29,6 +63,9 @@ pub struct DatabaseConfig {
     /// network drive (e.g. `Z:/LGO_Shared/bpm_caddy.db`) to share it.
     pub path: Option<PathBuf>,
     pub auto_lock_timeout_minutes: u64,
+    /// How many daily snapshots to keep in `backups/`; 0 disables the
+    /// automatic backups entirely.
+    pub backups_keep: usize,
 }
 
 impl Default for DatabaseConfig {
@@ -36,6 +73,7 @@ impl Default for DatabaseConfig {
         Self {
             path: None,
             auto_lock_timeout_minutes: 15,
+            backups_keep: 14,
         }
     }
 }
@@ -47,6 +85,8 @@ pub struct UiConfig {
     /// Mask revenue amounts on the dashboard until explicitly revealed,
     /// so figures are not readable over a shoulder at the counter.
     pub discreet_finances: bool,
+    /// Default operator initials for note stamps (editable in the app).
+    pub operator: String,
 }
 
 impl Default for UiConfig {
@@ -54,6 +94,7 @@ impl Default for UiConfig {
         Self {
             show_docs_on_start: true,
             discreet_finances: true,
+            operator: String::new(),
         }
     }
 }
@@ -87,12 +128,28 @@ impl Config {
     }
 
     /// Load the configuration, falling back to defaults if the file is
-    /// missing or malformed (the app must always start).
+    /// missing or malformed (the app must always start). On first run a
+    /// fully commented template is written so the options are
+    /// discoverable without reading the documentation.
     pub fn load() -> Self {
-        std::fs::read_to_string(Self::path())
-            .ok()
-            .and_then(|s| toml::from_str(&s).ok())
-            .unwrap_or_default()
+        let path = Self::path();
+        match std::fs::read_to_string(&path) {
+            Ok(s) => toml::from_str(&s).unwrap_or_default(),
+            Err(_) => {
+                Self::write_template(&path);
+                Self::default()
+            }
+        }
+    }
+
+    fn write_template(path: &std::path::Path) {
+        if path.exists() {
+            return;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, CONFIG_TEMPLATE);
     }
 
     pub fn db_path(&self) -> PathBuf {
@@ -158,5 +215,14 @@ mod tests {
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
         assert!(cfg.ui.show_docs_on_start);
         assert!(cfg.ui.discreet_finances);
+    }
+
+    #[test]
+    fn first_run_template_parses_to_defaults() {
+        let cfg: Config = toml::from_str(CONFIG_TEMPLATE).unwrap();
+        assert!(cfg.database.path.is_none());
+        assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
+        assert_eq!(cfg.billing.bpm_fee, 60.0);
+        assert!(cfg.templates.bpm_template_path.is_none());
     }
 }

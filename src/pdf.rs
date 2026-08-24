@@ -12,7 +12,7 @@ use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, World};
 
-use crate::db::{InterviewKind, Patient};
+use crate::db::{Appointment, InterviewKind, Patient};
 
 /// Default A4 interview sheet: patient header plus rounded boxes sized for
 /// handwritten notes during the interview.
@@ -63,16 +63,26 @@ struct PdfWorld {
     source: Source,
 }
 
-impl PdfWorld {
-    fn new(text: String) -> Self {
+/// Parsing the embedded fonts takes long enough to be felt at the
+/// counter: do it once per process, not once per click.
+fn fonts() -> &'static (Vec<Font>, FontBook) {
+    static FONTS: std::sync::OnceLock<(Vec<Font>, FontBook)> = std::sync::OnceLock::new();
+    FONTS.get_or_init(|| {
         let fonts: Vec<Font> = typst_assets::fonts()
             .flat_map(|data| Font::iter(Bytes::new(data)))
             .collect();
         let book = FontBook::from_fonts(&fonts);
+        (fonts, book)
+    })
+}
+
+impl PdfWorld {
+    fn new(text: String) -> Self {
+        let (fonts, book) = fonts();
         Self {
             library: LazyHash::new(Library::default()),
-            book: LazyHash::new(book),
-            fonts,
+            book: LazyHash::new(book.clone()),
+            fonts: fonts.clone(),
             source: Source::detached(text),
         }
     }
@@ -126,30 +136,100 @@ pub fn open_interview_sheet(
             .map_err(|e| format!("modèle {} illisible : {e}", path.display()))?,
         None => DEFAULT_TEMPLATE.to_owned(),
     };
-    let filled = template
-        .replace("{{PATIENT_NAME}}", &patient.full_name())
-        .replace(
-            "{{BIRTH_DATE}}",
-            &crate::db::format_french_date(&patient.birth_date),
-        )
-        .replace("{{KIND}}", kind.label())
-        .replace("{{DATE}}", today);
+    let filled = fill_interview_template(&template, patient, kind, today);
 
-    let world = PdfWorld::new(filled);
+    let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
+    compile_and_open(filled, &stem)
+}
+
+/// Compile Typst source to a PDF in the temp dir and open it in the OS
+/// viewer. The file name is unique per generation: the previous PDF may
+/// still be open in the viewer (Windows locks it, and reusing the name
+/// would fail).
+fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
+    let world = PdfWorld::new(source);
     let document: PagedDocument = typst::compile(&world)
         .output
         .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))?;
     let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
         .map_err(|errs| format!("export PDF : {}", format_diagnostics(&errs)))?;
 
-    let out = std::env::temp_dir().join(format!(
-        "bpm_caddy_fiche_{}_{}.pdf",
-        patient.id,
-        kind.as_str().to_lowercase()
-    ));
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let out = std::env::temp_dir().join(format!("bpm_caddy_{stem}_{stamp}.pdf"));
     std::fs::write(&out, pdf).map_err(|e| format!("écriture du PDF impossible : {e}"))?;
     open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
     Ok(out)
+}
+
+/// Escape arbitrary text as a Typst string literal, so patient names
+/// can never inject markup into the generated document.
+fn typst_str(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Substitute the interview-sheet placeholders. Values are spliced as
+/// Typst string literals (`#"…"`), so a patient name containing markup
+/// ('#', '*', brackets…) can neither break compilation nor restyle the
+/// sheet.
+fn fill_interview_template(
+    template: &str,
+    patient: &Patient,
+    kind: InterviewKind,
+    today: &str,
+) -> String {
+    template
+        .replace(
+            "{{PATIENT_NAME}}",
+            &format!("#{}", typst_str(&patient.full_name())),
+        )
+        .replace(
+            "{{BIRTH_DATE}}",
+            &format!(
+                "#{}",
+                typst_str(&crate::db::format_french_date(&patient.birth_date))
+            ),
+        )
+        .replace("{{KIND}}", &format!("#{}", typst_str(kind.label())))
+        .replace("{{DATE}}", &format!("#{}", typst_str(today)))
+}
+
+/// Build the printable list of upcoming appointments (date, patient,
+/// kind, phone) — a paper companion for the counter.
+fn appointment_list_source(rdvs: &[Appointment], today_french: &str) -> String {
+    let mut rows = String::new();
+    for rdv in rdvs {
+        rows.push_str(&format!(
+            "{}, {}, {}, {},\n",
+            typst_str(&crate::db::format_french_date(&rdv.date)),
+            typst_str(&rdv.patient_name),
+            typst_str(rdv.kind.label()),
+            typst_str(&rdv.phone),
+        ));
+    }
+    format!(
+        r#"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 11pt)
+#align(center)[#text(16pt, weight: "bold")[Rendez-vous à venir]]
+#v(1mm)
+#align(center)[Édité le {today_french}]
+#v(5mm)
+#table(
+  columns: (auto, 1fr, auto, auto),
+  inset: 7pt,
+  stroke: 0.6pt,
+  [*Date*], [*Patient*], [*Type*], [*Téléphone*],
+{rows})
+"#
+    )
+}
+
+/// Compile and open the RDV list for printing.
+pub fn open_appointment_list(rdvs: &[Appointment], today_french: &str) -> Result<PathBuf, String> {
+    compile_and_open(appointment_list_source(rdvs, today_french), "rdv")
 }
 
 fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
@@ -165,11 +245,18 @@ mod tests {
 
     #[test]
     fn default_template_compiles_to_pdf() {
-        let filled = DEFAULT_TEMPLATE
-            .replace("{{PATIENT_NAME}}", "Jean Dupont")
-            .replace("{{BIRTH_DATE}}", "03/07/1958")
-            .replace("{{KIND}}", "BPM")
-            .replace("{{DATE}}", "22/08/2026");
+        // Hostile name: goes through the real escaping path, must
+        // neither restyle the sheet nor break compilation.
+        let patient = Patient {
+            id: 1,
+            last_name: "#eval \"Dupont\" \\ *gras*".to_owned(),
+            first_name: "Jean".to_owned(),
+            birth_date: "1958-07-03".to_owned(),
+            phone: String::new(),
+            notes: String::new(),
+        };
+        let filled =
+            fill_interview_template(DEFAULT_TEMPLATE, &patient, InterviewKind::Bpm, "22/08/2026");
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
             .output
@@ -181,6 +268,37 @@ mod tests {
         // For manual inspection: BPM_CADDY_TEST_PDF_OUT=/some/dir cargo test
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("fiche_exemple.pdf"), &pdf);
+        }
+    }
+
+    #[test]
+    fn appointment_list_compiles_even_with_hostile_names() {
+        let rdvs = [
+            Appointment {
+                patient_id: 1,
+                patient_name: "Jean #eval \"Dupont\" \\ *gras*".to_owned(),
+                phone: "06 12 34 56 78".to_owned(),
+                kind: InterviewKind::Bpm,
+                date: "2026-09-01".to_owned(),
+            },
+            Appointment {
+                patient_id: 2,
+                patient_name: "Hélène Lefèvre".to_owned(),
+                phone: String::new(),
+                kind: InterviewKind::Aod,
+                date: "2026-09-03".to_owned(),
+            },
+        ];
+        let source = appointment_list_source(&rdvs, "23/08/2026");
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la liste de RDV doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("rdv_exemple.pdf"), &pdf);
         }
     }
 }

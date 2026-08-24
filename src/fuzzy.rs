@@ -21,18 +21,31 @@ fn fold(c: char) -> char {
 /// means no match. Word-start and consecutive matches score extra, so
 /// initials ("jd") and prefixes rank naturally.
 pub fn score(query: &str, target: &str) -> Option<i32> {
+    score_with_indices(query, target).map(|(s, _)| s)
+}
+
+/// Lowercased, accent-stripped copy of `s` — a collation key so
+/// "Lefèvre" sorts with "Lefevre" instead of after "Z".
+pub fn sort_key(s: &str) -> String {
+    s.chars().map(fold).collect()
+}
+
+/// Like [`score`], also returning the char indices of `target` that
+/// matched (ascending), so the UI can highlight them.
+pub fn score_with_indices(query: &str, target: &str) -> Option<(i32, Vec<usize>)> {
     let q: Vec<char> = query
         .chars()
         .filter(|c| !c.is_whitespace())
         .map(fold)
         .collect();
     if q.is_empty() {
-        return Some(0);
+        return Some((0, Vec::new()));
     }
     let t: Vec<char> = target.chars().map(fold).collect();
     let mut qi = 0;
     let mut total = 0;
     let mut prev = usize::MAX;
+    let mut indices = Vec::with_capacity(q.len());
     for (i, &c) in t.iter().enumerate() {
         if qi < q.len() && c == q[qi] {
             let word_start = i == 0 || !t[i - 1].is_alphanumeric();
@@ -44,10 +57,11 @@ pub fn score(query: &str, target: &str) -> Option<i32> {
                     0
                 };
             prev = i;
+            indices.push(i);
             qi += 1;
         }
     }
-    (qi == q.len()).then_some(total)
+    (qi == q.len()).then_some((total, indices))
 }
 
 #[cfg(test)]
@@ -84,5 +98,22 @@ mod tests {
     #[test]
     fn empty_query_matches_everything() {
         assert_eq!(score("", "anyone"), Some(0));
+    }
+
+    #[test]
+    fn sort_key_folds_case_and_accents() {
+        assert_eq!(super::sort_key("Lefèvre"), "lefevre");
+        assert!(super::sort_key("Lefèvre") < super::sort_key("Martin"));
+        assert!(super::sort_key("Émile") < super::sort_key("Zoé"));
+    }
+
+    #[test]
+    fn match_indices_point_at_the_matched_chars() {
+        let (_, idx) = super::score_with_indices("jd", "Jean Dupont").unwrap();
+        assert_eq!(idx, vec![0, 5]);
+        // Char indices, not byte indices: 'é' counts as one position,
+        // and the greedy matcher takes the first 'l' (in "Hélène").
+        let (_, idx) = super::score_with_indices("hl", "Hélène Lefèvre").unwrap();
+        assert_eq!(idx, vec![0, 2]);
     }
 }
