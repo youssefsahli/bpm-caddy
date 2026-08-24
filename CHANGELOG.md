@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-08-25
+
+### Added
+- The thematic is printed on both documents: a "Thème" line in the
+  interview sheet's header box and under the CR letter's subject
+  (`{{THEME}}` in either template; an empty theme prints a dash).
+
+### Changed
+- The interview sheet's note boxes lost 2 mm each so the signature and
+  next-RDV boxes still fit on the page under the new header line.
+
 ## [0.15.0] - 2026-08-25
 
 ### Added
