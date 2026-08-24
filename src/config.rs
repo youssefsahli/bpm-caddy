@@ -37,6 +37,9 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # trod_angine_fee = 10.0
 # trod_cystite_fee = 12.0
 # prevention_fee = 30.0
+# avk_fee = 40.0
+# anticancereux_fee = 60.0
+# vaccination_fee = 10.0
 
 [templates]
 # Modèles Typst personnalisés (fiche d'entretien et courrier CR).
@@ -59,6 +62,9 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # trod_angine_per_year = 0
 # trod_cystite_per_year = 0
 # prevention_per_year = 1
+# avk_per_year = 3
+# anticancereux_per_year = 3
+# vaccination_per_year = 0
 "#;
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -84,6 +90,9 @@ pub struct RulesConfig {
     pub trod_angine_per_year: u32,
     pub trod_cystite_per_year: u32,
     pub prevention_per_year: u32,
+    pub avk_per_year: u32,
+    pub anticancereux_per_year: u32,
+    pub vaccination_per_year: u32,
 }
 
 impl Default for RulesConfig {
@@ -95,6 +104,9 @@ impl Default for RulesConfig {
             trod_angine_per_year: 0,
             trod_cystite_per_year: 0,
             prevention_per_year: 1,
+            avk_per_year: 3,
+            anticancereux_per_year: 3,
+            vaccination_per_year: 0,
         }
     }
 }
@@ -173,6 +185,9 @@ pub struct BillingConfig {
     pub trod_angine_fee: f64,
     pub trod_cystite_fee: f64,
     pub prevention_fee: f64,
+    pub avk_fee: f64,
+    pub anticancereux_fee: f64,
+    pub vaccination_fee: f64,
 }
 
 impl Default for BillingConfig {
@@ -184,6 +199,9 @@ impl Default for BillingConfig {
             trod_angine_fee: 10.0,
             trod_cystite_fee: 12.0,
             prevention_fee: 30.0,
+            avk_fee: 40.0,
+            anticancereux_fee: 60.0,
+            vaccination_fee: 10.0,
         }
     }
 }
@@ -268,6 +286,9 @@ impl Config {
             crate::db::InterviewKind::TrodAngine => self.rules.trod_angine_per_year,
             crate::db::InterviewKind::TrodCystite => self.rules.trod_cystite_per_year,
             crate::db::InterviewKind::Prevention => self.rules.prevention_per_year,
+            crate::db::InterviewKind::Avk => self.rules.avk_per_year,
+            crate::db::InterviewKind::Anticancereux => self.rules.anticancereux_per_year,
+            crate::db::InterviewKind::Vaccination => self.rules.vaccination_per_year,
         }
     }
 
@@ -290,6 +311,9 @@ impl Config {
             crate::db::InterviewKind::TrodAngine => self.billing.trod_angine_fee,
             crate::db::InterviewKind::TrodCystite => self.billing.trod_cystite_fee,
             crate::db::InterviewKind::Prevention => self.billing.prevention_fee,
+            crate::db::InterviewKind::Avk => self.billing.avk_fee,
+            crate::db::InterviewKind::Anticancereux => self.billing.anticancereux_fee,
+            crate::db::InterviewKind::Vaccination => self.billing.vaccination_fee,
         }
     }
 }

@@ -3,7 +3,7 @@ members = ["motif", "launcher"]
 
 [package]
 name = "bpm-caddy"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
 description = "Clinical pharmacy workflow & analytics — fast, local, encrypted."
 license-file = "LICENSE"
@@ -22,6 +22,7 @@ typst-pdf = "0.13"
 typst-assets = { version = "0.13", features = ["fonts"] }
 open = "5.4.1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+rfd = "0.15"
 
 [profile.release]
 lto = true

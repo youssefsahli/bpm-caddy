@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-08-24
+
+### Added
+- Three new act kinds complete the conventioned set: accompagnement
+  AVK, accompagnement anticancéreux oraux, and vaccination — each with
+  its own fee, yearly quota, agenda color, and act button (rows now
+  wrap).
+- Drug base grown to ~200 starter entries: oral anticancer drugs
+  (capécitabine, imatinib, CDK4/6, hormonothérapie…), the missing HBPM
+  brands (Innohep, Fraxiparine, Fragmine), Parkinson, antipsychotics,
+  uro/gynéco, os/rhumato, and more counter staples.
+- Database file tools in Options: browse to an existing base with a
+  native file dialog, write a consistent encrypted copy anywhere
+  (VACUUM INTO), or move the base — copy, repoint config, old file
+  kept as a fallback.
+
 ## [0.13.0] - 2026-08-24
 
 ### Added
