@@ -40,7 +40,7 @@ tpl_close = "Fermer"
 
 # --- Recherche patients ---
 search_hint = "Rechercher un patient (recherche floue)…"
-search_totals = "{} patient(s)   ·   {} entretien(s) en cours"
+status_summary = "{} patient(s)   ·   {} entretien(s) en cours   ·   {} médicaments"
 search_born = "   (né(e) le {})"
 search_pending_one = "   ·  1 entretien en cours"
 search_pending_many = "   ·  {} entretiens en cours"
@@ -84,6 +84,7 @@ treat_open_tooltip = "Ouvrir la fiche médicament"
 treat_remove_tooltip = "Retirer ce traitement"
 
 # --- Tableau des entretiens ---
+itv_section = "Entretiens"
 itv_header_kind = "Type"
 itv_header_created = "Créé le"
 itv_header_state = "État"

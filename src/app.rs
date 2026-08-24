@@ -837,16 +837,6 @@ impl App {
                     session.selected = 0;
                     session.new_patient = None;
                 }
-                ui.add_space(4.0);
-                let in_progress: i64 = session.pending.values().sum();
-                ui.label(
-                    egui::RichText::new(trn(
-                        "search_totals",
-                        &[&session.patients.len(), &in_progress],
-                    ))
-                    .size(11.0)
-                    .color(motif::BG_DARK),
-                );
             });
             ui.add_space(12.0);
 
@@ -873,60 +863,68 @@ impl App {
                     session.open_patient(results[session.selected].clone());
                 }
 
-                ui.vertical_centered(|ui| {
-                    for (i, p) in results.iter().enumerate() {
-                        let selected = i == session.selected;
-                        let name = p.full_name();
-                        // Highlight the letters the fuzzy query matched.
-                        // If only the "Last First" orientation matched,
-                        // the row simply shows without highlights.
-                        let indices = fuzzy::score_with_indices(&session.query, &name)
-                            .map(|(_, idx)| idx)
-                            .unwrap_or_default();
-                        let base_color = if selected {
-                            egui::Color32::WHITE
-                        } else {
-                            motif::TEXT
-                        };
-                        let bg = if selected {
-                            motif::ACCENT
-                        } else {
-                            egui::Color32::TRANSPARENT
-                        };
-                        let font = egui::FontId::proportional(15.0);
-                        let plain = egui::TextFormat {
-                            font_id: font.clone(),
-                            color: base_color,
-                            background: bg,
-                            ..Default::default()
-                        };
-                        let matched = egui::TextFormat {
-                            underline: egui::Stroke::new(1.5_f32, base_color),
-                            color: if selected { base_color } else { motif::ACCENT },
-                            ..plain.clone()
-                        };
-                        let mut job = egui::text::LayoutJob::default();
-                        for (ci, ch) in name.chars().enumerate() {
-                            let fmt = if indices.binary_search(&ci).is_ok() {
-                                matched.clone()
+                // Sunken Motif list box, centered, with full-width rows.
+                let avail = ui.available_rect_before_wrap();
+                let w = avail.width().min(620.0);
+                let h = (avail.height() - 14.0).max(140.0);
+                let box_rect = egui::Rect::from_min_size(
+                    egui::pos2(avail.center().x - w / 2.0, avail.top()),
+                    egui::vec2(w, h),
+                );
+                ui.painter().rect_filled(box_rect, 0.0, motif::TROUGH);
+                motif::bevel(ui.painter(), box_rect, false);
+                let builder = egui::UiBuilder::new().max_rect(box_rect.shrink(4.0));
+                ui.allocate_new_ui(builder, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (i, p) in results.iter().enumerate() {
+                            let selected = i == session.selected;
+                            let name = p.full_name();
+                            // Highlight the letters the fuzzy query
+                            // matched (none when only the "Last First"
+                            // orientation matched).
+                            let indices = fuzzy::score_with_indices(&session.query, &name)
+                                .map(|(_, idx)| idx)
+                                .unwrap_or_default();
+                            let base_color = if selected {
+                                egui::Color32::WHITE
                             } else {
-                                plain.clone()
+                                motif::TEXT
                             };
-                            job.append(&ch.to_string(), 0.0, fmt);
+                            let font = egui::FontId::proportional(14.0);
+                            let plain = egui::TextFormat {
+                                font_id: font.clone(),
+                                color: base_color,
+                                ..Default::default()
+                            };
+                            let matched = egui::TextFormat {
+                                underline: egui::Stroke::new(1.5_f32, base_color),
+                                color: if selected { base_color } else { motif::ACCENT },
+                                ..plain.clone()
+                            };
+                            let mut job = egui::text::LayoutJob::default();
+                            for (ci, ch) in name.chars().enumerate() {
+                                let fmt = if indices.binary_search(&ci).is_ok() {
+                                    matched.clone()
+                                } else {
+                                    plain.clone()
+                                };
+                                job.append(&ch.to_string(), 0.0, fmt);
+                            }
+                            let pending = session.pending.get(&p.id).copied().unwrap_or(0);
+                            let mut rest =
+                                trf("search_born", db::format_french_date(&p.birth_date));
+                            match pending {
+                                0 => {}
+                                1 => rest.push_str(tr("search_pending_one")),
+                                n => rest.push_str(&trf("search_pending_many", n)),
+                            }
+                            job.append(&rest, 0.0, plain);
+                            if motif::list_row_job(ui, job, selected).clicked() {
+                                session.open_patient(p.clone());
+                            }
                         }
-                        let pending = session.pending.get(&p.id).copied().unwrap_or(0);
-                        let mut rest = trf("search_born", db::format_french_date(&p.birth_date));
-                        match pending {
-                            0 => {}
-                            1 => rest.push_str(tr("search_pending_one")),
-                            n => rest.push_str(&trf("search_pending_many", n)),
-                        }
-                        job.append(&rest, 0.0, plain);
-                        let row = ui.add(egui::Label::new(job).sense(egui::Sense::click()));
-                        if row.clicked() {
-                            session.open_patient(p.clone());
-                        }
-                    }
+                    });
                 });
             } else if !session.query.trim().is_empty() {
                 // Before offering creation, re-read the patient list once:
@@ -1405,6 +1403,8 @@ impl App {
             }
         }
 
+        ui.add_space(6.0);
+        motif::section(ui, tr("itv_section"));
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut regress: Option<(i64, db::InterviewState)> = None;
@@ -2227,33 +2227,45 @@ impl App {
                 if enter {
                     open_drug = Some(results[session.drug_selected].clone());
                 }
-                for (i, d) in results.iter().enumerate() {
-                    let mut text = d.name.clone();
-                    if !d.dci.is_empty() {
-                        text.push_str(&format!(" ({})", d.dci));
-                    }
-                    if !d.class.is_empty() {
-                        text.push_str(&format!("   ·  {}", d.class));
-                    }
-                    if !d.dosage.is_empty() {
-                        text.push_str(&format!("   ·  {}", d.dosage));
-                    }
-                    if !d.antidote.is_empty() {
-                        text.push_str(&trf("drug_row_antidote", &d.antidote));
-                    }
-                    let label = egui::RichText::new(text).size(15.0);
-                    let label = if i == session.drug_selected {
-                        label
-                            .color(egui::Color32::WHITE)
-                            .background_color(motif::ACCENT)
-                    } else {
-                        label
-                    };
-                    let row = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
-                    if row.clicked() {
-                        open_drug = Some(d.clone());
-                    }
-                }
+                // Sunken Motif list box with full-width rows.
+                let avail = ui.available_rect_before_wrap();
+                let w = avail.width().min(620.0);
+                let h = (avail.height() - 14.0).max(140.0);
+                let box_rect = egui::Rect::from_min_size(
+                    egui::pos2(avail.center().x - w / 2.0, avail.top()),
+                    egui::vec2(w, h),
+                );
+                ui.painter().rect_filled(box_rect, 0.0, motif::TROUGH);
+                motif::bevel(ui.painter(), box_rect, false);
+                let builder = egui::UiBuilder::new().max_rect(box_rect.shrink(4.0));
+                ui.allocate_new_ui(builder, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (i, d) in results.iter().enumerate() {
+                            let mut text = d.name.clone();
+                            if !d.dci.is_empty() {
+                                text.push_str(&format!(" ({})", d.dci));
+                            }
+                            if !d.class.is_empty() {
+                                text.push_str(&format!("   ·  {}", d.class));
+                            }
+                            if !d.dosage.is_empty() {
+                                text.push_str(&format!("   ·  {}", d.dosage));
+                            }
+                            if !d.antidote.is_empty() {
+                                text.push_str(&trf("drug_row_antidote", &d.antidote));
+                            }
+                            let row = motif::list_row(
+                                ui,
+                                egui::RichText::new(text),
+                                i == session.drug_selected,
+                            );
+                            if row.clicked() {
+                                open_drug = Some(d.clone());
+                            }
+                        }
+                    });
+                });
             } else if !session.drug_query.trim().is_empty() {
                 ui.label(tr("drug_no_match"));
                 ui.add_space(8.0);
@@ -2844,6 +2856,38 @@ impl eframe::App for App {
             });
             ui.add_space(4.0);
         });
+
+        // Motif status bar: the at-a-glance numbers and which base this
+        // post is on (multi-post support aid).
+        if let State::Unlocked(session) = &self.state {
+            let in_progress: i64 = session.pending.values().sum();
+            let summary = trn(
+                "status_summary",
+                &[&session.patients.len(), &in_progress, &session.drugs.len()],
+            );
+            let db_file = self
+                .config
+                .db_path()
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(summary)
+                            .size(11.0)
+                            .color(motif::BG_DARK),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(trf("lock_db_path", db_file))
+                                .size(11.0)
+                                .color(motif::BG_DARK),
+                        );
+                    });
+                });
+            });
+        }
 
         if toggle_dashboard {
             if let State::Unlocked(session) = &mut self.state {
