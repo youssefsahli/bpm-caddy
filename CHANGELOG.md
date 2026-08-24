@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-08-24
+
+### Added
+- Conversion tables at the counter ("Tables de conversion" in the drug
+  view): IPP dose equivalences, HBPM usual dosing (curatif /
+  prophylaxie), statine equivalent doses, corticoid anti-inflammatory
+  equivalences, opioid equianalgesia (réf. morphine orale), and
+  benzodiazepine equivalences (Ashton) — each with its caution line,
+  browsable per tab and printable as a two-page A4 reference
+
 ## [0.8.0] - 2026-08-24
 
 ### Added

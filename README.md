@@ -37,6 +37,7 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **CR letter in one click** — each interview generates the report letter to the médecin traitant: pharmacy letterhead, patient, act, known treatments (DCI, class, dosage), synthesis and signature boxes.
 - **Editable PDF templates** — the Typst sources of the interview sheet *and* the CR letter are editable in-app ("Modèle PDF…"), with compile validation and sample previews; no recompilation needed.
 - **Recall-ready** — every drug card lists the patients currently on it, one click from their record.
+- **Conversion tables** — the classic counter references (IPP, HBPM, statines, corticoïdes, équianalgésie opioïdes, benzodiazépines) browsable in-app and printable as an A4 sheet, each with its caution line.
 - **Customizable wording** — every UI string lives in an embedded TOML; drop a `strings.toml` next to `config.toml` to adapt any text (or translate the app) without recompiling.
 - **Old-school X/Motif theme** — the classic `mwm` blue-grey look with square corners and raised/sunken bevels, implemented as a reusable `motif` crate for egui.
 
