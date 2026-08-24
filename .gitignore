@@ -17,3 +17,5 @@ config.toml
 .vscode/
 *.swp
 .DS_Store
+# Personal working notes, not part of the published project.
+ROADMAP.md

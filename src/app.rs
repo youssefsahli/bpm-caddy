@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::config::Config;
+use crate::config::{ActFees, Config};
 use crate::db::{
     self, Appointment, Db, Drug, Interview, InterviewKind, InterviewState, InterviewSummary, Note,
     NoteSubject, Patient,
@@ -87,7 +87,7 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
         }
     }
     let mut out = String::from(
-        "\u{feff}Patient;Téléphone;Naissance;Type;État;Créé le;RDV;Durée (min);\
+        "\u{feff}Patient;Téléphone;Naissance;Type;Thème;Rang;État;Créé le;RDV;Durée (min);\
          Honoraires (€);Facturé (€)\r\n",
     );
     for r in rows {
@@ -95,18 +95,20 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
         // "Honoraires" is the tariff; "Facturé" only counts once the
         // interview is billed, so summing that column matches the
         // dashboard's billed revenue.
-        let fee = config.fee(r.kind);
+        let fee = config.fee(r.kind, r.fee_rank);
         let billed = if r.state == InterviewState::Billed {
             fee
         } else {
             0.0
         };
         out.push_str(&format!(
-            "{};{};{};{};{};{};{};{};{};{}\r\n",
+            "{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
             field(&r.patient_name),
             field(&r.phone),
             db::format_french_date(&r.birth_date),
             r.kind.label(),
+            field(&r.theme),
+            rank_label(r.fee_rank),
             r.state.label(),
             db::format_french_date(&r.created_date),
             r.scheduled_date
@@ -119,6 +121,15 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
         ));
     }
     out
+}
+
+/// French name of an act's rank inside its année d'accompagnement.
+fn rank_label(rank: usize) -> String {
+    match rank {
+        0 => tr("rank_initial").to_owned(),
+        1 => tr("rank_suivi_1").to_owned(),
+        n => trf("rank_suivi_n", n),
+    }
 }
 
 /// A compact dated-notes journal: sunken scroll list ("24/08 14:32 ·
@@ -270,6 +281,10 @@ struct Session {
     confirm_delete: bool,
     /// Two-step delete confirmation for one interview row (by id).
     confirm_delete_itv: Option<i64>,
+    /// Quick act picker (Ctrl+N): open flag and the theme it will stamp
+    /// on the created interview.
+    act_picker: bool,
+    act_theme: String,
     /// A new act refused by the yearly-quota rule: (kind, message),
     /// with an explicit override offered.
     rule_block: Option<(InterviewKind, String)>,
@@ -365,6 +380,8 @@ impl Session {
             edit_patient: None,
             confirm_delete: false,
             confirm_delete_itv: None,
+            act_picker: false,
+            act_theme: String::new(),
             rule_block: None,
             patient_treats: Vec::new(),
             patient_notes: Vec::new(),
@@ -576,6 +593,129 @@ fn kind_color(kind: InterviewKind) -> egui::Color32 {
     }
 }
 
+/// Rank every interview of one patient inside its yearly cycle, keyed
+/// by interview id — the fee slot each act falls into.
+fn interview_ranks(interviews: &[db::Interview]) -> std::collections::HashMap<i64, usize> {
+    let mut by_kind: std::collections::HashMap<InterviewKind, Vec<(i64, String)>> =
+        std::collections::HashMap::new();
+    for itv in interviews {
+        let date = itv.created_at[..10.min(itv.created_at.len())].to_owned();
+        by_kind.entry(itv.kind).or_default().push((itv.id, date));
+    }
+    let mut out = std::collections::HashMap::new();
+    for mut rows in by_kind.into_values() {
+        // The table is newest-first; cycles are computed oldest-first.
+        rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+        let dates: Vec<String> = rows.iter().map(|(_, d)| d.clone()).collect();
+        for ((id, _), rank) in rows.iter().zip(db::cycle_ranks(&dates)) {
+            out.insert(*id, rank);
+        }
+    }
+    out
+}
+
+/// Quick act picker: the nine acts with digit shortcuts and the theme
+/// the new act will carry. Returns the chosen kind (and closes) when a
+/// row is clicked or its digit is pressed.
+fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<InterviewKind> {
+    const DIGITS: [egui::Key; 9] = [
+        egui::Key::Num1,
+        egui::Key::Num2,
+        egui::Key::Num3,
+        egui::Key::Num4,
+        egui::Key::Num5,
+        egui::Key::Num6,
+        egui::Key::Num7,
+        egui::Key::Num8,
+        egui::Key::Num9,
+    ];
+    let mut chosen: Option<InterviewKind> = None;
+    let mut close = false;
+    egui::Window::new(tr("act_picker_title"))
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.label(
+                egui::RichText::new(tr("act_picker_hint"))
+                    .size(11.0)
+                    .color(motif::BG_DARK),
+            );
+            ui.add_space(6.0);
+            egui::Grid::new("act_picker")
+                .num_columns(2)
+                .spacing([10.0, 6.0])
+                .show(ui, |ui| {
+                    for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
+                        if ui
+                            .add_sized(
+                                [190.0, 24.0],
+                                egui::Button::new(format!("{}  ·  {}", i + 1, kind.label()))
+                                    .fill(motif::BG),
+                            )
+                            .clicked()
+                        {
+                            chosen = Some(kind);
+                        }
+                        ui.label(
+                            egui::RichText::new("     ")
+                                .background_color(kind_color(kind))
+                                .size(11.0),
+                        );
+                        ui.end_row();
+                    }
+                });
+            ui.add_space(8.0);
+            theme_combo(ui, "act_picker_theme", &mut session.act_theme);
+            ui.add_space(8.0);
+            if motif::button(ui, tr("tpl_close")).clicked() {
+                close = true;
+            }
+        });
+    for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
+        if ctx.input(|inp| inp.key_pressed(DIGITS[i])) {
+            chosen = Some(kind);
+        }
+    }
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        close = true;
+    }
+    if close || chosen.is_some() {
+        session.act_picker = false;
+    }
+    chosen
+}
+
+/// Thematic drop-down: the standard list plus "no theme" and whatever
+/// free text the row already carries. Returns true when changed.
+fn theme_combo(ui: &mut egui::Ui, id_salt: &str, theme: &mut String) -> bool {
+    let mut changed = false;
+    let shown = if theme.is_empty() {
+        tr("itv_theme_none").to_owned()
+    } else {
+        theme.clone()
+    };
+    egui::ComboBox::from_id_salt(id_salt)
+        .selected_text(egui::RichText::new(shown).size(12.0))
+        .width(190.0)
+        .show_ui(ui, |ui| {
+            if ui
+                .selectable_label(theme.is_empty(), tr("itv_theme_none"))
+                .clicked()
+            {
+                theme.clear();
+                changed = true;
+            }
+            for t in db::THEMES {
+                if ui.selectable_label(theme == t, *t).clicked() {
+                    *theme = (*t).to_owned();
+                    changed = true;
+                }
+            }
+        });
+    changed
+}
+
 pub struct App {
     state: State,
     config: Config,
@@ -612,6 +752,8 @@ pub struct App {
 
 /// In-app editor for `config.toml`.
 struct OptionsEditor {
+    /// Two-step guard on the destructive reset button.
+    confirm_reset: bool,
     cfg: Config,
     /// Text buffer for `[database] path` ("" = default location).
     db_path_text: String,
@@ -744,6 +886,7 @@ impl App {
                 cfg: config.clone(),
                 db_path_text: String::new(),
                 message: None,
+                confirm_reset: false,
             })
         } else {
             None
@@ -1566,8 +1709,17 @@ impl App {
             }
             ui.add_space(10.0);
 
-            // Ctrl+N or the buttons below start a new act (spec 3.1).
-            ui.label(tr("patient_new_interview"));
+            // Ctrl+N opens the quick picker; the buttons below start an
+            // act directly (spec 3.1).
+            ui.horizontal(|ui| {
+                ui.label(tr("patient_new_interview"));
+                if motif::button(ui, tr("act_picker_open"))
+                    .on_hover_text(tr("act_picker_tooltip"))
+                    .clicked()
+                {
+                    session.act_picker = true;
+                }
+            });
             let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
             let mut new_kind: Option<InterviewKind> = None;
             ui.horizontal_wrapped(|ui| {
@@ -1577,8 +1729,11 @@ impl App {
                     }
                 }
             });
-            if ctrl_n && new_kind.is_none() {
-                new_kind = Some(InterviewKind::Bpm);
+            if ctrl_n {
+                session.act_picker = true;
+            }
+            if session.act_picker {
+                new_kind = act_picker_window(ctx, session).or(new_kind);
             }
             if let Some(kind) = new_kind {
                 // Convention rule: N acts per année d'accompagnement,
@@ -1606,8 +1761,12 @@ impl App {
                     }
                     None => {
                         session.rule_block = None;
-                        match session.db.add_interview(patient.id, kind) {
-                            Ok(_) => session.reload_interviews(patient.id),
+                        let theme = session.act_theme.clone();
+                        match session.db.add_interview_themed(patient.id, kind, &theme) {
+                            Ok(_) => {
+                                session.act_theme.clear();
+                                session.reload_interviews(patient.id);
+                            }
                             Err(e) => session.error = Some(e),
                         }
                     }
@@ -1618,8 +1777,12 @@ impl App {
                 ui.colored_label(motif::ALERT, msg.as_str());
                 if motif::button(ui, tr("rule_override")).clicked() {
                     session.rule_block = None;
-                    match session.db.add_interview(patient.id, kind) {
-                        Ok(_) => session.reload_interviews(patient.id),
+                    let theme = session.act_theme.clone();
+                    match session.db.add_interview_themed(patient.id, kind, &theme) {
+                        Ok(_) => {
+                            session.act_theme.clear();
+                            session.reload_interviews(patient.id);
+                        }
                         Err(e) => session.error = Some(e),
                     }
                 }
@@ -1731,7 +1894,12 @@ impl App {
         // (interview id, new date, the date this PC saw — CAS expected).
         let mut set_date: Option<(i64, Option<String>, Option<String>)> = None;
         let mut delete_itv: Option<(i64, db::InterviewState)> = None;
-        motif::column(ui, 760.0, |ui| {
+        // (interview id, new theme, the theme this PC saw — CAS).
+        let mut set_theme: Option<(i64, String, String)> = None;
+        // Rank of each act inside its yearly cycle, per kind — this is
+        // what selects the fee slot (initial / 1er / 2e suivi).
+        let ranks = interview_ranks(&interviews);
+        motif::column(ui, 900.0, |ui| {
             motif::section(ui, tr("itv_section"));
             ui.add_space(4.0);
             // Long histories must not push the table off the card.
@@ -1739,12 +1907,13 @@ impl App {
                 .max_height(ui.available_height() - 20.0)
                 .show(ui, |ui| {
                     egui::Grid::new("interviews")
-                        .num_columns(8)
+                        .num_columns(9)
                         .spacing([8.0, 8.0])
                         .show(ui, |ui| {
                             if !interviews.is_empty() {
                                 for header in [
                                     tr("itv_header_kind"),
+                                    tr("itv_header_theme"),
                                     tr("itv_header_created"),
                                     tr("itv_header_state"),
                                     tr("itv_header_advance"),
@@ -1762,7 +1931,23 @@ impl App {
                                 ui.end_row();
                             }
                             for itv in &interviews {
-                                ui.label(egui::RichText::new(itv.kind.label()).strong());
+                                let rank = ranks.get(&itv.id).copied().unwrap_or(0);
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new(itv.kind.label()).strong());
+                                    ui.label(
+                                        egui::RichText::new(rank_label(rank))
+                                            .size(10.0)
+                                            .color(motif::BG_DARK),
+                                    )
+                                    .on_hover_text(trf(
+                                        "itv_fee_tooltip",
+                                        format!("{:.2} €", config.fee(itv.kind, rank)),
+                                    ));
+                                });
+                                let mut theme = itv.theme.clone();
+                                if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
+                                    set_theme = Some((itv.id, theme, itv.theme.clone()));
+                                }
                                 ui.label(db::format_french_date(
                                     &itv.created_at[..10.min(itv.created_at.len())],
                                 ))
@@ -1873,6 +2058,19 @@ impl App {
                 });
         });
         let stale_msg = tr("itv_stale");
+        if let Some((id, theme, expected)) = set_theme {
+            match session.db.set_theme(id, &theme, &expected) {
+                Ok(true) => {
+                    session.error = None;
+                    session.reload_interviews(patient.id);
+                }
+                Ok(false) => {
+                    session.reload_interviews(patient.id);
+                    session.error = Some(stale_msg.to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
         if let Some((id, state)) = advance {
             match session.db.advance_interview(id, state) {
                 Ok(true) => {
@@ -3042,13 +3240,13 @@ impl App {
             .summaries
             .iter()
             .filter(|s| s.state == InterviewState::Billed)
-            .map(|s| config.fee(s.kind))
+            .map(|s| config.fee(s.kind, s.fee_rank))
             .sum();
         let pending: f64 = session
             .summaries
             .iter()
             .filter(|s| s.state != InterviewState::Billed)
-            .map(|s| config.fee(s.kind))
+            .map(|s| config.fee(s.kind, s.fee_rank))
             .sum();
         let billed_count = session
             .summaries
@@ -3268,13 +3466,13 @@ impl App {
                     .summaries
                     .iter()
                     .filter(|s| s.state == InterviewState::Billed && &s.updated_month == m)
-                    .map(|s| config.fee(s.kind))
+                    .map(|s| config.fee(s.kind, s.fee_rank))
                     .sum();
                 let p: f64 = session
                     .summaries
                     .iter()
                     .filter(|s| s.state != InterviewState::Billed && &s.created_month == m)
-                    .map(|s| config.fee(s.kind))
+                    .map(|s| config.fee(s.kind, s.fee_rank))
                     .sum();
                 (m.clone(), b, p)
             })
@@ -3498,6 +3696,7 @@ impl eframe::App for App {
                                     .map(|p| p.display().to_string())
                                     .unwrap_or_default(),
                                 message: None,
+                                confirm_reset: false,
                             })
                         };
                     }
@@ -3827,15 +4026,20 @@ impl eframe::App for App {
         let mut saved_cfg: Option<Config> = None;
         // (target, also_point_config_at_it) requested from the DB tools.
         let mut db_export: Option<(std::path::PathBuf, bool)> = None;
+        let mut db_seed = false;
+        let mut db_reset = false;
         if let Some(editor) = &mut self.options {
+            // Fit the dialog to the window: the options list is long,
+            // and a fixed height clipped the last rows on small screens.
+            let avail = ctx.screen_rect().height();
             egui::Window::new(tr("opts_title"))
                 .collapsible(false)
                 .resizable(true)
-                .default_size([560.0, 560.0])
+                .default_size([600.0, (avail - 80.0).clamp(420.0, 900.0)])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
                     egui::ScrollArea::vertical()
-                        .max_height(470.0)
+                        .max_height((avail - 170.0).max(300.0))
                         .show(ui, |ui| {
                             let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
                             motif::section(ui, tr("opts_pharmacy"));
@@ -3950,6 +4154,35 @@ impl eframe::App for App {
                                     }
                                 }
                             });
+                            // Maintenance: complete a base created before
+                            // the starter list grew, or wipe everything
+                            // (debug/demo — two clicks, never one).
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, tr("opts_db_seed")).clicked() {
+                                    db_seed = true;
+                                }
+                                let danger = if editor.confirm_reset {
+                                    tr("opts_db_reset_confirm")
+                                } else {
+                                    tr("opts_db_reset")
+                                };
+                                let btn = ui.add(
+                                    egui::Button::new(
+                                        egui::RichText::new(danger)
+                                            .color(egui::Color32::WHITE)
+                                            .size(12.0),
+                                    )
+                                    .fill(motif::ALERT),
+                                );
+                                if btn.clicked() {
+                                    if editor.confirm_reset {
+                                        db_reset = true;
+                                        editor.confirm_reset = false;
+                                    } else {
+                                        editor.confirm_reset = true;
+                                    }
+                                }
+                            });
                             ui.label(
                                 egui::RichText::new(tr("opts_db_note"))
                                     .size(11.0)
@@ -3961,30 +4194,40 @@ impl eframe::App for App {
                                 .num_columns(4)
                                 .spacing([12.0, 6.0])
                                 .show(ui, |ui| {
-                                    let fees: [(&str, &mut f64); 9] = [
-                                        ("BPM", &mut editor.cfg.billing.bpm_fee),
-                                        ("AOD", &mut editor.cfg.billing.aod_fee),
-                                        ("AVK", &mut editor.cfg.billing.avk_fee),
-                                        ("Asthme", &mut editor.cfg.billing.asthme_fee),
-                                        (
-                                            "Anticancéreux",
-                                            &mut editor.cfg.billing.anticancereux_fee,
-                                        ),
-                                        ("TROD angine", &mut editor.cfg.billing.trod_angine_fee),
-                                        ("TROD cystite", &mut editor.cfg.billing.trod_cystite_fee),
-                                        ("Vaccination", &mut editor.cfg.billing.vaccination_fee),
-                                        ("Prévention", &mut editor.cfg.billing.prevention_fee),
+                                    let fees: [(&str, &mut ActFees); 9] = [
+                                        ("BPM", &mut editor.cfg.billing.bpm),
+                                        ("AOD", &mut editor.cfg.billing.aod),
+                                        ("AVK", &mut editor.cfg.billing.avk),
+                                        ("Asthme", &mut editor.cfg.billing.asthme),
+                                        ("Anticancéreux", &mut editor.cfg.billing.anticancereux),
+                                        ("TROD angine", &mut editor.cfg.billing.trod_angine),
+                                        ("TROD cystite", &mut editor.cfg.billing.trod_cystite),
+                                        ("Vaccination", &mut editor.cfg.billing.vaccination),
+                                        ("Prévention", &mut editor.cfg.billing.prevention),
                                     ];
-                                    for (i, (label, fee)) in fees.into_iter().enumerate() {
+                                    ui.label("");
+                                    for h in [
+                                        tr("opts_fee_initial"),
+                                        tr("opts_fee_suivi1"),
+                                        tr("opts_fee_suivi2"),
+                                    ] {
+                                        ui.label(dim(h));
+                                    }
+                                    ui.end_row();
+                                    for (label, fees) in fees {
                                         ui.label(dim(label));
-                                        ui.add(
-                                            egui::DragValue::new(fee)
-                                                .range(0.0..=500.0)
-                                                .suffix(" €"),
-                                        );
-                                        if i % 2 == 1 {
-                                            ui.end_row();
+                                        for slot in [
+                                            &mut fees.initial,
+                                            &mut fees.suivi_1,
+                                            &mut fees.suivi_2,
+                                        ] {
+                                            ui.add(
+                                                egui::DragValue::new(slot)
+                                                    .range(0.0..=500.0)
+                                                    .suffix(" €"),
+                                            );
                                         }
+                                        ui.end_row();
                                     }
                                 });
                             ui.add_space(8.0);
@@ -4055,6 +4298,50 @@ impl eframe::App for App {
                         ui.colored_label(color, msg.as_str());
                     }
                 });
+        }
+        if db_seed || db_reset {
+            let result = if let State::Unlocked(session) = &mut self.state {
+                if db_reset {
+                    session
+                        .db
+                        .reset_all_data()
+                        .map(|()| (true, db::STARTER_DRUG_COUNT))
+                } else {
+                    session.db.seed_missing_drugs().map(|n| (false, n))
+                }
+            } else {
+                Err(tr("opts_db_locked").to_owned())
+            };
+            match result {
+                Ok((was_reset, n)) => {
+                    if let State::Unlocked(session) = &mut self.state {
+                        if let Ok(list) = session.db.patients() {
+                            session.set_patients(list);
+                        }
+                        if let Ok(list) = session.db.drugs() {
+                            session.drugs = list;
+                        }
+                        session.viewing = None;
+                        session.viewing_interviews.clear();
+                        session.drug_selected = 0;
+                        session.refresh_dashboard();
+                    }
+                    if let Some(editor) = &mut self.options {
+                        editor.message = Some(if was_reset {
+                            (false, trf("opts_db_reset_done", n))
+                        } else if n == 0 {
+                            (false, tr("opts_db_seed_none").to_owned())
+                        } else {
+                            (false, trf("opts_db_seed_done", n))
+                        });
+                    }
+                }
+                Err(e) => {
+                    if let Some(editor) = &mut self.options {
+                        editor.message = Some((true, e));
+                    }
+                }
+            }
         }
         if let Some((target, point)) = db_export {
             let current = self.config.db_path();
@@ -4145,14 +4432,18 @@ mod tests {
             created_date: "2026-08-23".to_owned(),
             scheduled_date: Some("2026-09-01".to_owned()),
             duration_minutes: 45,
+            theme: "Observance".to_owned(),
+            fee_rank: 0,
         }];
         let csv = interviews_csv(&rows, &Config::default());
         // BOM so Excel decodes UTF-8 accents, semicolons, CRLF.
         assert!(csv.starts_with('\u{feff}'));
-        assert!(csv.contains("Patient;Téléphone;Naissance;Type"));
+        assert!(csv.contains("Patient;Téléphone;Naissance;Type;Thème;Rang"));
         // The tricky name is quoted with doubled inner quotes.
-        assert!(csv
-            .contains("\"Jean; \"\"Le Grand\"\" Dupont\";06 12 34 56 78;03/07/1958;BPM;Facturé;"));
+        assert!(csv.contains(
+            "\"Jean; \"\"Le Grand\"\" Dupont\";06 12 34 56 78;03/07/1958;BPM;Observance;\
+             Initial;Facturé;"
+        ));
         // Billed row: tariff and billed columns both carry the fee.
         assert!(csv.contains("23/08/2026;01/09/2026;45;60,00;60,00\r\n"));
         // Unbilled row: the "Facturé" column stays at zero.
@@ -4160,6 +4451,12 @@ mod tests {
         pending.state = InterviewState::Performed;
         let csv = interviews_csv(&[pending], &Config::default());
         assert!(csv.contains(";60,00;0,00\r\n"));
+        // A follow-up act of the same cycle is billed at the suivi rate.
+        let mut suivi = rows[0].clone();
+        suivi.fee_rank = 1;
+        let csv = interviews_csv(&[suivi], &Config::default());
+        assert!(csv.contains(";1er suivi;"));
+        assert!(csv.contains(";20,00;20,00\r\n"));
     }
 
     #[test]

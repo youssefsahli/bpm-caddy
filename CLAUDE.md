@@ -42,8 +42,9 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_DB=<path>` — database path override
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
-- `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|template`
+- `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|template|options|tables|carnet`
   — land on a specific view (screenshots, e2e)
+- `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_SEED_DB=<path> cargo test seed_demo` — create a demo database
 - `BPM_CADDY_TEST_PDF_OUT=<dir> cargo test pdf` — write the sample PDF
 

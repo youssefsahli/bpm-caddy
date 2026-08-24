@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS interviews (
     state       TEXT NOT NULL DEFAULT 'IDENTIFIED',
     duration_minutes INTEGER NOT NULL DEFAULT 0,
     scheduled_date TEXT,
+    theme       TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -77,6 +78,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patients ADD COLUMN physician TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN email TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN address TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE interviews ADD COLUMN theme TEXT NOT NULL DEFAULT ''",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -138,7 +140,7 @@ impl InterviewState {
 }
 
 /// Act kinds billable at the counter.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum InterviewKind {
     Bpm,
     Aod,
@@ -203,6 +205,19 @@ impl InterviewKind {
     }
 }
 
+/// The classic entretien thematics, offered as a quick pick on each
+/// interview row (free choice — any kind can use any theme).
+pub const THEMES: &[&str] = &[
+    "Initiation / bon usage",
+    "Observance",
+    "Biologie / INR",
+    "Effets indésirables",
+    "Interactions",
+    "Technique d'inhalation",
+    "Vie quotidienne / diététique",
+    "Automédication",
+];
+
 /// Dashboard aggregate: one row per interview, month-granular.
 #[derive(Clone, Debug)]
 pub struct InterviewSummary {
@@ -213,6 +228,9 @@ pub struct InterviewSummary {
     /// `YYYY-MM` of the last state change — used to place billed revenue.
     pub updated_month: String,
     pub duration_minutes: i64,
+    /// 0-based rank of this act inside its yearly cycle (0 = entretien
+    /// initial) — selects the fee slot.
+    pub fee_rank: usize,
 }
 
 /// One interview joined with its patient, for the CSV export.
@@ -230,6 +248,9 @@ pub struct ExportRow {
     /// ISO `YYYY-MM-DD`, when planned.
     pub scheduled_date: Option<String>,
     pub duration_minutes: i64,
+    pub theme: String,
+    /// See [`InterviewSummary::fee_rank`].
+    pub fee_rank: usize,
 }
 
 /// A planned interview with the patient it belongs to, for the
@@ -253,6 +274,7 @@ pub struct Interview {
     pub duration_minutes: i64,
     /// ISO `YYYY-MM-DD`, set when the interview is scheduled.
     pub scheduled_date: Option<String>,
+    pub theme: String,
     pub created_at: String,
 }
 
@@ -356,6 +378,9 @@ impl Note {
 
 /// (brand name, DCI, therapeutic class, textbook antidote or ""). See
 /// [`Db::seed_drugs_if_empty`].
+/// How many drugs a fresh base starts with.
+pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
+
 const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     // Anticoagulants / antiagrégants
     ("Eliquis", "apixaban", "AOD", "Andexanet alfa"),
@@ -1121,7 +1146,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, kind, state, duration_minutes, scheduled_date, created_at
+                "SELECT id, kind, state, duration_minutes, scheduled_date, theme, created_at
                  FROM interviews WHERE patient_id = ?1 ORDER BY created_at DESC, id DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -1134,17 +1159,19 @@ impl Db {
                     r.get::<_, i64>(3)?,
                     r.get::<_, Option<String>>(4)?,
                     r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, kind, state, duration_minutes, scheduled_date, created_at) =
+            let (id, kind, state, duration_minutes, scheduled_date, theme, created_at) =
                 row.map_err(|e| e.to_string())?;
             out.push(Interview {
                 id,
                 duration_minutes,
                 scheduled_date,
+                theme,
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 state: InterviewState::parse(&state)
@@ -1155,11 +1182,23 @@ impl Db {
         Ok(out)
     }
 
+    #[cfg(test)]
     pub fn add_interview(&self, patient_id: i64, kind: InterviewKind) -> Result<i64, String> {
+        self.add_interview_themed(patient_id, kind, "")
+    }
+
+    /// Create an interview with its thematic already chosen (the quick
+    /// picker sets both at once).
+    pub fn add_interview_themed(
+        &self,
+        patient_id: i64,
+        kind: InterviewKind,
+        theme: &str,
+    ) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO interviews (patient_id, kind) VALUES (?1, ?2)",
-                (patient_id, kind.as_str()),
+                "INSERT INTO interviews (patient_id, kind, theme) VALUES (?1, ?2, ?3)",
+                (patient_id, kind.as_str(), theme),
             )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
@@ -1228,6 +1267,45 @@ impl Db {
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(inserted)
+    }
+
+    /// Insert every starter drug the base does not already have (by
+    /// brand name) — completes a base created before the starter list
+    /// existed or grew. Returns how many were added.
+    pub fn seed_missing_drugs(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut inserted = 0;
+        for (name, dci, class, antidote) in STARTER_DRUGS {
+            inserted += tx
+                .execute(
+                    "INSERT INTO drugs (name, dci, class, antidote)
+                     SELECT ?1, ?2, ?3, ?4
+                     WHERE NOT EXISTS (SELECT 1 FROM drugs WHERE name = ?1)",
+                    (name, dci, class, antidote),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(inserted)
+    }
+
+    /// Debug/demo helper: erase every row of every table, then reseed
+    /// the starter drugs. The schema, password and file stay unchanged.
+    pub fn reset_all_data(&self) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        for table in ["notes", "patient_drugs", "interviews", "patients", "drugs"] {
+            tx.execute(&format!("DELETE FROM {table}"), [])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        self.seed_drugs_if_empty()?;
+        Ok(())
     }
 
     pub fn add_drug(&self, name: &str) -> Result<i64, String> {
@@ -1402,7 +1480,7 @@ impl Db {
             .prepare(
                 "SELECT p.first_name || ' ' || p.last_name, p.phone, p.birth_date, i.kind,
                         i.state, substr(i.created_at, 1, 10), i.scheduled_date,
-                        i.duration_minutes
+                        i.duration_minutes, i.theme, i.patient_id
                  FROM interviews i JOIN patients p ON p.id = i.patient_id
                  ORDER BY i.created_at, i.id",
             )
@@ -1418,10 +1496,13 @@ impl Db {
                     r.get::<_, String>(5)?,
                     r.get::<_, Option<String>>(6)?,
                     r.get::<_, i64>(7)?,
+                    r.get::<_, String>(8)?,
+                    r.get::<_, i64>(9)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
+        let mut keys = Vec::new();
         for row in rows {
             let (
                 patient_name,
@@ -1432,7 +1513,12 @@ impl Db {
                 created_date,
                 scheduled_date,
                 minutes,
+                theme,
+                patient_id,
             ) = row.map_err(|e| e.to_string())?;
+            let kind = InterviewKind::parse(&kind)
+                .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?;
+            keys.push((patient_id, kind, created_date.clone()));
             out.push(ExportRow {
                 patient_name,
                 phone,
@@ -1440,11 +1526,15 @@ impl Db {
                 created_date,
                 scheduled_date,
                 duration_minutes: minutes,
-                kind: InterviewKind::parse(&kind)
-                    .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
+                theme,
+                kind,
                 state: InterviewState::parse(&state)
                     .ok_or_else(|| format!("état d'entretien inconnu : {state}"))?,
+                fee_rank: 0,
             });
+        }
+        for (i, rank) in fee_ranks(&keys) {
+            out[i].fee_rank = rank;
         }
         Ok(out)
     }
@@ -1496,8 +1586,8 @@ impl Db {
             .conn
             .prepare(
                 "SELECT kind, state, substr(created_at, 1, 7), substr(updated_at, 1, 7),
-                        duration_minutes
-                 FROM interviews",
+                        duration_minutes, patient_id, substr(created_at, 1, 10)
+                 FROM interviews ORDER BY created_at, id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -1508,24 +1598,46 @@ impl Db {
                     r.get::<_, String>(2)?,
                     r.get::<_, String>(3)?,
                     r.get::<_, i64>(4)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, String>(6)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
+        let mut keys = Vec::new();
         for row in rows {
-            let (kind, state, created_month, updated_month, duration_minutes) =
+            let (kind, state, created_month, updated_month, duration_minutes, patient, date) =
                 row.map_err(|e| e.to_string())?;
+            let kind = InterviewKind::parse(&kind)
+                .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?;
+            keys.push((patient, kind, date));
             out.push(InterviewSummary {
                 duration_minutes,
-                kind: InterviewKind::parse(&kind)
-                    .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
+                kind,
                 state: InterviewState::parse(&state)
                     .ok_or_else(|| format!("état d'entretien inconnu : {state}"))?,
                 created_month,
                 updated_month,
+                fee_rank: 0,
             });
         }
+        for (i, rank) in fee_ranks(&keys) {
+            out[i].fee_rank = rank;
+        }
         Ok(out)
+    }
+
+    /// Set the thematic of an interview. Compare-and-set on the theme
+    /// this PC saw. Returns `false` when stale.
+    pub fn set_theme(&self, id: i64, theme: &str, expected: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews SET theme = ?1 WHERE id = ?2 AND theme = ?3",
+                (theme, id, expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
     }
 
     /// Remove a single interview (added by mistake). Compare-and-set on
@@ -1755,6 +1867,49 @@ pub fn add_one_year(iso: &str) -> String {
 /// kind. Returns `None` when a new act today is allowed, or
 /// `Some(next_allowed_iso)` when the quota is reached. `per_year == 0`
 /// disables the rule.
+/// Rank each act of a (patient, kind) group inside its yearly cycle:
+/// 0 = entretien initial of the cycle, 1 = premier suivi, … Cycles
+/// follow the same segmentation as [`yearly_rule_next_allowed`]: a new
+/// cycle starts at the first act at least 12 months after the previous
+/// cycle's start. Input rows must be in ascending date order per group;
+/// returns `(row_index, rank)` pairs.
+fn fee_ranks(keys: &[(i64, InterviewKind, String)]) -> Vec<(usize, usize)> {
+    let mut groups: std::collections::HashMap<(i64, InterviewKind), Vec<(usize, String)>> =
+        std::collections::HashMap::new();
+    for (i, (patient, kind, date)) in keys.iter().enumerate() {
+        groups
+            .entry((*patient, *kind))
+            .or_default()
+            .push((i, date.clone()));
+    }
+    let mut out = Vec::with_capacity(keys.len());
+    for rows in groups.into_values() {
+        let dates: Vec<String> = rows.iter().map(|(_, d)| d.clone()).collect();
+        for ((i, _), rank) in rows.iter().zip(cycle_ranks(&dates)) {
+            out.push((*i, rank));
+        }
+    }
+    out
+}
+
+/// The in-cycle rank (0-based) of each date of one group, ascending.
+pub fn cycle_ranks(dates: &[String]) -> Vec<usize> {
+    let mut out = Vec::with_capacity(dates.len());
+    let mut cycle_start: Option<String> = None;
+    let mut rank = 0usize;
+    for d in dates {
+        match &cycle_start {
+            Some(start) if *d < add_one_year(start) => rank += 1,
+            _ => {
+                cycle_start = Some(d.clone());
+                rank = 0;
+            }
+        }
+        out.push(rank);
+    }
+    out
+}
+
 pub fn yearly_rule_next_allowed(dates: &[String], today: &str, per_year: u32) -> Option<String> {
     if per_year == 0 || dates.is_empty() {
         return None;
@@ -2028,6 +2183,96 @@ mod tests {
             db.interviews_for(pid).unwrap()[0].state,
             InterviewState::Identified
         );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn cycle_ranks_number_acts_within_each_yearly_cycle() {
+        // Three acts in one année d'accompagnement, then a new cycle
+        // (≥ 12 months after the first act of the previous one).
+        let dates: Vec<String> = [
+            "2026-01-10",
+            "2026-04-10",
+            "2026-09-10",
+            "2027-02-01",
+            "2027-06-01",
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect();
+        assert_eq!(cycle_ranks(&dates), vec![0, 1, 2, 0, 1]);
+        // The very first act of a base is always the entretien initial.
+        assert_eq!(cycle_ranks(&["2026-08-24".to_owned()]), vec![0]);
+        assert!(cycle_ranks(&[]).is_empty());
+    }
+
+    #[test]
+    fn themes_are_compare_and_set_and_reach_the_export() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-theme-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("theme.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let id = db
+            .add_interview_themed(pid, InterviewKind::Bpm, "Observance")
+            .unwrap();
+        assert_eq!(db.interviews_for(pid).unwrap()[0].theme, "Observance");
+        // A write from a stale view is rejected, not applied.
+        assert!(!db.set_theme(id, "Interactions", "Biologie / INR").unwrap());
+        assert!(db.set_theme(id, "Interactions", "Observance").unwrap());
+        let rows = db.export_rows().unwrap();
+        assert_eq!(rows[0].theme, "Interactions");
+        assert_eq!(rows[0].fee_rank, 0);
+        // A second act of the same cycle is a suivi, and the summaries
+        // agree with the export.
+        db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let mut ranks: Vec<usize> = db
+            .export_rows()
+            .unwrap()
+            .iter()
+            .map(|r| r.fee_rank)
+            .collect();
+        ranks.sort_unstable();
+        assert_eq!(ranks, vec![0, 1]);
+        let mut ranks: Vec<usize> = db
+            .interview_summaries()
+            .unwrap()
+            .iter()
+            .map(|s| s.fee_rank)
+            .collect();
+        ranks.sort_unstable();
+        assert_eq!(ranks, vec![0, 1]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn reset_clears_everything_and_reseeds_the_drugs() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-reset-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("reset.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        db.add_note(NoteSubject::Patient, pid, "YS", "note")
+            .unwrap();
+        db.seed_drugs_if_empty().unwrap();
+        // A base with only a couple of drugs left is completed in place.
+        db.delete_drug(
+            db.drugs().unwrap()[0].id,
+            &db.drugs().unwrap()[0].name.clone(),
+        )
+        .unwrap();
+        assert_eq!(db.seed_missing_drugs().unwrap(), 1);
+
+        db.reset_all_data().unwrap();
+        assert!(db.patients().unwrap().is_empty());
+        assert!(db.interviews_for(pid).unwrap().is_empty());
+        assert!(db.notes_for(NoteSubject::Patient, pid).unwrap().is_empty());
+        assert_eq!(db.drugs().unwrap().len(), STARTER_DRUG_COUNT);
 
         let _ = std::fs::remove_file(&path);
     }
@@ -2423,6 +2668,7 @@ mod tests {
                 4,
                 45,
                 None,
+                "Initiation / bon usage",
             ),
             (
                 "Martin",
@@ -2432,6 +2678,7 @@ mod tests {
                 2,
                 50,
                 None,
+                "Observance",
             ),
             (
                 "Lefèvre",
@@ -2441,6 +2688,7 @@ mod tests {
                 1,
                 30,
                 Some(("+2 days", "06 12 34 56 78")),
+                "Biologie / INR",
             ),
             (
                 "Bernard",
@@ -2450,6 +2698,7 @@ mod tests {
                 0,
                 0,
                 Some(("-3 days", "07 98 76 54 32")),
+                "Technique d'inhalation",
             ),
             (
                 "Moreau",
@@ -2459,6 +2708,7 @@ mod tests {
                 3,
                 35,
                 None,
+                "Effets indésirables",
             ),
         ];
         // The starter base, plus one detailed card for the screenshots.
@@ -2475,9 +2725,9 @@ mod tests {
             db.update_drug(&card, &base).unwrap();
         }
 
-        for (last, first, dob, kind, advances, minutes, rdv) in seed {
+        for (last, first, dob, kind, advances, minutes, rdv, theme) in seed {
             let pid = db.add_patient(last, first, dob).unwrap();
-            let iid = db.add_interview(pid, kind).unwrap();
+            let iid = db.add_interview_themed(pid, kind, theme).unwrap();
             let mut state = InterviewState::Identified;
             for _ in 0..advances {
                 db.advance_interview(iid, state).unwrap();
@@ -2518,6 +2768,14 @@ mod tests {
                         }
                     }
                 }
+                // A second BPM in the same année d'accompagnement, so the
+                // demo shows a suivi act (and its lower fee).
+                let suivi = db
+                    .add_interview_themed(pid, InterviewKind::Bpm, "Observance")
+                    .unwrap();
+                db.advance_interview(suivi, InterviewState::Identified)
+                    .unwrap();
+                db.set_duration(suivi, 20, 0).unwrap();
                 db.add_note(
                     NoteSubject::Patient,
                     pid,
