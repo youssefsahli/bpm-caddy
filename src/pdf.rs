@@ -37,13 +37,14 @@ const DEFAULT_TEMPLATE: &str = r#"
 #box(width: 100%, stroke: 0.8pt, radius: 5pt, inset: 9pt)[
   #text(weight: "bold")[Patient :] {{PATIENT_NAME}} \
   #text(weight: "bold")[Date de naissance :] {{BIRTH_DATE}} \
-  #text(weight: "bold")[Date de l'entretien :] {{DATE}}
+  #text(weight: "bold")[Date de l'entretien :] {{DATE}} \
+  #text(weight: "bold")[Thème :] {{THEME}}
 ]
 
-#note-box("Traitements en cours", 3.4cm)
-#note-box("Observance et difficultés rencontrées", 3.4cm)
-#note-box("Points d'attention / interactions", 3.4cm)
-#note-box("Conclusion et plan d'action", 3.6cm)
+#note-box("Traitements en cours", 3.2cm)
+#note-box("Observance et difficultés rencontrées", 3.2cm)
+#note-box("Points d'attention / interactions", 3.2cm)
+#note-box("Conclusion et plan d'action", 3.4cm)
 
 #v(1fr)
 #grid(columns: (1fr, 1fr), gutter: 1cm,
@@ -72,7 +73,8 @@ const DEFAULT_CR_TEMPLATE: &str = r#"
 #v(8mm)
 #align(right)[Le {{DATE}}]
 #v(4mm)
-#text(weight: "bold")[Objet : {{KIND}} — {{PATIENT_NAME}} (né(e) le {{BIRTH_DATE}})]
+#text(weight: "bold")[Objet : {{KIND}} — {{PATIENT_NAME}} (né(e) le {{BIRTH_DATE}})] \
+#text(weight: "bold")[Thème de l'entretien :] {{THEME}}
 #v(4mm)
 Docteur,
 
@@ -173,6 +175,7 @@ pub fn open_interview_sheet(
     patient: &Patient,
     kind: InterviewKind,
     today: &str,
+    theme: &str,
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
@@ -181,7 +184,7 @@ pub fn open_interview_sheet(
     } else {
         DEFAULT_TEMPLATE.to_owned()
     };
-    let filled = fill_interview_template(&template, patient, kind, today);
+    let filled = fill_interview_template(&template, patient, kind, today, theme);
 
     let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
     compile_and_open(filled, &stem)
@@ -211,6 +214,7 @@ pub fn check_template(template: &str) -> Result<(), String> {
         &sample_patient(),
         InterviewKind::Bpm,
         "24/08/2026",
+        "Observance",
     );
     let world = PdfWorld::new(filled);
     typst::compile::<PagedDocument>(&world)
@@ -227,6 +231,7 @@ pub fn preview_template(template: &str) -> Result<PathBuf, String> {
         &sample_patient(),
         InterviewKind::Bpm,
         "24/08/2026",
+        "Observance",
     );
     compile_and_open(filled, "apercu")
 }
@@ -261,11 +266,13 @@ fn treatments_markup(treats: &[Drug]) -> String {
 }
 
 /// Substitute the CR-letter placeholders, all values escaped.
+#[allow(clippy::too_many_arguments)]
 fn fill_cr_template(
     template: &str,
     patient: &Patient,
     kind: InterviewKind,
     date: &str,
+    theme: &str,
     treats: &[Drug],
     pharmacy: &PharmacyConfig,
 ) -> String {
@@ -305,16 +312,22 @@ fn fill_cr_template(
         )
         .replace("{{KIND}}", &format!("#{}", typst_str(kind.label())))
         .replace("{{DATE}}", &format!("#{}", typst_str(date)))
+        .replace(
+            "{{THEME}}",
+            &format!("#{}", typst_str(theme_or_dash(theme))),
+        )
         .replace("{{TREATMENTS}}", &treatments_markup(treats))
 }
 
 /// Compile the CR letter for a patient and open it in the OS viewer.
 /// `template_path` behaves like the interview sheet's: the file when it
 /// exists, the embedded default otherwise.
+#[allow(clippy::too_many_arguments)]
 pub fn open_cr_letter(
     patient: &Patient,
     kind: InterviewKind,
     date: &str,
+    theme: &str,
     treats: &[Drug],
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
@@ -325,7 +338,7 @@ pub fn open_cr_letter(
     } else {
         DEFAULT_CR_TEMPLATE.to_owned()
     };
-    let filled = fill_cr_template(&template, patient, kind, date, treats, pharmacy);
+    let filled = fill_cr_template(&template, patient, kind, date, theme, treats, pharmacy);
     compile_and_open(filled, &format!("cr_{}", patient.id))
 }
 
@@ -363,6 +376,7 @@ pub fn check_cr_template(template: &str) -> Result<(), String> {
         &sample_patient(),
         InterviewKind::Bpm,
         "24/08/2026",
+        "Observance",
         &sample_treatments(),
         &sample_pharmacy(),
     );
@@ -380,6 +394,7 @@ pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
         &sample_patient(),
         InterviewKind::Bpm,
         "24/08/2026",
+        "Observance",
         &sample_treatments(),
         &sample_pharmacy(),
     );
@@ -489,6 +504,7 @@ fn fill_interview_template(
     patient: &Patient,
     kind: InterviewKind,
     today: &str,
+    theme: &str,
 ) -> String {
     template
         .replace(
@@ -504,6 +520,19 @@ fn fill_interview_template(
         )
         .replace("{{KIND}}", &format!("#{}", typst_str(kind.label())))
         .replace("{{DATE}}", &format!("#{}", typst_str(today)))
+        .replace(
+            "{{THEME}}",
+            &format!("#{}", typst_str(theme_or_dash(theme))),
+        )
+}
+
+/// An empty thematic prints as a dash rather than a blank.
+fn theme_or_dash(theme: &str) -> &str {
+    if theme.trim().is_empty() {
+        "—"
+    } else {
+        theme.trim()
+    }
 }
 
 /// Build the printable list of upcoming appointments (date, patient,
@@ -564,8 +593,13 @@ mod tests {
             birth_date: "1958-07-03".to_owned(),
             ..Default::default()
         };
-        let filled =
-            fill_interview_template(DEFAULT_TEMPLATE, &patient, InterviewKind::Bpm, "22/08/2026");
+        let filled = fill_interview_template(
+            DEFAULT_TEMPLATE,
+            &patient,
+            InterviewKind::Bpm,
+            "22/08/2026",
+            "Initiation / bon usage",
+        );
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
             .output
@@ -614,6 +648,7 @@ mod tests {
             &patient,
             InterviewKind::Prevention,
             "24/08/2026",
+            "Prévention — #eval \"Z\"",
             &sample_treatments(),
             &sample_pharmacy(),
         );

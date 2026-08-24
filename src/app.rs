@@ -1887,8 +1887,9 @@ impl App {
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut regress: Option<(i64, db::InterviewState)> = None;
-        let mut print_req: Option<(InterviewKind, Option<String>)> = None;
-        let mut cr_req: Option<(InterviewKind, Option<String>)> = None;
+        // (kind, planned date, thematic) of the row whose PDF was asked.
+        let mut print_req: Option<(InterviewKind, Option<String>, String)> = None;
+        let mut cr_req: Option<(InterviewKind, Option<String>, String)> = None;
         // (interview id, new minutes, the minutes this PC saw — CAS).
         let mut set_duration: Option<(i64, i64, i64)> = None;
         // (interview id, new date, the date this PC saw — CAS expected).
@@ -1981,13 +1982,21 @@ impl App {
                                         .on_hover_text(tr("itv_pdf_tooltip"))
                                         .clicked()
                                     {
-                                        print_req = Some((itv.kind, itv.scheduled_date.clone()));
+                                        print_req = Some((
+                                            itv.kind,
+                                            itv.scheduled_date.clone(),
+                                            itv.theme.clone(),
+                                        ));
                                     }
                                     if motif::button(ui, tr("itv_cr"))
                                         .on_hover_text(tr("itv_cr_tooltip"))
                                         .clicked()
                                     {
-                                        cr_req = Some((itv.kind, itv.scheduled_date.clone()));
+                                        cr_req = Some((
+                                            itv.kind,
+                                            itv.scheduled_date.clone(),
+                                            itv.theme.clone(),
+                                        ));
                                     }
                                 });
                                 let mut minutes = itv.duration_minutes;
@@ -2141,7 +2150,7 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
-        if let Some((kind, scheduled)) = print_req {
+        if let Some((kind, scheduled, theme)) = print_req {
             // The sheet is dated with the planned RDV when one is set,
             // today otherwise (sheets are usually printed just before).
             let date = scheduled
@@ -2153,13 +2162,17 @@ impl App {
                         .today_french()
                         .unwrap_or_else(|_| tr("itv_date_fallback").to_owned())
                 });
-            if let Err(e) =
-                crate::pdf::open_interview_sheet(patient, kind, &date, &config.template_path())
-            {
+            if let Err(e) = crate::pdf::open_interview_sheet(
+                patient,
+                kind,
+                &date,
+                &theme,
+                &config.template_path(),
+            ) {
                 session.error = Some(e);
             }
         }
-        if let Some((kind, scheduled)) = cr_req {
+        if let Some((kind, scheduled, theme)) = cr_req {
             // The CR letter to the médecin traitant, with the patient's
             // known treatments; dated like the interview sheet.
             let date = scheduled
@@ -2175,6 +2188,7 @@ impl App {
                 patient,
                 kind,
                 &date,
+                &theme,
                 &session.patient_treats,
                 &config.pharmacy,
                 &config.cr_template_path(),
