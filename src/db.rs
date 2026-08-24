@@ -39,7 +39,12 @@ CREATE TABLE IF NOT EXISTS drugs (
     ddi         TEXT NOT NULL DEFAULT '',
     iup         TEXT NOT NULL DEFAULT '',
     antidote    TEXT NOT NULL DEFAULT '',
-    notes       TEXT NOT NULL DEFAULT ''
+    notes       TEXT NOT NULL DEFAULT '',
+    half_life   TEXT NOT NULL DEFAULT '',
+    auc         TEXT NOT NULL DEFAULT '',
+    elimination TEXT NOT NULL DEFAULT '',
+    renal       TEXT NOT NULL DEFAULT '',
+    pregnancy   TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS patient_drugs (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
@@ -56,6 +61,11 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patients ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN dci TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN class TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN half_life TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN auc TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN elimination TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN renal TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN pregnancy TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN physician TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN email TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN address TEXT NOT NULL DEFAULT ''",
@@ -242,6 +252,16 @@ pub struct Drug {
     pub antidote: String,
     /// The team's own notes.
     pub notes: String,
+    /// Demi-vie d'élimination.
+    pub half_life: String,
+    /// AUC / exposition (base des interactions).
+    pub auc: String,
+    /// Voie d'élimination (rénale, hépatique, mixte…).
+    pub elimination: String,
+    /// Adaptation posologique selon le DFG.
+    pub renal: String,
+    /// Grossesse / allaitement.
+    pub pregnancy: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -627,7 +647,8 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT d.id, d.name, d.dci, d.class, d.dosage, d.ddi, d.iup, d.antidote, d.notes
+                "SELECT d.id, d.name, d.dci, d.class, d.dosage, d.ddi, d.iup, d.antidote,
+                        d.notes, d.half_life, d.auc, d.elimination, d.renal, d.pregnancy
                  FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
                  WHERE pd.patient_id = ?1 ORDER BY d.name COLLATE NOCASE",
             )
@@ -644,6 +665,11 @@ impl Db {
                     iup: r.get(6)?,
                     antidote: r.get(7)?,
                     notes: r.get(8)?,
+                    half_life: r.get(9)?,
+                    auc: r.get(10)?,
+                    elimination: r.get(11)?,
+                    renal: r.get(12)?,
+                    pregnancy: r.get(13)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -770,7 +796,8 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, name, dci, class, dosage, ddi, iup, antidote, notes
+                "SELECT id, name, dci, class, dosage, ddi, iup, antidote, notes,
+                        half_life, auc, elimination, renal, pregnancy
                  FROM drugs ORDER BY name COLLATE NOCASE",
             )
             .map_err(|e| e.to_string())?;
@@ -786,6 +813,11 @@ impl Db {
                     iup: r.get(6)?,
                     antidote: r.get(7)?,
                     notes: r.get(8)?,
+                    half_life: r.get(9)?,
+                    auc: r.get(10)?,
+                    elimination: r.get(11)?,
+                    renal: r.get(12)?,
+                    pregnancy: r.get(13)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -838,9 +870,12 @@ impl Db {
             .conn
             .execute(
                 "UPDATE drugs SET name = ?1, dci = ?2, class = ?3, dosage = ?4, ddi = ?5,
-                        iup = ?6, antidote = ?7, notes = ?8
-                 WHERE id = ?9 AND name = ?10 AND dci = ?11 AND class = ?12 AND dosage = ?13
-                   AND ddi = ?14 AND iup = ?15 AND antidote = ?16 AND notes = ?17",
+                        iup = ?6, antidote = ?7, notes = ?8, half_life = ?9, auc = ?10,
+                        elimination = ?11, renal = ?12, pregnancy = ?13
+                 WHERE id = ?14 AND name = ?15 AND dci = ?16 AND class = ?17 AND dosage = ?18
+                   AND ddi = ?19 AND iup = ?20 AND antidote = ?21 AND notes = ?22
+                   AND half_life = ?23 AND auc = ?24 AND elimination = ?25 AND renal = ?26
+                   AND pregnancy = ?27",
                 rusqlite::params![
                     new.name,
                     new.dci,
@@ -850,6 +885,11 @@ impl Db {
                     new.iup,
                     new.antidote,
                     new.notes,
+                    new.half_life,
+                    new.auc,
+                    new.elimination,
+                    new.renal,
+                    new.pregnancy,
                     expected.id,
                     expected.name,
                     expected.dci,
@@ -859,6 +899,11 @@ impl Db {
                     expected.iup,
                     expected.antidote,
                     expected.notes,
+                    expected.half_life,
+                    expected.auc,
+                    expected.elimination,
+                    expected.renal,
+                    expected.pregnancy,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -1653,6 +1698,8 @@ mod tests {
         let mut card = base.clone();
         card.dosage = "5 mg x2/j".to_owned();
         card.antidote = "Andexanet alfa".to_owned();
+        card.half_life = "≈ 12 h".to_owned();
+        card.renal = "2,5 mg x2/j si DFG 15-29".to_owned();
         assert!(db.update_drug(&card, &base).unwrap());
         // A stale edit (based on the pre-update card) is refused.
         let mut stale = base.clone();
@@ -1661,6 +1708,8 @@ mod tests {
         let fresh = db.drugs().unwrap()[0].clone();
         assert_eq!(fresh.dosage, "5 mg x2/j");
         assert_eq!(fresh.antidote, "Andexanet alfa");
+        assert_eq!(fresh.half_life, "≈ 12 h");
+        assert_eq!(fresh.renal, "2,5 mg x2/j si DFG 15-29");
 
         // Alphabetical, case-insensitive.
         db.add_drug("amoxicilline").unwrap();

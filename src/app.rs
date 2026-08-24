@@ -678,35 +678,35 @@ impl App {
                 ui.label(status);
                 ui.add_space(4.0);
                 // Succinct entries: one click stamps date · operator ·
-                // current patient, ready to complete.
-                let stamp = if let State::Unlocked(s) = &self.state {
-                    Some((
-                        s.db.now_stamp().unwrap_or_default(),
-                        s.viewing.as_ref().map(|p| p.full_name()),
-                    ))
-                } else {
-                    None
-                };
+                // current patient. The timestamp is only queried on
+                // click, never per frame.
+                let unlocked = matches!(self.state, State::Unlocked(_));
                 ui.horizontal(|ui| {
                     ui.label(tr("docs_operator"));
                     ui.add_sized([46.0, 22.0], egui::TextEdit::singleline(&mut self.operator));
-                    if let Some((now, patient)) = stamp {
-                        if motif::button(ui, tr("docs_stamp"))
+                    if unlocked
+                        && motif::button(ui, tr("docs_stamp"))
                             .on_hover_text(tr("docs_stamp_tooltip"))
                             .clicked()
-                        {
-                            let mut entry = format!("\n— {now}");
-                            if !self.operator.trim().is_empty() {
-                                entry.push_str(&format!(" · {}", self.operator.trim()));
-                            }
-                            if let Some(p) = patient {
-                                entry.push_str(&format!(" · {p}"));
-                            }
-                            entry.push_str(" : ");
-                            self.doc_text.push_str(&entry);
-                            self.doc_dirty = true;
-                            self.doc_last_edit = Instant::now();
+                    {
+                        let (now, patient) = match &self.state {
+                            State::Unlocked(s) => (
+                                s.db.now_stamp().unwrap_or_default(),
+                                s.viewing.as_ref().map(|p| p.full_name()),
+                            ),
+                            State::Locked { .. } => (String::new(), None),
+                        };
+                        let mut entry = format!("\n— {now}");
+                        if !self.operator.trim().is_empty() {
+                            entry.push_str(&format!(" · {}", self.operator.trim()));
                         }
+                        if let Some(p) = patient {
+                            entry.push_str(&format!(" · {p}"));
+                        }
+                        entry.push_str(" : ");
+                        self.doc_text.push_str(&entry);
+                        self.doc_dirty = true;
+                        self.doc_last_edit = Instant::now();
                     }
                 });
                 ui.add_space(4.0);
@@ -765,7 +765,7 @@ impl App {
                 }
                 if let Some(err) = error {
                     ui.add_space(8.0);
-                    ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                    ui.colored_label(motif::ALERT, err.as_str());
                 }
                 ui.add_space(24.0);
                 // Which database this post opens — misconfigured posts
@@ -854,14 +854,15 @@ impl App {
                 return;
             }
 
-            ui.vertical_centered(|ui| {
-                ui.add_space(60.0);
-                ui.heading("BPM-Caddy");
-                ui.label(tr("app_tagline"));
-                ui.add_space(24.0);
-
+            motif::column(ui, 620.0, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(40.0);
+                    ui.heading("BPM-Caddy");
+                    ui.label(tr("app_tagline"));
+                });
+                ui.add_space(18.0);
                 let search = ui.add_sized(
-                    [420.0, 32.0],
+                    [ui.available_width(), 32.0],
                     egui::TextEdit::singleline(&mut session.query).hint_text(tr("search_hint")),
                 );
                 motif::bevel(ui.painter(), search.rect.expand(2.0), false);
@@ -997,6 +998,7 @@ impl App {
                     ui.add_space(8.0);
                     let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
                     let submitted = egui::Grid::new("new_patient")
+                        .min_col_width(110.0)
                         .num_columns(2)
                         .spacing([12.0, 8.0])
                         .show(ui, |ui| {
@@ -1030,7 +1032,7 @@ impl App {
                         create = true;
                     }
                     if let Some(err) = &form.error {
-                        ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                        ui.colored_label(motif::ALERT, err.as_str());
                     }
                 });
 
@@ -1069,7 +1071,7 @@ impl App {
 
             if let Some(err) = &session.error {
                 ui.vertical_centered(|ui| {
-                    ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                    ui.colored_label(motif::ALERT, err.as_str());
                 });
             }
         });
@@ -1104,43 +1106,44 @@ impl App {
         let mut save_edit = false;
         let mut cancel_edit = false;
         let mut delete_click = false;
-        ui.vertical_centered(|ui| {
-            ui.add_space(20.0);
-            ui.heading(patient.full_name());
-            ui.label(format!(
-                "Né(e) le {}",
-                db::format_french_date(&patient.birth_date)
-            ));
-            {
-                // Contact line: phone · physician · email, whichever exist.
-                let mut bits: Vec<String> = Vec::new();
-                if !patient.phone.is_empty() {
-                    bits.push(trf("patient_phone", &patient.phone));
+        motif::column(ui, 760.0, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(20.0);
+                ui.heading(patient.full_name());
+                ui.label(format!(
+                    "Né(e) le {}",
+                    db::format_french_date(&patient.birth_date)
+                ));
+                {
+                    // Contact line: phone · physician · email, whichever exist.
+                    let mut bits: Vec<String> = Vec::new();
+                    if !patient.phone.is_empty() {
+                        bits.push(trf("patient_phone", &patient.phone));
+                    }
+                    if !patient.physician.is_empty() {
+                        bits.push(trf("patient_physician", &patient.physician));
+                    }
+                    if !patient.email.is_empty() {
+                        bits.push(patient.email.clone());
+                    }
+                    if !bits.is_empty() {
+                        ui.label(bits.join("   ·   "));
+                    }
                 }
-                if !patient.physician.is_empty() {
-                    bits.push(trf("patient_physician", &patient.physician));
+                if !patient.address.is_empty() {
+                    ui.label(
+                        egui::RichText::new(patient.address.as_str())
+                            .size(12.0)
+                            .color(motif::BG_DARK),
+                    );
                 }
-                if !patient.email.is_empty() {
-                    bits.push(patient.email.clone());
+                if !patient.notes.is_empty() {
+                    ui.label(egui::RichText::new(patient.notes.as_str()).italics());
                 }
-                if !bits.is_empty() {
-                    ui.label(bits.join("   ·   "));
-                }
-            }
-            if !patient.address.is_empty() {
-                ui.label(
-                    egui::RichText::new(patient.address.as_str())
-                        .size(12.0)
-                        .color(motif::BG_DARK),
-                );
-            }
-            if !patient.notes.is_empty() {
-                ui.label(egui::RichText::new(patient.notes.as_str()).italics());
-            }
-            ui.add_space(6.0);
+            });
+            ui.add_space(8.0);
             // Identity corrections and removal (mistaken creation).
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 110.0);
                 if session.edit_patient.is_none() && motif::button(ui, tr("patient_edit")).clicked()
                 {
                     start_edit = true;
@@ -1155,15 +1158,13 @@ impl App {
                 }
             });
             if session.confirm_delete {
-                ui.colored_label(
-                    egui::Color32::from_rgb(0x8b, 0x1a, 0x1a),
-                    tr("patient_delete_warning"),
-                );
+                ui.colored_label(motif::ALERT, tr("patient_delete_warning"));
             }
             if let Some(form) = &mut session.edit_patient {
                 ui.add_space(8.0);
                 let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
                 egui::Grid::new("edit_patient")
+                    .min_col_width(110.0)
                     .num_columns(2)
                     .spacing([12.0, 8.0])
                     .show(ui, |ui| {
@@ -1216,7 +1217,6 @@ impl App {
                     });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(ui.available_width() / 2.0 - 110.0);
                     if motif::button(ui, tr("form_save")).clicked() {
                         save_edit = true;
                     }
@@ -1225,7 +1225,7 @@ impl App {
                     }
                 });
                 if let Some(err) = &form.error {
-                    ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                    ui.colored_label(motif::ALERT, err.as_str());
                 }
             }
             ui.add_space(16.0);
@@ -1238,8 +1238,6 @@ impl App {
                 let mut open_card: Option<Drug> = None;
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    let approx = 90.0 + session.patient_treats.len() as f32 * 110.0 + 150.0;
-                    ui.add_space(((ui.available_width() - approx) / 2.0).max(0.0));
                     ui.label(egui::RichText::new(tr("treat_label")).color(motif::BG_DARK));
                     for t in &session.patient_treats {
                         let chip = ui.add(
@@ -1286,7 +1284,6 @@ impl App {
                         .collect();
                     scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
                     ui.horizontal(|ui| {
-                        ui.add_space((ui.available_width() / 2.0 - 200.0).max(0.0));
                         for (_, d) in scored.into_iter().take(4) {
                             let sug = ui.add(
                                 egui::Label::new(
@@ -1327,7 +1324,6 @@ impl App {
             let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
             let mut new_kind: Option<InterviewKind> = None;
             ui.horizontal(|ui| {
-                ui.add_space((ui.available_width() / 2.0 - 290.0).max(0.0));
                 for kind in InterviewKind::ALL {
                     if motif::button(ui, kind.label()).clicked() {
                         new_kind = Some(kind);
@@ -1372,7 +1368,7 @@ impl App {
             }
             if let Some((kind, msg)) = session.rule_block.clone() {
                 ui.add_space(4.0);
-                ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), msg.as_str());
+                ui.colored_label(motif::ALERT, msg.as_str());
                 if motif::button(ui, tr("rule_override")).clicked() {
                     session.rule_block = None;
                     match session.db.add_interview(patient.id, kind) {
@@ -1478,7 +1474,6 @@ impl App {
         }
 
         ui.add_space(6.0);
-        motif::section(ui, tr("itv_section"));
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut regress: Option<(i64, db::InterviewState)> = None;
@@ -1489,7 +1484,9 @@ impl App {
         // (interview id, new date, the date this PC saw — CAS expected).
         let mut set_date: Option<(i64, Option<String>, Option<String>)> = None;
         let mut delete_itv: Option<(i64, db::InterviewState)> = None;
-        ui.vertical_centered(|ui| {
+        motif::column(ui, 760.0, |ui| {
+            motif::section(ui, tr("itv_section"));
+            ui.add_space(4.0);
             // Long histories must not push the table off the card.
             egui::ScrollArea::vertical()
                 .max_height(ui.available_height() - 20.0)
@@ -1742,7 +1739,7 @@ impl App {
         }
         if let Some(err) = &session.error {
             ui.vertical_centered(|ui| {
-                ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                ui.colored_label(motif::ALERT, err.as_str());
             });
         }
     }
@@ -1755,10 +1752,9 @@ impl App {
             session.view = MainView::Search;
             return;
         }
-        ui.vertical_centered(|ui| {
+        motif::column(ui, 900.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 90.0);
                 ui.heading(tr("agenda_title"));
                 if !session.appointments.is_empty()
                     && motif::button(ui, tr("dash_print"))
@@ -1779,13 +1775,12 @@ impl App {
             ui.add_space(10.0);
         });
 
-        let red = egui::Color32::from_rgb(0x8b, 0x1a, 0x1a);
+        let red = motif::ALERT;
         let mut open_id: Option<i64> = None;
 
         // ---- Week grid (default view): Mon..Sun with colored blocks ----
-        ui.vertical_centered(|ui| {
+        motif::column(ui, 900.0, |ui| {
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 190.0);
                 if motif::button(ui, "‹")
                     .on_hover_text(tr("agenda_prev_week"))
                     .clicked()
@@ -1915,9 +1910,8 @@ impl App {
             }
             // Legend: one colored chip per act kind.
             ui.add_space(6.0);
-            ui.vertical_centered(|ui| {
+            motif::column(ui, 900.0, |ui| {
                 ui.horizontal(|ui| {
-                    ui.add_space((ui.available_width() / 2.0 - 260.0).max(0.0));
                     for kind in InterviewKind::ALL {
                         ui.label(
                             egui::RichText::new(format!("  {}  ", kind.label()))
@@ -2002,10 +1996,9 @@ impl App {
     /// Conversion tables (IPP, HBPM, statines…): selector, Motif table,
     /// caution line, and a printable A4 with all of them.
     fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
-        ui.vertical_centered(|ui| {
+        motif::column(ui, 700.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 180.0);
                 ui.heading(tr("tables_title"));
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("tables_print_tooltip"))
@@ -2022,8 +2015,6 @@ impl App {
             ui.add_space(10.0);
             // Selector: one button per table, the active one sunken.
             ui.horizontal(|ui| {
-                let approx = crate::tables::TABLES.len() as f32 * 105.0;
-                ui.add_space(((ui.available_width() - approx) / 2.0).max(0.0));
                 for (i, t) in crate::tables::TABLES.iter().enumerate() {
                     let btn = motif::button(ui, t.short);
                     if i == session.table_selected {
@@ -2071,8 +2062,11 @@ impl App {
                     }
                 });
         });
-        ui.add_space(16.0);
-        ui.vertical_centered(|ui| {
+        // Drop below the box (the child ui only advanced by the grid's
+        // own height), then the caution line on the column grid.
+        let below = (box_rect.bottom() - ui.cursor().top()).max(0.0) + 10.0;
+        ui.add_space(below);
+        motif::column(ui, 700.0, |ui| {
             ui.label(
                 egui::RichText::new(t.caution)
                     .size(11.0)
@@ -2082,7 +2076,7 @@ impl App {
         });
         if let Some(err) = &session.error {
             ui.vertical_centered(|ui| {
-                ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                ui.colored_label(motif::ALERT, err.as_str());
             });
         }
     }
@@ -2117,17 +2111,20 @@ impl App {
             return;
         }
 
-        ui.vertical_centered(|ui| {
+        motif::column(ui, 620.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 180.0);
                 ui.heading(tr("drug_title"));
-                if session.drug_form.is_none() && motif::button(ui, tr("tables_button")).clicked() {
-                    session.show_tables = true;
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if session.drug_form.is_none()
+                        && motif::button(ui, tr("tables_button")).clicked()
+                    {
+                        session.show_tables = true;
+                    }
+                });
             });
             ui.label(tr("drug_subtitle"));
-            ui.add_space(16.0);
+            ui.add_space(12.0);
         });
 
         if let Some(form) = &mut session.drug_form {
@@ -2139,79 +2136,125 @@ impl App {
             let mut delete = false;
             let mut insert_note = false;
             let mut open_patient_id: Option<i64> = None;
-            ui.vertical_centered(|ui| {
+            motif::column(ui, 900.0, |ui| {
                 ui.add_space(18.0);
-                // Identity header: brand name big, DCI underneath.
-                ui.heading(if form.name.trim().is_empty() {
-                    tr("drug_unnamed")
-                } else {
-                    form.name.trim()
-                });
-                {
-                    let mut sub = form.dci.trim().to_owned();
-                    if !form.class.trim().is_empty() {
-                        if !sub.is_empty() {
-                            sub.push_str(" — ");
+                ui.vertical_centered(|ui| {
+                    // Identity header: brand name big, DCI underneath.
+                    ui.heading(if form.name.trim().is_empty() {
+                        tr("drug_unnamed")
+                    } else {
+                        form.name.trim()
+                    });
+                    {
+                        let mut sub = form.dci.trim().to_owned();
+                        if !form.class.trim().is_empty() {
+                            if !sub.is_empty() {
+                                sub.push_str(" — ");
+                            }
+                            sub.push_str(form.class.trim());
                         }
-                        sub.push_str(form.class.trim());
+                        if !sub.is_empty() {
+                            ui.label(egui::RichText::new(sub).italics().color(motif::BG_DARK));
+                        }
                     }
-                    if !sub.is_empty() {
-                        ui.label(egui::RichText::new(sub).italics().color(motif::BG_DARK));
+                    if !form.antidote.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(trf("drug_antidote_banner", form.antidote.trim()))
+                                .strong()
+                                .color(motif::ALERT),
+                        );
                     }
-                }
-                if !form.antidote.trim().is_empty() {
-                    ui.label(
-                        egui::RichText::new(trf("drug_antidote_banner", form.antidote.trim()))
-                            .strong()
-                            .color(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a)),
-                    );
-                }
+                });
                 ui.add_space(12.0);
                 let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
-                egui::Grid::new("drug_card")
-                    .num_columns(2)
-                    .spacing([12.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.label(dim(tr("drug_name")));
-                        ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.name));
-                        ui.end_row();
-                        ui.label(dim(tr("drug_dci")));
-                        ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.dci));
-                        ui.end_row();
-                        ui.label(dim(tr("drug_class")));
-                        ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.class));
-                        ui.end_row();
-                        ui.label(dim(tr("drug_dosage")));
-                        ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.dosage));
-                        ui.end_row();
-                        ui.label(dim(tr("drug_ddi")));
-                        ui.add_sized(
-                            [360.0, 48.0],
-                            egui::TextEdit::multiline(&mut form.ddi).desired_rows(2),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("drug_iup")));
-                        ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.iup));
-                        ui.end_row();
-                        ui.label(dim(tr("drug_antidote")));
-                        ui.add_sized(
-                            [360.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.antidote),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("drug_notes")));
-                        ui.add_sized(
-                            [360.0, 64.0],
-                            egui::TextEdit::multiline(&mut form.notes).desired_rows(3),
-                        );
-                        ui.end_row();
-                    });
+                // Two-column drug page: identity/clinical on the left,
+                // pharmacokinetics on the right.
+                ui.columns(2, |cols| {
+                    let ui = &mut cols[0];
+                    motif::section(ui, tr("drug_sec_clinical"));
+                    ui.add_space(4.0);
+                    let w = (ui.available_width() - 118.0).max(140.0);
+                    egui::Grid::new("drug_card")
+                        .num_columns(2)
+                        .min_col_width(90.0)
+                        .spacing([10.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label(dim(tr("drug_name")));
+                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.name));
+                            ui.end_row();
+                            ui.label(dim(tr("drug_dci")));
+                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.dci));
+                            ui.end_row();
+                            ui.label(dim(tr("drug_class")));
+                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.class));
+                            ui.end_row();
+                            ui.label(dim(tr("drug_dosage")));
+                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.dosage));
+                            ui.end_row();
+                            ui.label(dim(tr("drug_ddi")));
+                            ui.add_sized(
+                                [w, 48.0],
+                                egui::TextEdit::multiline(&mut form.ddi).desired_rows(2),
+                            );
+                            ui.end_row();
+                            ui.label(dim(tr("drug_iup")));
+                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.iup));
+                            ui.end_row();
+                            ui.label(dim(tr("drug_antidote")));
+                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.antidote));
+                            ui.end_row();
+                            ui.label(dim(tr("drug_notes")));
+                            ui.add_sized(
+                                [w, 64.0],
+                                egui::TextEdit::multiline(&mut form.notes).desired_rows(3),
+                            );
+                            ui.end_row();
+                        });
+                    let ui = &mut cols[1];
+                    motif::section(ui, tr("drug_sec_pk"));
+                    ui.add_space(4.0);
+                    let w = (ui.available_width() - 138.0).max(130.0);
+                    egui::Grid::new("drug_pk")
+                        .num_columns(2)
+                        .min_col_width(110.0)
+                        .spacing([10.0, 8.0])
+                        .show(ui, |ui| {
+                            ui.label(dim(tr("drug_half_life")));
+                            ui.add_sized(
+                                [w, 26.0],
+                                egui::TextEdit::singleline(&mut form.half_life),
+                            );
+                            ui.end_row();
+                            ui.label(dim(tr("drug_auc")));
+                            ui.add_sized(
+                                [w, 48.0],
+                                egui::TextEdit::multiline(&mut form.auc).desired_rows(2),
+                            );
+                            ui.end_row();
+                            ui.label(dim(tr("drug_elimination")));
+                            ui.add_sized(
+                                [w, 26.0],
+                                egui::TextEdit::singleline(&mut form.elimination),
+                            );
+                            ui.end_row();
+                            ui.label(dim(tr("drug_renal")));
+                            ui.add_sized(
+                                [w, 64.0],
+                                egui::TextEdit::multiline(&mut form.renal).desired_rows(3),
+                            );
+                            ui.end_row();
+                            ui.label(dim(tr("drug_pregnancy")));
+                            ui.add_sized(
+                                [w, 48.0],
+                                egui::TextEdit::multiline(&mut form.pregnancy).desired_rows(2),
+                            );
+                            ui.end_row();
+                        });
+                });
                 // Reverse lookup: who is on this drug (recalls, alerts).
                 if !session.drug_patients.is_empty() {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        let approx = 160.0 + session.drug_patients.len().min(6) as f32 * 110.0;
-                        ui.add_space(((ui.available_width() - approx) / 2.0).max(0.0));
                         ui.label(
                             egui::RichText::new(tr("drug_patients_label")).color(motif::BG_DARK),
                         );
@@ -2236,7 +2279,6 @@ impl App {
                 }
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(ui.available_width() / 2.0 - 230.0);
                     if motif::button(ui, tr("form_save")).clicked() {
                         save = true;
                     }
@@ -2260,7 +2302,7 @@ impl App {
                 });
                 if let Some(err) = &session.error {
                     ui.add_space(6.0);
-                    ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                    ui.colored_label(motif::ALERT, err.as_str());
                 }
             });
 
@@ -2349,9 +2391,9 @@ impl App {
 
         // ---- Search / list ----
         let mut open_drug: Option<Drug> = None;
-        ui.vertical_centered(|ui| {
+        motif::column(ui, 620.0, |ui| {
             let search = ui.add_sized(
-                [420.0, 32.0],
+                [ui.available_width(), 32.0],
                 egui::TextEdit::singleline(&mut session.drug_query)
                     .hint_text(tr("drug_search_hint")),
             );
@@ -2463,7 +2505,7 @@ impl App {
             if session.drug_form.is_none() {
                 if let Some(err) = &session.error {
                     ui.add_space(8.0);
-                    ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                    ui.colored_label(motif::ALERT, err.as_str());
                 }
             }
         });
@@ -2644,7 +2686,7 @@ impl App {
         for st in InterviewState::ALL {
             let count = session.summaries.iter().filter(|s| s.state == st).count();
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 250.0);
+                ui.add_space((ui.available_width() / 2.0 - 235.0).max(0.0));
                 ui.add_sized([110.0, 20.0], egui::Label::new(st.label()));
                 let (rect, _) =
                     ui.allocate_exact_size(egui::vec2(300.0, 20.0), egui::Sense::hover());
@@ -2727,7 +2769,7 @@ impl App {
                     );
                     let label = egui::RichText::new(text).size(14.0);
                     let label = if overdue {
-                        label.color(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a))
+                        label.color(motif::ALERT)
                     } else if today {
                         label.color(motif::ACCENT).strong()
                     } else {
@@ -3179,7 +3221,7 @@ impl eframe::App for App {
                         }
                     });
                     if let Some(err) = &form.error {
-                        ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+                        ui.colored_label(motif::ALERT, err.as_str());
                     }
                 });
         }
@@ -3294,7 +3336,7 @@ impl eframe::App for App {
                     if let Some((is_error, msg)) = message {
                         ui.add_space(4.0);
                         let color = if *is_error {
-                            egui::Color32::from_rgb(0x8b, 0x1a, 0x1a)
+                            motif::ALERT
                         } else {
                             motif::ACCENT
                         };
@@ -3505,7 +3547,7 @@ impl eframe::App for App {
                     });
                     if let Some((is_error, msg)) = &editor.message {
                         let color = if *is_error {
-                            egui::Color32::from_rgb(0x8b, 0x1a, 0x1a)
+                            motif::ALERT
                         } else {
                             motif::ACCENT
                         };
