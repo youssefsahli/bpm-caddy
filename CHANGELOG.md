@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-08-24
+
+### Added
+- CR letter to the médecin traitant ("CR" button on each interview
+  row): a Typst-generated letter with the pharmacy letterhead
+  (`[pharmacy]` in config.toml — name, address, phone, pharmacist),
+  the addressed physician, the act and date, the patient's known
+  treatments (name, DCI, class, dosage), and boxes for the handwritten
+  synthesis and signature; names are escaped like everywhere else
+- The template editor now handles both templates: "Fiche entretien"
+  and "Courrier CR" tabs, each validated, previewable with sample
+  data, and saved to its own file (`cr_layout.typ` next to config.toml
+  or `[templates] cr_template_path`)
+- Reverse treatment lookup on the drug card: "Patients sous ce
+  traitement" chips (recall / alert question), one click from the
+  patient's record
+
 ## [0.6.0] - 2026-08-24
 
 ### Added
