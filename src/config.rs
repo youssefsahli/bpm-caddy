@@ -30,16 +30,19 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # operator = "CL"
 
 [billing]
-# Honoraires en euros par acte.
-# bpm_fee = 60.0
-# aod_fee = 40.0
-# asthme_fee = 40.0
-# trod_angine_fee = 10.0
-# trod_cystite_fee = 12.0
-# prevention_fee = 30.0
-# avk_fee = 40.0
-# anticancereux_fee = 60.0
-# vaccination_fee = 10.0
+# Honoraires en euros, par acte et par rang dans l'année
+# d'accompagnement : entretien initial / 1er suivi / 2e suivi (et
+# au-delà). La forme simple `bpm = 60.0` applique le même tarif aux
+# trois rangs.
+# bpm = { initial = 60.0, suivi_1 = 20.0, suivi_2 = 20.0 }
+# aod = { initial = 40.0, suivi_1 = 20.0, suivi_2 = 20.0 }
+# avk = { initial = 40.0, suivi_1 = 20.0, suivi_2 = 20.0 }
+# asthme = { initial = 40.0, suivi_1 = 20.0, suivi_2 = 20.0 }
+# anticancereux = { initial = 60.0, suivi_1 = 20.0, suivi_2 = 20.0 }
+# trod_angine = 10.0
+# trod_cystite = 12.0
+# vaccination = 10.0
+# prevention = 30.0
 
 [templates]
 # Modèles Typst personnalisés (fiche d'entretien et courrier CR).
@@ -174,34 +177,114 @@ impl Default for UiConfig {
     }
 }
 
-/// Fees in euros per act. Defaults are placeholders — adjust them in
+/// The fee schedule of one act kind: the convention pays the entretien
+/// initial, the 1er suivi and the 2e suivi (and beyond) of an année
+/// d'accompagnement differently.
+#[derive(Serialize, Clone, Copy, PartialEq, Debug)]
+pub struct ActFees {
+    pub initial: f64,
+    pub suivi_1: f64,
+    pub suivi_2: f64,
+}
+
+impl ActFees {
+    pub const fn flat(v: f64) -> Self {
+        Self {
+            initial: v,
+            suivi_1: v,
+            suivi_2: v,
+        }
+    }
+
+    pub const fn staged(initial: f64, suivi: f64) -> Self {
+        Self {
+            initial,
+            suivi_1: suivi,
+            suivi_2: suivi,
+        }
+    }
+
+    /// Fee for the act ranked `rank` (0-based) inside its yearly cycle.
+    pub fn for_rank(&self, rank: usize) -> f64 {
+        match rank {
+            0 => self.initial,
+            1 => self.suivi_1,
+            _ => self.suivi_2,
+        }
+    }
+}
+
+/// Accepts both the nested form (`{ initial = 60, suivi_1 = 20,
+/// suivi_2 = 20 }`) and the legacy flat number (`bpm_fee = 60.0`),
+/// which fills all three slots.
+impl<'de> Deserialize<'de> for ActFees {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Repr {
+            Flat(f64),
+            Full {
+                #[serde(default)]
+                initial: f64,
+                #[serde(default)]
+                suivi_1: f64,
+                #[serde(default)]
+                suivi_2: f64,
+            },
+        }
+        Ok(match Repr::deserialize(de)? {
+            Repr::Flat(v) => ActFees::flat(v),
+            Repr::Full {
+                initial,
+                suivi_1,
+                suivi_2,
+            } => ActFees {
+                initial,
+                suivi_1,
+                suivi_2,
+            },
+        })
+    }
+}
+
+/// Fees in euros per act and per rank within the année
+/// d'accompagnement. Defaults are placeholders — adjust them in
 /// `config.toml` to the convention currently in force.
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct BillingConfig {
-    pub bpm_fee: f64,
-    pub aod_fee: f64,
-    pub asthme_fee: f64,
-    pub trod_angine_fee: f64,
-    pub trod_cystite_fee: f64,
-    pub prevention_fee: f64,
-    pub avk_fee: f64,
-    pub anticancereux_fee: f64,
-    pub vaccination_fee: f64,
+    #[serde(alias = "bpm_fee")]
+    pub bpm: ActFees,
+    #[serde(alias = "aod_fee")]
+    pub aod: ActFees,
+    #[serde(alias = "avk_fee")]
+    pub avk: ActFees,
+    #[serde(alias = "asthme_fee")]
+    pub asthme: ActFees,
+    #[serde(alias = "anticancereux_fee")]
+    pub anticancereux: ActFees,
+    #[serde(alias = "trod_angine_fee")]
+    pub trod_angine: ActFees,
+    #[serde(alias = "trod_cystite_fee")]
+    pub trod_cystite: ActFees,
+    #[serde(alias = "vaccination_fee")]
+    pub vaccination: ActFees,
+    #[serde(alias = "prevention_fee")]
+    pub prevention: ActFees,
 }
 
 impl Default for BillingConfig {
     fn default() -> Self {
         Self {
-            bpm_fee: 60.0,
-            aod_fee: 40.0,
-            asthme_fee: 40.0,
-            trod_angine_fee: 10.0,
-            trod_cystite_fee: 12.0,
-            prevention_fee: 30.0,
-            avk_fee: 40.0,
-            anticancereux_fee: 60.0,
-            vaccination_fee: 10.0,
+            bpm: ActFees::staged(60.0, 20.0),
+            aod: ActFees::staged(40.0, 20.0),
+            avk: ActFees::staged(40.0, 20.0),
+            asthme: ActFees::staged(40.0, 20.0),
+            anticancereux: ActFees::staged(60.0, 20.0),
+            trod_angine: ActFees::flat(10.0),
+            trod_cystite: ActFees::flat(12.0),
+            vaccination: ActFees::flat(10.0),
+            prevention: ActFees::flat(30.0),
         }
     }
 }
@@ -303,18 +386,24 @@ impl Config {
         std::fs::write(&path, text).map_err(|e| e.to_string())
     }
 
-    pub fn fee(&self, kind: crate::db::InterviewKind) -> f64 {
+    pub fn act_fees(&self, kind: crate::db::InterviewKind) -> ActFees {
         match kind {
-            crate::db::InterviewKind::Bpm => self.billing.bpm_fee,
-            crate::db::InterviewKind::Aod => self.billing.aod_fee,
-            crate::db::InterviewKind::Asthme => self.billing.asthme_fee,
-            crate::db::InterviewKind::TrodAngine => self.billing.trod_angine_fee,
-            crate::db::InterviewKind::TrodCystite => self.billing.trod_cystite_fee,
-            crate::db::InterviewKind::Prevention => self.billing.prevention_fee,
-            crate::db::InterviewKind::Avk => self.billing.avk_fee,
-            crate::db::InterviewKind::Anticancereux => self.billing.anticancereux_fee,
-            crate::db::InterviewKind::Vaccination => self.billing.vaccination_fee,
+            crate::db::InterviewKind::Bpm => self.billing.bpm,
+            crate::db::InterviewKind::Aod => self.billing.aod,
+            crate::db::InterviewKind::Avk => self.billing.avk,
+            crate::db::InterviewKind::Asthme => self.billing.asthme,
+            crate::db::InterviewKind::Anticancereux => self.billing.anticancereux,
+            crate::db::InterviewKind::TrodAngine => self.billing.trod_angine,
+            crate::db::InterviewKind::TrodCystite => self.billing.trod_cystite,
+            crate::db::InterviewKind::Vaccination => self.billing.vaccination,
+            crate::db::InterviewKind::Prevention => self.billing.prevention,
         }
+    }
+
+    /// Fee of one act, given its 0-based rank inside its yearly cycle
+    /// (0 = entretien initial).
+    pub fn fee(&self, kind: crate::db::InterviewKind, rank: usize) -> f64 {
+        self.act_fees(kind).for_rank(rank)
     }
 }
 
@@ -335,14 +424,20 @@ mod tests {
 
             [billing]
             bpm_fee = 55.5
+            aod = { initial = 44.0, suivi_1 = 22.0, suivi_2 = 11.0 }
             "#,
         )
         .unwrap();
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 5);
         assert!(!cfg.ui.show_docs_on_start);
-        assert_eq!(cfg.billing.bpm_fee, 55.5);
+        // The legacy flat form fills all three rank slots…
+        assert_eq!(cfg.billing.bpm, ActFees::flat(55.5));
+        // …the nested form sets them individually.
+        assert_eq!(cfg.billing.aod.for_rank(0), 44.0);
+        assert_eq!(cfg.billing.aod.for_rank(1), 22.0);
+        assert_eq!(cfg.billing.aod.for_rank(9), 11.0);
         // Unset fields keep their defaults.
-        assert_eq!(cfg.billing.aod_fee, 40.0);
+        assert_eq!(cfg.billing.asthme, ActFees::staged(40.0, 20.0));
         assert!(cfg.team_doc_path().ends_with("notes_equipe.md"));
     }
 
@@ -359,7 +454,7 @@ mod tests {
         let cfg: Config = toml::from_str(CONFIG_TEMPLATE).unwrap();
         assert!(cfg.database.path.is_none());
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
-        assert_eq!(cfg.billing.bpm_fee, 60.0);
+        assert_eq!(cfg.billing.bpm, ActFees::staged(60.0, 20.0));
         assert!(cfg.templates.bpm_template_path.is_none());
         assert_eq!(cfg.rules.bpm_per_year, 3);
         assert_eq!(cfg.rules.trod_angine_per_year, 0);
@@ -369,13 +464,13 @@ mod tests {
     fn config_roundtrips_through_toml() {
         let mut cfg = Config::default();
         cfg.pharmacy.name = "Pharmacie du Centre".to_owned();
-        cfg.billing.bpm_fee = 55.5;
+        cfg.billing.bpm = ActFees::staged(55.5, 25.0);
         cfg.rules.prevention_per_year = 2;
         cfg.ui.operator = "CL".to_owned();
         let text = toml::to_string_pretty(&cfg).unwrap();
         let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(back.pharmacy.name, "Pharmacie du Centre");
-        assert_eq!(back.billing.bpm_fee, 55.5);
+        assert_eq!(back.billing.bpm, ActFees::staged(55.5, 25.0));
         assert_eq!(back.rules.prevention_per_year, 2);
         assert_eq!(back.ui.operator, "CL");
     }

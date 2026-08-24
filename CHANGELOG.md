@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-08-25
+
+### Added
+- Per-rank fee schedule: each act kind is now paid by its rank inside
+  the année d'accompagnement (entretien initial / 1er suivi / 2e suivi
+  et au-delà). The Options dialog edits the nine acts as a matrix, and
+  `config.toml` accepts both `bpm = { initial = 60, suivi_1 = 20,
+  suivi_2 = 20 }` and the legacy flat `bpm_fee = 60`. Ranks follow the
+  same 12-month cycles as the quota rules, and drive the dashboard,
+  the patient table and the CSV export.
+- Thematics on every entretien (observance, biologie/INR, technique
+  d'inhalation, interactions…): a drop-down per row, compare-and-set
+  like every other shared write, exported in a new CSV column.
+- Quick act picker (Ctrl+N or "Choix rapide"): the nine acts with
+  digit shortcuts and colour chips, plus the theme the new act will
+  carry — one keystroke from patient to created act.
+- Database maintenance in Options: "Compléter les médicaments de
+  départ" tops up a base created before the starter list grew, and
+  "Réinitialiser la base…" (two-step, red) wipes every row and reseeds
+  the drugs — for debugging and demos.
+- `BPM_CADDY_WINDOW=1280x1100` opens the window at a given size
+  (screenshots, e2e).
+
+### Changed
+- The Options dialog now sizes itself to the window instead of a fixed
+  560 px, which clipped the last sections on small screens.
+
 ## [0.14.0] - 2026-08-24
 
 ### Added
