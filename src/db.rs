@@ -345,6 +345,136 @@ const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "immunosuppresseur",
         "Acide folinique",
     ),
+    // Anti-infectieux
+    ("Zithromax", "azithromycine", "macrolide", ""),
+    ("Rovamycine", "spiramycine", "macrolide", ""),
+    ("Josacine", "josamycine", "macrolide", ""),
+    ("Orelox", "cefpodoxime", "céphalosporine C3G", ""),
+    ("Oroken", "céfixime", "céphalosporine C3G", ""),
+    ("Ciflox", "ciprofloxacine", "fluoroquinolone", ""),
+    ("Oflocet", "ofloxacine", "fluoroquinolone", ""),
+    (
+        "Monuril",
+        "fosfomycine-trométamol",
+        "antibiotique urinaire",
+        "",
+    ),
+    (
+        "Furadantine",
+        "nitrofurantoïne",
+        "antibiotique urinaire",
+        "",
+    ),
+    ("Selexid", "pivmécillinam", "pénicilline", ""),
+    ("Bactrim", "cotrimoxazole", "sulfamide antibactérien", ""),
+    ("Doxycycline", "doxycycline", "cycline", ""),
+    ("Flagyl", "métronidazole", "nitro-imidazolé", ""),
+    ("Triflucan", "fluconazole", "antifongique azolé", ""),
+    ("Zelitrex", "valaciclovir", "antiviral", ""),
+    ("Zovirax", "aciclovir", "antiviral", ""),
+    // Douleur / inflammation
+    (
+        "Codoliprane",
+        "paracétamol + codéine",
+        "antalgique opioïde faible",
+        "Naloxone",
+    ),
+    (
+        "Ixprim",
+        "paracétamol + tramadol",
+        "antalgique opioïde faible",
+        "Naloxone",
+    ),
+    ("Advil", "ibuprofène", "AINS", ""),
+    ("Nurofen", "ibuprofène", "AINS", ""),
+    ("Voltarène", "diclofénac", "AINS", ""),
+    ("Bi-Profénid", "kétoprofène", "AINS", ""),
+    ("Celebrex", "célécoxib", "AINS coxib", ""),
+    ("Acupan", "néfopam", "antalgique non opioïde", ""),
+    // Gastro-entérologie
+    ("Gaviscon", "alginate + bicarbonate", "antiacide", ""),
+    ("Spasfon", "phloroglucinol", "antispasmodique", ""),
+    ("Vogalène", "métopimazine", "antiémétique", ""),
+    ("Primpéran", "métoclopramide", "antiémétique", ""),
+    ("Zophren", "ondansétron", "sétron antiémétique", ""),
+    ("Motilium", "dompéridone", "antiémétique", ""),
+    ("Imodium", "lopéramide", "antidiarrhéique", ""),
+    ("Smecta", "diosmectite", "antidiarrhéique", ""),
+    ("Forlax", "macrogol", "laxatif osmotique", ""),
+    ("Duphalac", "lactulose", "laxatif osmotique", ""),
+    // Allergie / ORL
+    ("Aerius", "desloratadine", "antihistaminique H1", ""),
+    ("Zyrtec", "cétirizine", "antihistaminique H1", ""),
+    ("Clarityne", "loratadine", "antihistaminique H1", ""),
+    ("Atarax", "hydroxyzine", "antihistaminique H1 sédatif", ""),
+    // Psychiatrie
+    ("Seroplex", "escitalopram", "ISRS", ""),
+    ("Prozac", "fluoxétine", "ISRS", ""),
+    ("Zoloft", "sertraline", "ISRS", ""),
+    ("Deroxat", "paroxétine", "ISRS", ""),
+    ("Effexor", "venlafaxine", "IRSNa", ""),
+    ("Cymbalta", "duloxétine", "IRSNa", ""),
+    ("Laroxyl", "amitriptyline", "antidépresseur tricyclique", ""),
+    ("Norset", "mirtazapine", "antidépresseur", ""),
+    ("Téralithe", "lithium", "thymorégulateur", ""),
+    // Neurologie
+    ("Dépakote", "divalproate de sodium", "thymorégulateur", ""),
+    ("Lamictal", "lamotrigine", "antiépileptique", ""),
+    ("Keppra", "lévétiracétam", "antiépileptique", ""),
+    ("Tégrétol", "carbamazépine", "antiépileptique", ""),
+    (
+        "Neurontin",
+        "gabapentine",
+        "antiépileptique / douleur neuropathique",
+        "",
+    ),
+    (
+        "Lyrica",
+        "prégabaline",
+        "antiépileptique / douleur neuropathique",
+        "",
+    ),
+    ("Imigrane", "sumatriptan", "triptan", ""),
+    // Cardio / métabolisme
+    ("Ezetrol", "ézétimibe", "hypolipémiant", ""),
+    (
+        "Esidrex",
+        "hydrochlorothiazide",
+        "diurétique thiazidique",
+        "",
+    ),
+    (
+        "Fludex",
+        "indapamide",
+        "diurétique apparenté thiazidique",
+        "",
+    ),
+    ("Avlocardyl", "propranolol", "bêtabloquant", ""),
+    ("Flécaïne", "flécaïnide", "antiarythmique", ""),
+    (
+        "Kaléorid",
+        "chlorure de potassium",
+        "supplément potassique",
+        "",
+    ),
+    ("Januvia", "sitagliptine", "iDPP-4", ""),
+    ("Forxiga", "dapagliflozine", "iSGLT2", ""),
+    ("Jardiance", "empagliflozine", "iSGLT2", ""),
+    ("Trulicity", "dulaglutide", "analogue GLP-1", ""),
+    ("Victoza", "liraglutide", "analogue GLP-1", ""),
+    ("NovoRapid", "insuline asparte", "insuline rapide", ""),
+    // Divers courants
+    ("Zyloric", "allopurinol", "hypo-uricémiant", ""),
+    ("Adenuric", "fébuxostat", "hypo-uricémiant", ""),
+    ("Colchicine", "colchicine", "anti-goutteux", ""),
+    ("Fosamax", "alendronate", "bisphosphonate", ""),
+    ("Uvedose", "cholécalciférol", "vitamine D", ""),
+    ("Tardyferon", "sulfate ferreux", "fer", ""),
+    ("Spéciafoldine", "acide folique", "vitamine B9", ""),
+    ("Bricanyl", "terbutaline", "bêta-2 mimétique", ""),
+    ("Pulmicort", "budésonide", "corticoïde inhalé", ""),
+    ("Tanganil", "acétylleucine", "anti-vertigineux", ""),
+    ("Circadin", "mélatonine", "mélatonine", ""),
 ];
 
 pub struct Db {
@@ -1357,6 +1487,13 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         let db = Db::open(&path, "secret").unwrap();
+        // No duplicate brand names in the starter list (the per-name
+        // NOT EXISTS guard would silently drop them).
+        let mut names: Vec<&str> = STARTER_DRUGS.iter().map(|(n, _, _, _)| *n).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), STARTER_DRUGS.len());
+
         let n = db.seed_drugs_if_empty().unwrap();
         assert_eq!(n, STARTER_DRUGS.len());
         let eliquis = db

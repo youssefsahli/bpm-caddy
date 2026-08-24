@@ -65,8 +65,8 @@ mod tests {
         assert!(tr("lock_subtitle").contains("mot de passe"));
         assert_eq!(trf("patient_born", "03/07/1958"), "Né(e) le 03/07/1958");
         assert_eq!(
-            trn("search_totals", &[&5, &4]),
-            "5 patient(s)   ·   4 entretien(s) en cours"
+            trn("status_summary", &[&5, &4, &58]),
+            "5 patient(s)   ·   4 entretien(s) en cours   ·   58 médicaments"
         );
         // Missing keys fall back to the key, visibly.
         assert_eq!(tr("missing_key_xyz"), "missing_key_xyz");

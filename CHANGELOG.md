@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-08-24
+
+### Added
+- Motif list boxes: patient and drug searches render in proper sunken
+  list panels with full-width selection bars, hover tint, and tight
+  rows (new `motif::list_row` / `list_row_job` / `section` widgets) —
+  fuzzy-match highlighting kept
+- A status bar: patient / in-progress / drug counts on the left, the
+  database file on the right (replaces the under-search totals line)
+- "Entretiens" section separator on the patient view
+- The starter drug base grows from ~58 to ~135 common French drugs
+  (anti-infectieux, AINS, gastro, allergie, psychiatrie, neurologie,
+  cardio-métabolisme, divers) — still brand + DCI + class only, with
+  textbook antidotes where they exist
+
 ## [0.7.0] - 2026-08-24
 
 ### Added

@@ -151,6 +151,80 @@ pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
     response
 }
 
+/// A full-width Motif list row: hover tint, `ACCENT` selection bar,
+/// left-aligned text. For the sunken list boxes (patients, drugs…).
+pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui::Response {
+    let width = ui.available_width();
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 24.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        if selected {
+            ui.painter().rect_filled(rect, 0.0, ACCENT);
+        } else if response.hovered() {
+            ui.painter().rect_filled(rect, 0.0, BG_HOVER);
+        }
+        let color = if selected { Color32::WHITE } else { TEXT };
+        let galley = ui.painter().layout_no_wrap(
+            text.text().to_owned(),
+            egui::FontId::proportional(14.0),
+            color,
+        );
+        let pos = egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
+        ui.painter()
+            .with_clip_rect(rect.shrink2(Vec2::new(4.0, 0.0)))
+            .galley(pos, galley, color);
+    }
+    response
+}
+
+/// [`list_row`] variant taking a prebuilt layout job, for rows with
+/// per-character styling (fuzzy-match highlighting).
+pub fn list_row_job(
+    ui: &mut egui::Ui,
+    job: egui::text::LayoutJob,
+    selected: bool,
+) -> egui::Response {
+    let width = ui.available_width();
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 24.0), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        if selected {
+            ui.painter().rect_filled(rect, 0.0, ACCENT);
+        } else if response.hovered() {
+            ui.painter().rect_filled(rect, 0.0, BG_HOVER);
+        }
+        let galley = ui.fonts(|f| f.layout_job(job));
+        let pos = egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
+        ui.painter()
+            .with_clip_rect(rect.shrink2(Vec2::new(4.0, 0.0)))
+            .galley(pos, galley, TEXT);
+    }
+    response
+}
+
+/// A section heading: small bold label with a sunken rule to the right,
+/// the Motif take on group separators.
+pub fn section(ui: &mut egui::Ui, label: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(label).strong().size(13.0));
+        let (rect, _) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width() - 8.0, 2.0),
+            egui::Sense::hover(),
+        );
+        let y = rect.center().y;
+        ui.painter().line_segment(
+            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+            Stroke::new(1.0_f32, BG_DARK),
+        );
+        ui.painter().line_segment(
+            [
+                egui::pos2(rect.left(), y + 1.0),
+                egui::pos2(rect.right(), y + 1.0),
+            ],
+            Stroke::new(1.0_f32, BG_LIGHT),
+        );
+    });
+}
+
 /// A sunken determinate progress trough with an `ACCENT` fill.
 pub fn progress_bar(ui: &mut egui::Ui, fraction: f32, width: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 22.0), egui::Sense::hover());
