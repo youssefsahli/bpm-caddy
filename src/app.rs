@@ -4338,15 +4338,29 @@ impl eframe::App for App {
             match result {
                 Ok((was_reset, n)) => {
                     if let State::Unlocked(session) = &mut self.state {
+                        // Everything the views cache may have just been
+                        // deleted — drop it all, then reload.
                         if let Ok(list) = session.db.patients() {
                             session.set_patients(list);
                         }
                         if let Ok(list) = session.db.drugs() {
                             session.drugs = list;
                         }
+                        if let Ok(counts) = session.db.pending_counts() {
+                            session.pending = counts;
+                        }
                         session.viewing = None;
                         session.viewing_interviews.clear();
+                        session.patient_treats.clear();
+                        session.patient_notes.clear();
+                        session.drug_notes.clear();
+                        session.drug_patients.clear();
+                        session.date_edits.clear();
+                        session.drug_form = None;
+                        session.drug_base = None;
                         session.drug_selected = 0;
+                        session.selected = 0;
+                        session.load_transmissions();
                         session.refresh_dashboard();
                     }
                     if let Some(editor) = &mut self.options {
