@@ -149,15 +149,24 @@ pub enum InterviewKind {
     TrodCystite,
     /// Rendez-vous de prévention.
     Prevention,
+    /// Accompagnement patient sous AVK.
+    Avk,
+    /// Accompagnement patient sous anticancéreux oraux.
+    Anticancereux,
+    /// Vaccination à l'officine.
+    Vaccination,
 }
 
 impl InterviewKind {
-    pub const ALL: [InterviewKind; 6] = [
+    pub const ALL: [InterviewKind; 9] = [
         Self::Bpm,
         Self::Aod,
+        Self::Avk,
         Self::Asthme,
+        Self::Anticancereux,
         Self::TrodAngine,
         Self::TrodCystite,
+        Self::Vaccination,
         Self::Prevention,
     ];
 
@@ -169,6 +178,9 @@ impl InterviewKind {
             Self::TrodAngine => "TROD_ANGINE",
             Self::TrodCystite => "TROD_CYSTITE",
             Self::Prevention => "PREVENTION",
+            Self::Avk => "AVK",
+            Self::Anticancereux => "ANTICANCEREUX",
+            Self::Vaccination => "VACCINATION",
         }
     }
 
@@ -184,6 +196,9 @@ impl InterviewKind {
             Self::TrodAngine => "TROD angine",
             Self::TrodCystite => "TROD cystite",
             Self::Prevention => "Prévention",
+            Self::Avk => "AVK",
+            Self::Anticancereux => "Anticancéreux",
+            Self::Vaccination => "Vaccination",
         }
     }
 }
@@ -547,6 +562,186 @@ const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Pulmicort", "budésonide", "corticoïde inhalé", ""),
     ("Tanganil", "acétylleucine", "anti-vertigineux", ""),
     ("Circadin", "mélatonine", "mélatonine", ""),
+    // Anticancéreux oraux (accompagnement officinal)
+    (
+        "Xeloda",
+        "capécitabine",
+        "anticancéreux oral — fluoropyrimidine",
+        "",
+    ),
+    ("Glivec", "imatinib", "anticancéreux oral — ITK", ""),
+    (
+        "Ibrance",
+        "palbociclib",
+        "anticancéreux oral — inhibiteur CDK4/6",
+        "",
+    ),
+    (
+        "Verzenios",
+        "abémaciclib",
+        "anticancéreux oral — inhibiteur CDK4/6",
+        "",
+    ),
+    (
+        "Zytiga",
+        "abiratérone",
+        "anticancéreux oral — hormonothérapie",
+        "",
+    ),
+    (
+        "Xtandi",
+        "enzalutamide",
+        "anticancéreux oral — hormonothérapie",
+        "",
+    ),
+    ("Tamoxifène", "tamoxifène", "hormonothérapie — SERM", ""),
+    (
+        "Fémara",
+        "létrozole",
+        "hormonothérapie — anti-aromatase",
+        "",
+    ),
+    (
+        "Arimidex",
+        "anastrozole",
+        "hormonothérapie — anti-aromatase",
+        "",
+    ),
+    (
+        "Aromasine",
+        "exémestane",
+        "hormonothérapie — anti-aromatase",
+        "",
+    ),
+    (
+        "Imnovid",
+        "pomalidomide",
+        "anticancéreux oral — immunomodulateur",
+        "",
+    ),
+    (
+        "Revlimid",
+        "lénalidomide",
+        "anticancéreux oral — immunomodulateur",
+        "",
+    ),
+    // HBPM / anticoagulants complémentaires
+    ("Innohep", "tinzaparine", "HBPM", "Protamine (partiel)"),
+    ("Fraxiparine", "nadroparine", "HBPM", "Protamine (partiel)"),
+    ("Fragmine", "daltéparine", "HBPM", "Protamine (partiel)"),
+    ("Arixtra", "fondaparinux", "anti-Xa injectable", ""),
+    // Cardio complémentaires
+    (
+        "Entresto",
+        "sacubitril + valsartan",
+        "IEC/ARA2 — insuffisance cardiaque",
+        "",
+    ),
+    ("Procoralan", "ivabradine", "inhibiteur du courant If", ""),
+    ("Loxen", "nicardipine", "inhibiteur calcique", ""),
+    (
+        "Eupressyl",
+        "urapidil",
+        "alpha-bloquant antihypertenseur",
+        "",
+    ),
+    ("Zocor", "simvastatine", "statine", ""),
+    ("Elisor", "pravastatine", "statine", ""),
+    ("Praluent", "alirocumab", "anti-PCSK9", ""),
+    ("Trinitrine", "trinitrine", "dérivé nitré", ""),
+    // Diabète complémentaires
+    ("Toujeo", "insuline glargine 300", "insuline lente", ""),
+    ("Abasaglar", "insuline glargine", "insuline lente", ""),
+    ("Humalog", "insuline lispro", "insuline rapide", ""),
+    ("Amarel", "glimépiride", "sulfamide hypoglycémiant", ""),
+    // Parkinson
+    (
+        "Modopar",
+        "lévodopa + bensérazide",
+        "antiparkinsonien — L-dopa",
+        "",
+    ),
+    (
+        "Sinemet",
+        "lévodopa + carbidopa",
+        "antiparkinsonien — L-dopa",
+        "",
+    ),
+    ("Sifrol", "pramipexole", "agoniste dopaminergique", ""),
+    ("Requip", "ropinirole", "agoniste dopaminergique", ""),
+    ("Azilect", "rasagiline", "IMAO-B", ""),
+    // Psychiatrie complémentaires
+    ("Abilify", "aripiprazole", "antipsychotique atypique", ""),
+    ("Zyprexa", "olanzapine", "antipsychotique atypique", ""),
+    ("Risperdal", "rispéridone", "antipsychotique atypique", ""),
+    (
+        "Leponex",
+        "clozapine",
+        "antipsychotique — NFS obligatoire",
+        "",
+    ),
+    ("Haldol", "halopéridol", "antipsychotique typique", ""),
+    ("Lysanxia", "prazépam", "benzodiazépine", "Flumazénil"),
+    ("Urbanyl", "clobazam", "benzodiazépine", "Flumazénil"),
+    (
+        "Mianserine",
+        "miansérine",
+        "antidépresseur tétracyclique",
+        "",
+    ),
+    // Antibiotiques / anti-infectieux complémentaires
+    ("Tavanic", "lévofloxacine", "fluoroquinolone", ""),
+    ("Fucidine", "acide fusidique", "antibiotique local", ""),
+    // Uro / gynéco
+    ("Josir", "tamsulosine", "alpha-bloquant — HBP", ""),
+    ("Xatral", "alfuzosine", "alpha-bloquant — HBP", ""),
+    ("Avodart", "dutastéride", "inhibiteur 5-alpha-réductase", ""),
+    ("Vesicare", "solifénacine", "anticholinergique vésical", ""),
+    (
+        "Optimizette",
+        "désogestrel",
+        "contraception microprogestative",
+        "",
+    ),
+    (
+        "Leeloo",
+        "lévonorgestrel + éthinylestradiol",
+        "contraception estroprogestative",
+        "",
+    ),
+    ("Norlevo", "lévonorgestrel", "contraception d'urgence", ""),
+    // Os / rhumato
+    ("Prolia", "dénosumab", "anti-RANKL (semestriel)", ""),
+    ("Actonel", "risédronate", "biphosphonate", ""),
+    ("Cacit", "carbonate de calcium", "calcium", ""),
+    ("Arava", "léflunomide", "immunomodulateur — DMARD", ""),
+    ("Imurel", "azathioprine", "immunosuppresseur", ""),
+    (
+        "Plaquenil",
+        "hydroxychloroquine",
+        "antipaludéen de synthèse",
+        "",
+    ),
+    // Divers comptoir
+    ("Roaccutane", "isotrétinoïne", "rétinoïde — tératogène", ""),
+    (
+        "Néo-Mercazole",
+        "carbimazole",
+        "antithyroïdien de synthèse",
+        "",
+    ),
+    ("Monoprost", "latanoprost", "collyre — prostaglandine", ""),
+    (
+        "Lamaline",
+        "paracétamol + opium + caféine",
+        "antalgique opiacé",
+        "",
+    ),
+    ("Célestène", "bétaméthasone", "corticoïde", ""),
+    ("Médrol", "méthylprednisolone", "corticoïde", ""),
+    ("Ercéfuryl", "nifuroxazide", "antiseptique intestinal", ""),
+    ("Débridat", "trimébutine", "antispasmodique", ""),
+    ("Magné B6", "magnésium + vitamine B6", "magnésium", ""),
 ];
 
 pub struct Db {

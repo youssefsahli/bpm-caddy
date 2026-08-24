@@ -570,6 +570,9 @@ fn kind_color(kind: InterviewKind) -> egui::Color32 {
         InterviewKind::TrodAngine => egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
         InterviewKind::TrodCystite => egui::Color32::from_rgb(0x1a, 0x6e, 0x8b),
         InterviewKind::Prevention => egui::Color32::from_rgb(0x5e, 0x7e, 0x3a),
+        InterviewKind::Avk => egui::Color32::from_rgb(0x6e, 0x2e, 0x2e),
+        InterviewKind::Anticancereux => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+        InterviewKind::Vaccination => egui::Color32::from_rgb(0x2e, 0x6e, 0x6e),
     }
 }
 
@@ -1567,7 +1570,7 @@ impl App {
             ui.label(tr("patient_new_interview"));
             let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
             let mut new_kind: Option<InterviewKind> = None;
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 for kind in InterviewKind::ALL {
                     if motif::button(ui, kind.label()).clicked() {
                         new_kind = Some(kind);
@@ -2299,7 +2302,7 @@ impl App {
             // Legend: one colored chip per act kind.
             ui.add_space(6.0);
             motif::column(ui, 900.0, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for kind in InterviewKind::ALL {
                         ui.label(
                             egui::RichText::new(format!("  {}  ", kind.label()))
@@ -3822,6 +3825,8 @@ impl eframe::App for App {
         let mut close_opts = false;
         let mut open_pw = false;
         let mut saved_cfg: Option<Config> = None;
+        // (target, also_point_config_at_it) requested from the DB tools.
+        let mut db_export: Option<(std::path::PathBuf, bool)> = None;
         if let Some(editor) = &mut self.options {
             egui::Window::new(tr("opts_title"))
                 .collapsible(false)
@@ -3906,12 +3911,45 @@ impl eframe::App for App {
                                     );
                                     ui.end_row();
                                     ui.label(dim(tr("opts_db_path")));
-                                    ui.add_sized(
-                                        [300.0, 24.0],
-                                        egui::TextEdit::singleline(&mut editor.db_path_text),
-                                    );
+                                    ui.horizontal(|ui| {
+                                        ui.add_sized(
+                                            [258.0, 24.0],
+                                            egui::TextEdit::singleline(&mut editor.db_path_text),
+                                        );
+                                        if motif::button(ui, tr("opts_db_browse")).clicked() {
+                                            if let Some(p) = rfd::FileDialog::new()
+                                                .add_filter("SQLite", &["db", "sqlite"])
+                                                .add_filter("*", &["*"])
+                                                .pick_file()
+                                            {
+                                                editor.db_path_text = p.display().to_string();
+                                            }
+                                        }
+                                    });
                                     ui.end_row();
                                 });
+                            // File-level tools: consistent encrypted copy
+                            // (VACUUM INTO) to any destination; "move"
+                            // additionally points the config at the copy
+                            // (applied on save + restart, old file kept).
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, tr("opts_db_copy")).clicked() {
+                                    if let Some(p) = rfd::FileDialog::new()
+                                        .set_file_name("bpm_caddy.db")
+                                        .save_file()
+                                    {
+                                        db_export = Some((p, false));
+                                    }
+                                }
+                                if motif::button(ui, tr("opts_db_move")).clicked() {
+                                    if let Some(p) = rfd::FileDialog::new()
+                                        .set_file_name("bpm_caddy.db")
+                                        .save_file()
+                                    {
+                                        db_export = Some((p, true));
+                                    }
+                                }
+                            });
                             ui.label(
                                 egui::RichText::new(tr("opts_db_note"))
                                     .size(11.0)
@@ -3923,12 +3961,18 @@ impl eframe::App for App {
                                 .num_columns(4)
                                 .spacing([12.0, 6.0])
                                 .show(ui, |ui| {
-                                    let fees: [(&str, &mut f64); 6] = [
+                                    let fees: [(&str, &mut f64); 9] = [
                                         ("BPM", &mut editor.cfg.billing.bpm_fee),
                                         ("AOD", &mut editor.cfg.billing.aod_fee),
+                                        ("AVK", &mut editor.cfg.billing.avk_fee),
                                         ("Asthme", &mut editor.cfg.billing.asthme_fee),
+                                        (
+                                            "Anticancéreux",
+                                            &mut editor.cfg.billing.anticancereux_fee,
+                                        ),
                                         ("TROD angine", &mut editor.cfg.billing.trod_angine_fee),
                                         ("TROD cystite", &mut editor.cfg.billing.trod_cystite_fee),
+                                        ("Vaccination", &mut editor.cfg.billing.vaccination_fee),
                                         ("Prévention", &mut editor.cfg.billing.prevention_fee),
                                     ];
                                     for (i, (label, fee)) in fees.into_iter().enumerate() {
@@ -3949,15 +3993,21 @@ impl eframe::App for App {
                                 .num_columns(4)
                                 .spacing([12.0, 6.0])
                                 .show(ui, |ui| {
-                                    let rules: [(&str, &mut u32); 6] = [
+                                    let rules: [(&str, &mut u32); 9] = [
                                         ("BPM", &mut editor.cfg.rules.bpm_per_year),
                                         ("AOD", &mut editor.cfg.rules.aod_per_year),
+                                        ("AVK", &mut editor.cfg.rules.avk_per_year),
                                         ("Asthme", &mut editor.cfg.rules.asthme_per_year),
+                                        (
+                                            "Anticancéreux",
+                                            &mut editor.cfg.rules.anticancereux_per_year,
+                                        ),
                                         ("TROD angine", &mut editor.cfg.rules.trod_angine_per_year),
                                         (
                                             "TROD cystite",
                                             &mut editor.cfg.rules.trod_cystite_per_year,
                                         ),
+                                        ("Vaccination", &mut editor.cfg.rules.vaccination_per_year),
                                         ("Prévention", &mut editor.cfg.rules.prevention_per_year),
                                     ];
                                     for (i, (label, n)) in rules.into_iter().enumerate() {
@@ -4005,6 +4055,38 @@ impl eframe::App for App {
                         ui.colored_label(color, msg.as_str());
                     }
                 });
+        }
+        if let Some((target, point)) = db_export {
+            let current = self.config.db_path();
+            let same = target
+                .canonicalize()
+                .map(|t| current.canonicalize().map(|c| t == c).unwrap_or(false))
+                .unwrap_or(false);
+            let result = if same {
+                Err(tr("opts_db_same").to_owned())
+            } else if let State::Unlocked(session) = &self.state {
+                // The native dialog already confirmed overwriting, but
+                // VACUUM INTO refuses existing files — clear it first.
+                if target.exists() {
+                    let _ = std::fs::remove_file(&target);
+                }
+                session.db.backup_to(&target)
+            } else {
+                Err(tr("opts_db_locked").to_owned())
+            };
+            if let Some(editor) = &mut self.options {
+                match result {
+                    Ok(()) => {
+                        if point {
+                            editor.db_path_text = target.display().to_string();
+                            editor.message = Some((false, tr("opts_db_moved").to_owned()));
+                        } else {
+                            editor.message = Some((false, trf("opts_db_copied", target.display())));
+                        }
+                    }
+                    Err(e) => editor.message = Some((true, trf("opts_db_copy_error", e))),
+                }
+            }
         }
         if let Some(cfg) = saved_cfg {
             // Live-apply everything except the database path (restart).
