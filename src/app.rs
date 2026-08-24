@@ -4,8 +4,8 @@ use eframe::egui;
 
 use crate::config::Config;
 use crate::db::{
-    self, Appointment, Db, Drug, Interview, InterviewKind, InterviewState, InterviewSummary,
-    Patient,
+    self, Appointment, Db, Drug, Interview, InterviewKind, InterviewState, InterviewSummary, Note,
+    NoteSubject, Patient,
 };
 use crate::fuzzy;
 use crate::strings::{tr, trf, trn};
@@ -121,6 +121,85 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
     out
 }
 
+/// A compact dated-notes journal: sunken scroll list ("24/08 14:32 ·
+/// CL" then the body, with a two-step "×"), and an add row below.
+/// Returns (body to add, note id to delete).
+fn notes_box(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    notes: &[Note],
+    text: &mut String,
+    confirm: &mut Option<i64>,
+    height: f32,
+) -> (Option<String>, Option<i64>) {
+    let mut add: Option<String> = None;
+    let mut delete: Option<i64> = None;
+    let w = ui.available_width();
+    let top = ui.cursor().top();
+    let rect =
+        egui::Rect::from_min_size(egui::pos2(ui.cursor().left(), top), egui::vec2(w, height));
+    ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
+    motif::bevel(ui.painter(), rect, false);
+    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect.shrink(5.0)), |ui| {
+        egui::ScrollArea::vertical()
+            .id_salt(id_salt)
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                if notes.is_empty() {
+                    ui.label(
+                        egui::RichText::new(tr("notes_empty"))
+                            .size(11.0)
+                            .color(motif::BG_DARK),
+                    );
+                }
+                for n in notes {
+                    ui.horizontal(|ui| {
+                        let head = if n.operator.is_empty() {
+                            n.stamp()
+                        } else {
+                            format!("{} · {}", n.stamp(), n.operator)
+                        };
+                        ui.label(egui::RichText::new(head).size(11.0).color(motif::BG_DARK));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let label = if *confirm == Some(n.id) {
+                                tr("itv_delete_confirm")
+                            } else {
+                                tr("itv_delete")
+                            };
+                            let x = ui.add(
+                                egui::Label::new(egui::RichText::new(label).size(11.0))
+                                    .sense(egui::Sense::click()),
+                            );
+                            if x.on_hover_text(tr("notes_delete_tooltip")).clicked() {
+                                if *confirm == Some(n.id) {
+                                    delete = Some(n.id);
+                                    *confirm = None;
+                                } else {
+                                    *confirm = Some(n.id);
+                                }
+                            }
+                        });
+                    });
+                    ui.label(egui::RichText::new(n.body.as_str()).size(13.0));
+                    ui.add_space(3.0);
+                }
+            });
+    });
+    let below = (rect.bottom() - ui.cursor().top()).max(0.0) + 6.0;
+    ui.add_space(below);
+    ui.horizontal(|ui| {
+        let field_w = (ui.available_width() - 100.0).max(120.0);
+        ui.add_sized(
+            [field_w, 24.0],
+            egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
+        );
+        if motif::button(ui, tr("notes_add")).clicked() && !text.trim().is_empty() {
+            add = Some(text.trim().to_owned());
+        }
+    });
+    (add, delete)
+}
+
 /// Union-merge for the shared team notes: keep our text, append the
 /// lines another PC added since the common `base` (lines we deleted
 /// ourselves stay deleted). Notes are lists — line granularity is the
@@ -191,6 +270,14 @@ struct Session {
     rule_block: Option<(InterviewKind, String)>,
     /// The viewed patient's current treatments (from the drug base).
     patient_treats: Vec<Drug>,
+    /// The viewed patient's dated notes, newest first.
+    patient_notes: Vec<Note>,
+    /// The open drug card's dated notes, newest first.
+    drug_notes: Vec<Note>,
+    /// Input buffer of the visible notes box (views are exclusive).
+    note_text: String,
+    /// Two-step delete confirmation for one note.
+    note_confirm: Option<i64>,
     /// In-progress text of the treatment picker.
     treat_query: String,
     view: MainView,
@@ -270,6 +357,10 @@ impl Session {
             confirm_delete_itv: None,
             rule_block: None,
             patient_treats: Vec::new(),
+            patient_notes: Vec::new(),
+            drug_notes: Vec::new(),
+            note_text: String::new(),
+            note_confirm: None,
             treat_query: String::new(),
             view: MainView::Search,
             summaries: Vec::new(),
@@ -301,6 +392,12 @@ impl Session {
     /// currently on it (recall / alert lookup).
     fn open_drug_card(&mut self, d: Drug) {
         self.drug_patients = self.db.patients_for_drug(d.id).unwrap_or_default();
+        self.drug_notes = self
+            .db
+            .notes_for(NoteSubject::Drug, d.id)
+            .unwrap_or_default();
+        self.note_text.clear();
+        self.note_confirm = None;
         self.drug_base = Some(d.clone());
         self.drug_form = Some(d);
         self.confirm_delete_drug = false;
@@ -392,6 +489,12 @@ impl Session {
     fn open_patient(&mut self, patient: Patient) {
         self.reload_interviews(patient.id);
         self.patient_treats = self.db.drugs_for_patient(patient.id).unwrap_or_default();
+        self.patient_notes = self
+            .db
+            .notes_for(NoteSubject::Patient, patient.id)
+            .unwrap_or_default();
+        self.note_text.clear();
+        self.note_confirm = None;
         self.treat_query.clear();
         self.edit_patient = None;
         self.confirm_delete = false;
@@ -467,6 +570,11 @@ pub struct App {
     pw_change: Option<PwChangeForm>,
     /// Operator initials for note stamps (default from config.toml).
     operator: String,
+    /// The operator's personal notes (loaded for `op_notes_for`).
+    op_notes: Vec<Note>,
+    op_notes_for: Option<String>,
+    op_note_text: String,
+    op_note_confirm: Option<i64>,
     /// Typst template editor, when open.
     tpl_editor: Option<TplEditor>,
     /// Global options editor, when open.
@@ -625,6 +733,10 @@ impl App {
             pw_change: None,
             tpl_editor,
             options,
+            op_notes: Vec::new(),
+            op_notes_for: None,
+            op_note_text: String::new(),
+            op_note_confirm: None,
         }
     }
 
@@ -711,21 +823,76 @@ impl App {
                 });
                 ui.add_space(4.0);
 
-                let editor_rect = ui.available_rect_before_wrap().shrink(2.0);
+                let mut editor_rect = ui.available_rect_before_wrap().shrink(2.0);
+                editor_rect.set_bottom(editor_rect.bottom() - 185.0);
                 motif::bevel(ui.painter(), editor_rect, false);
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    let response = ui.add_sized(
-                        ui.available_size(),
-                        egui::TextEdit::multiline(&mut self.doc_text)
-                            .font(egui::TextStyle::Monospace)
-                            .frame(false),
-                    );
-                    self.doc_focused = response.has_focus();
-                    if response.changed() {
-                        self.doc_dirty = true;
-                        self.doc_last_edit = Instant::now();
+                egui::ScrollArea::vertical()
+                    .max_height(editor_rect.height())
+                    .show(ui, |ui| {
+                        let response = ui.add_sized(
+                            [ui.available_width(), editor_rect.height() - 8.0],
+                            egui::TextEdit::multiline(&mut self.doc_text)
+                                .font(egui::TextStyle::Monospace)
+                                .frame(false),
+                        );
+                        self.doc_focused = response.has_focus();
+                        if response.changed() {
+                            self.doc_dirty = true;
+                            self.doc_last_edit = Instant::now();
+                        }
+                    });
+
+                // Personal notes of the operator (private journal).
+                ui.add_space(10.0);
+                let op = self.operator.trim().to_owned();
+                if let State::Unlocked(session) = &self.state {
+                    if self.op_notes_for.as_deref() != Some(op.as_str()) {
+                        self.op_notes = if op.is_empty() {
+                            Vec::new()
+                        } else {
+                            session.db.notes_for_operator(&op).unwrap_or_default()
+                        };
+                        self.op_notes_for = Some(op.clone());
                     }
-                });
+                }
+                if op.is_empty() {
+                    ui.label(
+                        egui::RichText::new(tr("op_notes_missing"))
+                            .size(11.0)
+                            .color(motif::BG_DARK),
+                    );
+                } else if matches!(self.state, State::Unlocked(_)) {
+                    motif::section(ui, &trf("op_notes_section", &op));
+                    ui.add_space(4.0);
+                    let (add, delete) = notes_box(
+                        ui,
+                        "op_notes",
+                        &self.op_notes,
+                        &mut self.op_note_text,
+                        &mut self.op_note_confirm,
+                        84.0,
+                    );
+                    if let State::Unlocked(session) = &self.state {
+                        let mut changed = false;
+                        if let Some(body) = add {
+                            if session
+                                .db
+                                .add_note(NoteSubject::Operator, 0, &op, &body)
+                                .is_ok()
+                            {
+                                changed = true;
+                            }
+                            self.op_note_text.clear();
+                        }
+                        if let Some(id) = delete {
+                            let _ = session.db.delete_note(id);
+                            changed = true;
+                        }
+                        if changed {
+                            self.op_notes = session.db.notes_for_operator(&op).unwrap_or_default();
+                        }
+                    }
+                }
             });
     }
 
@@ -831,6 +998,7 @@ impl App {
         }
 
         let config = self.config.clone();
+        let operator = self.operator.clone();
         let doc = (
             &mut self.doc_text,
             &mut self.doc_dirty,
@@ -842,7 +1010,7 @@ impl App {
                 return;
             }
             if session.view == MainView::Drugs {
-                Self::drugs_view(ui, ctx, session, doc);
+                Self::drugs_view(ui, ctx, session, doc, &operator);
                 return;
             }
             if session.view == MainView::Agenda {
@@ -850,7 +1018,7 @@ impl App {
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
-                Self::patient_view(ui, ctx, session, &patient, &config);
+                Self::patient_view(ui, ctx, session, &patient, &config, &operator);
                 return;
             }
 
@@ -1077,12 +1245,14 @@ impl App {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn patient_view(
         ui: &mut egui::Ui,
         ctx: &egui::Context,
         session: &mut Session,
         patient: &Patient,
         config: &Config,
+        operator: &str,
     ) {
         // Escape closes the patient view — but while a text field has
         // focus it only drops that focus (egui's own behavior); acting on
@@ -1315,6 +1485,44 @@ impl App {
                 if let Some(d) = open_card {
                     session.open_drug_card(d);
                     session.view = MainView::Drugs;
+                }
+            }
+            ui.add_space(10.0);
+
+            // Dated notes journal for this patient.
+            motif::section(ui, tr("notes_section"));
+            ui.add_space(4.0);
+            {
+                let (add, delete) = notes_box(
+                    ui,
+                    "patient_notes",
+                    &session.patient_notes,
+                    &mut session.note_text,
+                    &mut session.note_confirm,
+                    96.0,
+                );
+                if let Some(body) = add {
+                    if let Err(e) =
+                        session
+                            .db
+                            .add_note(NoteSubject::Patient, patient.id, operator, &body)
+                    {
+                        session.error = Some(e);
+                    }
+                    session.note_text.clear();
+                    session.patient_notes = session
+                        .db
+                        .notes_for(NoteSubject::Patient, patient.id)
+                        .unwrap_or_default();
+                }
+                if let Some(id) = delete {
+                    if let Err(e) = session.db.delete_note(id) {
+                        session.error = Some(e);
+                    }
+                    session.patient_notes = session
+                        .db
+                        .notes_for(NoteSubject::Patient, patient.id)
+                        .unwrap_or_default();
                 }
             }
             ui.add_space(10.0);
@@ -2090,6 +2298,7 @@ impl App {
         ctx: &egui::Context,
         session: &mut Session,
         doc: (&mut String, &mut bool, &mut Instant),
+        operator: &str,
     ) {
         let (doc_text, doc_dirty, doc_last_edit) = doc;
         // Escape closes the card or the tables first, then the view.
@@ -2251,6 +2460,42 @@ impl App {
                             ui.end_row();
                         });
                 });
+                // Dated notes journal for this drug.
+                ui.add_space(8.0);
+                motif::section(ui, tr("drug_notes_section"));
+                ui.add_space(4.0);
+                let drug_id = form.id;
+                let (note_add, note_delete) = notes_box(
+                    ui,
+                    "drug_notes",
+                    &session.drug_notes,
+                    &mut session.note_text,
+                    &mut session.note_confirm,
+                    80.0,
+                );
+                if let Some(body) = note_add {
+                    if let Err(e) = session
+                        .db
+                        .add_note(NoteSubject::Drug, drug_id, operator, &body)
+                    {
+                        session.error = Some(e);
+                    }
+                    session.note_text.clear();
+                    session.drug_notes = session
+                        .db
+                        .notes_for(NoteSubject::Drug, drug_id)
+                        .unwrap_or_default();
+                }
+                if let Some(id) = note_delete {
+                    if let Err(e) = session.db.delete_note(id) {
+                        session.error = Some(e);
+                    }
+                    session.drug_notes = session
+                        .db
+                        .notes_for(NoteSubject::Drug, drug_id)
+                        .unwrap_or_default();
+                }
+
                 // Reverse lookup: who is on this drug (recalls, alerts).
                 if !session.drug_patients.is_empty() {
                     ui.add_space(8.0);

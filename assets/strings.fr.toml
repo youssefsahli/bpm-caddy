@@ -202,6 +202,16 @@ drug_patients_label = "Patients sous ce traitement :"
 drug_stale = "Fiche modifiée depuis un autre poste — réenregistrez pour imposer vos valeurs, ou fermez pour recharger."
 drug_delete_stale = "Fiche modifiée depuis un autre poste — suppression annulée."
 
+# --- Notes datées (patients, médicaments, opérateur) ---
+notes_section = "Notes de suivi"
+drug_notes_section = "Notes datées"
+notes_add_hint = "Nouvelle note…"
+notes_add = "Ajouter"
+notes_empty = "Aucune note."
+notes_delete_tooltip = "Supprimer cette note"
+op_notes_section = "Notes de {}"
+op_notes_missing = "Renseignez l'opérateur pour vos notes personnelles."
+
 # --- Documentation d'équipe ---
 docs_title = "Documentation d'équipe"
 docs_saved = "Enregistré"
