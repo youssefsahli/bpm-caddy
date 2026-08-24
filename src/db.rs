@@ -302,6 +302,8 @@ pub enum NoteSubject {
     Drug,
     /// Personal notes, keyed by the operator initials.
     Operator,
+    /// The team's end-of-day handover logbook, organized by day.
+    Transmission,
 }
 
 impl NoteSubject {
@@ -310,6 +312,7 @@ impl NoteSubject {
             Self::Patient => "PATIENT",
             Self::Drug => "DRUG",
             Self::Operator => "OPERATOR",
+            Self::Transmission => "TRANSMISSION",
         }
     }
 }
@@ -819,6 +822,56 @@ impl Db {
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// One day of the transmission logbook, chronological.
+    pub fn transmissions_for_day(&self, day_iso: &str) -> Result<Vec<Note>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, operator, body, created_at FROM notes
+                 WHERE subject_kind = 'TRANSMISSION' AND substr(created_at, 1, 10) = ?1
+                 ORDER BY created_at, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([day_iso], |r| {
+                Ok(Note {
+                    id: r.get(0)?,
+                    operator: r.get(1)?,
+                    body: r.get(2)?,
+                    created_at: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// The days that have transmission entries, newest first.
+    pub fn transmission_days(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT DISTINCT substr(created_at, 1, 10) FROM notes
+                 WHERE subject_kind = 'TRANSMISSION'
+                 ORDER BY 1 DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// An ISO date shifted by whole days (SQLite's calendar).
+    pub fn date_offset(&self, iso: &str, days: i64) -> Result<String, String> {
+        self.conn
+            .query_row(
+                "SELECT date(?1, printf('%+d days', ?2))",
+                (iso, days),
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())
     }
 
     pub fn delete_note(&self, id: i64) -> Result<(), String> {
@@ -1822,6 +1875,42 @@ mod tests {
     }
 
     #[test]
+    fn transmission_logbook_groups_by_day() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-trans-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("trans.db");
+        let _ = std::fs::remove_file(&path);
+
+        let db = Db::open(&path, "secret").unwrap();
+        let today = db.today_iso().unwrap();
+        db.add_note(NoteSubject::Transmission, 0, "CL", "Commande X en retard.")
+            .unwrap();
+        db.add_note(NoteSubject::Transmission, 0, "YS", "Voir Mme M demain.")
+            .unwrap();
+
+        let entries = db.transmissions_for_day(&today).unwrap();
+        assert_eq!(entries.len(), 2);
+        // Chronological within the day.
+        assert_eq!(entries[0].operator, "CL");
+        assert_eq!(entries[1].operator, "YS");
+        assert!(db
+            .transmissions_for_day(&db.date_offset(&today, -1).unwrap())
+            .unwrap()
+            .is_empty());
+        assert_eq!(db.transmission_days().unwrap(), vec![today.clone()]);
+        assert_eq!(
+            db.date_offset("2026-03-01", -1).unwrap(),
+            "2026-02-28".to_owned()
+        );
+        assert_eq!(
+            db.date_offset("2026-08-24", 1).unwrap(),
+            "2026-08-25".to_owned()
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn standalone_notes_journal() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-note-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -2253,6 +2342,36 @@ mod tests {
                     0,
                     "CL",
                     "Rappeler le grossiste lundi.",
+                )
+                .unwrap();
+                // Transmissions: one entry yesterday, two today.
+                let t1 = db
+                    .add_note(
+                        NoteSubject::Transmission,
+                        0,
+                        "CL",
+                        "Rupture Eliquis 5 mg — dépannage possible pharmacie Centrale.",
+                    )
+                    .unwrap();
+                db.conn
+                    .execute(
+                        "UPDATE notes SET created_at = datetime('now', 'localtime', '-1 day')
+                         WHERE id = ?1",
+                        [t1],
+                    )
+                    .unwrap();
+                db.add_note(
+                    NoteSubject::Transmission,
+                    0,
+                    "CL",
+                    "M. Dupont passe demain matin récupérer son courrier CR.",
+                )
+                .unwrap();
+                db.add_note(
+                    NoteSubject::Transmission,
+                    0,
+                    "YS",
+                    "Penser à facturer les 2 entretiens « Réalisés » de la semaine.",
                 )
                 .unwrap();
             }

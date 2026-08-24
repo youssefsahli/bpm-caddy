@@ -131,6 +131,7 @@ fn notes_box(
     text: &mut String,
     confirm: &mut Option<i64>,
     height: f32,
+    with_add: bool,
 ) -> (Option<String>, Option<i64>) {
     let mut add: Option<String> = None;
     let mut delete: Option<i64> = None;
@@ -187,16 +188,18 @@ fn notes_box(
     });
     let below = (rect.bottom() - ui.cursor().top()).max(0.0) + 6.0;
     ui.add_space(below);
-    ui.horizontal(|ui| {
-        let field_w = (ui.available_width() - 100.0).max(120.0);
-        ui.add_sized(
-            [field_w, 24.0],
-            egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
-        );
-        if motif::button(ui, tr("notes_add")).clicked() && !text.trim().is_empty() {
-            add = Some(text.trim().to_owned());
-        }
-    });
+    if with_add {
+        ui.horizontal(|ui| {
+            let field_w = (ui.available_width() - 100.0).max(120.0);
+            ui.add_sized(
+                [field_w, 24.0],
+                egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
+            );
+            if motif::button(ui, tr("notes_add")).clicked() && !text.trim().is_empty() {
+                add = Some(text.trim().to_owned());
+            }
+        });
+    }
     (add, delete)
 }
 
@@ -243,6 +246,8 @@ enum MainView {
     Drugs,
     /// Upcoming patient appointments, grouped by day (F4).
     Agenda,
+    /// The end-of-day transmission logbook (F5).
+    Transmissions,
 }
 
 struct Session {
@@ -274,6 +279,11 @@ struct Session {
     patient_notes: Vec<Note>,
     /// The open drug card's dated notes, newest first.
     drug_notes: Vec<Note>,
+    /// Transmission logbook: the shown day, its entries, and the days
+    /// that have entries (for navigation).
+    trans_day: String,
+    trans_notes: Vec<Note>,
+    trans_days: Vec<String>,
     /// Input buffer of the visible notes box (views are exclusive).
     note_text: String,
     /// Two-step delete confirmation for one note.
@@ -359,6 +369,9 @@ impl Session {
             patient_treats: Vec::new(),
             patient_notes: Vec::new(),
             drug_notes: Vec::new(),
+            trans_day: String::new(),
+            trans_notes: Vec::new(),
+            trans_days: Vec::new(),
             note_text: String::new(),
             note_confirm: None,
             treat_query: String::new(),
@@ -401,6 +414,19 @@ impl Session {
         self.drug_base = Some(d.clone());
         self.drug_form = Some(d);
         self.confirm_delete_drug = false;
+    }
+
+    /// Load (or reload) the transmission logbook for `trans_day`.
+    fn load_transmissions(&mut self) {
+        if self.trans_day.is_empty() {
+            self.trans_day = self.db.today_iso().unwrap_or_default();
+        }
+        self.trans_notes = self
+            .db
+            .transmissions_for_day(&self.trans_day)
+            .unwrap_or_default();
+        self.trans_days = self.db.transmission_days().unwrap_or_default();
+        self.today = self.db.today_iso().unwrap_or_default();
     }
 
     /// Re-point `viewing` at the freshly loaded patient row (or close
@@ -666,6 +692,10 @@ impl App {
                             session.show_tables = true;
                             session.view = MainView::Drugs;
                         }
+                        Ok("carnet") => {
+                            session.load_transmissions();
+                            session.view = MainView::Transmissions;
+                        }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
                                 session.drugs = list;
@@ -871,6 +901,7 @@ impl App {
                         &mut self.op_note_text,
                         &mut self.op_note_confirm,
                         84.0,
+                        true,
                     );
                     if let State::Unlocked(session) = &self.state {
                         let mut changed = false;
@@ -1015,6 +1046,10 @@ impl App {
             }
             if session.view == MainView::Agenda {
                 Self::agenda_view(ui, ctx, session);
+                return;
+            }
+            if session.view == MainView::Transmissions {
+                Self::transmissions_view(ui, ctx, session, &operator);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -1500,6 +1535,7 @@ impl App {
                     &mut session.note_text,
                     &mut session.note_confirm,
                     96.0,
+                    true,
                 );
                 if let Some(body) = add {
                     if let Err(e) =
@@ -1950,6 +1986,150 @@ impl App {
                 ui.colored_label(motif::ALERT, err.as_str());
             });
         }
+    }
+
+    /// The end-of-day transmission logbook (F5): one page per day,
+    /// entries stamped time · operator, browsable day by day and
+    /// printable; writing is only possible on today's page.
+    fn transmissions_view(
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        session: &mut Session,
+        operator: &str,
+    ) {
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.wants_keyboard_input() {
+            session.view = MainView::Search;
+            return;
+        }
+        motif::column(ui, 700.0, |ui| {
+            ui.add_space(24.0);
+            ui.horizontal(|ui| {
+                ui.heading(tr("trans_title"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if !session.trans_notes.is_empty()
+                        && motif::button(ui, tr("dash_print"))
+                            .on_hover_text(tr("trans_print_tooltip"))
+                            .clicked()
+                    {
+                        let day = &session.trans_day;
+                        let title = format!(
+                            "{} {}",
+                            db::weekday_fr(day).unwrap_or(""),
+                            db::format_french_date(day)
+                        );
+                        if let Err(e) =
+                            crate::pdf::open_transmission_day(&title, &session.trans_notes)
+                        {
+                            session.error = Some(e);
+                        }
+                    }
+                });
+            });
+            ui.label(tr("trans_subtitle"));
+            ui.add_space(10.0);
+
+            // Day navigation: previous day with entries (calendar
+            // fallback), today, next day with entries.
+            let mut goto: Option<String> = None;
+            ui.horizontal(|ui| {
+                if motif::button(ui, "‹")
+                    .on_hover_text(tr("trans_prev"))
+                    .clicked()
+                {
+                    let prev = session
+                        .trans_days
+                        .iter()
+                        .find(|d| **d < session.trans_day)
+                        .cloned();
+                    goto = prev.or_else(|| session.db.date_offset(&session.trans_day, -1).ok());
+                }
+                if motif::button(ui, tr("agenda_this_week")).clicked() {
+                    goto = session.db.today_iso().ok();
+                }
+                if motif::button(ui, "›")
+                    .on_hover_text(tr("trans_next"))
+                    .clicked()
+                {
+                    let next = session
+                        .trans_days
+                        .iter()
+                        .rev()
+                        .find(|d| **d > session.trans_day)
+                        .cloned();
+                    goto = next.or_else(|| {
+                        if session.trans_day < session.today {
+                            Some(session.today.clone())
+                        } else {
+                            None
+                        }
+                    });
+                }
+                let day = db::weekday_fr(&session.trans_day).unwrap_or("");
+                let cap: String = day
+                    .chars()
+                    .enumerate()
+                    .map(|(i, c)| {
+                        if i == 0 {
+                            c.to_uppercase().next().unwrap_or(c)
+                        } else {
+                            c
+                        }
+                    })
+                    .collect();
+                let mut title = format!("{cap} {}", db::format_french_date(&session.trans_day));
+                if session.trans_day == session.today {
+                    title.push_str(tr("dash_today"));
+                }
+                ui.label(egui::RichText::new(title).strong());
+            });
+            if let Some(day) = goto {
+                session.trans_day = day;
+                session.trans_notes = session
+                    .db
+                    .transmissions_for_day(&session.trans_day)
+                    .unwrap_or_default();
+                session.note_confirm = None;
+            }
+            ui.add_space(8.0);
+
+            let is_today = session.trans_day == session.today;
+            let h = (ui.available_height() - 60.0).max(180.0);
+            let (add, delete) = notes_box(
+                ui,
+                "transmissions",
+                &session.trans_notes,
+                &mut session.note_text,
+                &mut session.note_confirm,
+                h,
+                is_today,
+            );
+            if !is_today {
+                ui.label(
+                    egui::RichText::new(tr("trans_readonly"))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
+            }
+            if let Some(body) = add {
+                if let Err(e) = session
+                    .db
+                    .add_note(NoteSubject::Transmission, 0, operator, &body)
+                {
+                    session.error = Some(e);
+                }
+                session.note_text.clear();
+                session.load_transmissions();
+            }
+            if let Some(id) = delete {
+                if let Err(e) = session.db.delete_note(id) {
+                    session.error = Some(e);
+                }
+                session.load_transmissions();
+            }
+            if let Some(err) = &session.error {
+                ui.colored_label(motif::ALERT, err.as_str());
+            }
+        });
     }
 
     /// Agenda (F4): the upcoming patient appointments grouped by day,
@@ -2472,6 +2652,7 @@ impl App {
                     &mut session.note_text,
                     &mut session.note_confirm,
                     80.0,
+                    true,
                 );
                 if let Some(body) = note_add {
                     if let Err(e) = session
@@ -3206,6 +3387,9 @@ impl eframe::App for App {
                         session.drugs = list;
                     }
                 }
+                if session.view == MainView::Transmissions {
+                    session.load_transmissions();
+                }
                 if session.view == MainView::Agenda {
                     if let Ok(a) = session.db.upcoming_appointments() {
                         session.appointments = a;
@@ -3247,21 +3431,21 @@ impl eframe::App for App {
         let mut toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
         let mut toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
         let mut toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
+        let mut toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("BPM-Caddy").strong());
-                ui.label(
-                    egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
-                        .size(11.0)
-                        .color(motif::BG_DARK),
-                )
-                .on_hover_text(format!(
-                    "Base : {}\nConfiguration : {}",
-                    self.config.db_path().display(),
-                    Config::path().display()
-                ));
+                ui.label(egui::RichText::new("BPM-Caddy").strong())
+                    .on_hover_text(format!(
+                        concat!(
+                            "BPM-Caddy v",
+                            env!("CARGO_PKG_VERSION"),
+                            "\nBase : {}\nConfiguration : {}"
+                        ),
+                        self.config.db_path().display(),
+                        Config::path().display()
+                    ));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if motif::button(ui, tr("toolbar_docs")).clicked() {
                         self.show_docs = !self.show_docs;
@@ -3280,6 +3464,11 @@ impl eframe::App for App {
                         && motif::button(ui, tr("toolbar_agenda")).clicked()
                     {
                         toggle_agenda = true;
+                    }
+                    if matches!(self.state, State::Unlocked(_))
+                        && motif::button(ui, tr("toolbar_trans")).clicked()
+                    {
+                        toggle_trans = true;
                     }
                     if let State::Unlocked(session) = &mut self.state {
                         if motif::button(ui, tr("toolbar_lock")).clicked() {
@@ -3365,7 +3554,10 @@ impl eframe::App for App {
         if toggle_dashboard {
             if let State::Unlocked(session) = &mut self.state {
                 session.view = match session.view {
-                    MainView::Search | MainView::Drugs | MainView::Agenda => {
+                    MainView::Search
+                    | MainView::Drugs
+                    | MainView::Agenda
+                    | MainView::Transmissions => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
@@ -3386,6 +3578,20 @@ impl eframe::App for App {
                         session.show_amounts = false;
                         session.refresh_dashboard();
                         MainView::Agenda
+                    }
+                };
+            }
+        }
+        if toggle_trans {
+            if let State::Unlocked(session) = &mut self.state {
+                session.view = match session.view {
+                    MainView::Transmissions => MainView::Search,
+                    _ => {
+                        session.flush_date_edits();
+                        session.show_amounts = false;
+                        session.trans_day = String::new();
+                        session.load_transmissions();
+                        MainView::Transmissions
                     }
                 };
             }
