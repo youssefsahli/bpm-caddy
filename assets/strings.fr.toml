@@ -210,6 +210,7 @@ tables_print_tooltip = "Toutes les tables en PDF A4"
 
 # --- Base médicaments ---
 drug_title = "Base médicaments"
+drug_base_sparse = "Base incomplète ({} médicaments) — Options… › Compléter les médicaments de départ."
 drug_subtitle = "Référence d'équipe — dosage, interactions, antidote"
 drug_search_hint = "Rechercher un médicament…"
 drug_no_match = "Aucune fiche pour ce médicament."

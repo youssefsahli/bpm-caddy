@@ -2714,6 +2714,15 @@ impl App {
                 });
             });
             ui.label(tr("drug_subtitle"));
+            // A base that predates the starter list (or was started by
+            // hand) shows almost nothing — point at the one-click fix.
+            if session.drugs.len() < db::STARTER_DRUG_COUNT / 4 {
+                ui.label(
+                    egui::RichText::new(trf("drug_base_sparse", session.drugs.len()))
+                        .size(11.0)
+                        .color(motif::ALERT),
+                );
+            }
             ui.add_space(12.0);
         });
 
