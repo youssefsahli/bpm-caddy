@@ -222,6 +222,9 @@ struct Session {
     confirm_delete_drug: bool,
     /// Patients currently on the drug whose card is open.
     drug_patients: Vec<Patient>,
+    /// Conversion tables browser (inside the drug view).
+    show_tables: bool,
+    table_selected: usize,
     error: Option<String>,
 }
 
@@ -282,6 +285,8 @@ impl Session {
             drug_base: None,
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
+            show_tables: false,
+            table_selected: 0,
             error: None,
         };
         session.set_patients(patients);
@@ -532,6 +537,10 @@ impl App {
                         Ok("agenda") => {
                             session.refresh_dashboard();
                             session.view = MainView::Agenda;
+                        }
+                        Ok("tables") => {
+                            session.show_tables = true;
+                            session.view = MainView::Drugs;
                         }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
@@ -1925,6 +1934,94 @@ impl App {
         }
     }
 
+    /// Conversion tables (IPP, HBPM, statines…): selector, Motif table,
+    /// caution line, and a printable A4 with all of them.
+    fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(24.0);
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 180.0);
+                ui.heading(tr("tables_title"));
+                if motif::button(ui, tr("dash_print"))
+                    .on_hover_text(tr("tables_print_tooltip"))
+                    .clicked()
+                {
+                    if let Err(e) = crate::pdf::open_conversion_tables() {
+                        session.error = Some(e);
+                    }
+                }
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_tables = false;
+                }
+            });
+            ui.add_space(10.0);
+            // Selector: one button per table, the active one sunken.
+            ui.horizontal(|ui| {
+                let approx = crate::tables::TABLES.len() as f32 * 105.0;
+                ui.add_space(((ui.available_width() - approx) / 2.0).max(0.0));
+                for (i, t) in crate::tables::TABLES.iter().enumerate() {
+                    let btn = motif::button(ui, t.short);
+                    if i == session.table_selected {
+                        motif::bevel(ui.painter(), btn.rect, false);
+                    }
+                    if btn.clicked() {
+                        session.table_selected = i;
+                    }
+                }
+            });
+            ui.add_space(12.0);
+
+            let t =
+                &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
+            ui.label(egui::RichText::new(t.title).strong().size(15.0));
+            ui.add_space(6.0);
+        });
+        // Sunken box around the table grid, centered.
+        let avail = ui.available_rect_before_wrap();
+        let t = &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
+        let w = avail.width().min(700.0);
+        let h = (t.rows.len() as f32 + 1.5) * 26.0 + 12.0;
+        let box_rect = egui::Rect::from_min_size(
+            egui::pos2(avail.center().x - w / 2.0, avail.top()),
+            egui::vec2(w, h),
+        );
+        ui.painter().rect_filled(box_rect, 0.0, motif::TROUGH);
+        motif::bevel(ui.painter(), box_rect, false);
+        let builder = egui::UiBuilder::new().max_rect(box_rect.shrink(8.0));
+        ui.allocate_new_ui(builder, |ui| {
+            egui::Grid::new(("conv_table", session.table_selected))
+                .num_columns(t.columns.len())
+                .spacing([24.0, 6.0])
+                .striped(false)
+                .show(ui, |ui| {
+                    for c in t.columns {
+                        ui.label(egui::RichText::new(*c).strong().size(13.0));
+                    }
+                    ui.end_row();
+                    for row in t.rows {
+                        for cell in *row {
+                            ui.label(egui::RichText::new(*cell).size(13.0));
+                        }
+                        ui.end_row();
+                    }
+                });
+        });
+        ui.add_space(16.0);
+        ui.vertical_centered(|ui| {
+            ui.label(
+                egui::RichText::new(t.caution)
+                    .size(11.0)
+                    .italics()
+                    .color(motif::BG_DARK),
+            );
+        });
+        if let Some(err) = &session.error {
+            ui.vertical_centered(|ui| {
+                ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), err.as_str());
+            });
+        }
+    }
+
     /// Drug reference base (F3): fuzzy search, quick creation, and a
     /// card editor (dosage, interactions, IUP, antidote, notes) with
     /// compare-and-set saves. `doc` is the team-notes buffer so a card
@@ -1936,20 +2033,34 @@ impl App {
         doc: (&mut String, &mut bool, &mut Instant),
     ) {
         let (doc_text, doc_dirty, doc_last_edit) = doc;
-        // Escape closes the card first, then leaves the view.
+        // Escape closes the card or the tables first, then the view.
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.wants_keyboard_input() {
             if session.drug_form.is_some() {
                 session.drug_form = None;
                 session.drug_base = None;
                 session.confirm_delete_drug = false;
+            } else if session.show_tables {
+                session.show_tables = false;
             } else {
                 session.view = MainView::Search;
                 return;
             }
         }
+
+        if session.show_tables {
+            Self::tables_view(ui, session);
+            return;
+        }
+
         ui.vertical_centered(|ui| {
             ui.add_space(24.0);
-            ui.heading(tr("drug_title"));
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 180.0);
+                ui.heading(tr("drug_title"));
+                if session.drug_form.is_none() && motif::button(ui, tr("tables_button")).clicked() {
+                    session.show_tables = true;
+                }
+            });
             ui.label(tr("drug_subtitle"));
             ui.add_space(16.0);
         });

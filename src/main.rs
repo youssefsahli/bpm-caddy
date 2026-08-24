@@ -6,6 +6,7 @@ mod db;
 mod fuzzy;
 mod pdf;
 mod strings;
+mod tables;
 
 use eframe::egui;
 

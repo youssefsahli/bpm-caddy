@@ -34,4 +34,5 @@ shot dashboard docs/screenshot_dashboard.png
 shot patient docs/screenshot_patient.png
 shot drugs docs/screenshot_drugs.png
 shot agenda docs/screenshot_agenda.png
+shot tables docs/screenshot_tables.png
 echo "Screenshots refreshed."

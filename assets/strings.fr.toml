@@ -142,6 +142,11 @@ agenda_week_of = "Semaine du {}"
 agenda_today = "  — aujourd'hui"
 agenda_overdue = "  — en retard"
 
+# --- Tables de conversion ---
+tables_button = "Tables de conversion"
+tables_title = "Tables de conversion"
+tables_print_tooltip = "Toutes les tables en PDF A4"
+
 # --- Base médicaments ---
 drug_title = "Base médicaments"
 drug_subtitle = "Référence d'équipe — dosage, interactions, antidote"

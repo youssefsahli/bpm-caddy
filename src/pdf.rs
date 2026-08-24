@@ -386,6 +386,44 @@ pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
     compile_and_open(filled, "apercu_cr")
 }
 
+/// Build the Typst source for the conversion tables (all of them, one
+/// A4 document). Every cell goes through the string escaping.
+fn conversion_tables_source() -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm)\n#set text(size: 10pt)\n\
+         #align(center)[#text(15pt, weight: \"bold\")[Tables de conversion]]\n",
+    );
+    for t in crate::tables::TABLES {
+        src.push_str(&format!(
+            "#v(4mm)\n#text(weight: \"bold\", size: 12pt)[#{}]\n#v(1mm)\n",
+            typst_str(t.title)
+        ));
+        src.push_str(&format!(
+            "#table(\n  columns: {},\n  inset: 5pt,\n  stroke: 0.6pt,\n",
+            t.columns.len()
+        ));
+        for c in t.columns {
+            src.push_str(&format!("  [*#{}*],\n", typst_str(c)));
+        }
+        for row in t.rows {
+            for cell in *row {
+                src.push_str(&format!("  [#{}],\n", typst_str(cell)));
+            }
+        }
+        src.push_str(")\n");
+        src.push_str(&format!(
+            "#text(size: 8pt, style: \"italic\")[#{}]\n",
+            typst_str(t.caution)
+        ));
+    }
+    src
+}
+
+/// Compile and open the conversion tables as a printable A4 reference.
+pub fn open_conversion_tables() -> Result<PathBuf, String> {
+    compile_and_open(conversion_tables_source(), "tables")
+}
+
 /// Compile Typst source to a PDF in the temp dir and open it in the OS
 /// viewer. The file name is unique per generation: the previous PDF may
 /// still be open in the viewer (Windows locks it, and reusing the name
@@ -519,6 +557,20 @@ mod tests {
         assert!(check_template(DEFAULT_TEMPLATE).is_ok());
         let err = check_template("#broken(").unwrap_err();
         assert!(err.contains("compilation Typst"));
+    }
+
+    #[test]
+    fn conversion_tables_compile_to_pdf() {
+        let world = PdfWorld::new(conversion_tables_source());
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("les tables de conversion doivent compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("tables_exemple.pdf"), &pdf);
+        }
     }
 
     #[test]
