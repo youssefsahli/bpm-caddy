@@ -69,12 +69,21 @@ fn worker(shared: Arc<Shared>, ctx: egui::Context) {
 }
 
 fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error>> {
-    let release: serde_json::Value = ureq::get(&format!(
-        "https://api.github.com/repos/{REPO}/releases/latest"
-    ))
-    .set("User-Agent", "bpm-caddy-launcher")
-    .call()?
-    .into_json()?;
+    // Timeouts matter here: without them a hung connection blocks the
+    // pharmacy at startup even though an installed copy is ready to run.
+    // The read timeout is per read() call, so slow-but-progressing
+    // downloads are fine while genuine stalls fail fast.
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(Duration::from_secs(10))
+        .timeout_read(Duration::from_secs(30))
+        .user_agent("bpm-caddy-launcher")
+        .build();
+    let release: serde_json::Value = agent
+        .get(&format!(
+            "https://api.github.com/repos/{REPO}/releases/latest"
+        ))
+        .call()?
+        .into_json()?;
     let tag = release["tag_name"]
         .as_str()
         .ok_or("réponse GitHub sans tag_name")?
@@ -96,10 +105,9 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     let url = asset["browser_download_url"]
         .as_str()
         .ok_or("asset sans URL de téléchargement")?;
+    let expected_size = asset["size"].as_u64().unwrap_or(0);
 
-    let resp = ureq::get(url)
-        .set("User-Agent", "bpm-caddy-launcher")
-        .call()?;
+    let resp = agent.get(url).call()?;
     let total: u64 = resp
         .header("Content-Length")
         .and_then(|s| s.parse().ok())
@@ -112,16 +120,27 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     let mut file = std::fs::File::create(&tmp)?;
     let mut reader = resp.into_reader();
     let mut buf = [0u8; 64 * 1024];
+    let mut written: u64 = 0;
     loop {
         let n = reader.read(&mut buf)?;
         if n == 0 {
             break;
         }
         file.write_all(&buf[..n])?;
+        written += n as u64;
         shared.downloaded.fetch_add(n as u64, Ordering::Relaxed);
     }
     file.flush()?;
     drop(file);
+
+    // Never install a truncated binary (a cleanly closed connection can
+    // end a download early without any read error).
+    if expected_size > 0 && written != expected_size {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(
+            format!("téléchargement incomplet ({written} / {expected_size} octets)").into(),
+        );
+    }
 
     #[cfg(unix)]
     {
@@ -249,6 +268,7 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([420.0, 240.0])
             .with_resizable(false)
+            .with_icon(motif::icon())
             .with_title("BPM-Caddy — Lanceur"),
         ..Default::default()
     };

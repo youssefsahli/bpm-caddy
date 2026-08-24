@@ -20,6 +20,43 @@ pub const ACCENT: Color32 = Color32::from_rgb(0x3a, 0x54, 0x7e);
 pub const BG_HOVER: Color32 = Color32::from_rgb(0xbb, 0xbf, 0xcf);
 pub const TEXT: Color32 = Color32::BLACK;
 
+/// Programmatic 32×32 window icon: a raised Motif bevel square with a
+/// sunken accent centre — no embedded asset needed.
+// Indices are used symmetrically (px[b][i] and px[i][b]): an iterator
+// rewrite would obscure the mirroring.
+#[allow(clippy::needless_range_loop)]
+pub fn icon() -> egui::IconData {
+    const N: usize = 32;
+    let to4 = |c: Color32| [c.r(), c.g(), c.b(), 0xff];
+    let (bg, light, dark, accent) = (to4(BG), to4(BG_LIGHT), to4(BG_DARK), to4(ACCENT));
+    let mut px = [[bg; N]; N];
+    for i in 0..N {
+        for b in 0..2 {
+            px[b][i] = light;
+            px[i][b] = light;
+            px[N - 1 - b][i] = dark;
+            px[i][N - 1 - b] = dark;
+        }
+    }
+    // Sunken inner square (bevel inverted), filled with the accent blue.
+    for i in 8..N - 8 {
+        for j in 8..N - 8 {
+            px[i][j] = accent;
+        }
+    }
+    for i in 8..N - 8 {
+        px[8][i] = dark;
+        px[i][8] = dark;
+        px[N - 9][i] = light;
+        px[i][N - 9] = light;
+    }
+    egui::IconData {
+        rgba: px.iter().flatten().flatten().copied().collect(),
+        width: N as u32,
+        height: N as u32,
+    }
+}
+
 /// Install the Motif style on the whole context.
 pub fn apply(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
@@ -143,5 +180,16 @@ pub fn progress_marquee(ui: &mut egui::Ui, width: f32, t: f64) {
     );
     if fill.width() > 0.0 {
         ui.painter().rect_filled(fill, 0.0, ACCENT);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn icon_is_32x32_rgba() {
+        let icon = super::icon();
+        assert_eq!(icon.width, 32);
+        assert_eq!(icon.height, 32);
+        assert_eq!(icon.rgba.len(), 32 * 32 * 4);
     }
 }

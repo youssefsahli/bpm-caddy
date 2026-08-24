@@ -17,27 +17,40 @@ root package. CI enforces `cargo fmt --all --check`,
 
 ## Conventions
 
-- User-facing strings are French; code and comments are English.
+- User-facing strings are French; code and comments are English. UI
+  strings live in `assets/strings.fr.toml`, accessed via
+  `strings::tr/trf/trn` (user override: `strings.toml` next to
+  `config.toml`) — never hardcode a new UI string.
 - Dates: stored ISO `YYYY-MM-DD`, displayed `JJ/MM/AAAA`
-  (`db::parse_french_date` / `db::format_french_date`).
+  (`db::parse_french_date` / `db::format_french_date`). Input accepts
+  compact shorthand (`230826`, `2308`); `db::YearHint` picks how
+  two-digit years expand (birth dates → past, RDV → 20xx).
 - Schema changes go in `SCHEMA` **and** as an idempotent `ALTER TABLE` in
   `MIGRATIONS` (`src/db.rs`).
 - Keep the Motif look: square corners, `motif::bevel` raised for
   buttons/panels, sunken for inputs/troughs; charts are painted by hand,
   no plotting library.
+- The database is shared between PCs: every write to a shared row
+  (states, RDV dates, patient identity, deletions) is compare-and-set
+  against the values the UI displayed (`WHERE … AND <old values>`,
+  returning `bool`; `false` → reload + French notice). UI caches must
+  be reloadable, and the team-notes file merges (`merge_team_notes`) —
+  never blind last-writer-wins on shared data.
 
 ## Env hooks (demo / e2e / screenshots)
 
 - `BPM_CADDY_DB=<path>` — database path override
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
-- `BPM_CADDY_START_VIEW=dashboard` — land on the dashboard
+- `BPM_CADDY_START_VIEW=dashboard|patient|drugs` — land on the
+  dashboard, the first patient's view, or the drug base
 - `BPM_CADDY_SEED_DB=<path> cargo test seed_demo` — create a demo database
 - `BPM_CADDY_TEST_PDF_OUT=<dir> cargo test pdf` — write the sample PDF
 
-Headless run (screenshots): `xvfb-run` + ImageMagick `import`, and
-**`unset WAYLAND_DISPLAY` inside the xvfb shell** or the window opens on
-the real desktop instead.
+Headless run (screenshots): `./scripts/screenshots.sh` regenerates the
+three README screenshots from a fresh demo seed. For manual runs:
+`xvfb-run` + ImageMagick `import`, and **`unset WAYLAND_DISPLAY` inside
+the xvfb shell** or the window opens on the real desktop instead.
 
 ## Releases
 

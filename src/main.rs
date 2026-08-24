@@ -5,6 +5,7 @@ mod config;
 mod db;
 mod fuzzy;
 mod pdf;
+mod strings;
 
 use eframe::egui;
 
@@ -12,6 +13,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1024.0, 700.0])
+            .with_icon(motif::icon())
             .with_title("BPM-Caddy"),
         ..Default::default()
     };
