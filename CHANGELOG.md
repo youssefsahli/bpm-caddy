@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- The agenda opens on a colored week grid (Mon–Sun, current week by
+  default): one block per RDV, colored by act kind, today highlighted,
+  hover shows patient/kind/phone, click opens the patient; week
+  navigation (‹ Aujourd'hui ›) and a color legend; the day-grouped
+  list (with overdue) stays below
+- New billable acts: TROD angine, TROD cystite, and RDV prévention —
+  buttons on the patient view, own colors, fees in `[billing]`
+  (`trod_angine_fee`, `trod_cystite_fee`, `prevention_fee`), counted
+  everywhere (dashboard, CSV, PDF sheets)
+- In-app editor for the Typst PDF template ("Modèle PDF…" in the
+  toolbar): edit the sheet's source with validation (invalid templates
+  are refused with the Typst error), a sample-patient PDF preview, and
+  reset-to-default; saved next to `config.toml` (or at
+  `[templates] bpm_template_path` when configured) and picked up by the
+  next "Fiche PDF"
+- Toolbar labels shortened so all views fit at the default window width
+
 ## [0.4.0] - 2026-08-24
 
 ### Added

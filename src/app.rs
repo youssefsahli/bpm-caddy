@@ -196,6 +196,10 @@ struct Session {
     today: String,
     /// Tomorrow as ISO `YYYY-MM-DD`, for agenda day labels.
     tomorrow: String,
+    /// The 7 dates (Mon..Sun) of the agenda's displayed week.
+    agenda_week: Vec<String>,
+    /// Week shown in the agenda, relative to the current one.
+    agenda_offset: i64,
     /// In-progress text of the per-interview date fields, keyed by id.
     date_edits: std::collections::HashMap<i64, String>,
     /// Discreet mode: revenue amounts stay masked until explicitly
@@ -254,6 +258,8 @@ impl Session {
             export_notice: None,
             today: String::new(),
             tomorrow: String::new(),
+            agenda_week: Vec::new(),
+            agenda_offset: 0,
             date_edits: std::collections::HashMap::new(),
             show_amounts: false,
             dup_check: None,
@@ -387,7 +393,20 @@ impl Session {
         }
         self.today = self.db.today_iso().unwrap_or_default();
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
+        self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.export_notice = None;
+    }
+}
+
+/// Stable color per act kind, for the agenda's week blocks and legend.
+fn kind_color(kind: InterviewKind) -> egui::Color32 {
+    match kind {
+        InterviewKind::Bpm => egui::Color32::from_rgb(0x3a, 0x54, 0x7e),
+        InterviewKind::Aod => egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+        InterviewKind::Asthme => egui::Color32::from_rgb(0x7e, 0x3a, 0x5e),
+        InterviewKind::TrodAngine => egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
+        InterviewKind::TrodCystite => egui::Color32::from_rgb(0x1a, 0x6e, 0x8b),
+        InterviewKind::Prevention => egui::Color32::from_rgb(0x5e, 0x7e, 0x3a),
     }
 }
 
@@ -414,6 +433,9 @@ pub struct App {
     pw_change: Option<PwChangeForm>,
     /// Operator initials for note stamps (default from config.toml).
     operator: String,
+    /// Typst template editor, when open: (source text, status message
+    /// where `true` marks an error).
+    tpl_editor: Option<(String, Option<(bool, String)>)>,
 }
 
 #[derive(Default)]
@@ -493,6 +515,12 @@ impl App {
             }
         }
 
+        // Screenshot/e2e hook: open the template editor directly.
+        let tpl_editor = if std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("template") {
+            Some((crate::pdf::default_template().to_owned(), None))
+        } else {
+            None
+        };
         Self {
             state,
             operator: config.ui.operator.clone(),
@@ -509,6 +537,7 @@ impl App {
             doc_check: Instant::now(),
             last_refresh: Instant::now(),
             pw_change: None,
+            tpl_editor,
         }
     }
 
@@ -1083,12 +1112,12 @@ impl App {
             }
             ui.add_space(16.0);
 
-            // Ctrl+N or the buttons below start a new interview (spec 3.1).
+            // Ctrl+N or the buttons below start a new act (spec 3.1).
             ui.label(tr("patient_new_interview"));
             let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
             let mut new_kind: Option<InterviewKind> = None;
             ui.horizontal(|ui| {
-                ui.add_space(ui.available_width() / 2.0 - 130.0);
+                ui.add_space((ui.available_width() / 2.0 - 290.0).max(0.0));
                 for kind in InterviewKind::ALL {
                     if motif::button(ui, kind.label()).clicked() {
                         new_kind = Some(kind);
@@ -1424,12 +1453,9 @@ impl App {
                         .today_french()
                         .unwrap_or_else(|_| tr("itv_date_fallback").to_owned())
                 });
-            if let Err(e) = crate::pdf::open_interview_sheet(
-                patient,
-                kind,
-                &date,
-                config.templates.bpm_template_path.as_deref(),
-            ) {
+            if let Err(e) =
+                crate::pdf::open_interview_sheet(patient, kind, &date, &config.template_path())
+            {
                 session.error = Some(e);
             }
         }
@@ -1469,8 +1495,160 @@ impl App {
                 }
             });
             ui.label(tr("agenda_subtitle"));
-            ui.add_space(14.0);
+            ui.add_space(10.0);
         });
+
+        let red = egui::Color32::from_rgb(0x8b, 0x1a, 0x1a);
+        let mut open_id: Option<i64> = None;
+
+        // ---- Week grid (default view): Mon..Sun with colored blocks ----
+        ui.vertical_centered(|ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 190.0);
+                if motif::button(ui, "‹")
+                    .on_hover_text(tr("agenda_prev_week"))
+                    .clicked()
+                {
+                    session.agenda_offset -= 1;
+                    session.agenda_week = session
+                        .db
+                        .week_dates(session.agenda_offset)
+                        .unwrap_or_default();
+                }
+                if motif::button(ui, tr("agenda_this_week")).clicked() {
+                    session.agenda_offset = 0;
+                    session.agenda_week = session
+                        .db
+                        .week_dates(session.agenda_offset)
+                        .unwrap_or_default();
+                }
+                if motif::button(ui, "›")
+                    .on_hover_text(tr("agenda_next_week"))
+                    .clicked()
+                {
+                    session.agenda_offset += 1;
+                    session.agenda_week = session
+                        .db
+                        .week_dates(session.agenda_offset)
+                        .unwrap_or_default();
+                }
+                if let Some(monday) = session.agenda_week.first() {
+                    ui.label(trf("agenda_week_of", db::format_french_date(monday)));
+                }
+            });
+        });
+        ui.add_space(6.0);
+        if session.agenda_week.len() == 7 {
+            let grid_w = (ui.available_width() - 24.0).min(940.0);
+            let (alloc, _) =
+                ui.allocate_exact_size(egui::vec2(grid_w.max(420.0), 230.0), egui::Sense::hover());
+            let grid = egui::Rect::from_center_size(
+                egui::pos2(ui.max_rect().center().x, alloc.center().y),
+                alloc.size(),
+            );
+            ui.painter().rect_filled(grid, 0.0, motif::TROUGH);
+            motif::bevel(ui.painter(), grid, false);
+            let inner = grid.shrink(4.0);
+            let col_w = inner.width() / 7.0;
+            for (i, date) in session.agenda_week.clone().iter().enumerate() {
+                let col = egui::Rect::from_min_size(
+                    egui::pos2(inner.left() + i as f32 * col_w, inner.top()),
+                    egui::vec2(col_w, inner.height()),
+                );
+                if *date == session.today {
+                    ui.painter().rect_filled(col, 0.0, motif::BG_HOVER);
+                }
+                if i > 0 {
+                    ui.painter().line_segment(
+                        [col.left_top(), col.left_bottom()],
+                        egui::Stroke::new(1.0_f32, motif::BG_DARK),
+                    );
+                }
+                // "Lun 24/08" — weekday short + day/month.
+                let day = db::weekday_fr(date).unwrap_or("");
+                let short: String = day
+                    .chars()
+                    .take(3)
+                    .enumerate()
+                    .map(|(k, c)| {
+                        if k == 0 {
+                            c.to_uppercase().next().unwrap_or(c)
+                        } else {
+                            c
+                        }
+                    })
+                    .collect();
+                let dm = date
+                    .get(8..10)
+                    .and_then(|d| date.get(5..7).map(|m| format!("{d}/{m}")));
+                ui.painter().text(
+                    egui::pos2(col.center().x, col.top() + 12.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("{short} {}", dm.unwrap_or_default()),
+                    egui::FontId::proportional(12.0),
+                    if *date == session.today {
+                        motif::ACCENT
+                    } else {
+                        motif::TEXT
+                    },
+                );
+                // Colored blocks, one per RDV of that day.
+                let day_rdvs: Vec<&Appointment> = session
+                    .appointments
+                    .iter()
+                    .filter(|r| r.date == *date)
+                    .collect();
+                let max_blocks = ((col.height() - 28.0) / 24.0) as usize;
+                for (bi, rdv) in day_rdvs.iter().take(max_blocks).enumerate() {
+                    let block = egui::Rect::from_min_size(
+                        egui::pos2(col.left() + 3.0, col.top() + 26.0 + bi as f32 * 24.0),
+                        egui::vec2(col.width() - 6.0, 21.0),
+                    );
+                    ui.painter().rect_filled(block, 0.0, kind_color(rdv.kind));
+                    ui.painter().with_clip_rect(block.shrink(2.0)).text(
+                        egui::pos2(block.left() + 4.0, block.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        &rdv.patient_name,
+                        egui::FontId::proportional(11.0),
+                        egui::Color32::WHITE,
+                    );
+                    let resp =
+                        ui.interact(block, ui.id().with(("wkblk", i, bi)), egui::Sense::click());
+                    let mut hover = format!("{} ({})", rdv.patient_name, rdv.kind.label());
+                    if !rdv.phone.is_empty() {
+                        hover.push_str(&format!(" — {}", rdv.phone));
+                    }
+                    if resp.on_hover_text(hover).clicked() {
+                        open_id = Some(rdv.patient_id);
+                    }
+                }
+                if day_rdvs.len() > max_blocks {
+                    ui.painter().text(
+                        egui::pos2(col.center().x, col.bottom() - 8.0),
+                        egui::Align2::CENTER_CENTER,
+                        format!("+{}", day_rdvs.len() - max_blocks),
+                        egui::FontId::proportional(11.0),
+                        motif::TEXT,
+                    );
+                }
+            }
+            // Legend: one colored chip per act kind.
+            ui.add_space(6.0);
+            ui.vertical_centered(|ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space((ui.available_width() / 2.0 - 260.0).max(0.0));
+                    for kind in InterviewKind::ALL {
+                        ui.label(
+                            egui::RichText::new(format!("  {}  ", kind.label()))
+                                .size(11.0)
+                                .color(egui::Color32::WHITE)
+                                .background_color(kind_color(kind)),
+                        );
+                    }
+                });
+            });
+        }
+        ui.add_space(10.0);
 
         if session.appointments.is_empty() {
             ui.vertical_centered(|ui| {
@@ -1478,9 +1656,6 @@ impl App {
             });
             return;
         }
-
-        let red = egui::Color32::from_rgb(0x8b, 0x1a, 0x1a);
-        let mut open_id: Option<i64> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.vertical_centered(|ui| {
                 let mut last_date: Option<&str> = None;
@@ -2398,6 +2573,18 @@ impl eframe::App for App {
                             Some(PwChangeForm::default())
                         };
                     }
+                    if matches!(self.state, State::Unlocked(_))
+                        && motif::button(ui, tr("toolbar_template")).clicked()
+                    {
+                        self.tpl_editor = if self.tpl_editor.is_some() {
+                            None
+                        } else {
+                            let path = self.config.template_path();
+                            let text = std::fs::read_to_string(&path)
+                                .unwrap_or_else(|_| crate::pdf::default_template().to_owned());
+                            Some((text, None))
+                        };
+                    }
                 });
             });
             ui.add_space(4.0);
@@ -2513,6 +2700,89 @@ impl eframe::App for App {
         }
         if close_pw {
             self.pw_change = None;
+        }
+
+        // Typst template editor: edit the interview sheet's source, with
+        // validation and a live PDF preview. Saved next to config.toml
+        // (or at [templates] bpm_template_path when configured).
+        if !matches!(self.state, State::Unlocked(_)) {
+            self.tpl_editor = None;
+        }
+        let mut close_tpl = false;
+        if let Some((text, message)) = &mut self.tpl_editor {
+            let path = self.config.template_path();
+            egui::Window::new(tr("tpl_title"))
+                .collapsible(false)
+                .resizable(true)
+                .default_size([680.0, 520.0])
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.label(
+                        egui::RichText::new(trf("tpl_path", path.display()))
+                            .size(11.0)
+                            .color(motif::BG_DARK),
+                    );
+                    ui.add_space(4.0);
+                    egui::ScrollArea::vertical()
+                        .max_height(380.0)
+                        .show(ui, |ui| {
+                            ui.add_sized(
+                                [ui.available_width(), 372.0],
+                                egui::TextEdit::multiline(text)
+                                    .font(egui::TextStyle::Monospace)
+                                    .code_editor(),
+                            );
+                        });
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if motif::button(ui, tr("form_save")).clicked() {
+                            match crate::pdf::check_template(text) {
+                                Ok(()) => {
+                                    let result = path
+                                        .parent()
+                                        .map(std::fs::create_dir_all)
+                                        .unwrap_or(Ok(()))
+                                        .and_then(|()| std::fs::write(&path, text.as_bytes()));
+                                    *message = Some(match result {
+                                        Ok(()) => (false, trf("tpl_saved", path.display())),
+                                        Err(e) => (true, trf("tpl_save_error", e)),
+                                    });
+                                }
+                                Err(e) => *message = Some((true, e)),
+                            }
+                        }
+                        if motif::button(ui, tr("tpl_preview"))
+                            .on_hover_text(tr("tpl_preview_tooltip"))
+                            .clicked()
+                        {
+                            if let Err(e) = crate::pdf::preview_template(text) {
+                                *message = Some((true, e));
+                            }
+                        }
+                        if motif::button(ui, tr("tpl_reset"))
+                            .on_hover_text(tr("tpl_reset_tooltip"))
+                            .clicked()
+                        {
+                            *text = crate::pdf::default_template().to_owned();
+                            *message = None;
+                        }
+                        if motif::button(ui, tr("tpl_close")).clicked() {
+                            close_tpl = true;
+                        }
+                    });
+                    if let Some((is_error, msg)) = message {
+                        ui.add_space(4.0);
+                        let color = if *is_error {
+                            egui::Color32::from_rgb(0x8b, 0x1a, 0x1a)
+                        } else {
+                            motif::ACCENT
+                        };
+                        ui.colored_label(color, msg.as_str());
+                    }
+                });
+        }
+        if close_tpl {
+            self.tpl_editor = None;
         }
 
         // The docs pane may hold patient-adjacent notes: never show it on

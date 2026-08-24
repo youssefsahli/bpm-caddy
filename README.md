@@ -31,7 +31,9 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **Auto-updating launcher** — `bpm-caddy-launcher` checks GitHub Releases on startup, downloads the latest version if needed (with an offline fallback to the installed copy), then starts the app. Install the launcher once; the app stays current.
 - **Team documentation pane** — a docked, editable French documentation panel (`F1` to toggle) with auto-save, for shared day-to-day notes and team syncing at the counter. One click stamps a succinct entry header (date · operator · current patient).
 - **Drug reference base** — `F3` opens the team's shared drug cards (DCI, dosage, interactions, IUP, antidote, notes): two typed letters — brand or DCI — show the essentials at a glance, no match becomes a new card, and any card inserts into the team notes in one click. A fresh base starts with ~55 common drugs (names, DCI, textbook antidotes). Stored encrypted with the rest.
-- **Agenda** — `F4` lists the upcoming patient appointments grouped by day (French weekday names, today/tomorrow/overdue flags, phone numbers), each entry one click from the patient, the whole list printable.
+- **Agenda** — `F4` opens on the current week as a colored grid (one block per rendez-vous, colored by act kind, today highlighted, click-through to the patient), with week navigation and the day-grouped list (overdue included) below. Printable.
+- **Six billable acts** — BPM, AOD, asthma, TROD angine, TROD cystite, and RDV prévention, each with its own configurable fee and agenda color.
+- **Editable PDF template** — the Typst source of the interview sheet is editable in-app ("Modèle PDF…"), with compile validation and a sample preview; no recompilation needed.
 - **Customizable wording** — every UI string lives in an embedded TOML; drop a `strings.toml` next to `config.toml` to adapt any text (or translate the app) without recompiling.
 - **Old-school X/Motif theme** — the classic `mwm` blue-grey look with square corners and raised/sunken bevels, implemented as a reusable `motif` crate for egui.
 

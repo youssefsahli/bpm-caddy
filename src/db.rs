@@ -106,22 +106,38 @@ impl InterviewState {
     }
 }
 
-/// Interview kinds billable at the counter.
+/// Act kinds billable at the counter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InterviewKind {
     Bpm,
     Aod,
     Asthme,
+    /// Test rapide d'orientation diagnostique — angine.
+    TrodAngine,
+    /// Test rapide d'orientation diagnostique — cystite.
+    TrodCystite,
+    /// Rendez-vous de prévention.
+    Prevention,
 }
 
 impl InterviewKind {
-    pub const ALL: [InterviewKind; 3] = [Self::Bpm, Self::Aod, Self::Asthme];
+    pub const ALL: [InterviewKind; 6] = [
+        Self::Bpm,
+        Self::Aod,
+        Self::Asthme,
+        Self::TrodAngine,
+        Self::TrodCystite,
+        Self::Prevention,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Bpm => "BPM",
             Self::Aod => "AOD",
             Self::Asthme => "ASTHME",
+            Self::TrodAngine => "TROD_ANGINE",
+            Self::TrodCystite => "TROD_CYSTITE",
+            Self::Prevention => "PREVENTION",
         }
     }
 
@@ -134,6 +150,9 @@ impl InterviewKind {
             Self::Bpm => "BPM",
             Self::Aod => "AOD",
             Self::Asthme => "Asthme",
+            Self::TrodAngine => "TROD angine",
+            Self::TrodCystite => "TROD cystite",
+            Self::Prevention => "Prévention",
         }
     }
 }
@@ -638,6 +657,27 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
+    /// The 7 ISO dates (Monday..Sunday) of the current week shifted by
+    /// `offset_weeks` — the agenda's week grid.
+    pub fn week_dates(&self, offset_weeks: i64) -> Result<Vec<String>, String> {
+        // '-6 days' then 'weekday 1' lands on this week's Monday.
+        let shift = format!("{} days", offset_weeks * 7);
+        let mut out = Vec::with_capacity(7);
+        for day in 0..7 {
+            let day_shift = format!("{day} days");
+            let date: String = self
+                .conn
+                .query_row(
+                    "SELECT date('now', 'localtime', '-6 days', 'weekday 1', ?1, ?2)",
+                    (&shift, &day_shift),
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            out.push(date);
+        }
+        Ok(out)
+    }
+
     /// Tomorrow as ISO `YYYY-MM-DD` (local time), for agenda labels.
     pub fn tomorrow_iso(&self) -> Result<String, String> {
         self.conn
@@ -1050,6 +1090,28 @@ mod tests {
         assert_eq!(weekday_fr("2000-01-01"), Some("samedi"));
         assert_eq!(weekday_fr("1958-07-03"), Some("jeudi"));
         assert_eq!(weekday_fr("pas-une-date"), None);
+    }
+
+    #[test]
+    fn week_dates_run_monday_to_sunday_around_today() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-week-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("week.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+
+        let week = db.week_dates(0).unwrap();
+        assert_eq!(week.len(), 7);
+        assert_eq!(weekday_fr(&week[0]), Some("lundi"));
+        assert_eq!(weekday_fr(&week[6]), Some("dimanche"));
+        let today = db.today_iso().unwrap();
+        assert!(week.contains(&today));
+        // Next week starts right after this week's Sunday.
+        let next = db.week_dates(1).unwrap();
+        assert!(next[0] > week[6]);
+        assert_eq!(weekday_fr(&next[0]), Some("lundi"));
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -1505,6 +1567,24 @@ mod tests {
             }
             if minutes > 0 {
                 db.set_duration(iid, minutes, 0).unwrap();
+            }
+            // Extra acts with RDVs so the agenda's week view shows
+            // several colors.
+            if last == "Martin" {
+                let extra = db.add_interview(pid, InterviewKind::Prevention).unwrap();
+                let d: String = db
+                    .conn
+                    .query_row("SELECT date('now','localtime','+1 day')", [], |r| r.get(0))
+                    .unwrap();
+                db.set_scheduled_date(extra, Some(&d), None).unwrap();
+            }
+            if last == "Moreau" {
+                let extra = db.add_interview(pid, InterviewKind::TrodAngine).unwrap();
+                let d: String = db
+                    .conn
+                    .query_row("SELECT date('now','localtime','+3 day')", [], |r| r.get(0))
+                    .unwrap();
+                db.set_scheduled_date(extra, Some(&d), None).unwrap();
             }
             // Planned dates relative to today, so the demo dashboard shows
             // both an upcoming and an overdue appointment (with a phone
