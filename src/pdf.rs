@@ -155,8 +155,7 @@ fn sample_patient() -> Patient {
         last_name: "Dupont".to_owned(),
         first_name: "Jean".to_owned(),
         birth_date: "1958-07-03".to_owned(),
-        phone: String::new(),
-        notes: String::new(),
+        ..Default::default()
     }
 }
 
@@ -298,8 +297,7 @@ mod tests {
             last_name: "#eval \"Dupont\" \\ *gras*".to_owned(),
             first_name: "Jean".to_owned(),
             birth_date: "1958-07-03".to_owned(),
-            phone: String::new(),
-            notes: String::new(),
+            ..Default::default()
         };
         let filled =
             fill_interview_template(DEFAULT_TEMPLATE, &patient, InterviewKind::Bpm, "22/08/2026");

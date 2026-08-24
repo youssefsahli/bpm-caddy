@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS patients (
     birth_date  TEXT NOT NULL,
     phone       TEXT NOT NULL DEFAULT '',
     notes       TEXT NOT NULL DEFAULT '',
+    physician   TEXT NOT NULL DEFAULT '',
+    email       TEXT NOT NULL DEFAULT '',
+    address     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS interviews (
@@ -31,11 +34,17 @@ CREATE TABLE IF NOT EXISTS drugs (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL,
     dci         TEXT NOT NULL DEFAULT '',
+    class       TEXT NOT NULL DEFAULT '',
     dosage      TEXT NOT NULL DEFAULT '',
     ddi         TEXT NOT NULL DEFAULT '',
     iup         TEXT NOT NULL DEFAULT '',
     antidote    TEXT NOT NULL DEFAULT '',
     notes       TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS patient_drugs (
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    drug_id     INTEGER NOT NULL REFERENCES drugs(id),
+    PRIMARY KEY (patient_id, drug_id)
 );
 ";
 
@@ -46,6 +55,10 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patients ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN dci TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN class TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN physician TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN address TEXT NOT NULL DEFAULT ''",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -218,6 +231,8 @@ pub struct Drug {
     pub name: String,
     /// Dénomination commune internationale (INN).
     pub dci: String,
+    /// Therapeutic class ("statine", "AOD", …).
+    pub class: String,
     /// Usual dosage / posology.
     pub dosage: String,
     /// Drug-drug interactions to watch for.
@@ -229,7 +244,7 @@ pub struct Drug {
     pub notes: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct Patient {
     pub id: i64,
     pub last_name: String,
@@ -240,6 +255,10 @@ pub struct Patient {
     pub phone: String,
     /// Free-form counter note (allergies, préférences…), may be empty.
     pub notes: String,
+    /// Médecin traitant (the interview report goes to them).
+    pub physician: String,
+    pub email: String,
+    pub address: String,
 }
 
 impl Patient {
@@ -248,74 +267,84 @@ impl Patient {
     }
 }
 
-/// (brand name, DCI, textbook antidote or ""). See
+/// (brand name, DCI, therapeutic class, textbook antidote or ""). See
 /// [`Db::seed_drugs_if_empty`].
-const STARTER_DRUGS: &[(&str, &str, &str)] = &[
+const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     // Anticoagulants / antiagrégants
-    ("Eliquis", "apixaban", "Andexanet alfa"),
-    ("Xarelto", "rivaroxaban", "Andexanet alfa"),
-    ("Pradaxa", "dabigatran", "Idarucizumab"),
-    ("Lixiana", "edoxaban", ""),
-    ("Coumadine", "warfarine", "Vitamine K"),
-    ("Previscan", "fluindione", "Vitamine K"),
-    ("Sintrom", "acénocoumarol", "Vitamine K"),
-    ("Héparine", "héparine sodique", "Protamine"),
-    ("Lovenox", "énoxaparine", ""),
-    ("Kardégic", "acide acétylsalicylique", ""),
-    ("Plavix", "clopidogrel", ""),
-    ("Brilique", "ticagrélor", ""),
+    ("Eliquis", "apixaban", "AOD", "Andexanet alfa"),
+    ("Xarelto", "rivaroxaban", "AOD", "Andexanet alfa"),
+    ("Pradaxa", "dabigatran", "AOD", "Idarucizumab"),
+    ("Lixiana", "edoxaban", "AOD", ""),
+    ("Coumadine", "warfarine", "AVK", "Vitamine K"),
+    ("Previscan", "fluindione", "AVK", "Vitamine K"),
+    ("Sintrom", "acénocoumarol", "AVK", "Vitamine K"),
+    ("Héparine", "héparine sodique", "héparine", "Protamine"),
+    ("Lovenox", "énoxaparine", "HBPM", ""),
+    ("Kardégic", "acide acétylsalicylique", "antiagrégant", ""),
+    ("Plavix", "clopidogrel", "antiagrégant", ""),
+    ("Brilique", "ticagrélor", "antiagrégant", ""),
     // Douleur
-    ("Doliprane", "paracétamol", "N-acétylcystéine"),
-    ("Dafalgan", "paracétamol", "N-acétylcystéine"),
-    ("Tramadol", "tramadol", "Naloxone"),
-    ("Skenan", "morphine", "Naloxone"),
-    ("Oxycontin", "oxycodone", "Naloxone"),
-    ("Durogesic", "fentanyl", "Naloxone"),
+    ("Doliprane", "paracétamol", "antalgique", "N-acétylcystéine"),
+    ("Dafalgan", "paracétamol", "antalgique", "N-acétylcystéine"),
+    ("Tramadol", "tramadol", "opioïde faible", "Naloxone"),
+    ("Skenan", "morphine", "opioïde", "Naloxone"),
+    ("Oxycontin", "oxycodone", "opioïde", "Naloxone"),
+    ("Durogesic", "fentanyl", "opioïde", "Naloxone"),
     // Benzodiazépines / hypnotiques
-    ("Xanax", "alprazolam", "Flumazénil"),
-    ("Lexomil", "bromazépam", "Flumazénil"),
-    ("Temesta", "lorazépam", "Flumazénil"),
-    ("Valium", "diazépam", "Flumazénil"),
-    ("Séresta", "oxazépam", "Flumazénil"),
-    ("Stilnox", "zolpidem", "Flumazénil"),
-    ("Imovane", "zopiclone", "Flumazénil"),
+    ("Xanax", "alprazolam", "benzodiazépine", "Flumazénil"),
+    ("Lexomil", "bromazépam", "benzodiazépine", "Flumazénil"),
+    ("Temesta", "lorazépam", "benzodiazépine", "Flumazénil"),
+    ("Valium", "diazépam", "benzodiazépine", "Flumazénil"),
+    ("Séresta", "oxazépam", "benzodiazépine", "Flumazénil"),
+    ("Stilnox", "zolpidem", "hypnotique", "Flumazénil"),
+    ("Imovane", "zopiclone", "hypnotique", "Flumazénil"),
     // Cardiologie
-    ("Tahor", "atorvastatine", ""),
-    ("Crestor", "rosuvastatine", ""),
-    ("Coversyl", "périndopril", ""),
-    ("Triatec", "ramipril", ""),
-    ("Cozaar", "losartan", ""),
-    ("Aprovel", "irbésartan", ""),
-    ("Amlor", "amlodipine", ""),
-    ("Isoptine", "vérapamil", ""),
-    ("Cordarone", "amiodarone", ""),
-    ("Cardensiel", "bisoprolol", ""),
-    ("Ténormine", "aténolol", ""),
-    ("Lasilix", "furosémide", ""),
-    ("Aldactone", "spironolactone", ""),
-    ("Digoxine", "digoxine", "Fab antidigoxine"),
+    ("Tahor", "atorvastatine", "statine", ""),
+    ("Crestor", "rosuvastatine", "statine", ""),
+    ("Coversyl", "périndopril", "IEC", ""),
+    ("Triatec", "ramipril", "IEC", ""),
+    ("Cozaar", "losartan", "ARA II", ""),
+    ("Aprovel", "irbésartan", "ARA II", ""),
+    ("Amlor", "amlodipine", "inhibiteur calcique", ""),
+    ("Isoptine", "vérapamil", "inhibiteur calcique", ""),
+    ("Cordarone", "amiodarone", "antiarythmique", ""),
+    ("Cardensiel", "bisoprolol", "bêtabloquant", ""),
+    ("Ténormine", "aténolol", "bêtabloquant", ""),
+    ("Lasilix", "furosémide", "diurétique de l'anse", ""),
+    ("Aldactone", "spironolactone", "diurétique épargneur K+", ""),
+    ("Digoxine", "digoxine", "digitalique", "Fab antidigoxine"),
     // Diabète
-    ("Glucophage", "metformine", ""),
-    ("Diamicron", "gliclazide", ""),
-    ("Ozempic", "sémaglutide", ""),
-    ("Lantus", "insuline glargine", ""),
+    ("Glucophage", "metformine", "biguanide", ""),
+    ("Diamicron", "gliclazide", "sulfamide hypoglycémiant", ""),
+    ("Ozempic", "sémaglutide", "analogue GLP-1", ""),
+    ("Lantus", "insuline glargine", "insuline", ""),
     // Respiratoire
-    ("Ventoline", "salbutamol", ""),
-    ("Symbicort", "budésonide + formotérol", ""),
-    ("Seretide", "fluticasone + salmétérol", ""),
-    ("Spiriva", "tiotropium", ""),
-    ("Singulair", "montélukast", ""),
+    ("Ventoline", "salbutamol", "bêta-2 mimétique", ""),
+    ("Symbicort", "budésonide + formotérol", "CSI + BDLA", ""),
+    ("Seretide", "fluticasone + salmétérol", "CSI + BDLA", ""),
+    ("Spiriva", "tiotropium", "anticholinergique", ""),
+    ("Singulair", "montélukast", "antileucotriène", ""),
     // Divers courants
-    ("Levothyrox", "lévothyroxine", ""),
-    ("Inexium", "ésoméprazole", ""),
-    ("Inipomp", "pantoprazole", ""),
-    ("Mopral", "oméprazole", ""),
-    ("Amoxicilline", "amoxicilline", ""),
-    ("Augmentin", "amoxicilline + acide clavulanique", ""),
-    ("Pyostacine", "pristinamycine", ""),
-    ("Cortancyl", "prednisone", ""),
-    ("Solupred", "prednisolone", ""),
-    ("Méthotrexate", "méthotrexate", "Acide folinique"),
+    ("Levothyrox", "lévothyroxine", "hormone thyroïdienne", ""),
+    ("Inexium", "ésoméprazole", "IPP", ""),
+    ("Inipomp", "pantoprazole", "IPP", ""),
+    ("Mopral", "oméprazole", "IPP", ""),
+    ("Amoxicilline", "amoxicilline", "pénicilline", ""),
+    (
+        "Augmentin",
+        "amoxicilline + acide clavulanique",
+        "pénicilline + inhibiteur",
+        "",
+    ),
+    ("Pyostacine", "pristinamycine", "streptogramine", ""),
+    ("Cortancyl", "prednisone", "corticoïde", ""),
+    ("Solupred", "prednisolone", "corticoïde", ""),
+    (
+        "Méthotrexate",
+        "méthotrexate",
+        "immunosuppresseur",
+        "Acide folinique",
+    ),
 ];
 
 pub struct Db {
@@ -362,7 +391,11 @@ impl Db {
     pub fn patients(&self) -> Result<Vec<Patient>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, last_name, first_name, birth_date, phone, notes FROM patients")
+            .prepare(
+                "SELECT id, last_name, first_name, birth_date, phone, notes,
+                        physician, email, address
+                 FROM patients",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -373,6 +406,9 @@ impl Db {
                     birth_date: r.get(3)?,
                     phone: r.get(4)?,
                     notes: r.get(5)?,
+                    physician: r.get(6)?,
+                    email: r.get(7)?,
+                    address: r.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -423,49 +459,97 @@ impl Db {
     /// against the values this PC last saw (`expected`): a colleague's
     /// concurrent edit is never silently overwritten. Returns `false`
     /// when the row changed under us (the caller should reload).
-    #[allow(clippy::too_many_arguments)]
-    pub fn update_patient(
-        &self,
-        id: i64,
-        last_name: &str,
-        first_name: &str,
-        birth_date: &str,
-        phone: &str,
-        notes: &str,
-        expected: &Patient,
-    ) -> Result<bool, String> {
+    pub fn update_patient(&self, new: &Patient, expected: &Patient) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
                 "UPDATE patients SET last_name = ?1, first_name = ?2, birth_date = ?3,
-                        phone = ?4, notes = ?5
-                 WHERE id = ?6 AND last_name = ?7 AND first_name = ?8
-                   AND birth_date = ?9 AND phone = ?10 AND notes = ?11",
-                (
-                    last_name,
-                    first_name,
-                    birth_date,
-                    phone,
-                    notes,
-                    id,
-                    &expected.last_name,
-                    &expected.first_name,
-                    &expected.birth_date,
-                    &expected.phone,
-                    &expected.notes,
-                ),
+                        phone = ?4, notes = ?5, physician = ?6, email = ?7, address = ?8
+                 WHERE id = ?9 AND last_name = ?10 AND first_name = ?11
+                   AND birth_date = ?12 AND phone = ?13 AND notes = ?14
+                   AND physician = ?15 AND email = ?16 AND address = ?17",
+                rusqlite::params![
+                    new.last_name,
+                    new.first_name,
+                    new.birth_date,
+                    new.phone,
+                    new.notes,
+                    new.physician,
+                    new.email,
+                    new.address,
+                    expected.id,
+                    expected.last_name,
+                    expected.first_name,
+                    expected.birth_date,
+                    expected.phone,
+                    expected.notes,
+                    expected.physician,
+                    expected.email,
+                    expected.address,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
     }
 
-    /// Remove a patient and every interview attached to them, atomically.
+    /// The patient's current treatments, joined from the drug base.
+    pub fn drugs_for_patient(&self, patient_id: i64) -> Result<Vec<Drug>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT d.id, d.name, d.dci, d.class, d.dosage, d.ddi, d.iup, d.antidote, d.notes
+                 FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
+                 WHERE pd.patient_id = ?1 ORDER BY d.name COLLATE NOCASE",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok(Drug {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    dci: r.get(2)?,
+                    class: r.get(3)?,
+                    dosage: r.get(4)?,
+                    ddi: r.get(5)?,
+                    iup: r.get(6)?,
+                    antidote: r.get(7)?,
+                    notes: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Link a drug to a patient's current treatments (idempotent).
+    pub fn add_patient_drug(&self, patient_id: i64, drug_id: i64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO patient_drugs (patient_id, drug_id) VALUES (?1, ?2)",
+                (patient_id, drug_id),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn remove_patient_drug(&self, patient_id: i64, drug_id: i64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "DELETE FROM patient_drugs WHERE patient_id = ?1 AND drug_id = ?2",
+                (patient_id, drug_id),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Remove a patient and everything attached to them, atomically.
     pub fn delete_patient(&self, id: i64) -> Result<(), String> {
         let tx = self
             .conn
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM interviews WHERE patient_id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM patient_drugs WHERE patient_id = ?1", [id])
             .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM patients WHERE id = ?1", [id])
             .map_err(|e| e.to_string())?;
@@ -525,7 +609,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, name, dci, dosage, ddi, iup, antidote, notes
+                "SELECT id, name, dci, class, dosage, ddi, iup, antidote, notes
                  FROM drugs ORDER BY name COLLATE NOCASE",
             )
             .map_err(|e| e.to_string())?;
@@ -535,11 +619,12 @@ impl Db {
                     id: r.get(0)?,
                     name: r.get(1)?,
                     dci: r.get(2)?,
-                    dosage: r.get(3)?,
-                    ddi: r.get(4)?,
-                    iup: r.get(5)?,
-                    antidote: r.get(6)?,
-                    notes: r.get(7)?,
+                    class: r.get(3)?,
+                    dosage: r.get(4)?,
+                    ddi: r.get(5)?,
+                    iup: r.get(6)?,
+                    antidote: r.get(7)?,
+                    notes: r.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -564,13 +649,13 @@ impl Db {
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
         let mut inserted = 0;
-        for (name, dci, antidote) in STARTER_DRUGS {
+        for (name, dci, class, antidote) in STARTER_DRUGS {
             inserted += tx
                 .execute(
-                    "INSERT INTO drugs (name, dci, antidote)
-                     SELECT ?1, ?2, ?3
+                    "INSERT INTO drugs (name, dci, class, antidote)
+                     SELECT ?1, ?2, ?3, ?4
                      WHERE NOT EXISTS (SELECT 1 FROM drugs WHERE name = ?1)",
-                    (name, dci, antidote),
+                    (name, dci, class, antidote),
                 )
                 .map_err(|e| e.to_string())?;
         }
@@ -591,13 +676,14 @@ impl Db {
         let changed = self
             .conn
             .execute(
-                "UPDATE drugs SET name = ?1, dci = ?2, dosage = ?3, ddi = ?4, iup = ?5,
-                        antidote = ?6, notes = ?7
-                 WHERE id = ?8 AND name = ?9 AND dci = ?10 AND dosage = ?11 AND ddi = ?12
-                   AND iup = ?13 AND antidote = ?14 AND notes = ?15",
+                "UPDATE drugs SET name = ?1, dci = ?2, class = ?3, dosage = ?4, ddi = ?5,
+                        iup = ?6, antidote = ?7, notes = ?8
+                 WHERE id = ?9 AND name = ?10 AND dci = ?11 AND class = ?12 AND dosage = ?13
+                   AND ddi = ?14 AND iup = ?15 AND antidote = ?16 AND notes = ?17",
                 rusqlite::params![
                     new.name,
                     new.dci,
+                    new.class,
                     new.dosage,
                     new.ddi,
                     new.iup,
@@ -606,6 +692,7 @@ impl Db {
                     expected.id,
                     expected.name,
                     expected.dci,
+                    expected.class,
                     expected.dosage,
                     expected.ddi,
                     expected.iup,
@@ -1248,6 +1335,7 @@ mod tests {
             .find(|d| d.name == "Eliquis")
             .unwrap();
         assert_eq!(eliquis.dci, "apixaban");
+        assert_eq!(eliquis.class, "AOD");
         assert_eq!(eliquis.antidote, "Andexanet alfa");
         assert!(eliquis.dosage.is_empty());
 
@@ -1351,29 +1439,46 @@ mod tests {
         let db = Db::open(&path, "secret").unwrap();
         let pid = db.add_patient("Dupond", "Jaen", "1958-07-04").unwrap();
         let seen = db.patients().unwrap()[0].clone();
-        assert!(db
-            .update_patient(
-                pid,
-                "Dupont",
-                "Jean",
-                "1958-07-03",
-                "06 12 34 56 78",
-                "préfère le matin",
-                &seen,
-            )
-            .unwrap());
+        let corrected = Patient {
+            id: pid,
+            last_name: "Dupont".to_owned(),
+            first_name: "Jean".to_owned(),
+            birth_date: "1958-07-03".to_owned(),
+            phone: "06 12 34 56 78".to_owned(),
+            notes: "préfère le matin".to_owned(),
+            physician: "Dr Morel".to_owned(),
+            email: "jean.dupont@example.org".to_owned(),
+            address: "12 rue des Lilas".to_owned(),
+        };
+        assert!(db.update_patient(&corrected, &seen).unwrap());
         let p = db.patients().unwrap();
         assert_eq!(p[0].full_name(), "Jean Dupont");
         assert_eq!(p[0].birth_date, "1958-07-03");
         assert_eq!(p[0].phone, "06 12 34 56 78");
         assert_eq!(p[0].notes, "préfère le matin");
+        assert_eq!(p[0].physician, "Dr Morel");
+        assert_eq!(p[0].email, "jean.dupont@example.org");
+        assert_eq!(p[0].address, "12 rue des Lilas");
 
         // An edit based on the pre-correction snapshot is rejected
         // instead of silently overwriting the newer values.
-        assert!(!db
-            .update_patient(pid, "X", "Y", "1958-07-03", "", "", &seen)
-            .unwrap());
+        let stale = Patient {
+            last_name: "X".to_owned(),
+            ..corrected.clone()
+        };
+        assert!(!db.update_patient(&stale, &seen).unwrap());
         assert_eq!(db.patients().unwrap()[0].full_name(), "Jean Dupont");
+
+        // Treatments: link drugs to the patient, idempotently.
+        let did = db.add_drug("Eliquis").unwrap();
+        db.add_patient_drug(pid, did).unwrap();
+        db.add_patient_drug(pid, did).unwrap();
+        let treats = db.drugs_for_patient(pid).unwrap();
+        assert_eq!(treats.len(), 1);
+        assert_eq!(treats[0].name, "Eliquis");
+        db.remove_patient_drug(pid, did).unwrap();
+        assert!(db.drugs_for_patient(pid).unwrap().is_empty());
+        db.add_patient_drug(pid, did).unwrap();
 
         // Interview deletion is CAS on the state this PC saw.
         let iid = db.add_interview(pid, InterviewKind::Bpm).unwrap();
@@ -1386,11 +1491,14 @@ mod tests {
         assert!(db.delete_interview(iid, InterviewState::Scheduled).unwrap());
         assert!(db.interviews_for(pid).unwrap().is_empty());
 
-        // Deletion removes the patient and their interviews atomically.
+        // Deletion removes the patient, their interviews and their
+        // treatment links atomically (the drug card itself stays).
         db.add_interview(pid, InterviewKind::Bpm).unwrap();
         db.delete_patient(pid).unwrap();
         assert!(db.patients().unwrap().is_empty());
         assert!(db.interviews_for(pid).unwrap().is_empty());
+        assert!(db.drugs_for_patient(pid).unwrap().is_empty());
+        assert_eq!(db.drugs().unwrap().len(), 1);
 
         let _ = std::fs::remove_file(&path);
     }
@@ -1568,6 +1676,30 @@ mod tests {
             if minutes > 0 {
                 db.set_duration(iid, minutes, 0).unwrap();
             }
+            // Full record and current treatments for the demo's first
+            // patient, so the patient view shows everything.
+            if last == "Dupont" {
+                let seen = Patient {
+                    id: pid,
+                    last_name: last.to_owned(),
+                    first_name: first.to_owned(),
+                    birth_date: dob.to_owned(),
+                    ..Default::default()
+                };
+                let full = Patient {
+                    phone: "06 01 02 03 04".to_owned(),
+                    physician: "Dr Morel".to_owned(),
+                    email: "jean.dupont@exemple.fr".to_owned(),
+                    address: "12 rue des Lilas, 34000 Montpellier".to_owned(),
+                    ..seen.clone()
+                };
+                db.update_patient(&full, &seen).unwrap();
+                for name in ["Eliquis", "Tahor"] {
+                    if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
+                        db.add_patient_drug(pid, d.id).unwrap();
+                    }
+                }
+            }
             // Extra acts with RDVs so the agenda's week view shows
             // several colors.
             if last == "Martin" {
@@ -1595,11 +1727,14 @@ mod tests {
                     last_name: last.to_owned(),
                     first_name: first.to_owned(),
                     birth_date: dob.to_owned(),
-                    phone: String::new(),
-                    notes: String::new(),
+                    ..Default::default()
                 };
-                db.update_patient(pid, last, first, dob, phone, "", &seen)
-                    .unwrap();
+                let with_phone = Patient {
+                    phone: phone.to_owned(),
+                    physician: "Dr Morel".to_owned(),
+                    ..seen.clone()
+                };
+                db.update_patient(&with_phone, &seen).unwrap();
                 let date: String = db
                     .conn
                     .query_row("SELECT date('now', 'localtime', ?1)", [offset], |r| {

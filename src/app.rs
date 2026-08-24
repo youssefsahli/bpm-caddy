@@ -186,6 +186,10 @@ struct Session {
     confirm_delete: bool,
     /// Two-step delete confirmation for one interview row (by id).
     confirm_delete_itv: Option<i64>,
+    /// The viewed patient's current treatments (from the drug base).
+    patient_treats: Vec<Drug>,
+    /// In-progress text of the treatment picker.
+    treat_query: String,
     view: MainView,
     summaries: Vec<InterviewSummary>,
     /// Planned interviews for the dashboard's "RDV à venir" list.
@@ -229,6 +233,9 @@ struct PatientForm {
     birth_date: String,
     phone: String,
     notes: String,
+    physician: String,
+    email: String,
+    address: String,
     error: Option<String>,
 }
 
@@ -239,6 +246,7 @@ impl Session {
         // First unlock of a fresh base: starter drug cards (names, DCI,
         // textbook antidotes). Non-fatal if it fails.
         let _ = db.seed_drugs_if_empty();
+        let drugs = db.drugs().unwrap_or_default();
         let mut session = Self {
             db,
             patients: Vec::new(),
@@ -252,6 +260,8 @@ impl Session {
             edit_patient: None,
             confirm_delete: false,
             confirm_delete_itv: None,
+            patient_treats: Vec::new(),
+            treat_query: String::new(),
             view: MainView::Search,
             summaries: Vec::new(),
             appointments: Vec::new(),
@@ -263,7 +273,7 @@ impl Session {
             date_edits: std::collections::HashMap::new(),
             show_amounts: false,
             dup_check: None,
-            drugs: Vec::new(),
+            drugs,
             drug_query: String::new(),
             drug_selected: 0,
             drug_form: None,
@@ -360,6 +370,8 @@ impl Session {
 
     fn open_patient(&mut self, patient: Patient) {
         self.reload_interviews(patient.id);
+        self.patient_treats = self.db.drugs_for_patient(patient.id).unwrap_or_default();
+        self.treat_query.clear();
         self.edit_patient = None;
         self.confirm_delete = false;
         self.confirm_delete_itv = None;
@@ -473,7 +485,14 @@ impl App {
                             session.view = MainView::Dashboard;
                         }
                         Ok("patient") => {
-                            if let Some(p) = session.patients.first().cloned() {
+                            // Prefer the fullest record for screenshots.
+                            let pick = session
+                                .patients
+                                .iter()
+                                .find(|p| !p.email.is_empty())
+                                .or(session.patients.first())
+                                .cloned();
+                            if let Some(p) = pick {
                                 session.open_patient(p);
                             }
                         }
@@ -1026,8 +1045,28 @@ impl App {
                 "Né(e) le {}",
                 db::format_french_date(&patient.birth_date)
             ));
-            if !patient.phone.is_empty() {
-                ui.label(trf("patient_phone", &patient.phone));
+            {
+                // Contact line: phone · physician · email, whichever exist.
+                let mut bits: Vec<String> = Vec::new();
+                if !patient.phone.is_empty() {
+                    bits.push(trf("patient_phone", &patient.phone));
+                }
+                if !patient.physician.is_empty() {
+                    bits.push(trf("patient_physician", &patient.physician));
+                }
+                if !patient.email.is_empty() {
+                    bits.push(patient.email.clone());
+                }
+                if !bits.is_empty() {
+                    ui.label(bits.join("   ·   "));
+                }
+            }
+            if !patient.address.is_empty() {
+                ui.label(
+                    egui::RichText::new(patient.address.as_str())
+                        .size(12.0)
+                        .color(motif::BG_DARK),
+                );
             }
             if !patient.notes.is_empty() {
                 ui.label(egui::RichText::new(patient.notes.as_str()).italics());
@@ -1095,6 +1134,19 @@ impl App {
                                 .hint_text(tr("form_comment_hint")),
                         );
                         ui.end_row();
+                        ui.label(dim(tr("form_physician")));
+                        ui.add_sized(
+                            [240.0, 26.0],
+                            egui::TextEdit::singleline(&mut form.physician)
+                                .hint_text(tr("form_physician_hint")),
+                        );
+                        ui.end_row();
+                        ui.label(dim(tr("form_email")));
+                        ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.email));
+                        ui.end_row();
+                        ui.label(dim(tr("form_address")));
+                        ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.address));
+                        ui.end_row();
                     });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
@@ -1111,6 +1163,100 @@ impl App {
                 }
             }
             ui.add_space(16.0);
+
+            // Current treatments, linked to the drug base: chips open the
+            // drug card, "×" unlinks, the small picker adds by fuzzy name.
+            {
+                let mut remove_treat: Option<i64> = None;
+                let mut add_treat: Option<i64> = None;
+                let mut open_card: Option<Drug> = None;
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let approx = 90.0 + session.patient_treats.len() as f32 * 110.0 + 150.0;
+                    ui.add_space(((ui.available_width() - approx) / 2.0).max(0.0));
+                    ui.label(egui::RichText::new(tr("treat_label")).color(motif::BG_DARK));
+                    for t in &session.patient_treats {
+                        let chip = ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("  {}  ", t.name))
+                                    .size(12.0)
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(motif::ACCENT),
+                            )
+                            .sense(egui::Sense::click()),
+                        );
+                        if chip.on_hover_text(tr("treat_open_tooltip")).clicked() {
+                            open_card = Some(t.clone());
+                        }
+                        let x = ui.add(
+                            egui::Label::new(egui::RichText::new("×").size(12.0))
+                                .sense(egui::Sense::click()),
+                        );
+                        if x.on_hover_text(tr("treat_remove_tooltip")).clicked() {
+                            remove_treat = Some(t.id);
+                        }
+                    }
+                    ui.add_sized(
+                        [140.0, 20.0],
+                        egui::TextEdit::singleline(&mut session.treat_query)
+                            .hint_text(tr("treat_add_hint")),
+                    );
+                });
+                if !session.treat_query.trim().is_empty() {
+                    let q = session.treat_query.clone();
+                    let mut scored: Vec<(i32, &Drug)> = session
+                        .drugs
+                        .iter()
+                        .filter(|d| session.patient_treats.iter().all(|t| t.id != d.id))
+                        .filter_map(|d| {
+                            let a = fuzzy::score(&q, &d.name);
+                            let b = if d.dci.is_empty() {
+                                None
+                            } else {
+                                fuzzy::score(&q, &d.dci)
+                            };
+                            a.max(b).map(|s| (s, d))
+                        })
+                        .collect();
+                    scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
+                    ui.horizontal(|ui| {
+                        ui.add_space((ui.available_width() / 2.0 - 200.0).max(0.0));
+                        for (_, d) in scored.into_iter().take(4) {
+                            let sug = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("+ {}", d.name)).size(12.0),
+                                )
+                                .sense(egui::Sense::click()),
+                            );
+                            if sug.clicked() {
+                                add_treat = Some(d.id);
+                            }
+                        }
+                    });
+                }
+                if let Some(id) = remove_treat {
+                    if let Err(e) = session.db.remove_patient_drug(patient.id, id) {
+                        session.error = Some(e);
+                    }
+                    session.patient_treats =
+                        session.db.drugs_for_patient(patient.id).unwrap_or_default();
+                }
+                if let Some(id) = add_treat {
+                    if let Err(e) = session.db.add_patient_drug(patient.id, id) {
+                        session.error = Some(e);
+                    }
+                    session.treat_query.clear();
+                    session.patient_treats =
+                        session.db.drugs_for_patient(patient.id).unwrap_or_default();
+                }
+                if let Some(d) = open_card {
+                    session.drug_base = Some(d.clone());
+                    session.drug_form = Some(d);
+                    session.confirm_delete_drug = false;
+                    session.view = MainView::Drugs;
+                }
+            }
+            ui.add_space(10.0);
 
             // Ctrl+N or the buttons below start a new act (spec 3.1).
             ui.label(tr("patient_new_interview"));
@@ -1148,6 +1294,9 @@ impl App {
                 birth_date: db::format_french_date(&patient.birth_date),
                 phone: patient.phone.clone(),
                 notes: patient.notes.clone(),
+                physician: patient.physician.clone(),
+                email: patient.email.clone(),
+                address: patient.address.clone(),
                 error: None,
             });
         }
@@ -1162,29 +1311,25 @@ impl App {
                         if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
                             return Err(tr("form_names_required").to_owned());
                         }
-                        // CAS against the row as displayed: a colleague's
-                        // concurrent correction is never wiped.
-                        let applied = session.db.update_patient(
-                            patient.id,
-                            form.last_name.trim(),
-                            form.first_name.trim(),
-                            &iso,
-                            form.phone.trim(),
-                            form.notes.trim(),
-                            patient,
-                        )?;
-                        Ok((iso, applied))
-                    });
-                match outcome {
-                    Ok((iso, true)) => {
-                        session.viewing = Some(Patient {
+                        let updated = Patient {
                             id: patient.id,
                             last_name: form.last_name.trim().to_owned(),
                             first_name: form.first_name.trim().to_owned(),
                             birth_date: iso,
                             phone: form.phone.trim().to_owned(),
                             notes: form.notes.trim().to_owned(),
-                        });
+                            physician: form.physician.trim().to_owned(),
+                            email: form.email.trim().to_owned(),
+                            address: form.address.trim().to_owned(),
+                        };
+                        // CAS against the row as displayed: a colleague's
+                        // concurrent correction is never wiped.
+                        let applied = session.db.update_patient(&updated, patient)?;
+                        Ok((updated, applied))
+                    });
+                match outcome {
+                    Ok((updated, true)) => {
+                        session.viewing = Some(updated);
                         if let Ok(list) = session.db.patients() {
                             session.set_patients(list);
                         }
@@ -1763,12 +1908,17 @@ impl App {
                 } else {
                     form.name.trim()
                 });
-                if !form.dci.trim().is_empty() {
-                    ui.label(
-                        egui::RichText::new(form.dci.trim())
-                            .italics()
-                            .color(motif::BG_DARK),
-                    );
+                {
+                    let mut sub = form.dci.trim().to_owned();
+                    if !form.class.trim().is_empty() {
+                        if !sub.is_empty() {
+                            sub.push_str(" — ");
+                        }
+                        sub.push_str(form.class.trim());
+                    }
+                    if !sub.is_empty() {
+                        ui.label(egui::RichText::new(sub).italics().color(motif::BG_DARK));
+                    }
                 }
                 if !form.antidote.trim().is_empty() {
                     ui.label(
@@ -1788,6 +1938,9 @@ impl App {
                         ui.end_row();
                         ui.label(dim(tr("drug_dci")));
                         ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.dci));
+                        ui.end_row();
+                        ui.label(dim(tr("drug_class")));
+                        ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.class));
                         ui.end_row();
                         ui.label(dim(tr("drug_dosage")));
                         ui.add_sized([360.0, 26.0], egui::TextEdit::singleline(&mut form.dosage));
@@ -1981,6 +2134,9 @@ impl App {
                     let mut text = d.name.clone();
                     if !d.dci.is_empty() {
                         text.push_str(&format!(" ({})", d.dci));
+                    }
+                    if !d.class.is_empty() {
+                        text.push_str(&format!("   ·  {}", d.class));
                     }
                     if !d.dosage.is_empty() {
                         text.push_str(&format!("   ·  {}", d.dosage));
