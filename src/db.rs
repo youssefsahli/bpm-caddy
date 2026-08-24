@@ -1111,6 +1111,27 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// The creation dates (ISO, ascending) of a patient's acts of one
+    /// kind — input for the yearly-quota rule.
+    pub fn interview_dates_for(
+        &self,
+        patient_id: i64,
+        kind: InterviewKind,
+    ) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT substr(created_at, 1, 10) FROM interviews
+                 WHERE patient_id = ?1 AND kind = ?2
+                 ORDER BY created_at",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map((patient_id, kind.as_str()), |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Set (or clear) the planned date of an interview (ISO `YYYY-MM-DD`).
     /// Compare-and-set on the date this PC saw (`IS` also matches NULL),
     /// so a stale field never reverts a colleague's newer date. Returns
@@ -1282,6 +1303,57 @@ pub fn parse_french_date(input: &str, current_year: u32, hint: YearHint) -> Resu
     Ok(format!("{year:04}-{month:02}-{day:02}"))
 }
 
+/// The same ISO date one year later ("2026-02-29" clamps to the 28th).
+pub fn add_one_year(iso: &str) -> String {
+    let mut parts = iso.split('-');
+    let (Some(y), Some(m), Some(d)) = (parts.next(), parts.next(), parts.next()) else {
+        return iso.to_owned();
+    };
+    let Ok(year) = y.parse::<u32>() else {
+        return iso.to_owned();
+    };
+    let day = if m == "02" && d == "29" { "28" } else { d };
+    format!("{:04}-{m}-{day}", year + 1)
+}
+
+/// Convention rule: at most `per_year` acts per "année d'accompagnement",
+/// where each yearly cycle starts at its first act and the next cycle
+/// cannot start before 12 months after the previous cycle's first act.
+///
+/// `dates` are the patient's existing act dates (ISO, ascending) for one
+/// kind. Returns `None` when a new act today is allowed, or
+/// `Some(next_allowed_iso)` when the quota is reached. `per_year == 0`
+/// disables the rule.
+pub fn yearly_rule_next_allowed(dates: &[String], today: &str, per_year: u32) -> Option<String> {
+    if per_year == 0 || dates.is_empty() {
+        return None;
+    }
+    // Walk to the current cycle: each cycle starts at the first act at
+    // least 12 months after the previous cycle's start.
+    let mut cycle_start = dates[0].clone();
+    loop {
+        let next_cycle_from = add_one_year(&cycle_start);
+        match dates.iter().find(|d| **d >= next_cycle_from) {
+            Some(d) => cycle_start = d.clone(),
+            None => break,
+        }
+    }
+    let cycle_end = add_one_year(&cycle_start);
+    if today >= cycle_end.as_str() {
+        // A new yearly cycle may start today.
+        return None;
+    }
+    let in_cycle = dates
+        .iter()
+        .filter(|d| **d >= cycle_start && **d < cycle_end)
+        .count();
+    if (in_cycle as u32) < per_year {
+        None
+    } else {
+        Some(cycle_end)
+    }
+}
+
 /// French weekday name for an ISO date ("2026-08-24" → "lundi").
 /// Sakamoto's algorithm — no calendar crate needed.
 pub fn weekday_fr(iso: &str) -> Option<&'static str> {
@@ -1329,6 +1401,46 @@ mod tests {
         assert!(parse("1958-07-03").is_err() || parse("31/12/1999").is_ok());
         assert!(parse("32/01/2000").is_err());
         assert!(parse("abc").is_err());
+    }
+
+    #[test]
+    fn yearly_quota_rule_cycles_every_twelve_months() {
+        let d = |s: &str| s.to_owned();
+        // No rule / no history: always allowed.
+        assert_eq!(yearly_rule_next_allowed(&[], "2026-08-24", 3), None);
+        assert_eq!(
+            yearly_rule_next_allowed(&[d("2026-01-01")], "2026-08-24", 0),
+            None
+        );
+        // Two of three used this cycle: allowed.
+        let two = [d("2026-01-10"), d("2026-03-01")];
+        assert_eq!(yearly_rule_next_allowed(&two, "2026-08-24", 3), None);
+        // Quota full: blocked until 12 months after the cycle's first act.
+        let three = [d("2026-01-10"), d("2026-03-01"), d("2026-06-15")];
+        assert_eq!(
+            yearly_rule_next_allowed(&three, "2026-08-24", 3),
+            Some(d("2027-01-10"))
+        );
+        // On/after that date, the "entretien nouvelle année" is allowed.
+        assert_eq!(yearly_rule_next_allowed(&three, "2027-01-10", 3), None);
+        // A second cycle fills up relative to ITS first act, not the
+        // original one.
+        let cycle2 = [
+            d("2026-01-10"),
+            d("2026-03-01"),
+            d("2026-06-15"),
+            d("2027-02-01"), // first act of cycle 2
+            d("2027-04-01"),
+            d("2027-05-01"),
+        ];
+        assert_eq!(
+            yearly_rule_next_allowed(&cycle2, "2027-06-01", 3),
+            Some(d("2028-02-01"))
+        );
+        assert_eq!(yearly_rule_next_allowed(&cycle2, "2028-02-01", 3), None);
+        // Leap-day cycle start clamps sanely.
+        assert_eq!(add_one_year("2028-02-29"), "2029-02-28");
+        assert_eq!(add_one_year("2026-08-24"), "2027-08-24");
     }
 
     #[test]
@@ -1457,6 +1569,16 @@ mod tests {
         let loaded = db.interviews_for(pid).unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].state, InterviewState::Identified);
+        assert_eq!(
+            db.interview_dates_for(pid, InterviewKind::Bpm)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(db
+            .interview_dates_for(pid, InterviewKind::Aod)
+            .unwrap()
+            .is_empty());
 
         db.advance_interview(iid, InterviewState::Identified)
             .unwrap();

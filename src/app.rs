@@ -186,6 +186,9 @@ struct Session {
     confirm_delete: bool,
     /// Two-step delete confirmation for one interview row (by id).
     confirm_delete_itv: Option<i64>,
+    /// A new act refused by the yearly-quota rule: (kind, message),
+    /// with an explicit override offered.
+    rule_block: Option<(InterviewKind, String)>,
     /// The viewed patient's current treatments (from the drug base).
     patient_treats: Vec<Drug>,
     /// In-progress text of the treatment picker.
@@ -265,6 +268,7 @@ impl Session {
             edit_patient: None,
             confirm_delete: false,
             confirm_delete_itv: None,
+            rule_block: None,
             patient_treats: Vec::new(),
             treat_query: String::new(),
             view: MainView::Search,
@@ -392,6 +396,7 @@ impl Session {
         self.edit_patient = None;
         self.confirm_delete = false;
         self.confirm_delete_itv = None;
+        self.rule_block = None;
         self.viewing = Some(patient);
     }
 
@@ -464,6 +469,17 @@ pub struct App {
     operator: String,
     /// Typst template editor, when open.
     tpl_editor: Option<TplEditor>,
+    /// Global options editor, when open.
+    options: Option<OptionsEditor>,
+}
+
+/// In-app editor for `config.toml`.
+struct OptionsEditor {
+    cfg: Config,
+    /// Text buffer for `[database] path` ("" = default location).
+    db_path_text: String,
+    /// Status line; `true` marks an error.
+    message: Option<(bool, String)>,
 }
 
 struct TplEditor {
@@ -571,11 +587,21 @@ impl App {
             }
         }
 
-        // Screenshot/e2e hook: open the template editor directly.
-        let tpl_editor = if std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("template") {
+        // Screenshot/e2e hooks: open a dialog directly.
+        let start_view = std::env::var("BPM_CADDY_START_VIEW").unwrap_or_default();
+        let tpl_editor = if start_view == "template" {
             Some(TplEditor {
                 target: TplTarget::Fiche,
                 text: crate::pdf::default_template().to_owned(),
+                message: None,
+            })
+        } else {
+            None
+        };
+        let options = if start_view == "options" {
+            Some(OptionsEditor {
+                cfg: config.clone(),
+                db_path_text: String::new(),
                 message: None,
             })
         } else {
@@ -598,6 +624,7 @@ impl App {
             last_refresh: Instant::now(),
             pw_change: None,
             tpl_editor,
+            options,
         }
     }
 
@@ -1311,9 +1338,47 @@ impl App {
                 new_kind = Some(InterviewKind::Bpm);
             }
             if let Some(kind) = new_kind {
-                match session.db.add_interview(patient.id, kind) {
-                    Ok(_) => session.reload_interviews(patient.id),
-                    Err(e) => session.error = Some(e),
+                // Convention rule: N acts per année d'accompagnement,
+                // next cycle at least 12 months after the first act.
+                let per_year = config.per_year(kind);
+                let blocked = if per_year > 0 {
+                    let dates = session
+                        .db
+                        .interview_dates_for(patient.id, kind)
+                        .unwrap_or_default();
+                    let today = session.db.today_iso().unwrap_or_default();
+                    db::yearly_rule_next_allowed(&dates, &today, per_year)
+                } else {
+                    None
+                };
+                match blocked {
+                    Some(next) => {
+                        session.rule_block = Some((
+                            kind,
+                            trn(
+                                "rule_blocked",
+                                &[&kind.label(), &per_year, &db::format_french_date(&next)],
+                            ),
+                        ));
+                    }
+                    None => {
+                        session.rule_block = None;
+                        match session.db.add_interview(patient.id, kind) {
+                            Ok(_) => session.reload_interviews(patient.id),
+                            Err(e) => session.error = Some(e),
+                        }
+                    }
+                }
+            }
+            if let Some((kind, msg)) = session.rule_block.clone() {
+                ui.add_space(4.0);
+                ui.colored_label(egui::Color32::from_rgb(0x8b, 0x1a, 0x1a), msg.as_str());
+                if motif::button(ui, tr("rule_override")).clicked() {
+                    session.rule_block = None;
+                    match session.db.add_interview(patient.id, kind) {
+                        Ok(_) => session.reload_interviews(patient.id),
+                        Err(e) => session.error = Some(e),
+                    }
                 }
             }
 
@@ -2939,12 +3004,22 @@ impl eframe::App for App {
                         }
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_password")).clicked()
+                        && motif::button(ui, tr("toolbar_options")).clicked()
                     {
-                        self.pw_change = if self.pw_change.is_some() {
+                        self.options = if self.options.is_some() {
                             None
                         } else {
-                            Some(PwChangeForm::default())
+                            Some(OptionsEditor {
+                                cfg: self.config.clone(),
+                                db_path_text: self
+                                    .config
+                                    .database
+                                    .path
+                                    .as_ref()
+                                    .map(|p| p.display().to_string())
+                                    .unwrap_or_default(),
+                                message: None,
+                            })
                         };
                     }
                     if matches!(self.state, State::Unlocked(_))
@@ -3245,6 +3320,208 @@ impl eframe::App for App {
                 text,
                 message: None,
             });
+        }
+
+        // Global options editor: edits config.toml from within the app.
+        if !matches!(self.state, State::Unlocked(_)) {
+            self.options = None;
+        }
+        let mut close_opts = false;
+        let mut open_pw = false;
+        let mut saved_cfg: Option<Config> = None;
+        if let Some(editor) = &mut self.options {
+            egui::Window::new(tr("opts_title"))
+                .collapsible(false)
+                .resizable(true)
+                .default_size([560.0, 560.0])
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .max_height(470.0)
+                        .show(ui, |ui| {
+                            let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                            motif::section(ui, tr("opts_pharmacy"));
+                            egui::Grid::new("opts_pharmacy")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("form_last_name")));
+                                    ui.add_sized(
+                                        [300.0, 24.0],
+                                        egui::TextEdit::singleline(&mut editor.cfg.pharmacy.name),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("form_address")));
+                                    ui.add_sized(
+                                        [300.0, 24.0],
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.pharmacy.address,
+                                        ),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("form_phone")));
+                                    ui.add_sized(
+                                        [300.0, 24.0],
+                                        egui::TextEdit::singleline(&mut editor.cfg.pharmacy.phone),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_pharmacist")));
+                                    ui.add_sized(
+                                        [300.0, 24.0],
+                                        egui::TextEdit::singleline(
+                                            &mut editor.cfg.pharmacy.pharmacist,
+                                        ),
+                                    );
+                                    ui.end_row();
+                                });
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_ui"));
+                            egui::Grid::new("opts_ui")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("docs_operator")));
+                                    ui.add_sized(
+                                        [80.0, 24.0],
+                                        egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
+                                    );
+                                    ui.end_row();
+                                });
+                            ui.checkbox(
+                                &mut editor.cfg.ui.show_docs_on_start,
+                                tr("opts_show_docs"),
+                            );
+                            ui.checkbox(&mut editor.cfg.ui.discreet_finances, tr("opts_discreet"));
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_db"));
+                            egui::Grid::new("opts_db")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("opts_autolock")));
+                                    ui.add(
+                                        egui::DragValue::new(
+                                            &mut editor.cfg.database.auto_lock_timeout_minutes,
+                                        )
+                                        .range(0..=240),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_backups")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.database.backups_keep)
+                                            .range(0..=60),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_db_path")));
+                                    ui.add_sized(
+                                        [300.0, 24.0],
+                                        egui::TextEdit::singleline(&mut editor.db_path_text),
+                                    );
+                                    ui.end_row();
+                                });
+                            ui.label(
+                                egui::RichText::new(tr("opts_db_note"))
+                                    .size(11.0)
+                                    .color(motif::BG_DARK),
+                            );
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_fees"));
+                            egui::Grid::new("opts_fees")
+                                .num_columns(4)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    let fees: [(&str, &mut f64); 6] = [
+                                        ("BPM", &mut editor.cfg.billing.bpm_fee),
+                                        ("AOD", &mut editor.cfg.billing.aod_fee),
+                                        ("Asthme", &mut editor.cfg.billing.asthme_fee),
+                                        ("TROD angine", &mut editor.cfg.billing.trod_angine_fee),
+                                        ("TROD cystite", &mut editor.cfg.billing.trod_cystite_fee),
+                                        ("Prévention", &mut editor.cfg.billing.prevention_fee),
+                                    ];
+                                    for (i, (label, fee)) in fees.into_iter().enumerate() {
+                                        ui.label(dim(label));
+                                        ui.add(
+                                            egui::DragValue::new(fee)
+                                                .range(0.0..=500.0)
+                                                .suffix(" €"),
+                                        );
+                                        if i % 2 == 1 {
+                                            ui.end_row();
+                                        }
+                                    }
+                                });
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_rules"));
+                            egui::Grid::new("opts_rules")
+                                .num_columns(4)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    let rules: [(&str, &mut u32); 6] = [
+                                        ("BPM", &mut editor.cfg.rules.bpm_per_year),
+                                        ("AOD", &mut editor.cfg.rules.aod_per_year),
+                                        ("Asthme", &mut editor.cfg.rules.asthme_per_year),
+                                        ("TROD angine", &mut editor.cfg.rules.trod_angine_per_year),
+                                        (
+                                            "TROD cystite",
+                                            &mut editor.cfg.rules.trod_cystite_per_year,
+                                        ),
+                                        ("Prévention", &mut editor.cfg.rules.prevention_per_year),
+                                    ];
+                                    for (i, (label, n)) in rules.into_iter().enumerate() {
+                                        ui.label(dim(label));
+                                        ui.add(egui::DragValue::new(n).range(0..=12));
+                                        if i % 2 == 1 {
+                                            ui.end_row();
+                                        }
+                                    }
+                                });
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("opts_security"));
+                            if motif::button(ui, tr("opts_change_pw")).clicked() {
+                                open_pw = true;
+                            }
+                        });
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if motif::button(ui, tr("form_save")).clicked() {
+                            editor.cfg.database.path = if editor.db_path_text.trim().is_empty() {
+                                None
+                            } else {
+                                Some(std::path::PathBuf::from(editor.db_path_text.trim()))
+                            };
+                            match editor.cfg.save() {
+                                Ok(()) => {
+                                    saved_cfg = Some(editor.cfg.clone());
+                                    editor.message = Some((false, tr("opts_saved").to_owned()));
+                                }
+                                Err(e) => {
+                                    editor.message = Some((true, trf("opts_save_error", e)));
+                                }
+                            }
+                        }
+                        if motif::button(ui, tr("tpl_close")).clicked() {
+                            close_opts = true;
+                        }
+                    });
+                    if let Some((is_error, msg)) = &editor.message {
+                        let color = if *is_error {
+                            egui::Color32::from_rgb(0x8b, 0x1a, 0x1a)
+                        } else {
+                            motif::ACCENT
+                        };
+                        ui.colored_label(color, msg.as_str());
+                    }
+                });
+        }
+        if let Some(cfg) = saved_cfg {
+            // Live-apply everything except the database path (restart).
+            self.config = cfg;
+        }
+        if open_pw {
+            self.pw_change = Some(PwChangeForm::default());
+        }
+        if close_opts {
+            self.options = None;
         }
 
         // The docs pane may hold patient-adjacent notes: never show it on

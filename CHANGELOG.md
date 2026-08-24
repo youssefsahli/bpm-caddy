@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-08-24
+
+### Added
+- Convention rules enforced at act creation: each kind allows N acts
+  per "année d'accompagnement" (12 months from the cycle's first act;
+  the next cycle starts at least 12 months later). A blocked creation
+  explains the rule and shows the next possible date, with an explicit
+  "Créer quand même" override. Quotas configurable per kind
+  (`[rules]`, 0 = no limit; defaults: BPM/AOD/Asthme 3, TROD 0,
+  Prévention 1)
+- Global options editor ("Options…" in the toolbar): pharmacy identity,
+  interface, auto-lock, backups, database path, fees, and yearly-rule
+  quotas — all edited in-app and saved to config.toml, applied live
+  (path change takes effect on restart). The master-password change
+  moved inside it, keeping the toolbar compact
+
 ## [0.9.0] - 2026-08-24
 
 ### Added
