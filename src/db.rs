@@ -376,11 +376,11 @@ impl Note {
     }
 }
 
-/// (brand name, DCI, therapeutic class, textbook antidote or ""). See
-/// [`Db::seed_drugs_if_empty`].
 /// How many drugs a fresh base starts with.
 pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
 
+/// (brand name, DCI, therapeutic class, textbook antidote or ""). See
+/// [`Db::seed_drugs_if_empty`].
 const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     // Anticoagulants / antiagrégants
     ("Eliquis", "apixaban", "AOD", "Andexanet alfa"),
@@ -1859,14 +1859,6 @@ pub fn add_one_year(iso: &str) -> String {
     format!("{:04}-{m}-{day}", year + 1)
 }
 
-/// Convention rule: at most `per_year` acts per "année d'accompagnement",
-/// where each yearly cycle starts at its first act and the next cycle
-/// cannot start before 12 months after the previous cycle's first act.
-///
-/// `dates` are the patient's existing act dates (ISO, ascending) for one
-/// kind. Returns `None` when a new act today is allowed, or
-/// `Some(next_allowed_iso)` when the quota is reached. `per_year == 0`
-/// disables the rule.
 /// Rank each act of a (patient, kind) group inside its yearly cycle:
 /// 0 = entretien initial of the cycle, 1 = premier suivi, … Cycles
 /// follow the same segmentation as [`yearly_rule_next_allowed`]: a new
@@ -1910,6 +1902,14 @@ pub fn cycle_ranks(dates: &[String]) -> Vec<usize> {
     out
 }
 
+/// Convention rule: at most `per_year` acts per "année d'accompagnement",
+/// where each yearly cycle starts at its first act and the next cycle
+/// cannot start before 12 months after the previous cycle's first act.
+///
+/// `dates` are the patient's existing act dates (ISO, ascending) for one
+/// kind. Returns `None` when a new act today is allowed, or
+/// `Some(next_allowed_iso)` when the quota is reached. `per_year == 0`
+/// disables the rule.
 pub fn yearly_rule_next_allowed(dates: &[String], today: &str, per_year: u32) -> Option<String> {
     if per_year == 0 || dates.is_empty() {
         return None;

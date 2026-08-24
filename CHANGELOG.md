@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.2] - 2026-08-25
+
+### Fixed
+- A partial fee table in `config.toml` no longer bills 0 €: writing
+  `bpm = { initial = 65.0 }` (or misspelling a key) now keeps the
+  default fee for every rank it does not mention, instead of zeroing
+  the suivi fees in the dashboard, the chart and the CSV.
+- Escape with the quick picker open closes the picker instead of
+  leaving the patient view (and leaving the picker armed for the next
+  patient).
+- The theme chosen in the quick picker is dropped when the picker is
+  closed without creating an act; it can no longer attach itself
+  silently to a later act created from the direct buttons — including
+  onto the CR letter and the export.
+- The picker's 1-9 shortcuts are ignored while a field has the
+  keyboard, so typing a duration or a date behind the dialog cannot
+  create billable acts.
+
 ## [0.15.1] - 2026-08-25
 
 ### Added
