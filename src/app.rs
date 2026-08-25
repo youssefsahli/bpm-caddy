@@ -88,7 +88,8 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
     }
     let mut out = String::from(
         "\u{feff}Patient;Téléphone;Naissance;Type;Code acte;Année;Étape;Thème;État;Créé le;RDV;\
-         Durée (min);À distance;Situation;Honoraires (€);Prise en charge (%);Facturé (€)\r\n",
+         Durée (min);À distance;Changement de traitement;Situation;Honoraires (€);\
+         Prise en charge (%);Facturé (€)\r\n",
     );
     for r in rows {
         let comma = |v: f64| format!("{v:.2}").replace('.', ",");
@@ -102,7 +103,7 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
             0.0
         };
         out.push_str(&format!(
-            "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
+            "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
             field(&r.patient_name),
             field(&r.phone),
             db::format_french_date(&r.birth_date),
@@ -123,6 +124,11 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
                 .unwrap_or_default(),
             r.duration_minutes,
             if r.remote { db::REMOTE_CODE } else { "" },
+            if r.treatment_change && r.kind.allows_treatment_change() {
+                tr("csv_yes")
+            } else {
+                ""
+            },
             field(
                 db::situation_label(&r.situation)
                     .map(tr)
@@ -1249,22 +1255,71 @@ fn interview_ranks(
     interviews: &[db::Interview],
     months: u32,
 ) -> std::collections::HashMap<i64, (usize, usize)> {
-    let mut by_kind: std::collections::HashMap<InterviewKind, Vec<(i64, String)>> =
+    let mut by_kind: std::collections::HashMap<InterviewKind, Vec<(i64, String, bool)>> =
         std::collections::HashMap::new();
     for itv in interviews {
         let date = itv.created_at[..10.min(itv.created_at.len())].to_owned();
-        by_kind.entry(itv.kind).or_default().push((itv.id, date));
+        by_kind.entry(itv.kind).or_default().push((
+            itv.id,
+            date,
+            itv.treatment_change && itv.kind.allows_treatment_change(),
+        ));
     }
     let mut out = std::collections::HashMap::new();
-    for mut rows in by_kind.into_values() {
+    for (kind, mut rows) in by_kind {
         // The table is newest-first; cycles are computed oldest-first.
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
-        let dates: Vec<String> = rows.iter().map(|(_, d)| d.clone()).collect();
-        for ((id, _), position) in rows.iter().zip(db::cycle_positions(&dates, months)) {
+        let dates: Vec<String> = rows.iter().map(|(_, d, _)| d.clone()).collect();
+        let restarts: Vec<bool> = rows.iter().map(|(_, _, r)| *r).collect();
+        let positions = db::cycle_positions_for(kind, &dates, &restarts, months);
+        for ((id, _, _), position) in rows.iter().zip(positions) {
             out.insert(*id, position);
         }
     }
     out
+}
+
+/// The memo's derogation conditions, checked against what the patient's
+/// history actually holds. Returns `None` when the marked entretien
+/// satisfies them, or what is still missing: how many entretiens short
+/// the sequence before the change is, and the one after it.
+fn treatment_change_shortfall(
+    interviews: &[db::Interview],
+    marked: &db::Interview,
+    months: u32,
+) -> Option<(usize, usize)> {
+    if !marked.treatment_change || !marked.kind.allows_treatment_change() {
+        return None;
+    }
+    let mut same: Vec<&db::Interview> = interviews
+        .iter()
+        .filter(|i| i.kind == marked.kind)
+        .collect();
+    same.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
+    let ranks = interview_ranks(interviews, months);
+    let pos = same.iter().position(|i| i.id == marked.id)?;
+    let (year, _) = ranks.get(&marked.id).copied().unwrap_or((0, 0));
+    // The sequence the change closes runs back to the previous entretien
+    // of rank 0; the one it opens starts at the marked entretien.
+    let mut before = 0usize;
+    for itv in same[..pos].iter().rev() {
+        before += 1;
+        if ranks.get(&itv.id).map(|(_, r)| *r) == Some(0) {
+            break;
+        }
+    }
+    let after = same[pos..].len();
+    // `year` is the sequence the change opened; année 1 is the stricter
+    // case, and a restart never lands before it.
+    let (need_before, need_after) = marked.kind.treatment_change_minimums(year <= 1);
+    if before >= need_before && after >= need_after {
+        None
+    } else {
+        Some((
+            need_before.saturating_sub(before),
+            need_after.saturating_sub(after),
+        ))
+    }
 }
 
 /// Quick act picker: the nine acts with digit shortcuts and the theme
@@ -2586,7 +2641,14 @@ impl App {
                     .last()
                     .map(|(y, _)| *y)
                     .unwrap_or(0);
-                let per_year = config.sequence_len(kind, year_now) as u32;
+                // « Autres anticancéreux » may close a sequence early,
+                // so a completed one simply opens the next: no quota to
+                // enforce there.
+                let per_year = if kind.sequence_may_finish_early() {
+                    0
+                } else {
+                    config.sequence_len(kind, year_now) as u32
+                };
                 let blocked = if per_year > 0 {
                     let dates = session
                         .db
@@ -2647,6 +2709,22 @@ impl App {
                         Err(e) => session.error = Some(e),
                     }
                 }
+            }
+
+            // Eligibility, as the memo states it: the bilan partagé de
+            // médication is for the patient on at least five treatments
+            // for six months or more. The linked treatments are what the
+            // app knows, so this informs rather than blocks.
+            if session.patient_treats.len() < db::BPM_MIN_TREATMENTS {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(trn(
+                        "rule_bpm_eligibility",
+                        &[&db::BPM_MIN_TREATMENTS, &session.patient_treats.len()],
+                    ))
+                    .size(11.0)
+                    .color(motif::BG_DARK),
+                );
             }
 
             ui.add_space(16.0);
@@ -2763,6 +2841,7 @@ impl App {
         // (interview id, new hour, the hour this PC saw — CAS).
         let mut set_hour: Option<(i64, String, String)> = None;
         let mut set_remote: Option<(i64, bool, bool)> = None;
+        let mut set_change: Option<(i64, bool, bool)> = None;
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
@@ -2841,6 +2920,39 @@ impl App {
                                             .clicked()
                                         {
                                             set_remote = Some((itv.id, !itv.remote, itv.remote));
+                                        }
+                                    }
+                                    // Anticancéreux only: the memo keeps
+                                    // the treatment-change derogation
+                                    // for those two themes alone.
+                                    if itv.kind.allows_treatment_change() {
+                                        let btn = motif::button(ui, tr("itv_change"));
+                                        if itv.treatment_change {
+                                            motif::bevel(ui.painter(), btn.rect, false);
+                                        }
+                                        if btn.on_hover_text(tr("itv_change_tooltip")).clicked() {
+                                            set_change = Some((
+                                                itv.id,
+                                                !itv.treatment_change,
+                                                itv.treatment_change,
+                                            ));
+                                        }
+                                        // The derogation has conditions;
+                                        // say which one is not met yet
+                                        // rather than billing blind.
+                                        if let Some((before, after)) = treatment_change_shortfall(
+                                            &interviews,
+                                            itv,
+                                            config.rules.cycle_months.max(1),
+                                        ) {
+                                            ui.colored_label(
+                                                motif::ALERT,
+                                                egui::RichText::new(trn(
+                                                    "itv_change_short",
+                                                    &[&before, &after],
+                                                ))
+                                                .size(10.0),
+                                            );
                                         }
                                     }
                                 });
@@ -2987,6 +3099,19 @@ impl App {
                 });
         });
         let stale_msg = tr("itv_stale");
+        if let Some((id, changed, expected)) = set_change {
+            match session.db.set_treatment_change(id, changed, expected) {
+                Ok(true) => {
+                    session.error = None;
+                    session.reload_interviews(patient.id);
+                }
+                Ok(false) => {
+                    session.reload_interviews(patient.id);
+                    session.error = Some(stale_msg.to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
         if let Some((id, remote, expected)) = set_remote {
             match session.db.set_remote(id, remote, expected) {
                 Ok(true) => {
@@ -7454,6 +7579,11 @@ impl eframe::App for App {
                                     .size(11.0)
                                     .color(motif::BG_DARK),
                             );
+                            ui.label(
+                                egui::RichText::new(tr("opts_fees_rules"))
+                                    .size(11.0)
+                                    .color(motif::BG_DARK),
+                            );
                             ui.add_space(4.0);
                             egui::Grid::new("opts_fees")
                                 .num_columns(7)
@@ -7907,6 +8037,7 @@ mod tests {
             fee_year: 0,
             remote: false,
             situation: "ALD".to_owned(),
+            treatment_change: false,
         }];
         let csv = interviews_csv(&rows, &Config::default());
         // BOM so Excel decodes UTF-8 accents, semicolons, CRLF.
@@ -7920,7 +8051,7 @@ mod tests {
         // Billed row: tariff and billed columns both carry the fee, the
         // situation travels with it, and the coverage rate is the 70 %
         // of the non-anticancéreux themes.
-        assert!(csv.contains("23/08/2026;01/09/2026;45;;ALD;15,00;70;15,00\r\n"));
+        assert!(csv.contains("23/08/2026;01/09/2026;45;;;ALD;15,00;70;15,00\r\n"));
         // Unbilled row: the "Facturé" column stays at zero.
         let mut pending = rows[0].clone();
         pending.state = InterviewState::Performed;
@@ -7937,7 +8068,7 @@ mod tests {
         let mut cfg = Config::default();
         cfg.billing.teleconsultation = 5.0;
         let csv = interviews_csv(&[remote], &cfg);
-        assert!(csv.contains(";TPH;ALD;20,00;70;20,00\r\n"));
+        assert!(csv.contains(";TPH;;ALD;20,00;70;20,00\r\n"));
     }
 
     #[test]
