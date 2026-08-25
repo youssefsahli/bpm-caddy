@@ -170,6 +170,168 @@ fn billing_lines(rows: &[db::ExportRow], config: &Config) -> Vec<crate::pdf::Bil
         .collect()
 }
 
+/// A multiline field that keeps the height it is given. `TextEdit`
+/// grows with its content, so a field holding a full monograph section
+/// overran the rows under it and drew over their labels; the text
+/// scrolls inside a fixed sunken box instead.
+fn field_box(ui: &mut egui::Ui, id: &str, width: f32, height: f32, text: &mut String) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
+    motif::bevel(ui.painter(), rect, false);
+    let inner = rect.shrink(3.0);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .max_height(inner.height())
+        .auto_shrink([false, false])
+        .show(&mut child, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(text)
+                    .desired_width(inner.width() - 8.0)
+                    .frame(false),
+            );
+        });
+}
+
+/// The clinical half of the editable drug card.
+fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
+    let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
+    motif::section(ui, tr("drug_sec_clinical"));
+    ui.add_space(4.0);
+    let w = (ui.available_width() - 118.0).max(140.0);
+    egui::Grid::new("drug_card")
+        .num_columns(2)
+        .min_col_width(90.0)
+        .spacing([10.0, 8.0])
+        .show(ui, |ui| {
+            ui.label(dim(tr("drug_name")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.name));
+            ui.end_row();
+            ui.label(dim(tr("drug_dci")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.dci));
+            ui.end_row();
+            ui.label(dim(tr("drug_class")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.class));
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_indications")));
+            field_box(ui, "fld_indications", w, 84.0, &mut form.indications);
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_mechanism")));
+            field_box(ui, "fld_mechanism", w, 84.0, &mut form.mechanism);
+            ui.end_row();
+            ui.label(dim(tr("drug_dosage")));
+            field_box(ui, "fld_dosage", w, 84.0, &mut form.dosage);
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_ci")));
+            field_box(
+                ui,
+                "fld_contraindications",
+                w,
+                84.0,
+                &mut form.contraindications,
+            );
+            ui.end_row();
+            ui.label(dim(tr("drug_ddi")));
+            field_box(ui, "fld_ddi", w, 84.0, &mut form.ddi);
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_adverse")));
+            field_box(ui, "fld_adverse", w, 84.0, &mut form.adverse);
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_monitoring")));
+            field_box(ui, "fld_monitoring", w, 84.0, &mut form.monitoring);
+            ui.end_row();
+            ui.label(dim(tr("drug_iup")));
+            field_box(ui, "fld_iup", w, 150.0, &mut form.iup);
+            ui.end_row();
+            ui.label(dim(tr("drug_antidote")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.antidote));
+            ui.end_row();
+            ui.label(dim(tr("drug_notes")));
+            field_box(ui, "fld_notes", w, 64.0, &mut form.notes);
+            ui.end_row();
+        });
+}
+
+/// The pharmacokinetic half.
+fn drug_form_pk(ui: &mut egui::Ui, form: &mut Drug) {
+    let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
+    motif::section(ui, tr("drug_sec_pk"));
+    ui.add_space(4.0);
+    let w = (ui.available_width() - 138.0).max(130.0);
+    egui::Grid::new("drug_pk")
+        .num_columns(2)
+        .min_col_width(110.0)
+        .spacing([10.0, 8.0])
+        .show(ui, |ui| {
+            ui.label(dim(tr("drug_half_life")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.half_life));
+            ui.end_row();
+            ui.label(dim(tr("drug_auc")));
+            field_box(ui, "fld_auc", w, 64.0, &mut form.auc);
+            ui.end_row();
+            ui.label(dim(tr("drug_elimination")));
+            field_box(ui, "fld_elimination", w, 76.0, &mut form.elimination);
+            ui.end_row();
+            ui.label(dim(tr("drug_renal")));
+            field_box(ui, "fld_renal", w, 84.0, &mut form.renal);
+            ui.end_row();
+            ui.label(dim(tr("drug_pregnancy")));
+            field_box(ui, "fld_pregnancy", w, 76.0, &mut form.pregnancy);
+            ui.end_row();
+            ui.label(dim(tr("tables_sources")))
+                .on_hover_text(tr("drug_sources_hint"));
+            field_box(ui, "fld_sources", w, 76.0, &mut form.sources);
+            ui.end_row();
+            ui.label(dim(tr("drug_forms")));
+            field_box(ui, "fld_forms", w, 64.0, &mut form.forms);
+            ui.end_row();
+            ui.label(dim(tr("drug_status")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.status));
+            ui.end_row();
+            ui.label(dim(tr("drug_tags")))
+                .on_hover_text(tr("drug_tags_hint"));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.tags));
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_smr")));
+            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.smr));
+            ui.end_row();
+            ui.label(dim(tr("drug_sec_toxicity")));
+            field_box(ui, "fld_toxicity", w, 76.0, &mut form.toxicity);
+            ui.end_row();
+        });
+}
+
+/// Shorten `text` until it fits `width` at `size`, ending in an
+/// ellipsis. A hard clip cut names mid-letter and gave no sign that
+/// anything was missing.
+fn elide(ui: &egui::Ui, text: &str, width: f32, size: f32) -> String {
+    let font = egui::FontId::proportional(size);
+    let measure = |t: &str| {
+        ui.fonts(|f| {
+            f.layout_no_wrap(t.to_owned(), font.clone(), motif::TEXT)
+                .size()
+                .x
+        })
+    };
+    if measure(text) <= width {
+        return text.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut keep = chars.len();
+    while keep > 1 {
+        keep -= 1;
+        let candidate: String = chars[..keep]
+            .iter()
+            .collect::<String>()
+            .trim_end()
+            .to_owned()
+            + "…";
+        if measure(&candidate) <= width {
+            return candidate;
+        }
+    }
+    "…".to_owned()
+}
+
 /// The uppercase heading of a monograph section, with its hairline.
 fn mono_heading(ui: &mut egui::Ui, width: f32, title: &str) {
     ui.add_space(10.0);
@@ -1612,6 +1774,11 @@ impl App {
                             if let Some(d) = card {
                                 session.open_drug_card(d);
                             }
+                            // Land straight on the editable form, so the
+                            // screenshots cover it too.
+                            if std::env::var("BPM_CADDY_DRUG_EDIT").is_ok() {
+                                session.drug_reading = false;
+                            }
                             session.view = MainView::Drugs;
                         }
                         _ => {}
@@ -2891,12 +3058,14 @@ impl App {
                 .max_height(ui.available_height() - 20.0)
                 .show(ui, |ui| {
                     egui::Grid::new("interviews")
-                        .num_columns(9)
-                        .spacing([8.0, 8.0])
+                        .num_columns(10)
+                        .spacing([8.0, 6.0])
+                        .striped(true)
                         .show(ui, |ui| {
                             if !interviews.is_empty() {
                                 for header in [
                                     tr("itv_header_kind"),
+                                    tr("itv_header_act"),
                                     tr("itv_header_theme"),
                                     tr("itv_header_created"),
                                     tr("itv_header_state"),
@@ -2916,57 +3085,67 @@ impl App {
                             }
                             for itv in &interviews {
                                 let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
-                                ui.vertical(|ui| {
-                                    ui.label(egui::RichText::new(itv.kind.label()).strong());
-                                    // What the convention calls this
-                                    // entretien, with its act code.
-                                    let step = itv
+                                // The theme, and nothing else: the act
+                                // code and the two flags have a column
+                                // of their own, so the row keeps one
+                                // line and the columns stay aligned.
+                                ui.label(egui::RichText::new(itv.kind.label()).strong());
+                                // The convention's act code, the step it
+                                // pays, and the two flags that change
+                                // what is billed.
+                                ui.horizontal(|ui| {
+                                    let step_name = itv
                                         .kind
                                         .step_label(year, rank)
                                         .map(|s| s.to_owned())
                                         .unwrap_or_else(|| rank_label(rank));
-                                    let code = itv
-                                        .kind
-                                        .act_code(year)
-                                        .map(|c| format!("{c} · "))
-                                        .unwrap_or_default();
+                                    let code = itv.kind.act_code(year).unwrap_or("—");
                                     ui.label(
-                                        egui::RichText::new(format!("{code}{step}"))
-                                            .size(10.0)
-                                            .color(motif::TEXT_DIM),
+                                        egui::RichText::new(format!("{code} · {}", rank + 1))
+                                            .size(11.0)
+                                            .strong()
+                                            .color(motif::ACCENT),
                                     )
-                                    .on_hover_text(trn(
-                                        "itv_fee_tooltip",
-                                        &[
-                                            &format!("{:.2} €", config.fee(itv.kind, year, rank)),
-                                            &(year + 1),
-                                            &itv.kind.coverage_rate(),
-                                        ],
+                                    .on_hover_text(format!(
+                                        "{step_name}\n{}",
+                                        trn(
+                                            "itv_fee_tooltip",
+                                            &[
+                                                &format!(
+                                                    "{:.2} €",
+                                                    config.act_total(
+                                                        itv.kind, year, rank, itv.remote
+                                                    )
+                                                ),
+                                                &(year + 1),
+                                                &itv.kind.coverage_rate(),
+                                            ],
+                                        )
                                     ));
                                     // Held remotely: the convention bills
                                     // TPH on top of the act code.
-                                    if itv.kind.is_accompaniment() {
-                                        let btn = motif::toggle(ui, tr("itv_remote"), itv.remote);
-                                        if btn
+                                    if itv.kind.is_accompaniment()
+                                        && motif::toggle(ui, db::REMOTE_CODE, itv.remote)
                                             .on_hover_text(trf(
                                                 "itv_remote_tooltip",
                                                 format!("{:.2} €", config.billing.teleconsultation),
                                             ))
                                             .clicked()
-                                        {
-                                            set_remote = Some((itv.id, !itv.remote, itv.remote));
-                                        }
+                                    {
+                                        set_remote = Some((itv.id, !itv.remote, itv.remote));
                                     }
                                     // Anticancéreux only: the memo keeps
                                     // the treatment-change derogation
                                     // for those two themes alone.
                                     if itv.kind.allows_treatment_change() {
-                                        let btn = motif::toggle(
+                                        if motif::toggle(
                                             ui,
-                                            tr("itv_change"),
+                                            tr("itv_change_short_label"),
                                             itv.treatment_change,
-                                        );
-                                        if btn.on_hover_text(tr("itv_change_tooltip")).clicked() {
+                                        )
+                                        .on_hover_text(tr("itv_change_tooltip"))
+                                        .clicked()
+                                        {
                                             set_change = Some((
                                                 itv.id,
                                                 !itv.treatment_change,
@@ -2981,14 +3160,15 @@ impl App {
                                             itv,
                                             config.rules.cycle_months.max(1),
                                         ) {
-                                            ui.colored_label(
-                                                motif::ALERT,
-                                                egui::RichText::new(trn(
-                                                    "itv_change_short",
-                                                    &[&before, &after],
-                                                ))
-                                                .size(10.0),
-                                            );
+                                            ui.label(
+                                                egui::RichText::new("!")
+                                                    .strong()
+                                                    .color(motif::ALERT),
+                                            )
+                                            .on_hover_text(trn(
+                                                "itv_change_short",
+                                                &[&before, &after],
+                                            ));
                                         }
                                     }
                                 });
@@ -4392,8 +4572,21 @@ impl App {
         ui.add_space(6.0);
         if session.agenda_week.len() == 7 {
             let grid_w = (ui.available_width() - 24.0).min(940.0);
+            // Tall enough for the busiest day of the week, within
+            // reason: a fixed height hid entries behind a "+N" even
+            // when there was room on screen for them.
+            let busiest = session
+                .agenda_week
+                .iter()
+                .map(|d| {
+                    session.appointments.iter().filter(|r| r.date == *d).count()
+                        + grid_events.iter().filter(|e| e.day == *d).count()
+                })
+                .max()
+                .unwrap_or(0);
+            let grid_h = (36.0 + busiest as f32 * 24.0 + 8.0).clamp(150.0, 430.0);
             let (alloc, _) =
-                ui.allocate_exact_size(egui::vec2(grid_w.max(420.0), 230.0), egui::Sense::hover());
+                ui.allocate_exact_size(egui::vec2(grid_w.max(420.0), grid_h), egui::Sense::hover());
             let grid = egui::Rect::from_center_size(
                 egui::pos2(ui.max_rect().center().x, alloc.center().y),
                 alloc.size(),
@@ -4463,7 +4656,8 @@ impl App {
                     } else {
                         format!("{} {}", rdv.time, rdv.patient_name)
                     };
-                    ui.painter().with_clip_rect(block.shrink(2.0)).text(
+                    let label = elide(ui, &label, block.width() - 8.0, 11.0);
+                    ui.painter().text(
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
                         label,
@@ -4502,7 +4696,8 @@ impl App {
                     } else {
                         format!("{} {}", ev.time, ev.title)
                     };
-                    ui.painter().with_clip_rect(block.shrink(2.0)).text(
+                    let label = elide(ui, &label, block.width() - 8.0, 11.0);
+                    ui.painter().text(
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
                         label,
@@ -5682,187 +5877,20 @@ impl App {
                             }
                         });
                         ui.add_space(12.0);
-                        let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
-                        // Two-column drug page: identity/clinical on the left,
-                        // pharmacokinetics on the right.
-                        #[allow(clippy::needless_late_init)]
-                        ui.columns(2, |cols| {
-                            let ui = &mut cols[0];
-                            motif::section(ui, tr("drug_sec_clinical"));
-                            ui.add_space(4.0);
-                            let w = (ui.available_width() - 118.0).max(140.0);
-                            egui::Grid::new("drug_card")
-                                .num_columns(2)
-                                .min_col_width(90.0)
-                                .spacing([10.0, 8.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("drug_name")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.name),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_dci")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.dci),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_class")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.class),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_indications")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.indications)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_mechanism")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.mechanism)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_dosage")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.dosage).desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_ci")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.contraindications)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_ddi")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.ddi).desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_adverse")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.adverse)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_monitoring")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.monitoring)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_iup")));
-                                    ui.add_sized(
-                                        [w, 96.0],
-                                        egui::TextEdit::multiline(&mut form.iup).desired_rows(5),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_antidote")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.antidote),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_notes")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.notes).desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                });
-                            let ui = &mut cols[1];
-                            motif::section(ui, tr("drug_sec_pk"));
-                            ui.add_space(4.0);
-                            let w = (ui.available_width() - 138.0).max(130.0);
-                            egui::Grid::new("drug_pk")
-                                .num_columns(2)
-                                .min_col_width(110.0)
-                                .spacing([10.0, 8.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("drug_half_life")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.half_life),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_auc")));
-                                    ui.add_sized(
-                                        [w, 48.0],
-                                        egui::TextEdit::multiline(&mut form.auc).desired_rows(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_elimination")));
-                                    ui.add_sized(
-                                        [w, 48.0],
-                                        egui::TextEdit::multiline(&mut form.elimination)
-                                            .desired_rows(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_renal")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.renal).desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_pregnancy")));
-                                    ui.add_sized(
-                                        [w, 48.0],
-                                        egui::TextEdit::multiline(&mut form.pregnancy)
-                                            .desired_rows(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("tables_sources")))
-                                        .on_hover_text(tr("drug_sources_hint"));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.sources)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_forms")));
-                                    ui.add_sized(
-                                        [w, 48.0],
-                                        egui::TextEdit::multiline(&mut form.forms).desired_rows(2),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_status")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.status),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_tags")))
-                                        .on_hover_text(tr("drug_tags_hint"));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.tags),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_smr")));
-                                    ui.add_sized(
-                                        [w, 26.0],
-                                        egui::TextEdit::singleline(&mut form.smr),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("drug_sec_toxicity")));
-                                    ui.add_sized(
-                                        [w, 64.0],
-                                        egui::TextEdit::multiline(&mut form.toxicity)
-                                            .desired_rows(3),
-                                    );
-                                    ui.end_row();
-                                });
-                        });
+                        // Two columns when there is room for them; one
+                        // underneath the other when the window is narrow
+                        // or the side pane is open, where two columns
+                        // left five words to a line.
+                        if ui.available_width() >= 720.0 {
+                            ui.columns(2, |cols| {
+                                drug_form_clinical(&mut cols[0], form);
+                                drug_form_pk(&mut cols[1], form);
+                            });
+                        } else {
+                            drug_form_clinical(ui, form);
+                            ui.add_space(12.0);
+                            drug_form_pk(ui, form);
+                        }
                     }
                     if !reading {
                         // Posologies by indication, editable line by line.
