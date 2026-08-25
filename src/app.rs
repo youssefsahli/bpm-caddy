@@ -168,7 +168,7 @@ fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
 /// The drug card as a printed monograph on a sheet of paper: identity,
 /// then every filled section in reading order, the pharmacokinetics as
 /// a short definition list, and the numbered sources at the foot.
-fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str) {
+fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[db::Posologie]) {
     let avail = ui.available_rect_before_wrap();
     let sheet_w = avail.width().min(760.0);
     let pad = 34.0;
@@ -256,6 +256,53 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str) {
                 (tr("drug_sec_smr"), d.smr.as_str()),
             ] {
                 mono_section(ui, width, title, body);
+            }
+            // Posologies by indication: the mainstream ones and the
+            // less obvious, each with what changes it.
+            if !posologies.is_empty() {
+                mono_heading(ui, width, tr("drug_sec_poso"));
+                egui::Grid::new(("mono_poso", d.id))
+                    .num_columns(2)
+                    .spacing([14.0, 6.0])
+                    .show(ui, |ui| {
+                        for p in posologies {
+                            ui.scope(|ui| {
+                                ui.set_max_width(width * 0.38);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&p.indication)
+                                            .size(12.5)
+                                            .strong()
+                                            .color(motif::INK),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                            ui.vertical(|ui| {
+                                ui.set_max_width(width * 0.58);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&p.posologie)
+                                            .size(12.5)
+                                            .color(motif::INK),
+                                    )
+                                    .wrap(),
+                                );
+                                if !p.remarque.trim().is_empty() {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(&p.remarque)
+                                                .size(11.0)
+                                                .italics()
+                                                .color(motif::INK_LIGHT),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                            });
+                            ui.end_row();
+                        }
+                    });
             }
             // Pharmacokinetics as a compact definition list.
             let pk = [
@@ -615,6 +662,10 @@ struct Session {
     /// editing buffer.
     class_note: String,
     class_note_edit: Option<String>,
+    /// The open card's posologies, and the row being written.
+    posologies: Vec<db::Posologie>,
+    poso_new: (String, String, String),
+    poso_edit: Option<db::Posologie>,
     drug_base: Option<Drug>,
     confirm_delete_drug: bool,
     /// Patients currently on the drug whose card is open.
@@ -719,6 +770,9 @@ impl Session {
             drug_reading: true,
             class_note: String::new(),
             class_note_edit: None,
+            posologies: Vec::new(),
+            poso_new: (String::new(), String::new(), String::new()),
+            poso_edit: None,
             drug_base: None,
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
@@ -753,6 +807,9 @@ impl Session {
         self.note_text.clear();
         self.note_confirm = None;
         self.class_note = self.db.class_note(&d.class).unwrap_or_default();
+        self.posologies = self.db.posologies(d.id).unwrap_or_default();
+        self.poso_new = (String::new(), String::new(), String::new());
+        self.poso_edit = None;
         self.drug_base = Some(d.clone());
         self.drug_form = Some(d);
         self.drug_reading = true;
@@ -1610,7 +1667,6 @@ impl App {
                     self.side_operator_notes(ui);
                     return;
                 }
-                ui.heading(tr("docs_title"));
                 let status = if let Some(err) = &self.doc_error {
                     err.clone()
                 } else if self.doc_dirty {
@@ -4191,6 +4247,10 @@ impl App {
             let mut edit = false;
             let mut edit_class = false;
             let mut lookup = false;
+            let mut poso_add: Option<i64> = None;
+            let mut poso_save = false;
+            let mut poso_start_edit: Option<db::Posologie> = None;
+            let mut poso_delete: Option<(i64, String)> = None;
             let mut print_mono = false;
             let mut open_patient_id: Option<i64> = None;
             // A full monograph is taller than the window: the whole card
@@ -4199,7 +4259,7 @@ impl App {
                 motif::column(ui, 900.0, |ui| {
                     ui.add_space(18.0);
                     if reading {
-                        drug_monograph(ui, form, &session.class_note);
+                        drug_monograph(ui, form, &session.class_note, &session.posologies);
                     }
                     if !reading {
                         ui.vertical_centered(|ui| {
@@ -4417,6 +4477,84 @@ impl App {
                                 });
                         });
                     }
+                    if !reading {
+                        // Posologies by indication, editable line by line.
+                        let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                        ui.add_space(8.0);
+                        motif::section(ui, tr("drug_sec_poso"));
+                        ui.add_space(4.0);
+                        let poso_drug = form.id;
+                        egui::Grid::new("poso_edit")
+                            .num_columns(4)
+                            .spacing([8.0, 5.0])
+                            .show(ui, |ui| {
+                                ui.label(dim(tr("poso_indication")));
+                                ui.label(dim(tr("poso_dose")));
+                                ui.label(dim(tr("poso_remark")));
+                                ui.label("");
+                                ui.end_row();
+                                for p in session.posologies.clone() {
+                                    let editing =
+                                        session.poso_edit.as_ref().is_some_and(|e| e.id == p.id);
+                                    if editing {
+                                        let e = session.poso_edit.as_mut().unwrap();
+                                        ui.add_sized(
+                                            [190.0, 22.0],
+                                            egui::TextEdit::singleline(&mut e.indication),
+                                        );
+                                        ui.add_sized(
+                                            [230.0, 22.0],
+                                            egui::TextEdit::singleline(&mut e.posologie),
+                                        );
+                                        ui.add_sized(
+                                            [210.0, 22.0],
+                                            egui::TextEdit::singleline(&mut e.remarque),
+                                        );
+                                        if motif::button(ui, tr("form_save")).clicked() {
+                                            poso_save = true;
+                                        }
+                                    } else {
+                                        ui.label(&p.indication);
+                                        ui.label(&p.posologie);
+                                        ui.label(
+                                            egui::RichText::new(&p.remarque)
+                                                .size(11.0)
+                                                .color(motif::BG_DARK),
+                                        );
+                                        ui.horizontal(|ui| {
+                                            if motif::button(ui, tr("drug_edit")).clicked() {
+                                                poso_start_edit = Some(p.clone());
+                                            }
+                                            if motif::button(ui, tr("itv_delete")).clicked() {
+                                                poso_delete = Some((p.id, p.indication.clone()));
+                                            }
+                                        });
+                                    }
+                                    ui.end_row();
+                                }
+                                ui.add_sized(
+                                    [190.0, 22.0],
+                                    egui::TextEdit::singleline(&mut session.poso_new.0)
+                                        .hint_text(tr("poso_indication")),
+                                );
+                                ui.add_sized(
+                                    [230.0, 22.0],
+                                    egui::TextEdit::singleline(&mut session.poso_new.1)
+                                        .hint_text(tr("poso_dose")),
+                                );
+                                ui.add_sized(
+                                    [210.0, 22.0],
+                                    egui::TextEdit::singleline(&mut session.poso_new.2)
+                                        .hint_text(tr("poso_remark")),
+                                );
+                                if motif::button(ui, tr("notes_add")).clicked()
+                                    && !session.poso_new.0.trim().is_empty()
+                                {
+                                    poso_add = Some(poso_drug);
+                                }
+                                ui.end_row();
+                            });
+                    }
                     // Dated notes journal for this drug.
                     ui.add_space(8.0);
                     motif::section(ui, tr("drug_notes_section"));
@@ -4603,6 +4741,48 @@ impl App {
                 session.drug_reading = false;
                 session.error = None;
             }
+            if let Some(drug_id) = poso_add {
+                let (i, d, r) = session.poso_new.clone();
+                match session
+                    .db
+                    .add_posologie(drug_id, i.trim(), d.trim(), r.trim())
+                {
+                    Ok(_) => {
+                        session.poso_new = (String::new(), String::new(), String::new());
+                        session.posologies = session.db.posologies(drug_id).unwrap_or_default();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+            if let Some(p) = poso_start_edit {
+                session.poso_edit = Some(p);
+            }
+            if poso_save {
+                if let Some(edited) = session.poso_edit.clone() {
+                    let expected = session
+                        .posologies
+                        .iter()
+                        .find(|p| p.id == edited.id)
+                        .map(|p| p.indication.clone())
+                        .unwrap_or_default();
+                    let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
+                    match session.db.update_posologie(edited.id, &edited, &expected) {
+                        Ok(true) => session.poso_edit = None,
+                        Ok(false) => session.error = Some(tr("drug_stale").to_owned()),
+                        Err(e) => session.error = Some(e),
+                    }
+                    session.posologies = session.db.posologies(drug_id).unwrap_or_default();
+                }
+            }
+            if let Some((id, indication)) = poso_delete {
+                let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
+                match session.db.delete_posologie(id, &indication) {
+                    Ok(true) => {}
+                    Ok(false) => session.error = Some(tr("drug_stale").to_owned()),
+                    Err(e) => session.error = Some(e),
+                }
+                session.posologies = session.db.posologies(drug_id).unwrap_or_default();
+            }
             if edit_class {
                 session.class_note_edit = Some(session.class_note.clone());
             }
@@ -4630,7 +4810,7 @@ impl App {
             }
             if print_mono {
                 if let Some(card) = session.drug_form.clone() {
-                    if let Err(e) = crate::pdf::open_drug_monograph(&card) {
+                    if let Err(e) = crate::pdf::open_drug_monograph(&card, &session.posologies) {
                         session.error = Some(e);
                     }
                 }
