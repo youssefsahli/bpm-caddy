@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.0] - 2026-08-25
+
+### Fixed
+- Drug editing. Three things stood in the way and all three are gone.
+  The team pane could grow wider than the width it had reserved, which
+  left the whole central view laid out wider than it was visible and cut
+  its right edge away — the drug card's buttons among it. The card's
+  actions sat at the very bottom of the page, so on a full monograph
+  "Modifier" and "Enregistrer" were several screens down. And a field
+  the team cleared on purpose was refilled from the reference data by
+  the next "Compléter les médicaments de départ".
+- A field the team writes to is now theirs: the top-up fills only what
+  they have never touched, and a field they emptied stays empty.
+- The card's actions are a bar at the top, above the scroll, wrapping to
+  a second line rather than running off the edge, with the deletion set
+  apart from the rest.
+- Any centred column now lays out inside the part of the panel that is
+  actually on screen, so no view can be clipped that way again.
+- The team pane's three tabs are short enough to fit it, and wrap if
+  they do not.
+
 ## [0.39.0] - 2026-08-25
 
 ### Added

@@ -46,11 +46,21 @@ pub fn sheet(painter: &egui::Painter, rect: egui::Rect) {
 /// normal top-down, left-aligned layout.
 pub fn column<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let avail = ui.available_rect_before_wrap();
+    // Centre on what is actually on screen, not on what the panel
+    // claimed: a side panel that grew after reserving its width leaves
+    // `avail` wider than the visible area, and a column centred on it
+    // would have its right edge cut away — buttons included.
+    let visible = avail.intersect(ui.clip_rect());
+    let visible = if visible.width() > 100.0 {
+        visible
+    } else {
+        avail
+    };
     // Always keep side margins, even when the panel is narrower than
     // the requested column.
-    let w = width.min(avail.width() - 48.0).max(200.0);
+    let w = width.min(visible.width() - 48.0).max(200.0);
     let rect = egui::Rect::from_min_size(
-        egui::pos2(avail.center().x - w / 2.0, avail.top()),
+        egui::pos2(visible.center().x - w / 2.0, avail.top()),
         Vec2::new(w, avail.height()),
     );
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect), add)

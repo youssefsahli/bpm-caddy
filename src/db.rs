@@ -62,6 +62,11 @@ CREATE TABLE IF NOT EXISTS drugs (
     renal       TEXT NOT NULL DEFAULT '',
     pregnancy   TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS drug_field_locks (
+    drug_id     INTEGER NOT NULL REFERENCES drugs(id),
+    column_name TEXT NOT NULL,
+    PRIMARY KEY (drug_id, column_name)
+);
 CREATE TABLE IF NOT EXISTS protocols (
     id          INTEGER PRIMARY KEY,
     title       TEXT NOT NULL,
@@ -160,6 +165,11 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE events ADD COLUMN repeat_until TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE interviews ADD COLUMN remote INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE interviews ADD COLUMN treatment_change INTEGER NOT NULL DEFAULT 0",
+    "CREATE TABLE IF NOT EXISTS drug_field_locks (
+        drug_id     INTEGER NOT NULL REFERENCES drugs(id),
+        column_name TEXT NOT NULL,
+        PRIMARY KEY (drug_id, column_name)
+    )",
     "ALTER TABLE patients ADD COLUMN situation TEXT NOT NULL DEFAULT ''",
 ];
 
@@ -21995,11 +22005,17 @@ impl Db {
                 filled += tx
                     .execute(
                         // The column name comes from the literal list
-                        // above, never from user input.
+                        // above, never from user input. A column the
+                        // team has written to — including one they
+                        // deliberately emptied — is theirs: the top-up
+                        // never puts the reference text back.
                         &format!(
-                            "UPDATE drugs SET {column} = ?1 WHERE name = ?2 AND {column} = ''"
+                            "UPDATE drugs SET {column} = ?1
+                             WHERE name = ?2 AND {column} = ''
+                               AND id NOT IN (SELECT drug_id FROM drug_field_locks
+                                              WHERE column_name = ?3)"
                         ),
-                        (value, d.name),
+                        (value, d.name, column),
                     )
                     .map_err(|e| e.to_string())?;
             }
@@ -22044,6 +22060,7 @@ impl Db {
             "notes",
             "patient_drugs",
             "posologies",
+            "drug_field_locks",
             "interviews",
             "patients",
             "drugs",
@@ -22135,7 +22152,52 @@ impl Db {
                 ],
             )
             .map_err(|e| e.to_string())?;
+        if changed == 1 {
+            self.lock_edited_fields(new, expected)?;
+        }
         Ok(changed == 1)
+    }
+
+    /// Remember which clinical fields the team has written to, so a
+    /// later « compléter les médicaments » never overwrites their work —
+    /// a field they cleared on purpose stays cleared.
+    fn lock_edited_fields(&self, new: &Drug, expected: &Drug) -> Result<(), String> {
+        for (column, before, after) in [
+            ("indications", &expected.indications, &new.indications),
+            ("mechanism", &expected.mechanism, &new.mechanism),
+            ("dosage", &expected.dosage, &new.dosage),
+            (
+                "contraindications",
+                &expected.contraindications,
+                &new.contraindications,
+            ),
+            ("ddi", &expected.ddi, &new.ddi),
+            ("adverse", &expected.adverse, &new.adverse),
+            ("monitoring", &expected.monitoring, &new.monitoring),
+            ("iup", &expected.iup, &new.iup),
+            ("half_life", &expected.half_life, &new.half_life),
+            ("elimination", &expected.elimination, &new.elimination),
+            ("renal", &expected.renal, &new.renal),
+            ("pregnancy", &expected.pregnancy, &new.pregnancy),
+            ("sources", &expected.sources, &new.sources),
+            ("status", &expected.status, &new.status),
+            ("smr", &expected.smr, &new.smr),
+            ("tags", &expected.tags, &new.tags),
+            ("toxicity", &expected.toxicity, &new.toxicity),
+            ("forms", &expected.forms, &new.forms),
+        ] {
+            if before == after {
+                continue;
+            }
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO drug_field_locks (drug_id, column_name)
+                     VALUES (?1, ?2)",
+                    (new.id, column),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Remove a drug card; refused (`false`) if it was renamed meanwhile.
@@ -22162,6 +22224,8 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM posologies WHERE drug_id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM drug_field_locks WHERE drug_id = ?1", [id])
                 .map_err(|e| e.to_string())?;
             changed = tx
                 .execute(
@@ -24329,8 +24393,26 @@ mod tests {
             after.dosage,
             "Protocole interne : 5 mg x2/j, revoir à 3 mois"
         );
-        // The emptied field is refilled from the reference data.
-        assert!(after.ddi.contains("CYP3A4"));
+        // A field the team emptied on purpose stays empty: the
+        // top-up must never argue with what they decided.
+        assert!(after.ddi.is_empty());
+        // An untouched field of the same card is still topped up.
+        let mut bare = after.clone();
+        bare.monitoring = String::new();
+        let cleared = db
+            .conn
+            .execute("UPDATE drugs SET monitoring = '' WHERE id = ?1", [after.id])
+            .unwrap();
+        assert_eq!(cleared, 1);
+        db.fill_starter_details().unwrap();
+        let refilled = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == "Eliquis")
+            .unwrap();
+        assert!(!refilled.monitoring.is_empty());
+        assert!(refilled.ddi.is_empty());
 
         let _ = std::fs::remove_file(&path);
     }
