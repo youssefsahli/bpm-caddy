@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-08-25
+
+### Added
+- The memo's anticancéreux derogation. An entretien can be marked as
+  following a treatment change: it opens a new billable sequence at
+  once, at the "années suivantes" tariff, without waiting out the twelve
+  months. The button only appears on the two anticancéreux themes, the
+  only ones the derogation still covers, and the fiche says which of the
+  memo's conditions is not met yet — how many entretiens are missing
+  before the change and after it. It travels to the CSV export.
+- The "autres traitements anticancéreux" sequence may be finalised
+  before twelve months, as the memo allows when entretiens are brought
+  closer together at treatment initiation: a completed sequence opens
+  the next one straight away instead of being held back by the quota.
+- The bilan partagé de médication states its eligibility rule on the
+  fiche: the memo reserves it to the patient on at least five treatments
+  for six months or more, and the fiche says how many it knows of.
+- The memo's practical rules under the Options fee table: tiers payant,
+  billed independently of any CIP code, prices TTC, one pharmacy only
+  per patient, and the ADRI service when the carte Vitale is missing.
+- 102 more monographs: psychiatry, gastro-enterology and hepatology,
+  oncology, urology, gynaecology and haematology. 556 of the 812 cards
+  now carry a full monograph.
+
 ## [0.35.0] - 2026-08-25
 
 ### Changed
