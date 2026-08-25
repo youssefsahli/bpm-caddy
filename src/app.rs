@@ -627,6 +627,8 @@ struct Session {
     tomorrow: String,
     /// The 7 dates (Mon..Sun) of the agenda's displayed week.
     agenda_week: Vec<String>,
+    /// Which agenda layout is shown.
+    agenda_mode: AgendaMode,
     /// Month grid: on/off, the offset in months and its 42-day grid.
     agenda_month: bool,
     agenda_month_offset: i64,
@@ -640,6 +642,8 @@ struct Session {
     event_title: String,
     event_time: String,
     event_category: db::EventCategory,
+    /// How often a new entry repeats, in days (0 = once).
+    event_repeat: i64,
     /// Agenda filter: the act kinds shown (all when empty), and the
     /// rendez-vous whose hour or date is being changed.
     agenda_filter: std::collections::HashSet<InterviewKind>,
@@ -771,6 +775,7 @@ impl Session {
             today: String::new(),
             tomorrow: String::new(),
             agenda_week: Vec::new(),
+            agenda_mode: AgendaMode::Week,
             agenda_month: false,
             agenda_month_offset: 0,
             agenda_month_days: Vec::new(),
@@ -782,6 +787,7 @@ impl Session {
             event_title: String::new(),
             event_time: String::new(),
             event_category: db::EventCategory::Formation,
+            event_repeat: 0,
             agenda_filter: std::collections::HashSet::new(),
             rdv_time_edit: None,
             rdv_move_edit: None,
@@ -1181,6 +1187,17 @@ fn operator_color(operator: &str) -> egui::Color32 {
     }
     let sum: u32 = key.bytes().map(u32::from).sum();
     PALETTE[(sum as usize) % PALETTE.len()]
+}
+
+/// The three ways the agenda draws time.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum AgendaMode {
+    /// One hour column for the selected day.
+    Day,
+    /// Monday to Sunday, one column per day.
+    Week,
+    /// The month as a grid of chips.
+    Month,
 }
 
 /// Stable color per act kind, for the agenda's week blocks and legend.
@@ -1962,7 +1979,7 @@ impl App {
                 return;
             }
             if session.view == MainView::Agenda {
-                Self::agenda_view(ui, ctx, session, &operator);
+                Self::agenda_view(ui, ctx, session, &operator, &config);
                 return;
             }
             if session.view == MainView::Transmissions {
@@ -3185,6 +3202,209 @@ impl App {
     /// Agenda (F4): the upcoming patient appointments grouped by day,
     /// soonest first, overdue days flagged. Clicking an entry opens the
     /// patient; the list is printable.
+    /// The selected day as an hour column: the opening hours down the
+    /// left, each rendez-vous and entry placed on its own line. What has
+    /// no hour is listed under the plan, so nothing is hidden.
+    fn agenda_day_plan(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        events: &[db::Event],
+        config: &Config,
+        open_id: &mut Option<i64>,
+    ) {
+        let day = session.agenda_day.clone();
+        let start = config.ui.day_start_hour.min(23);
+        let end = config.ui.day_end_hour.clamp(start + 1, 24);
+        let hours = (end - start) as f32;
+        motif::column(ui, 940.0, |ui| {
+            ui.horizontal(|ui| {
+                let mut step = 0i64;
+                if motif::button(ui, "‹")
+                    .on_hover_text(tr("agenda_prev_day"))
+                    .clicked()
+                {
+                    step = -1;
+                }
+                if motif::button(ui, tr("agenda_today_btn")).clicked() {
+                    session.agenda_day = session.today.clone();
+                    session.load_day();
+                }
+                if motif::button(ui, "›")
+                    .on_hover_text(tr("agenda_next_day"))
+                    .clicked()
+                {
+                    step = 1;
+                }
+                if step != 0 {
+                    if let Ok(next) = session.db.date_offset(&day, step) {
+                        session.agenda_day = next;
+                        session.load_day();
+                    }
+                }
+                let name = db::weekday_fr(&day).unwrap_or("");
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{}{} {}",
+                        name.chars()
+                            .next()
+                            .map(|c| c.to_uppercase().to_string())
+                            .unwrap_or_default(),
+                        name.chars().skip(1).collect::<String>(),
+                        db::format_french_date(&day)
+                    ))
+                    .strong(),
+                );
+            });
+        });
+        ui.add_space(6.0);
+
+        let row_h = 34.0_f32;
+        let avail = ui.available_rect_before_wrap();
+        let w = (avail.width() - 24.0).clamp(420.0, 940.0);
+        let (alloc, _) =
+            ui.allocate_exact_size(egui::vec2(w, hours * row_h + 8.0), egui::Sense::hover());
+        let plan = egui::Rect::from_center_size(
+            egui::pos2(ui.max_rect().center().x, alloc.center().y),
+            alloc.size(),
+        );
+        ui.painter().rect_filled(plan, 0.0, motif::TROUGH);
+        motif::bevel(ui.painter(), plan, false);
+        let inner = plan.shrink(4.0);
+        let gutter = 54.0;
+        // Hour lines and their labels.
+        for i in 0..=(end - start) {
+            let y = inner.top() + i as f32 * row_h;
+            ui.painter().line_segment(
+                [egui::pos2(inner.left(), y), egui::pos2(inner.right(), y)],
+                egui::Stroke::new(0.5_f32, motif::BG_DARK),
+            );
+            if i < end - start {
+                ui.painter().text(
+                    egui::pos2(inner.left() + 6.0, y + row_h / 2.0),
+                    egui::Align2::LEFT_CENTER,
+                    format!("{:02} h", start + i),
+                    egui::FontId::proportional(11.0),
+                    motif::BG_DARK,
+                );
+            }
+        }
+        ui.painter().line_segment(
+            [
+                egui::pos2(inner.left() + gutter, inner.top()),
+                egui::pos2(inner.left() + gutter, inner.bottom()),
+            ],
+            egui::Stroke::new(1.0_f32, motif::BG_DARK),
+        );
+        // Where an entry sits: its hour, minutes to the fraction of the
+        // row. Several entries in the same hour share the width.
+        let place = |time: &str| -> Option<f32> {
+            let t = db::parse_hour(time)?;
+            let (h, m) = t.split_once(':')?;
+            let (h, m) = (h.parse::<u32>().ok()?, m.parse::<u32>().ok()?);
+            if h < start || h >= end {
+                return None;
+            }
+            Some((h - start) as f32 * row_h + (m as f32 / 60.0) * row_h)
+        };
+        let mut untimed: Vec<String> = Vec::new();
+        let mut slots: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+        let draw = |ui: &mut egui::Ui,
+                    time: &str,
+                    label: String,
+                    color: egui::Color32,
+                    hover: String,
+                    patient: Option<i64>,
+                    untimed: &mut Vec<String>,
+                    slots: &mut std::collections::HashMap<i64, usize>,
+                    open_id: &mut Option<i64>| {
+            let Some(offset) = place(time) else {
+                untimed.push(label);
+                return;
+            };
+            let hour_key = (offset / row_h) as i64;
+            let column = slots.entry(hour_key).or_insert(0);
+            let index = *column;
+            *column += 1;
+            let width = (inner.width() - gutter - 8.0) / 2.0;
+            let block = egui::Rect::from_min_size(
+                egui::pos2(
+                    inner.left() + gutter + 4.0 + (index % 2) as f32 * width,
+                    inner.top() + offset + 2.0,
+                ),
+                egui::vec2(width - 4.0, row_h - 6.0),
+            );
+            ui.painter().rect_filled(block, 0.0, color);
+            ui.painter().with_clip_rect(block.shrink(2.0)).text(
+                egui::pos2(block.left() + 5.0, block.center().y),
+                egui::Align2::LEFT_CENTER,
+                label,
+                egui::FontId::proportional(11.5),
+                egui::Color32::WHITE,
+            );
+            let resp = ui.interact(
+                block,
+                ui.id().with(("dayblk", hour_key, index)),
+                egui::Sense::click(),
+            );
+            if resp.on_hover_text(hover).clicked() {
+                if let Some(id) = patient {
+                    *open_id = Some(id);
+                }
+            }
+        };
+        for rdv in session
+            .appointments
+            .iter()
+            .filter(|r| r.date == day)
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            let label = format!("{} {}", rdv.time, rdv.patient_name);
+            let hover = format!("{} — {}", rdv.patient_name, rdv.kind.label());
+            draw(
+                ui,
+                &rdv.time,
+                label,
+                kind_color(rdv.kind),
+                hover,
+                Some(rdv.patient_id),
+                &mut untimed,
+                &mut slots,
+                open_id,
+            );
+        }
+        for ev in events.iter().filter(|e| e.day == day) {
+            let label = format!("{} {}", ev.time, ev.title);
+            let hover = format!("{} — {}", ev.category.label(), ev.title);
+            draw(
+                ui,
+                &ev.time,
+                label,
+                motif::BG_DARK,
+                hover,
+                None,
+                &mut untimed,
+                &mut slots,
+                open_id,
+            );
+        }
+        let below = (plan.bottom() - ui.cursor().top()).max(0.0) + 8.0;
+        ui.add_space(below);
+        if !untimed.is_empty() {
+            motif::column(ui, 940.0, |ui| {
+                ui.label(
+                    egui::RichText::new(tr("agenda_untimed"))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
+                for label in &untimed {
+                    ui.label(egui::RichText::new(label.trim()).size(12.0));
+                }
+            });
+            ui.add_space(6.0);
+        }
+    }
+
     /// The month as a Monday-aligned grid: each cell carries the day
     /// number, a coloured dot per act and a grey one per other entry.
     /// Clicking a cell details that day below.
@@ -3469,11 +3689,22 @@ impl App {
                             .background_color(motif::BG_DARK),
                     );
                     ui.label(&ev.title);
+                    if ev.repeat_days > 0 {
+                        ui.label(
+                            egui::RichText::new(trf("agenda_repeat_mark", ev.repeat_days))
+                                .size(10.0)
+                                .color(motif::BG_DARK),
+                        );
+                    }
                     if motif::button(ui, tr("itv_delete"))
-                        .on_hover_text(tr("agenda_event_delete"))
+                        .on_hover_text(if ev.repeat_days > 0 {
+                            tr("agenda_event_delete_series")
+                        } else {
+                            tr("agenda_event_delete")
+                        })
                         .clicked()
                     {
-                        delete_event = Some((ev.id, ev.title.clone()));
+                        delete_event = Some((ev.source_id, ev.title.clone()));
                     }
                 });
             }
@@ -3498,6 +3729,25 @@ impl App {
                         .hint_text(tr("agenda_event_hint")),
                 );
                 let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                // Every week, every fortnight, every month or once.
+                egui::ComboBox::from_id_salt("event_repeat")
+                    .selected_text(match session.event_repeat {
+                        7 => tr("agenda_repeat_week"),
+                        14 => tr("agenda_repeat_fortnight"),
+                        28 => tr("agenda_repeat_month"),
+                        _ => tr("agenda_repeat_once"),
+                    })
+                    .width(130.0)
+                    .show_ui(ui, |ui| {
+                        for (days, label) in [
+                            (0, tr("agenda_repeat_once")),
+                            (7, tr("agenda_repeat_week")),
+                            (14, tr("agenda_repeat_fortnight")),
+                            (28, tr("agenda_repeat_month")),
+                        ] {
+                            ui.selectable_value(&mut session.event_repeat, days, label);
+                        }
+                    });
                 if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
                     && !session.event_title.trim().is_empty()
                 {
@@ -3521,10 +3771,14 @@ impl App {
         if add_event {
             let title = session.event_title.trim().to_owned();
             let time = db::parse_hour(&session.event_time).unwrap_or_default();
-            match session
-                .db
-                .add_event(&day, &time, &title, session.event_category)
-            {
+            match session.db.add_event(
+                &day,
+                &time,
+                &title,
+                session.event_category,
+                session.event_repeat,
+                "",
+            ) {
                 Ok(_) => {
                     session.event_title.clear();
                     session.event_time.clear();
@@ -3598,7 +3852,13 @@ impl App {
         }
     }
 
-    fn agenda_view(ui: &mut egui::Ui, ctx: &egui::Context, session: &mut Session, operator: &str) {
+    fn agenda_view(
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        session: &mut Session,
+        operator: &str,
+        config: &Config,
+    ) {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.wants_keyboard_input() {
             session.view = MainView::Search;
             return;
@@ -3611,7 +3871,13 @@ impl App {
                     - i.key_pressed(egui::Key::ArrowLeft) as i64
             });
             if step != 0 {
-                if session.agenda_month {
+                if session.agenda_mode == AgendaMode::Day {
+                    let day = session.agenda_day.clone();
+                    if let Ok(next) = session.db.date_offset(&day, step) {
+                        session.agenda_day = next;
+                        session.load_day();
+                    }
+                } else if session.agenda_month {
                     session.agenda_month_offset += step;
                     session.agenda_month_days = session
                         .db
@@ -3654,25 +3920,24 @@ impl App {
             ui.label(tr("agenda_subtitle"));
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                let (week_lbl, month_lbl) = (tr("agenda_mode_week"), tr("agenda_mode_month"));
-                let week = motif::button(ui, week_lbl);
-                if !session.agenda_month {
-                    motif::bevel(ui.painter(), week.rect, false);
-                }
-                if week.clicked() {
-                    session.agenda_month = false;
-                }
-                let month = motif::button(ui, month_lbl);
-                if session.agenda_month {
-                    motif::bevel(ui.painter(), month.rect, false);
-                }
-                if month.clicked() {
-                    session.agenda_month = true;
-                    if session.agenda_month_days.is_empty() {
-                        session.agenda_month_days = session
-                            .db
-                            .month_grid(session.agenda_month_offset)
-                            .unwrap_or_default();
+                for (mode, label) in [
+                    (AgendaMode::Day, tr("agenda_mode_day")),
+                    (AgendaMode::Week, tr("agenda_mode_week")),
+                    (AgendaMode::Month, tr("agenda_mode_month")),
+                ] {
+                    let btn = motif::button(ui, label);
+                    if session.agenda_mode == mode {
+                        motif::bevel(ui.painter(), btn.rect, false);
+                    }
+                    if btn.clicked() {
+                        session.agenda_mode = mode;
+                        session.agenda_month = mode == AgendaMode::Month;
+                        if mode == AgendaMode::Month && session.agenda_month_days.is_empty() {
+                            session.agenda_month_days = session
+                                .db
+                                .month_grid(session.agenda_month_offset)
+                                .unwrap_or_default();
+                        }
                     }
                 }
             });
@@ -3710,14 +3975,56 @@ impl App {
             });
             ui.add_space(8.0);
         });
+        let red = motif::ALERT;
+        let mut open_id: Option<i64> = None;
         // The filter applies to every part of the view at once.
         if !session.agenda_filter.is_empty() {
             let keep = session.agenda_filter.clone();
             session.appointments.retain(|r| keep.contains(&r.kind));
         }
+        // What has slipped past its date and is still waiting: the
+        // agenda says so before anything else.
+        let overdue: Vec<Appointment> = session
+            .appointments
+            .iter()
+            .filter(|r| r.date < session.today)
+            .cloned()
+            .collect();
+        if !overdue.is_empty() {
+            motif::column(ui, 900.0, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(trn(
+                            "agenda_overdue_banner",
+                            &[&overdue.len(), &db::format_french_date(&overdue[0].date)],
+                        ))
+                        .strong()
+                        .color(motif::ALERT),
+                    );
+                    for rdv in overdue.iter().take(4) {
+                        if ui
+                            .selectable_label(
+                                false,
+                                egui::RichText::new(&rdv.patient_name).color(motif::ALERT),
+                            )
+                            .on_hover_text(tr("agenda_overdue_tooltip"))
+                            .clicked()
+                        {
+                            open_id = Some(rdv.patient_id);
+                        }
+                    }
+                    if overdue.len() > 4 {
+                        ui.label(
+                            egui::RichText::new(trf("dash_more", overdue.len() - 4))
+                                .size(11.0)
+                                .color(motif::ALERT),
+                        );
+                    }
+                });
+            });
+            ui.add_space(8.0);
+        }
 
-        let red = motif::ALERT;
-        let mut open_id: Option<i64> = None;
         // The grid's entries that are not acts (formation, réunion…).
         let grid_events = session.load_grid_events();
         if print_week {
@@ -3744,12 +4051,30 @@ impl App {
             session.load_day();
         }
 
+        if session.agenda_mode == AgendaMode::Day {
+            Self::agenda_day_plan(ui, session, &grid_events, config, &mut open_id);
+            Self::agenda_day_panel(ui, session, operator, &mut open_id);
+            if let Some(id) = open_id {
+                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                    session.view = MainView::Search;
+                    session.open_patient(p);
+                }
+            }
+            if let Some(err) = &session.error {
+                ui.vertical_centered(|ui| {
+                    ui.colored_label(red, err.as_str());
+                });
+            }
+            return;
+        }
         if session.agenda_month {
             Self::agenda_month_grid(ui, session, &grid_events, &mut pick_day, &mut open_id);
             Self::agenda_day_panel(ui, session, operator, &mut open_id);
             if let Some(day) = pick_day {
                 session.agenda_day = day;
                 session.load_day();
+                session.agenda_mode = AgendaMode::Day;
+                session.agenda_month = false;
             }
             // Clicking a patient in the day panel opens the record here
             // too, not only in week mode.

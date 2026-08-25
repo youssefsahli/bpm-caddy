@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - 2026-08-25
+
+### Added
+- A day view: the counter's opening hours down the left, each
+  rendez-vous and entry placed on its line, two abreast when they share
+  an hour, and what has no hour listed underneath so nothing is
+  hidden. The amplitude is an option (`day_start_hour`, `day_end_hour`).
+  Clicking a day in the week or the month opens it.
+- Recurring entries: a formation or a delivery repeats every week,
+  fortnight or four weeks. It is stored once, shown on every day it
+  falls on, and removed as a series.
+- An overdue banner above the agenda: how many rendez-vous have slipped
+  past their date, the oldest one, and the patients to reopen.
+- The catalogue grows from 275 to 812 drugs, covering the essentials of
+  the French market: cardiology and diabetes, anti-infectives,
+  pneumology and ORL, neurology and psychiatry, analgesia and
+  rheumatology, gastro-enterology, dermatology, gynaecology, urology,
+  ophthalmology, haematology and the smoking-cessation products. The
+  275 cards that had a monograph keep it; the new ones ship their
+  identity, class and antidote for the team to fill in.
+
 ## [0.33.1] - 2026-08-25
 
 ### Changed

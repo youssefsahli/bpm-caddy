@@ -1034,6 +1034,8 @@ mod tests {
             time: "14:00".to_owned(),
             title: "Formation AOD".to_owned(),
             category: EventCategory::Formation,
+            repeat_days: 0,
+            source_id: 1,
         }];
         let src = week_plan_source(&week, &rdvs, &events, "2026-08-25");
         // The hostile name is escaped, and the timed rendez-vous leads.
