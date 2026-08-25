@@ -34,6 +34,9 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # font_path = "C:/Windows/Fonts/segoeui.ttf"
 # Contenu du panneau de droite au démarrage : "docs", "carnet" ou "notes".
 # side_pane = "docs"
+# Amplitude horaire de la journée dans l'agenda.
+# day_start_hour = 8
+# day_end_hour = 20
 # Masquer les montants du tableau de bord (mode discret au comptoir).
 # discreet_finances = true
 # Initiales de l'opérateur par défaut pour les entrées de notes.
@@ -213,6 +216,9 @@ pub struct UiConfig {
     /// Which content the right pane shows on start: "docs", "carnet"
     /// or "notes".
     pub side_pane: String,
+    /// The counter's opening hours, used by the agenda's day plan.
+    pub day_start_hour: u32,
+    pub day_end_hour: u32,
     /// Mask revenue amounts on the dashboard until explicitly revealed,
     /// so figures are not readable over a shoulder at the counter.
     pub discreet_finances: bool,
@@ -229,6 +235,8 @@ impl Default for UiConfig {
             icons: false,
             font_path: None,
             side_pane: "docs".to_owned(),
+            day_start_hour: 8,
+            day_end_hour: 20,
             discreet_finances: true,
             operator: String::new(),
         }
