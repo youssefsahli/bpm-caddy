@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0] - 2026-08-25
+
+### Added
+- The drug base is complete: all 812 cards carry a full monograph —
+  indications, mechanism, posology, contraindications, interactions,
+  adverse effects, surveillance, counter advice, half-life, elimination,
+  renal adaptation, pregnancy and sources. The last 155 close the
+  remaining gaps: contraception, opioid substitution, local
+  anaesthetics, hypnotics and benzodiazepines, dermocorticoids, vitamin
+  D and bone, antiretrovirals and hepatitis C, ophthalmology,
+  gynaecology and the ward products.
+
+### Fixed
+- The treatment-change derogation read the wrong year when the change
+  fell in a year after the first, asking for the année 1 minimums
+  instead of the lighter ones, and counted the entretiens after the
+  change beyond the sequence it opens.
+
 ## [0.38.0] - 2026-08-25
 
 ### Added

@@ -1326,20 +1326,26 @@ fn treatment_change_shortfall(
     same.sort_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)));
     let ranks = interview_ranks(interviews, months);
     let pos = same.iter().position(|i| i.id == marked.id)?;
-    let (year, _) = ranks.get(&marked.id).copied().unwrap_or((0, 0));
     // The sequence the change closes runs back to the previous entretien
-    // of rank 0; the one it opens starts at the marked entretien.
+    // of rank 0; the one it opens runs up to the next.
     let mut before = 0usize;
+    let mut closed_year = 0usize;
     for itv in same[..pos].iter().rev() {
         before += 1;
-        if ranks.get(&itv.id).map(|(_, r)| *r) == Some(0) {
-            break;
+        if let Some((y, r)) = ranks.get(&itv.id).copied() {
+            closed_year = y;
+            if r == 0 {
+                break;
+            }
         }
     }
-    let after = same[pos..].len();
-    // `year` is the sequence the change opened; année 1 is the stricter
-    // case, and a restart never lands before it.
-    let (need_before, need_after) = marked.kind.treatment_change_minimums(year <= 1);
+    let after = 1 + same[pos + 1..]
+        .iter()
+        .take_while(|i| ranks.get(&i.id).map(|(_, r)| *r) != Some(0))
+        .count();
+    // The memo splits on the year the change happens in — the year of
+    // the sequence it closes, not the one it opens.
+    let (need_before, need_after) = marked.kind.treatment_change_minimums(closed_year == 0);
     if before >= need_before && after >= need_after {
         None
     } else {
@@ -8074,6 +8080,47 @@ mod tests {
         // Nothing numeric: no curve to draw.
         assert_eq!(parse_hours("Très longue"), None);
         assert_eq!(parse_hours(""), None);
+    }
+
+    /// The memo's derogation conditions, as the fiche checks them.
+    #[test]
+    fn the_derogation_reports_what_is_missing() {
+        use crate::db::{Interview, InterviewState};
+        let itv = |id: i64, day: u32, change: bool| Interview {
+            id,
+            kind: InterviewKind::AnticancereuxAutres,
+            state: InterviewState::Performed,
+            duration_minutes: 30,
+            scheduled_date: None,
+            scheduled_time: String::new(),
+            remote: false,
+            treatment_change: change,
+            theme: String::new(),
+            created_at: format!("2026-{day:02}-05 10:00:00"),
+        };
+        // Année 1 : il faut deux entretiens avant le changement et deux
+        // après. Ici un seul avant, un seul après.
+        let short = vec![itv(1, 1, false), itv(2, 3, true)];
+        assert_eq!(
+            super::treatment_change_shortfall(&short, &short[1], 12),
+            Some((1, 1))
+        );
+        // Séquence complète de part et d'autre : plus rien à signaler.
+        let full = vec![
+            itv(1, 1, false),
+            itv(2, 2, false),
+            itv(3, 4, true),
+            itv(4, 5, false),
+        ];
+        assert_eq!(super::treatment_change_shortfall(&full, &full[2], 12), None);
+        // Un entretien non marqué ne déclenche rien.
+        assert_eq!(super::treatment_change_shortfall(&full, &full[0], 12), None);
+        // Le thème doit porter la dérogation.
+        let mut bpm = full.clone();
+        for i in &mut bpm {
+            i.kind = InterviewKind::Bpm;
+        }
+        assert_eq!(super::treatment_change_shortfall(&bpm, &bpm[2], 12), None);
     }
 
     #[test]
