@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.42.0] - 2026-08-25
+
+### Fixed
+- The editable drug card was unusable. A multiline field grows with what
+  it holds and ignores the height it is given, so now that every card
+  carries a full monograph, one field ran down over the rows beneath it
+  and drew across their labels. Each field is a box of its own height
+  now, with the text scrolling inside it.
+- The card's form no longer forces two columns into a narrow window: it
+  puts one half under the other below 720 px, where two columns left
+  five words to a line.
+
+### Changed
+- The entretien table is one aligned line per act. The act code and the
+  step it pays move to a column of their own — "BMI · 2", with the full
+  step name, the amount, the year and the coverage in the tooltip — and
+  the two flags that change what is billed sit beside it as TPH and Δ.
+  Before, the step name wrapped over three lines and pushed the flags
+  out of their row, so no column lined up with its heading. Rows are
+  striped.
+- The agenda's week grid is as tall as its busiest day rather than a
+  fixed height, so entries stop hiding behind a "+N" while there is room
+  on screen for them, and an entry too long for its column ends in an
+  ellipsis instead of being cut mid-letter.
+
 ## [0.41.0] - 2026-08-25
 
 ### Fixed
