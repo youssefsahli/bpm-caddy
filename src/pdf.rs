@@ -496,11 +496,17 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
 /// One drug card as a printable A4 monograph: identity, every filled
 /// section in reading order, the pharmacokinetics as a definition list
 /// and the numbered sources at the foot.
-pub fn open_drug_monograph(d: &Drug) -> Result<PathBuf, String> {
-    compile_and_open(monograph_source(d), &format!("monographie_{}", d.id))
+pub fn open_drug_monograph(
+    d: &Drug,
+    posologies: &[crate::db::Posologie],
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        monograph_source(d, posologies),
+        &format!("monographie_{}", d.id),
+    )
 }
 
-fn monograph_source(d: &Drug) -> String {
+fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
     let mut src = String::from(
         "#set page(paper: \"a4\", margin: 2cm)\n#set text(size: 10.5pt)\n\
          #set par(justify: true, leading: 0.6em, spacing: 0.7em)\n\
@@ -566,6 +572,29 @@ fn monograph_source(d: &Drug) -> String {
             "#sec({}, [#{}])\n",
             typst_str(title),
             typst_str(body.trim())
+        ));
+    }
+    if !posologies.is_empty() {
+        let mut rows = String::new();
+        for p in posologies {
+            let right = if p.remarque.trim().is_empty() {
+                format!("[#{}]", typst_str(p.posologie.trim()))
+            } else {
+                format!(
+                    "[#{} #linebreak() #text(size: 8.5pt, style: \"italic\")[#{}]]",
+                    typst_str(p.posologie.trim()),
+                    typst_str(p.remarque.trim())
+                )
+            };
+            rows.push_str(&format!(
+                "  [#text(weight: \"bold\")[#{}]], {},\n",
+                typst_str(p.indication.trim()),
+                right
+            ));
+        }
+        src.push_str(&format!(
+            "#sec(\"Posologies par indication\", table(columns: (5cm, 1fr), inset: 3pt, \
+             stroke: none,\n{rows}))\n"
         ));
     }
     let pk = [
@@ -879,7 +908,7 @@ mod tests {
             toxicity: String::new(),
             forms: "Comprimé pelliculé 2,5 mg et 5 mg".to_owned(),
         };
-        let source = monograph_source(&d);
+        let source = monograph_source(&d, &[]);
         // Hostile text is escaped, never interpreted as Typst markup.
         assert!(!source.contains("#eval \"X\"]"));
         let world = PdfWorld::new(source);
@@ -905,7 +934,7 @@ mod tests {
         d.monitoring.clear();
         d.iup.clear();
         d.sources.clear();
-        let world = PdfWorld::new(monograph_source(&d));
+        let world = PdfWorld::new(monograph_source(&d, &[]));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 

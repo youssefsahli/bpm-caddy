@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-08-25
+
+### Added
+- Posologies by indication: every drug card can carry a table of what
+  it is prescribed for, the dose for that indication and what changes
+  it — read on the monograph, edited line by line in the form, printed
+  with the A4 sheet, and removed with the card.
+- 368 shipped lines over 60 drugs, mainstream and lesser-known alike:
+  spironolactone in acne and hirsutism, propranolol in essential
+  tremor, migraine and performance anxiety, fosfomycine as monthly
+  prophylaxis, doxycycline at anti-inflammatory dose in rosacea,
+  amitriptyline in neuropathic pain, gabapentine in restless legs,
+  aspirin in pre-eclampsia prevention — each marked when it is outside
+  the AMM. They only ever fill a card whose list is still empty.
+
 ## [0.27.0] - 2026-08-25
 
 ### Added
