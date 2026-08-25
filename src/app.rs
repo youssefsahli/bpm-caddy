@@ -1808,14 +1808,19 @@ impl App {
             .resizable(true)
             .default_width(340.0)
             .min_width(240.0)
+            // A side panel that grows past the width it reserved leaves
+            // the central view laid out wider than it is visible, and
+            // everything on its right edge is clipped away — buttons
+            // included. Cap it, and let the content inside wrap.
+            .max_width(520.0)
             .show(ctx, |ui| {
                 ui.add_space(6.0);
                 // One pane, three contents: the shared documentation,
                 // the day's carnet, or the operator's own notes.
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (value, label) in [
-                        ("docs", tr("docs_title")),
-                        ("carnet", tr("trans_title")),
+                        ("docs", tr("side_pane_docs")),
+                        ("carnet", tr("side_pane_carnet")),
                         ("notes", tr("side_pane_notes")),
                     ] {
                         if ui
@@ -5576,8 +5581,69 @@ impl App {
             let mut poso_delete: Option<(i64, String)> = None;
             let mut print_mono = false;
             let mut open_patient_id: Option<i64> = None;
-            // A full monograph is taller than the window: the whole card
-            // scrolls, notes and buttons included.
+            // The actions stay above the scroll: a full monograph is
+            // several screens tall, and « Modifier » or « Enregistrer »
+            // must never be something to go looking for.
+            motif::column(ui, 900.0, |ui| {
+                ui.add_space(8.0);
+                // Wrapped: a narrow window, or an open side pane, must
+                // push the last actions onto a second line rather than
+                // cut them off.
+                ui.horizontal_wrapped(|ui| {
+                    if reading {
+                        if motif::button(ui, tr("drug_edit")).clicked() {
+                            edit = true;
+                        }
+                    } else if motif::button(ui, tr("form_save")).clicked() {
+                        save = true;
+                    }
+                    if motif::button(ui, tr("drug_close")).clicked() {
+                        close = true;
+                    }
+                    if reading {
+                        if !form.class.trim().is_empty()
+                            && motif::button(ui, tr("drug_class_edit"))
+                                .on_hover_text(tr("drug_class_edit_tooltip"))
+                                .clicked()
+                        {
+                            edit_class = true;
+                        }
+                        if motif::button(ui, tr("drug_lookup"))
+                            .on_hover_text(tr("drug_lookup_tooltip"))
+                            .clicked()
+                        {
+                            lookup = true;
+                        }
+                        if motif::button(ui, tr("drug_print"))
+                            .on_hover_text(tr("drug_print_tooltip"))
+                            .clicked()
+                        {
+                            print_mono = true;
+                        }
+                    }
+                    if motif::button(ui, tr("drug_to_notes"))
+                        .on_hover_text(tr("drug_to_notes_tooltip"))
+                        .clicked()
+                    {
+                        insert_note = true;
+                    }
+                    // Destructive action last, after a visible gap.
+                    ui.add_space(12.0);
+                    let del_label = if session.confirm_delete_drug {
+                        tr("patient_delete_confirm")
+                    } else {
+                        tr("patient_delete")
+                    };
+                    if motif::button(ui, del_label).clicked() {
+                        delete = true;
+                    }
+                });
+                ui.add_space(6.0);
+                let sep = ui.available_rect_before_wrap();
+                let line = egui::Rect::from_min_size(sep.min, egui::vec2(sep.width(), 2.0));
+                motif::bevel(ui.painter(), line, false);
+                ui.add_space(4.0);
+            });
             egui::ScrollArea::vertical().show(ui, |ui| {
                 motif::column(ui, 900.0, |ui| {
                     ui.add_space(18.0);
@@ -5943,53 +6009,6 @@ impl App {
                             }
                         });
                     }
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if !reading && motif::button(ui, tr("form_save")).clicked() {
-                            save = true;
-                        }
-                        if motif::button(ui, tr("drug_close")).clicked() {
-                            close = true;
-                        }
-                        if reading {
-                            if motif::button(ui, tr("drug_edit")).clicked() {
-                                edit = true;
-                            }
-                            if !form.class.trim().is_empty()
-                                && motif::button(ui, tr("drug_class_edit"))
-                                    .on_hover_text(tr("drug_class_edit_tooltip"))
-                                    .clicked()
-                            {
-                                edit_class = true;
-                            }
-                            if motif::button(ui, tr("drug_lookup"))
-                                .on_hover_text(tr("drug_lookup_tooltip"))
-                                .clicked()
-                            {
-                                lookup = true;
-                            }
-                            if motif::button(ui, tr("drug_print"))
-                                .on_hover_text(tr("drug_print_tooltip"))
-                                .clicked()
-                            {
-                                print_mono = true;
-                            }
-                        }
-                        if motif::button(ui, tr("drug_to_notes"))
-                            .on_hover_text(tr("drug_to_notes_tooltip"))
-                            .clicked()
-                        {
-                            insert_note = true;
-                        }
-                        let del_label = if session.confirm_delete_drug {
-                            tr("patient_delete_confirm")
-                        } else {
-                            tr("patient_delete")
-                        };
-                        if motif::button(ui, del_label).clicked() {
-                            delete = true;
-                        }
-                    });
                     if let Some(err) = &session.error {
                         ui.add_space(6.0);
                         ui.colored_label(motif::ALERT, err.as_str());
@@ -8113,6 +8132,26 @@ mod tests {
             itv(4, 5, false),
         ];
         assert_eq!(super::treatment_change_shortfall(&full, &full[2], 12), None);
+        // Changement survenu dans une année suivante : le mémo
+        // n'exige qu'un entretien avant et deux après pour « autres »,
+        // pas les minimums d'année 1.
+        let later = vec![
+            itv(1, 1, false),
+            itv(2, 2, false),
+            itv(3, 3, false),
+            itv(4, 4, true),
+            itv(5, 6, false),
+            itv(6, 8, true),
+            itv(7, 9, false),
+        ];
+        let ranks = super::interview_ranks(&later, 12);
+        assert!(ranks.get(&6).map(|(y, _)| *y) >= Some(1));
+        // Un seul entretien avant le second changement, deux après :
+        // conforme, donc aucun manque signalé.
+        assert_eq!(
+            super::treatment_change_shortfall(&later, &later[5], 12),
+            None
+        );
         // Un entretien non marqué ne déclenche rien.
         assert_eq!(super::treatment_change_shortfall(&full, &full[0], 12), None);
         // Le thème doit porter la dérogation.
