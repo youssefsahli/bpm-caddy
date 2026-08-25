@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.46.0] - 2026-08-26
+
+### Added
+- `scripts/smoke.sh` opens every view once — including the ones that
+  only exist while a dialog is open — and fails on any panic. That is
+  how the Ctrl+N crash was found, and the cheapest way to keep finding
+  that class of bug: a code path only drawn under a keystroke is one no
+  test ever reaches.
+
+### Changed
+- The conversion tables stripe their rows. Six columns of full
+  sentences, where a row wraps to four lines in one column and one in
+  the next, cannot be followed across without a band behind it — in a
+  shade of the trough the table sits in, not egui's hover blue.
+- The template editor is a share of the screen instead of a fixed
+  680×540 box: a Typst template is a page of code, and editing it meant
+  scrolling the whole thing through a porthole.
+- « Tables de conversion » and « Protocoles… » drop to their own line
+  when the drug base's page is narrow; at 1024 px with both docks open
+  they were drawn over the title.
+
 ## [0.45.0] - 2026-08-26
 
 ### Fixed
