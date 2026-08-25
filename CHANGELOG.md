@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-08-25
+
+### Fixed
+- The lock screen accepts `Entrée` again: pressing it made the field
+  surrender focus, and the immediate re-focus cancelled the submission,
+  so only the button worked.
+
+### Added
+- The fee matrix follows the quotas: an act limited to N per cycle
+  shows N price columns, the ranks beyond it are struck out.
+- The cycle length is configurable (`[rules] cycle_months`, 12 by
+  default) — an entretien of year 0 and the first of year 1 are that
+  many months apart, and the quota window follows.
+- What happens when the quota is reached is now a choice: avertir
+  (message with an explicit "créer quand même", the previous
+  behaviour), informer seulement (the act is created, the rule is
+  stated), or refuser (no override).
+
 ## [0.18.0] - 2026-08-25
 
 ### Added

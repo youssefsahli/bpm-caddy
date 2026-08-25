@@ -3183,6 +3183,39 @@ pub fn parse_french_date(input: &str, current_year: u32, hint: YearHint) -> Resu
 }
 
 /// The same ISO date one year later ("2026-02-29" clamps to the 28th).
+/// The same ISO date `months` later, clamping 29 February and the
+/// short months to the last valid day.
+pub fn add_months(iso: &str, months: u32) -> String {
+    if months == 12 {
+        return add_one_year(iso);
+    }
+    let mut parts = iso.split('-');
+    let (y, m, d) = match (parts.next(), parts.next(), parts.next()) {
+        (Some(y), Some(m), Some(d)) => (y, m, d),
+        _ => return iso.to_owned(),
+    };
+    let (year, month): (i32, u32) = match (y.parse(), m.parse()) {
+        (Ok(y), Ok(m)) => (y, m),
+        _ => return iso.to_owned(),
+    };
+    let total = month as i64 - 1 + months as i64;
+    let year = year + (total / 12) as i32;
+    let month = (total % 12) as u32 + 1;
+    let day: u32 = d.parse().unwrap_or(1);
+    let last = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ => {
+            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                29
+            } else {
+                28
+            }
+        }
+    };
+    format!("{:04}-{:02}-{:02}", year, month, day.min(last))
+}
+
 pub fn add_one_year(iso: &str) -> String {
     let mut parts = iso.split('-');
     let (Some(y), Some(m), Some(d)) = (parts.next(), parts.next(), parts.next()) else {
@@ -3221,13 +3254,13 @@ fn fee_ranks(keys: &[(i64, InterviewKind, String)]) -> Vec<(usize, usize)> {
 }
 
 /// The in-cycle rank (0-based) of each date of one group, ascending.
-pub fn cycle_ranks(dates: &[String]) -> Vec<usize> {
+pub fn cycle_ranks_months(dates: &[String], months: u32) -> Vec<usize> {
     let mut out = Vec::with_capacity(dates.len());
     let mut cycle_start: Option<String> = None;
     let mut rank = 0usize;
     for d in dates {
         match &cycle_start {
-            Some(start) if *d < add_one_year(start) => rank += 1,
+            Some(start) if *d < add_months(start, months) => rank += 1,
             _ => {
                 cycle_start = Some(d.clone());
                 rank = 0;
@@ -3236,6 +3269,11 @@ pub fn cycle_ranks(dates: &[String]) -> Vec<usize> {
         out.push(rank);
     }
     out
+}
+
+/// The in-cycle rank of each date, using the conventional 12 months.
+pub fn cycle_ranks(dates: &[String]) -> Vec<usize> {
+    cycle_ranks_months(dates, 12)
 }
 
 /// Convention rule: at most `per_year` acts per "année d'accompagnement",
@@ -3247,20 +3285,30 @@ pub fn cycle_ranks(dates: &[String]) -> Vec<usize> {
 /// `Some(next_allowed_iso)` when the quota is reached. `per_year == 0`
 /// disables the rule.
 pub fn yearly_rule_next_allowed(dates: &[String], today: &str, per_year: u32) -> Option<String> {
+    rule_next_allowed(dates, today, per_year, 12)
+}
+
+/// As above, with the cycle length in months taken from the config.
+pub fn rule_next_allowed(
+    dates: &[String],
+    today: &str,
+    per_year: u32,
+    months: u32,
+) -> Option<String> {
     if per_year == 0 || dates.is_empty() {
         return None;
     }
     // Walk to the current cycle: each cycle starts at the first act at
-    // least 12 months after the previous cycle's start.
+    // least `months` months after the previous cycle's start.
     let mut cycle_start = dates[0].clone();
     loop {
-        let next_cycle_from = add_one_year(&cycle_start);
+        let next_cycle_from = add_months(&cycle_start, months);
         match dates.iter().find(|d| **d >= next_cycle_from) {
             Some(d) => cycle_start = d.clone(),
             None => break,
         }
     }
-    let cycle_end = add_one_year(&cycle_start);
+    let cycle_end = add_months(&cycle_start, months);
     if today >= cycle_end.as_str() {
         // A new yearly cycle may start today.
         return None;
@@ -3521,6 +3569,29 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn cycles_follow_the_configured_length() {
+        // Six-month cycles: the third act opens a new cycle.
+        let dates: Vec<String> = ["2026-01-10", "2026-03-10", "2026-08-10", "2026-10-01"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        assert_eq!(cycle_ranks_months(&dates, 6), vec![0, 1, 0, 1]);
+        // The same dates over twelve months are one cycle then another.
+        assert_eq!(cycle_ranks_months(&dates, 12), vec![0, 1, 2, 3]);
+        // The quota rule uses the same segmentation.
+        assert_eq!(
+            rule_next_allowed(&dates[..2], "2026-04-01", 2, 6),
+            Some("2026-07-10".to_owned())
+        );
+        assert_eq!(rule_next_allowed(&dates[..2], "2026-08-01", 2, 6), None);
+        // add_months clamps the short months and February.
+        assert_eq!(add_months("2026-01-31", 1), "2026-02-28");
+        assert_eq!(add_months("2024-01-31", 1), "2024-02-29");
+        assert_eq!(add_months("2026-08-25", 6), "2027-02-25");
+        assert_eq!(add_months("2026-08-25", 12), add_one_year("2026-08-25"));
     }
 
     #[test]

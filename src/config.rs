@@ -57,8 +57,13 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # pharmacist = "Dr Claire Leroy, pharmacien titulaire"
 
 [rules]
-# Nombre maximal d'actes par année d'accompagnement (12 mois glissants
-# à partir du premier acte du cycle ; 0 = sans limite).
+# Nombre maximal d'actes par année d'accompagnement (cycle glissant à
+# partir du premier acte ; 0 = sans limite).
+# Durée du cycle en mois (12 = année d'accompagnement conventionnelle).
+# cycle_months = 12
+# Comportement quand le quota est atteint : "warn" (message + création
+# forçable), "inform" (simple information) ou "block" (création refusée).
+# enforcement = "warn"
 # bpm_per_year = 3
 # aod_per_year = 3
 # asthme_per_year = 3
@@ -84,9 +89,29 @@ pub struct Config {
 /// Convention rules: how many acts of each kind per "année
 /// d'accompagnement" (12 months from the cycle's first act; the next
 /// cycle starts at least 12 months later). 0 disables the rule.
+/// What the app does when an act falls inside the running cycle's
+/// quota window.
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleEnforcement {
+    /// State the rule, and let the act be created after an explicit
+    /// confirmation (the historical behaviour).
+    #[default]
+    Warn,
+    /// State the rule as information only; creation is not interrupted.
+    Inform,
+    /// Refuse the creation outright — no override button.
+    Block,
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct RulesConfig {
+    /// Months between the first act of a cycle and the first act of the
+    /// next one (the convention's "année d'accompagnement").
+    pub cycle_months: u32,
+    /// How a blocked creation is handled.
+    pub enforcement: RuleEnforcement,
     pub bpm_per_year: u32,
     pub aod_per_year: u32,
     pub asthme_per_year: u32,
@@ -101,6 +126,8 @@ pub struct RulesConfig {
 impl Default for RulesConfig {
     fn default() -> Self {
         Self {
+            cycle_months: 12,
+            enforcement: RuleEnforcement::Warn,
             bpm_per_year: 3,
             aod_per_year: 3,
             asthme_per_year: 3,
@@ -205,6 +232,7 @@ impl ActFees {
     }
 
     /// Fee for the act ranked `rank` (0-based) inside its yearly cycle.
+    /// Ranks beyond the third are billed at the last rate.
     pub fn for_rank(&self, rank: usize) -> f64 {
         match rank {
             0 => self.initial,
@@ -212,6 +240,19 @@ impl ActFees {
             _ => self.suivi_2,
         }
     }
+
+    /// Mutable access by rank, for the Options grid — which shows one
+    /// column per act allowed in the year.
+    pub fn slot_mut(&mut self, rank: usize) -> &mut f64 {
+        match rank {
+            0 => &mut self.initial,
+            1 => &mut self.suivi_1,
+            _ => &mut self.suivi_2,
+        }
+    }
+
+    /// How many distinct rates this schedule can express.
+    pub const SLOTS: usize = 3;
 }
 
 /// One fee entry as written in `config.toml`: either the flat number
