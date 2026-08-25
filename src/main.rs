@@ -10,10 +10,11 @@ mod tables;
 
 use eframe::egui;
 
-/// Screenshot/e2e hook: `BPM_CADDY_WINDOW=1280x1200` opens the window
-/// at that size instead of the default.
+/// The size to open at: the screenshot/e2e hook
+/// (`BPM_CADDY_WINDOW=1280x1200`) first, then the size the workspace
+/// was left at, then a default that fits a counter screen.
 fn window_size() -> [f32; 2] {
-    let default = [1024.0, 700.0];
+    let default = config::Layout::load().window().unwrap_or([1024.0, 700.0]);
     let Ok(spec) = std::env::var("BPM_CADDY_WINDOW") else {
         return default;
     };

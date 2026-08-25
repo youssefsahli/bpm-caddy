@@ -642,6 +642,68 @@ impl Config {
     }
 }
 
+/// Where the workspace was left: the window's size and how wide the
+/// two docks were dragged.
+///
+/// Kept in its own `layout.toml` beside `config.toml` rather than in it:
+/// the configuration is hand-editable and carries the operator's own
+/// comments, and rewriting it on every quit to record a window size
+/// would quietly throw those away.
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Debug)]
+#[serde(default)]
+pub struct Layout {
+    /// Window size in logical pixels. Zero means "never recorded".
+    pub window_width: f32,
+    pub window_height: f32,
+    /// Dock widths. Zero means "use the default share of the window".
+    pub nav_width: f32,
+    pub docs_width: f32,
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Self {
+            window_width: 0.0,
+            window_height: 0.0,
+            nav_width: 0.0,
+            docs_width: 0.0,
+        }
+    }
+}
+
+impl Layout {
+    pub fn path() -> PathBuf {
+        Config::path().with_file_name("layout.toml")
+    }
+
+    /// Never fails: a missing or unreadable file is simply "no record".
+    pub fn load() -> Self {
+        std::fs::read_to_string(Self::path())
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// A size only counts once it is plausible — a window minimised or
+    /// mid-restore reports a few pixels, and reopening at that size the
+    /// next morning would be a bug the operator could not undo.
+    pub fn window(&self) -> Option<[f32; 2]> {
+        (self.window_width >= 640.0 && self.window_height >= 480.0)
+            .then_some([self.window_width, self.window_height])
+    }
+
+    pub fn save(&self) {
+        let Ok(text) = toml::to_string_pretty(self) else {
+            return;
+        };
+        let path = Self::path();
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::write(path, text);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -798,6 +860,19 @@ mod tests {
         assert!(cfg.templates.bpm_template_path.is_none());
         assert_eq!(cfg.rules.bpm_per_year, 3);
         assert_eq!(cfg.rules.trod_angine_per_year, 0);
+    }
+
+    #[test]
+    fn an_implausible_window_size_is_not_restored() {
+        let mut l = Layout::default();
+        assert!(l.window().is_none());
+        // Minimised, or caught mid-restore: not a size to reopen at.
+        l.window_width = 12.0;
+        l.window_height = 8.0;
+        assert!(l.window().is_none());
+        l.window_width = 1280.0;
+        l.window_height = 800.0;
+        assert_eq!(l.window(), Some([1280.0, 800.0]));
     }
 
     #[test]
