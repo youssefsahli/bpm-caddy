@@ -437,7 +437,9 @@ pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
 
 /// Build the Typst source for the conversion tables (all of them, one
 /// A4 document). Every cell goes through the string escaping.
-fn conversion_tables_source() -> String {
+type TableEdits = std::collections::HashMap<(String, usize, usize), String>;
+
+fn conversion_tables_source(edits: &TableEdits) -> String {
     let mut src = String::from(
         "#set page(paper: \"a4\", margin: 1.5cm)\n#set text(size: 10pt)\n\
          #align(center)[#text(15pt, weight: \"bold\")[Tables de conversion]]\n",
@@ -454,9 +456,15 @@ fn conversion_tables_source() -> String {
         for c in t.columns {
             src.push_str(&format!("  [*#{}*],\n", typst_str(c)));
         }
-        for row in t.rows {
-            for cell in *row {
-                src.push_str(&format!("  [#{}],\n", typst_str(cell)));
+        for (ri, row) in t.rows.iter().enumerate() {
+            for (ci, cell) in row.iter().enumerate() {
+                // The team's correction prints instead of the shipped
+                // value, so paper and screen never disagree.
+                let text = edits
+                    .get(&(t.short.to_owned(), ri, ci))
+                    .map(String::as_str)
+                    .unwrap_or(cell);
+                src.push_str(&format!("  [#{}],\n", typst_str(text)));
             }
         }
         src.push_str(")\n");
@@ -603,8 +611,8 @@ fn monograph_source(d: &Drug) -> String {
 }
 
 /// Compile and open the conversion tables as a printable A4 reference.
-pub fn open_conversion_tables() -> Result<PathBuf, String> {
-    compile_and_open(conversion_tables_source(), "tables")
+pub fn open_conversion_tables(edits: &TableEdits) -> Result<PathBuf, String> {
+    compile_and_open(conversion_tables_source(edits), "tables")
 }
 
 /// One day of the transmission logbook as a printable A4 page.
@@ -930,7 +938,15 @@ mod tests {
 
     #[test]
     fn conversion_tables_compile_to_pdf() {
-        let world = PdfWorld::new(conversion_tables_source());
+        // A team edit prints in place of the shipped value.
+        let mut edits: TableEdits = std::collections::HashMap::new();
+        edits.insert(
+            (crate::tables::TABLES[0].short.to_owned(), 0, 1),
+            "20 mg (protocole interne)".to_owned(),
+        );
+        let source = conversion_tables_source(&edits);
+        assert!(source.contains("protocole interne"));
+        let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
             .output
             .expect("les tables de conversion doivent compiler");

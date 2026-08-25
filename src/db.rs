@@ -57,6 +57,14 @@ CREATE TABLE IF NOT EXISTS drugs (
     renal       TEXT NOT NULL DEFAULT '',
     pregnancy   TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS table_cells (
+    table_key   TEXT NOT NULL,
+    row         INTEGER NOT NULL,
+    col         INTEGER NOT NULL,
+    value       TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    PRIMARY KEY (table_key, row, col)
+);
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY,
     day         TEXT NOT NULL,
@@ -3282,6 +3290,100 @@ impl Db {
     /// Planned interviews not yet performed, soonest first — the
     /// dashboard's appointment list (overdue ones included, so a missed
     /// RDV is never silently forgotten).
+    /// The team's edits to a reference table, keyed by `(row, col)`.
+    /// A table with no edit returns an empty map and reads exactly as
+    /// shipped.
+    pub fn table_cells(
+        &self,
+        table_key: &str,
+    ) -> Result<std::collections::HashMap<(usize, usize), String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT row, col, value FROM table_cells WHERE table_key = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([table_key], |r| {
+                Ok((
+                    r.get::<_, i64>(0)? as usize,
+                    r.get::<_, i64>(1)? as usize,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = std::collections::HashMap::new();
+        for row in rows {
+            let (r, c, v) = row.map_err(|e| e.to_string())?;
+            out.insert((r, c), v);
+        }
+        Ok(out)
+    }
+
+    /// Every table edit, for the printout.
+    pub fn all_table_cells(
+        &self,
+    ) -> Result<std::collections::HashMap<(String, usize, usize), String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT table_key, row, col, value FROM table_cells")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)? as usize,
+                    r.get::<_, i64>(2)? as usize,
+                    r.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = std::collections::HashMap::new();
+        for row in rows {
+            let (k, r, c, v) = row.map_err(|e| e.to_string())?;
+            out.insert((k, r, c), v);
+        }
+        Ok(out)
+    }
+
+    /// Override one cell of a reference table, or drop the override
+    /// when `value` matches the shipped text.
+    pub fn set_table_cell(
+        &self,
+        table_key: &str,
+        row: usize,
+        col: usize,
+        value: &str,
+        shipped: &str,
+    ) -> Result<(), String> {
+        if value == shipped {
+            self.conn
+                .execute(
+                    "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3",
+                    (table_key, row as i64, col as i64),
+                )
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO table_cells (table_key, row, col, value) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(table_key, row, col)
+                 DO UPDATE SET value = excluded.value, updated_at = datetime('now', 'localtime')",
+                (table_key, row as i64, col as i64, value),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Drop every edit of one table, returning it to the shipped text.
+    /// Returns how many cells were reset.
+    pub fn reset_table(&self, table_key: &str) -> Result<usize, String> {
+        let n = self
+            .conn
+            .execute("DELETE FROM table_cells WHERE table_key = ?1", [table_key])
+            .map_err(|e| e.to_string())?;
+        Ok(n)
+    }
+
     /// Add an agenda entry that is not a billable act — a formation, a
     /// réunion, a livraison, a congé.
     pub fn add_event(

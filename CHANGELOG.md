@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.23.0] - 2026-08-25
+
+### Added
+- The reference tables are editable in place: click a value, correct
+  it, and it is shown in the accent colour with the shipped value on
+  hover. "Annuler la dernière" undoes the last correction and
+  "Rétablir la table" restores everything as shipped. The corrections
+  are stored in the shared database and print with the table.
+- A "Calculs" panel under the tables: clairance de la créatinine
+  (Cockcroft & Gault, with the CKD stage), dose par kilo (par prise et
+  par jour), and the decay curve of a drug — time to near-complete
+  elimination and accumulation ratio at steady state, fed by any half-
+  life from the drug base.
+
+### Changed
+- The tables view scrolls as a whole, so the sources, the corrections
+  and the calculators stay reachable in a small window.
+
 ## [0.22.0] - 2026-08-25
 
 ### Added
