@@ -6,30 +6,31 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 > **Status: in development.** This repository hosts the specification, roadmap, and source code as the project is built. Binaries will be published on the [Releases](../../releases) page.
 
-![BPM-Caddy — recherche de patients et documentation d'équipe, thème X/Motif](docs/screenshot.png)
+![BPM-Caddy — l'espace de travail : onglets, panneau de navigation, tableau du jour](docs/screenshot.png)
 
-![Tableau de bord — KPIs, pipeline des entretiens, CA mensuel](docs/screenshot_dashboard.png)
+![Tableau de bord — indicateurs, entonnoir du pipeline, CA mensuel, charge des 28 jours](docs/screenshot_dashboard.png)
 
-![Fiche patient — cycle de vie des entretiens, durée, fiche PDF](docs/screenshot_patient.png)
+![Fiche patient — bandeau d'identité, table des entretiens, journal de suivi](docs/screenshot_patient.png)
 
-![Base médicaments — dosage, interactions, antidote en un coup d'œil](docs/screenshot_drugs.png)
+![Fiche médicament — monographie, patients concernés, notes datées](docs/screenshot_drugs.png)
 
-![Agenda — prochains rendez-vous groupés par jour](docs/screenshot_agenda.png)
+![Agenda — grille de la semaine, journée détaillée, mini-mois dans le panneau](docs/screenshot_agenda.png)
 
 ## Key features
 
+- **A dockable workspace** — the screen is a notebook between three docks, not one view at a time. Open patients and drug cards become tabs (`Ctrl+Tab` cycles, `Ctrl+W` closes), so two records stay one click apart; a left navigator (`F6`) holds the list the active view is browsing — patients, the drug index, the month — and a right pane (`F1`) holds the team's notes. Both docks resize, remember their state, and take a share of the window rather than a fixed slab. Every view is a grid of Motif panels that reflows with the window instead of a fixed column centred in it.
 - **Instant fuzzy search** — the app launches straight into a global search bar; typing `jndp` finds *Jean Dupont*. No result? The search seamlessly becomes a patient-creation form.
 - **Keyboard-driven workflow** — `Ctrl+F` search, `Enter` select, `Ctrl+N` new interview. Zero loading screens.
 - **Native PDF generation with Typst** — clinical interview templates (BPM/AOD frameworks) are typeset in-process by the embedded [Typst](https://typst.app) engine and handed straight to your PDF viewer or printer. No LaTeX, no HTML-to-PDF wrappers.
 - **Encrypted at rest** — the patient database is a SQLCipher file (256-bit AES). The key is derived from a master password or stored in the OS credential manager. No external APIs, no telemetry.
 - **Billing pipeline state machine** — every interview moves through `Identified → Scheduled → Performed → Report sent → Billed`, so no billable act is ever lost.
-- **Financial dashboard** — monthly billed vs. pending revenue, pipeline funnel, an hourly ROI rate computed from time spent, and the upcoming appointments (overdue ones flagged, phone numbers shown, printable as an A4 list) with one-click access to the patient.
+- **Financial dashboard** — a grid of panels: indicator tiles that carry a revenue sparkline, the pipeline as a horizontal-bar funnel, monthly billed vs. pending revenue as gridded and axis-labelled bars, the act mix as a stacked composition bar over per-theme bars reporting their yearly quota, a 28-day load heat strip, and the upcoming appointments (overdue ones flagged, phone numbers shown, printable as an A4 list) with one-click access to the patient.
 - **Compact date entry** — dates are typed the fast way: `230826`, `2308`, or the full `23/08/2026`; birth dates and appointment dates expand two-digit years sensibly (past vs. 20xx).
 - **Automatic daily backups** — after each unlock, a consistent encrypted snapshot is kept in `backups/` next to the database (14 most recent).
 - **CSV export** — one click on the dashboard writes every interview (patient, dates, duration, fee) to a French-Excel-friendly CSV for billing reconciliation with the LGO.
 - **Portable** — a single standalone executable for Windows, macOS, and Linux. The database path is configurable, so it can live on a secure pharmacy network drive.
 - **Auto-updating launcher** — `bpm-caddy-launcher` checks GitHub Releases on startup, downloads the latest version if needed (with an offline fallback to the installed copy), then starts the app. Install the launcher once; the app stays current.
-- **Team documentation pane** — a docked, editable French documentation panel (`F1` to toggle) with auto-save, for shared day-to-day notes and team syncing at the counter. One click stamps a succinct entry header (date · operator · current patient).
+- **Team documentation pane** — the right dock (`F1` to toggle), an editable French documentation panel with auto-save, for shared day-to-day notes and team syncing at the counter. One click stamps a succinct entry header (date · operator · current patient).
 - **Dated note journals** — append-only, author-stamped notes on every patient, every drug, and per-operator personal notes, separate from the shared pane.
 - **Carnet de transmissions** — `F5` opens the end-of-day handover logbook: one page per day, stamped team entries, day-by-day browsing, printable for the binder.
 - **Drug reference base** — `F3` opens the team's shared drug cards (DCI, dosage, interactions, IUP, antidote, notes): two typed letters — brand or DCI — show the essentials at a glance, no match becomes a new card, and any card inserts into the team notes in one click. A fresh base starts with 275 common drugs, every one of them a full monograph — indications, mechanism, posology, contraindications, interactions, adverse effects, monitoring, counselling points, pharmacokinetics and numbered sources — covering the anticoagulants, the inhalers, the narrow-margin drugs, the oral anticancer drugs, the antibiotics and the psychotropes. Every field is editable, and a top-up never overwrites what the team has written. Stored encrypted with the rest.

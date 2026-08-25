@@ -5,6 +5,78 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.43.0] - 2026-08-26
+
+### Added
+- **The workspace.** The screen is a notebook between three docks
+  instead of one view at a time. Open patients and drug cards become
+  tabs — `Ctrl+Tab` cycles, `Ctrl+W` closes, a middle click closes —
+  so two records stay one click apart all day. The active tab is
+  derived from the live view, so reaching a file by any other route
+  (a dashboard row, a search result, Escape) still points the strip at
+  it, and a tab whose patient another post deleted drops itself.
+- **A left navigator dock** (`F6`, `[ui] show_nav_on_start`): the list
+  the active view is browsing, beside the work instead of replacing it
+  — the patient list, the drug index, a mini-month tinted by the day's
+  load, or the carnet's days.
+- **Charts.** `motif::chart` paints bars with a value grid and axis
+  labels, horizontal-bar lists, stacked composition bars, sparklines,
+  segmented meters, calendar heat strips and legends, all in the Motif
+  idiom and all hand-painted.
+- **A home screen.** An empty query used to draw every patient in a box
+  down the middle of the screen. Until something is typed, the search
+  view now shows the day: today's rendez-vous and whatever is overdue,
+  the files the team touched last, and what was written today.
+
+### Changed
+- **The dashboard is a grid of panels that reflows with the window** —
+  two lanes wide, one narrow, packed shortest-lane-first — rather than
+  a 900 px column three screens tall. Indicator tiles size their figure
+  to fit and carry a revenue sparkline; the pipeline is a proper funnel;
+  monthly revenue is gridded, axis-labelled and legended, with a
+  per-month tooltip; the act mix is a stacked bar over per-theme bars
+  that report their yearly quota; and a 28-day heat strip puts a month
+  of work in one strip of pixels.
+- **The patient fiche is an identity band over a table-and-journal
+  split.** The acts table — the reason to open a fiche at all — used to
+  begin below the fold under the name, the buttons, the treatments,
+  eleven act buttons and the journal. It now takes the width it needs
+  and scrolls both ways instead of losing its right-hand columns
+  silently, and the journal sits beside it when there is room.
+- **The agenda is a control band over a calendar-and-day split.** One
+  set of ‹ Aujourd'hui › buttons serves all three modes, the calendar
+  fills the height it is given, and the selected day and the queue of
+  rendez-vous are panels beside it.
+- **The drug card reads at 860 px** with its recall list and its dated
+  notes as panels outside the monograph's scroll — a column beside it
+  when the window is wide, a band under it otherwise. The base's title
+  block is drawn for the index only, not over an open card.
+- The conversion tables use the width their cells need instead of a
+  940 px cap, so "Formes et dosages usuels" stops wrapping to four
+  lines with a quarter of the screen empty beside it.
+- The toolbar's five view buttons are gone: they said what you could
+  reach but never where you were. The notebook says both.
+
+### Fixed
+- The posology editor hard-coded 190/230/210 px for its three fields,
+  which pushed "Remarque" off the card as soon as a dock was open. The
+  three now share what the card has.
+- The monograph sheet measures against the visible width rather than
+  the width the panel claimed, so it stops losing its right margin —
+  and with it the right-hand column of the posology table — to an open
+  dock.
+- Every band that measures its own content is capped and scrolls past
+  its share, and every wrapped row is measured rather than assumed to
+  be one line: the agenda's filters no longer lose their last act
+  kinds, and the patient's act buttons no longer crowd out the panes
+  beneath them.
+- The docks take a share of the window rather than a fixed slab. At
+  1024 px a 232 px navigator and a 340 px notes pane left the work
+  itself 430 px, narrower than either of them.
+- The screenshot script runs against a throwaway configuration: discreet
+  mode was masking every figure it shot, and the run rewrote the
+  operator's own `config.toml`.
+
 ## [0.42.0] - 2026-08-25
 
 ### Fixed

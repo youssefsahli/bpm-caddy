@@ -213,6 +213,9 @@ impl Default for DatabaseConfig {
 #[serde(default)]
 pub struct UiConfig {
     pub show_docs_on_start: bool,
+    /// Open the left navigator dock (the patient / drug / month list)
+    /// on start. Off on a small screen, on at a wide counter.
+    pub show_nav_on_start: bool,
     /// Text scale, 1.0 being the design size. The counter screen is
     /// often far from the eye; the tablet is often small.
     pub text_scale: f32,
@@ -241,6 +244,7 @@ impl Default for UiConfig {
     fn default() -> Self {
         Self {
             show_docs_on_start: true,
+            show_nav_on_start: true,
             text_scale: 1.0,
             density: "confortable".to_owned(),
             icons: false,

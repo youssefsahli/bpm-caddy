@@ -25,6 +25,43 @@ toolbar_paths = "Base : {}\nConfiguration : {}"
 toolbar_template = "Modèles…"
 toolbar_options = "Options…"
 toolbar_trans = "Carnet (F5)"
+toolbar_nav = "Liste"
+toolbar_nav_tooltip = "Afficher ou masquer la liste de gauche (F6)"
+toolbar_docs_tooltip = "Afficher ou masquer le panneau de droite (F1)"
+
+# --- Onglets de l'espace de travail ---
+tab_dashboard = "Tableau"
+tab_search = "Recherche"
+tab_agenda = "Agenda"
+tab_carnet = "Carnet"
+tab_drugs = "Médicaments"
+tab_missing = "(supprimé)"
+
+# --- Panneau de navigation (gauche) ---
+nav_patients = "Patients"
+nav_drugs = "Médicaments"
+nav_filter = "Filtrer"
+nav_next = "Prochains RDV"
+nav_days = "Journées"
+nav_month = "Mois"
+home_today = "Aujourd'hui"
+home_today_empty = "Rien pour aujourd'hui — et rien en retard."
+nav_search_hint = "Rechercher un patient…"
+nav_count = "{} résultat(s)"
+
+# --- Tableau de bord : nouveaux libellés ---
+dash_discreet_tooltip = "Afficher ou masquer les montants"
+dash_acts_n = "{} acte(s)"
+dash_of_n = "sur {}"
+dash_minutes = "{} min"
+dash_legend_billed = "Facturé"
+dash_legend_pending = "En attente"
+dash_monthly_tooltip = "{} — facturé {} €, en attente {} €"
+dash_kind_quota = "Code {} · {} acte(s) · quota {}/an"
+dash_rdv_empty = "Aucun rendez-vous planifié."
+dash_load_caption = "Charge des 28 prochains jours"
+dash_load_tooltip = "{} — {} rendez-vous"
+drug_patients_none = "Aucun patient n'a ce médicament dans ses traitements."
 
 # --- Carnet de transmissions ---
 trans_title = "Carnet de transmissions"
