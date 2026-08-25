@@ -2116,9 +2116,21 @@ impl App {
                                 session.db.month_grid(0).unwrap_or_default();
                             session.view = MainView::Agenda;
                         }
-                        Ok("protocols") => {
+                        Ok(v @ ("protocols" | "protocol_open")) => {
                             session.show_protocols = true;
                             session.protocols = session.db.protocols().unwrap_or_default();
+                            if v == "protocol_open" {
+                                if let Some(p) = session.protocols.first().cloned() {
+                                    session.protocol_nodes =
+                                        session.db.protocol_nodes(p.id).unwrap_or_default();
+                                    session.protocol_open = Some(p);
+                                }
+                            }
+                            session.view = MainView::Drugs;
+                        }
+                        Ok("calc") => {
+                            session.show_tables = true;
+                            session.calc_open = true;
                             session.view = MainView::Drugs;
                         }
                         Ok("tables") => {
@@ -4206,7 +4218,7 @@ impl App {
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
         // Where each accompaniment stands, above the rows it summarises.
-        Self::patient_sequences(ui, &interviews, &ranks, config);
+        Self::patient_sequences(ui, &interviews, &ranks, config, session.show_amounts);
         // The table is wide by nature — ten columns, most of them
         // buttons. It scrolls both ways rather than losing its right
         // hand columns silently to whatever width the pane happens to
@@ -4649,6 +4661,7 @@ impl App {
         interviews: &[Interview],
         ranks: &std::collections::HashMap<i64, (usize, usize)>,
         config: &Config,
+        show_amounts: bool,
     ) {
         // For each kind, the newest year reached and how many acts of
         // that year are on file.
@@ -4738,6 +4751,37 @@ impl App {
                 } else {
                     motif::TEXT
                 },
+            );
+        }
+        // What the file has brought in, and what is still owed on it.
+        // The dashboard totals the officine; this totals the patient,
+        // which is the figure the accompaniment is actually judged on.
+        let fee = |itv: &Interview| {
+            let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
+            config.act_total(itv.kind, year, rank, itv.remote)
+        };
+        let billed: f64 = interviews
+            .iter()
+            .filter(|i| i.state == InterviewState::Billed)
+            .map(fee)
+            .sum();
+        let pending: f64 = interviews
+            .iter()
+            .filter(|i| i.state != InterviewState::Billed)
+            .map(fee)
+            .sum();
+        if billed > 0.0 || pending > 0.0 {
+            let money = |v: f64| {
+                if config.ui.discreet_finances && !show_amounts {
+                    "•••".to_owned()
+                } else {
+                    format!("{v:.0}")
+                }
+            };
+            ui.label(
+                egui::RichText::new(trn("seq_totals", &[&money(billed), &money(pending)]))
+                    .size(11.0)
+                    .color(motif::TEXT_DIM),
             );
         }
         ui.add_space(6.0);
@@ -6983,7 +7027,14 @@ impl App {
                 }
             });
             ui.add_space(12.0);
-
+        });
+        // The calculators sit above the table, not a page below it: the
+        // button that opens them is up here, and a tool you asked for
+        // should not have to be scrolled to.
+        if session.calc_open {
+            Self::calc_panel(ui, session);
+        }
+        motif::page(ui, 1500.0, |ui| {
             let t =
                 &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
             ui.label(egui::RichText::new(t.title).strong().size(15.0));
@@ -7195,9 +7246,6 @@ impl App {
             }
             session.table_cells.clear();
             session.table_undo = None;
-        }
-        if session.calc_open {
-            Self::calc_panel(ui, session);
         }
         if let Some(err) = &session.error {
             ui.vertical_centered(|ui| {

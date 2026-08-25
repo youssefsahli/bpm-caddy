@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.47.0] - 2026-08-26
+
+### Added
+- The patient file totals itself: what the accompaniment has brought in
+  and what is still owed on it, under the sequence strip. The dashboard
+  totals the officine; nothing totalled the file in front of you. Masked
+  with the rest of the figures in discreet mode.
+
+### Fixed
+- The protocol tree's branch markers used an arrow the bundled
+  proportional face has no glyph for, so every "Oui" and "Non" in a
+  decision tree was followed by a tofu box.
+- « Calculs » drew its panel a full page below the table it sits under,
+  so a tool just asked for had to be scrolled to. It is drawn directly
+  under the table selector now.
+
+### Changed
+- `BPM_CADDY_START_VIEW` reaches the calculators and an open protocol,
+  and `scripts/smoke.sh` covers both.
+
 ## [0.46.0] - 2026-08-26
 
 ### Added
