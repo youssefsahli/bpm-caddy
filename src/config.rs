@@ -30,6 +30,10 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # density = "confortable"
 # Pictogrammes dans la barre d'outils.
 # icons = false
+# Police de l'interface (fichier .ttf ou .otf ; vide = police intégrée).
+# font_path = "C:/Windows/Fonts/segoeui.ttf"
+# Contenu du panneau de droite au démarrage : "docs", "carnet" ou "notes".
+# side_pane = "docs"
 # Masquer les montants du tableau de bord (mode discret au comptoir).
 # discreet_finances = true
 # Initiales de l'opérateur par défaut pour les entrées de notes.
@@ -203,6 +207,12 @@ pub struct UiConfig {
     pub density: String,
     /// Draw the small pictograms next to the toolbar labels.
     pub icons: bool,
+    /// A TrueType file to use for the whole interface. Empty keeps the
+    /// embedded family; a bad path falls back to it too.
+    pub font_path: Option<PathBuf>,
+    /// Which content the right pane shows on start: "docs", "carnet"
+    /// or "notes".
+    pub side_pane: String,
     /// Mask revenue amounts on the dashboard until explicitly revealed,
     /// so figures are not readable over a shoulder at the counter.
     pub discreet_finances: bool,
@@ -217,6 +227,8 @@ impl Default for UiConfig {
             text_scale: 1.0,
             density: "confortable".to_owned(),
             icons: false,
+            font_path: None,
+            side_pane: "docs".to_owned(),
             discreet_finances: true,
             operator: String::new(),
         }

@@ -1242,6 +1242,8 @@ pub struct App {
     last_activity: Instant,
     remember_password: bool,
     show_docs: bool,
+    /// Which content the right pane shows: "docs", "carnet", "notes".
+    side_pane: String,
     doc_text: String,
     doc_dirty: bool,
     doc_last_edit: Instant,
@@ -1415,6 +1417,7 @@ impl App {
         } else {
             None
         };
+        let side_pane = config.ui.side_pane.clone();
         Self {
             state,
             operator: config.ui.operator.clone(),
@@ -1422,6 +1425,7 @@ impl App {
             last_activity: Instant::now(),
             remember_password,
             show_docs,
+            side_pane,
             doc_base: doc_text.clone(),
             doc_text,
             doc_dirty: false,
@@ -1473,6 +1477,100 @@ impl App {
         }
     }
 
+    /// The pane showing the day's carnet: read the entries, add one.
+    fn side_carnet(&mut self, ui: &mut egui::Ui) {
+        let op = self.operator.trim().to_owned();
+        let State::Unlocked(session) = &mut self.state else {
+            return;
+        };
+        if session.trans_day.is_empty() {
+            session.load_transmissions();
+        }
+        let title = db::weekday_fr(&session.trans_day)
+            .map(|d| {
+                format!(
+                    "{}{} {}",
+                    d.chars()
+                        .next()
+                        .map(|c| c.to_uppercase().to_string())
+                        .unwrap_or_default(),
+                    d.chars().skip(1).collect::<String>(),
+                    db::format_french_date(&session.trans_day)
+                )
+            })
+            .unwrap_or_default();
+        ui.label(egui::RichText::new(title).strong());
+        ui.add_space(4.0);
+        let is_today = session.trans_day == session.today;
+        let (add, delete) = notes_box(
+            ui,
+            "side_carnet",
+            &session.trans_notes,
+            &mut session.note_text,
+            &mut session.note_confirm,
+            ui.available_height() - 60.0,
+            is_today,
+        );
+        if let Some(body) = add {
+            if let Err(e) = session
+                .db
+                .add_note(NoteSubject::Transmission, 0, &op, &body)
+            {
+                session.error = Some(e);
+            }
+            session.note_text.clear();
+            session.load_transmissions();
+        }
+        if let Some(id) = delete {
+            let _ = session.db.delete_note(id);
+            session.load_transmissions();
+        }
+    }
+
+    /// The pane showing only the operator's personal notes, with room.
+    fn side_operator_notes(&mut self, ui: &mut egui::Ui) {
+        let op = self.operator.trim().to_owned();
+        if op.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("op_notes_missing"))
+                    .size(11.0)
+                    .color(motif::BG_DARK),
+            );
+            return;
+        }
+        ui.label(egui::RichText::new(trf("op_notes_section", &op)).strong());
+        ui.add_space(4.0);
+        let (add, delete) = notes_box(
+            ui,
+            "side_op_notes",
+            &self.op_notes,
+            &mut self.op_note_text,
+            &mut self.op_note_confirm,
+            ui.available_height() - 60.0,
+            true,
+        );
+        if let State::Unlocked(session) = &self.state {
+            let mut changed = false;
+            if let Some(body) = add {
+                if session
+                    .db
+                    .add_note(NoteSubject::Operator, 0, &op, &body)
+                    .is_ok()
+                {
+                    changed = true;
+                }
+                self.op_note_text.clear();
+            }
+            if let Some(id) = delete {
+                let _ = session.db.delete_note(id);
+                changed = true;
+            }
+            if changed {
+                self.op_notes = session.db.notes_for_operator(&op).unwrap_or_default();
+            }
+        }
+    }
+
     fn docs_pane(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("team_docs")
             .resizable(true)
@@ -1480,6 +1578,38 @@ impl App {
             .min_width(240.0)
             .show(ctx, |ui| {
                 ui.add_space(6.0);
+                // One pane, three contents: the shared documentation,
+                // the day's carnet, or the operator's own notes.
+                ui.horizontal(|ui| {
+                    for (value, label) in [
+                        ("docs", tr("docs_title")),
+                        ("carnet", tr("trans_title")),
+                        ("notes", tr("side_pane_notes")),
+                    ] {
+                        if ui
+                            .selectable_label(self.side_pane == value, label)
+                            .on_hover_text(tr("side_pane_switch"))
+                            .clicked()
+                        {
+                            self.side_pane = value.to_owned();
+                            if value == "carnet" {
+                                if let State::Unlocked(session) = &mut self.state {
+                                    session.trans_day.clear();
+                                    session.load_transmissions();
+                                }
+                            }
+                        }
+                    }
+                });
+                ui.add_space(4.0);
+                if self.side_pane == "carnet" {
+                    self.side_carnet(ui);
+                    return;
+                }
+                if self.side_pane == "notes" {
+                    self.side_operator_notes(ui);
+                    return;
+                }
                 ui.heading(tr("docs_title"));
                 let status = if let Some(err) = &self.doc_error {
                     err.clone()
@@ -4916,53 +5046,61 @@ impl App {
         if !session.recent.is_empty() || !session.today_notes.is_empty() {
             motif::column(ui, 900.0, |ui| {
                 ui.columns(2, |cols| {
-                    let ui = &mut cols[0];
-                    motif::section(ui, tr("dash_recent"));
-                    ui.add_space(4.0);
-                    if session.recent.is_empty() {
-                        ui.label(
-                            egui::RichText::new(tr("dash_recent_empty"))
-                                .size(11.0)
-                                .color(motif::BG_DARK),
-                        );
-                    }
-                    for (p, moved) in &session.recent {
-                        ui.horizontal(|ui| {
-                            if ui
-                                .selectable_label(false, p.full_name())
-                                .on_hover_text(tr("dash_open_patient"))
-                                .clicked()
-                            {
-                                open_recent = Some(p.clone());
-                            }
+                    // `columns` justifies its children, which stretches
+                    // the spaces of wrapped text: keep a plain top-down
+                    // layout for these two lists.
+                    let left = egui::Layout::top_down(egui::Align::LEFT);
+                    cols[0].with_layout(left, |ui| {
+                        motif::section(ui, tr("dash_recent"));
+                        ui.add_space(4.0);
+                        if session.recent.is_empty() {
                             ui.label(
-                                egui::RichText::new(db::format_french_date(
-                                    &moved[..10.min(moved.len())],
-                                ))
-                                .size(11.0)
-                                .color(motif::BG_DARK),
+                                egui::RichText::new(tr("dash_recent_empty"))
+                                    .size(11.0)
+                                    .color(motif::BG_DARK),
                             );
-                        });
-                    }
-                    let ui = &mut cols[1];
-                    motif::section(ui, tr("dash_today_notes"));
-                    ui.add_space(4.0);
-                    if session.today_notes.is_empty() {
-                        ui.label(
-                            egui::RichText::new(tr("dash_today_notes_empty"))
-                                .size(11.0)
-                                .color(motif::BG_DARK),
-                        );
-                    }
-                    for note in session.today_notes.iter().take(6) {
-                        ui.label(
-                            egui::RichText::new(note.stamp())
-                                .size(10.0)
-                                .color(operator_color(&note.operator)),
-                        );
-                        ui.label(egui::RichText::new(&note.body).size(12.0));
-                        ui.add_space(2.0);
-                    }
+                        }
+                        for (p, moved) in &session.recent {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .selectable_label(false, p.full_name())
+                                    .on_hover_text(tr("dash_open_patient"))
+                                    .clicked()
+                                {
+                                    open_recent = Some(p.clone());
+                                }
+                                ui.label(
+                                    egui::RichText::new(db::format_french_date(
+                                        &moved[..10.min(moved.len())],
+                                    ))
+                                    .size(11.0)
+                                    .color(motif::BG_DARK),
+                                );
+                            });
+                        }
+                    });
+                    cols[1].with_layout(left, |ui| {
+                        motif::section(ui, tr("dash_today_notes"));
+                        ui.add_space(4.0);
+                        if session.today_notes.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("dash_today_notes_empty"))
+                                    .size(11.0)
+                                    .color(motif::BG_DARK),
+                            );
+                        }
+                        for note in session.today_notes.iter().take(6) {
+                            ui.label(
+                                egui::RichText::new(note.stamp())
+                                    .size(10.0)
+                                    .color(operator_color(&note.operator)),
+                            );
+                            ui.add(
+                                egui::Label::new(rich_text(&note.body, 12.0, motif::TEXT)).wrap(),
+                            );
+                            ui.add_space(2.0);
+                        }
+                    });
                 });
             });
             ui.add_space(14.0);
@@ -5772,6 +5910,68 @@ impl eframe::App for App {
                                         egui::Slider::new(&mut editor.cfg.ui.text_scale, 0.8..=1.6)
                                             .fixed_decimals(2)
                                             .suffix(" x"),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_font")));
+                                    ui.horizontal(|ui| {
+                                        let mut shown = editor
+                                            .cfg
+                                            .ui
+                                            .font_path
+                                            .as_ref()
+                                            .map(|p| p.display().to_string())
+                                            .unwrap_or_default();
+                                        if ui
+                                            .add_sized(
+                                                [220.0, 24.0],
+                                                egui::TextEdit::singleline(&mut shown)
+                                                    .hint_text(tr("opts_font_default")),
+                                            )
+                                            .changed()
+                                        {
+                                            editor.cfg.ui.font_path = if shown.trim().is_empty() {
+                                                None
+                                            } else {
+                                                Some(std::path::PathBuf::from(shown.trim()))
+                                            };
+                                        }
+                                        if motif::button(ui, tr("opts_db_browse")).clicked() {
+                                            if let Some(p) = rfd::FileDialog::new()
+                                                .add_filter("Police", &["ttf", "otf", "TTF", "OTF"])
+                                                .pick_file()
+                                            {
+                                                editor.cfg.ui.font_path = Some(p);
+                                            }
+                                        }
+                                        if motif::button(ui, tr("tpl_reset")).clicked() {
+                                            editor.cfg.ui.font_path = None;
+                                        }
+                                    });
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_side_pane")));
+                                    ui.horizontal(|ui| {
+                                        for (value, label) in [
+                                            ("docs", tr("docs_title")),
+                                            ("carnet", tr("trans_title")),
+                                            ("notes", tr("side_pane_notes")),
+                                        ] {
+                                            if ui
+                                                .selectable_label(
+                                                    editor.cfg.ui.side_pane == value,
+                                                    label,
+                                                )
+                                                .clicked()
+                                            {
+                                                editor.cfg.ui.side_pane = value.to_owned();
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_font_note")));
+                                    ui.label(
+                                        egui::RichText::new(tr("opts_restart"))
+                                            .size(11.0)
+                                            .color(motif::BG_DARK),
                                     );
                                     ui.end_row();
                                     ui.label(dim(tr("opts_density")));

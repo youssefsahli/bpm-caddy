@@ -26,6 +26,24 @@ fn window_size() -> [f32; 2] {
     }
 }
 
+/// Load a TrueType/OpenType file and make it the default family.
+fn install_font(ctx: &egui::Context, path: &std::path::Path) -> Result<(), String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let mut fonts = egui::FontDefinitions::default();
+    fonts
+        .font_data
+        .insert("custom".to_owned(), egui::FontData::from_owned(bytes));
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts
+            .families
+            .entry(family)
+            .or_default()
+            .insert(0, "custom".to_owned());
+    }
+    ctx.set_fonts(fonts);
+    Ok(())
+}
+
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -40,6 +58,13 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| {
             motif::apply(&cc.egui_ctx);
+            // A font chosen in the options replaces the embedded family
+            // for the whole interface; anything unreadable is ignored.
+            if let Some(path) = config::Config::load().ui.font_path {
+                if let Err(e) = install_font(&cc.egui_ctx, &path) {
+                    eprintln!("police {} ignorée : {e}", path.display());
+                }
+            }
             Ok(Box::new(app::App::new()))
         }),
     )
