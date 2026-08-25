@@ -527,6 +527,47 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[d
             ];
             if pk.iter().any(|(_, v)| !v.trim().is_empty()) {
                 mono_heading(ui, width, tr("drug_sec_pk"));
+                // The half-life as a shape, not only as a sentence:
+                // how much is left a day after the last dose is the
+                // question behind "puis-je opérer / relayer / arrêter",
+                // and reading it off "≈ 12 heures" is arithmetic the
+                // counter should not have to do.
+                if let Some(hl) = parse_hours(&d.half_life) {
+                    if hl > 0.0 {
+                        let span = (hl * 5.0).clamp(6.0, 240.0);
+                        let steps = 60;
+                        let curve: Vec<f64> = (0..=steps)
+                            .map(|i| {
+                                let t = span * i as f64 / steps as f64;
+                                100.0 * 0.5_f64.powf(t / hl)
+                            })
+                            .collect();
+                        let (rect, resp) = ui.allocate_exact_size(
+                            egui::vec2(width.min(320.0), 44.0),
+                            egui::Sense::hover(),
+                        );
+                        motif::chart::sparkline(ui, rect.shrink(2.0), &curve, motif::ACCENT);
+                        ui.painter().rect_stroke(
+                            rect,
+                            0.0,
+                            egui::Stroke::new(0.8_f32, motif::INK_LIGHT),
+                        );
+                        let caption = trn(
+                            "drug_decay_caption",
+                            &[
+                                &format!("{:.0}", span),
+                                &format!("{:.0}", 100.0 * 0.5_f64.powf(24.0 / hl)),
+                            ],
+                        );
+                        ui.label(
+                            egui::RichText::new(caption)
+                                .size(10.0)
+                                .color(motif::INK_LIGHT),
+                        );
+                        resp.on_hover_text(trf("drug_decay_tooltip", format!("{hl:.1}")));
+                        ui.add_space(4.0);
+                    }
+                }
                 egui::Grid::new(("mono_pk", d.id))
                     .num_columns(2)
                     .spacing([14.0, 5.0])
@@ -644,6 +685,17 @@ fn rank_label(rank: usize) -> String {
 /// A compact dated-notes journal: sunken scroll list ("24/08 14:32 ·
 /// CL" then the body, with a two-step "×"), and an add row below.
 /// Returns (body to add, note id to delete).
+/// The height [`notes_box`] needs under its well for the "add" row.
+/// Derived from the style so a bigger text scale does not push the
+/// button through the bottom of its panel.
+fn notes_box_reserve(ui: &egui::Ui) -> f32 {
+    // The field, the button's own padding, the gap the box leaves under
+    // its well, and the row spacing either side of it.
+    let button =
+        ui.text_style_height(&egui::TextStyle::Button) + ui.spacing().button_padding.y * 2.0 + 2.0;
+    ui.spacing().interact_size.y.max(button) + ui.spacing().item_spacing.y + 10.0
+}
+
 fn notes_box(
     ui: &mut egui::Ui,
     id_salt: &str,
@@ -657,13 +709,25 @@ fn notes_box(
     let mut delete: Option<i64> = None;
     let w = ui.available_width();
     let top = ui.cursor().top();
+    // `height` is what the well would like; what it gets is what is
+    // left after the "add" row drawn under it. Callers used to subtract
+    // that themselves and got it wrong in both directions — grey under
+    // a short box, a clipped button under a tall one.
+    let budget = ui.max_rect().bottom() - top;
+    let reserve = if with_add { notes_box_reserve(ui) } else { 0.0 };
+    let height = height.min(budget - reserve).max(28.0);
     let rect =
         egui::Rect::from_min_size(egui::pos2(ui.cursor().left(), top), egui::vec2(w, height));
     ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
     motif::bevel(ui.painter(), rect, false);
-    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect.shrink(5.0)), |ui| {
+    // Clipped to the well it sits in. `allocate_new_ui` only sets a max
+    // rect, and egui paints past that; an over-full journal therefore
+    // spilled its last entries under the frame and pushed the "add" row
+    // through the bottom edge of the panel.
+    motif::inside(ui, rect.shrink(5.0), |ui| {
         egui::ScrollArea::vertical()
             .id_salt(id_salt)
+            .max_height(rect.height() - 10.0)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 if notes.is_empty() {
@@ -712,8 +776,7 @@ fn notes_box(
                 }
             });
     });
-    let below = (rect.bottom() - ui.cursor().top()).max(0.0) + 6.0;
-    ui.add_space(below);
+    ui.add_space(6.0);
     if with_add {
         ui.horizontal(|ui| {
             let field_w = (ui.available_width() - 100.0).max(120.0);
@@ -1860,6 +1923,8 @@ pub struct App {
     /// (patients, drugs, the month), always in reach instead of taking
     /// the whole screen every time you need the next file (F6).
     show_nav: bool,
+    /// The keyboard reference (F12), open or not.
+    show_keys: bool,
     /// Which content the right pane shows: "docs", "carnet", "notes".
     side_pane: String,
     doc_text: String,
@@ -1893,7 +1958,42 @@ pub struct App {
 }
 
 /// In-app editor for `config.toml`.
+/// The Options dialog's pages. A single scroll held every one of them,
+/// five screens deep, so a fee matrix and an auto-lock timeout were the
+/// same distance from the top.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OptionsPage {
+    Pharmacy,
+    Ui,
+    Database,
+    Fees,
+    Rules,
+}
+
+impl OptionsPage {
+    const ALL: [OptionsPage; 5] = [
+        Self::Pharmacy,
+        Self::Ui,
+        Self::Database,
+        Self::Fees,
+        Self::Rules,
+    ];
+    /// The tab's own short label: the section headings inside run to a
+    /// full sentence ("Règles (actes / année d'accompagnement…)"), which
+    /// is a heading, not a tab.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Pharmacy => tr("opts_tab_pharmacy"),
+            Self::Ui => tr("opts_tab_ui"),
+            Self::Database => tr("opts_tab_db"),
+            Self::Fees => tr("opts_tab_fees"),
+            Self::Rules => tr("opts_tab_rules"),
+        }
+    }
+}
+
 struct OptionsEditor {
+    page: OptionsPage,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     cfg: Config,
@@ -1980,6 +2080,27 @@ impl App {
                             session.refresh_dashboard();
                             session.view = MainView::Agenda;
                         }
+                        // The agenda's three modes are session state, so
+                        // a screenshot of the day plan or the month grid
+                        // needs its own hook.
+                        Ok("agenda_day") => {
+                            session.refresh_dashboard();
+                            session.agenda_mode = AgendaMode::Day;
+                            session.view = MainView::Agenda;
+                        }
+                        Ok("agenda_month") => {
+                            session.refresh_dashboard();
+                            session.agenda_mode = AgendaMode::Month;
+                            session.agenda_month = true;
+                            session.agenda_month_days =
+                                session.db.month_grid(0).unwrap_or_default();
+                            session.view = MainView::Agenda;
+                        }
+                        Ok("protocols") => {
+                            session.show_protocols = true;
+                            session.protocols = session.db.protocols().unwrap_or_default();
+                            session.view = MainView::Drugs;
+                        }
                         Ok("tables") => {
                             session.show_tables = true;
                             session.view = MainView::Drugs;
@@ -2035,6 +2156,7 @@ impl App {
         };
         let options = if start_view == "options" {
             Some(OptionsEditor {
+                page: OptionsPage::Pharmacy,
                 cfg: config.clone(),
                 db_path_text: String::new(),
                 message: None,
@@ -2052,6 +2174,7 @@ impl App {
             remember_password,
             show_docs,
             show_nav,
+            show_keys: start_view == "keys",
             side_pane,
             doc_base: doc_text.clone(),
             doc_text,
@@ -2564,15 +2687,21 @@ impl App {
                 } else {
                     tr("docs_saved").to_owned()
                 };
-                ui.label(status);
-                ui.add_space(4.0);
                 // Succinct entries: one click stamps date · operator ·
                 // current patient. The timestamp is only queried on
                 // click, never per frame.
                 let unlocked = matches!(self.state, State::Unlocked(_));
-                ui.horizontal(|ui| {
-                    ui.label(tr("docs_operator"));
-                    ui.add_sized([46.0, 22.0], egui::TextEdit::singleline(&mut self.operator));
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(status).size(11.0).color(
+                        if self.doc_error.is_some() {
+                            motif::ALERT
+                        } else {
+                            motif::TEXT_DIM
+                        },
+                    ));
+                    ui.add_space(4.0);
+                    ui.add_sized([46.0, 22.0], egui::TextEdit::singleline(&mut self.operator))
+                        .on_hover_text(tr("docs_operator"));
                     if unlocked
                         && motif::button(ui, tr("docs_stamp"))
                             .on_hover_text(tr("docs_stamp_tooltip"))
@@ -2600,10 +2729,17 @@ impl App {
                 });
                 ui.add_space(4.0);
 
+                // The operator's own journal only claims room when there
+                // is an operator to claim it: 185 px were reserved for
+                // it whether or not the field was filled in.
+                let op = self.operator.trim().to_owned();
+                let reserve = if op.is_empty() { 34.0 } else { 185.0 };
                 let mut editor_rect = ui.available_rect_before_wrap().shrink(2.0);
-                editor_rect.set_bottom(editor_rect.bottom() - 185.0);
+                editor_rect
+                    .set_bottom((editor_rect.bottom() - reserve).max(editor_rect.top() + 60.0));
                 motif::bevel(ui.painter(), editor_rect, false);
                 egui::ScrollArea::vertical()
+                    .id_salt("team_doc")
                     .max_height(editor_rect.height())
                     .show(ui, |ui| {
                         let response = ui.add_sized(
@@ -2621,7 +2757,6 @@ impl App {
 
                 // Personal notes of the operator (private journal).
                 ui.add_space(10.0);
-                let op = self.operator.trim().to_owned();
                 if let State::Unlocked(session) = &self.state {
                     if self.op_notes_for.as_deref() != Some(op.as_str()) {
                         self.op_notes = if op.is_empty() {
@@ -2674,6 +2809,93 @@ impl App {
             });
     }
 
+    /// The keyboard reference (F12).
+    ///
+    /// The app is driven from the keyboard — that is the point of it at
+    /// a counter — and until now the only way to learn a key was to be
+    /// told. Every shortcut it answers to, on one page, grouped by what
+    /// it acts on.
+    fn keys_window(&mut self, ctx: &egui::Context) {
+        // (key, what it does). An empty key starts a new group.
+        let rows: [(&str, &str); 22] = [
+            ("", tr("keys_group_workspace")),
+            ("F1", tr("toolbar_docs_tooltip")),
+            ("F6", tr("toolbar_nav_tooltip")),
+            ("F12", tr("keys_this")),
+            ("Ctrl+Tab", tr("keys_next_tab")),
+            ("Ctrl+Shift+Tab", tr("keys_prev_tab")),
+            ("Ctrl+W", tr("keys_close_tab")),
+            ("", tr("keys_group_views")),
+            ("F2", tr("tab_dashboard")),
+            ("F3", tr("tab_drugs")),
+            ("F4", tr("tab_agenda")),
+            ("F5", tr("tab_carnet")),
+            ("Ctrl+F", tr("keys_search")),
+            ("Échap", tr("keys_back")),
+            ("", tr("keys_group_work")),
+            ("↑ ↓", tr("keys_updown")),
+            ("Entrée", tr("keys_enter")),
+            ("Ctrl+N", tr("keys_new_act")),
+            ("1 … 9", tr("keys_act_digit")),
+            ("← →", tr("keys_arrows")),
+            ("", tr("keys_group_dates")),
+            ("230826 · 2308", tr("keys_dates")),
+        ];
+        let mut open = true;
+        egui::Window::new(tr("keys_title"))
+            .collapsible(false)
+            .resizable(false)
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 3.0;
+                egui::Grid::new("keys")
+                    .num_columns(2)
+                    .spacing([18.0, 3.0])
+                    .show(ui, |ui| {
+                        for (key, what) in rows {
+                            if key.is_empty() {
+                                // A group heading spanning both columns.
+                                ui.label("");
+                                ui.label(
+                                    egui::RichText::new(what)
+                                        .size(11.0)
+                                        .strong()
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.end_row();
+                                continue;
+                            }
+                            // The key itself as a keycap: a raised bevel
+                            // in the monospace face, so the eye can scan
+                            // the left column for the one it wants.
+                            let font = egui::FontId::monospace(11.5);
+                            let galley = ui.painter().layout_no_wrap(
+                                key.to_owned(),
+                                font.clone(),
+                                motif::TEXT,
+                            );
+                            let (cap, _) = ui.allocate_exact_size(
+                                egui::vec2(galley.size().x + 14.0, galley.size().y + 8.0),
+                                egui::Sense::hover(),
+                            );
+                            ui.painter().rect_filled(cap, 0.0, motif::BG);
+                            motif::bevel(ui.painter(), cap, true);
+                            ui.painter().galley(
+                                cap.center() - galley.size() / 2.0,
+                                galley,
+                                motif::TEXT,
+                            );
+                            ui.label(egui::RichText::new(what).size(12.0));
+                            ui.end_row();
+                        }
+                    });
+            });
+        if !open {
+            self.show_keys = false;
+        }
+    }
+
     fn unlock_screen(&mut self, ctx: &egui::Context) {
         let db_path = self.config.db_path();
         let mut remember = self.remember_password;
@@ -2683,49 +2905,101 @@ impl App {
         let mut attempt: Option<String> = None;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(140.0);
-                ui.heading("BPM-Caddy");
-                ui.label(tr("lock_subtitle"));
-                ui.add_space(20.0);
+            // A raised Motif dialog box, the way an X login screen has
+            // always looked, rather than four lines of text floating on
+            // a field of grey the size of the window.
+            let screen = ui.max_rect();
+            let w = 420.0_f32.min(screen.width() - 40.0);
+            // Sized from the type scale rather than in fixed pixels: at
+            // 1.4x the unlock button fell out through the bottom edge.
+            let unit = ui.text_style_height(&egui::TextStyle::Body) / 14.0;
+            let h = (if error.is_some() { 246.0 } else { 196.0 }) * unit;
+            let box_rect = egui::Rect::from_center_size(
+                egui::pos2(screen.center().x, screen.center().y - 40.0),
+                egui::vec2(w, h),
+            );
+            // The hard Motif shadow, then the panel itself.
+            ui.painter().rect_filled(
+                box_rect.translate(egui::vec2(5.0, 5.0)),
+                0.0,
+                motif::BG_DARK,
+            );
+            motif::panel(ui, box_rect, None, |ui| {
+                ui.spacing_mut().item_spacing.y = 4.0 * unit;
+                ui.vertical_centered(|ui| {
+                    // The app's own icon, painted: a raised bevel square
+                    // with a sunken accent centre.
+                    let (mark, _) =
+                        ui.allocate_exact_size(egui::vec2(34.0, 34.0), egui::Sense::hover());
+                    ui.painter().rect_filled(mark, 0.0, motif::BG);
+                    motif::bevel(ui.painter(), mark, true);
+                    let inner = mark.shrink(9.0);
+                    ui.painter().rect_filled(inner, 0.0, motif::ACCENT);
+                    motif::bevel(ui.painter(), inner, false);
+                    ui.add_space(4.0);
+                    ui.heading("BPM-Caddy");
+                    ui.label(
+                        egui::RichText::new(tr("lock_subtitle"))
+                            .size(11.5)
+                            .color(motif::TEXT_DIM),
+                    );
+                    ui.add_space(14.0);
 
-                let field = ui.add_sized(
-                    [300.0, 30.0],
-                    egui::TextEdit::singleline(password)
-                        .password(true)
-                        .hint_text(tr("lock_password_hint")),
-                );
-                motif::bevel(ui.painter(), field.rect.expand(2.0), false);
-                // The lock screen holds a single field, so any Enter
-                // press submits. The previous focus-based idiom silently
-                // failed here: pressing Enter makes the field surrender
-                // focus, and the re-focus below then made `lost_focus()`
-                // false again, so Enter did nothing.
-                let submitted = ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if !ctx.wants_keyboard_input() {
-                    field.request_focus();
-                }
+                    let field = ui.add_sized(
+                        [(ui.available_width() - 20.0).min(320.0), 30.0],
+                        egui::TextEdit::singleline(password)
+                            .password(true)
+                            .hint_text(tr("lock_password_hint")),
+                    );
+                    motif::bevel(ui.painter(), field.rect.expand(2.0), false);
+                    // The lock screen holds a single field, so any Enter
+                    // press submits. The previous focus-based idiom
+                    // silently failed here: pressing Enter makes the
+                    // field surrender focus, and the re-focus below then
+                    // made `lost_focus()` false again, so Enter did
+                    // nothing.
+                    let submitted = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    if !ctx.wants_keyboard_input() {
+                        field.request_focus();
+                    }
 
-                ui.add_space(10.0);
-                ui.checkbox(&mut remember, tr("lock_remember"));
-                if (motif::button(ui, tr("lock_unlock")).clicked() || submitted)
-                    && !password.is_empty()
-                {
-                    attempt = Some(password.clone());
-                }
-                if let Some(err) = error {
-                    ui.add_space(8.0);
-                    ui.colored_label(motif::ALERT, err.as_str());
-                }
-                ui.add_space(24.0);
-                // Which database this post opens — misconfigured posts
-                // (wrong network path) are spotted before unlocking.
-                ui.label(
-                    egui::RichText::new(trf("lock_db_path", db_path.display()))
-                        .size(11.0)
-                        .color(motif::TEXT_DIM),
-                );
+                    ui.add_space(10.0);
+                    ui.checkbox(&mut remember, tr("lock_remember"));
+                    ui.add_space(6.0);
+                    if (motif::button(ui, tr("lock_unlock")).clicked() || submitted)
+                        && !password.is_empty()
+                    {
+                        attempt = Some(password.clone());
+                    }
+                    if let Some(err) = error {
+                        ui.add_space(6.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(err.as_str())
+                                    .size(11.5)
+                                    .color(motif::ALERT),
+                            )
+                            .wrap(),
+                        );
+                    }
+                });
             });
+            // Which database this post opens — misconfigured posts
+            // (wrong network path) are spotted before unlocking. Under
+            // the box, where it belongs: it is about the machine, not
+            // about the password.
+            ui.painter().text(
+                egui::pos2(screen.center().x, box_rect.bottom() + 22.0),
+                egui::Align2::CENTER_CENTER,
+                elide(
+                    ui,
+                    &trf("lock_db_path", db_path.display()),
+                    screen.width() - 40.0,
+                    11.0,
+                ),
+                egui::FontId::proportional(11.0),
+                motif::TEXT_DIM,
+            );
         });
 
         self.remember_password = remember;
@@ -3210,7 +3484,7 @@ impl App {
             });
         } else {
             // Narrow: the journal goes under the table, still in view.
-            let notes_h = (work.height() * 0.34).clamp(140.0, 260.0);
+            let notes_h = (work.height() * 0.34).clamp(170.0, 280.0);
             let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
             motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
                 Self::patient_acts_pane(ui, session, patient, config);
@@ -3813,6 +4087,8 @@ impl App {
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
+        // Where each accompaniment stands, above the rows it summarises.
+        Self::patient_sequences(ui, &interviews, &ranks, config);
         // The table is wide by nature — ten columns, most of them
         // buttons. It scrolls both ways rather than losing its right
         // hand columns silently to whatever width the pane happens to
@@ -4243,6 +4519,112 @@ impl App {
         }
     }
 
+    /// Where each of the patient's accompaniments stands: one row per
+    /// act kind, with the current année d'accompagnement and its
+    /// sequence as filled squares.
+    ///
+    /// The table below says what was done; this says what is left to do
+    /// and what is still billable, which is the question the counter
+    /// actually asks and had to answer by counting rows.
+    fn patient_sequences(
+        ui: &mut egui::Ui,
+        interviews: &[Interview],
+        ranks: &std::collections::HashMap<i64, (usize, usize)>,
+        config: &Config,
+    ) {
+        // For each kind, the newest year reached and how many acts of
+        // that year are on file.
+        let mut by_kind: Vec<(InterviewKind, usize, usize)> = Vec::new();
+        for kind in InterviewKind::ALL {
+            let mut year = 0_usize;
+            let mut seen = false;
+            for itv in interviews.iter().filter(|i| i.kind == kind) {
+                if let Some((y, _)) = ranks.get(&itv.id) {
+                    year = year.max(*y);
+                    seen = true;
+                }
+            }
+            if !seen {
+                continue;
+            }
+            let done = interviews
+                .iter()
+                .filter(|i| i.kind == kind && ranks.get(&i.id).is_some_and(|(y, _)| *y == year))
+                .count();
+            by_kind.push((kind, year, done));
+        }
+        if by_kind.is_empty() {
+            return;
+        }
+        let row_h = 18.0;
+        // Wide enough for the longest sequence on file, and no wider:
+        // the count sits against its pips, not at the far right of a
+        // strip the width of the pane.
+        let widest = by_kind
+            .iter()
+            .map(|(k, y, _)| config.sequence_len(*k, *y))
+            .max()
+            .unwrap_or(1)
+            .max(1);
+        let width = (250.0 + 15.0 * widest as f32 + 56.0).min(ui.available_width());
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(width, by_kind.len() as f32 * row_h + 4.0),
+            egui::Sense::hover(),
+        );
+        for (i, (kind, year, done)) in by_kind.iter().enumerate() {
+            let line = egui::Rect::from_min_size(
+                egui::pos2(rect.left(), rect.top() + i as f32 * row_h),
+                egui::vec2(rect.width(), row_h),
+            );
+            let swatch = egui::Rect::from_min_size(
+                egui::pos2(line.left(), line.center().y - 5.0),
+                egui::vec2(4.0, 10.0),
+            );
+            ui.painter().rect_filled(swatch, 0.0, kind_color(*kind));
+            ui.painter().text(
+                egui::pos2(line.left() + 12.0, line.center().y),
+                egui::Align2::LEFT_CENTER,
+                elide(ui, kind.label(), 150.0, 11.5),
+                egui::FontId::proportional(11.5),
+                motif::TEXT,
+            );
+            ui.painter().text(
+                egui::pos2(line.left() + 170.0, line.center().y),
+                egui::Align2::LEFT_CENTER,
+                trf("seq_year", year + 1),
+                egui::FontId::proportional(11.0),
+                motif::TEXT_DIM,
+            );
+            let total = config.sequence_len(*kind, *year);
+            if total == 0 {
+                // No quota configured for this kind: nothing to fill in.
+                continue;
+            }
+            let pips = egui::Rect::from_min_max(
+                egui::pos2(line.left() + 250.0, line.top() + 3.0),
+                egui::pos2(
+                    (line.left() + 250.0 + 15.0 * total as f32).min(line.right() - 50.0),
+                    line.bottom() - 3.0,
+                ),
+            );
+            if pips.width() > 8.0 {
+                motif::chart::pips(ui, pips, *done, total, motif::ACCENT);
+            }
+            ui.painter().text(
+                egui::pos2(pips.right() + 10.0, line.center().y),
+                egui::Align2::LEFT_CENTER,
+                format!("{done}/{total}"),
+                egui::FontId::proportional(11.0),
+                if *done >= total {
+                    motif::TEXT_DIM
+                } else {
+                    motif::TEXT
+                },
+            );
+        }
+        ui.add_space(6.0);
+    }
+
     /// The patient's dated notes journal.
     fn patient_notes_pane(
         ui: &mut egui::Ui,
@@ -4253,7 +4635,7 @@ impl App {
         {
             // The journal fills its pane: it used to be a 96 px box
             // whatever room it had, with grey underneath it.
-            let height = (ui.available_height() - 42.0).clamp(50.0, 420.0);
+            let height = 420.0;
             let (add, delete) = notes_box(
                 ui,
                 "patient_notes",
@@ -4303,7 +4685,7 @@ impl App {
             session.view = MainView::Search;
             return;
         }
-        motif::column(ui, 700.0, |ui| {
+        motif::page(ui, 900.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
                 ui.heading(tr("trans_title"));
@@ -4453,57 +4835,20 @@ impl App {
         let start = config.ui.day_start_hour.min(23);
         let end = config.ui.day_end_hour.clamp(start + 1, 24);
         let hours = (end - start) as f32;
-        motif::column(ui, 940.0, |ui| {
-            ui.horizontal(|ui| {
-                let mut step = 0i64;
-                if motif::button(ui, "‹")
-                    .on_hover_text(tr("agenda_prev_day"))
-                    .clicked()
-                {
-                    step = -1;
-                }
-                if motif::button(ui, tr("agenda_today_btn")).clicked() {
-                    session.agenda_day = session.today.clone();
-                    session.load_day();
-                }
-                if motif::button(ui, "›")
-                    .on_hover_text(tr("agenda_next_day"))
-                    .clicked()
-                {
-                    step = 1;
-                }
-                if step != 0 {
-                    if let Ok(next) = session.db.date_offset(&day, step) {
-                        session.agenda_day = next;
-                        session.load_day();
-                    }
-                }
-                let name = db::weekday_fr(&day).unwrap_or("");
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{}{} {}",
-                        name.chars()
-                            .next()
-                            .map(|c| c.to_uppercase().to_string())
-                            .unwrap_or_default(),
-                        name.chars().skip(1).collect::<String>(),
-                        db::format_french_date(&day)
-                    ))
-                    .strong(),
-                );
-            });
-        });
-        ui.add_space(6.0);
+        // No day navigation of its own any more: the agenda's control
+        // band drives all three modes from one set of buttons, and two
+        // « ‹ Aujourd'hui › » rows on the same screen was one too many.
 
-        let row_h = 34.0_f32;
-        let avail = ui.available_rect_before_wrap();
-        let w = (avail.width() - 24.0).clamp(420.0, 940.0);
+        // The hour column fills the pane it is given, down to a legible
+        // row: a fixed 34 px row left the plan floating in the top half
+        // of a panel and scrolling in a short one.
+        let avail = motif::visible_rect(ui);
+        let w = (avail.width() - 16.0).max(300.0);
+        let row_h = ((avail.height() - 12.0) / hours).clamp(20.0, 44.0);
         let (alloc, _) =
             ui.allocate_exact_size(egui::vec2(w, hours * row_h + 8.0), egui::Sense::hover());
-        let plan = egui::Rect::from_center_size(
-            egui::pos2(ui.max_rect().center().x, alloc.center().y),
-            alloc.size(),
-        );
+        let plan =
+            egui::Rect::from_min_size(egui::pos2(avail.left() + 8.0, alloc.top()), alloc.size());
         ui.painter().rect_filled(plan, 0.0, motif::TROUGH);
         motif::bevel(ui.painter(), plan, false);
         let inner = plan.shrink(4.0);
@@ -4652,38 +4997,8 @@ impl App {
         pick_day: &mut Option<String>,
         _open_id: &mut Option<i64>,
     ) {
-        motif::column(ui, 940.0, |ui| {
-            ui.horizontal(|ui| {
-                let mut shift = 0i64;
-                if motif::button(ui, "‹")
-                    .on_hover_text(tr("agenda_prev_month"))
-                    .clicked()
-                {
-                    shift = -1;
-                }
-                if motif::button(ui, tr("agenda_this_month")).clicked() {
-                    session.agenda_month_offset = 0;
-                    session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
-                }
-                if motif::button(ui, "›")
-                    .on_hover_text(tr("agenda_next_month"))
-                    .clicked()
-                {
-                    shift = 1;
-                }
-                if shift != 0 {
-                    session.agenda_month_offset += shift;
-                    session.agenda_month_days = session
-                        .db
-                        .month_grid(session.agenda_month_offset)
-                        .unwrap_or_default();
-                }
-                if let Ok(month) = session.db.month_of(session.agenda_month_offset) {
-                    ui.label(trf("agenda_month_of", db::month_name_fr(&month)));
-                }
-            });
-        });
-        ui.add_space(6.0);
+        // The month has no navigation of its own: the agenda's control
+        // band drives all three modes from one set of buttons.
         if session.agenda_month_days.is_empty() {
             session.agenda_month_days = session
                 .db
@@ -4692,16 +5007,17 @@ impl App {
         }
         let days = session.agenda_month_days.clone();
         let rows = days.len().div_ceil(7).max(1);
-        let grid_w = (ui.available_width() - 24.0).clamp(420.0, 940.0);
-        let cell_h = 62.0;
+        // Six weeks fill the pane: a fixed 62 px cell left a third of
+        // the panel grey under the last row.
+        let avail = motif::visible_rect(ui);
+        let grid_w = (avail.width() - 16.0).max(360.0);
+        let cell_h = ((avail.height() - 30.0) / rows as f32).clamp(44.0, 96.0);
         let (alloc, _) = ui.allocate_exact_size(
             egui::vec2(grid_w, rows as f32 * cell_h + 22.0),
             egui::Sense::hover(),
         );
-        let grid = egui::Rect::from_center_size(
-            egui::pos2(ui.max_rect().center().x, alloc.center().y),
-            alloc.size(),
-        );
+        let grid =
+            egui::Rect::from_min_size(egui::pos2(avail.left() + 8.0, alloc.top()), alloc.size());
         ui.painter().rect_filled(grid, 0.0, motif::TROUGH);
         motif::bevel(ui.painter(), grid, false);
         let inner = grid.shrink(4.0);
@@ -5548,9 +5864,9 @@ impl App {
         let label = match session.agenda_mode {
             AgendaMode::Day => db::format_french_date(&session.agenda_day),
             AgendaMode::Month => session
-                .agenda_month_days
-                .get(15)
-                .map(|d| db::format_french_date(d))
+                .db
+                .month_of(session.agenda_month_offset)
+                .map(|m| trf("agenda_month_of", db::month_name_fr(&m)))
                 .unwrap_or_default(),
             AgendaMode::Week => session
                 .agenda_week
@@ -6059,10 +6375,11 @@ impl App {
         let mut create = false;
         let mut open: Option<db::Protocol> = None;
         let mut delete: Option<(i64, String)> = None;
-        motif::column(ui, 900.0, |ui| {
+        motif::page(ui, 900.0, |ui| {
             ui.horizontal(|ui| {
+                let w = (ui.available_width() - 110.0).clamp(180.0, 460.0);
                 ui.add_sized(
-                    [420.0, 24.0],
+                    [w, 24.0],
                     egui::TextEdit::singleline(&mut session.protocol_new_title)
                         .hint_text(tr("proto_new_hint")),
                 );
@@ -6079,26 +6396,76 @@ impl App {
                         .size(12.0)
                         .color(motif::TEXT_DIM),
                 );
+                return;
             }
-            for p in session.protocols.clone() {
-                ui.horizontal(|ui| {
-                    if ui.selectable_label(false, &p.title).clicked() {
-                        open = Some(p.clone());
-                    }
-                    if !p.subject.trim().is_empty() {
-                        ui.label(
-                            egui::RichText::new(&p.subject)
-                                .size(11.0)
-                                .color(motif::TEXT_DIM),
-                        );
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if motif::button(ui, tr("itv_delete")).clicked() {
-                            delete = Some((p.id, p.title.clone()));
+            // The same sunken list box as the patients and the drugs:
+            // rows on a field of grey read as leftovers, not as a list.
+            let rect = ui.available_rect_before_wrap();
+            let rect =
+                egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.bottom() - 8.0));
+            if rect.height() < 30.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("protocols")
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for p in session.protocols.clone() {
+                            let row_h = (ui.spacing().interact_size.y + 2.0).max(18.0);
+                            let (rect, resp) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), row_h),
+                                egui::Sense::click(),
+                            );
+                            if resp.hovered() {
+                                ui.painter().rect_filled(rect, 0.0, motif::BG_HOVER);
+                            }
+                            ui.painter().text(
+                                egui::pos2(rect.left() + 8.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                elide(ui, &p.title, rect.width() * 0.5, 14.0),
+                                egui::FontId::proportional(14.0),
+                                motif::TEXT,
+                            );
+                            if !p.subject.trim().is_empty() {
+                                ui.painter().text(
+                                    egui::pos2(rect.left() + rect.width() * 0.55, rect.center().y),
+                                    egui::Align2::LEFT_CENTER,
+                                    elide(ui, &p.subject, rect.width() * 0.3, 11.0),
+                                    egui::FontId::proportional(11.0),
+                                    motif::TEXT_DIM,
+                                );
+                            }
+                            // The delete target is the row's right edge.
+                            let x = egui::Rect::from_center_size(
+                                egui::pos2(rect.right() - 12.0, rect.center().y),
+                                egui::vec2(18.0, 18.0),
+                            );
+                            let hit = ui.interact(
+                                x,
+                                ui.id().with(("proto_del", p.id)),
+                                egui::Sense::click(),
+                            );
+                            ui.painter().text(
+                                x.center(),
+                                egui::Align2::CENTER_CENTER,
+                                "×",
+                                egui::FontId::proportional(14.0),
+                                if hit.hovered() {
+                                    motif::ALERT
+                                } else {
+                                    motif::TEXT_DIM
+                                },
+                            );
+                            if hit.clicked() {
+                                delete = Some((p.id, p.title.clone()));
+                            } else if resp.clicked() {
+                                open = Some(p.clone());
+                            }
                         }
                     });
-                });
-            }
+            });
         });
         if create {
             let title = session.protocol_new_title.trim().to_owned();
@@ -6683,6 +7050,169 @@ impl App {
         }
     }
 
+    /// What is in the base, before anything is typed: the classes it
+    /// covers, the cards that name an antidote, and the cards the team
+    /// has flagged. Returns a card to open.
+    ///
+    /// The search screen used to draw the whole base down the middle —
+    /// the same list the left dock carries — with every row cut off at
+    /// the panel edge.
+    fn drug_home_panels(ui: &mut egui::Ui, session: &Session) -> Option<Drug> {
+        let body = motif::visible_rect(ui).shrink2(egui::vec2(10.0, 0.0));
+        if body.height() < 140.0 {
+            return None;
+        }
+        // Classes by weight, biggest first.
+        let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for d in &session.drugs {
+            let c = d.class.trim();
+            if !c.is_empty() {
+                *counts.entry(c).or_default() += 1;
+            }
+        }
+        let mut classes: Vec<(&str, usize)> = counts.into_iter().collect();
+        classes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        classes.truncate(12);
+
+        let mut open: Option<Drug> = None;
+        let split = body.width() >= 760.0;
+        let rects: [egui::Rect; 3] = if split {
+            let rows = motif::split_rows(body, &[body.height() * 0.55, 0.0], 8.0);
+            let top = motif::split_columns(rows[0], 2, 8.0);
+            [top[0], top[1], rows[1]]
+        } else {
+            let rows = motif::split_rows(body, &[0.0, 0.0, 0.0], 8.0);
+            [rows[0], rows[1], rows[2]]
+        };
+
+        motif::panel(ui, rects[0], Some(tr("drug_home_classes")), |ui| {
+            let rect = ui.max_rect();
+            if classes.is_empty() {
+                return;
+            }
+            let rows: Vec<motif::chart::Row> = classes
+                .iter()
+                .map(|(name, n)| motif::chart::Row {
+                    label: name,
+                    value: *n as f64,
+                    color: motif::ACCENT,
+                })
+                .collect();
+            if let Some(i) = motif::chart::hbars(ui, rect, &rows, 200.0, &|v| format!("{v:.0}")) {
+                egui::show_tooltip_text(
+                    ui.ctx(),
+                    ui.layer_id(),
+                    ui.id().with("drug_class_tip"),
+                    trn("drug_home_class_tip", &[&classes[i].1, &classes[i].0]),
+                );
+            }
+        });
+
+        // Antidotes: the one lookup nobody wants to be searching for.
+        let antidotes: Vec<&Drug> = session
+            .drugs
+            .iter()
+            .filter(|d| !d.antidote.trim().is_empty())
+            .collect();
+        motif::panel(ui, rects[1], Some(tr("drug_home_antidotes")), |ui| {
+            let rect = ui.max_rect();
+            if antidotes.is_empty() {
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    tr("drug_home_none"),
+                    egui::FontId::proportional(12.0),
+                    motif::TEXT_DIM,
+                );
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("drug_antidotes")
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for d in &antidotes {
+                            let text = format!("{}   —   {}", d.name.trim(), d.antidote.trim());
+                            if motif::list_row(ui, egui::RichText::new(text), false).clicked() {
+                                open = Some((*d).clone());
+                            }
+                        }
+                    });
+            });
+        });
+
+        // Anything the team has flagged: retiré, hors AMM, rupture.
+        let flagged: Vec<&Drug> = session
+            .drugs
+            .iter()
+            .filter(|d| !d.status.trim().is_empty())
+            .collect();
+        motif::panel(ui, rects[2], Some(tr("drug_home_status")), |ui| {
+            let rect = ui.max_rect();
+            if flagged.is_empty() {
+                ui.painter().text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    tr("drug_home_none"),
+                    egui::FontId::proportional(12.0),
+                    motif::TEXT_DIM,
+                );
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("drug_flagged")
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for d in &flagged {
+                            let row_h = (ui.spacing().interact_size.y + 2.0).max(18.0);
+                            let (rect, resp) = ui.allocate_exact_size(
+                                egui::vec2(ui.available_width(), row_h),
+                                egui::Sense::click(),
+                            );
+                            if resp.hovered() {
+                                ui.painter().rect_filled(rect, 0.0, motif::BG_HOVER);
+                            }
+                            // The status as its own coloured chip, so a
+                            // withdrawn card is spotted, not read.
+                            let chip_w = 176.0_f32.min(rect.width() * 0.45);
+                            let chip = egui::Rect::from_min_size(
+                                egui::pos2(rect.left() + 6.0, rect.center().y - 8.0),
+                                egui::vec2(chip_w, 16.0),
+                            );
+                            ui.painter().rect_filled(chip, 0.0, status_color(&d.status));
+                            ui.painter().text(
+                                chip.center(),
+                                egui::Align2::CENTER_CENTER,
+                                elide(ui, d.status.trim(), chip_w - 8.0, 10.5),
+                                egui::FontId::proportional(10.5),
+                                egui::Color32::WHITE,
+                            );
+                            ui.painter().text(
+                                egui::pos2(chip.right() + 10.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                elide(
+                                    ui,
+                                    d.name.trim(),
+                                    (rect.right() - chip.right() - 18.0).max(20.0),
+                                    13.0,
+                                ),
+                                egui::FontId::proportional(13.0),
+                                motif::TEXT,
+                            );
+                            if resp.clicked() {
+                                open = Some((*d).clone());
+                            }
+                        }
+                    });
+            });
+        });
+        ui.allocate_space(egui::vec2(body.width(), body.height()));
+        open
+    }
+
     /// The open drug card's dated notes journal. Shared by the card's
     /// side column and, on a narrow window, the foot of the monograph.
     fn drug_notes_pane(
@@ -7122,7 +7652,7 @@ impl App {
                 }
             });
             motif::panel(ui, journal, Some(tr("drug_notes_section")), |ui| {
-                let h = (ui.available_height() - 34.0).clamp(50.0, 420.0);
+                let h = 420.0;
                 Self::drug_notes_pane(ui, session, card_id, operator, h);
             });
 
@@ -7345,7 +7875,8 @@ impl App {
 
         // ---- Search / list ----
         let mut open_drug: Option<Drug> = None;
-        motif::column(ui, 620.0, |ui| {
+        let idle = session.drug_query.trim().is_empty();
+        motif::page(ui, 720.0, |ui| {
             let search = ui.add_sized(
                 [ui.available_width(), 32.0],
                 egui::TextEdit::singleline(&mut session.drug_query)
@@ -7360,9 +7891,12 @@ impl App {
             }
             ui.add_space(12.0);
 
-            let results: Vec<Drug> = session.drug_results(20);
+            let results: Vec<Drug> = session.drug_results(40);
 
-            if !results.is_empty() {
+            // An empty query matches the whole base, and the left dock
+            // is already its index: the middle of the screen is better
+            // spent saying what is in the base.
+            if !results.is_empty() && !idle {
                 session.drug_selected = session.drug_selected.min(results.len() - 1);
                 let (up, down, enter) = ui.input(|i| {
                     (
@@ -7444,6 +7978,11 @@ impl App {
                 }
             }
         });
+        if idle {
+            if let Some(d) = Self::drug_home_panels(ui, session) {
+                open_drug = Some(d);
+            }
+        }
         if let Some(d) = open_drug {
             session.open_drug_card(d);
             session.error = None;
@@ -7772,14 +8311,17 @@ impl App {
                 ui.add_space(gutter);
 
                 // ---- The panel grid ----
-                let cols = motif::column_count(w, 400.0, 2);
+                // 340 px is the narrowest a panel of bars stays readable at; at
+                // 400 a 1280 px screen with both docks open fell to one lane
+                // and stretched a one-bar chart to 350 px tall.
+                let cols = motif::column_count(w, 340.0, 2);
                 let mut open_patient: Option<i64> = None;
                 let mut open_recent: Option<Patient> = None;
 
                 // Each entry is (title, height, painter). They are dealt
                 // into the columns in order, so a one-column window
                 // simply stacks them in the same reading order.
-                let panels: Vec<(&str, f32)> = vec![
+                let mut panels: Vec<(&str, f32)> = vec![
                     (tr("dash_pipeline"), 172.0),
                     (tr("dash_monthly"), 232.0),
                     (tr("dash_per_kind"), 232.0),
@@ -7787,6 +8329,21 @@ impl App {
                     (tr("dash_recent"), 190.0),
                     (tr("dash_today_notes"), 190.0),
                 ];
+                // On a tall screen the natural grid stopped short and
+                // left a band of grey under it; stretch the panels to
+                // fill what is there, within reason — a funnel of five
+                // bars does not want to be 600 px tall.
+                {
+                    let natural: f32 = panels.iter().map(|(_, h)| *h + gutter).sum();
+                    let per_lane = natural / cols as f32;
+                    let room = full.height() - kpi_rect.height() - gutter;
+                    if room > per_lane && per_lane > 1.0 {
+                        let stretch = (room / per_lane).min(1.5);
+                        for (_, h) in panels.iter_mut() {
+                            *h *= stretch;
+                        }
+                    }
+                }
                 let mut y = vec![full.top() + kpi_rect.height() + gutter; cols];
                 let lanes = motif::split_columns(
                     egui::Rect::from_min_size(egui::pos2(full.left(), 0.0), egui::vec2(w, 1.0)),
@@ -8250,6 +8807,12 @@ impl eframe::App for App {
         if ctx.input(|i| i.key_pressed(egui::Key::F6)) {
             self.show_nav = !self.show_nav;
         }
+        if ctx.input(|i| i.key_pressed(egui::Key::F12)) {
+            self.show_keys = !self.show_keys;
+        }
+        if self.show_keys && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.show_keys = false;
+        }
         let toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
         let toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
         let toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
@@ -8284,6 +8847,12 @@ impl eframe::App for App {
                     {
                         self.show_docs = !self.show_docs;
                     }
+                    if motif::toggle(ui, tr("toolbar_keys"), self.show_keys)
+                        .on_hover_text(tr("toolbar_keys_tooltip"))
+                        .clicked()
+                    {
+                        self.show_keys = !self.show_keys;
+                    }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Optional pictograms: painted, not typed (the
@@ -8316,6 +8885,7 @@ impl eframe::App for App {
                             None
                         } else {
                             Some(OptionsEditor {
+                                page: OptionsPage::Pharmacy,
                                 cfg: self.config.clone(),
                                 db_path_text: self
                                     .config
@@ -8439,12 +9009,31 @@ impl eframe::App for App {
 
         // Motif status bar: the at-a-glance numbers and which base this
         // post is on (multi-post support aid).
+        let mut status_goto: Option<WorkTab> = None;
         if let State::Unlocked(session) = &self.state {
             let in_progress: i64 = session.pending.values().sum();
             let summary = trn(
                 "status_summary",
                 &[&session.patients.len(), &in_progress, &session.drugs.len()],
             );
+            // What is actually late. A status bar that only counts rows
+            // says nothing needs doing; this one says what does.
+            let overdue = session
+                .appointments
+                .iter()
+                .filter(|a| !session.today.is_empty() && a.date < session.today)
+                .count();
+            let today = session
+                .appointments
+                .iter()
+                .filter(|a| !session.today.is_empty() && a.date == session.today)
+                .count();
+            let unbilled = session
+                .summaries
+                .iter()
+                .filter(|s| s.state == InterviewState::ReportSent)
+                .count();
+            let operator = self.operator.trim().to_owned();
             let db_file = self
                 .config
                 .db_path()
@@ -8458,15 +9047,71 @@ impl eframe::App for App {
                             .size(11.0)
                             .color(motif::TEXT_DIM),
                     );
+                    // Each count is a way in: clicking goes where the
+                    // work is, rather than reporting it and stopping.
+                    let mut flag = |ui: &mut egui::Ui,
+                                    text: String,
+                                    color: egui::Color32,
+                                    hint: &str,
+                                    to: WorkTab| {
+                        ui.add_space(6.0);
+                        let resp = ui.add(
+                            egui::Label::new(egui::RichText::new(text).size(11.0).color(color))
+                                .sense(egui::Sense::click()),
+                        );
+                        if resp.on_hover_text(hint).clicked() {
+                            status_goto = Some(to);
+                        }
+                    };
+                    if overdue > 0 {
+                        flag(
+                            ui,
+                            trf("status_overdue", overdue),
+                            motif::ALERT,
+                            tr("status_overdue_tooltip"),
+                            WorkTab::Agenda,
+                        );
+                    }
+                    if today > 0 {
+                        flag(
+                            ui,
+                            trf("status_today", today),
+                            motif::ACCENT,
+                            tr("status_today_tooltip"),
+                            WorkTab::Agenda,
+                        );
+                    }
+                    if unbilled > 0 {
+                        flag(
+                            ui,
+                            trf("status_to_bill", unbilled),
+                            motif::ACCENT,
+                            tr("status_to_bill_tooltip"),
+                            WorkTab::Dashboard,
+                        );
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             egui::RichText::new(trf("lock_db_path", db_file))
                                 .size(11.0)
                                 .color(motif::TEXT_DIM),
                         );
+                        // Who is stamping the notes, so a shared post
+                        // never signs an entry with the last shift's
+                        // initials without saying so.
+                        if !operator.is_empty() {
+                            ui.label(
+                                egui::RichText::new(trf("status_operator", &operator))
+                                    .size(11.0)
+                                    .color(operator_color(&operator)),
+                            );
+                        }
                     });
                 });
             });
+        }
+        if let (Some(to), State::Unlocked(session)) = (status_goto, &mut self.state) {
+            session.activate_tab(&to);
         }
 
         if toggle_dashboard {
@@ -8761,462 +9406,521 @@ impl eframe::App for App {
                 .default_size([600.0, (avail - 80.0).clamp(420.0, 900.0)])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
+                    // One page at a time: the fee matrix and the
+                    // auto-lock timeout used to be the same five-screen
+                    // scroll apart.
+                    ui.horizontal_wrapped(|ui| {
+                        for page in OptionsPage::ALL {
+                            if motif::toggle(ui, page.label(), editor.page == page).clicked() {
+                                editor.page = page;
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+                    let page = editor.page;
                     egui::ScrollArea::vertical()
-                        .max_height((avail - 170.0).max(300.0))
+                        .max_height((avail - 200.0).max(280.0))
                         .show(ui, |ui| {
                             let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
-                            motif::section(ui, tr("opts_pharmacy"));
-                            egui::Grid::new("opts_pharmacy")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("form_last_name")));
-                                    ui.add_sized(
-                                        [300.0, 24.0],
-                                        egui::TextEdit::singleline(&mut editor.cfg.pharmacy.name),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("form_address")));
-                                    ui.add_sized(
-                                        [300.0, 24.0],
-                                        egui::TextEdit::singleline(
-                                            &mut editor.cfg.pharmacy.address,
-                                        ),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("form_phone")));
-                                    ui.add_sized(
-                                        [300.0, 24.0],
-                                        egui::TextEdit::singleline(&mut editor.cfg.pharmacy.phone),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_pharmacist")));
-                                    ui.add_sized(
-                                        [300.0, 24.0],
-                                        egui::TextEdit::singleline(
-                                            &mut editor.cfg.pharmacy.pharmacist,
-                                        ),
-                                    );
-                                    ui.end_row();
-                                });
-                            ui.add_space(8.0);
-                            motif::section(ui, tr("opts_ui"));
-                            egui::Grid::new("opts_ui")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("docs_operator")));
-                                    ui.add_sized(
-                                        [80.0, 24.0],
-                                        egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
-                                    );
-                                    ui.end_row();
-                                });
-                            ui.checkbox(
-                                &mut editor.cfg.ui.show_docs_on_start,
-                                tr("opts_show_docs"),
-                            );
-                            ui.checkbox(&mut editor.cfg.ui.icons, tr("opts_icons"));
-                            egui::Grid::new("opts_look")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("opts_text_scale")));
-                                    ui.add(
-                                        egui::Slider::new(&mut editor.cfg.ui.text_scale, 0.8..=1.6)
+                            if page == OptionsPage::Pharmacy {
+                                motif::section(ui, tr("opts_pharmacy"));
+                                egui::Grid::new("opts_pharmacy")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("form_last_name")));
+                                        ui.add_sized(
+                                            [300.0, 24.0],
+                                            egui::TextEdit::singleline(
+                                                &mut editor.cfg.pharmacy.name,
+                                            ),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("form_address")));
+                                        ui.add_sized(
+                                            [300.0, 24.0],
+                                            egui::TextEdit::singleline(
+                                                &mut editor.cfg.pharmacy.address,
+                                            ),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("form_phone")));
+                                        ui.add_sized(
+                                            [300.0, 24.0],
+                                            egui::TextEdit::singleline(
+                                                &mut editor.cfg.pharmacy.phone,
+                                            ),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_pharmacist")));
+                                        ui.add_sized(
+                                            [300.0, 24.0],
+                                            egui::TextEdit::singleline(
+                                                &mut editor.cfg.pharmacy.pharmacist,
+                                            ),
+                                        );
+                                        ui.end_row();
+                                    });
+                            }
+                            if page == OptionsPage::Ui {
+                                motif::section(ui, tr("opts_ui"));
+                                egui::Grid::new("opts_ui")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("docs_operator")));
+                                        ui.add_sized(
+                                            [80.0, 24.0],
+                                            egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
+                                        );
+                                        ui.end_row();
+                                    });
+                                ui.checkbox(
+                                    &mut editor.cfg.ui.show_docs_on_start,
+                                    tr("opts_show_docs"),
+                                );
+                                ui.checkbox(
+                                    &mut editor.cfg.ui.show_nav_on_start,
+                                    tr("opts_show_nav"),
+                                );
+                                ui.checkbox(&mut editor.cfg.ui.icons, tr("opts_icons"));
+                                egui::Grid::new("opts_look")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("opts_text_scale")));
+                                        ui.add(
+                                            egui::Slider::new(
+                                                &mut editor.cfg.ui.text_scale,
+                                                0.8..=1.6,
+                                            )
                                             .fixed_decimals(2)
                                             .suffix(" x"),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_font")));
-                                    ui.horizontal(|ui| {
-                                        let mut shown = editor
-                                            .cfg
-                                            .ui
-                                            .font_path
-                                            .as_ref()
-                                            .map(|p| p.display().to_string())
-                                            .unwrap_or_default();
-                                        if ui
-                                            .add_sized(
-                                                [220.0, 24.0],
-                                                egui::TextEdit::singleline(&mut shown)
-                                                    .hint_text(tr("opts_font_default")),
-                                            )
-                                            .changed()
-                                        {
-                                            editor.cfg.ui.font_path = if shown.trim().is_empty() {
-                                                None
-                                            } else {
-                                                Some(std::path::PathBuf::from(shown.trim()))
-                                            };
-                                        }
-                                        if motif::button(ui, tr("opts_db_browse")).clicked() {
-                                            if let Some(p) = rfd::FileDialog::new()
-                                                .add_filter("Police", &["ttf", "otf", "TTF", "OTF"])
-                                                .pick_file()
-                                            {
-                                                editor.cfg.ui.font_path = Some(p);
-                                            }
-                                        }
-                                        if motif::button(ui, tr("tpl_reset")).clicked() {
-                                            editor.cfg.ui.font_path = None;
-                                        }
-                                    });
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_side_pane")));
-                                    ui.horizontal(|ui| {
-                                        for (value, label) in [
-                                            ("docs", tr("docs_title")),
-                                            ("carnet", tr("trans_title")),
-                                            ("notes", tr("side_pane_notes")),
-                                        ] {
-                                            if ui
-                                                .selectable_label(
-                                                    editor.cfg.ui.side_pane == value,
-                                                    label,
-                                                )
-                                                .clicked()
-                                            {
-                                                editor.cfg.ui.side_pane = value.to_owned();
-                                            }
-                                        }
-                                    });
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_font_note")));
-                                    ui.label(
-                                        egui::RichText::new(tr("opts_restart"))
-                                            .size(11.0)
-                                            .color(motif::TEXT_DIM),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_density")));
-                                    ui.horizontal(|ui| {
-                                        for (value, label) in [
-                                            ("confortable", tr("opts_density_comfort")),
-                                            ("compact", tr("opts_density_compact")),
-                                        ] {
-                                            if ui
-                                                .selectable_label(
-                                                    editor
-                                                        .cfg
-                                                        .ui
-                                                        .density
-                                                        .eq_ignore_ascii_case(value),
-                                                    label,
-                                                )
-                                                .clicked()
-                                            {
-                                                editor.cfg.ui.density = value.to_owned();
-                                            }
-                                        }
-                                    });
-                                    ui.end_row();
-                                });
-                            ui.checkbox(&mut editor.cfg.ui.discreet_finances, tr("opts_discreet"));
-                            ui.add_space(8.0);
-                            motif::section(ui, tr("opts_db"));
-                            egui::Grid::new("opts_db")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("opts_autolock")));
-                                    ui.add(
-                                        egui::DragValue::new(
-                                            &mut editor.cfg.database.auto_lock_timeout_minutes,
-                                        )
-                                        .range(0..=240),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_backups")));
-                                    ui.add(
-                                        egui::DragValue::new(&mut editor.cfg.database.backups_keep)
-                                            .range(0..=60),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_db_path")));
-                                    ui.horizontal(|ui| {
-                                        ui.add_sized(
-                                            [258.0, 24.0],
-                                            egui::TextEdit::singleline(&mut editor.db_path_text),
                                         );
-                                        if motif::button(ui, tr("opts_db_browse")).clicked() {
-                                            if let Some(p) = rfd::FileDialog::new()
-                                                .add_filter("SQLite", &["db", "sqlite"])
-                                                .add_filter("*", &["*"])
-                                                .pick_file()
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_font")));
+                                        ui.horizontal(|ui| {
+                                            let mut shown = editor
+                                                .cfg
+                                                .ui
+                                                .font_path
+                                                .as_ref()
+                                                .map(|p| p.display().to_string())
+                                                .unwrap_or_default();
+                                            if ui
+                                                .add_sized(
+                                                    [220.0, 24.0],
+                                                    egui::TextEdit::singleline(&mut shown)
+                                                        .hint_text(tr("opts_font_default")),
+                                                )
+                                                .changed()
                                             {
-                                                editor.db_path_text = p.display().to_string();
+                                                editor.cfg.ui.font_path = if shown.trim().is_empty()
+                                                {
+                                                    None
+                                                } else {
+                                                    Some(std::path::PathBuf::from(shown.trim()))
+                                                };
+                                            }
+                                            if motif::button(ui, tr("opts_db_browse")).clicked() {
+                                                if let Some(p) = rfd::FileDialog::new()
+                                                    .add_filter(
+                                                        "Police",
+                                                        &["ttf", "otf", "TTF", "OTF"],
+                                                    )
+                                                    .pick_file()
+                                                {
+                                                    editor.cfg.ui.font_path = Some(p);
+                                                }
+                                            }
+                                            if motif::button(ui, tr("tpl_reset")).clicked() {
+                                                editor.cfg.ui.font_path = None;
+                                            }
+                                        });
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_side_pane")));
+                                        ui.horizontal(|ui| {
+                                            for (value, label) in [
+                                                ("docs", tr("docs_title")),
+                                                ("carnet", tr("trans_title")),
+                                                ("notes", tr("side_pane_notes")),
+                                            ] {
+                                                if ui
+                                                    .selectable_label(
+                                                        editor.cfg.ui.side_pane == value,
+                                                        label,
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    editor.cfg.ui.side_pane = value.to_owned();
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_font_note")));
+                                        ui.label(
+                                            egui::RichText::new(tr("opts_restart"))
+                                                .size(11.0)
+                                                .color(motif::TEXT_DIM),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_density")));
+                                        ui.horizontal(|ui| {
+                                            for (value, label) in [
+                                                ("confortable", tr("opts_density_comfort")),
+                                                ("compact", tr("opts_density_compact")),
+                                            ] {
+                                                if ui
+                                                    .selectable_label(
+                                                        editor
+                                                            .cfg
+                                                            .ui
+                                                            .density
+                                                            .eq_ignore_ascii_case(value),
+                                                        label,
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    editor.cfg.ui.density = value.to_owned();
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+                                    });
+                                ui.checkbox(
+                                    &mut editor.cfg.ui.discreet_finances,
+                                    tr("opts_discreet"),
+                                );
+                            }
+                            if page == OptionsPage::Database {
+                                motif::section(ui, tr("opts_db"));
+                                egui::Grid::new("opts_db")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("opts_autolock")));
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut editor.cfg.database.auto_lock_timeout_minutes,
+                                            )
+                                            .range(0..=240),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_backups")));
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut editor.cfg.database.backups_keep,
+                                            )
+                                            .range(0..=60),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_db_path")));
+                                        ui.horizontal(|ui| {
+                                            ui.add_sized(
+                                                [258.0, 24.0],
+                                                egui::TextEdit::singleline(
+                                                    &mut editor.db_path_text,
+                                                ),
+                                            );
+                                            if motif::button(ui, tr("opts_db_browse")).clicked() {
+                                                if let Some(p) = rfd::FileDialog::new()
+                                                    .add_filter("SQLite", &["db", "sqlite"])
+                                                    .add_filter("*", &["*"])
+                                                    .pick_file()
+                                                {
+                                                    editor.db_path_text = p.display().to_string();
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+                                    });
+                                // File-level tools: consistent encrypted copy
+                                // (VACUUM INTO) to any destination; "move"
+                                // additionally points the config at the copy
+                                // (applied on save + restart, old file kept).
+                                ui.horizontal(|ui| {
+                                    if motif::button(ui, tr("opts_db_copy")).clicked() {
+                                        if let Some(p) = rfd::FileDialog::new()
+                                            .set_file_name("bpm_caddy.db")
+                                            .save_file()
+                                        {
+                                            db_export = Some((p, false));
+                                        }
+                                    }
+                                    if motif::button(ui, tr("opts_db_move")).clicked() {
+                                        if let Some(p) = rfd::FileDialog::new()
+                                            .set_file_name("bpm_caddy.db")
+                                            .save_file()
+                                        {
+                                            db_export = Some((p, true));
+                                        }
+                                    }
+                                });
+                                // Maintenance: complete a base created before
+                                // the starter list grew, or wipe everything
+                                // (debug/demo — two clicks, never one).
+                                ui.horizontal(|ui| {
+                                    if motif::button(ui, tr("opts_db_seed")).clicked() {
+                                        db_seed = true;
+                                    }
+                                    if motif::button(ui, tr("opts_db_details"))
+                                        .on_hover_text(tr("opts_db_details_tooltip"))
+                                        .clicked()
+                                    {
+                                        db_details = true;
+                                    }
+                                    let danger = if editor.confirm_reset {
+                                        tr("opts_db_reset_confirm")
+                                    } else {
+                                        tr("opts_db_reset")
+                                    };
+                                    let btn = ui.add(
+                                        egui::Button::new(
+                                            egui::RichText::new(danger)
+                                                .color(egui::Color32::WHITE)
+                                                .size(12.0),
+                                        )
+                                        .fill(motif::ALERT),
+                                    );
+                                    if btn.clicked() {
+                                        if editor.confirm_reset {
+                                            db_reset = true;
+                                            editor.confirm_reset = false;
+                                        } else {
+                                            editor.confirm_reset = true;
+                                        }
+                                    }
+                                });
+                                ui.label(
+                                    egui::RichText::new(tr("opts_db_note"))
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
+                                );
+                            }
+                            if page == OptionsPage::Fees {
+                                motif::section(ui, tr("opts_fees"));
+                                ui.label(
+                                    egui::RichText::new(tr("opts_fees_note"))
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.label(
+                                    egui::RichText::new(tr("opts_fees_rules"))
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.add_space(4.0);
+                                egui::Grid::new("opts_fees")
+                                    .num_columns(7)
+                                    .spacing([10.0, 5.0])
+                                    .show(ui, |ui| {
+                                        let themes: [(&str, &mut ActFees); 10] = [
+                                            ("BPM", &mut editor.cfg.billing.bpm),
+                                            ("AOD", &mut editor.cfg.billing.aod),
+                                            ("AVK", &mut editor.cfg.billing.avk),
+                                            ("Asthme", &mut editor.cfg.billing.asthme),
+                                            (
+                                                "Anticancéreux long cours",
+                                                &mut editor.cfg.billing.anticancereux_lc,
+                                            ),
+                                            (
+                                                "Anticancéreux (autres)",
+                                                &mut editor.cfg.billing.anticancereux_autres,
+                                            ),
+                                            ("TROD angine", &mut editor.cfg.billing.trod_angine),
+                                            ("TROD cystite", &mut editor.cfg.billing.trod_cystite),
+                                            ("Vaccination", &mut editor.cfg.billing.vaccination),
+                                            ("Prévention", &mut editor.cfg.billing.prevention),
+                                        ];
+                                        // Theme, code, then one column per
+                                        // entretien of the sequence, then
+                                        // the year's total.
+                                        ui.label("");
+                                        ui.label(dim(tr("opts_fee_code")));
+                                        for i in 1..=ActFees::STEPS {
+                                            ui.label(dim(&format!("{i}{}", tr("opts_fee_nth"))));
+                                        }
+                                        ui.label(dim(tr("opts_fee_total")));
+                                        ui.end_row();
+                                        for (label, fees) in themes {
+                                            let kind = InterviewKind::ALL
+                                                .into_iter()
+                                                .find(|k| k.label() == label);
+                                            for year in 0..2 {
+                                                let steps = kind
+                                                    .filter(|k| k.is_accompaniment())
+                                                    .map(|k| k.sequence(year).len())
+                                                    .unwrap_or(1);
+                                                let row_label = match (kind, year) {
+                                                    (Some(k), _) if !k.is_accompaniment() => {
+                                                        label.to_owned()
+                                                    }
+                                                    (_, 0) => {
+                                                        format!("{label} — {}", tr("opts_year_1"))
+                                                    }
+                                                    _ => format!(
+                                                        "{label} — {}",
+                                                        tr("opts_year_next")
+                                                    ),
+                                                };
+                                                ui.label(dim(&row_label));
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        kind.and_then(|k| k.act_code(year))
+                                                            .unwrap_or("—"),
+                                                    )
+                                                    .size(11.0)
+                                                    .strong()
+                                                    .color(motif::ACCENT),
+                                                );
+                                                for rank in 0..ActFees::STEPS {
+                                                    if rank < steps {
+                                                        ui.add(
+                                                            egui::DragValue::new(
+                                                                fees.slot_mut(year, rank),
+                                                            )
+                                                            .range(0.0..=500.0)
+                                                            .suffix(" €"),
+                                                        );
+                                                    } else {
+                                                        ui.label(dim("—"))
+                                                            .on_hover_text(tr("opts_fee_unused"));
+                                                    }
+                                                }
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "{:.2} €",
+                                                        fees.year_total(year)
+                                                    ))
+                                                    .strong(),
+                                                );
+                                                ui.end_row();
+                                                // A theme outside the
+                                                // convention has one rate,
+                                                // not one per year.
+                                                if kind.is_none_or(|k| !k.is_accompaniment()) {
+                                                    break;
+                                                }
                                             }
                                         }
-                                    });
-                                    ui.end_row();
-                                });
-                            // File-level tools: consistent encrypted copy
-                            // (VACUUM INTO) to any destination; "move"
-                            // additionally points the config at the copy
-                            // (applied on save + restart, old file kept).
-                            ui.horizontal(|ui| {
-                                if motif::button(ui, tr("opts_db_copy")).clicked() {
-                                    if let Some(p) = rfd::FileDialog::new()
-                                        .set_file_name("bpm_caddy.db")
-                                        .save_file()
-                                    {
-                                        db_export = Some((p, false));
-                                    }
-                                }
-                                if motif::button(ui, tr("opts_db_move")).clicked() {
-                                    if let Some(p) = rfd::FileDialog::new()
-                                        .set_file_name("bpm_caddy.db")
-                                        .save_file()
-                                    {
-                                        db_export = Some((p, true));
-                                    }
-                                }
-                            });
-                            // Maintenance: complete a base created before
-                            // the starter list grew, or wipe everything
-                            // (debug/demo — two clicks, never one).
-                            ui.horizontal(|ui| {
-                                if motif::button(ui, tr("opts_db_seed")).clicked() {
-                                    db_seed = true;
-                                }
-                                if motif::button(ui, tr("opts_db_details"))
-                                    .on_hover_text(tr("opts_db_details_tooltip"))
-                                    .clicked()
-                                {
-                                    db_details = true;
-                                }
-                                let danger = if editor.confirm_reset {
-                                    tr("opts_db_reset_confirm")
-                                } else {
-                                    tr("opts_db_reset")
-                                };
-                                let btn = ui.add(
-                                    egui::Button::new(
-                                        egui::RichText::new(danger)
-                                            .color(egui::Color32::WHITE)
-                                            .size(12.0),
-                                    )
-                                    .fill(motif::ALERT),
-                                );
-                                if btn.clicked() {
-                                    if editor.confirm_reset {
-                                        db_reset = true;
-                                        editor.confirm_reset = false;
-                                    } else {
-                                        editor.confirm_reset = true;
-                                    }
-                                }
-                            });
-                            ui.label(
-                                egui::RichText::new(tr("opts_db_note"))
-                                    .size(11.0)
-                                    .color(motif::TEXT_DIM),
-                            );
-                            ui.add_space(8.0);
-                            motif::section(ui, tr("opts_fees"));
-                            ui.label(
-                                egui::RichText::new(tr("opts_fees_note"))
-                                    .size(11.0)
-                                    .color(motif::TEXT_DIM),
-                            );
-                            ui.label(
-                                egui::RichText::new(tr("opts_fees_rules"))
-                                    .size(11.0)
-                                    .color(motif::TEXT_DIM),
-                            );
-                            ui.add_space(4.0);
-                            egui::Grid::new("opts_fees")
-                                .num_columns(7)
-                                .spacing([10.0, 5.0])
-                                .show(ui, |ui| {
-                                    let themes: [(&str, &mut ActFees); 10] = [
-                                        ("BPM", &mut editor.cfg.billing.bpm),
-                                        ("AOD", &mut editor.cfg.billing.aod),
-                                        ("AVK", &mut editor.cfg.billing.avk),
-                                        ("Asthme", &mut editor.cfg.billing.asthme),
-                                        (
-                                            "Anticancéreux long cours",
-                                            &mut editor.cfg.billing.anticancereux_lc,
-                                        ),
-                                        (
-                                            "Anticancéreux (autres)",
-                                            &mut editor.cfg.billing.anticancereux_autres,
-                                        ),
-                                        ("TROD angine", &mut editor.cfg.billing.trod_angine),
-                                        ("TROD cystite", &mut editor.cfg.billing.trod_cystite),
-                                        ("Vaccination", &mut editor.cfg.billing.vaccination),
-                                        ("Prévention", &mut editor.cfg.billing.prevention),
-                                    ];
-                                    // Theme, code, then one column per
-                                    // entretien of the sequence, then
-                                    // the year's total.
-                                    ui.label("");
-                                    ui.label(dim(tr("opts_fee_code")));
-                                    for i in 1..=ActFees::STEPS {
-                                        ui.label(dim(&format!("{i}{}", tr("opts_fee_nth"))));
-                                    }
-                                    ui.label(dim(tr("opts_fee_total")));
-                                    ui.end_row();
-                                    for (label, fees) in themes {
-                                        let kind = InterviewKind::ALL
-                                            .into_iter()
-                                            .find(|k| k.label() == label);
-                                        for year in 0..2 {
-                                            let steps = kind
-                                                .filter(|k| k.is_accompaniment())
-                                                .map(|k| k.sequence(year).len())
-                                                .unwrap_or(1);
-                                            let row_label = match (kind, year) {
-                                                (Some(k), _) if !k.is_accompaniment() => {
-                                                    label.to_owned()
-                                                }
-                                                (_, 0) => {
-                                                    format!("{label} — {}", tr("opts_year_1"))
-                                                }
-                                                _ => format!("{label} — {}", tr("opts_year_next")),
-                                            };
-                                            ui.label(dim(&row_label));
-                                            ui.label(
-                                                egui::RichText::new(
-                                                    kind.and_then(|k| k.act_code(year))
-                                                        .unwrap_or("—"),
-                                                )
+                                        ui.label(dim(tr("opts_fee_adhesion")));
+                                        ui.label(
+                                            egui::RichText::new(db::ADHESION_CODE)
                                                 .size(11.0)
                                                 .strong()
                                                 .color(motif::ACCENT),
-                                            );
-                                            for rank in 0..ActFees::STEPS {
-                                                if rank < steps {
-                                                    ui.add(
-                                                        egui::DragValue::new(
-                                                            fees.slot_mut(year, rank),
-                                                        )
-                                                        .range(0.0..=500.0)
-                                                        .suffix(" €"),
-                                                    );
-                                                } else {
-                                                    ui.label(dim("—"))
-                                                        .on_hover_text(tr("opts_fee_unused"));
-                                                }
-                                            }
-                                            ui.label(
-                                                egui::RichText::new(format!(
-                                                    "{:.2} €",
-                                                    fees.year_total(year)
-                                                ))
-                                                .strong(),
-                                            );
-                                            ui.end_row();
-                                            // A theme outside the
-                                            // convention has one rate,
-                                            // not one per year.
-                                            if kind.is_none_or(|k| !k.is_accompaniment()) {
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    ui.label(dim(tr("opts_fee_adhesion")));
-                                    ui.label(
-                                        egui::RichText::new(db::ADHESION_CODE)
-                                            .size(11.0)
-                                            .strong()
-                                            .color(motif::ACCENT),
-                                    );
-                                    ui.add(
-                                        egui::DragValue::new(&mut editor.cfg.billing.adhesion)
+                                        );
+                                        ui.add(
+                                            egui::DragValue::new(&mut editor.cfg.billing.adhesion)
+                                                .range(0.0..=100.0)
+                                                .speed(0.01)
+                                                .suffix(" €"),
+                                        );
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_fee_remote")));
+                                        ui.label(
+                                            egui::RichText::new(db::REMOTE_CODE)
+                                                .size(11.0)
+                                                .strong()
+                                                .color(motif::ACCENT),
+                                        );
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut editor.cfg.billing.teleconsultation,
+                                            )
                                             .range(0.0..=100.0)
-                                            .speed(0.01)
                                             .suffix(" €"),
-                                    );
-                                    ui.label("");
-                                    ui.label("");
-                                    ui.label("");
-                                    ui.label("");
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_fee_remote")));
-                                    ui.label(
-                                        egui::RichText::new(db::REMOTE_CODE)
-                                            .size(11.0)
-                                            .strong()
-                                            .color(motif::ACCENT),
-                                    );
-                                    ui.add(
-                                        egui::DragValue::new(
-                                            &mut editor.cfg.billing.teleconsultation,
-                                        )
-                                        .range(0.0..=100.0)
-                                        .suffix(" €"),
-                                    );
-                                    ui.label("");
-                                    ui.label("");
-                                    ui.label("");
-                                    ui.label("");
-                                    ui.end_row();
-                                });
-                            ui.add_space(8.0);
-                            motif::section(ui, tr("opts_rules"));
-                            egui::Grid::new("opts_rules_cycle")
-                                .num_columns(2)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    ui.label(dim(tr("opts_cycle_months")));
-                                    ui.add(
-                                        egui::DragValue::new(&mut editor.cfg.rules.cycle_months)
+                                        );
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.label("");
+                                        ui.end_row();
+                                    });
+                            }
+                            if page == OptionsPage::Rules {
+                                motif::section(ui, tr("opts_rules"));
+                                egui::Grid::new("opts_rules_cycle")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("opts_cycle_months")));
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut editor.cfg.rules.cycle_months,
+                                            )
                                             .range(1..=36)
                                             .suffix(tr("opts_cycle_suffix")),
-                                    );
-                                    ui.end_row();
-                                    ui.label(dim(tr("opts_enforcement")));
-                                    ui.horizontal(|ui| {
-                                        for (level, label) in [
-                                            (RuleEnforcement::Warn, tr("opts_enforce_warn")),
-                                            (RuleEnforcement::Inform, tr("opts_enforce_inform")),
-                                            (RuleEnforcement::Block, tr("opts_enforce_block")),
-                                        ] {
-                                            ui.radio_value(
-                                                &mut editor.cfg.rules.enforcement,
-                                                level,
-                                                label,
-                                            );
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_enforcement")));
+                                        ui.horizontal(|ui| {
+                                            for (level, label) in [
+                                                (RuleEnforcement::Warn, tr("opts_enforce_warn")),
+                                                (
+                                                    RuleEnforcement::Inform,
+                                                    tr("opts_enforce_inform"),
+                                                ),
+                                                (RuleEnforcement::Block, tr("opts_enforce_block")),
+                                            ] {
+                                                ui.radio_value(
+                                                    &mut editor.cfg.rules.enforcement,
+                                                    level,
+                                                    label,
+                                                );
+                                            }
+                                        });
+                                        ui.end_row();
+                                    });
+                                egui::Grid::new("opts_rules")
+                                    .num_columns(4)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        let rules: [(&str, &mut u32); 9] = [
+                                            ("BPM", &mut editor.cfg.rules.bpm_per_year),
+                                            ("AOD", &mut editor.cfg.rules.aod_per_year),
+                                            ("AVK", &mut editor.cfg.rules.avk_per_year),
+                                            ("Asthme", &mut editor.cfg.rules.asthme_per_year),
+                                            (
+                                                "Anticancéreux",
+                                                &mut editor.cfg.rules.anticancereux_per_year,
+                                            ),
+                                            (
+                                                "TROD angine",
+                                                &mut editor.cfg.rules.trod_angine_per_year,
+                                            ),
+                                            (
+                                                "TROD cystite",
+                                                &mut editor.cfg.rules.trod_cystite_per_year,
+                                            ),
+                                            (
+                                                "Vaccination",
+                                                &mut editor.cfg.rules.vaccination_per_year,
+                                            ),
+                                            (
+                                                "Prévention",
+                                                &mut editor.cfg.rules.prevention_per_year,
+                                            ),
+                                        ];
+                                        for (i, (label, n)) in rules.into_iter().enumerate() {
+                                            ui.label(dim(label));
+                                            ui.add(egui::DragValue::new(n).range(0..=12));
+                                            if i % 2 == 1 {
+                                                ui.end_row();
+                                            }
                                         }
                                     });
-                                    ui.end_row();
-                                });
-                            egui::Grid::new("opts_rules")
-                                .num_columns(4)
-                                .spacing([12.0, 6.0])
-                                .show(ui, |ui| {
-                                    let rules: [(&str, &mut u32); 9] = [
-                                        ("BPM", &mut editor.cfg.rules.bpm_per_year),
-                                        ("AOD", &mut editor.cfg.rules.aod_per_year),
-                                        ("AVK", &mut editor.cfg.rules.avk_per_year),
-                                        ("Asthme", &mut editor.cfg.rules.asthme_per_year),
-                                        (
-                                            "Anticancéreux",
-                                            &mut editor.cfg.rules.anticancereux_per_year,
-                                        ),
-                                        ("TROD angine", &mut editor.cfg.rules.trod_angine_per_year),
-                                        (
-                                            "TROD cystite",
-                                            &mut editor.cfg.rules.trod_cystite_per_year,
-                                        ),
-                                        ("Vaccination", &mut editor.cfg.rules.vaccination_per_year),
-                                        ("Prévention", &mut editor.cfg.rules.prevention_per_year),
-                                    ];
-                                    for (i, (label, n)) in rules.into_iter().enumerate() {
-                                        ui.label(dim(label));
-                                        ui.add(egui::DragValue::new(n).range(0..=12));
-                                        if i % 2 == 1 {
-                                            ui.end_row();
-                                        }
-                                    }
-                                });
-                            ui.add_space(8.0);
-                            motif::section(ui, tr("opts_security"));
-                            if motif::button(ui, tr("opts_change_pw")).clicked() {
-                                open_pw = true;
+                            }
+                            if page == OptionsPage::Database {
+                                ui.add_space(8.0);
+                                motif::section(ui, tr("opts_security"));
+                                if motif::button(ui, tr("opts_change_pw")).clicked() {
+                                    open_pw = true;
+                                }
                             }
                         });
                     ui.add_space(8.0);
@@ -9358,6 +10062,10 @@ impl eframe::App for App {
         }
         if close_opts {
             self.options = None;
+        }
+
+        if self.show_keys && matches!(self.state, State::Unlocked(_)) {
+            self.keys_window(ctx);
         }
 
         // The docs pane may hold patient-adjacent notes: never show it on
