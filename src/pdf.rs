@@ -714,6 +714,81 @@ fn protocol_source(title: &str, subject: &str, nodes: &[crate::db::ProtocolNode]
     src
 }
 
+/// The week on one landscape A4 page: a column per day, rendez-vous
+/// and other entries in the order of the day, hours first.
+pub fn open_week_plan(
+    week: &[String],
+    appointments: &[Appointment],
+    events: &[crate::db::Event],
+    today: &str,
+) -> Result<PathBuf, String> {
+    let Some(monday) = week.first() else {
+        return Err("semaine vide".to_owned());
+    };
+    let mut src = String::from(
+        "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
+         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(14pt, weight: \"bold\")[Semaine du #{}]]\n#v(3mm)\n",
+        typst_str(&crate::db::format_french_date(monday))
+    ));
+    let mut cells = String::new();
+    for day in week {
+        let name = crate::db::weekday_fr(day).unwrap_or("");
+        let head = format!(
+            "{}{} {}",
+            name.chars()
+                .next()
+                .map(|c| c.to_uppercase().to_string())
+                .unwrap_or_default(),
+            name.chars().skip(1).collect::<String>(),
+            crate::db::format_french_date(day)
+        );
+        let mark = if day == today { " (aujourd'hui)" } else { "" };
+        let mut body = String::new();
+        for rdv in appointments.iter().filter(|r| r.date == *day) {
+            let hour = if rdv.time.is_empty() {
+                String::new()
+            } else {
+                format!("{} ", rdv.time)
+            };
+            body.push_str(&format!(
+                "#text(size: 8pt)[#{}]#linebreak()\n",
+                typst_str(&format!(
+                    "{hour}{} — {}",
+                    rdv.patient_name,
+                    rdv.kind.label()
+                ))
+            ));
+        }
+        for ev in events.iter().filter(|e| e.day == *day) {
+            let hour = if ev.time.is_empty() {
+                String::new()
+            } else {
+                format!("{} ", ev.time)
+            };
+            body.push_str(&format!(
+                "#text(size: 8pt, style: \"italic\")[#{}]#linebreak()\n",
+                typst_str(&format!("{hour}{} ({})", ev.title, ev.category.label()))
+            ));
+        }
+        if body.is_empty() {
+            body.push_str("#text(size: 8pt, fill: gray)[—]\n");
+        }
+        cells.push_str(&format!(
+            "  [#text(weight: \"bold\", size: 8.5pt)[#{}]#linebreak()#v(1mm){}],\n",
+            typst_str(&format!("{head}{mark}")),
+            body
+        ));
+    }
+    src.push_str(&format!(
+        "#table(columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr), inset: 4pt, \
+         stroke: 0.5pt, align: top,\n{cells})\n"
+    ));
+    compile_and_open(src, "semaine")
+}
+
 /// Compile and open the conversion tables as a printable A4 reference.
 pub fn open_conversion_tables(edits: &TableEdits) -> Result<PathBuf, String> {
     compile_and_open(conversion_tables_source(edits), "tables")
@@ -1159,6 +1234,8 @@ mod tests {
     fn appointment_list_compiles_even_with_hostile_names() {
         let rdvs = [
             Appointment {
+                id: 0,
+                time: String::new(),
                 patient_id: 1,
                 patient_name: "Jean #eval \"Dupont\" \\ *gras*".to_owned(),
                 phone: "06 12 34 56 78".to_owned(),
@@ -1166,6 +1243,8 @@ mod tests {
                 date: "2026-09-01".to_owned(),
             },
             Appointment {
+                id: 2,
+                time: "09:30".to_owned(),
                 patient_id: 2,
                 patient_name: "Hélène Lefèvre".to_owned(),
                 phone: String::new(),
