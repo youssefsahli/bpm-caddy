@@ -43,15 +43,26 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # operator = "CL"
 
 [billing]
-# Honoraires en euros, par acte et par rang dans l'année
-# d'accompagnement : entretien initial / 1er suivi / 2e suivi (et
-# au-delà). La forme simple `bpm = 60.0` applique le même tarif aux
-# trois rangs.
-# bpm = { initial = 60.0, suivi_1 = 20.0, suivi_2 = 20.0 }
-# aod = { initial = 40.0, suivi_1 = 20.0, suivi_2 = 20.0 }
-# avk = { initial = 40.0, suivi_1 = 20.0, suivi_2 = 20.0 }
-# asthme = { initial = 40.0, suivi_1 = 20.0, suivi_2 = 20.0 }
-# anticancereux = { initial = 60.0, suivi_1 = 20.0, suivi_2 = 20.0 }
+# Honoraires en euros, tels que le mémo « Aide à la facturation » de
+# l'Assurance Maladie les fixe : un montant par entretien de la
+# séquence, sur deux lignes — `annee_1` (1re année d'accompagnement)
+# et `annees_suivantes`. Les cases inutilisées valent 0.
+#   BMI 15 + 15 + 15 + 20 = 65 €   puis BMS 10 + 20 = 30 €
+#   ASI 15 + 15 + 20 = 50 €        puis ASS 10 + 20 = 30 €
+#   AC1 15 + 15 + 30 = 60 €        puis AC3 10 + 20 = 30 €
+#   AC2 15 + 15 + 50 = 80 €        puis AC4 10 + 20 = 30 €
+# bpm = { annee_1 = [15.0, 15.0, 15.0, 20.0], annees_suivantes = [10.0, 20.0, 0.0, 0.0] }
+# aod = { annee_1 = [15.0, 15.0, 20.0, 0.0], annees_suivantes = [10.0, 20.0, 0.0, 0.0] }
+# avk = { annee_1 = [15.0, 15.0, 20.0, 0.0], annees_suivantes = [10.0, 20.0, 0.0, 0.0] }
+# asthme = { annee_1 = [15.0, 15.0, 20.0, 0.0], annees_suivantes = [10.0, 20.0, 0.0, 0.0] }
+# anticancereux_lc = { annee_1 = [15.0, 15.0, 30.0, 0.0], annees_suivantes = [10.0, 20.0, 0.0, 0.0] }
+# anticancereux_autres = { annee_1 = [15.0, 15.0, 50.0, 0.0], annees_suivantes = [10.0, 20.0, 0.0, 0.0] }
+# Code traceur TAC, facturé à chaque adhésion à un nouveau thème.
+# adhesion = 0.01
+# Code TPH, ajouté pour un entretien réalisé à distance (le mémo ne
+# donne pas de montant : mettez celui que votre convention applique).
+# teleconsultation = 0.0
+# Actes hors convention d'accompagnement : montant unique de l'officine.
 # trod_angine = 10.0
 # trod_cystite = 12.0
 # vaccination = 10.0
@@ -243,67 +254,135 @@ impl Default for UiConfig {
     }
 }
 
-/// The fee schedule of one act kind: the convention pays the entretien
-/// initial, the 1er suivi and the 2e suivi (and beyond) of an année
-/// d'accompagnement differently.
+/// The staged fees of one theme, as the convention pays them: what is
+/// billed at each entretien of the first year's sequence, then of the
+/// following years. A zero means the sequence has no such step.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 pub struct ActFees {
-    pub initial: f64,
-    pub suivi_1: f64,
-    pub suivi_2: f64,
+    /// Année 1, up to four entretiens (the bilan de médication has four).
+    pub annee_1: [f64; ActFees::STEPS],
+    /// Années suivantes.
+    pub annees_suivantes: [f64; ActFees::STEPS],
 }
 
 impl ActFees {
+    /// The longest sequence the convention defines is the bilan de
+    /// médication's first year: recueil, analyse, suivi, observance.
+    pub const STEPS: usize = 4;
+
+    /// A theme billed the same amount every time, whatever the rank —
+    /// the acts outside the accompaniment convention (TROD, vaccination,
+    /// rendez-vous de prévention).
     pub const fn flat(v: f64) -> Self {
         Self {
-            initial: v,
-            suivi_1: v,
-            suivi_2: v,
+            annee_1: [v, v, v, v],
+            annees_suivantes: [v, v, v, v],
         }
     }
 
-    pub const fn staged(initial: f64, suivi: f64) -> Self {
+    /// The convention's staged schedule.
+    pub const fn staged(annee_1: [f64; 4], annees_suivantes: [f64; 4]) -> Self {
         Self {
-            initial,
-            suivi_1: suivi,
-            suivi_2: suivi,
+            annee_1,
+            annees_suivantes,
         }
     }
 
-    /// Fee for the act ranked `rank` (0-based) inside its yearly cycle.
-    /// Ranks beyond the third are billed at the last rate.
-    pub fn for_rank(&self, rank: usize) -> f64 {
-        match rank {
-            0 => self.initial,
-            1 => self.suivi_1,
-            _ => self.suivi_2,
-        }
+    /// The amount for the `rank`-th entretien of the `year`-th year of
+    /// accompaniment, both 0-based.
+    pub fn amount(&self, year: usize, rank: usize) -> f64 {
+        let row = if year == 0 {
+            &self.annee_1
+        } else {
+            &self.annees_suivantes
+        };
+        row.get(rank).copied().unwrap_or(0.0)
     }
 
-    /// Mutable access by rank, for the Options grid — which shows one
-    /// column per act allowed in the year.
-    pub fn slot_mut(&mut self, rank: usize) -> &mut f64 {
-        match rank {
-            0 => &mut self.initial,
-            1 => &mut self.suivi_1,
-            _ => &mut self.suivi_2,
-        }
+    /// What the whole year is worth once its sequence is complete.
+    pub fn year_total(&self, year: usize) -> f64 {
+        let row = if year == 0 {
+            &self.annee_1
+        } else {
+            &self.annees_suivantes
+        };
+        row.iter().sum()
     }
 
-    /// How many distinct rates this schedule can express.
-    pub const SLOTS: usize = 3;
+    /// Mutable access to one amount, for the Options grid.
+    pub fn slot_mut(&mut self, year: usize, rank: usize) -> &mut f64 {
+        let row = if year == 0 {
+            &mut self.annee_1
+        } else {
+            &mut self.annees_suivantes
+        };
+        &mut row[rank.min(ActFees::STEPS - 1)]
+    }
 }
 
-/// One fee entry as written in `config.toml`: either the flat number
-/// of the older format (`bpm_fee = 60.0`), or a table where each rank
-/// is optional (`bpm = { initial = 65.0 }`). Slots left out — and keys
-/// that are misspelt, which serde ignores — keep the default fee of
-/// that act rather than silently becoming 0 €.
+/// Fees in euros per theme, per year of accompaniment and per
+/// entretien, as the Assurance Maladie memo sets them. Adjust them in
+/// `config.toml` when the convention changes.
+#[derive(Serialize, Clone)]
+pub struct BillingConfig {
+    pub bpm: ActFees,
+    pub aod: ActFees,
+    pub avk: ActFees,
+    pub asthme: ActFees,
+    pub anticancereux_lc: ActFees,
+    pub anticancereux_autres: ActFees,
+    pub trod_angine: ActFees,
+    pub trod_cystite: ActFees,
+    pub vaccination: ActFees,
+    pub prevention: ActFees,
+    /// Code TAC, billed once per patient and per theme on joining.
+    pub adhesion: f64,
+    /// Code TPH, added for an entretien held remotely. The memo gives
+    /// no amount: set it to what your convention pays.
+    pub teleconsultation: f64,
+}
+
+impl Default for BillingConfig {
+    fn default() -> Self {
+        Self {
+            // Bilan de médication : BMI 15 + 15 + 15 + 20 = 65 €,
+            // puis BMS 10 + 20 = 30 €.
+            bpm: ActFees::staged([15.0, 15.0, 15.0, 20.0], [10.0, 20.0, 0.0, 0.0]),
+            // AOD, AVK, asthme : ASI 15 + 15 + 20 = 50 €, ASS 10 + 20.
+            aod: ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0]),
+            avk: ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0]),
+            asthme: ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0]),
+            // Anticancéreux au long cours : AC1 15 + 15 + 30 = 60 €,
+            // AC3 10 + 20 = 30 €.
+            anticancereux_lc: ActFees::staged([15.0, 15.0, 30.0, 0.0], [10.0, 20.0, 0.0, 0.0]),
+            // Autres anticancéreux : AC2 15 + 15 + 50 = 80 €, AC4 30 €.
+            anticancereux_autres: ActFees::staged([15.0, 15.0, 50.0, 0.0], [10.0, 20.0, 0.0, 0.0]),
+            // Hors convention d'accompagnement : montants de l'officine.
+            trod_angine: ActFees::flat(10.0),
+            trod_cystite: ActFees::flat(12.0),
+            vaccination: ActFees::flat(10.0),
+            prevention: ActFees::flat(30.0),
+            adhesion: 0.01,
+            teleconsultation: 0.0,
+        }
+    }
+}
+
+/// One fee entry as written in `config.toml`: the flat number of the
+/// oldest format (`bpm_fee = 60.0`), the per-rank table of the 0.15
+/// format (`bpm = { initial = 65.0 }`), or the convention's own two
+/// rows (`bpm = { annee_1 = [15, 15, 15, 20] }`). Anything left out —
+/// and keys that are misspelt, which serde ignores — keeps the default
+/// of that theme rather than silently becoming 0 €.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum FeesRepr {
     Flat(f64),
     Table {
+        #[serde(default)]
+        annee_1: Option<[f64; ActFees::STEPS]>,
+        #[serde(default)]
+        annees_suivantes: Option<[f64; ActFees::STEPS]>,
         #[serde(default)]
         initial: Option<f64>,
         #[serde(default)]
@@ -314,42 +393,40 @@ enum FeesRepr {
 }
 
 impl FeesRepr {
-    /// Apply what the file specified on top of the act's default fees.
+    /// Apply what the file specified on top of the theme's default.
     fn merge(this: Option<Self>, default: ActFees) -> ActFees {
         match this {
             None => default,
             Some(Self::Flat(v)) => ActFees::flat(v),
             Some(Self::Table {
+                annee_1,
+                annees_suivantes,
                 initial,
                 suivi_1,
                 suivi_2,
-            }) => ActFees {
-                initial: initial.unwrap_or(default.initial),
-                suivi_1: suivi_1.unwrap_or(default.suivi_1),
-                suivi_2: suivi_2.unwrap_or(default.suivi_2),
-            },
+            }) => {
+                let mut out = ActFees {
+                    annee_1: annee_1.unwrap_or(default.annee_1),
+                    annees_suivantes: annees_suivantes.unwrap_or(default.annees_suivantes),
+                };
+                // The 0.15 form had one rate per rank, whatever the
+                // year: spread it over both rows so an old config.toml
+                // keeps billing what it billed.
+                if initial.is_some() || suivi_1.is_some() || suivi_2.is_some() {
+                    let i = initial.unwrap_or(out.annee_1[0]);
+                    let s1 = suivi_1.unwrap_or(out.annee_1[1]);
+                    let s2 = suivi_2.unwrap_or(out.annee_1[2]);
+                    out.annee_1 = [i, s1, s2, s2];
+                    out.annees_suivantes = [i, s1, s2, s2];
+                }
+                out
+            }
         }
     }
 }
 
-/// Fees in euros per act and per rank within the année
-/// d'accompagnement. Defaults are placeholders — adjust them in
-/// `config.toml` to the convention currently in force.
-#[derive(Serialize, Clone)]
-pub struct BillingConfig {
-    pub bpm: ActFees,
-    pub aod: ActFees,
-    pub avk: ActFees,
-    pub asthme: ActFees,
-    pub anticancereux: ActFees,
-    pub trod_angine: ActFees,
-    pub trod_cystite: ActFees,
-    pub vaccination: ActFees,
-    pub prevention: ActFees,
-}
-
-/// Every act is optional in the file and merged onto its default, so a
-/// partial edit never zeroes the ranks it did not mention.
+/// Every theme is optional in the file and merged onto its default, so
+/// a partial edit never zeroes what it does not mention.
 impl<'de> Deserialize<'de> for BillingConfig {
     fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
         #[derive(Deserialize, Default)]
@@ -363,8 +440,9 @@ impl<'de> Deserialize<'de> for BillingConfig {
             avk: Option<FeesRepr>,
             #[serde(alias = "asthme_fee")]
             asthme: Option<FeesRepr>,
-            #[serde(alias = "anticancereux_fee")]
-            anticancereux: Option<FeesRepr>,
+            #[serde(alias = "anticancereux", alias = "anticancereux_fee")]
+            anticancereux_lc: Option<FeesRepr>,
+            anticancereux_autres: Option<FeesRepr>,
             #[serde(alias = "trod_angine_fee")]
             trod_angine: Option<FeesRepr>,
             #[serde(alias = "trod_cystite_fee")]
@@ -373,6 +451,8 @@ impl<'de> Deserialize<'de> for BillingConfig {
             vaccination: Option<FeesRepr>,
             #[serde(alias = "prevention_fee")]
             prevention: Option<FeesRepr>,
+            adhesion: Option<f64>,
+            teleconsultation: Option<f64>,
         }
         let p = Partial::deserialize(de)?;
         let d = BillingConfig::default();
@@ -381,28 +461,15 @@ impl<'de> Deserialize<'de> for BillingConfig {
             aod: FeesRepr::merge(p.aod, d.aod),
             avk: FeesRepr::merge(p.avk, d.avk),
             asthme: FeesRepr::merge(p.asthme, d.asthme),
-            anticancereux: FeesRepr::merge(p.anticancereux, d.anticancereux),
+            anticancereux_lc: FeesRepr::merge(p.anticancereux_lc, d.anticancereux_lc),
+            anticancereux_autres: FeesRepr::merge(p.anticancereux_autres, d.anticancereux_autres),
             trod_angine: FeesRepr::merge(p.trod_angine, d.trod_angine),
             trod_cystite: FeesRepr::merge(p.trod_cystite, d.trod_cystite),
             vaccination: FeesRepr::merge(p.vaccination, d.vaccination),
             prevention: FeesRepr::merge(p.prevention, d.prevention),
+            adhesion: p.adhesion.unwrap_or(d.adhesion),
+            teleconsultation: p.teleconsultation.unwrap_or(d.teleconsultation),
         })
-    }
-}
-
-impl Default for BillingConfig {
-    fn default() -> Self {
-        Self {
-            bpm: ActFees::staged(60.0, 20.0),
-            aod: ActFees::staged(40.0, 20.0),
-            avk: ActFees::staged(40.0, 20.0),
-            asthme: ActFees::staged(40.0, 20.0),
-            anticancereux: ActFees::staged(60.0, 20.0),
-            trod_angine: ActFees::flat(10.0),
-            trod_cystite: ActFees::flat(12.0),
-            vaccination: ActFees::flat(10.0),
-            prevention: ActFees::flat(30.0),
-        }
     }
 }
 
@@ -503,7 +570,8 @@ impl Config {
             crate::db::InterviewKind::TrodCystite => self.rules.trod_cystite_per_year,
             crate::db::InterviewKind::Prevention => self.rules.prevention_per_year,
             crate::db::InterviewKind::Avk => self.rules.avk_per_year,
-            crate::db::InterviewKind::Anticancereux => self.rules.anticancereux_per_year,
+            crate::db::InterviewKind::AnticancereuxLc
+            | crate::db::InterviewKind::AnticancereuxAutres => self.rules.anticancereux_per_year,
             crate::db::InterviewKind::Vaccination => self.rules.vaccination_per_year,
         }
     }
@@ -525,7 +593,8 @@ impl Config {
             crate::db::InterviewKind::Aod => self.billing.aod,
             crate::db::InterviewKind::Avk => self.billing.avk,
             crate::db::InterviewKind::Asthme => self.billing.asthme,
-            crate::db::InterviewKind::Anticancereux => self.billing.anticancereux,
+            crate::db::InterviewKind::AnticancereuxLc => self.billing.anticancereux_lc,
+            crate::db::InterviewKind::AnticancereuxAutres => self.billing.anticancereux_autres,
             crate::db::InterviewKind::TrodAngine => self.billing.trod_angine,
             crate::db::InterviewKind::TrodCystite => self.billing.trod_cystite,
             crate::db::InterviewKind::Vaccination => self.billing.vaccination,
@@ -533,10 +602,39 @@ impl Config {
         }
     }
 
-    /// Fee of one act, given its 0-based rank inside its yearly cycle
-    /// (0 = entretien initial).
-    pub fn fee(&self, kind: crate::db::InterviewKind, rank: usize) -> f64 {
-        self.act_fees(kind).for_rank(rank)
+    /// What one entretien is worth: its theme, the year of
+    /// accompaniment it belongs to and its rank in that year's
+    /// sequence, all 0-based.
+    pub fn fee(&self, kind: crate::db::InterviewKind, year: usize, rank: usize) -> f64 {
+        self.act_fees(kind).amount(year, rank)
+    }
+
+    /// What one entretien actually bills: the act code's fee plus the
+    /// TPH supplement when it was held remotely.
+    pub fn act_total(
+        &self,
+        kind: crate::db::InterviewKind,
+        year: usize,
+        rank: usize,
+        remote: bool,
+    ) -> f64 {
+        let base = self.fee(kind, year, rank);
+        if remote && kind.is_accompaniment() {
+            base + self.billing.teleconsultation
+        } else {
+            base
+        }
+    }
+
+    /// The quota the convention sets for one theme and one year: the
+    /// number of entretiens its sequence holds. Outside the
+    /// accompaniment themes, the officine's own rule applies.
+    pub fn sequence_len(&self, kind: crate::db::InterviewKind, year: usize) -> usize {
+        if kind.is_accompaniment() {
+            kind.sequence(year).len()
+        } else {
+            self.per_year(kind) as usize
+        }
     }
 }
 
@@ -566,11 +664,14 @@ mod tests {
         // The legacy flat form fills all three rank slots…
         assert_eq!(cfg.billing.bpm, ActFees::flat(55.5));
         // …the nested form sets them individually.
-        assert_eq!(cfg.billing.aod.for_rank(0), 44.0);
-        assert_eq!(cfg.billing.aod.for_rank(1), 22.0);
-        assert_eq!(cfg.billing.aod.for_rank(9), 11.0);
-        // Unset fields keep their defaults.
-        assert_eq!(cfg.billing.asthme, ActFees::staged(40.0, 20.0));
+        assert_eq!(cfg.billing.aod.amount(0, 0), 44.0);
+        assert_eq!(cfg.billing.aod.amount(0, 1), 22.0);
+        assert_eq!(cfg.billing.aod.amount(1, 2), 11.0);
+        // Unset fields keep the convention's defaults.
+        assert_eq!(
+            cfg.billing.asthme,
+            ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0])
+        );
         assert!(cfg.team_doc_path().ends_with("notes_equipe.md"));
     }
 
@@ -581,20 +682,96 @@ mod tests {
         let cfg: Config = toml::from_str(
             r#"
             [billing]
-            bpm = { initial = 65.0 }
+            bpm = { annee_1 = [16.0, 16.0, 16.0, 21.0] }
             asthme = { }
             # A misspelt key is ignored, defaults kept.
-            aod = { initail = 99.0 }
+            aod = { annee_2 = 99.0 }
             trod_angine = 11.0
             "#,
         )
         .unwrap();
-        assert_eq!(cfg.billing.bpm, ActFees::staged(65.0, 20.0));
-        assert_eq!(cfg.billing.asthme, ActFees::staged(40.0, 20.0));
-        assert_eq!(cfg.billing.aod, ActFees::staged(40.0, 20.0));
+        // The edited row is taken, the untouched one keeps its default.
+        assert_eq!(
+            cfg.billing.bpm,
+            ActFees::staged([16.0, 16.0, 16.0, 21.0], [10.0, 20.0, 0.0, 0.0])
+        );
+        let convention = ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0]);
+        assert_eq!(cfg.billing.asthme, convention);
+        assert_eq!(cfg.billing.aod, convention);
         assert_eq!(cfg.billing.trod_angine, ActFees::flat(11.0));
         // Acts never mentioned keep their defaults too.
         assert_eq!(cfg.billing.prevention, ActFees::flat(30.0));
+    }
+
+    /// The table of the Assurance Maladie memo, line by line: if a
+    /// default drifts, the officine bills the wrong amount.
+    #[test]
+    fn defaults_match_the_official_fee_table() {
+        use crate::db::InterviewKind::*;
+        let cfg = Config::default();
+        let year = |kind, y: usize, steps: &[f64], total: f64| {
+            for (rank, want) in steps.iter().enumerate() {
+                assert_eq!(
+                    cfg.fee(kind, y, rank),
+                    *want,
+                    "{kind:?} année {y} rang {rank}"
+                );
+            }
+            assert_eq!(
+                cfg.act_fees(kind).year_total(y),
+                total,
+                "{kind:?} année {y}"
+            );
+        };
+        // ASI 15 + 15 + 20 = 50 €, ASS 10 + 20 = 30 €.
+        for kind in [Aod, Avk, Asthme] {
+            year(kind, 0, &[15.0, 15.0, 20.0, 0.0], 50.0);
+            year(kind, 1, &[10.0, 20.0, 0.0, 0.0], 30.0);
+        }
+        // BMI 15 + 15 + 15 + 20 = 65 €, BMS 10 + 20 = 30 €.
+        year(Bpm, 0, &[15.0, 15.0, 15.0, 20.0], 65.0);
+        year(Bpm, 1, &[10.0, 20.0, 0.0, 0.0], 30.0);
+        // AC1 15 + 15 + 30 = 60 €, AC3 30 €.
+        year(AnticancereuxLc, 0, &[15.0, 15.0, 30.0, 0.0], 60.0);
+        year(AnticancereuxLc, 1, &[10.0, 20.0, 0.0, 0.0], 30.0);
+        // AC2 15 + 15 + 50 = 80 €, AC4 30 €.
+        year(AnticancereuxAutres, 0, &[15.0, 15.0, 50.0, 0.0], 80.0);
+        year(AnticancereuxAutres, 1, &[10.0, 20.0, 0.0, 0.0], 30.0);
+        // Adhésion : le code traceur TAC, 0,01 €.
+        assert_eq!(cfg.billing.adhesion, 0.01);
+        // Codes actes, années 1 et suivantes.
+        assert_eq!(Aod.act_code(0), Some("ASI"));
+        assert_eq!(Aod.act_code(1), Some("ASS"));
+        assert_eq!(Bpm.act_code(0), Some("BMI"));
+        assert_eq!(Bpm.act_code(1), Some("BMS"));
+        assert_eq!(AnticancereuxLc.act_code(0), Some("AC1"));
+        assert_eq!(AnticancereuxLc.act_code(1), Some("AC3"));
+        assert_eq!(AnticancereuxAutres.act_code(0), Some("AC2"));
+        assert_eq!(AnticancereuxAutres.act_code(1), Some("AC4"));
+        // Prise en charge : 100 % pour l'anticancéreux, 70 % ailleurs.
+        assert_eq!(AnticancereuxLc.coverage_rate(), 100);
+        assert_eq!(AnticancereuxAutres.coverage_rate(), 100);
+        assert_eq!(Bpm.coverage_rate(), 70);
+        assert_eq!(Aod.coverage_rate(), 70);
+        // Le quota d'une année est la longueur de sa séquence.
+        assert_eq!(cfg.sequence_len(Bpm, 0), 4);
+        assert_eq!(cfg.sequence_len(Bpm, 1), 2);
+        assert_eq!(cfg.sequence_len(Aod, 0), 3);
+        assert_eq!(cfg.sequence_len(Aod, 1), 2);
+    }
+
+    /// TPH is billed on top of the act code, and only for the themes
+    /// the accompaniment convention covers.
+    #[test]
+    fn remote_entretiens_add_the_tph_code() {
+        use crate::db::InterviewKind::*;
+        let mut cfg = Config::default();
+        cfg.billing.teleconsultation = 3.5;
+        assert_eq!(cfg.act_total(Bpm, 0, 0, false), 15.0);
+        assert_eq!(cfg.act_total(Bpm, 0, 0, true), 18.5);
+        // Hors accompagnement : pas de supplément.
+        let trod = cfg.fee(TrodAngine, 0, 0);
+        assert_eq!(cfg.act_total(TrodAngine, 0, 0, true), trod);
     }
 
     #[test]
@@ -610,7 +787,10 @@ mod tests {
         let cfg: Config = toml::from_str(CONFIG_TEMPLATE).unwrap();
         assert!(cfg.database.path.is_none());
         assert_eq!(cfg.database.auto_lock_timeout_minutes, 15);
-        assert_eq!(cfg.billing.bpm, ActFees::staged(60.0, 20.0));
+        assert_eq!(
+            cfg.billing.bpm,
+            ActFees::staged([15.0, 15.0, 15.0, 20.0], [10.0, 20.0, 0.0, 0.0])
+        );
         assert!(cfg.templates.bpm_template_path.is_none());
         assert_eq!(cfg.rules.bpm_per_year, 3);
         assert_eq!(cfg.rules.trod_angine_per_year, 0);
@@ -620,13 +800,16 @@ mod tests {
     fn config_roundtrips_through_toml() {
         let mut cfg = Config::default();
         cfg.pharmacy.name = "Pharmacie du Centre".to_owned();
-        cfg.billing.bpm = ActFees::staged(55.5, 25.0);
+        cfg.billing.bpm = ActFees::staged([55.5, 25.0, 0.0, 0.0], [25.0, 25.0, 0.0, 0.0]);
         cfg.rules.prevention_per_year = 2;
         cfg.ui.operator = "CL".to_owned();
         let text = toml::to_string_pretty(&cfg).unwrap();
         let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(back.pharmacy.name, "Pharmacie du Centre");
-        assert_eq!(back.billing.bpm, ActFees::staged(55.5, 25.0));
+        assert_eq!(
+            back.billing.bpm,
+            ActFees::staged([55.5, 25.0, 0.0, 0.0], [25.0, 25.0, 0.0, 0.0])
+        );
         assert_eq!(back.rules.prevention_per_year, 2);
         assert_eq!(back.ui.operator, "CL");
     }

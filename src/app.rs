@@ -87,28 +87,34 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
         }
     }
     let mut out = String::from(
-        "\u{feff}Patient;Téléphone;Naissance;Type;Thème;Rang;État;Créé le;RDV;Durée (min);\
-         Honoraires (€);Facturé (€)\r\n",
+        "\u{feff}Patient;Téléphone;Naissance;Type;Code acte;Année;Étape;Thème;État;Créé le;RDV;\
+         Durée (min);À distance;Situation;Honoraires (€);Prise en charge (%);Facturé (€)\r\n",
     );
     for r in rows {
         let comma = |v: f64| format!("{v:.2}").replace('.', ",");
         // "Honoraires" is the tariff; "Facturé" only counts once the
         // interview is billed, so summing that column matches the
         // dashboard's billed revenue.
-        let fee = config.fee(r.kind, r.fee_rank);
+        let fee = config.act_total(r.kind, r.fee_year, r.fee_rank, r.remote);
         let billed = if r.state == InterviewState::Billed {
             fee
         } else {
             0.0
         };
         out.push_str(&format!(
-            "{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
+            "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
             field(&r.patient_name),
             field(&r.phone),
             db::format_french_date(&r.birth_date),
             r.kind.label(),
+            r.kind.act_code(r.fee_year).unwrap_or(""),
+            r.fee_year + 1,
+            field(
+                r.kind
+                    .step_label(r.fee_year, r.fee_rank)
+                    .unwrap_or(&rank_label(r.fee_rank))
+            ),
             field(&r.theme),
-            rank_label(r.fee_rank),
             r.state.label(),
             db::format_french_date(&r.created_date),
             r.scheduled_date
@@ -116,7 +122,14 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
                 .map(db::format_french_date)
                 .unwrap_or_default(),
             r.duration_minutes,
+            if r.remote { db::REMOTE_CODE } else { "" },
+            field(
+                db::situation_label(&r.situation)
+                    .map(tr)
+                    .unwrap_or(&r.situation)
+            ),
             comma(fee),
+            r.kind.coverage_rate(),
             comma(billed),
         ));
     }
@@ -729,6 +742,8 @@ struct PatientForm {
     physician: String,
     email: String,
     address: String,
+    /// ALD, AT/MP, maternité — what the billing must take into account.
+    situation: String,
     error: Option<String>,
 }
 
@@ -1210,7 +1225,8 @@ fn kind_color(kind: InterviewKind) -> egui::Color32 {
         InterviewKind::TrodCystite => egui::Color32::from_rgb(0x1a, 0x6e, 0x8b),
         InterviewKind::Prevention => egui::Color32::from_rgb(0x5e, 0x7e, 0x3a),
         InterviewKind::Avk => egui::Color32::from_rgb(0x6e, 0x2e, 0x2e),
-        InterviewKind::Anticancereux => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+        InterviewKind::AnticancereuxLc => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+        InterviewKind::AnticancereuxAutres => egui::Color32::from_rgb(0x7e, 0x4a, 0x2e),
         InterviewKind::Vaccination => egui::Color32::from_rgb(0x2e, 0x6e, 0x6e),
     }
 }
@@ -1232,7 +1248,7 @@ fn status_color(status: &str) -> egui::Color32 {
 fn interview_ranks(
     interviews: &[db::Interview],
     months: u32,
-) -> std::collections::HashMap<i64, usize> {
+) -> std::collections::HashMap<i64, (usize, usize)> {
     let mut by_kind: std::collections::HashMap<InterviewKind, Vec<(i64, String)>> =
         std::collections::HashMap::new();
     for itv in interviews {
@@ -1244,8 +1260,8 @@ fn interview_ranks(
         // The table is newest-first; cycles are computed oldest-first.
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
         let dates: Vec<String> = rows.iter().map(|(_, d)| d.clone()).collect();
-        for ((id, _), rank) in rows.iter().zip(db::cycle_ranks_months(&dates, months)) {
-            out.insert(*id, rank);
+        for ((id, _), position) in rows.iter().zip(db::cycle_positions(&dates, months)) {
+            out.insert(*id, position);
         }
     }
     out
@@ -2272,6 +2288,13 @@ impl App {
                     if !patient.email.is_empty() {
                         bits.push(patient.email.clone());
                     }
+                    // The memo requires the situation to be carried onto
+                    // the billing, so it belongs on the header.
+                    if let Some(key) = db::situation_label(&patient.situation) {
+                        if !patient.situation.is_empty() {
+                            bits.push(trf("patient_situation", tr(key)));
+                        }
+                    }
                     if !bits.is_empty() {
                         ui.label(bits.join("   ·   "));
                     }
@@ -2359,6 +2382,20 @@ impl App {
                         ui.end_row();
                         ui.label(dim(tr("form_address")));
                         ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.address));
+                        ui.end_row();
+                        ui.label(dim(tr("form_situation")));
+                        ui.horizontal(|ui| {
+                            for (code, key) in db::SITUATIONS {
+                                let btn = motif::button(ui, tr(key));
+                                if form.situation == *code {
+                                    motif::bevel(ui.painter(), btn.rect, false);
+                                }
+                                if btn.clicked() {
+                                    form.situation = (*code).to_owned();
+                                }
+                            }
+                            ui.label(dim(tr("form_situation_hint")));
+                        });
                         ui.end_row();
                     });
                 ui.add_space(6.0);
@@ -2537,8 +2574,19 @@ impl App {
             if let Some((kind, theme)) = new_act {
                 // Convention rule: N acts per année d'accompagnement,
                 // next cycle at least 12 months after the first act.
-                let per_year = config.per_year(kind);
                 let months = config.rules.cycle_months.max(1);
+                // How many acts the year allows: the convention's
+                // sequence for an accompaniment theme, the officine's
+                // own quota for the rest.
+                let dates_so_far = session
+                    .db
+                    .interview_dates_for(patient.id, kind)
+                    .unwrap_or_default();
+                let year_now = db::cycle_positions(&dates_so_far, months)
+                    .last()
+                    .map(|(y, _)| *y)
+                    .unwrap_or(0);
+                let per_year = config.sequence_len(kind, year_now) as u32;
                 let blocked = if per_year > 0 {
                     let dates = session
                         .db
@@ -2618,6 +2666,7 @@ impl App {
                 physician: patient.physician.clone(),
                 email: patient.email.clone(),
                 address: patient.address.clone(),
+                situation: patient.situation.clone(),
                 error: None,
             });
         }
@@ -2642,6 +2691,7 @@ impl App {
                             physician: form.physician.trim().to_owned(),
                             email: form.email.trim().to_owned(),
                             address: form.address.trim().to_owned(),
+                            situation: form.situation.trim().to_owned(),
                         };
                         // CAS against the row as displayed: a colleague's
                         // concurrent correction is never wiped.
@@ -2712,6 +2762,7 @@ impl App {
         let mut set_theme: Option<(i64, String, String)> = None;
         // (interview id, new hour, the hour this PC saw — CAS).
         let mut set_hour: Option<(i64, String, String)> = None;
+        let mut set_remote: Option<(i64, bool, bool)> = None;
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
@@ -2747,18 +2798,51 @@ impl App {
                                 ui.end_row();
                             }
                             for itv in &interviews {
-                                let rank = ranks.get(&itv.id).copied().unwrap_or(0);
+                                let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
                                 ui.vertical(|ui| {
                                     ui.label(egui::RichText::new(itv.kind.label()).strong());
+                                    // What the convention calls this
+                                    // entretien, with its act code.
+                                    let step = itv
+                                        .kind
+                                        .step_label(year, rank)
+                                        .map(|s| s.to_owned())
+                                        .unwrap_or_else(|| rank_label(rank));
+                                    let code = itv
+                                        .kind
+                                        .act_code(year)
+                                        .map(|c| format!("{c} · "))
+                                        .unwrap_or_default();
                                     ui.label(
-                                        egui::RichText::new(rank_label(rank))
+                                        egui::RichText::new(format!("{code}{step}"))
                                             .size(10.0)
                                             .color(motif::BG_DARK),
                                     )
-                                    .on_hover_text(trf(
+                                    .on_hover_text(trn(
                                         "itv_fee_tooltip",
-                                        format!("{:.2} €", config.fee(itv.kind, rank)),
+                                        &[
+                                            &format!("{:.2} €", config.fee(itv.kind, year, rank)),
+                                            &(year + 1),
+                                            &itv.kind.coverage_rate(),
+                                        ],
                                     ));
+                                    // Held remotely: the convention bills
+                                    // TPH on top of the act code.
+                                    if itv.kind.is_accompaniment() {
+                                        let btn = motif::button(ui, tr("itv_remote"));
+                                        if itv.remote {
+                                            motif::bevel(ui.painter(), btn.rect, false);
+                                        }
+                                        if btn
+                                            .on_hover_text(trf(
+                                                "itv_remote_tooltip",
+                                                format!("{:.2} €", config.billing.teleconsultation),
+                                            ))
+                                            .clicked()
+                                        {
+                                            set_remote = Some((itv.id, !itv.remote, itv.remote));
+                                        }
+                                    }
                                 });
                                 let mut theme = itv.theme.clone();
                                 if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
@@ -2903,6 +2987,19 @@ impl App {
                 });
         });
         let stale_msg = tr("itv_stale");
+        if let Some((id, remote, expected)) = set_remote {
+            match session.db.set_remote(id, remote, expected) {
+                Ok(true) => {
+                    session.error = None;
+                    session.reload_interviews(patient.id);
+                }
+                Ok(false) => {
+                    session.reload_interviews(patient.id);
+                    session.error = Some(stale_msg.to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
         if let Some((id, hour, expected)) = set_hour {
             match session.db.set_scheduled_time(id, &hour, &expected) {
                 Ok(true) => {
@@ -6190,13 +6287,13 @@ impl App {
             .summaries
             .iter()
             .filter(|s| s.state == InterviewState::Billed)
-            .map(|s| config.fee(s.kind, s.fee_rank))
+            .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
             .sum();
         let pending: f64 = session
             .summaries
             .iter()
             .filter(|s| s.state != InterviewState::Billed)
-            .map(|s| config.fee(s.kind, s.fee_rank))
+            .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
             .sum();
         let billed_count = session
             .summaries
@@ -6486,13 +6583,13 @@ impl App {
                     .summaries
                     .iter()
                     .filter(|s| s.state == InterviewState::Billed && &s.updated_month == m)
-                    .map(|s| config.fee(s.kind, s.fee_rank))
+                    .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
                     .sum();
                 let p: f64 = session
                     .summaries
                     .iter()
                     .filter(|s| s.state != InterviewState::Billed && &s.created_month == m)
-                    .map(|s| config.fee(s.kind, s.fee_rank))
+                    .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
                     .sum();
                 (m.clone(), b, p)
             })
@@ -7352,69 +7449,139 @@ impl eframe::App for App {
                             );
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_fees"));
+                            ui.label(
+                                egui::RichText::new(tr("opts_fees_note"))
+                                    .size(11.0)
+                                    .color(motif::BG_DARK),
+                            );
+                            ui.add_space(4.0);
                             egui::Grid::new("opts_fees")
-                                .num_columns(4)
-                                .spacing([12.0, 6.0])
+                                .num_columns(7)
+                                .spacing([10.0, 5.0])
                                 .show(ui, |ui| {
-                                    // Quotas in the same order as the
-                                    // fee rows below.
-                                    let quotas: [u32; 9] = [
-                                        editor.cfg.rules.bpm_per_year,
-                                        editor.cfg.rules.aod_per_year,
-                                        editor.cfg.rules.avk_per_year,
-                                        editor.cfg.rules.asthme_per_year,
-                                        editor.cfg.rules.anticancereux_per_year,
-                                        editor.cfg.rules.trod_angine_per_year,
-                                        editor.cfg.rules.trod_cystite_per_year,
-                                        editor.cfg.rules.vaccination_per_year,
-                                        editor.cfg.rules.prevention_per_year,
-                                    ];
-                                    let fees: [(&str, &mut ActFees); 9] = [
+                                    let themes: [(&str, &mut ActFees); 10] = [
                                         ("BPM", &mut editor.cfg.billing.bpm),
                                         ("AOD", &mut editor.cfg.billing.aod),
                                         ("AVK", &mut editor.cfg.billing.avk),
                                         ("Asthme", &mut editor.cfg.billing.asthme),
-                                        ("Anticancéreux", &mut editor.cfg.billing.anticancereux),
+                                        (
+                                            "Anticancéreux long cours",
+                                            &mut editor.cfg.billing.anticancereux_lc,
+                                        ),
+                                        (
+                                            "Anticancéreux (autres)",
+                                            &mut editor.cfg.billing.anticancereux_autres,
+                                        ),
                                         ("TROD angine", &mut editor.cfg.billing.trod_angine),
                                         ("TROD cystite", &mut editor.cfg.billing.trod_cystite),
                                         ("Vaccination", &mut editor.cfg.billing.vaccination),
                                         ("Prévention", &mut editor.cfg.billing.prevention),
                                     ];
+                                    // Theme, code, then one column per
+                                    // entretien of the sequence, then
+                                    // the year's total.
                                     ui.label("");
-                                    for h in [
-                                        tr("opts_fee_initial"),
-                                        tr("opts_fee_suivi1"),
-                                        tr("opts_fee_suivi2"),
-                                    ] {
-                                        ui.label(dim(h));
+                                    ui.label(dim(tr("opts_fee_code")));
+                                    for i in 1..=ActFees::STEPS {
+                                        ui.label(dim(&format!("{i}{}", tr("opts_fee_nth"))));
                                     }
+                                    ui.label(dim(tr("opts_fee_total")));
                                     ui.end_row();
-                                    for (i, (label, fees)) in fees.into_iter().enumerate() {
-                                        ui.label(dim(label));
-                                        // One price column per act the
-                                        // quota allows in a cycle: a kind
-                                        // limited to two acts has no
-                                        // third rate to fill in.
-                                        let quota = quotas[i] as usize;
-                                        let shown = if quota == 0 {
-                                            ActFees::SLOTS
-                                        } else {
-                                            quota.min(ActFees::SLOTS)
-                                        };
-                                        for rank in 0..ActFees::SLOTS {
-                                            if rank < shown {
-                                                ui.add(
-                                                    egui::DragValue::new(fees.slot_mut(rank))
+                                    for (label, fees) in themes {
+                                        let kind = InterviewKind::ALL
+                                            .into_iter()
+                                            .find(|k| k.label() == label);
+                                        for year in 0..2 {
+                                            let steps = kind
+                                                .filter(|k| k.is_accompaniment())
+                                                .map(|k| k.sequence(year).len())
+                                                .unwrap_or(1);
+                                            let row_label = match (kind, year) {
+                                                (Some(k), _) if !k.is_accompaniment() => {
+                                                    label.to_owned()
+                                                }
+                                                (_, 0) => {
+                                                    format!("{label} — {}", tr("opts_year_1"))
+                                                }
+                                                _ => format!("{label} — {}", tr("opts_year_next")),
+                                            };
+                                            ui.label(dim(&row_label));
+                                            ui.label(
+                                                egui::RichText::new(
+                                                    kind.and_then(|k| k.act_code(year))
+                                                        .unwrap_or("—"),
+                                                )
+                                                .size(11.0)
+                                                .strong()
+                                                .color(motif::ACCENT),
+                                            );
+                                            for rank in 0..ActFees::STEPS {
+                                                if rank < steps {
+                                                    ui.add(
+                                                        egui::DragValue::new(
+                                                            fees.slot_mut(year, rank),
+                                                        )
                                                         .range(0.0..=500.0)
                                                         .suffix(" €"),
-                                                );
-                                            } else {
-                                                ui.label(dim("—"))
-                                                    .on_hover_text(tr("opts_fee_unused"));
+                                                    );
+                                                } else {
+                                                    ui.label(dim("—"))
+                                                        .on_hover_text(tr("opts_fee_unused"));
+                                                }
+                                            }
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "{:.2} €",
+                                                    fees.year_total(year)
+                                                ))
+                                                .strong(),
+                                            );
+                                            ui.end_row();
+                                            // A theme outside the
+                                            // convention has one rate,
+                                            // not one per year.
+                                            if kind.is_none_or(|k| !k.is_accompaniment()) {
+                                                break;
                                             }
                                         }
-                                        ui.end_row();
                                     }
+                                    ui.label(dim(tr("opts_fee_adhesion")));
+                                    ui.label(
+                                        egui::RichText::new(db::ADHESION_CODE)
+                                            .size(11.0)
+                                            .strong()
+                                            .color(motif::ACCENT),
+                                    );
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.billing.adhesion)
+                                            .range(0.0..=100.0)
+                                            .speed(0.01)
+                                            .suffix(" €"),
+                                    );
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_fee_remote")));
+                                    ui.label(
+                                        egui::RichText::new(db::REMOTE_CODE)
+                                            .size(11.0)
+                                            .strong()
+                                            .color(motif::ACCENT),
+                                    );
+                                    ui.add(
+                                        egui::DragValue::new(
+                                            &mut editor.cfg.billing.teleconsultation,
+                                        )
+                                        .range(0.0..=100.0)
+                                        .suffix(" €"),
+                                    );
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.label("");
+                                    ui.end_row();
                                 });
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_rules"));
@@ -7737,29 +7904,40 @@ mod tests {
             duration_minutes: 45,
             theme: "Observance".to_owned(),
             fee_rank: 0,
+            fee_year: 0,
+            remote: false,
+            situation: "ALD".to_owned(),
         }];
         let csv = interviews_csv(&rows, &Config::default());
         // BOM so Excel decodes UTF-8 accents, semicolons, CRLF.
         assert!(csv.starts_with('\u{feff}'));
-        assert!(csv.contains("Patient;Téléphone;Naissance;Type;Thème;Rang"));
-        // The tricky name is quoted with doubled inner quotes.
-        assert!(csv.contains(
-            "\"Jean; \"\"Le Grand\"\" Dupont\";06 12 34 56 78;03/07/1958;BPM;Observance;\
-             Initial;Facturé;"
-        ));
-        // Billed row: tariff and billed columns both carry the fee.
-        assert!(csv.contains("23/08/2026;01/09/2026;45;60,00;60,00\r\n"));
+        assert!(csv.contains("Patient;Téléphone;Naissance;Type;Code acte;Année;Étape"));
+        // The tricky name is quoted with doubled inner quotes; the act
+        // code and the step come from the convention's own sequence.
+        assert!(
+            csv.contains("\"Jean; \"\"Le Grand\"\" Dupont\";06 12 34 56 78;03/07/1958;BPM;BMI;1;")
+        );
+        // Billed row: tariff and billed columns both carry the fee, the
+        // situation travels with it, and the coverage rate is the 70 %
+        // of the non-anticancéreux themes.
+        assert!(csv.contains("23/08/2026;01/09/2026;45;;ALD;15,00;70;15,00\r\n"));
         // Unbilled row: the "Facturé" column stays at zero.
         let mut pending = rows[0].clone();
         pending.state = InterviewState::Performed;
         let csv = interviews_csv(&[pending], &Config::default());
-        assert!(csv.contains(";60,00;0,00\r\n"));
-        // A follow-up act of the same cycle is billed at the suivi rate.
-        let mut suivi = rows[0].clone();
-        suivi.fee_rank = 1;
-        let csv = interviews_csv(&[suivi], &Config::default());
-        assert!(csv.contains(";1er suivi;"));
-        assert!(csv.contains(";20,00;20,00\r\n"));
+        assert!(csv.contains(";15,00;70;0,00\r\n"));
+        // The last step of the first BMI sequence is the 20 € one.
+        let mut last = rows[0].clone();
+        last.fee_rank = 3;
+        let csv = interviews_csv(&[last], &Config::default());
+        assert!(csv.contains(";20,00;70;20,00\r\n"));
+        // Held remotely: TPH appears and its fee is added on top.
+        let mut remote = rows[0].clone();
+        remote.remote = true;
+        let mut cfg = Config::default();
+        cfg.billing.teleconsultation = 5.0;
+        let csv = interviews_csv(&[remote], &cfg);
+        assert!(csv.contains(";TPH;ALD;20,00;70;20,00\r\n"));
     }
 
     #[test]
