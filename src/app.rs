@@ -961,11 +961,11 @@ fn rich_text(text: &str, size: f32, color: egui::Color32) -> egui::text::LayoutJ
     job.wrap.max_width = f32::INFINITY;
     let mut buf = String::new();
     let (mut bold, mut italic, mut mark) = (false, false, false);
-    let mut push = |job: &mut egui::text::LayoutJob,
-                    buf: &mut String,
-                    bold: bool,
-                    italic: bool,
-                    mark: bool| {
+    let push = |job: &mut egui::text::LayoutJob,
+                buf: &mut String,
+                bold: bool,
+                italic: bool,
+                mark: bool| {
         if buf.is_empty() {
             return;
         }
