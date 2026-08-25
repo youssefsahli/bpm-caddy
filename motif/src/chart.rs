@@ -339,6 +339,39 @@ pub fn meter(ui: &egui::Ui, rect: egui::Rect, fraction: f32, color: Color32) {
     }
 }
 
+/// Discrete pips: `filled` of `total` cells lit. Where [`meter`] shows a
+/// proportion, this shows a count — four entretiens in a sequence are
+/// four squares, not 50 % of a bar.
+pub fn pips(ui: &egui::Ui, rect: egui::Rect, filled: usize, total: usize, color: Color32) {
+    let total = total.max(1);
+    let gap = 2.0_f32;
+    let w = ((rect.width() - gap * (total - 1) as f32) / total as f32).max(3.0);
+    for i in 0..total {
+        let cell = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + i as f32 * (w + gap), rect.top()),
+            Vec2::new(w, rect.height()),
+        );
+        if i < filled {
+            ui.painter().rect_filled(cell, 0.0, color);
+            bevel(ui.painter(), cell, true);
+        } else {
+            ui.painter().rect_filled(cell, 0.0, TROUGH);
+            bevel(ui.painter(), cell, false);
+        }
+    }
+    // Past the sequence's length there is nothing left to bill: say so
+    // rather than silently drawing a full row.
+    if filled > total {
+        ui.painter().text(
+            egui::pos2(rect.right() + 4.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            format!("+{}", filled - total),
+            egui::FontId::proportional(10.0),
+            crate::ALERT,
+        );
+    }
+}
+
 /// A calendar heat strip: one cell per day, shaded by intensity.
 /// Returns the hovered cell index.
 pub fn heat_strip(

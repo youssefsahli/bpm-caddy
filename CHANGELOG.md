@@ -5,6 +5,64 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.44.0] - 2026-08-26
+
+### Added
+- **A keyboard reference (F12)**, or the toolbar's « ? ». The app is
+  driven from the keyboard — that is the point of it at a counter — and
+  until now the only way to learn a shortcut was to be told one. Every
+  key it answers to is on one page, grouped by what it acts on, each
+  drawn as a keycap so the left column can be scanned.
+- **Where each accompaniment stands**, above the acts table: one row per
+  act kind with its année d'accompagnement and its sequence as filled
+  squares. The table says what was done; this says what is left and
+  still billable, which the counter had to answer by counting rows.
+- **The half-life as a curve** on the drug monograph. How much is left a
+  day after the last dose is the question behind "puis-je opérer,
+  relayer, arrêter", and reading it off "≈ 12 heures" was arithmetic
+  done in the head.
+- **The drug base opens on what it holds**: the classes it covers and
+  how deeply, every card that names an antidote — the one lookup nobody
+  wants to be searching for — and the cards carrying a status, each with
+  its condition on a coloured chip.
+
+### Changed
+- **The Options dialog is five pages**, not one five-screen scroll: an
+  auto-lock timeout and a 9×3 fee matrix were the same distance from
+  the top, and the window was always as tall as the screen allowed. The
+  left dock's own "ouverte au démarrage" setting joins the documentation
+  pane's on the Interface page.
+- **The status bar says what needs doing.** It counted patients,
+  interviews and drugs — three numbers that never change through a shift
+  and never ask for anything. It now also carries what is late, what is
+  due today and what is waiting to be billed, each a click from the view
+  that handles it, and names the operator stamping the notes.
+- **The unlock screen is a Motif dialog box** — raised, hard-shadowed,
+  with the app's painted mark at its head — instead of four centred
+  lines on a field of grey. It is sized from the type scale, so at 1.4×
+  the unlock button no longer falls out through the bottom edge.
+- The agenda's day plan and month grid drop their own « ‹ Aujourd'hui › »
+  rows — the control band drives all three modes — and both fill the
+  pane they are given rather than a fixed 34 px row and 62 px cell.
+- The docs dock reserved 185 px for the operator's private journal
+  whether or not an operator was set; the reserve follows the field now,
+  and the save state shares the operator's row.
+- The dashboard's panels stretch to fill a tall window instead of ending
+  in a band of grey, and fall to two lanes from 680 px rather than 800.
+- The protocol list is a sunken list box like the patients and the
+  drugs; the carnet reads at 900 px rather than 700.
+
+### Fixed
+- A notes box whose journal overflowed painted its last entries under
+  the frame and pushed its "Ajouter" row through the bottom edge of the
+  panel: `allocate_new_ui` only sets a max rect, and egui draws through
+  it. The well is clipped to itself, and the box works out its own fit.
+- `motif::list_row` ends a too-long row in an ellipsis rather than
+  mid-letter — a row clipped by the panel edge reads as a rendering
+  fault and hides the fact that there was more to read.
+- The agenda's band names the month as a month, not as a date inside
+  its grid.
+
 ## [0.43.0] - 2026-08-26
 
 ### Added

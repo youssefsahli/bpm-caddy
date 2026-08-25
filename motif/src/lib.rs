@@ -449,15 +449,26 @@ pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui
             ui.painter().rect_filled(rect, 0.0, BG_HOVER);
         }
         let color = if selected { Color32::WHITE } else { TEXT };
-        let galley = ui.painter().layout_no_wrap(
+        // One line, ending in an ellipsis rather than mid-letter: a row
+        // clipped by the panel edge reads as a rendering fault, and
+        // hides the fact that there was more to read.
+        let mut job = egui::text::LayoutJob::single_section(
             text.text().to_owned(),
-            egui::FontId::proportional(14.0),
-            color,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(14.0),
+                color,
+                ..Default::default()
+            },
         );
+        job.wrap = egui::text::TextWrapping {
+            max_width: rect.width() - 12.0,
+            max_rows: 1,
+            break_anywhere: false,
+            overflow_character: Some('…'),
+        };
+        let galley = ui.fonts(|f| f.layout_job(job));
         let pos = egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
-        ui.painter()
-            .with_clip_rect(rect.shrink2(Vec2::new(4.0, 0.0)))
-            .galley(pos, galley, color);
+        ui.painter().galley(pos, galley, color);
     }
     response
 }
