@@ -19,6 +19,12 @@ pub const ACCENT: Color32 = Color32::from_rgb(0x3a, 0x54, 0x7e);
 /// Hover tint, slightly lighter than `BG`.
 pub const BG_HOVER: Color32 = Color32::from_rgb(0xbb, 0xbf, 0xcf);
 pub const TEXT: Color32 = Color32::BLACK;
+/// Secondary text on `BG`. `BG_DARK` is the bevel shadow and is far too
+/// light to read a label in: labels that used it were barely legible on
+/// the widget grey, and unreadable once the screen was dimmed.
+pub const TEXT_DIM: Color32 = Color32::from_rgb(0x39, 0x3c, 0x48);
+/// Third-level text: captions, units, timestamps. Still legible.
+pub const TEXT_FAINT: Color32 = Color32::from_rgb(0x4c, 0x50, 0x5e);
 /// Errors and destructive warnings (Motif dark red).
 pub const ALERT: Color32 = Color32::from_rgb(0x8b, 0x1a, 0x1a);
 
@@ -143,8 +149,41 @@ pub fn apply(ctx: &egui::Context) {
 
     style.spacing.button_padding = Vec2::new(14.0, 6.0);
     style.spacing.item_spacing = Vec2::new(10.0, 10.0);
+    type_scale(&mut style, 1.0);
 
     ctx.set_style(style);
+}
+
+/// The type scale, set deliberately rather than left to the egui
+/// defaults: a heading that reads as one, a body size sized for a
+/// counter at arm's length, and a small size that is still a size and
+/// not a whisper. `scale` multiplies the whole ladder at once.
+fn type_scale(style: &mut egui::Style, scale: f32) {
+    use egui::{FontFamily, FontId, TextStyle};
+    let px = |v: f32| (v * scale).round().max(8.0);
+    style.text_styles = [
+        (
+            TextStyle::Heading,
+            FontId::new(px(21.0), FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Body,
+            FontId::new(px(14.0), FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Button,
+            FontId::new(px(14.0), FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Small,
+            FontId::new(px(11.5), FontFamily::Proportional),
+        ),
+        (
+            TextStyle::Monospace,
+            FontId::new(px(13.0), FontFamily::Monospace),
+        ),
+    ]
+    .into();
 }
 
 /// How generously the interface spends the screen. "Confortable" is the
@@ -161,9 +200,10 @@ pub enum Density {
 pub fn apply_scale(ctx: &egui::Context, scale: f32, density: Density) {
     let scale = scale.clamp(0.7, 1.8);
     let mut style = (*ctx.style()).clone();
-    for font in style.text_styles.values_mut() {
-        font.size = (font.size * scale).round().max(7.0);
-    }
+    // Rebuild the ladder from the base sizes. Multiplying whatever is
+    // already there compounds on every call, so two visits to the
+    // options used to leave the text bigger each time.
+    type_scale(&mut style, scale);
     let (pad, spacing, row) = match density {
         Density::Comfortable => (Vec2::new(14.0, 6.0), Vec2::new(10.0, 10.0), 22.0),
         Density::Compact => (Vec2::new(9.0, 3.0), Vec2::new(6.0, 5.0), 18.0),
@@ -358,10 +398,12 @@ pub fn bevel(painter: &egui::Painter, rect: egui::Rect, raised: bool) {
 /// A Motif push button: raised bevel, sinks (and nudges its label) while
 /// pressed.
 pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
-    let padding = Vec2::new(18.0, 7.0);
-    let galley =
-        ui.painter()
-            .layout_no_wrap(text.to_owned(), egui::FontId::proportional(14.0), TEXT);
+    // Both come from the style: a hardcoded font size ignored the text
+    // scale, so every Motif button stayed 14 px while the rest of the
+    // interface grew, and a hardcoded padding ignored the density.
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let padding = ui.spacing().button_padding + Vec2::new(4.0, 1.0);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, TEXT);
     let size = galley.size() + padding * 2.0;
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     if ui.is_rect_visible(rect) {
@@ -390,7 +432,8 @@ pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
 /// left-aligned text. For the sunken list boxes (patients, drugs…).
 pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui::Response {
     let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 24.0), egui::Sense::click());
+    let height = (ui.spacing().interact_size.y + 2.0).max(18.0);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
     if ui.is_rect_visible(rect) {
         if selected {
             ui.painter().rect_filled(rect, 0.0, ACCENT);
@@ -419,7 +462,8 @@ pub fn list_row_job(
     selected: bool,
 ) -> egui::Response {
     let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 24.0), egui::Sense::click());
+    let height = (ui.spacing().interact_size.y + 2.0).max(18.0);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
     if ui.is_rect_visible(rect) {
         if selected {
             ui.painter().rect_filled(rect, 0.0, ACCENT);
@@ -433,6 +477,21 @@ pub fn list_row_job(
             .galley(pos, galley, TEXT);
     }
     response
+}
+
+/// A push button that stays in: raised when off, sunken when on. The
+/// Motif idiom for a mode, a filter or a flag.
+pub fn toggle(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
+    let resp = button(ui, text);
+    if on {
+        ui.painter().rect_filled(resp.rect, 0.0, TROUGH);
+        bevel(ui.painter(), resp.rect, false);
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let galley = ui.painter().layout_no_wrap(text.to_owned(), font, TEXT);
+        let pos = resp.rect.center() - galley.size() / 2.0 + Vec2::splat(1.0);
+        ui.painter().galley(pos, galley, TEXT);
+    }
+    resp
 }
 
 /// A section heading: small bold label with a sunken rule to the right,

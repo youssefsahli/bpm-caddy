@@ -5,6 +5,42 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.41.0] - 2026-08-25
+
+### Fixed
+- The text scale had no effect on any Motif button: they were drawn at a
+  hardcoded 14 px while the rest of the interface grew around them, and
+  their padding ignored the compact density too. Both now come from the
+  style.
+- Opening the options twice enlarged the text twice: the scale was
+  multiplied onto whatever size was already set instead of being applied
+  to the base ladder.
+- Secondary labels were painted in the bevel shadow colour, which is
+  meant for a two-pixel edge and is far too light to read a word in.
+  They now have colours of their own, and so do the agenda's hour
+  column, its weekday heads, the half-life axis and the days outside the
+  displayed month.
+- List rows kept a fixed height whatever the density, so compact mode
+  saved nothing in a list.
+
+### Changed
+- A deliberate type scale replaces the egui defaults: heading, body,
+  button, small and monospace, all moving together with the text scale.
+- Buttons that hold a state — agenda mode and filters, template target,
+  situation, "à distance", "changement de traitement" — are one widget
+  now, raised when off and sunken when on, instead of five hand-rolled
+  copies of the same idiom.
+- The dashboard reads at a glance: each figure sits under a small
+  spaced caption and a hairline, and the per-theme counts are chips
+  (sunken when the theme has entretiens, quiet when it has none)
+  instead of one long line that broke between a label and its count.
+- The patient card puts the acts where the work is: identity,
+  treatments, entretiens, then the follow-up journal underneath — the
+  reason to open a fiche is the entretien in progress, not last week's
+  note.
+- The agenda's act filters carry each act's colour and the same
+  raised/sunken idiom as the rest of the interface.
+
 ## [0.40.0] - 2026-08-25
 
 ### Fixed

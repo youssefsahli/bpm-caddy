@@ -505,7 +505,7 @@ fn notes_box(
                     ui.label(
                         egui::RichText::new(tr("notes_empty"))
                             .size(11.0)
-                            .color(motif::BG_DARK),
+                            .color(motif::TEXT_DIM),
                     );
                 }
                 for n in notes {
@@ -1381,7 +1381,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
             ui.label(
                 egui::RichText::new(tr("act_picker_hint"))
                     .size(11.0)
-                    .color(motif::BG_DARK),
+                    .color(motif::TEXT_DIM),
             );
             ui.add_space(6.0);
             egui::Grid::new("act_picker")
@@ -1766,7 +1766,7 @@ impl App {
             ui.label(
                 egui::RichText::new(tr("op_notes_missing"))
                     .size(11.0)
-                    .color(motif::BG_DARK),
+                    .color(motif::TEXT_DIM),
             );
             return;
         }
@@ -1926,7 +1926,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(tr("op_notes_missing"))
                             .size(11.0)
-                            .color(motif::BG_DARK),
+                            .color(motif::TEXT_DIM),
                     );
                 } else if matches!(self.state, State::Unlocked(_)) {
                     motif::section(ui, &trf("op_notes_section", &op));
@@ -2013,7 +2013,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(trf("lock_db_path", db_path.display()))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             });
         });
@@ -2243,7 +2243,7 @@ impl App {
                 ui.vertical_centered(|ui| {
                     ui.label(tr("search_no_match"));
                     ui.add_space(8.0);
-                    let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                    let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
                     let submitted = egui::Grid::new("new_patient")
                         .min_col_width(110.0)
                         .num_columns(2)
@@ -2397,7 +2397,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(patient.address.as_str())
                             .size(12.0)
-                            .color(motif::BG_DARK),
+                            .color(motif::TEXT_DIM),
                     );
                 }
                 if !patient.notes.is_empty() {
@@ -2425,7 +2425,7 @@ impl App {
             }
             if let Some(form) = &mut session.edit_patient {
                 ui.add_space(8.0);
-                let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
                 egui::Grid::new("edit_patient")
                     .min_col_width(110.0)
                     .num_columns(2)
@@ -2480,10 +2480,7 @@ impl App {
                         ui.label(dim(tr("form_situation")));
                         ui.horizontal(|ui| {
                             for (code, key) in db::SITUATIONS {
-                                let btn = motif::button(ui, tr(key));
-                                if form.situation == *code {
-                                    motif::bevel(ui.painter(), btn.rect, false);
-                                }
+                                let btn = motif::toggle(ui, tr(key), form.situation == *code);
                                 if btn.clicked() {
                                     form.situation = (*code).to_owned();
                                 }
@@ -2515,7 +2512,7 @@ impl App {
                 let mut open_card: Option<Drug> = None;
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(tr("treat_label")).color(motif::BG_DARK));
+                    ui.label(egui::RichText::new(tr("treat_label")).color(motif::TEXT_DIM));
                     for t in &session.patient_treats {
                         let chip = ui.add(
                             egui::Label::new(
@@ -2592,45 +2589,6 @@ impl App {
                 if let Some(d) = open_card {
                     session.open_drug_card(d);
                     session.view = MainView::Drugs;
-                }
-            }
-            ui.add_space(10.0);
-
-            // Dated notes journal for this patient.
-            motif::section(ui, tr("notes_section"));
-            ui.add_space(4.0);
-            {
-                let (add, delete) = notes_box(
-                    ui,
-                    "patient_notes",
-                    &session.patient_notes,
-                    &mut session.note_text,
-                    &mut session.note_confirm,
-                    96.0,
-                    true,
-                );
-                if let Some(body) = add {
-                    if let Err(e) =
-                        session
-                            .db
-                            .add_note(NoteSubject::Patient, patient.id, operator, &body)
-                    {
-                        session.error = Some(e);
-                    }
-                    session.note_text.clear();
-                    session.patient_notes = session
-                        .db
-                        .notes_for(NoteSubject::Patient, patient.id)
-                        .unwrap_or_default();
-                }
-                if let Some(id) = delete {
-                    if let Err(e) = session.db.delete_note(id) {
-                        session.error = Some(e);
-                    }
-                    session.patient_notes = session
-                        .db
-                        .notes_for(NoteSubject::Patient, patient.id)
-                        .unwrap_or_default();
                 }
             }
             ui.add_space(10.0);
@@ -2739,7 +2697,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(tr("rule_blocked_hard"))
                             .size(11.0)
-                            .color(motif::BG_DARK),
+                            .color(motif::TEXT_DIM),
                     );
                 } else if motif::button(ui, tr("rule_override")).clicked() {
                     session.rule_block = None;
@@ -2762,8 +2720,49 @@ impl App {
                         &[&db::BPM_MIN_TREATMENTS, &session.patient_treats.len()],
                     ))
                     .size(11.0)
-                    .color(motif::BG_DARK),
+                    .color(motif::TEXT_DIM),
                 );
+            }
+
+            ui.add_space(14.0);
+            // The journal sits under the acts: the reason to open a
+            // fiche is the entretien in progress, not last week's note.
+            // Dated notes journal for this patient.
+            motif::section(ui, tr("notes_section"));
+            ui.add_space(4.0);
+            {
+                let (add, delete) = notes_box(
+                    ui,
+                    "patient_notes",
+                    &session.patient_notes,
+                    &mut session.note_text,
+                    &mut session.note_confirm,
+                    96.0,
+                    true,
+                );
+                if let Some(body) = add {
+                    if let Err(e) =
+                        session
+                            .db
+                            .add_note(NoteSubject::Patient, patient.id, operator, &body)
+                    {
+                        session.error = Some(e);
+                    }
+                    session.note_text.clear();
+                    session.patient_notes = session
+                        .db
+                        .notes_for(NoteSubject::Patient, patient.id)
+                        .unwrap_or_default();
+                }
+                if let Some(id) = delete {
+                    if let Err(e) = session.db.delete_note(id) {
+                        session.error = Some(e);
+                    }
+                    session.patient_notes = session
+                        .db
+                        .notes_for(NoteSubject::Patient, patient.id)
+                        .unwrap_or_default();
+                }
             }
 
             ui.add_space(16.0);
@@ -2910,7 +2909,7 @@ impl App {
                                     ui.label(
                                         egui::RichText::new(header)
                                             .size(11.0)
-                                            .color(motif::BG_DARK),
+                                            .color(motif::TEXT_DIM),
                                     );
                                 }
                                 ui.end_row();
@@ -2934,7 +2933,7 @@ impl App {
                                     ui.label(
                                         egui::RichText::new(format!("{code}{step}"))
                                             .size(10.0)
-                                            .color(motif::BG_DARK),
+                                            .color(motif::TEXT_DIM),
                                     )
                                     .on_hover_text(trn(
                                         "itv_fee_tooltip",
@@ -2947,10 +2946,7 @@ impl App {
                                     // Held remotely: the convention bills
                                     // TPH on top of the act code.
                                     if itv.kind.is_accompaniment() {
-                                        let btn = motif::button(ui, tr("itv_remote"));
-                                        if itv.remote {
-                                            motif::bevel(ui.painter(), btn.rect, false);
-                                        }
+                                        let btn = motif::toggle(ui, tr("itv_remote"), itv.remote);
                                         if btn
                                             .on_hover_text(trf(
                                                 "itv_remote_tooltip",
@@ -2965,10 +2961,11 @@ impl App {
                                     // the treatment-change derogation
                                     // for those two themes alone.
                                     if itv.kind.allows_treatment_change() {
-                                        let btn = motif::button(ui, tr("itv_change"));
-                                        if itv.treatment_change {
-                                            motif::bevel(ui.painter(), btn.rect, false);
-                                        }
+                                        let btn = motif::toggle(
+                                            ui,
+                                            tr("itv_change"),
+                                            itv.treatment_change,
+                                        );
                                         if btn.on_hover_text(tr("itv_change_tooltip")).clicked() {
                                             set_change = Some((
                                                 itv.id,
@@ -3435,7 +3432,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("trans_readonly"))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             }
             if let Some(body) = add {
@@ -3545,7 +3542,7 @@ impl App {
                     egui::Align2::LEFT_CENTER,
                     format!("{:02} h", start + i),
                     egui::FontId::proportional(11.0),
-                    motif::BG_DARK,
+                    motif::TEXT_DIM,
                 );
             }
         }
@@ -3656,7 +3653,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("agenda_untimed"))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
                 for label in &untimed {
                     ui.label(egui::RichText::new(label.trim()).size(12.0));
@@ -3739,7 +3736,7 @@ impl App {
                 egui::Align2::CENTER_CENTER,
                 head,
                 egui::FontId::proportional(11.0),
-                motif::BG_DARK,
+                motif::TEXT_DIM,
             );
         }
         let month = session
@@ -3780,7 +3777,7 @@ impl App {
                 if in_month {
                     motif::TEXT
                 } else {
-                    motif::BG_DARK
+                    motif::TEXT_FAINT
                 },
             );
             // One chip per act, then the other entries, clipped to the cell.
@@ -3853,7 +3850,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("agenda_day_empty"))
                         .size(12.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             }
             for rdv in &rdvs {
@@ -3909,7 +3906,7 @@ impl App {
                         ui.label(
                             egui::RichText::new(&rdv.phone)
                                 .size(11.0)
-                                .color(motif::BG_DARK),
+                                .color(motif::TEXT_DIM),
                         );
                     }
                     // Moving a rendez-vous without opening the record.
@@ -3954,7 +3951,7 @@ impl App {
                         ui.label(
                             egui::RichText::new(trf("agenda_repeat_mark", ev.repeat_days))
                                 .size(10.0)
-                                .color(motif::BG_DARK),
+                                .color(motif::TEXT_DIM),
                         );
                     }
                     if motif::button(ui, tr("itv_delete"))
@@ -4186,10 +4183,7 @@ impl App {
                     (AgendaMode::Week, tr("agenda_mode_week")),
                     (AgendaMode::Month, tr("agenda_mode_month")),
                 ] {
-                    let btn = motif::button(ui, label);
-                    if session.agenda_mode == mode {
-                        motif::bevel(ui.painter(), btn.rect, false);
-                    }
+                    let btn = motif::toggle(ui, label, session.agenda_mode == mode);
                     if btn.clicked() {
                         session.agenda_mode = mode;
                         session.agenda_month = mode == AgendaMode::Month;
@@ -4209,23 +4203,30 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("agenda_filter"))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
-                if ui
-                    .selectable_label(session.agenda_filter.is_empty(), tr("agenda_filter_all"))
-                    .on_hover_text(tr("agenda_filter_tooltip"))
-                    .clicked()
+                if motif::toggle(
+                    ui,
+                    tr("agenda_filter_all"),
+                    session.agenda_filter.is_empty(),
+                )
+                .on_hover_text(tr("agenda_filter_tooltip"))
+                .clicked()
                 {
                     session.agenda_filter.clear();
                 }
                 for kind in InterviewKind::ALL {
                     let on = session.agenda_filter.contains(&kind);
-                    let label = egui::RichText::new(kind.label()).color(if on {
-                        egui::Color32::WHITE
-                    } else {
-                        kind_color(kind)
-                    });
-                    if ui.selectable_label(on, label).clicked() {
+                    // The same sunken-when-on idiom as everywhere else,
+                    // with the act's own colour as a marker so the
+                    // filter row and the grid read as one thing.
+                    let resp = motif::toggle(ui, kind.label(), on);
+                    let dot = egui::Rect::from_center_size(
+                        egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
+                        egui::vec2(4.0, resp.rect.height() - 10.0),
+                    );
+                    ui.painter().rect_filled(dot, 0.0, kind_color(kind));
+                    if resp.clicked() {
                         if on {
                             session.agenda_filter.remove(&kind);
                         } else {
@@ -4690,7 +4691,7 @@ impl App {
                     c if c >= 15.0 => tr("calc_stage_g4"),
                     _ => tr("calc_stage_g5"),
                 };
-                ui.label(egui::RichText::new(stage).size(11.0).color(motif::BG_DARK));
+                ui.label(egui::RichText::new(stage).size(11.0).color(motif::TEXT_DIM));
 
                 // --- Dose par kilo ---
                 let ui = &mut cols[1];
@@ -4731,7 +4732,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("calc_perkg_note"))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             });
 
@@ -4803,7 +4804,7 @@ impl App {
                     egui::Align2::CENTER_TOP,
                     format!("{:.0} h", t12 * i as f64),
                     egui::FontId::proportional(9.0),
-                    motif::BG_DARK,
+                    motif::TEXT_FAINT,
                 );
             }
             let mut points = Vec::with_capacity(61);
@@ -4826,7 +4827,7 @@ impl App {
                     egui::Align2::LEFT_BOTTOM,
                     label,
                     egui::FontId::proportional(9.0),
-                    motif::BG_DARK,
+                    motif::TEXT_FAINT,
                 );
             }
             ui.add_space(14.0);
@@ -4834,7 +4835,7 @@ impl App {
                 egui::RichText::new(tr("calc_note"))
                     .size(11.0)
                     .italics()
-                    .color(motif::BG_DARK),
+                    .color(motif::TEXT_DIM),
             );
         });
     }
@@ -4885,7 +4886,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("proto_empty"))
                         .size(12.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             }
             for p in session.protocols.clone() {
@@ -4897,7 +4898,7 @@ impl App {
                         ui.label(
                             egui::RichText::new(&p.subject)
                                 .size(11.0)
-                                .color(motif::BG_DARK),
+                                .color(motif::TEXT_DIM),
                         );
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -4953,7 +4954,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("proto_subject"))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
                 let sj = ui.add_sized([200.0, 24.0], egui::TextEdit::singleline(&mut subject));
                 if t.lost_focus() || sj.lost_focus() {
@@ -4986,7 +4987,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("proto_no_steps"))
                         .size(12.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
                 ui.horizontal(|ui| {
                     if motif::button(ui, tr("proto_add_question")).clicked() {
@@ -5013,7 +5014,7 @@ impl App {
                         db::Branch::Root => "",
                     };
                     if !tag.is_empty() {
-                        ui.label(egui::RichText::new(tag).size(11.0).color(motif::BG_DARK));
+                        ui.label(egui::RichText::new(tag).size(11.0).color(motif::TEXT_DIM));
                     }
                     let editing = session
                         .protocol_node_edit
@@ -5205,7 +5206,7 @@ impl App {
                 ui.label(
                     egui::RichText::new(tr("proto_walk_done"))
                         .size(12.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             }
         });
@@ -5264,10 +5265,7 @@ impl App {
             // There are more tables than fit on one line — let it wrap.
             ui.horizontal_wrapped(|ui| {
                 for (i, t) in crate::tables::TABLES.iter().enumerate() {
-                    let btn = motif::button(ui, t.short);
-                    if i == session.table_selected {
-                        motif::bevel(ui.painter(), btn.rect, false);
-                    }
+                    let btn = motif::toggle(ui, t.short, i == session.table_selected);
                     if btn.clicked() {
                         session.table_selected = i;
                         session.table_edit = None;
@@ -5395,13 +5393,13 @@ impl App {
                 egui::RichText::new(tr("tables_sources"))
                     .size(11.0)
                     .strong()
-                    .color(motif::BG_DARK),
+                    .color(motif::TEXT_DIM),
             );
             for (i, src) in t.sources.iter().enumerate() {
                 ui.label(
                     egui::RichText::new(format!("{}. {}", i + 1, src))
                         .size(11.0)
-                        .color(motif::BG_DARK),
+                        .color(motif::TEXT_DIM),
                 );
             }
             // Team edits: how many, undo the last one, restore the
@@ -5668,7 +5666,7 @@ impl App {
                                 }
                                 if !sub.is_empty() {
                                     ui.label(
-                                        egui::RichText::new(sub).italics().color(motif::BG_DARK),
+                                        egui::RichText::new(sub).italics().color(motif::TEXT_DIM),
                                     );
                                 }
                             }
@@ -5684,7 +5682,7 @@ impl App {
                             }
                         });
                         ui.add_space(12.0);
-                        let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                        let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
                         // Two-column drug page: identity/clinical on the left,
                         // pharmacokinetics on the right.
                         #[allow(clippy::needless_late_init)]
@@ -5868,7 +5866,7 @@ impl App {
                     }
                     if !reading {
                         // Posologies by indication, editable line by line.
-                        let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                        let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
                         ui.add_space(8.0);
                         motif::section(ui, tr("drug_sec_poso"));
                         ui.add_space(4.0);
@@ -5908,7 +5906,7 @@ impl App {
                                         ui.label(
                                             egui::RichText::new(&p.remarque)
                                                 .size(11.0)
-                                                .color(motif::BG_DARK),
+                                                .color(motif::TEXT_DIM),
                                         );
                                         ui.horizontal(|ui| {
                                             if motif::button(ui, tr("drug_edit")).clicked() {
@@ -5988,7 +5986,7 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(tr("drug_patients_label"))
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                             );
                             for p in session.drug_patients.iter().take(6) {
                                 let chip = ui.add(
@@ -6033,7 +6031,7 @@ impl App {
                         ui.label(
                             egui::RichText::new(tr("drug_class_note_hint"))
                                 .size(11.0)
-                                .color(motif::BG_DARK),
+                                .color(motif::TEXT_DIM),
                         );
                         ui.add_space(6.0);
                         ui.add_sized(
@@ -6369,21 +6367,39 @@ impl App {
 
     /// A raised KPI box: title on top, big value below.
     fn kpi_box(ui: &mut egui::Ui, width: f32, title: &str, value: &str) {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 74.0), egui::Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 78.0), egui::Sense::hover());
         ui.painter().rect_filled(rect, 0.0, motif::BG);
         motif::bevel(ui.painter(), rect, true);
+        // The figure is what the eye should land on: the caption above
+        // it is small, spaced and quiet, the number large and accented.
+        let caption: String = title
+            .to_uppercase()
+            .chars()
+            .flat_map(|c| [c, '\u{2009}'])
+            .collect();
         ui.painter().text(
-            egui::pos2(rect.center().x, rect.top() + 18.0),
+            egui::pos2(rect.center().x, rect.top() + 17.0),
             egui::Align2::CENTER_CENTER,
-            title,
-            egui::FontId::proportional(13.0),
-            motif::TEXT,
+            caption.trim_end(),
+            egui::FontId::proportional(10.0),
+            motif::TEXT_DIM,
+        );
+        // A hairline under the caption, in the Motif two-tone.
+        let y = rect.top() + 28.0;
+        let (x0, x1) = (rect.left() + 14.0, rect.right() - 14.0);
+        ui.painter().line_segment(
+            [egui::pos2(x0, y), egui::pos2(x1, y)],
+            egui::Stroke::new(1.0_f32, motif::BG_DARK),
+        );
+        ui.painter().line_segment(
+            [egui::pos2(x0, y + 1.0), egui::pos2(x1, y + 1.0)],
+            egui::Stroke::new(1.0_f32, motif::BG_LIGHT),
         );
         ui.painter().text(
-            egui::pos2(rect.center().x, rect.top() + 48.0),
+            egui::pos2(rect.center().x, rect.top() + 53.0),
             egui::Align2::CENTER_CENTER,
             value,
-            egui::FontId::proportional(22.0),
+            egui::FontId::proportional(24.0),
             motif::ACCENT,
         );
     }
@@ -6481,7 +6497,7 @@ impl App {
                 egui::Align2::CENTER_CENTER,
                 "•••",
                 egui::FontId::proportional(10.0),
-                motif::BG_DARK,
+                motif::TEXT_DIM,
             );
             if resp.clicked() {
                 session.show_amounts = !session.show_amounts;
@@ -6579,18 +6595,54 @@ impl App {
                 ui.label(count.to_string());
             });
         }
-        ui.add_space(8.0);
-        ui.vertical_centered(|ui| {
-            let per_kind: Vec<String> = InterviewKind::ALL
-                .iter()
-                .map(|k| {
-                    let n = session.summaries.iter().filter(|s| s.kind == *k).count();
-                    format!("{} {}", k.label(), n)
-                })
-                .collect();
-            ui.label(
-                egui::RichText::new(trf("dash_per_kind", per_kind.join("   ·   "))).size(12.0),
-            );
+        ui.add_space(10.0);
+        // One chip per theme, wrapped: a single joined line broke
+        // between a label and its own count.
+        ui.label(egui::RichText::new(tr("dash_per_kind")).size(12.0));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            for kind in InterviewKind::ALL {
+                let n = session.summaries.iter().filter(|s| s.kind == kind).count();
+                let (rect, resp) = ui.allocate_exact_size(
+                    egui::vec2(
+                        ui.fonts(|f| {
+                            f.layout_no_wrap(
+                                format!("{}  {n}", kind.label()),
+                                egui::FontId::proportional(11.5),
+                                motif::TEXT,
+                            )
+                            .size()
+                            .x
+                        }) + 16.0,
+                        20.0,
+                    ),
+                    egui::Sense::hover(),
+                );
+                if ui.is_rect_visible(rect) {
+                    let empty = n == 0;
+                    ui.painter().rect_filled(
+                        rect,
+                        0.0,
+                        if empty { motif::BG } else { motif::TROUGH },
+                    );
+                    motif::bevel(ui.painter(), rect, empty);
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        format!("{}  {n}", kind.label()),
+                        egui::FontId::proportional(11.5),
+                        if empty {
+                            motif::TEXT_FAINT
+                        } else {
+                            motif::TEXT
+                        },
+                    );
+                }
+                if let Some(code) = kind.act_code(0) {
+                    resp.on_hover_text(trn("dash_kind_tooltip", &[&code, &n]));
+                }
+            }
         });
         ui.add_space(14.0);
 
@@ -6611,7 +6663,7 @@ impl App {
                             ui.label(
                                 egui::RichText::new(tr("dash_recent_empty"))
                                     .size(11.0)
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                             );
                         }
                         for (p, moved) in &session.recent {
@@ -6628,7 +6680,7 @@ impl App {
                                         &moved[..10.min(moved.len())],
                                     ))
                                     .size(11.0)
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                                 );
                             });
                         }
@@ -6640,7 +6692,7 @@ impl App {
                             ui.label(
                                 egui::RichText::new(tr("dash_today_notes_empty"))
                                     .size(11.0)
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                             );
                         }
                         for note in session.today_notes.iter().take(6) {
@@ -7091,13 +7143,13 @@ impl eframe::App for App {
                     ui.label(
                         egui::RichText::new(summary)
                             .size(11.0)
-                            .color(motif::BG_DARK),
+                            .color(motif::TEXT_DIM),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             egui::RichText::new(trf("lock_db_path", db_file))
                                 .size(11.0)
-                                .color(motif::BG_DARK),
+                                .color(motif::TEXT_DIM),
                         );
                     });
                 });
@@ -7265,11 +7317,8 @@ impl eframe::App for App {
                             (TplTarget::Courrier, tr("tpl_target_cr")),
                             (TplTarget::Carnet, tr("tpl_target_carnet")),
                         ] {
-                            let btn = motif::button(ui, label);
-                            if *target == t {
-                                // Sunken bevel marks the active template.
-                                motif::bevel(ui.painter(), btn.rect, false);
-                            }
+                            // Sunken marks the active template.
+                            let btn = motif::toggle(ui, label, *target == t);
                             if btn.clicked() && *target != t {
                                 switch_tpl = Some(t);
                             }
@@ -7278,7 +7327,7 @@ impl eframe::App for App {
                     ui.label(
                         egui::RichText::new(trf("tpl_path", path.display()))
                             .size(11.0)
-                            .color(motif::BG_DARK),
+                            .color(motif::TEXT_DIM),
                     );
                     ui.add_space(4.0);
                     egui::ScrollArea::vertical()
@@ -7402,7 +7451,7 @@ impl eframe::App for App {
                     egui::ScrollArea::vertical()
                         .max_height((avail - 170.0).max(300.0))
                         .show(ui, |ui| {
-                            let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                            let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
                             motif::section(ui, tr("opts_pharmacy"));
                             egui::Grid::new("opts_pharmacy")
                                 .num_columns(2)
@@ -7525,7 +7574,7 @@ impl eframe::App for App {
                                     ui.label(
                                         egui::RichText::new(tr("opts_restart"))
                                             .size(11.0)
-                                            .color(motif::BG_DARK),
+                                            .color(motif::TEXT_DIM),
                                     );
                                     ui.end_row();
                                     ui.label(dim(tr("opts_density")));
@@ -7650,19 +7699,19 @@ impl eframe::App for App {
                             ui.label(
                                 egui::RichText::new(tr("opts_db_note"))
                                     .size(11.0)
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                             );
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_fees"));
                             ui.label(
                                 egui::RichText::new(tr("opts_fees_note"))
                                     .size(11.0)
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                             );
                             ui.label(
                                 egui::RichText::new(tr("opts_fees_rules"))
                                     .size(11.0)
-                                    .color(motif::BG_DARK),
+                                    .color(motif::TEXT_DIM),
                             );
                             ui.add_space(4.0);
                             egui::Grid::new("opts_fees")
