@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-08-25
+
+### Added
+- The agenda holds what is not a billable act: formations, réunions,
+  livraisons, congés and free entries, created from the day panel and
+  drawn on the grid in their own muted colour.
+- A month view next to the week: a Monday-aligned grid with one chip
+  per act and per entry, today highlighted, the days outside the month
+  dimmed, and week/month navigation.
+- A day panel under the grid — click a day (or a column header) to
+  detail it: its rendez-vous with one-click access to the patient, its
+  entries, and its own dated notes journal.
+
 ## [0.20.0] - 2026-08-25
 
 ### Added
