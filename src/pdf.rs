@@ -426,9 +426,129 @@ fn conversion_tables_source() -> String {
             }
         }
         src.push_str(")\n");
+        let sources = t
+            .sources
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("{}. {}", i + 1, s))
+            .collect::<Vec<_>>()
+            .join("   ");
         src.push_str(&format!(
-            "#text(size: 8pt, style: \"italic\")[#{}]\n",
-            typst_str(t.caution)
+            "#text(size: 8pt)[Sources : #{}]\n",
+            typst_str(&sources)
+        ));
+    }
+    src
+}
+
+/// One drug card as a printable A4 monograph: identity, every filled
+/// section in reading order, the pharmacokinetics as a definition list
+/// and the numbered sources at the foot.
+pub fn open_drug_monograph(d: &Drug) -> Result<PathBuf, String> {
+    compile_and_open(monograph_source(d), &format!("monographie_{}", d.id))
+}
+
+fn monograph_source(d: &Drug) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 2cm)\n#set text(size: 10.5pt)\n\
+         #set par(justify: true, leading: 0.6em, spacing: 0.7em)\n\
+         #let sec(title, body) = block(above: 4.5mm, below: 0mm)[\n  \
+         #block(above: 0mm, below: 1.2mm)[\
+         #text(size: 9pt, weight: \"bold\")[#upper(title)]\n  \
+         #v(-1.2mm)\n  #line(length: 100%, stroke: 0.4pt)]\n  #body\n]\n",
+    );
+    let mut sub = d.dci.trim().to_owned();
+    if !d.class.trim().is_empty() {
+        if !sub.is_empty() {
+            sub.push_str(" — ");
+        }
+        sub.push_str(d.class.trim());
+    }
+    src.push_str(&format!(
+        "#align(center)[#text(16pt, weight: \"bold\")[#{}]]\n",
+        typst_str(&d.name.trim().to_uppercase())
+    ));
+    if !sub.is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(11pt, style: \"italic\")[#{}]]\n",
+            typst_str(&sub)
+        ));
+    }
+    if !d.antidote.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(10pt, weight: \"bold\")[Antidote : #{}]]\n",
+            typst_str(d.antidote.trim())
+        ));
+    }
+    src.push_str("#v(2mm)\n#line(length: 100%, stroke: 1pt)\n");
+    for (title, body) in [
+        ("Indications", d.indications.as_str()),
+        ("Mécanisme d'action", d.mechanism.as_str()),
+        ("Posologie", d.dosage.as_str()),
+        ("Contre-indications", d.contraindications.as_str()),
+        ("Interactions", d.ddi.as_str()),
+        ("Effets indésirables", d.adverse.as_str()),
+        ("Surveillance", d.monitoring.as_str()),
+        ("Conseils au patient", d.iup.as_str()),
+    ] {
+        if body.trim().is_empty() {
+            continue;
+        }
+        // First argument is code position: the quoted literal goes in
+        // as is, without the `#` that only belongs in content.
+        src.push_str(&format!(
+            "#sec({}, [#{}])\n",
+            typst_str(title),
+            typst_str(body.trim())
+        ));
+    }
+    let pk = [
+        ("Demi-vie", d.half_life.as_str()),
+        ("AUC / exposition", d.auc.as_str()),
+        ("Élimination", d.elimination.as_str()),
+        ("Adaptation DFG", d.renal.as_str()),
+        ("Grossesse / allaitement", d.pregnancy.as_str()),
+    ];
+    if pk.iter().any(|(_, v)| !v.trim().is_empty()) {
+        let mut rows = String::new();
+        for (label, value) in pk {
+            if value.trim().is_empty() {
+                continue;
+            }
+            rows.push_str(&format!(
+                "  [#text(weight: \"bold\")[#{}]], [#{}],\n",
+                typst_str(label),
+                typst_str(value.trim())
+            ));
+        }
+        src.push_str(&format!(
+            "#sec(\"Pharmacocinétique\", table(columns: (4.5cm, 1fr), inset: 3pt, \
+             stroke: none,\n{rows}))\n"
+        ));
+    }
+    if !d.notes.trim().is_empty() {
+        src.push_str(&format!(
+            "#sec(\"Notes de l'équipe\", [#{}])\n",
+            typst_str(d.notes.trim())
+        ));
+    }
+    let sources: Vec<&str> = d
+        .sources
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if !sources.is_empty() {
+        let list = sources
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("{}. {}", i + 1, s))
+            .collect::<Vec<_>>()
+            .join("\n");
+        src.push_str(&format!(
+            "#v(4mm)\n#line(length: 100%, stroke: 0.4pt)\n#v(1.5mm)\n\
+             #text(size: 8pt)[Sources\\ #{}]\n",
+            typst_str(&list)
         ));
     }
     src
@@ -581,6 +701,60 @@ fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drug_monograph_compiles_and_escapes() {
+        let mut d = crate::db::Drug {
+            id: 1,
+            name: "Eliquis #eval \"X\"".to_owned(),
+            dci: "apixaban".to_owned(),
+            class: "AOD".to_owned(),
+            dosage: "5 mg x2/j".to_owned(),
+            ddi: "Inhibiteurs du CYP3A4".to_owned(),
+            iup: "Deux prises par jour.\n\nSignaler tout saignement.".to_owned(),
+            antidote: "Andexanet alfa".to_owned(),
+            notes: String::new(),
+            half_life: "12 h".to_owned(),
+            auc: String::new(),
+            elimination: "Biliaire".to_owned(),
+            renal: "DFG < 15 : non recommandé".to_owned(),
+            pregnancy: "Contre-indiqué".to_owned(),
+            indications: "Fibrillation atriale *non* valvulaire".to_owned(),
+            mechanism: "Inhibiteur direct du facteur Xa".to_owned(),
+            contraindications: "Saignement évolutif".to_owned(),
+            adverse: "Saignements".to_owned(),
+            monitoring: "Clairance annuelle".to_owned(),
+            sources: "RCP Eliquis (ANSM)\nESC 2020".to_owned(),
+        };
+        let source = monograph_source(&d);
+        // Hostile text is escaped, never interpreted as Typst markup.
+        assert!(!source.contains("#eval \"X\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la monographie doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("monographie_exemple.pdf"),
+                &pdf,
+            );
+        }
+        // A card with only its identity still produces a valid sheet.
+        d.indications.clear();
+        d.mechanism.clear();
+        d.dosage.clear();
+        d.contraindications.clear();
+        d.ddi.clear();
+        d.adverse.clear();
+        d.monitoring.clear();
+        d.iup.clear();
+        d.sources.clear();
+        let world = PdfWorld::new(monograph_source(&d));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
 
     #[test]
     fn default_template_compiles_to_pdf() {

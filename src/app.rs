@@ -123,6 +123,221 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
     out
 }
 
+/// The uppercase heading of a monograph section, with its hairline.
+fn mono_heading(ui: &mut egui::Ui, width: f32, title: &str) {
+    ui.add_space(10.0);
+    ui.label(
+        egui::RichText::new(title.to_uppercase())
+            .size(11.0)
+            .strong()
+            .color(motif::INK_LIGHT),
+    );
+    let rule = ui.cursor().top() + 2.0;
+    ui.painter().hline(
+        ui.cursor().left()..=(ui.cursor().left() + width),
+        rule,
+        egui::Stroke::new(0.8_f32, motif::INK_LIGHT),
+    );
+    ui.add_space(5.0);
+}
+
+/// One section of the printed-looking monograph: the heading, then the
+/// text wrapped to the sheet's width. Empty sections are skipped.
+fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
+    let body = body.trim();
+    if body.is_empty() {
+        return;
+    }
+    mono_heading(ui, width, title);
+    // Blank lines in the stored text separate paragraphs.
+    for para in body.split("\n\n") {
+        let para = para.trim();
+        if para.is_empty() {
+            continue;
+        }
+        ui.scope(|ui| {
+            ui.set_max_width(width);
+            ui.add(egui::Label::new(egui::RichText::new(para).size(13.0).color(motif::INK)).wrap());
+        });
+        ui.add_space(3.0);
+    }
+}
+
+/// The drug card as a printed monograph on a sheet of paper: identity,
+/// then every filled section in reading order, the pharmacokinetics as
+/// a short definition list, and the numbered sources at the foot.
+fn drug_monograph(ui: &mut egui::Ui, d: &Drug) {
+    let avail = ui.available_rect_before_wrap();
+    let sheet_w = avail.width().min(760.0);
+    let pad = 34.0;
+    let width = sheet_w - 2.0 * pad;
+    let bg = ui.painter().add(egui::Shape::Noop);
+    let content = egui::Rect::from_min_size(
+        egui::pos2(avail.center().x - sheet_w / 2.0 + pad, avail.top() + pad),
+        egui::vec2(width, avail.height().max(1.0)),
+    );
+    let used = ui
+        .allocate_new_ui(egui::UiBuilder::new().max_rect(content), |ui| {
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new(d.name.trim().to_uppercase())
+                        .size(19.0)
+                        .strong()
+                        .color(motif::INK),
+                );
+                let mut sub = d.dci.trim().to_owned();
+                if !d.class.trim().is_empty() {
+                    if !sub.is_empty() {
+                        sub.push_str(" — ");
+                    }
+                    sub.push_str(d.class.trim());
+                }
+                if !sub.is_empty() {
+                    ui.label(
+                        egui::RichText::new(sub)
+                            .size(13.0)
+                            .italics()
+                            .color(motif::INK_LIGHT),
+                    );
+                }
+                if !d.antidote.trim().is_empty() {
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new(trf("drug_antidote_banner", d.antidote.trim()))
+                            .size(12.0)
+                            .strong()
+                            .color(motif::ALERT),
+                    );
+                }
+            });
+            ui.add_space(6.0);
+            let top = ui.cursor().top();
+            ui.painter().hline(
+                content.left()..=content.right(),
+                top,
+                egui::Stroke::new(1.2_f32, motif::INK),
+            );
+            for (title, body) in [
+                (tr("drug_sec_indications"), d.indications.as_str()),
+                (tr("drug_sec_mechanism"), d.mechanism.as_str()),
+                (tr("drug_dosage"), d.dosage.as_str()),
+                (tr("drug_sec_ci"), d.contraindications.as_str()),
+                (tr("drug_ddi"), d.ddi.as_str()),
+                (tr("drug_sec_adverse"), d.adverse.as_str()),
+                (tr("drug_sec_monitoring"), d.monitoring.as_str()),
+                (tr("drug_iup"), d.iup.as_str()),
+            ] {
+                mono_section(ui, width, title, body);
+            }
+            // Pharmacokinetics as a compact definition list.
+            let pk = [
+                (tr("drug_half_life"), d.half_life.as_str()),
+                (tr("drug_auc"), d.auc.as_str()),
+                (tr("drug_elimination"), d.elimination.as_str()),
+                (tr("drug_renal"), d.renal.as_str()),
+                (tr("drug_pregnancy"), d.pregnancy.as_str()),
+            ];
+            if pk.iter().any(|(_, v)| !v.trim().is_empty()) {
+                mono_heading(ui, width, tr("drug_sec_pk"));
+                egui::Grid::new(("mono_pk", d.id))
+                    .num_columns(2)
+                    .spacing([14.0, 5.0])
+                    .show(ui, |ui| {
+                        for (label, value) in pk {
+                            if value.trim().is_empty() {
+                                continue;
+                            }
+                            ui.scope(|ui| {
+                                ui.set_max_width(130.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(label)
+                                            .size(12.0)
+                                            .color(motif::INK_LIGHT),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                            ui.scope(|ui| {
+                                ui.set_max_width(width - 150.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(value.trim())
+                                            .size(13.0)
+                                            .color(motif::INK),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                            ui.end_row();
+                        }
+                    });
+            }
+            mono_section(ui, width, tr("drug_notes"), &d.notes);
+            let sources: Vec<&str> = d
+                .sources
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect();
+            if !sources.is_empty() {
+                ui.add_space(12.0);
+                let y = ui.cursor().top();
+                ui.painter().hline(
+                    content.left()..=content.right(),
+                    y,
+                    egui::Stroke::new(0.8_f32, motif::INK_LIGHT),
+                );
+                ui.add_space(5.0);
+                ui.label(
+                    egui::RichText::new(tr("tables_sources"))
+                        .size(11.0)
+                        .strong()
+                        .color(motif::INK_LIGHT),
+                );
+                for (i, src) in sources.iter().enumerate() {
+                    ui.scope(|ui| {
+                        ui.set_max_width(width);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!("{}. {}", i + 1, src))
+                                    .size(11.0)
+                                    .color(motif::INK_LIGHT),
+                            )
+                            .wrap(),
+                        );
+                    });
+                }
+            }
+            ui.add_space(4.0);
+        })
+        .response
+        .rect;
+    let sheet_rect = egui::Rect::from_min_size(
+        egui::pos2(avail.center().x - sheet_w / 2.0, avail.top()),
+        egui::vec2(sheet_w, used.height() + 2.0 * pad),
+    );
+    // The sheet is painted behind the text, once its height is known.
+    ui.painter().set(
+        bg,
+        egui::Shape::Vec(vec![
+            egui::Shape::rect_filled(
+                sheet_rect.translate(egui::vec2(4.0, 4.0)),
+                0.0,
+                motif::BG_DARK,
+            ),
+            egui::Shape::rect_filled(sheet_rect, 0.0, motif::PAPER),
+            egui::Shape::rect_stroke(
+                sheet_rect,
+                0.0,
+                egui::Stroke::new(1.0_f32, motif::INK_LIGHT),
+            ),
+        ]),
+    );
+    let below = (sheet_rect.bottom() - ui.cursor().top()).max(0.0) + 12.0;
+    ui.add_space(below);
+}
+
 /// French name of an act's rank inside its année d'accompagnement.
 fn rank_label(rank: usize) -> String {
     match rank {
@@ -335,6 +550,9 @@ struct Session {
     drug_query: String,
     drug_selected: usize,
     drug_form: Option<Drug>,
+    /// A card opens as a monograph to read; "Modifier" switches to the
+    /// editable form.
+    drug_reading: bool,
     drug_base: Option<Drug>,
     confirm_delete_drug: bool,
     /// Patients currently on the drug whose card is open.
@@ -409,6 +627,7 @@ impl Session {
             drug_query: String::new(),
             drug_selected: 0,
             drug_form: None,
+            drug_reading: true,
             drug_base: None,
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
@@ -432,6 +651,7 @@ impl Session {
         self.note_confirm = None;
         self.drug_base = Some(d.clone());
         self.drug_form = Some(d);
+        self.drug_reading = true;
         self.confirm_delete_drug = false;
     }
 
@@ -2611,7 +2831,7 @@ impl App {
     }
 
     /// Conversion tables (IPP, HBPM, statines…): selector, Motif table,
-    /// caution line, and a printable A4 with all of them.
+    /// numbered sources, and a printable A4 with all of them.
     fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
         motif::column(ui, 940.0, |ui| {
             ui.add_space(24.0);
@@ -2703,16 +2923,23 @@ impl App {
             .set(bg, egui::Shape::rect_filled(box_rect, 0.0, motif::TROUGH));
         motif::bevel(ui.painter(), box_rect, false);
         // Drop below the box (the child ui only advanced by the grid's
-        // own height), then the caution line on the column grid.
+        // own height), then the numbered sources on the column grid.
         let below = (box_rect.bottom() - ui.cursor().top()).max(0.0) + 10.0;
         ui.add_space(below);
         motif::column(ui, 940.0, |ui| {
             ui.label(
-                egui::RichText::new(t.caution)
+                egui::RichText::new(tr("tables_sources"))
                     .size(11.0)
-                    .italics()
+                    .strong()
                     .color(motif::BG_DARK),
             );
+            for (i, src) in t.sources.iter().enumerate() {
+                ui.label(
+                    egui::RichText::new(format!("{}. {}", i + 1, src))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
+            }
         });
         if let Some(err) = &session.error {
             ui.vertical_centered(|ui| {
@@ -2778,225 +3005,313 @@ impl App {
         });
 
         if let Some(form) = &mut session.drug_form {
-            // ---- Card editor ----
+            // ---- Card: monograph to read, or the editable form ----
+            let reading = session.drug_reading;
             let card = ui.available_rect_before_wrap().shrink(6.0);
             motif::bevel(ui.painter(), card, true);
             let mut save = false;
             let mut close = false;
             let mut delete = false;
             let mut insert_note = false;
+            let mut edit = false;
+            let mut print_mono = false;
             let mut open_patient_id: Option<i64> = None;
-            motif::column(ui, 900.0, |ui| {
-                ui.add_space(18.0);
-                ui.vertical_centered(|ui| {
-                    // Identity header: brand name big, DCI underneath.
-                    ui.heading(if form.name.trim().is_empty() {
-                        tr("drug_unnamed")
-                    } else {
-                        form.name.trim()
-                    });
-                    {
-                        let mut sub = form.dci.trim().to_owned();
-                        if !form.class.trim().is_empty() {
-                            if !sub.is_empty() {
-                                sub.push_str(" — ");
+            // A full monograph is taller than the window: the whole card
+            // scrolls, notes and buttons included.
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                motif::column(ui, 900.0, |ui| {
+                    ui.add_space(18.0);
+                    if reading {
+                        drug_monograph(ui, form);
+                    }
+                    if !reading {
+                        ui.vertical_centered(|ui| {
+                            // Identity header: brand name big, DCI underneath.
+                            ui.heading(if form.name.trim().is_empty() {
+                                tr("drug_unnamed")
+                            } else {
+                                form.name.trim()
+                            });
+                            {
+                                let mut sub = form.dci.trim().to_owned();
+                                if !form.class.trim().is_empty() {
+                                    if !sub.is_empty() {
+                                        sub.push_str(" — ");
+                                    }
+                                    sub.push_str(form.class.trim());
+                                }
+                                if !sub.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(sub).italics().color(motif::BG_DARK),
+                                    );
+                                }
                             }
-                            sub.push_str(form.class.trim());
-                        }
-                        if !sub.is_empty() {
-                            ui.label(egui::RichText::new(sub).italics().color(motif::BG_DARK));
-                        }
-                    }
-                    if !form.antidote.trim().is_empty() {
-                        ui.label(
-                            egui::RichText::new(trf("drug_antidote_banner", form.antidote.trim()))
-                                .strong()
-                                .color(motif::ALERT),
-                        );
-                    }
-                });
-                ui.add_space(12.0);
-                let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
-                // Two-column drug page: identity/clinical on the left,
-                // pharmacokinetics on the right.
-                ui.columns(2, |cols| {
-                    let ui = &mut cols[0];
-                    motif::section(ui, tr("drug_sec_clinical"));
-                    ui.add_space(4.0);
-                    let w = (ui.available_width() - 118.0).max(140.0);
-                    egui::Grid::new("drug_card")
-                        .num_columns(2)
-                        .min_col_width(90.0)
-                        .spacing([10.0, 8.0])
-                        .show(ui, |ui| {
-                            ui.label(dim(tr("drug_name")));
-                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.name));
-                            ui.end_row();
-                            ui.label(dim(tr("drug_dci")));
-                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.dci));
-                            ui.end_row();
-                            ui.label(dim(tr("drug_class")));
-                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.class));
-                            ui.end_row();
-                            ui.label(dim(tr("drug_dosage")));
-                            ui.add_sized(
-                                [w, 64.0],
-                                egui::TextEdit::multiline(&mut form.dosage).desired_rows(3),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_ddi")));
-                            ui.add_sized(
-                                [w, 64.0],
-                                egui::TextEdit::multiline(&mut form.ddi).desired_rows(3),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_iup")));
-                            ui.add_sized(
-                                [w, 96.0],
-                                egui::TextEdit::multiline(&mut form.iup).desired_rows(5),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_antidote")));
-                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.antidote));
-                            ui.end_row();
-                            ui.label(dim(tr("drug_notes")));
-                            ui.add_sized(
-                                [w, 64.0],
-                                egui::TextEdit::multiline(&mut form.notes).desired_rows(3),
-                            );
-                            ui.end_row();
+                            if !form.antidote.trim().is_empty() {
+                                ui.label(
+                                    egui::RichText::new(trf(
+                                        "drug_antidote_banner",
+                                        form.antidote.trim(),
+                                    ))
+                                    .strong()
+                                    .color(motif::ALERT),
+                                );
+                            }
                         });
-                    let ui = &mut cols[1];
-                    motif::section(ui, tr("drug_sec_pk"));
-                    ui.add_space(4.0);
-                    let w = (ui.available_width() - 138.0).max(130.0);
-                    egui::Grid::new("drug_pk")
-                        .num_columns(2)
-                        .min_col_width(110.0)
-                        .spacing([10.0, 8.0])
-                        .show(ui, |ui| {
-                            ui.label(dim(tr("drug_half_life")));
-                            ui.add_sized(
-                                [w, 26.0],
-                                egui::TextEdit::singleline(&mut form.half_life),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_auc")));
-                            ui.add_sized(
-                                [w, 48.0],
-                                egui::TextEdit::multiline(&mut form.auc).desired_rows(2),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_elimination")));
-                            ui.add_sized(
-                                [w, 48.0],
-                                egui::TextEdit::multiline(&mut form.elimination).desired_rows(2),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_renal")));
-                            ui.add_sized(
-                                [w, 64.0],
-                                egui::TextEdit::multiline(&mut form.renal).desired_rows(3),
-                            );
-                            ui.end_row();
-                            ui.label(dim(tr("drug_pregnancy")));
-                            ui.add_sized(
-                                [w, 48.0],
-                                egui::TextEdit::multiline(&mut form.pregnancy).desired_rows(2),
-                            );
-                            ui.end_row();
+                        ui.add_space(12.0);
+                        let dim = |t: &str| egui::RichText::new(t).color(motif::BG_DARK);
+                        // Two-column drug page: identity/clinical on the left,
+                        // pharmacokinetics on the right.
+                        #[allow(clippy::needless_late_init)]
+                        ui.columns(2, |cols| {
+                            let ui = &mut cols[0];
+                            motif::section(ui, tr("drug_sec_clinical"));
+                            ui.add_space(4.0);
+                            let w = (ui.available_width() - 118.0).max(140.0);
+                            egui::Grid::new("drug_card")
+                                .num_columns(2)
+                                .min_col_width(90.0)
+                                .spacing([10.0, 8.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("drug_name")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.name),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_dci")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.dci),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_class")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.class),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_indications")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.indications)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_mechanism")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.mechanism)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_dosage")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.dosage).desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_ci")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.contraindications)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_ddi")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.ddi).desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_adverse")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.adverse)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_monitoring")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.monitoring)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_iup")));
+                                    ui.add_sized(
+                                        [w, 96.0],
+                                        egui::TextEdit::multiline(&mut form.iup).desired_rows(5),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_antidote")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.antidote),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_notes")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.notes).desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                });
+                            let ui = &mut cols[1];
+                            motif::section(ui, tr("drug_sec_pk"));
+                            ui.add_space(4.0);
+                            let w = (ui.available_width() - 138.0).max(130.0);
+                            egui::Grid::new("drug_pk")
+                                .num_columns(2)
+                                .min_col_width(110.0)
+                                .spacing([10.0, 8.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("drug_half_life")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.half_life),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_auc")));
+                                    ui.add_sized(
+                                        [w, 48.0],
+                                        egui::TextEdit::multiline(&mut form.auc).desired_rows(2),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_elimination")));
+                                    ui.add_sized(
+                                        [w, 48.0],
+                                        egui::TextEdit::multiline(&mut form.elimination)
+                                            .desired_rows(2),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_renal")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.renal).desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_pregnancy")));
+                                    ui.add_sized(
+                                        [w, 48.0],
+                                        egui::TextEdit::multiline(&mut form.pregnancy)
+                                            .desired_rows(2),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("tables_sources")))
+                                        .on_hover_text(tr("drug_sources_hint"));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.sources)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
+                                });
                         });
-                });
-                // Dated notes journal for this drug.
-                ui.add_space(8.0);
-                motif::section(ui, tr("drug_notes_section"));
-                ui.add_space(4.0);
-                let drug_id = form.id;
-                let (note_add, note_delete) = notes_box(
-                    ui,
-                    "drug_notes",
-                    &session.drug_notes,
-                    &mut session.note_text,
-                    &mut session.note_confirm,
-                    80.0,
-                    true,
-                );
-                if let Some(body) = note_add {
-                    if let Err(e) = session
-                        .db
-                        .add_note(NoteSubject::Drug, drug_id, operator, &body)
-                    {
-                        session.error = Some(e);
                     }
-                    session.note_text.clear();
-                    session.drug_notes = session
-                        .db
-                        .notes_for(NoteSubject::Drug, drug_id)
-                        .unwrap_or_default();
-                }
-                if let Some(id) = note_delete {
-                    if let Err(e) = session.db.delete_note(id) {
-                        session.error = Some(e);
-                    }
-                    session.drug_notes = session
-                        .db
-                        .notes_for(NoteSubject::Drug, drug_id)
-                        .unwrap_or_default();
-                }
-
-                // Reverse lookup: who is on this drug (recalls, alerts).
-                if !session.drug_patients.is_empty() {
+                    // Dated notes journal for this drug.
                     ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(tr("drug_patients_label")).color(motif::BG_DARK),
-                        );
-                        for p in session.drug_patients.iter().take(6) {
-                            let chip = ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(format!("  {}  ", p.full_name()))
-                                        .size(12.0)
-                                        .color(egui::Color32::WHITE)
-                                        .background_color(motif::BG_DARK),
-                                )
-                                .sense(egui::Sense::click()),
+                    motif::section(ui, tr("drug_notes_section"));
+                    ui.add_space(4.0);
+                    let drug_id = form.id;
+                    let (note_add, note_delete) = notes_box(
+                        ui,
+                        "drug_notes",
+                        &session.drug_notes,
+                        &mut session.note_text,
+                        &mut session.note_confirm,
+                        80.0,
+                        true,
+                    );
+                    if let Some(body) = note_add {
+                        if let Err(e) =
+                            session
+                                .db
+                                .add_note(NoteSubject::Drug, drug_id, operator, &body)
+                        {
+                            session.error = Some(e);
+                        }
+                        session.note_text.clear();
+                        session.drug_notes = session
+                            .db
+                            .notes_for(NoteSubject::Drug, drug_id)
+                            .unwrap_or_default();
+                    }
+                    if let Some(id) = note_delete {
+                        if let Err(e) = session.db.delete_note(id) {
+                            session.error = Some(e);
+                        }
+                        session.drug_notes = session
+                            .db
+                            .notes_for(NoteSubject::Drug, drug_id)
+                            .unwrap_or_default();
+                    }
+
+                    // Reverse lookup: who is on this drug (recalls, alerts).
+                    if !session.drug_patients.is_empty() {
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(tr("drug_patients_label"))
+                                    .color(motif::BG_DARK),
                             );
-                            if chip.on_hover_text(tr("dash_open_patient")).clicked() {
-                                open_patient_id = Some(p.id);
+                            for p in session.drug_patients.iter().take(6) {
+                                let chip = ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(format!("  {}  ", p.full_name()))
+                                            .size(12.0)
+                                            .color(egui::Color32::WHITE)
+                                            .background_color(motif::BG_DARK),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                );
+                                if chip.on_hover_text(tr("dash_open_patient")).clicked() {
+                                    open_patient_id = Some(p.id);
+                                }
+                            }
+                            if session.drug_patients.len() > 6 {
+                                ui.label(trf("dash_more", session.drug_patients.len() - 6));
+                            }
+                        });
+                    }
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if !reading && motif::button(ui, tr("form_save")).clicked() {
+                            save = true;
+                        }
+                        if motif::button(ui, tr("drug_close")).clicked() {
+                            close = true;
+                        }
+                        if reading {
+                            if motif::button(ui, tr("drug_edit")).clicked() {
+                                edit = true;
+                            }
+                            if motif::button(ui, tr("drug_print"))
+                                .on_hover_text(tr("drug_print_tooltip"))
+                                .clicked()
+                            {
+                                print_mono = true;
                             }
                         }
-                        if session.drug_patients.len() > 6 {
-                            ui.label(trf("dash_more", session.drug_patients.len() - 6));
+                        if motif::button(ui, tr("drug_to_notes"))
+                            .on_hover_text(tr("drug_to_notes_tooltip"))
+                            .clicked()
+                        {
+                            insert_note = true;
+                        }
+                        let del_label = if session.confirm_delete_drug {
+                            tr("patient_delete_confirm")
+                        } else {
+                            tr("patient_delete")
+                        };
+                        if motif::button(ui, del_label).clicked() {
+                            delete = true;
                         }
                     });
-                }
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    if motif::button(ui, tr("form_save")).clicked() {
-                        save = true;
-                    }
-                    if motif::button(ui, tr("drug_close")).clicked() {
-                        close = true;
-                    }
-                    if motif::button(ui, tr("drug_to_notes"))
-                        .on_hover_text(tr("drug_to_notes_tooltip"))
-                        .clicked()
-                    {
-                        insert_note = true;
-                    }
-                    let del_label = if session.confirm_delete_drug {
-                        tr("patient_delete_confirm")
-                    } else {
-                        tr("patient_delete")
-                    };
-                    if motif::button(ui, del_label).clicked() {
-                        delete = true;
+                    if let Some(err) = &session.error {
+                        ui.add_space(6.0);
+                        ui.colored_label(motif::ALERT, err.as_str());
                     }
                 });
-                if let Some(err) = &session.error {
-                    ui.add_space(6.0);
-                    ui.colored_label(motif::ALERT, err.as_str());
-                }
             });
 
             if insert_note {
@@ -3012,6 +3327,19 @@ impl App {
                 *doc_dirty = true;
                 *doc_last_edit = Instant::now();
             }
+            if edit {
+                // Leaving the monograph for the form: the loaded card is
+                // the compare-and-set baseline, as everywhere else.
+                session.drug_reading = false;
+                session.error = None;
+            }
+            if print_mono {
+                if let Some(card) = session.drug_form.clone() {
+                    if let Err(e) = crate::pdf::open_drug_monograph(&card) {
+                        session.error = Some(e);
+                    }
+                }
+            }
             if save {
                 let form = session.drug_form.clone().unwrap();
                 if form.name.trim().is_empty() {
@@ -3021,6 +3349,7 @@ impl App {
                         Ok(true) => {
                             session.error = None;
                             session.drug_base = Some(form);
+                            session.drug_reading = true;
                             if let Ok(list) = session.db.drugs() {
                                 session.drugs = list;
                             }
