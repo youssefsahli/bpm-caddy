@@ -2,7 +2,8 @@
 //! equivalences (IPP, statines, corticoïdes, opioïdes,
 //! benzodiazépines), dosing references (HBPM, AOD, corticoïdes
 //! inhalés, insulines, antalgiques), and the decision aids the acts
-//! need (fonction rénale, angine, cystite, contraception, vaccins).
+//! need (fonction rénale, angine, cystite, contraception, vaccins,
+//! doses pédiatriques, écrasement des formes orales).
 //!
 //! The values are the classic published reference equivalences taught
 //! in French pharmacy practice. They are deliberately static reference
@@ -326,6 +327,95 @@ pub const TABLES: &[ConvTable] = &[
             &["HPV", "Rattrapage jusqu'à 19 ans (26 ans HSH)"],
         ],
     },
+    ConvTable {
+        short: "Pédiatrie",
+        title: "Pédiatrie — doses usuelles par poids",
+        caution: "Toujours calculer sur le poids réel et vérifier la concentration du flacon ; fièvre chez le nourrisson de moins de 3 mois, mauvaise tolérance ou doute : avis médical.",
+        columns: &["Molécule", "Dose par prise", "Rythme", "Maximum / 24 h"],
+        rows: &[
+            &["Paracétamol", "15 mg/kg", "toutes les 6 h", "60 mg/kg (4 prises)"],
+            &[
+                "Ibuprofène (> 3 mois)",
+                "10 mg/kg",
+                "toutes les 8 h",
+                "30 mg/kg — à éviter si varicelle ou déshydratation",
+            ],
+            &[
+                "Amoxicilline (otite, pneumonie)",
+                "25 à 50 mg/kg",
+                "2 à 3 prises",
+                "80 à 100 mg/kg/j selon l'indication",
+            ],
+            &[
+                "Amoxicilline (angine à SGA)",
+                "25 mg/kg",
+                "x2/j pendant 6 jours",
+                "50 mg/kg/j",
+            ],
+            &[
+                "Solution de réhydratation orale",
+                "à volonté après chaque selle",
+                "en continu, petites quantités",
+                "1 sachet dans 200 mL d'eau, à respecter",
+            ],
+            &[
+                "Vitamine D (nourrisson)",
+                "400 à 800 UI/j",
+                "quotidien",
+                "selon la prescription et les apports du lait",
+            ],
+            &[
+                "Repères de poids",
+                "≈ 3,5 kg à la naissance, 10 kg à 1 an, 20 kg à 6 ans",
+                "—",
+                "peser l'enfant, ne jamais doser sur l'âge seul",
+            ],
+        ],
+    },
+    ConvTable {
+        short: "Broyage",
+        title: "Écraser ou ouvrir — règles et pièges",
+        caution: "À vérifier au cas par cas (RCP, listes SFPC / OMÉDIT) : écraser une forme non prévue sort de l'AMM et engage la responsabilité de l'équipe.",
+        columns: &["Forme ou molécule", "Conduite à tenir"],
+        rows: &[
+            &[
+                "Comprimé à libération prolongée (LP, Chrono, Repetabs)",
+                "Ne jamais écraser : toute la dose serait libérée d'un coup",
+            ],
+            &[
+                "Comprimé gastro-résistant (entérosoluble)",
+                "Ne pas écraser : dégradation par l'acidité ou irritation gastrique",
+            ],
+            &[
+                "Gélule à microgranules gastro-résistants (Inexium, Mopral, Créon)",
+                "Ouvrir la gélule et avaler les granules sans les croquer, dans un aliment semi-liquide",
+            ],
+            &[
+                "Gélule LP à microgranules (Skenan LP)",
+                "Ouvrir et avaler les granules entiers ; les croquer libère toute la morphine",
+            ],
+            &[
+                "Dabigatran (Pradaxa)",
+                "Ne jamais ouvrir la gélule : biodisponibilité doublée, risque hémorragique",
+            ],
+            &[
+                "Apixaban (Eliquis), rivaroxaban (Xarelto)",
+                "Comprimé écrasable, à administrer aussitôt dans de l'eau ou une compote (Xarelto : au cours d'un repas)",
+            ],
+            &[
+                "Cytotoxiques oraux (capécitabine, méthotrexate)",
+                "Ne pas écraser : gants, pas d'aérosolisation, comprimés avalés entiers",
+            ],
+            &[
+                "Comprimé sécable",
+                "La barre autorise la division en deux, pas le broyage",
+            ],
+            &[
+                "En pratique",
+                "Chercher d'abord une forme buvable, orodispersible ou un autre dosage avant d'écraser ; écraser juste avant l'administration, un médicament à la fois, matériel nettoyé entre chaque",
+            ],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -360,6 +450,8 @@ mod tests {
             "Contraception",
             "Vaccination",
             "Fonction rénale",
+            "Pédiatrie",
+            "Écraser",
         ] {
             assert!(
                 TABLES.iter().any(|t| t.title.starts_with(prefix)),

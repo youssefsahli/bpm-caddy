@@ -2839,16 +2839,22 @@ impl App {
                             ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.class));
                             ui.end_row();
                             ui.label(dim(tr("drug_dosage")));
-                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.dosage));
+                            ui.add_sized(
+                                [w, 64.0],
+                                egui::TextEdit::multiline(&mut form.dosage).desired_rows(3),
+                            );
                             ui.end_row();
                             ui.label(dim(tr("drug_ddi")));
                             ui.add_sized(
-                                [w, 48.0],
-                                egui::TextEdit::multiline(&mut form.ddi).desired_rows(2),
+                                [w, 64.0],
+                                egui::TextEdit::multiline(&mut form.ddi).desired_rows(3),
                             );
                             ui.end_row();
                             ui.label(dim(tr("drug_iup")));
-                            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.iup));
+                            ui.add_sized(
+                                [w, 96.0],
+                                egui::TextEdit::multiline(&mut form.iup).desired_rows(5),
+                            );
                             ui.end_row();
                             ui.label(dim(tr("drug_antidote")));
                             ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.antidote));
@@ -2883,8 +2889,8 @@ impl App {
                             ui.end_row();
                             ui.label(dim(tr("drug_elimination")));
                             ui.add_sized(
-                                [w, 26.0],
-                                egui::TextEdit::singleline(&mut form.elimination),
+                                [w, 48.0],
+                                egui::TextEdit::multiline(&mut form.elimination).desired_rows(2),
                             );
                             ui.end_row();
                             ui.label(dim(tr("drug_renal")));
@@ -4087,6 +4093,7 @@ impl eframe::App for App {
         // (target, also_point_config_at_it) requested from the DB tools.
         let mut db_export: Option<(std::path::PathBuf, bool)> = None;
         let mut db_seed = false;
+        let mut db_details = false;
         let mut db_reset = false;
         if let Some(editor) = &mut self.options {
             // Fit the dialog to the window: the options list is long,
@@ -4220,6 +4227,12 @@ impl eframe::App for App {
                             ui.horizontal(|ui| {
                                 if motif::button(ui, tr("opts_db_seed")).clicked() {
                                     db_seed = true;
+                                }
+                                if motif::button(ui, tr("opts_db_details"))
+                                    .on_hover_text(tr("opts_db_details_tooltip"))
+                                    .clicked()
+                                {
+                                    db_details = true;
                                 }
                                 let danger = if editor.confirm_reset {
                                     tr("opts_db_reset_confirm")
@@ -4359,13 +4372,15 @@ impl eframe::App for App {
                     }
                 });
         }
-        if db_seed || db_reset {
+        if db_seed || db_details || db_reset {
             let result = if let State::Unlocked(session) = &mut self.state {
                 if db_reset {
                     session
                         .db
                         .reset_all_data()
                         .map(|()| (true, db::STARTER_DRUG_COUNT))
+                } else if db_details {
+                    session.db.fill_starter_details().map(|n| (false, n))
                 } else {
                     session.db.seed_missing_drugs().map(|n| (false, n))
                 }
@@ -4405,6 +4420,8 @@ impl eframe::App for App {
                             (false, trf("opts_db_reset_done", n))
                         } else if n == 0 {
                             (false, tr("opts_db_seed_none").to_owned())
+                        } else if db_details {
+                            (false, trf("opts_db_details_done", n))
                         } else {
                             (false, trf("opts_db_seed_done", n))
                         });

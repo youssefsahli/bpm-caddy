@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-08-25
+
+### Added
+- Reference clinical data on the ~30 drug cards the interviews turn
+  around (the four AOD, the three AVK, énoxaparine, the inhalers,
+  méthotrexate, lithium, digoxine, amiodarone, lévothyroxine,
+  metformine, sémaglutide, capécitabine, dénosumab…): posology,
+  interactions to watch, the advice to give the patient (plan de prise,
+  technique, signaux d'alerte) and the pharmacokinetics. Cards outside
+  that list keep their clinical fields empty, as before.
+- "Compléter les fiches de référence" in Options fills those fields on
+  an existing base, column by column and only where a field is still
+  empty — the team's own text is never overwritten.
+- Two more tables (seventeen in all): paediatric doses by weight, and
+  what may be crushed or opened (LP and gastro-resistant forms,
+  microgranules, dabigatran, cytotoxics) with the practical rules.
+
+### Changed
+- Posology, interactions, patient advice and elimination are now
+  multi-line fields on the drug card, so a full reference text is
+  readable without scrolling inside the field.
+- The demo database no longer overrides the Eliquis card: it shows the
+  shipped reference text.
+
 ## [0.16.0] - 2026-08-25
 
 ### Added
