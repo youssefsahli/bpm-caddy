@@ -58,6 +58,21 @@ CREATE TABLE IF NOT EXISTS drugs (
     renal       TEXT NOT NULL DEFAULT '',
     pregnancy   TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS protocols (
+    id          INTEGER PRIMARY KEY,
+    title       TEXT NOT NULL,
+    subject     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS protocol_nodes (
+    id          INTEGER PRIMARY KEY,
+    protocol_id INTEGER NOT NULL,
+    parent_id   INTEGER,
+    branch      TEXT NOT NULL DEFAULT 'ROOT',
+    kind        TEXT NOT NULL DEFAULT 'ACTION',
+    text        TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS posologies (
     id          INTEGER PRIMARY KEY,
     drug_id     INTEGER NOT NULL REFERENCES drugs(id),
@@ -350,6 +365,77 @@ impl EventCategory {
             Self::Autre => "Autre",
         }
     }
+}
+
+/// A substitution protocol: what to dispense when a drug cannot be,
+/// written as a decision tree the team walks through.
+#[derive(Clone, Debug)]
+pub struct Protocol {
+    pub id: i64,
+    pub title: String,
+    /// The drug or class it is about, free text.
+    pub subject: String,
+}
+
+/// What a node of a protocol does.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NodeKind {
+    /// A yes/no question: "DFG inférieur à 30 ?", "Xarelto disponible ?"
+    Question,
+    /// What to do: dispense, call the prescriber, list a class.
+    Action,
+}
+
+impl NodeKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Question => "QUESTION",
+            Self::Action => "ACTION",
+        }
+    }
+    pub fn parse(s: &str) -> Self {
+        if s == "QUESTION" {
+            Self::Question
+        } else {
+            Self::Action
+        }
+    }
+}
+
+/// Which branch of its parent a node hangs from.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Branch {
+    Root,
+    Yes,
+    No,
+}
+
+impl Branch {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Root => "ROOT",
+            Self::Yes => "YES",
+            Self::No => "NO",
+        }
+    }
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "YES" => Self::Yes,
+            "NO" => Self::No,
+            _ => Self::Root,
+        }
+    }
+}
+
+/// One step of a protocol.
+#[derive(Clone, Debug)]
+pub struct ProtocolNode {
+    pub id: i64,
+    pub parent_id: Option<i64>,
+    pub branch: Branch,
+    pub kind: NodeKind,
+    pub text: String,
+    pub position: i64,
 }
 
 /// One line of a drug's posology table: what it is prescribed for,
@@ -3815,6 +3901,182 @@ impl Db {
         Ok(out)
     }
 
+    /// Every substitution protocol, newest first.
+    pub fn protocols(&self) -> Result<Vec<Protocol>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, subject FROM protocols ORDER BY title COLLATE NOCASE")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Protocol {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    subject: r.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Create a protocol with its first step.
+    pub fn add_protocol(&self, title: &str, subject: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO protocols (title, subject) VALUES (?1, ?2)",
+                (title, subject),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Rename a protocol, compare-and-set on the title displayed.
+    pub fn rename_protocol(
+        &self,
+        id: i64,
+        title: &str,
+        subject: &str,
+        expected_title: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE protocols SET title = ?1, subject = ?2 WHERE id = ?3 AND title = ?4",
+                (title, subject, id, expected_title),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a protocol and every step it holds.
+    pub fn delete_protocol(&self, id: i64, expected_title: &str) -> Result<bool, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let matches: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM protocols WHERE id = ?1 AND title = ?2",
+                (id, expected_title),
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let mut changed = 0;
+        if matches == 1 {
+            tx.execute("DELETE FROM protocol_nodes WHERE protocol_id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+            changed = tx
+                .execute("DELETE FROM protocols WHERE id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Every step of one protocol.
+    pub fn protocol_nodes(&self, protocol_id: i64) -> Result<Vec<ProtocolNode>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, parent_id, branch, kind, text, position FROM protocol_nodes
+                 WHERE protocol_id = ?1 ORDER BY position, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([protocol_id], |r| {
+                Ok(ProtocolNode {
+                    id: r.get(0)?,
+                    parent_id: r.get(1)?,
+                    branch: Branch::parse(&r.get::<_, String>(2)?),
+                    kind: NodeKind::parse(&r.get::<_, String>(3)?),
+                    text: r.get(4)?,
+                    position: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Add a step under `parent` (or at the root when it is `None`).
+    pub fn add_protocol_node(
+        &self,
+        protocol_id: i64,
+        parent_id: Option<i64>,
+        branch: Branch,
+        kind: NodeKind,
+        text: &str,
+    ) -> Result<i64, String> {
+        let next: i64 = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM protocol_nodes
+                 WHERE protocol_id = ?1",
+                [protocol_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        self.conn
+            .execute(
+                "INSERT INTO protocol_nodes
+                     (protocol_id, parent_id, branch, kind, text, position)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                (
+                    protocol_id,
+                    parent_id,
+                    branch.as_str(),
+                    kind.as_str(),
+                    text,
+                    next,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Rewrite one step, compare-and-set on the text displayed.
+    pub fn update_protocol_node(
+        &self,
+        id: i64,
+        kind: NodeKind,
+        text: &str,
+        expected_text: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE protocol_nodes SET kind = ?1, text = ?2 WHERE id = ?3 AND text = ?4",
+                (kind.as_str(), text, id, expected_text),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a step and everything hanging from it.
+    pub fn delete_protocol_node(&self, protocol_id: i64, id: i64) -> Result<usize, String> {
+        let nodes = self.protocol_nodes(protocol_id)?;
+        let mut doomed = vec![id];
+        let mut i = 0;
+        while i < doomed.len() {
+            let current = doomed[i];
+            for n in &nodes {
+                if n.parent_id == Some(current) && !doomed.contains(&n.id) {
+                    doomed.push(n.id);
+                }
+            }
+            i += 1;
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        for node in &doomed {
+            tx.execute("DELETE FROM protocol_nodes WHERE id = ?1", [node])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(doomed.len())
+    }
+
     /// Apply the shipped posologies to the cards that have none. A card
     /// the team has already written on is left alone. Returns how many
     /// lines were added.
@@ -5710,6 +5972,62 @@ mod tests {
                     "Rappeler le grossiste lundi.",
                 )
                 .unwrap();
+                // A substitution protocol, as the team would write it.
+                let proto = db
+                    .add_protocol("AOD indisponible", "Anticoagulants oraux directs")
+                    .unwrap();
+                let q1 = db
+                    .add_protocol_node(
+                        proto,
+                        None,
+                        Branch::Root,
+                        NodeKind::Question,
+                        "Clairance inférieure à 30 mL/min",
+                    )
+                    .unwrap();
+                let yes = db
+                    .add_protocol_node(
+                        proto,
+                        Some(q1),
+                        Branch::Yes,
+                        NodeKind::Action,
+                        "Ni dabigatran ni anti-Xa : appeler le prescripteur pour un relais AVK ou HBPM.",
+                    )
+                    .unwrap();
+                db.add_protocol_node(
+                    proto,
+                    Some(yes),
+                    Branch::Root,
+                    NodeKind::Action,
+                    "Noter l'appel et la décision dans le carnet de transmissions.",
+                )
+                .unwrap();
+                let no = db
+                    .add_protocol_node(
+                        proto,
+                        Some(q1),
+                        Branch::No,
+                        NodeKind::Question,
+                        "Apixaban disponible chez le grossiste",
+                    )
+                    .unwrap();
+                db.add_protocol_node(
+                    proto,
+                    Some(no),
+                    Branch::Yes,
+                    NodeKind::Action,
+                    "Délivrer l'apixaban, même dose, même rythme.",
+                )
+                .unwrap();
+                db.add_protocol_node(
+                    proto,
+                    Some(no),
+                    Branch::No,
+                    NodeKind::Action,
+                    "Proposer le rivaroxaban au prescripteur : une prise par jour au repas, adaptation 15 mg si clairance 15 à 49.",
+                )
+                .unwrap();
+
                 // Agenda entries that are not acts, for the demo.
                 let today = db.today_iso().unwrap();
                 db.add_event(&today, "Formation AOD — 14 h", EventCategory::Formation)

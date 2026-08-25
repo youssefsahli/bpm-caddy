@@ -672,6 +672,15 @@ struct Session {
     drug_patients: Vec<Patient>,
     /// Conversion tables browser (inside the drug view).
     show_tables: bool,
+    /// Substitution protocols: the list, the open one with its steps,
+    /// what is being written, and the walk-through position.
+    show_protocols: bool,
+    protocols: Vec<db::Protocol>,
+    protocol_open: Option<db::Protocol>,
+    protocol_nodes: Vec<db::ProtocolNode>,
+    protocol_new_title: String,
+    protocol_node_edit: Option<(i64, db::NodeKind, String)>,
+    protocol_walk: Option<i64>,
     /// Team edits of the shown table, keyed by (row, col), plus the
     /// cell being edited and the last change (for the undo).
     table_cells: std::collections::HashMap<(usize, usize), String>,
@@ -715,6 +724,7 @@ impl Session {
         // textbook antidotes). Non-fatal if it fails.
         let _ = db.seed_drugs_if_empty();
         let drugs = db.drugs().unwrap_or_default();
+        let protocols = db.protocols().unwrap_or_default();
         let mut session = Self {
             db,
             patients: Vec::new(),
@@ -777,6 +787,13 @@ impl Session {
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
             show_tables: false,
+            show_protocols: false,
+            protocols,
+            protocol_open: None,
+            protocol_nodes: Vec::new(),
+            protocol_new_title: String::new(),
+            protocol_node_edit: None,
+            protocol_walk: None,
             table_cells: std::collections::HashMap::new(),
             table_edit: None,
             table_undo: None,
@@ -993,6 +1010,7 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
+        self.protocols = self.db.protocols().unwrap_or_default();
         // What the team wrote today: the day's notes, then the day's
         // transmissions — the two journals a morning starts with.
         let mut notes = self
@@ -3917,6 +3935,381 @@ impl App {
         });
     }
 
+    /// Substitution protocols: the list, the tree editor, and the
+    /// walk-through that asks the questions one at a time.
+    fn protocols_view(ui: &mut egui::Ui, session: &mut Session) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            motif::column(ui, 900.0, |ui| {
+                ui.add_space(24.0);
+                ui.horizontal(|ui| {
+                    ui.heading(tr("proto_title"));
+                    if motif::button(ui, tr("patient_back")).clicked() {
+                        session.show_protocols = false;
+                        session.protocol_open = None;
+                    }
+                });
+                ui.label(tr("proto_subtitle"));
+                ui.add_space(10.0);
+            });
+            if session.protocol_open.is_none() {
+                Self::protocol_list(ui, session);
+            } else {
+                Self::protocol_editor(ui, session);
+            }
+        });
+    }
+
+    fn protocol_list(ui: &mut egui::Ui, session: &mut Session) {
+        let mut create = false;
+        let mut open: Option<db::Protocol> = None;
+        let mut delete: Option<(i64, String)> = None;
+        motif::column(ui, 900.0, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_sized(
+                    [420.0, 24.0],
+                    egui::TextEdit::singleline(&mut session.protocol_new_title)
+                        .hint_text(tr("proto_new_hint")),
+                );
+                if motif::button(ui, tr("proto_new")).clicked()
+                    && !session.protocol_new_title.trim().is_empty()
+                {
+                    create = true;
+                }
+            });
+            ui.add_space(8.0);
+            if session.protocols.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr("proto_empty"))
+                        .size(12.0)
+                        .color(motif::BG_DARK),
+                );
+            }
+            for p in session.protocols.clone() {
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(false, &p.title).clicked() {
+                        open = Some(p.clone());
+                    }
+                    if !p.subject.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(&p.subject)
+                                .size(11.0)
+                                .color(motif::BG_DARK),
+                        );
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if motif::button(ui, tr("itv_delete")).clicked() {
+                            delete = Some((p.id, p.title.clone()));
+                        }
+                    });
+                });
+            }
+        });
+        if create {
+            let title = session.protocol_new_title.trim().to_owned();
+            match session.db.add_protocol(&title, "") {
+                Ok(_) => {
+                    session.protocol_new_title.clear();
+                    session.protocols = session.db.protocols().unwrap_or_default();
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some((id, title)) = delete {
+            match session.db.delete_protocol(id, &title) {
+                Ok(true) => {}
+                Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+            session.protocols = session.db.protocols().unwrap_or_default();
+        }
+        if let Some(p) = open {
+            session.protocol_nodes = session.db.protocol_nodes(p.id).unwrap_or_default();
+            session.protocol_open = Some(p);
+            session.protocol_walk = None;
+        }
+    }
+
+    fn protocol_editor(ui: &mut egui::Ui, session: &mut Session) {
+        let Some(proto) = session.protocol_open.clone() else {
+            return;
+        };
+        let mut close = false;
+        let mut walk = false;
+        let mut print = false;
+        let mut add: Option<(Option<i64>, db::Branch, db::NodeKind)> = None;
+        let mut delete: Option<i64> = None;
+        let mut save_edit = false;
+        let mut rename: Option<(String, String)> = None;
+        motif::column(ui, 900.0, |ui| {
+            ui.horizontal(|ui| {
+                let mut title = proto.title.clone();
+                let mut subject = proto.subject.clone();
+                let t = ui.add_sized([260.0, 24.0], egui::TextEdit::singleline(&mut title));
+                ui.label(
+                    egui::RichText::new(tr("proto_subject"))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
+                let sj = ui.add_sized([200.0, 24.0], egui::TextEdit::singleline(&mut subject));
+                if t.lost_focus() || sj.lost_focus() {
+                    rename = Some((title, subject));
+                }
+                if motif::button(ui, tr("proto_back")).clicked() {
+                    close = true;
+                }
+                let w = motif::button(
+                    ui,
+                    if session.protocol_walk.is_some() {
+                        tr("proto_walk_stop")
+                    } else {
+                        tr("proto_walk")
+                    },
+                );
+                if w.clicked() {
+                    walk = true;
+                }
+                if motif::button(ui, tr("proto_print")).clicked() {
+                    print = true;
+                }
+            });
+            ui.add_space(8.0);
+            if session.protocol_walk.is_some() {
+                Self::protocol_walkthrough(ui, session);
+                return;
+            }
+            if session.protocol_nodes.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr("proto_no_steps"))
+                        .size(12.0)
+                        .color(motif::BG_DARK),
+                );
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("proto_add_question")).clicked() {
+                        add = Some((None, db::Branch::Root, db::NodeKind::Question));
+                    }
+                    if motif::button(ui, tr("proto_add_action")).clicked() {
+                        add = Some((None, db::Branch::Root, db::NodeKind::Action));
+                    }
+                });
+                return;
+            }
+            // The tree, drawn depth-first with an indent per level.
+            let nodes = session.protocol_nodes.clone();
+            let roots: Vec<&db::ProtocolNode> =
+                nodes.iter().filter(|n| n.parent_id.is_none()).collect();
+            let mut stack: Vec<(&db::ProtocolNode, usize)> =
+                roots.into_iter().rev().map(|n| (n, 0)).collect();
+            while let Some((node, depth)) = stack.pop() {
+                ui.horizontal(|ui| {
+                    ui.add_space(depth as f32 * 22.0);
+                    let tag = match node.branch {
+                        db::Branch::Yes => tr("proto_branch_yes"),
+                        db::Branch::No => tr("proto_branch_no"),
+                        db::Branch::Root => "",
+                    };
+                    if !tag.is_empty() {
+                        ui.label(egui::RichText::new(tag).size(11.0).color(motif::BG_DARK));
+                    }
+                    let editing = session
+                        .protocol_node_edit
+                        .as_ref()
+                        .is_some_and(|(id, ..)| *id == node.id);
+                    if editing {
+                        let (_, _, text) = session.protocol_node_edit.as_mut().unwrap();
+                        ui.add_sized([420.0, 22.0], egui::TextEdit::singleline(text));
+                        if motif::button(ui, tr("form_save")).clicked() {
+                            save_edit = true;
+                        }
+                    } else {
+                        let label = if node.kind == db::NodeKind::Question {
+                            egui::RichText::new(format!(
+                                "{} ?",
+                                node.text.trim_end_matches('?').trim()
+                            ))
+                            .strong()
+                        } else {
+                            egui::RichText::new(&node.text)
+                        };
+                        if ui.selectable_label(false, label).clicked() {
+                            session.protocol_node_edit =
+                                Some((node.id, node.kind, node.text.clone()));
+                        }
+                        if node.kind == db::NodeKind::Question {
+                            if motif::button(ui, tr("proto_add_yes")).clicked() {
+                                add = Some((Some(node.id), db::Branch::Yes, db::NodeKind::Action));
+                            }
+                            if motif::button(ui, tr("proto_add_no")).clicked() {
+                                add = Some((Some(node.id), db::Branch::No, db::NodeKind::Action));
+                            }
+                        } else if motif::button(ui, tr("proto_add_question")).clicked() {
+                            add = Some((Some(node.id), db::Branch::Root, db::NodeKind::Question));
+                        }
+                        if motif::button(ui, tr("itv_delete"))
+                            .on_hover_text(tr("proto_delete_node"))
+                            .clicked()
+                        {
+                            delete = Some(node.id);
+                        }
+                    }
+                });
+                let mut children: Vec<&db::ProtocolNode> = nodes
+                    .iter()
+                    .filter(|n| n.parent_id == Some(node.id))
+                    .collect();
+                children.sort_by_key(|n| (n.branch != db::Branch::Yes, n.position));
+                for child in children.into_iter().rev() {
+                    stack.push((child, depth + 1));
+                }
+            }
+        });
+        let reload = |session: &mut Session| {
+            session.protocol_nodes = session.db.protocol_nodes(proto.id).unwrap_or_default();
+        };
+        if let Some((parent, branch, kind)) = add {
+            let text = if kind == db::NodeKind::Question {
+                tr("proto_add_question")
+            } else {
+                tr("proto_add_action")
+            };
+            match session
+                .db
+                .add_protocol_node(proto.id, parent, branch, kind, text)
+            {
+                Ok(id) => {
+                    session.protocol_node_edit = Some((id, kind, String::new()));
+                    reload(session);
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if save_edit {
+            if let Some((id, kind, text)) = session.protocol_node_edit.clone() {
+                let expected = session
+                    .protocol_nodes
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.text.clone())
+                    .unwrap_or_default();
+                match session
+                    .db
+                    .update_protocol_node(id, kind, text.trim(), &expected)
+                {
+                    Ok(true) => session.protocol_node_edit = None,
+                    Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
+                    Err(e) => session.error = Some(e),
+                }
+                reload(session);
+            }
+        }
+        if let Some(id) = delete {
+            if let Err(e) = session.db.delete_protocol_node(proto.id, id) {
+                session.error = Some(e);
+            }
+            session.protocol_node_edit = None;
+            reload(session);
+        }
+        if walk {
+            session.protocol_walk = if session.protocol_walk.is_some() {
+                None
+            } else {
+                session
+                    .protocol_nodes
+                    .iter()
+                    .find(|n| n.parent_id.is_none())
+                    .map(|n| n.id)
+            };
+        }
+        if print {
+            if let Err(e) =
+                crate::pdf::open_protocol(&proto.title, &proto.subject, &session.protocol_nodes)
+            {
+                session.error = Some(e);
+            }
+        }
+        if let Some((title, subject)) = rename {
+            if title.trim() != proto.title || subject.trim() != proto.subject {
+                match session.db.rename_protocol(
+                    proto.id,
+                    title.trim(),
+                    subject.trim(),
+                    &proto.title,
+                ) {
+                    Ok(true) => {
+                        session.protocols = session.db.protocols().unwrap_or_default();
+                        session.protocol_open =
+                            session.protocols.iter().find(|p| p.id == proto.id).cloned();
+                    }
+                    Ok(false) => {
+                        session.error = Some(tr("proto_stale").to_owned());
+                        session.protocols = session.db.protocols().unwrap_or_default();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if close {
+            session.protocol_open = None;
+            session.protocol_node_edit = None;
+            session.protocol_walk = None;
+        }
+    }
+
+    /// The walk-through: one step at a time, answering the questions.
+    fn protocol_walkthrough(ui: &mut egui::Ui, session: &mut Session) {
+        let Some(current) = session.protocol_walk else {
+            return;
+        };
+        let nodes = session.protocol_nodes.clone();
+        let Some(node) = nodes.iter().find(|n| n.id == current) else {
+            session.protocol_walk = None;
+            return;
+        };
+        let mut go: Option<Option<i64>> = None;
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(&node.text)
+                .size(16.0)
+                .strong()
+                .color(motif::ACCENT),
+        );
+        ui.add_space(10.0);
+        let child = |branch: db::Branch| {
+            nodes
+                .iter()
+                .find(|n| n.parent_id == Some(node.id) && n.branch == branch)
+                .map(|n| n.id)
+        };
+        ui.horizontal(|ui| {
+            if node.kind == db::NodeKind::Question {
+                if motif::button(ui, tr("proto_walk_yes")).clicked() {
+                    go = Some(child(db::Branch::Yes));
+                }
+                if motif::button(ui, tr("proto_walk_no")).clicked() {
+                    go = Some(child(db::Branch::No));
+                }
+            } else if let Some(next) = child(db::Branch::Root) {
+                if motif::button(ui, tr("itv_advance").replace("{}", "").trim()).clicked() {
+                    go = Some(Some(next));
+                }
+            } else {
+                ui.label(
+                    egui::RichText::new(tr("proto_walk_done"))
+                        .size(12.0)
+                        .color(motif::BG_DARK),
+                );
+            }
+        });
+        if let Some(next) = go {
+            match next {
+                Some(id) => session.protocol_walk = Some(id),
+                None => {
+                    ui.label(tr("proto_walk_done"));
+                    session.protocol_walk = None;
+                }
+            }
+        }
+    }
+
     fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             Self::tables_body(ui, session);
@@ -4197,6 +4590,12 @@ impl App {
                 session.drug_form = None;
                 session.drug_base = None;
                 session.confirm_delete_drug = false;
+            } else if session.show_protocols {
+                if session.protocol_open.is_some() {
+                    session.protocol_open = None;
+                } else {
+                    session.show_protocols = false;
+                }
             } else if session.show_tables {
                 session.show_tables = false;
             } else {
@@ -4209,6 +4608,10 @@ impl App {
             Self::tables_view(ui, session);
             return;
         }
+        if session.show_protocols {
+            Self::protocols_view(ui, session);
+            return;
+        }
 
         motif::column(ui, 620.0, |ui| {
             ui.add_space(24.0);
@@ -4219,6 +4622,14 @@ impl App {
                         && motif::button(ui, tr("tables_button")).clicked()
                     {
                         session.show_tables = true;
+                    }
+                    if session.drug_form.is_none()
+                        && motif::button(ui, tr("proto_button"))
+                            .on_hover_text(tr("proto_button_tooltip"))
+                            .clicked()
+                    {
+                        session.show_protocols = true;
+                        session.protocols = session.db.protocols().unwrap_or_default();
                     }
                 });
             });

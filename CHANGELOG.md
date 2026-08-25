@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-08-25
+
+### Added
+- Substitution protocols ("Protocoles…" in the drug base): what to
+  dispense when a drug cannot be, written as a decision tree. A step is
+  either a question — "clairance inférieure à 30 mL/min ?", "apixaban
+  disponible ?" — with its oui and non branches, or a conduite to
+  follow. Steps are added, rewritten and removed in place, each write
+  compare-and-set like the rest.
+- "Dérouler" walks the tree one question at a time, so the protocol can
+  be followed at the counter without reading the whole thing, and
+  "Imprimer" typesets it as an indented A4 page for the binder.
+- The demo database ships one written the way a team would: AOD
+  indisponible, branching on the clairance and on what the wholesaler
+  has.
+
 ## [0.28.0] - 2026-08-25
 
 ### Added
