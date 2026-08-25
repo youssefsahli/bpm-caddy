@@ -5,6 +5,45 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-08-25
+
+### Added
+- Reference monographs for 141 drugs, against 61: the analgesics and
+  NSAIDs, the opioids, cardiology and diabetes, gastro-enterology,
+  allergy and ORL, more psychotropes, and the counter staples — each
+  with its indications, mechanism, posology, contraindications,
+  interactions, adverse effects, monitoring, counselling points,
+  pharmacokinetics and numbered sources.
+
+### Fixed
+A review of the day's work found eleven defects; all are fixed.
+- A migration meant to run once was replayed at every unlock and
+  destroyed table corrections made after it, including on a PC whose
+  clock ran behind. It is gone; corrections are only ever removed by
+  "Rétablir la table".
+- Class notes and table cells were written blind: a colleague's
+  paragraph or correction could be overwritten without notice. Both are
+  compare-and-set now, with a French notice when the view was stale, as
+  is the removal of a protocol step and its subtree.
+- A class note written as "avk" and one written as "AVK" were two
+  different rows, so an edit could vanish. One note per class now,
+  whatever the spelling.
+- `cycle_months` and the enforcement choice were inert: the rule, the
+  fee ranks and the patient table all hardcoded twelve months, and
+  "informer" or "refuser" still behaved like "avertir".
+- The half-life reader took the "min" inside "administration" for
+  minutes, turning a five-hour half-life into five minutes on the decay
+  curve.
+- The side pane's carnet shared its buffers with the patient and drug
+  journals: text typed in one appeared in the other, and could be
+  posted as a transmission.
+- A protocol could not be renamed — the fields were re-cloned on every
+  frame — and clicking a patient in the month view's day panel did
+  nothing.
+- A mistyped font path crashed the app on start, with no way back
+  except editing config.toml by hand; the file is now parsed first and
+  ignored when it is not a font.
+
 ## [0.29.0] - 2026-08-25
 
 ### Added

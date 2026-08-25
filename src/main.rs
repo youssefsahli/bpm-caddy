@@ -29,6 +29,11 @@ fn window_size() -> [f32; 2] {
 /// Load a TrueType/OpenType file and make it the default family.
 fn install_font(ctx: &egui::Context, path: &std::path::Path) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    // egui panics on a file it cannot parse, and the path lives in
+    // config.toml — a mistyped one would make the app uncloseable.
+    // Parse it here first and simply keep the embedded family instead.
+    ab_glyph::FontRef::try_from_slice(&bytes)
+        .map_err(|e| format!("fichier de police illisible : {e}"))?;
     let mut fonts = egui::FontDefinitions::default();
     fonts
         .font_data
