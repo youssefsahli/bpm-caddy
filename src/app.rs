@@ -166,7 +166,7 @@ fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
 /// The drug card as a printed monograph on a sheet of paper: identity,
 /// then every filled section in reading order, the pharmacokinetics as
 /// a short definition list, and the numbered sources at the foot.
-fn drug_monograph(ui: &mut egui::Ui, d: &Drug) {
+fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str) {
     let avail = ui.available_rect_before_wrap();
     let sheet_w = avail.width().min(760.0);
     let pad = 34.0;
@@ -257,6 +257,7 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug) {
             }
             // Pharmacokinetics as a compact definition list.
             let pk = [
+                (tr("drug_forms"), d.forms.as_str()),
                 (tr("drug_half_life"), d.half_life.as_str()),
                 (tr("drug_auc"), d.auc.as_str()),
                 (tr("drug_elimination"), d.elimination.as_str()),
@@ -300,6 +301,12 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug) {
                     });
             }
             mono_section(ui, width, tr("drug_notes"), &d.notes);
+            mono_section(
+                ui,
+                width,
+                &trf("drug_class_note", d.class.trim()),
+                class_note,
+            );
             let sources: Vec<&str> = d
                 .sources
                 .lines()
@@ -601,6 +608,10 @@ struct Session {
     /// A card opens as a monograph to read; "Modifier" switches to the
     /// editable form.
     drug_reading: bool,
+    /// The note shared by every card of the open card's class, and its
+    /// editing buffer.
+    class_note: String,
+    class_note_edit: Option<String>,
     drug_base: Option<Drug>,
     confirm_delete_drug: bool,
     /// Patients currently on the drug whose card is open.
@@ -703,6 +714,8 @@ impl Session {
             drug_selected: 0,
             drug_form: None,
             drug_reading: true,
+            class_note: String::new(),
+            class_note_edit: None,
             drug_base: None,
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
@@ -736,9 +749,11 @@ impl Session {
             .unwrap_or_default();
         self.note_text.clear();
         self.note_confirm = None;
+        self.class_note = self.db.class_note(&d.class).unwrap_or_default();
         self.drug_base = Some(d.clone());
         self.drug_form = Some(d);
         self.drug_reading = true;
+        self.class_note_edit = None;
         self.confirm_delete_drug = false;
     }
 
@@ -932,6 +947,21 @@ impl Session {
         self.today_notes = notes;
         self.export_notice = None;
     }
+}
+
+/// Percent-encode a query for a URL handed to the browser.
+fn urlencode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for b in text.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 /// Read a number of hours out of a free-text half-life ("≈ 12 heures",
@@ -3965,6 +3995,8 @@ impl App {
             let mut delete = false;
             let mut insert_note = false;
             let mut edit = false;
+            let mut edit_class = false;
+            let mut lookup = false;
             let mut print_mono = false;
             let mut open_patient_id: Option<i64> = None;
             // A full monograph is taller than the window: the whole card
@@ -3973,7 +4005,7 @@ impl App {
                 motif::column(ui, 900.0, |ui| {
                     ui.add_space(18.0);
                     if reading {
-                        drug_monograph(ui, form);
+                        drug_monograph(ui, form, &session.class_note);
                     }
                     if !reading {
                         ui.vertical_centered(|ui| {
@@ -4156,6 +4188,12 @@ impl App {
                                             .desired_rows(3),
                                     );
                                     ui.end_row();
+                                    ui.label(dim(tr("drug_forms")));
+                                    ui.add_sized(
+                                        [w, 48.0],
+                                        egui::TextEdit::multiline(&mut form.forms).desired_rows(2),
+                                    );
+                                    ui.end_row();
                                     ui.label(dim(tr("drug_status")));
                                     ui.add_sized(
                                         [w, 26.0],
@@ -4262,6 +4300,19 @@ impl App {
                             if motif::button(ui, tr("drug_edit")).clicked() {
                                 edit = true;
                             }
+                            if !form.class.trim().is_empty()
+                                && motif::button(ui, tr("drug_class_edit"))
+                                    .on_hover_text(tr("drug_class_edit_tooltip"))
+                                    .clicked()
+                            {
+                                edit_class = true;
+                            }
+                            if motif::button(ui, tr("drug_lookup"))
+                                .on_hover_text(tr("drug_lookup_tooltip"))
+                                .clicked()
+                            {
+                                lookup = true;
+                            }
                             if motif::button(ui, tr("drug_print"))
                                 .on_hover_text(tr("drug_print_tooltip"))
                                 .clicked()
@@ -4291,6 +4342,54 @@ impl App {
                 });
             });
 
+            if let Some(text) = session.class_note_edit.clone() {
+                let class = session
+                    .drug_form
+                    .as_ref()
+                    .map(|d| d.class.trim().to_owned())
+                    .unwrap_or_default();
+                let mut buffer = text;
+                let (mut save_note, mut close_note) = (false, false);
+                egui::Window::new(trf("drug_class_note", &class))
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_size([520.0, 240.0])
+                    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                    .show(ctx, |ui| {
+                        ui.label(
+                            egui::RichText::new(tr("drug_class_note_hint"))
+                                .size(11.0)
+                                .color(motif::BG_DARK),
+                        );
+                        ui.add_space(6.0);
+                        ui.add_sized(
+                            [500.0, 150.0],
+                            egui::TextEdit::multiline(&mut buffer).desired_rows(8),
+                        );
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if motif::button(ui, tr("form_save")).clicked() {
+                                save_note = true;
+                            }
+                            if motif::button(ui, tr("tpl_close")).clicked() {
+                                close_note = true;
+                            }
+                        });
+                    });
+                if save_note {
+                    match session.db.set_class_note(&class, &buffer) {
+                        Ok(()) => {
+                            session.class_note = buffer.trim().to_owned();
+                            session.class_note_edit = None;
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                } else if close_note {
+                    session.class_note_edit = None;
+                } else {
+                    session.class_note_edit = Some(buffer);
+                }
+            }
             if insert_note {
                 let form = session.drug_form.as_ref().unwrap();
                 let mut entry = format!("\n- {}", form.name.trim());
@@ -4309,6 +4408,31 @@ impl App {
                 // the compare-and-set baseline, as everywhere else.
                 session.drug_reading = false;
                 session.error = None;
+            }
+            if edit_class {
+                session.class_note_edit = Some(session.class_note.clone());
+            }
+            if lookup {
+                // The app stays offline: the query is handed to the
+                // browser, on the public ANSM database.
+                let query = session
+                    .drug_form
+                    .as_ref()
+                    .map(|d| {
+                        if d.dci.trim().is_empty() {
+                            d.name.trim().to_owned()
+                        } else {
+                            format!("{} {}", d.name.trim(), d.dci.trim())
+                        }
+                    })
+                    .unwrap_or_default();
+                let url = format!(
+                    "https://base-donnees-publique.medicaments.gouv.fr/index.php#result:{}",
+                    urlencode(&query)
+                );
+                if let Err(e) = open::that(&url) {
+                    session.error = Some(trf("drug_lookup_error", e));
+                }
             }
             if print_mono {
                 if let Some(card) = session.drug_form.clone() {
