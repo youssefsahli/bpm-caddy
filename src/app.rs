@@ -607,6 +607,21 @@ struct Session {
     drug_patients: Vec<Patient>,
     /// Conversion tables browser (inside the drug view).
     show_tables: bool,
+    /// Team edits of the shown table, keyed by (row, col), plus the
+    /// cell being edited and the last change (for the undo).
+    table_cells: std::collections::HashMap<(usize, usize), String>,
+    table_edit: Option<(usize, usize, String)>,
+    table_undo: Option<(usize, usize, String)>,
+    /// The calculation panel: which tool, and its inputs.
+    calc_open: bool,
+    calc_weight: f64,
+    calc_age: f64,
+    calc_creat: f64,
+    calc_female: bool,
+    calc_per_kg: f64,
+    calc_takes: u32,
+    calc_half_life: f64,
+    calc_interval: f64,
     table_selected: usize,
     error: Option<String>,
 }
@@ -692,6 +707,18 @@ impl Session {
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
             show_tables: false,
+            table_cells: std::collections::HashMap::new(),
+            table_edit: None,
+            table_undo: None,
+            calc_open: false,
+            calc_weight: 70.0,
+            calc_age: 75.0,
+            calc_creat: 90.0,
+            calc_female: false,
+            calc_per_kg: 15.0,
+            calc_takes: 3,
+            calc_half_life: 12.0,
+            calc_interval: 12.0,
             table_selected: 0,
             error: None,
         };
@@ -904,6 +931,40 @@ impl Session {
         );
         self.today_notes = notes;
         self.export_notice = None;
+    }
+}
+
+/// Read a number of hours out of a free-text half-life ("≈ 12 heures",
+/// "5 à 13 h"): the first number, or the middle of a range.
+fn parse_hours(text: &str) -> Option<f64> {
+    let cleaned = text.replace(',', ".");
+    let mut nums = Vec::new();
+    let mut cur = String::new();
+    for c in cleaned.chars() {
+        if c.is_ascii_digit() || (c == '.' && !cur.is_empty()) {
+            cur.push(c);
+        } else {
+            if let Ok(v) = cur.parse::<f64>() {
+                nums.push(v);
+            }
+            cur.clear();
+        }
+    }
+    if let Ok(v) = cur.parse::<f64>() {
+        nums.push(v);
+    }
+    let lower = crate::fuzzy::sort_key(text);
+    let factor = if lower.contains("jour") {
+        24.0
+    } else if lower.contains("min") {
+        1.0 / 60.0
+    } else {
+        1.0
+    };
+    match nums.len() {
+        0 => None,
+        1 => Some(nums[0] * factor),
+        _ => Some((nums[0] + nums[1]) / 2.0 * factor),
     }
 }
 
@@ -3368,7 +3429,229 @@ impl App {
 
     /// Conversion tables (IPP, HBPM, statines…): selector, Motif table,
     /// numbered sources, and a printable A4 with all of them.
+    /// The counter's calculators: clairance de Cockcroft, dose par
+    /// kilo, and the decay of a drug once the treatment stops.
+    fn calc_panel(ui: &mut egui::Ui, session: &mut Session) {
+        ui.add_space(12.0);
+        motif::column(ui, 940.0, |ui| {
+            motif::section(ui, tr("calc_title"));
+            ui.add_space(6.0);
+            ui.columns(2, |cols| {
+                // --- Cockcroft & Gault ---
+                let ui = &mut cols[0];
+                ui.label(egui::RichText::new(tr("calc_dfg")).strong().size(13.0));
+                egui::Grid::new("calc_dfg")
+                    .num_columns(2)
+                    .spacing([10.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label(tr("calc_age"));
+                        ui.add(egui::DragValue::new(&mut session.calc_age).range(1.0..=110.0));
+                        ui.end_row();
+                        ui.label(tr("calc_weight"));
+                        ui.add(
+                            egui::DragValue::new(&mut session.calc_weight)
+                                .range(2.0..=250.0)
+                                .suffix(" kg"),
+                        );
+                        ui.end_row();
+                        ui.label(tr("calc_creat"));
+                        ui.add(
+                            egui::DragValue::new(&mut session.calc_creat)
+                                .range(10.0..=1500.0)
+                                .suffix(" µmol/L"),
+                        );
+                        ui.end_row();
+                        ui.label(tr("calc_sex"));
+                        ui.horizontal(|ui| {
+                            ui.radio_value(&mut session.calc_female, false, tr("calc_male"));
+                            ui.radio_value(&mut session.calc_female, true, tr("calc_female"));
+                        });
+                        ui.end_row();
+                    });
+                let k = if session.calc_female { 1.04 } else { 1.23 };
+                let clearance = if session.calc_creat > 0.0 {
+                    (140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat
+                } else {
+                    0.0
+                };
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(trf("calc_dfg_result", format!("{clearance:.0}")))
+                        .strong()
+                        .color(motif::ACCENT),
+                );
+                let stage = match clearance {
+                    c if c >= 90.0 => tr("calc_stage_g1"),
+                    c if c >= 60.0 => tr("calc_stage_g2"),
+                    c if c >= 45.0 => tr("calc_stage_g3a"),
+                    c if c >= 30.0 => tr("calc_stage_g3b"),
+                    c if c >= 15.0 => tr("calc_stage_g4"),
+                    _ => tr("calc_stage_g5"),
+                };
+                ui.label(egui::RichText::new(stage).size(11.0).color(motif::BG_DARK));
+
+                // --- Dose par kilo ---
+                let ui = &mut cols[1];
+                ui.label(egui::RichText::new(tr("calc_perkg")).strong().size(13.0));
+                egui::Grid::new("calc_perkg")
+                    .num_columns(2)
+                    .spacing([10.0, 5.0])
+                    .show(ui, |ui| {
+                        ui.label(tr("calc_weight"));
+                        ui.add(
+                            egui::DragValue::new(&mut session.calc_weight)
+                                .range(2.0..=250.0)
+                                .suffix(" kg"),
+                        );
+                        ui.end_row();
+                        ui.label(tr("calc_dose_kg"));
+                        ui.add(
+                            egui::DragValue::new(&mut session.calc_per_kg)
+                                .range(0.1..=200.0)
+                                .suffix(" mg/kg"),
+                        );
+                        ui.end_row();
+                        ui.label(tr("calc_takes"));
+                        ui.add(egui::DragValue::new(&mut session.calc_takes).range(1..=6));
+                        ui.end_row();
+                    });
+                let per_take = session.calc_weight * session.calc_per_kg;
+                let daily = per_take * session.calc_takes as f64;
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(trn(
+                        "calc_perkg_result",
+                        &[&format!("{per_take:.0}"), &format!("{daily:.0}")],
+                    ))
+                    .strong()
+                    .color(motif::ACCENT),
+                );
+                ui.label(
+                    egui::RichText::new(tr("calc_perkg_note"))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
+            });
+
+            // --- Décroissance et accumulation ---
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new(tr("calc_halflife")).strong().size(13.0));
+            ui.horizontal(|ui| {
+                ui.label(tr("calc_t12"));
+                ui.add(
+                    egui::DragValue::new(&mut session.calc_half_life)
+                        .range(0.1..=200.0)
+                        .suffix(" h"),
+                );
+                ui.label(tr("calc_interval"));
+                ui.add(
+                    egui::DragValue::new(&mut session.calc_interval)
+                        .range(1.0..=72.0)
+                        .suffix(" h"),
+                );
+                // Any drug of the base whose demi-vie parses feeds the
+                // curve directly.
+                egui::ComboBox::from_id_salt("calc_drug")
+                    .selected_text(tr("calc_from_drug"))
+                    .width(200.0)
+                    .show_ui(ui, |ui| {
+                        for d in session
+                            .drugs
+                            .iter()
+                            .filter(|d| parse_hours(&d.half_life).is_some())
+                            .take(60)
+                        {
+                            if ui.selectable_label(false, &d.name).clicked() {
+                                if let Some(h) = parse_hours(&d.half_life) {
+                                    session.calc_half_life = h;
+                                }
+                            }
+                        }
+                    });
+            });
+            let t12 = session.calc_half_life.max(0.1);
+            let elimination = t12 * 5.0;
+            let ratio = 1.0 / (1.0 - 0.5_f64.powf(session.calc_interval.max(0.1) / t12));
+            ui.label(
+                egui::RichText::new(trn(
+                    "calc_halflife_result",
+                    &[&format!("{elimination:.0}"), &format!("{ratio:.1}")],
+                ))
+                .strong()
+                .color(motif::ACCENT),
+            );
+            ui.add_space(4.0);
+            // The curve: fraction remaining over five half-lives.
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(ui.available_width().min(880.0), 130.0),
+                egui::Sense::hover(),
+            );
+            ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
+            motif::bevel(ui.painter(), rect, false);
+            let plot = rect.shrink(10.0);
+            let painter = ui.painter();
+            for i in 0..=5 {
+                let x = plot.left() + plot.width() * i as f32 / 5.0;
+                painter.line_segment(
+                    [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+                    egui::Stroke::new(0.5_f32, motif::BG_DARK),
+                );
+                painter.text(
+                    egui::pos2(x, plot.bottom() + 1.0),
+                    egui::Align2::CENTER_TOP,
+                    format!("{:.0} h", t12 * i as f64),
+                    egui::FontId::proportional(9.0),
+                    motif::BG_DARK,
+                );
+            }
+            let mut points = Vec::with_capacity(61);
+            for i in 0..=60 {
+                let frac = i as f64 / 60.0;
+                let remaining = 0.5_f64.powf(frac * 5.0);
+                points.push(egui::pos2(
+                    plot.left() + plot.width() * frac as f32,
+                    plot.bottom() - plot.height() * remaining as f32,
+                ));
+            }
+            painter.add(egui::Shape::line(
+                points,
+                egui::Stroke::new(1.6_f32, motif::ACCENT),
+            ));
+            for (frac, label) in [(0.5, "50 %"), (0.25, "25 %"), (0.03125, "3 %")] {
+                let y = plot.bottom() - plot.height() * frac as f32;
+                painter.text(
+                    egui::pos2(plot.left() + 3.0, y),
+                    egui::Align2::LEFT_BOTTOM,
+                    label,
+                    egui::FontId::proportional(9.0),
+                    motif::BG_DARK,
+                );
+            }
+            ui.add_space(14.0);
+            ui.label(
+                egui::RichText::new(tr("calc_note"))
+                    .size(11.0)
+                    .italics()
+                    .color(motif::BG_DARK),
+            );
+        });
+    }
+
     fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            Self::tables_body(ui, session);
+        });
+    }
+
+    fn tables_body(ui: &mut egui::Ui, session: &mut Session) {
+        if session.table_cells.is_empty() && session.table_edit.is_none() {
+            // First paint (or after a view switch): load the team's
+            // edits for the selected table.
+            let key = crate::tables::TABLES
+                [session.table_selected.min(crate::tables::TABLES.len() - 1)]
+            .short;
+            session.table_cells = session.db.table_cells(key).unwrap_or_default();
+        }
         motif::column(ui, 940.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
@@ -3377,12 +3660,20 @@ impl App {
                     .on_hover_text(tr("tables_print_tooltip"))
                     .clicked()
                 {
-                    if let Err(e) = crate::pdf::open_conversion_tables() {
+                    let edits = session.db.all_table_cells().unwrap_or_default();
+                    if let Err(e) = crate::pdf::open_conversion_tables(&edits) {
                         session.error = Some(e);
                     }
                 }
                 if motif::button(ui, tr("patient_back")).clicked() {
                     session.show_tables = false;
+                }
+                let calc = motif::button(ui, tr("tables_calc"));
+                if session.calc_open {
+                    motif::bevel(ui.painter(), calc.rect, false);
+                }
+                if calc.on_hover_text(tr("tables_calc_tooltip")).clicked() {
+                    session.calc_open = !session.calc_open;
                 }
             });
             ui.add_space(10.0);
@@ -3396,6 +3687,9 @@ impl App {
                     }
                     if btn.clicked() {
                         session.table_selected = i;
+                        session.table_edit = None;
+                        session.table_undo = None;
+                        session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
                     }
                 }
             });
@@ -3417,6 +3711,8 @@ impl App {
         const GAP: f32 = 20.0;
         let cols = t.columns.len().max(1) as f32;
         let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(80.0);
+        // The cell edit committed this frame, applied after the grid.
+        let mut commit: Option<(usize, usize, String)> = None;
         let bg = ui.painter().add(egui::Shape::Noop);
         let content = egui::Rect::from_min_size(
             egui::pos2(avail.center().x - w / 2.0 + PAD, avail.top() + PAD),
@@ -3432,6 +3728,54 @@ impl App {
                         ui.add(egui::Label::new(text).wrap());
                     });
                 };
+                // A body cell: the team's value if it was edited, the
+                // shipped text otherwise; click to correct it in place.
+                let mut body_cell = |ui: &mut egui::Ui,
+                                     session: &mut Session,
+                                     r: usize,
+                                     c: usize,
+                                     shipped: &str| {
+                    let edited = session.table_cells.get(&(r, c)).cloned();
+                    if let Some((er, ec, text)) = &mut session.table_edit {
+                        if *er == r && *ec == c {
+                            let resp = ui.add_sized(
+                                [col_w, 22.0],
+                                egui::TextEdit::singleline(text).font(egui::TextStyle::Small),
+                            );
+                            if resp.lost_focus() {
+                                commit = Some((r, c, text.clone()));
+                            } else {
+                                resp.request_focus();
+                            }
+                            return;
+                        }
+                    }
+                    let shown = edited.clone().unwrap_or_else(|| shipped.to_owned());
+                    let color = if edited.is_some() {
+                        motif::ACCENT
+                    } else {
+                        motif::INK
+                    };
+                    ui.scope(|ui| {
+                        ui.set_max_width(col_w);
+                        let resp = ui
+                            .add(
+                                egui::Label::new(
+                                    egui::RichText::new(shown.clone()).size(13.0).color(color),
+                                )
+                                .wrap()
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(if edited.is_some() {
+                                trf("tables_cell_edited", shipped)
+                            } else {
+                                tr("tables_cell_edit").to_owned()
+                            });
+                        if resp.clicked() {
+                            session.table_edit = Some((r, c, shown));
+                        }
+                    });
+                };
                 egui::Grid::new(("conv_table", session.table_selected))
                     .num_columns(t.columns.len())
                     .spacing([GAP, 8.0])
@@ -3441,9 +3785,9 @@ impl App {
                             cell(ui, egui::RichText::new(*c).strong().size(13.0));
                         }
                         ui.end_row();
-                        for row in t.rows {
-                            for c in *row {
-                                cell(ui, egui::RichText::new(*c).size(13.0));
+                        for (ri, row) in t.rows.iter().enumerate() {
+                            for (ci, c) in row.iter().enumerate() {
+                                body_cell(ui, session, ri, ci, c);
                             }
                             ui.end_row();
                         }
@@ -3462,6 +3806,7 @@ impl App {
         // own height), then the numbered sources on the column grid.
         let below = (box_rect.bottom() - ui.cursor().top()).max(0.0) + 10.0;
         ui.add_space(below);
+        let (mut undo, mut reset) = (false, false);
         motif::column(ui, 940.0, |ui| {
             ui.label(
                 egui::RichText::new(tr("tables_sources"))
@@ -3476,7 +3821,77 @@ impl App {
                         .color(motif::BG_DARK),
                 );
             }
+            // Team edits: how many, undo the last one, restore the
+            // shipped table.
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if !session.table_cells.is_empty() {
+                    ui.label(
+                        egui::RichText::new(trf("tables_edited", session.table_cells.len()))
+                            .size(11.0)
+                            .color(motif::ACCENT),
+                    );
+                }
+                if session.table_undo.is_some() && motif::button(ui, tr("tables_undo")).clicked() {
+                    undo = true;
+                }
+                if !session.table_cells.is_empty()
+                    && motif::button(ui, tr("tables_reset"))
+                        .on_hover_text(tr("tables_reset_tooltip"))
+                        .clicked()
+                {
+                    reset = true;
+                }
+            });
         });
+        if let Some((r, c, value)) = commit {
+            let shipped = t
+                .rows
+                .get(r)
+                .and_then(|row| row.get(c))
+                .copied()
+                .unwrap_or("");
+            let previous = session
+                .table_cells
+                .get(&(r, c))
+                .cloned()
+                .unwrap_or_else(|| shipped.to_owned());
+            match session
+                .db
+                .set_table_cell(t.short, r, c, value.trim(), shipped)
+            {
+                Ok(()) => {
+                    session.table_undo = Some((r, c, previous));
+                    session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
+                }
+                Err(e) => session.error = Some(e),
+            }
+            session.table_edit = None;
+        }
+        if undo {
+            if let Some((r, c, previous)) = session.table_undo.take() {
+                let shipped = t
+                    .rows
+                    .get(r)
+                    .and_then(|row| row.get(c))
+                    .copied()
+                    .unwrap_or("");
+                if let Err(e) = session.db.set_table_cell(t.short, r, c, &previous, shipped) {
+                    session.error = Some(e);
+                }
+                session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
+            }
+        }
+        if reset {
+            if let Err(e) = session.db.reset_table(t.short) {
+                session.error = Some(e);
+            }
+            session.table_cells.clear();
+            session.table_undo = None;
+        }
+        if session.calc_open {
+            Self::calc_panel(ui, session);
+        }
         if let Some(err) = &session.error {
             ui.vertical_centered(|ui| {
                 ui.colored_label(motif::ALERT, err.as_str());
@@ -5532,6 +5947,25 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    #[test]
+    fn half_lives_are_read_from_free_text() {
+        use super::parse_hours;
+        assert_eq!(parse_hours("≈ 12 heures"), Some(12.0));
+        // A range is read as its middle.
+        assert_eq!(parse_hours("5 à 13 h"), Some(9.0));
+        assert_eq!(
+            parse_hours("12 à 17 heures, allongée si DFG bas"),
+            Some(14.5)
+        );
+        // Days and minutes are converted to hours.
+        assert_eq!(parse_hours("≈ 7 jours"), Some(168.0));
+        assert_eq!(parse_hours("30 min"), Some(0.5));
+        assert_eq!(parse_hours("1,5 h"), Some(1.5));
+        // Nothing numeric: no curve to draw.
+        assert_eq!(parse_hours("Très longue"), None);
+        assert_eq!(parse_hours(""), None);
+    }
 
     #[test]
     fn csv_export_is_french_excel_friendly() {
