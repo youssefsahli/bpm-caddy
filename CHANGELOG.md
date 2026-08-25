@@ -5,6 +5,43 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.45.0] - 2026-08-26
+
+### Fixed
+- **Ctrl+N crashed the application.** The quick picker's digit table
+  held nine keys for ten acts, and the loop that reads them indexed past
+  its end on the first frame the picker was open — so the shortcut the
+  app advertises for creating an entretien panicked instead of opening.
+  The table is declared as `[egui::Key; InterviewKind::ALL.len()]` now,
+  so the two can no longer diverge without failing to compile, and the
+  tenth act answers to `0`. Present in 0.43.0 and 0.44.0.
+
+### Added
+- **The workspace reopens where it was left.** The window opened at
+  1024×700 every morning and both docks reset to their default share, so
+  the first thing anyone did each day was arrange the screen again. The
+  size and the two dock widths live in a `layout.toml` beside
+  `config.toml` — its own file, because the configuration is
+  hand-editable and carries the operator's comments, and rewriting it on
+  every quit to note a window size would quietly throw those away. It is
+  written on a debounce, not only from `on_exit`, which never runs if
+  the post is switched off at the counter.
+- The act mix reports what each theme has earned as well as how often it
+  was done: a count alone never says which acts carry the month.
+- Each day of the agenda's week grid carries a load bar under its
+  header, so the week's shape is read off the top of the grid.
+
+### Changed
+- **The navigator answers to the keys the search always did.** Typing in
+  the dock and pressing Enter did nothing — the arrows and Enter were
+  wired to the results list in the middle of the screen, which the home
+  view replaced. The dock's field now drives its list (type, arrow down,
+  Enter), with a keyboard cursor distinct from the mark on the open
+  file, and the list scrolls to follow it.
+- Ctrl+F puts the cursor in that field instead of closing the open
+  patient to reach a search bar in the middle of the screen: that was
+  the shape of the app before it had a dock.
+
 ## [0.44.0] - 2026-08-26
 
 ### Added

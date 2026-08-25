@@ -1807,7 +1807,11 @@ fn treatment_change_shortfall(
 /// the new act will carry. Returns the chosen kind (and closes) when a
 /// row is clicked or its digit is pressed.
 fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<InterviewKind> {
-    const DIGITS: [egui::Key; 9] = [
+    // One digit per act, in the order the rows are drawn: 1-9 then 0
+    // for the tenth. The list must cover `InterviewKind::ALL` — it held
+    // nine keys for ten acts, and the loop below indexed past its end
+    // on the first frame the picker was open, so Ctrl+N crashed.
+    const DIGITS: [egui::Key; InterviewKind::ALL.len()] = [
         egui::Key::Num1,
         egui::Key::Num2,
         egui::Key::Num3,
@@ -1817,6 +1821,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
         egui::Key::Num7,
         egui::Key::Num8,
         egui::Key::Num9,
+        egui::Key::Num0,
     ];
     let mut chosen: Option<InterviewKind> = None;
     let mut close = false;
@@ -1839,7 +1844,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                         if ui
                             .add_sized(
                                 [190.0, 24.0],
-                                egui::Button::new(format!("{}  ·  {}", i + 1, kind.label()))
+                                egui::Button::new(format!("{}  ·  {}", (i + 1) % 10, kind.label()))
                                     .fill(motif::BG),
                             )
                             .clicked()
@@ -1925,6 +1930,18 @@ pub struct App {
     show_nav: bool,
     /// The keyboard reference (F12), open or not.
     show_keys: bool,
+    /// Ctrl+F asked for the navigator's search field; consumed by the
+    /// dock on the next frame it draws.
+    focus_nav: bool,
+    /// Where the workspace was left: window size and dock widths.
+    layout: crate::config::Layout,
+    /// What is actually on disk, and when the two last diverged. The
+    /// record is written on a debounce rather than only on the way out:
+    /// `on_exit` never runs if the session is killed or the machine is
+    /// switched off at the counter, which is how a shared post usually
+    /// ends its day.
+    layout_saved: crate::config::Layout,
+    layout_changed: Instant,
     /// Which content the right pane shows: "docs", "carnet", "notes".
     side_pane: String,
     doc_text: String,
@@ -2058,7 +2075,10 @@ impl App {
                             session.refresh_dashboard();
                             session.view = MainView::Dashboard;
                         }
-                        Ok("patient") => {
+                        // Landing on the quick picker needs the patient
+                        // under it: same branch, one flag more.
+                        Ok(v @ ("patient" | "act_picker")) => {
+                            session.act_picker = v == "act_picker";
                             // Prefer the fullest record for screenshots.
                             let pick = session
                                 .patients
@@ -2175,6 +2195,10 @@ impl App {
             show_docs,
             show_nav,
             show_keys: start_view == "keys",
+            focus_nav: false,
+            layout: crate::config::Layout::load(),
+            layout_saved: crate::config::Layout::load(),
+            layout_changed: Instant::now(),
             side_pane,
             doc_base: doc_text.clone(),
             doc_text,
@@ -2328,28 +2352,44 @@ impl App {
     /// (Escape, retype, re-open); the file being read and the list it
     /// came from were the same screen. They are now two.
     fn nav_dock(&mut self, ctx: &egui::Context) {
-        let State::Unlocked(session) = &mut self.state else {
-            return;
-        };
-        let view = session.view;
+        let focus = std::mem::take(&mut self.focus_nav);
         // A dock is a share of the window, not a fixed slab: at 1024 px
         // a 232 px navigator and a 340 px notes pane left the work
-        // itself 430 px, narrower than either of them.
+        // itself 430 px, narrower than either of them. Once it has been
+        // dragged, though, the width the operator chose wins.
         let screen = ctx.screen_rect().width();
-        egui::SidePanel::left("navigator")
-            .resizable(true)
-            .default_width((screen * 0.15).clamp(150.0, 232.0))
-            .min_width(130.0)
-            .max_width((screen * 0.3).clamp(180.0, 420.0))
-            .show(ctx, |ui| {
-                ui.add_space(6.0);
-                match view {
-                    MainView::Drugs => Self::nav_drugs(ui, session),
-                    MainView::Agenda => Self::nav_agenda(ui, session),
-                    MainView::Transmissions => Self::nav_carnet(ui, session),
-                    MainView::Dashboard | MainView::Search => Self::nav_patients(ui, session),
-                }
-            });
+        let default_w = if self.layout.nav_width >= 130.0 {
+            self.layout.nav_width
+        } else {
+            (screen * 0.15).clamp(150.0, 232.0)
+        };
+        let mut width = 0.0_f32;
+        {
+            let State::Unlocked(session) = &mut self.state else {
+                return;
+            };
+            let view = session.view;
+            egui::SidePanel::left("navigator")
+                .resizable(true)
+                .default_width(default_w)
+                .min_width(130.0)
+                .max_width((screen * 0.3).clamp(180.0, 420.0))
+                .show(ctx, |ui| {
+                    width = ui.max_rect().width() + 16.0;
+                    ui.add_space(6.0);
+                    match view {
+                        MainView::Drugs => Self::nav_drugs(ui, session, focus),
+                        MainView::Agenda => Self::nav_agenda(ui, session),
+                        MainView::Transmissions => Self::nav_carnet(ui, session),
+                        MainView::Dashboard | MainView::Search => {
+                            Self::nav_patients(ui, session, focus)
+                        }
+                    }
+                });
+        }
+        if width >= 130.0 {
+            self.layout.nav_width = width;
+        }
     }
 
     /// The dock's search box: a sunken full-width field with a caption.
@@ -2382,16 +2422,44 @@ impl App {
     }
 
     /// Patients: the search that used to own the whole screen, docked.
-    fn nav_patients(ui: &mut egui::Ui, session: &mut Session) {
+    fn nav_patients(ui: &mut egui::Ui, session: &mut Session, focus: bool) {
         motif::section(ui, tr("nav_patients"));
         ui.add_space(4.0);
-        if Self::nav_search(ui, tr("nav_search_hint"), &mut session.query).changed() {
+        let field = Self::nav_search(ui, tr("nav_search_hint"), &mut session.query);
+        if focus {
+            field.request_focus();
+        }
+        if field.changed() {
             session.selected = 0;
             session.new_patient = None;
         }
         let results: Vec<Patient> = session.results().into_iter().cloned().collect();
         let open = session.viewing.as_ref().map(|p| p.id);
         let mut clicked: Option<Patient> = None;
+        // The dock is the search now, so it answers to the keys the
+        // search always did: type, arrow down, Enter. Only while its own
+        // field has focus, so the arrows still drive the agenda and the
+        // act table everywhere else.
+        if field.has_focus() && !results.is_empty() {
+            session.selected = session.selected.min(results.len() - 1);
+            let (up, down, enter) = ui.input(|i| {
+                (
+                    i.key_pressed(egui::Key::ArrowUp),
+                    i.key_pressed(egui::Key::ArrowDown),
+                    i.key_pressed(egui::Key::Enter),
+                )
+            });
+            if down {
+                session.selected = (session.selected + 1).min(results.len() - 1);
+            }
+            if up {
+                session.selected = session.selected.saturating_sub(1);
+            }
+            if enter {
+                clicked = Some(results[session.selected].clone());
+            }
+        }
+        let cursor = field.has_focus().then_some(session.selected);
         ui.label(
             egui::RichText::new(trf("nav_count", results.len()))
                 .size(10.5)
@@ -2399,16 +2467,21 @@ impl App {
         );
         ui.add_space(3.0);
         Self::nav_list(ui, |ui| {
-            for p in &results {
+            for (i, p) in results.iter().enumerate() {
                 let pending = session.pending.get(&p.id).copied().unwrap_or(0);
                 let mut text = p.full_name();
                 if pending > 0 {
                     text.push_str(&format!("   ({pending})"));
                 }
-                if motif::list_row(ui, egui::RichText::new(text), open == Some(p.id))
-                    .on_hover_text(db::format_french_date(&p.birth_date))
-                    .clicked()
-                {
+                // The open file stays marked; the keyboard cursor marks
+                // where Enter would go, which is not always the same row.
+                let selected = cursor == Some(i) || (cursor.is_none() && open == Some(p.id));
+                let row = motif::list_row(ui, egui::RichText::new(text), selected)
+                    .on_hover_text(db::format_french_date(&p.birth_date));
+                if cursor == Some(i) {
+                    row.scroll_to_me(None);
+                }
+                if row.clicked() {
                     clicked = Some(p.clone());
                 }
             }
@@ -2422,15 +2495,40 @@ impl App {
 
     /// Drugs: the reference base's index, so a card can be compared with
     /// the next one without going back through the search screen.
-    fn nav_drugs(ui: &mut egui::Ui, session: &mut Session) {
+    fn nav_drugs(ui: &mut egui::Ui, session: &mut Session, focus: bool) {
         motif::section(ui, tr("nav_drugs"));
         ui.add_space(4.0);
-        if Self::nav_search(ui, tr("drug_search_hint"), &mut session.drug_query).changed() {
+        let field = Self::nav_search(ui, tr("drug_search_hint"), &mut session.drug_query);
+        if focus {
+            field.request_focus();
+        }
+        if field.changed() {
             session.drug_selected = 0;
         }
         let results = session.drug_results(60);
         let open = session.drug_form.as_ref().map(|d| d.id);
         let mut clicked: Option<Drug> = None;
+        // Same keys as the patient dock: type, arrow down, Enter.
+        if field.has_focus() && !results.is_empty() {
+            session.drug_selected = session.drug_selected.min(results.len() - 1);
+            let (up, down, enter) = ui.input(|i| {
+                (
+                    i.key_pressed(egui::Key::ArrowUp),
+                    i.key_pressed(egui::Key::ArrowDown),
+                    i.key_pressed(egui::Key::Enter),
+                )
+            });
+            if down {
+                session.drug_selected = (session.drug_selected + 1).min(results.len() - 1);
+            }
+            if up {
+                session.drug_selected = session.drug_selected.saturating_sub(1);
+            }
+            if enter {
+                clicked = Some(results[session.drug_selected].clone());
+            }
+        }
+        let cursor = field.has_focus().then_some(session.drug_selected);
         ui.label(
             egui::RichText::new(trf("nav_count", results.len()))
                 .size(10.5)
@@ -2438,7 +2536,7 @@ impl App {
         );
         ui.add_space(3.0);
         Self::nav_list(ui, |ui| {
-            for d in &results {
+            for (i, d) in results.iter().enumerate() {
                 let mut hover = d.dci.clone();
                 if !d.class.is_empty() {
                     if !hover.is_empty() {
@@ -2446,13 +2544,16 @@ impl App {
                     }
                     hover.push_str(&d.class);
                 }
-                let row =
-                    motif::list_row(ui, egui::RichText::new(d.name.trim()), open == Some(d.id));
+                let selected = cursor == Some(i) || (cursor.is_none() && open == Some(d.id));
+                let row = motif::list_row(ui, egui::RichText::new(d.name.trim()), selected);
                 let row = if hover.is_empty() {
                     row
                 } else {
                     row.on_hover_text(hover)
                 };
+                if cursor == Some(i) {
+                    row.scroll_to_me(None);
+                }
                 if row.clicked() {
                     clicked = Some(d.clone());
                 }
@@ -2637,9 +2738,15 @@ impl App {
 
     fn docs_pane(&mut self, ctx: &egui::Context) {
         let screen = ctx.screen_rect().width();
+        let default_w = if self.layout.docs_width >= 200.0 {
+            self.layout.docs_width
+        } else {
+            (screen * 0.21).clamp(220.0, 340.0)
+        };
+        let mut width = 0.0_f32;
         egui::SidePanel::right("team_docs")
             .resizable(true)
-            .default_width((screen * 0.21).clamp(220.0, 340.0))
+            .default_width(default_w)
             .min_width(200.0)
             // A side panel that grows past the width it reserved leaves
             // the central view laid out wider than it is visible, and
@@ -2647,6 +2754,7 @@ impl App {
             // included. Cap it, and let the content inside wrap.
             .max_width((screen * 0.36).clamp(260.0, 520.0))
             .show(ctx, |ui| {
+                width = ui.max_rect().width() + 16.0;
                 ui.add_space(6.0);
                 // One pane, three contents: the shared documentation,
                 // the day's carnet, or the operator's own notes.
@@ -2807,6 +2915,9 @@ impl App {
                     }
                 }
             });
+        if width >= 200.0 {
+            self.layout.docs_width = width;
+        }
     }
 
     /// The keyboard reference (F12).
@@ -2836,7 +2947,7 @@ impl App {
             ("↑ ↓", tr("keys_updown")),
             ("Entrée", tr("keys_enter")),
             ("Ctrl+N", tr("keys_new_act")),
-            ("1 … 9", tr("keys_act_digit")),
+            ("1 … 9, 0", tr("keys_act_digit")),
             ("← →", tr("keys_arrows")),
             ("", tr("keys_group_dates")),
             ("230826 · 2308", tr("keys_dates")),
@@ -3035,18 +3146,25 @@ impl App {
     }
 
     fn main_screen(&mut self, ctx: &egui::Context) {
+        let show_nav = self.show_nav;
         let State::Unlocked(session) = &mut self.state else {
             return;
         };
 
-        // Ctrl+F returns to the search from anywhere (spec 3.1).
+        // Ctrl+F returns to the search from anywhere (spec 3.1). With
+        // the navigator open the search is right there, so the key just
+        // puts the cursor in it — closing the open file to reach a
+        // search bar was the old shape of the app, not this one.
         let focus_search = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F));
-        if focus_search {
+        if focus_search && show_nav {
+            self.focus_nav = true;
+        } else if focus_search {
             session.flush_date_edits();
             session.view = MainView::Search;
             session.viewing = None;
             session.show_amounts = false;
         }
+        let focus_search = focus_search && !show_nav;
         // Escape backs out of the dashboard, like everywhere else.
         if session.view == MainView::Dashboard
             && ctx.input(|i| i.key_pressed(egui::Key::Escape))
@@ -5984,6 +6102,16 @@ impl App {
                 lines
             };
             let legend_h = 4.0 + 18.0 * legend_rows;
+            // The scale the per-day load bars are drawn against.
+            let busiest = session
+                .agenda_week
+                .iter()
+                .map(|d| {
+                    session.appointments.iter().filter(|r| r.date == *d).count()
+                        + grid_events.iter().filter(|e| e.day == *d).count()
+                })
+                .max()
+                .unwrap_or(0);
             let grid = egui::Rect::from_min_max(
                 rect.min,
                 egui::pos2(rect.right(), rect.bottom() - legend_h),
@@ -6034,16 +6162,38 @@ impl App {
                         motif::TEXT
                     },
                 );
+                // A hairline under the header, filled in proportion to
+                // the busiest day of the week: the week's shape is read
+                // off the top of the grid without counting blocks.
+                {
+                    let load = session
+                        .appointments
+                        .iter()
+                        .filter(|r| r.date == *date)
+                        .count()
+                        + grid_events.iter().filter(|e| e.day == *date).count();
+                    let bar = egui::Rect::from_min_max(
+                        egui::pos2(col.left() + 3.0, col.top() + 21.0),
+                        egui::pos2(col.right() - 3.0, col.top() + 24.0),
+                    );
+                    ui.painter()
+                        .rect_filled(bar, 0.0, motif::BG_DARK.gamma_multiply(0.35));
+                    if load > 0 && busiest > 0 {
+                        let mut fill = bar;
+                        fill.set_width(bar.width() * (load as f32 / busiest as f32));
+                        ui.painter().rect_filled(fill, 0.0, motif::ACCENT);
+                    }
+                }
                 // Colored blocks, one per RDV of that day.
                 let day_rdvs: Vec<&Appointment> = session
                     .appointments
                     .iter()
                     .filter(|r| r.date == *date)
                     .collect();
-                let max_blocks = ((col.height() - 28.0) / 24.0) as usize;
+                let max_blocks = ((col.height() - 32.0) / 24.0) as usize;
                 for (bi, rdv) in day_rdvs.iter().take(max_blocks).enumerate() {
                     let block = egui::Rect::from_min_size(
-                        egui::pos2(col.left() + 3.0, col.top() + 26.0 + bi as f32 * 24.0),
+                        egui::pos2(col.left() + 3.0, col.top() + 30.0 + bi as f32 * 24.0),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
                     ui.painter().rect_filled(block, 0.0, kind_color(rdv.kind));
@@ -6083,7 +6233,7 @@ impl App {
                     let block = egui::Rect::from_min_size(
                         egui::pos2(
                             col.left() + 3.0,
-                            col.top() + 26.0 + (used + ei) as f32 * 24.0,
+                            col.top() + 30.0 + (used + ei) as f32 * 24.0,
                         ),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
@@ -8526,11 +8676,22 @@ impl App {
         if let Some(i) = hovered {
             let (kind, n) = counts[i];
             let quota = config.per_year(kind);
-            let text = match kind.act_code(0) {
+            let mut text = match kind.act_code(0) {
                 Some(code) if quota > 0 => trn("dash_kind_quota", &[&code, &n, &quota]),
                 Some(code) => trn("dash_kind_tooltip", &[&code, &n]),
                 None => trf("dash_acts_n", n),
             };
+            // What the theme is worth, not only how often it is done —
+            // the count alone never says which acts carry the month.
+            if n > 0 {
+                let earned: f64 = session
+                    .summaries
+                    .iter()
+                    .filter(|s| s.kind == kind)
+                    .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
+                    .sum();
+                text.push_str(&trf("dash_kind_revenue", format!("{earned:.0}")));
+            }
             egui::show_tooltip_text(ui.ctx(), ui.layer_id(), ui.id().with("dash_kind_tip"), text);
         }
     }
@@ -8707,6 +8868,27 @@ impl eframe::App for App {
             motif::apply(ctx);
             motif::apply_scale(ctx, self.config.ui.text_scale, self.config.density());
             self.applied_look = Some(look);
+        }
+        // Track the window so the next session opens at this size.
+        {
+            let size = ctx.screen_rect().size();
+            self.layout.window_width = size.x;
+            self.layout.window_height = size.y;
+            if self.layout != self.layout_saved {
+                // A drag reports a new width every frame: wait until it
+                // settles rather than writing the file 60 times a second.
+                if self.layout_changed.elapsed() > Duration::from_secs(2) {
+                    self.layout.save();
+                    self.layout_saved = self.layout;
+                } else {
+                    // Idle sessions only repaint every 30 s; without
+                    // this the debounce would not come round until the
+                    // next thing the operator did.
+                    ctx.request_repaint_after(Duration::from_millis(400));
+                }
+            } else {
+                self.layout_changed = Instant::now();
+            }
         }
         // Auto-lock after inactivity (spec 4.3).
         if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {
@@ -10092,6 +10274,9 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Reopen where the workspace was left: the window's size and the
+        // widths the docks were dragged to.
+        self.layout.save();
         if self.doc_dirty {
             // No cursor to protect on the way out: allow the merge.
             self.doc_focused = false;
