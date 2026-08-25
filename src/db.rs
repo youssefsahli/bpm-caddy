@@ -57,6 +57,13 @@ CREATE TABLE IF NOT EXISTS drugs (
     renal       TEXT NOT NULL DEFAULT '',
     pregnancy   TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY,
+    day         TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    category    TEXT NOT NULL DEFAULT 'AUTRE',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 CREATE TABLE IF NOT EXISTS patient_drugs (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
     drug_id     INTEGER NOT NULL REFERENCES drugs(id),
@@ -273,6 +280,60 @@ pub struct ExportRow {
     pub fee_rank: usize,
 }
 
+/// What an agenda entry that is not a billable act represents.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EventCategory {
+    Formation,
+    Reunion,
+    Livraison,
+    Conge,
+    Autre,
+}
+
+impl EventCategory {
+    pub const ALL: [EventCategory; 5] = [
+        Self::Formation,
+        Self::Reunion,
+        Self::Livraison,
+        Self::Conge,
+        Self::Autre,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Formation => "FORMATION",
+            Self::Reunion => "REUNION",
+            Self::Livraison => "LIVRAISON",
+            Self::Conge => "CONGE",
+            Self::Autre => "AUTRE",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.as_str() == s)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Formation => "Formation",
+            Self::Reunion => "Réunion",
+            Self::Livraison => "Livraison",
+            Self::Conge => "Congé",
+            Self::Autre => "Autre",
+        }
+    }
+}
+
+/// One agenda entry that is not tied to a patient.
+#[derive(Clone, Debug)]
+pub struct Event {
+    pub id: i64,
+    /// ISO `YYYY-MM-DD`.
+    pub day: String,
+    pub title: String,
+    pub category: EventCategory,
+}
+
 /// A planned interview with the patient it belongs to, for the
 /// dashboard's upcoming-appointments list.
 #[derive(Clone, Debug)]
@@ -426,6 +487,17 @@ pub enum NoteSubject {
     Operator,
     /// The team's end-of-day handover logbook, organized by day.
     Transmission,
+    /// A note pinned to one day of the agenda, keyed by `YYYYMMDD`.
+    Day,
+}
+
+/// The subject id of a day note: `2026-08-25` becomes `20260825`.
+pub fn day_subject_id(iso: &str) -> i64 {
+    iso.chars()
+        .filter(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .unwrap_or(0)
 }
 
 impl NoteSubject {
@@ -434,6 +506,7 @@ impl NoteSubject {
             Self::Patient => "PATIENT",
             Self::Drug => "DRUG",
             Self::Operator => "OPERATOR",
+            Self::Day => "DAY",
             Self::Transmission => "TRANSMISSION",
         }
     }
@@ -3209,6 +3282,119 @@ impl Db {
     /// Planned interviews not yet performed, soonest first — the
     /// dashboard's appointment list (overdue ones included, so a missed
     /// RDV is never silently forgotten).
+    /// Add an agenda entry that is not a billable act — a formation, a
+    /// réunion, a livraison, a congé.
+    pub fn add_event(
+        &self,
+        day: &str,
+        title: &str,
+        category: EventCategory,
+    ) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO events (day, title, category) VALUES (?1, ?2, ?3)",
+                (day, title, category.as_str()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Every agenda entry between two ISO dates, inclusive.
+    pub fn events_between(&self, from: &str, to: &str) -> Result<Vec<Event>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, day, title, category FROM events
+                 WHERE day >= ?1 AND day <= ?2 ORDER BY day, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map((from, to), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, day, title, category) = row.map_err(|e| e.to_string())?;
+            out.push(Event {
+                id,
+                day,
+                title,
+                category: EventCategory::parse(&category).unwrap_or(EventCategory::Autre),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Remove an agenda entry. Compare-and-set on the title this PC
+    /// displayed, so a colleague's edited entry is never destroyed.
+    pub fn delete_event(&self, id: i64, expected_title: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM events WHERE id = ?1 AND title = ?2",
+                (id, expected_title),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// The days of one month (ISO), Monday-aligned grid included: the
+    /// returned vector always starts on a Monday and ends on a Sunday.
+    pub fn month_grid(&self, offset_months: i64) -> Result<Vec<String>, String> {
+        let shift = format!("{offset_months} months");
+        let first: String = self
+            .conn
+            .query_row(
+                "SELECT date('now', 'localtime', 'start of month', ?1)",
+                [&shift],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let start: String = self
+            .conn
+            .query_row("SELECT date(?1, '-6 days', 'weekday 1')", [&first], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())?;
+        let last: String = self
+            .conn
+            .query_row(
+                "SELECT date(?1, 'start of month', '+1 month', '-1 day')",
+                [&first],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        let mut day = start;
+        // Six weeks cover every month layout.
+        for _ in 0..42 {
+            out.push(day.clone());
+            if day >= last && weekday_fr(&day) == Some("dimanche") {
+                break;
+            }
+            day = self.date_offset(&day, 1)?;
+        }
+        Ok(out)
+    }
+
+    /// The month a grid offset lands on, as `YYYY-MM`.
+    pub fn month_of(&self, offset_months: i64) -> Result<String, String> {
+        let shift = format!("{offset_months} months");
+        self.conn
+            .query_row(
+                "SELECT strftime('%Y-%m', date('now', 'localtime', 'start of month', ?1))",
+                [&shift],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())
+    }
+
     pub fn upcoming_appointments(&self) -> Result<Vec<Appointment>, String> {
         let mut stmt = self
             .conn
@@ -3652,6 +3838,32 @@ pub fn rule_next_allowed(
         None
     } else {
         Some(cycle_end)
+    }
+}
+
+/// "2026-08" → "août 2026", for the agenda's month header.
+pub fn month_name_fr(ym: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre",
+    ];
+    let mut parts = ym.split('-');
+    match (parts.next(), parts.next()) {
+        (Some(y), Some(m)) => match m.parse::<usize>() {
+            Ok(m) if (1..=12).contains(&m) => format!("{} {}", MONTHS[m - 1], y),
+            _ => ym.to_owned(),
+        },
+        _ => ym.to_owned(),
     }
 }
 
@@ -4579,6 +4791,21 @@ mod tests {
                     "Rappeler le grossiste lundi.",
                 )
                 .unwrap();
+                // Agenda entries that are not acts, for the demo.
+                let today = db.today_iso().unwrap();
+                db.add_event(&today, "Formation AOD — 14 h", EventCategory::Formation)
+                    .unwrap();
+                let plus2 = db.date_offset(&today, 2).unwrap();
+                db.add_event(&plus2, "Livraison grossiste", EventCategory::Livraison)
+                    .unwrap();
+                db.add_note(
+                    NoteSubject::Day,
+                    day_subject_id(&today),
+                    "CL",
+                    "Vérifier le stock d'Eliquis avant la formation.",
+                )
+                .unwrap();
+
                 // Transmissions: one entry yesterday, two today.
                 let t1 = db
                     .add_note(
