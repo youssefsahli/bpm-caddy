@@ -376,6 +376,318 @@ impl Note {
     }
 }
 
+/// Clinical detail shipped for the drugs the supported entretiens turn
+/// around (AOD, AVK, HBPM, asthme, marges thérapeutiques étroites,
+/// anticancéreux oraux). These are the standard reference facts a
+/// pharmacist would state at the counter; every field stays editable
+/// and the team's own text is never overwritten. Cards outside this
+/// list keep their clinical fields empty on purpose.
+pub struct StarterDetail {
+    pub name: &'static str,
+    pub dosage: &'static str,
+    pub ddi: &'static str,
+    /// Informations utiles au patient (IUP) : plan de prise, technique,
+    /// signaux d'alerte.
+    pub iup: &'static str,
+    pub half_life: &'static str,
+    pub elimination: &'static str,
+    pub renal: &'static str,
+    pub pregnancy: &'static str,
+}
+
+pub const STARTER_DETAILS: &[StarterDetail] = &[
+    StarterDetail {
+        name: "Eliquis",
+        dosage: "FA : 5 mg x2/j ; 2,5 mg x2/j si 2 critères parmi ≥ 80 ans, ≤ 60 kg, créatinine ≥ 133 µmol/L. MTEV : 10 mg x2/j 7 jours puis 5 mg x2/j.",
+        ddi: "Inhibiteurs et inducteurs puissants du CYP3A4 et de la P-gp (azolés, ritonavir, rifampicine, millepertuis) ; AINS, antiagrégants, ISRS : risque hémorragique majoré.",
+        iup: "Deux prises par jour à heure fixe, avec ou sans aliments. Oubli : prendre dès que possible le jour même, jamais deux doses. Ne jamais interrompre sans avis. Signaler tout saignement inhabituel, selles noires, hématomes.",
+        half_life: "≈ 12 h",
+        elimination: "Fécale et biliaire majoritaire, ≈ 25 % rénale",
+        renal: "DFG 15-29 : prudence ; < 15 ou dialyse : non recommandé",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Xarelto",
+        dosage: "FA : 20 mg x1/j au cours du repas ; 15 mg si DFG 15-49. MTEV : 15 mg x2/j pendant 21 jours puis 20 mg x1/j.",
+        ddi: "Inhibiteurs et inducteurs puissants du CYP3A4 et de la P-gp ; AINS, antiagrégants : risque hémorragique majoré.",
+        iup: "Une prise par jour au cours d'un repas (l'absorption en dépend). Oubli : prendre dès que possible le jour même. Ne jamais interrompre sans avis. Signaler tout saignement inhabituel.",
+        half_life: "5 à 13 h",
+        elimination: "≈ 1/3 rénale sous forme inchangée",
+        renal: "DFG 15-49 : 15 mg/j ; < 15 : non recommandé",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Pradaxa",
+        dosage: "FA : 150 mg x2/j ; 110 mg x2/j si ≥ 80 ans, vérapamil associé ou risque hémorragique.",
+        ddi: "Substrat P-gp : vérapamil, amiodarone (majoration), dronédarone et kétoconazole (contre-indiqués), rifampicine (baisse). Pas de métabolisme CYP.",
+        iup: "Gélules à avaler entières : ne jamais les ouvrir (biodisponibilité doublée). Conserver dans le blister ou le flacon d'origine, sensible à l'humidité, à utiliser dans les 4 mois après ouverture du flacon.",
+        half_life: "12 à 17 h",
+        elimination: "≈ 80 % rénale",
+        renal: "Contre-indiqué si DFG < 30",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Lixiana",
+        dosage: "60 mg x1/j ; 30 mg x1/j si DFG 15-50, poids ≤ 60 kg ou inhibiteur puissant de la P-gp.",
+        ddi: "Inhibiteurs de la P-gp (ciclosporine, dronédarone, érythromycine, kétoconazole) ; AINS et antiagrégants.",
+        iup: "Une prise par jour, avec ou sans aliments. Relais depuis une héparine ou un AVK selon protocole. Signaler tout saignement.",
+        half_life: "10 à 14 h",
+        elimination: "≈ 50 % rénale",
+        renal: "DFG 15-50 : 30 mg/j ; < 15 : non recommandé",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Coumadine",
+        dosage: "Dose individuelle guidée par l'INR ; cible usuelle 2 à 3 (2,5 à 3,5 pour certaines valves mécaniques).",
+        ddi: "Très nombreuses : miconazole même en gel buccal (contre-indiqué), AINS et aspirine, macrolides, cotrimoxazole, amiodarone, millepertuis (inducteur).",
+        iup: "Prise le soir à heure fixe, INR régulier reporté sur le carnet. Alimentation régulière en vitamine K (choux, épinards, brocolis) sans les exclure. Aucune automédication par AINS ou aspirine. Signaler saignements et tout nouveau médicament.",
+        half_life: "35 à 45 h",
+        elimination: "Hépatique (CYP2C9)",
+        renal: "Pas d'adaptation sur le DFG ; surveillance INR renforcée",
+        pregnancy: "Contre-indiqué (sauf valve mécanique, avis spécialisé)",
+    },
+    StarterDetail {
+        name: "Previscan",
+        dosage: "Dose individuelle guidée par l'INR ; cible usuelle 2 à 3.",
+        ddi: "Mêmes interactions que les autres AVK : miconazole (contre-indiqué), AINS, macrolides, cotrimoxazole, amiodarone, millepertuis.",
+        iup: "Prise le soir à heure fixe, carnet d'INR. Ne plus initier chez un nouveau patient (réactions immuno-allergiques) ; poursuite possible si équilibré de longue date.",
+        half_life: "≈ 30 h",
+        elimination: "Hépatique",
+        renal: "Surveillance INR renforcée",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Sintrom",
+        dosage: "Dose individuelle guidée par l'INR ; demi-vie courte, équilibre plus rapide mais plus instable.",
+        ddi: "Mêmes interactions que les autres AVK, dont le miconazole (contre-indiqué).",
+        iup: "Prise à heure fixe, souvent en deux prises. Carnet d'INR, pas d'automédication par AINS.",
+        half_life: "8 à 11 h",
+        elimination: "Hépatique",
+        renal: "Surveillance INR renforcée",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Lovenox",
+        dosage: "Curatif : 100 UI/kg x2/j en SC. Prophylaxie : 4 000 UI x1/j (2 000 à 4 000 selon le risque).",
+        ddi: "AINS, aspirine, antiagrégants, autres anticoagulants : risque hémorragique. Prudence avec les IEC/ARA2 et les épargneurs de potassium (hyperkaliémie).",
+        iup: "Injection sous-cutanée dans la ceinture abdominale antérolatérale, patient allongé, aiguille perpendiculaire dans un pli cutané. Ne jamais purger la bulle d'air. Alterner les côtés. Élimination de la seringue dans un collecteur DASRI.",
+        half_life: "4 à 5 h (activité anti-Xa)",
+        elimination: "Rénale",
+        renal: "DFG 15-30 : adaptation ; < 15 : contre-indiqué en curatif",
+        pregnancy: "Possible si nécessaire, avis médical",
+    },
+    StarterDetail {
+        name: "Ventoline",
+        dosage: "1 à 2 bouffées à la demande ; un recours supérieur à 2 fois par semaine traduit un asthme non contrôlé.",
+        ddi: "Bêta-bloquants (antagonisme), hypokaliémiants (diurétiques, corticoïdes, théophylline).",
+        iup: "Agiter, expirer à fond, déclencher au début d'une inspiration lente et profonde, apnée 10 secondes. Chambre d'inhalation chez l'enfant et en cas de mauvaise coordination. Vérifier le compteur de doses ; consulter si l'efficacité diminue.",
+        half_life: "3 à 6 h",
+        elimination: "Hépatique et rénale",
+        renal: "",
+        pregnancy: "Possible",
+    },
+    StarterDetail {
+        name: "Symbicort",
+        dosage: "1 à 2 inhalations x2/j selon le palier ; schéma MART possible (fond et secours avec le même dispositif).",
+        ddi: "Inhibiteurs puissants du CYP3A4 (kétoconazole, ritonavir) : exposition au budésonide majorée ; bêta-bloquants.",
+        iup: "Expiration à fond hors du dispositif, inspiration rapide et profonde, apnée 10 secondes. Rincer la bouche après chaque prise (candidose, dysphonie). Ne pas utiliser en secours si le patient n'est pas sous schéma MART.",
+        half_life: "",
+        elimination: "Hépatique (CYP3A4)",
+        renal: "",
+        pregnancy: "Possible si nécessaire",
+    },
+    StarterDetail {
+        name: "Seretide",
+        dosage: "1 inhalation x2/j selon le dosage ; traitement de fond uniquement, jamais en secours.",
+        ddi: "Inhibiteurs puissants du CYP3A4 (ritonavir, kétoconazole) : risque d'effets systémiques du corticoïde.",
+        iup: "Traitement de fond à prendre même sans symptômes. Rincer la bouche après chaque inhalation. Ne jamais l'utiliser pour une crise : garder un bronchodilatateur de courte durée.",
+        half_life: "",
+        elimination: "Hépatique (CYP3A4)",
+        renal: "",
+        pregnancy: "Possible si nécessaire",
+    },
+    StarterDetail {
+        name: "Spiriva",
+        dosage: "1 inhalation par jour, à heure fixe (18 µg gélule Handihaler ou 2 bouffées de 2,5 µg Respimat).",
+        ddi: "Autres anticholinergiques (majoration des effets atropiniques).",
+        iup: "Les gélules du Handihaler s'insèrent dans le dispositif et ne s'avalent jamais. Une prise par jour, toujours à la même heure. Bouche sèche fréquente ; prudence en cas de glaucome à angle fermé ou d'adénome prostatique.",
+        half_life: "",
+        elimination: "Rénale majoritaire",
+        renal: "DFG < 50 : surveillance",
+        pregnancy: "",
+    },
+    StarterDetail {
+        name: "Méthotrexate",
+        dosage: "Une seule prise par SEMAINE, à jour fixe, dans le rhumatisme et le psoriasis.",
+        ddi: "AINS et salicylés, cotrimoxazole et triméthoprime (contre-indiqués, aplasie), IPP à forte dose, pénicillines.",
+        iup: "Erreur grave à prévenir : jamais de prise quotidienne. Jour de prise noté sur la boîte et dans le carnet. Acide folique 24 à 48 heures après. Bilan hépatique et NFS réguliers. Contraception nécessaire.",
+        half_life: "3 à 10 h",
+        elimination: "Rénale",
+        renal: "DFG < 30 : contre-indiqué",
+        pregnancy: "Contre-indiqué (tératogène)",
+    },
+    StarterDetail {
+        name: "Téralithe",
+        dosage: "Posologie guidée par la lithiémie : 0,5 à 0,8 mEq/L pour la forme LP, prélèvement 12 h après la prise.",
+        ddi: "AINS, IEC et ARA2, diurétiques thiazidiques : montée de la lithiémie et risque de surdosage.",
+        iup: "Apports hydriques et sodés réguliers ; se méfier de la chaleur, de la fièvre, des diarrhées. Signes de surdosage : tremblements, diarrhée, somnolence, confusion — arrêter et consulter. Lithiémie et TSH régulières.",
+        half_life: "18 à 24 h",
+        elimination: "Rénale exclusive",
+        renal: "Adaptation stricte, contre-indiqué en insuffisance sévère",
+        pregnancy: "Contre-indiqué (sauf avis spécialisé)",
+    },
+    StarterDetail {
+        name: "Digoxine",
+        dosage: "0,125 à 0,25 mg/j chez l'adulte ; marge thérapeutique étroite, digoxinémie utile.",
+        ddi: "Amiodarone, vérapamil, macrolides (majoration) ; diurétiques hypokaliémiants (toxicité majorée par l'hypokaliémie).",
+        iup: "Prise à heure fixe. Signes de surdosage à connaître : nausées, troubles visuels colorés, bradycardie, confusion. Contrôle de la kaliémie et de la fonction rénale.",
+        half_life: "30 à 40 h",
+        elimination: "Rénale",
+        renal: "Adaptation nécessaire dès DFG < 60",
+        pregnancy: "",
+    },
+    StarterDetail {
+        name: "Cordarone",
+        dosage: "Charge 200 mg x3/j environ 8 à 10 jours puis entretien 200 mg/j, souvent 5 jours sur 7.",
+        ddi: "AVK (INR à renforcer), digoxine (doubler la surveillance), médicaments allongeant le QT, statines.",
+        iup: "Photosensibilité : protection solaire indispensable. Surveillance TSH, bilan hépatique, ophtalmologique et pulmonaire. Signaler toux ou dyspnée d'apparition récente.",
+        half_life: "Très longue, 20 à 100 jours",
+        elimination: "Hépatique",
+        renal: "",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Levothyrox",
+        dosage: "Dose individuelle guidée par la TSH, en une prise le matin à jeun.",
+        ddi: "Fer, calcium, magnésium, IPP, colestyramine : absorption diminuée, à espacer d'au moins 2 à 4 heures.",
+        iup: "Le matin à jeun, 30 minutes avant le petit-déjeuner, à heure fixe. Ne pas changer de spécialité sans contrôle de la TSH 6 semaines après. Signaler palpitations, nervosité, amaigrissement.",
+        half_life: "≈ 7 jours",
+        elimination: "Hépatique et rénale",
+        renal: "",
+        pregnancy: "Poursuivre, adaptation fréquente",
+    },
+    StarterDetail {
+        name: "Glucophage",
+        dosage: "500 mg à 1 g x2 à 3/j, au cours ou à la fin des repas ; augmentation progressive.",
+        ddi: "Produits de contraste iodés, diurétiques, AINS et IEC en cas de déshydratation : risque d'acidose lactique.",
+        iup: "À prendre pendant les repas pour limiter les troubles digestifs. Arrêt avant tout examen avec produit de contraste iodé et en cas de déshydratation (diarrhée, vomissements, forte chaleur). Reprise 48 h après l'examen sur avis.",
+        half_life: "≈ 6 h",
+        elimination: "Rénale sous forme inchangée",
+        renal: "DFG 30-59 : dose maximale réduite ; < 30 : contre-indiqué",
+        pregnancy: "Possible, avis spécialisé",
+    },
+    StarterDetail {
+        name: "Ozempic",
+        dosage: "1 injection sous-cutanée par semaine, jour fixe ; titration progressive 0,25 puis 0,5 puis 1 mg.",
+        ddi: "Ralentissement de la vidange gastrique : surveiller les médicaments à marge étroite. Association aux sulfamides ou à l'insuline : risque d'hypoglycémie.",
+        iup: "Injection hebdomadaire à jour fixe, rotation des sites (abdomen, cuisse, bras). Nausées fréquentes au début, transitoires : repas plus légers. Conserver le stylo au réfrigérateur avant la première utilisation.",
+        half_life: "≈ 7 jours",
+        elimination: "Métabolisme protéolytique",
+        renal: "",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Cortancyl",
+        dosage: "Dose selon l'indication, en une prise le matin au cours du repas.",
+        ddi: "AINS (ulcère), inducteurs enzymatiques, médicaments hypokaliémiants, anticoagulants.",
+        iup: "Prise le matin pour respecter le rythme du cortisol. Ne jamais arrêter brutalement une corticothérapie prolongée. Régime peu salé et surveillance du poids, de la tension et de la glycémie si traitement long.",
+        half_life: "",
+        elimination: "Hépatique",
+        renal: "",
+        pregnancy: "Possible si nécessaire",
+    },
+    StarterDetail {
+        name: "Tahor",
+        dosage: "10 à 80 mg/j en une prise, indifféremment matin ou soir.",
+        ddi: "Inhibiteurs du CYP3A4 (macrolides, azolés, jus de pamplemousse), fibrates, ciclosporine : risque musculaire.",
+        iup: "Une prise par jour. Signaler toute douleur musculaire inexpliquée, surtout avec fatigue ou urines foncées. Le régime et l'activité physique restent indispensables.",
+        half_life: "≈ 14 h",
+        elimination: "Hépatique (CYP3A4)",
+        renal: "Pas d'adaptation",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Plavix",
+        dosage: "75 mg/j en une prise ; dose de charge selon le contexte cardiologique.",
+        ddi: "IPP inhibiteurs du CYP2C19 (oméprazole, ésoméprazole) : préférer pantoprazole. AINS, anticoagulants : risque hémorragique.",
+        iup: "Ne jamais interrompre de soi-même, en particulier après la pose d'un stent : prévenir tout chirurgien ou dentiste avant un geste. Signaler saignements prolongés et hématomes.",
+        half_life: "",
+        elimination: "Hépatique (prodrogue, CYP2C19)",
+        renal: "",
+        pregnancy: "",
+    },
+    StarterDetail {
+        name: "Inexium",
+        dosage: "20 à 40 mg/j, 30 minutes avant le repas ; réévaluer régulièrement l'intérêt d'un traitement prolongé.",
+        ddi: "Diminue l'activation du clopidogrel (préférer le pantoprazole) ; absorption modifiée des azolés, du fer, de la vitamine B12.",
+        iup: "Une prise 30 minutes avant le repas. Les gélules peuvent être ouvertes et les granules avalés sans être croqués. Traitement à réévaluer : un IPP au long cours n'est pas anodin (magnésium, B12, fractures).",
+        half_life: "1 à 1,5 h",
+        elimination: "Hépatique (CYP2C19)",
+        renal: "",
+        pregnancy: "",
+    },
+    StarterDetail {
+        name: "Xeloda",
+        dosage: "Selon la surface corporelle, en 2 prises par jour, dans les 30 minutes qui suivent le repas ; cycles de 14 jours suivis de 7 jours d'arrêt.",
+        ddi: "AVK : INR fortement majoré, surveillance rapprochée. Phénytoïne, allopurinol.",
+        iup: "Comprimés avalés entiers avec de l'eau dans les 30 minutes après le repas ; respecter la semaine d'arrêt. Syndrome main-pied : hydrater les mains et les pieds, signaler rougeur ou douleur. Diarrhée de grade 2 ou plus : arrêter et contacter l'équipe le jour même.",
+        half_life: "0,5 à 1 h (prodrogue)",
+        elimination: "Rénale (métabolites)",
+        renal: "DFG 30-50 : dose réduite ; < 30 : contre-indiqué",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Prolia",
+        dosage: "60 mg en injection sous-cutanée tous les 6 mois.",
+        ddi: "Autres traitements de l'ostéoporose : relais à organiser.",
+        iup: "Injection à ne pas retarder : l'arrêt sans relais expose à un rebond de perte osseuse et à des fractures vertébrales. Supplémentation en calcium et vitamine D. Bilan dentaire avant traitement (ostéonécrose de la mâchoire).",
+        half_life: "≈ 26 jours",
+        elimination: "Protéolyse",
+        renal: "Hypocalcémie plus fréquente si DFG < 30",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Fosamax",
+        dosage: "70 mg une fois par semaine, jour fixe.",
+        ddi: "Calcium, fer, magnésium, antiacides : à espacer d'au moins 30 minutes.",
+        iup: "Le matin à jeun, avec un grand verre d'eau du robinet, en restant debout ou assis 30 minutes sans rien avaler d'autre (œsophagite). Bilan dentaire recommandé avant l'instauration.",
+        half_life: "",
+        elimination: "Rénale",
+        renal: "DFG < 35 : contre-indiqué",
+        pregnancy: "Contre-indiqué",
+    },
+    StarterDetail {
+        name: "Kardégic",
+        dosage: "75 à 160 mg/j en prévention cardiovasculaire.",
+        ddi: "AINS, anticoagulants, autres antiagrégants : risque hémorragique majoré.",
+        iup: "Ne pas arrêter sans avis médical. Prévenir tout dentiste ou chirurgien. Sachet à dissoudre dans un verre d'eau, de préférence au cours d'un repas.",
+        half_life: "",
+        elimination: "Hépatique",
+        renal: "",
+        pregnancy: "Déconseillé au 3e trimestre",
+    },
+    StarterDetail {
+        name: "Singulair",
+        dosage: "10 mg le soir chez l'adulte ; 4 ou 5 mg chez l'enfant selon l'âge.",
+        ddi: "Inducteurs enzymatiques (rifampicine, phénobarbital).",
+        iup: "Une prise le soir, en traitement de fond : sans effet sur la crise. Signaler tout changement d'humeur, cauchemars ou idées noires, en particulier chez l'enfant et l'adolescent.",
+        half_life: "2,7 à 5,5 h",
+        elimination: "Hépatique",
+        renal: "",
+        pregnancy: "",
+    },
+    StarterDetail {
+        name: "Lantus",
+        dosage: "1 injection par jour à heure fixe ; titration sur la glycémie à jeun.",
+        ddi: "Bêta-bloquants (masquent l'hypoglycémie), corticoïdes (hyperglycémie).",
+        iup: "Injection à la même heure chaque jour, rotation systématique des sites pour éviter les lipodystrophies. Ne jamais secouer le stylo. Resucrage à portée de main ; ne jamais interrompre l'insuline même en cas de jeûne ou de maladie sans avis.",
+        half_life: "",
+        elimination: "Métabolisme sous-cutané et hépatique",
+        renal: "Besoins souvent réduits",
+        pregnancy: "Poursuivre, adaptation étroite",
+    },
+];
+
 /// How many drugs a fresh base starts with.
 pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
 
@@ -1494,7 +1806,47 @@ impl Db {
                 .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
+        self.fill_starter_details()?;
         Ok(inserted)
+    }
+
+    /// Fill the clinical fields of the detailed starter cards, without
+    /// ever touching a field the team has already written: each column
+    /// is only set where it is still empty. Returns how many fields
+    /// were filled, so the maintenance button can report it.
+    pub fn fill_starter_details(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut filled = 0;
+        for d in STARTER_DETAILS {
+            for (column, value) in [
+                ("dosage", d.dosage),
+                ("ddi", d.ddi),
+                ("iup", d.iup),
+                ("half_life", d.half_life),
+                ("elimination", d.elimination),
+                ("renal", d.renal),
+                ("pregnancy", d.pregnancy),
+            ] {
+                if value.is_empty() {
+                    continue;
+                }
+                filled += tx
+                    .execute(
+                        // The column name comes from the literal list
+                        // above, never from user input.
+                        &format!(
+                            "UPDATE drugs SET {column} = ?1 WHERE name = ?2 AND {column} = ''"
+                        ),
+                        (value, d.name),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(filled)
     }
 
     /// Insert every starter drug the base does not already have (by
@@ -1517,6 +1869,7 @@ impl Db {
                 .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
+        self.fill_starter_details()?;
         Ok(inserted)
     }
 
@@ -2477,6 +2830,51 @@ mod tests {
     }
 
     #[test]
+    fn starter_details_fill_only_empty_fields() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-detail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("detail.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+
+        // Every detailed card names a drug of the starter list, and the
+        // seed applied its clinical fields.
+        let drugs = db.drugs().unwrap();
+        for d in STARTER_DETAILS {
+            let card = drugs
+                .iter()
+                .find(|x| x.name == d.name)
+                .unwrap_or_else(|| panic!("fiche « {} » absente de la base", d.name));
+            assert_eq!(card.dosage, d.dosage);
+            assert_eq!(card.iup, d.iup);
+        }
+
+        // The team's own text is never overwritten by a later top-up,
+        // and a field they cleared stays theirs to refill.
+        let base = drugs.iter().find(|d| d.name == "Eliquis").unwrap().clone();
+        let mut edited = base.clone();
+        edited.dosage = "Protocole interne : 5 mg x2/j, revoir à 3 mois".to_owned();
+        edited.ddi = String::new();
+        assert!(db.update_drug(&edited, &base).unwrap());
+        db.fill_starter_details().unwrap();
+        let after = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == "Eliquis")
+            .unwrap();
+        assert_eq!(
+            after.dosage,
+            "Protocole interne : 5 mg x2/j, revoir à 3 mois"
+        );
+        // The emptied field is refilled from the reference data.
+        assert!(after.ddi.contains("CYP3A4"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn reset_clears_everything_and_reseeds_the_drugs() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-reset-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -2531,7 +2929,16 @@ mod tests {
         assert_eq!(eliquis.dci, "apixaban");
         assert_eq!(eliquis.class, "AOD");
         assert_eq!(eliquis.antidote, "Andexanet alfa");
-        assert!(eliquis.dosage.is_empty());
+        // Eliquis is one of the detailed cards; a drug outside that
+        // list ships identity only, its clinical fields left to the team.
+        assert!(!eliquis.dosage.is_empty());
+        let plain = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == "Doliprane")
+            .unwrap();
+        assert!(plain.dosage.is_empty() && plain.ddi.is_empty() && plain.iup.is_empty());
 
         // Second run: no-op. After a deliberate deletion: still no-op.
         assert_eq!(db.seed_drugs_if_empty().unwrap(), 0);
@@ -2939,19 +3346,9 @@ mod tests {
                 "Effets indésirables",
             ),
         ];
-        // The starter base, plus one detailed card for the screenshots.
+        // The starter base already carries the detailed reference cards
+        // (Eliquis among them), so the demo needs no extra drug text.
         db.seed_drugs_if_empty().unwrap();
-        if let Some(base) = db
-            .drugs()
-            .unwrap()
-            .into_iter()
-            .find(|d| d.name == "Eliquis")
-        {
-            let mut card = base.clone();
-            card.dosage = "5 mg x2/j (2,5 mg x2/j si ≥ 2 critères)".to_owned();
-            card.ddi = "Inhibiteurs puissants CYP3A4/P-gp".to_owned();
-            db.update_drug(&card, &base).unwrap();
-        }
 
         for (last, first, dob, kind, advances, minutes, rdv, theme) in seed {
             let pid = db.add_patient(last, first, dob).unwrap();
