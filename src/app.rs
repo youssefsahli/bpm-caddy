@@ -157,7 +157,9 @@ fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
         }
         ui.scope(|ui| {
             ui.set_max_width(width);
-            ui.add(egui::Label::new(egui::RichText::new(para).size(13.0).color(motif::INK)).wrap());
+            let mut job = rich_text(para, 13.0, motif::INK);
+            job.wrap.max_width = width;
+            ui.add(egui::Label::new(job).wrap());
         });
         ui.add_space(3.0);
     }
@@ -446,7 +448,7 @@ fn notes_box(
                             }
                         });
                     });
-                    ui.label(egui::RichText::new(n.body.as_str()).size(13.0));
+                    ui.add(egui::Label::new(rich_text(&n.body, 13.0, motif::TEXT)).wrap());
                     ui.add_space(3.0);
                 }
             });
@@ -459,7 +461,8 @@ fn notes_box(
             ui.add_sized(
                 [field_w, 24.0],
                 egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
-            );
+            )
+            .on_hover_text(tr("notes_markup_hint"));
             if motif::button(ui, tr("notes_add")).clicked() && !text.trim().is_empty() {
                 add = Some(text.trim().to_owned());
             }
@@ -949,6 +952,64 @@ impl Session {
     }
 }
 
+/// The team's free text accepts a light markup, the one people already
+/// type: `*gras*`, `_italique_` and `=surligné=`. It is rendered where
+/// the text is read — monograph sections, note journals — while the
+/// editors stay plain text.
+fn rich_text(text: &str, size: f32, color: egui::Color32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = f32::INFINITY;
+    let mut buf = String::new();
+    let (mut bold, mut italic, mut mark) = (false, false, false);
+    let mut push = |job: &mut egui::text::LayoutJob,
+                    buf: &mut String,
+                    bold: bool,
+                    italic: bool,
+                    mark: bool| {
+        if buf.is_empty() {
+            return;
+        }
+        let mut format = egui::TextFormat {
+            font_id: egui::FontId::proportional(size),
+            color,
+            italics: italic,
+            ..Default::default()
+        };
+        if bold {
+            // The bundled family has no bold face: a darker ink and the
+            // background are what carry the emphasis.
+            format.color = egui::Color32::BLACK;
+        }
+        if mark {
+            format.background = motif::BG_LIGHT;
+        }
+        job.append(buf, 0.0, format);
+        buf.clear();
+    };
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '*' | '_' | '=' => {
+                // A marker glued to a word toggles; a lone one is text.
+                let toggles = !buf.ends_with(' ') || chars.peek().is_some_and(|n| *n != ' ');
+                if !toggles {
+                    buf.push(c);
+                    continue;
+                }
+                push(&mut job, &mut buf, bold, italic, mark);
+                match c {
+                    '*' => bold = !bold,
+                    '_' => italic = !italic,
+                    _ => mark = !mark,
+                }
+            }
+            _ => buf.push(c),
+        }
+    }
+    push(&mut job, &mut buf, bold, italic, mark);
+    job
+}
+
 /// Percent-encode a query for a URL handed to the browser.
 fn urlencode(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
@@ -1194,6 +1255,8 @@ pub struct App {
     doc_check: Instant,
     /// Multi-PC: periodic re-read of what the current view displays.
     last_refresh: Instant,
+    /// The (scale, density) pair currently applied to the egui style.
+    applied_look: Option<(i32, motif::Density)>,
     /// Master-password change dialog, when open.
     pw_change: Option<PwChangeForm>,
     /// Operator initials for note stamps (default from config.toml).
@@ -1367,6 +1430,7 @@ impl App {
             doc_focused: false,
             doc_check: Instant::now(),
             last_refresh: Instant::now(),
+            applied_look: None,
             pw_change: None,
             tpl_editor,
             options,
@@ -5100,6 +5164,17 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // The look follows the options: applied once, then only when
+        // the scale or the density actually changes.
+        let look = (
+            (self.config.ui.text_scale * 100.0) as i32,
+            self.config.density(),
+        );
+        if self.applied_look != Some(look) {
+            motif::apply(ctx);
+            motif::apply_scale(ctx, self.config.ui.text_scale, self.config.density());
+            self.applied_look = Some(look);
+        }
         // Auto-lock after inactivity (spec 4.3).
         if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {
             self.last_activity = Instant::now();
@@ -5214,31 +5289,43 @@ impl eframe::App for App {
                         Config::path().display()
                     ));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if motif::button(ui, tr("toolbar_docs")).clicked() {
+                    // Optional pictograms: painted, not typed (the
+                    // bundled font has almost no symbols). They cost
+                    // width, so they are off by default.
+                    let icons = self.config.ui.icons;
+                    let pict = |p: motif::Pict| if icons { Some(p) } else { None };
+                    if motif::icon_button(ui, pict(motif::Pict::Doc), tr("toolbar_docs")).clicked()
+                    {
                         self.show_docs = !self.show_docs;
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_dashboard")).clicked()
+                        && motif::icon_button(ui, pict(motif::Pict::Chart), tr("toolbar_dashboard"))
+                            .clicked()
                     {
                         toggle_dashboard = true;
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_drugs")).clicked()
+                        && motif::icon_button(ui, pict(motif::Pict::Pill), tr("toolbar_drugs"))
+                            .clicked()
                     {
                         toggle_drugs = true;
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_agenda")).clicked()
+                        && motif::icon_button(ui, pict(motif::Pict::Calendar), tr("toolbar_agenda"))
+                            .clicked()
                     {
                         toggle_agenda = true;
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_trans")).clicked()
+                        && motif::icon_button(ui, pict(motif::Pict::Pen), tr("toolbar_trans"))
+                            .clicked()
                     {
                         toggle_trans = true;
                     }
                     if let State::Unlocked(session) = &mut self.state {
-                        if motif::button(ui, tr("toolbar_lock")).clicked() {
+                        if motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock"))
+                            .clicked()
+                        {
                             session.flush_date_edits();
                             self.state = State::Locked {
                                 password: String::new(),
@@ -5247,7 +5334,8 @@ impl eframe::App for App {
                         }
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_options")).clicked()
+                        && motif::icon_button(ui, pict(motif::Pict::Cog), tr("toolbar_options"))
+                            .clicked()
                     {
                         self.options = if self.options.is_some() {
                             None
@@ -5267,7 +5355,12 @@ impl eframe::App for App {
                         };
                     }
                     if matches!(self.state, State::Unlocked(_))
-                        && motif::button(ui, tr("toolbar_template")).clicked()
+                        && motif::icon_button(
+                            ui,
+                            pict(motif::Pict::Template),
+                            tr("toolbar_template"),
+                        )
+                        .clicked()
                     {
                         self.tpl_editor = if self.tpl_editor.is_some() {
                             None
@@ -5669,6 +5762,41 @@ impl eframe::App for App {
                                 &mut editor.cfg.ui.show_docs_on_start,
                                 tr("opts_show_docs"),
                             );
+                            ui.checkbox(&mut editor.cfg.ui.icons, tr("opts_icons"));
+                            egui::Grid::new("opts_look")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("opts_text_scale")));
+                                    ui.add(
+                                        egui::Slider::new(&mut editor.cfg.ui.text_scale, 0.8..=1.6)
+                                            .fixed_decimals(2)
+                                            .suffix(" x"),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_density")));
+                                    ui.horizontal(|ui| {
+                                        for (value, label) in [
+                                            ("confortable", tr("opts_density_comfort")),
+                                            ("compact", tr("opts_density_compact")),
+                                        ] {
+                                            if ui
+                                                .selectable_label(
+                                                    editor
+                                                        .cfg
+                                                        .ui
+                                                        .density
+                                                        .eq_ignore_ascii_case(value),
+                                                    label,
+                                                )
+                                                .clicked()
+                                            {
+                                                editor.cfg.ui.density = value.to_owned();
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+                                });
                             ui.checkbox(&mut editor.cfg.ui.discreet_finances, tr("opts_discreet"));
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_db"));
@@ -6071,6 +6199,34 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    #[test]
+    fn free_text_markup_is_rendered() {
+        use super::rich_text;
+        // *gras*, _italique_ and =surligné= become formatted sections;
+        // the markers themselves are consumed.
+        let job = rich_text(
+            "Prise *le matin* et _à jeun_, =INR= à J3.",
+            13.0,
+            motif::TEXT,
+        );
+        assert!(!job.text.contains('*'));
+        assert!(!job.text.contains('_'));
+        assert!(!job.text.contains('='));
+        assert!(job.text.contains("le matin"));
+        assert!(job.sections.iter().any(|s| s.format.italics));
+        assert!(job
+            .sections
+            .iter()
+            .any(|s| s.format.background == motif::BG_LIGHT));
+        // A lone marker inside a sentence stays literal.
+        let job = rich_text("dose = 5 mg", 13.0, motif::TEXT);
+        assert_eq!(job.text, "dose = 5 mg");
+        // Plain text goes through untouched, in one section.
+        let job = rich_text("Rien de particulier", 13.0, motif::TEXT);
+        assert_eq!(job.text, "Rien de particulier");
+        assert_eq!(job.sections.len(), 1);
+    }
 
     #[test]
     fn half_lives_are_read_from_free_text() {

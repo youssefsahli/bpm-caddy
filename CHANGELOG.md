@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-08-25
+
+### Added
+- The interface adapts to the screen and the eye: a text scale (0.8 to
+  1.6) and a "compact" density that fits noticeably more on a small
+  screen, both in Options and in `config.toml`, applied live.
+- Optional toolbar pictograms, painted rather than typed — the bundled
+  font carries almost no symbols — in the same square Motif style: a
+  sheet for the documentation, bars for the dashboard, a capsule for
+  the drug base, a month grid for the agenda, a pen for the carnet, a
+  padlock, a cog and a template.
+- Light formatting in the team's free text: `*gras*`, `_italique_` and
+  `=surligné=` are rendered wherever the text is read — monograph
+  sections and every note journal — while the editors stay plain text.
+
 ## [0.25.0] - 2026-08-25
 
 ### Changed
