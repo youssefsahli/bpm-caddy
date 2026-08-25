@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-08-25
+
+### Added
+- Reference monographs for 247 of the 275 drug cards, against 141:
+  oral anticancer drugs and hormonothérapies, the remaining HBPM,
+  cardiology, inhalers and insulins, Parkinson and psychiatry, urology,
+  dermatology with the dermocorticoid strength classes, ophthalmic
+  drops, contraception, biologics and anti-infectives.
+
+### Fixed
+- The starter catalogue held the same product twice, "Kaléorid" and
+  "Kaleorid", so one brand had two cards and only one of them a
+  monograph. The duplicate is gone, and the uniqueness test now folds
+  accents, case, spaces and hyphens so a second spelling cannot slip
+  in again.
+
 ## [0.30.0] - 2026-08-25
 
 ### Added
