@@ -137,6 +137,194 @@ pub fn apply(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
+/// How generously the interface spends the screen. "Confortable" is the
+/// historical spacing; "compact" fits noticeably more on a small
+/// screen without changing any layout.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Density {
+    Comfortable,
+    Compact,
+}
+
+/// Apply a text scale and a spacing density on top of [`apply`].
+/// `scale` multiplies every font size (0.8 to 1.4 is sensible).
+pub fn apply_scale(ctx: &egui::Context, scale: f32, density: Density) {
+    let scale = scale.clamp(0.7, 1.8);
+    let mut style = (*ctx.style()).clone();
+    for font in style.text_styles.values_mut() {
+        font.size = (font.size * scale).round().max(7.0);
+    }
+    let (pad, spacing, row) = match density {
+        Density::Comfortable => (Vec2::new(14.0, 6.0), Vec2::new(10.0, 10.0), 22.0),
+        Density::Compact => (Vec2::new(9.0, 3.0), Vec2::new(6.0, 5.0), 18.0),
+    };
+    style.spacing.button_padding = pad * scale;
+    style.spacing.item_spacing = spacing * scale;
+    style.spacing.interact_size.y = row * scale;
+    ctx.set_style(style);
+}
+
+/// The small pictograms the toolbar can draw beside its labels. They
+/// are painted, not typed: the bundled font carries almost no symbol
+/// glyphs, and hand-drawn shapes match the rest of the theme.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Pict {
+    /// A sheet with lines — documentation.
+    Doc,
+    /// Bars — the dashboard.
+    Chart,
+    /// A capsule — the drug base.
+    Pill,
+    /// A month grid — the agenda.
+    Calendar,
+    /// A pen over a line — the carnet.
+    Pen,
+    /// A padlock — locking the session.
+    Lock,
+    /// A cog — the options.
+    Cog,
+    /// A sheet with a folded corner — the templates.
+    Template,
+}
+
+/// Paint `pict` inside `rect` (a square of roughly 11 px) in `color`.
+pub fn pictogram(painter: &egui::Painter, rect: egui::Rect, pict: Pict, color: Color32) {
+    let s = Stroke::new(1.0_f32, color);
+    let r = rect;
+    let (w, h) = (r.width(), r.height());
+    match pict {
+        Pict::Doc | Pict::Template => {
+            let body = egui::Rect::from_min_max(
+                egui::pos2(r.left() + w * 0.15, r.top()),
+                egui::pos2(r.right() - w * 0.15, r.bottom()),
+            );
+            painter.rect_stroke(body, 0.0, s);
+            for i in 1..4 {
+                let y = body.top() + body.height() * i as f32 / 4.0;
+                painter.line_segment(
+                    [
+                        egui::pos2(body.left() + 2.0, y),
+                        egui::pos2(body.right() - 2.0, y),
+                    ],
+                    s,
+                );
+            }
+            if pict == Pict::Template {
+                painter.line_segment(
+                    [
+                        egui::pos2(body.right() - w * 0.3, body.top()),
+                        egui::pos2(body.right(), body.top() + h * 0.3),
+                    ],
+                    s,
+                );
+            }
+        }
+        Pict::Chart => {
+            for (i, frac) in [0.45_f32, 0.75, 1.0].into_iter().enumerate() {
+                let x = r.left() + w * (0.1 + 0.3 * i as f32);
+                let bar = egui::Rect::from_min_max(
+                    egui::pos2(x, r.bottom() - h * frac),
+                    egui::pos2(x + w * 0.2, r.bottom()),
+                );
+                painter.rect_filled(bar, 0.0, color);
+            }
+        }
+        Pict::Pill => {
+            let body = egui::Rect::from_min_max(
+                egui::pos2(r.left(), r.center().y - h * 0.22),
+                egui::pos2(r.right(), r.center().y + h * 0.22),
+            );
+            painter.rect_stroke(body, 0.0, s);
+            painter.line_segment(
+                [
+                    egui::pos2(body.center().x, body.top()),
+                    egui::pos2(body.center().x, body.bottom()),
+                ],
+                s,
+            );
+        }
+        Pict::Calendar => {
+            painter.rect_stroke(r, 0.0, s);
+            painter.line_segment(
+                [
+                    egui::pos2(r.left(), r.top() + h * 0.3),
+                    egui::pos2(r.right(), r.top() + h * 0.3),
+                ],
+                s,
+            );
+            for i in 1..3 {
+                let x = r.left() + w * i as f32 / 3.0;
+                painter.line_segment(
+                    [egui::pos2(x, r.top() + h * 0.3), egui::pos2(x, r.bottom())],
+                    s,
+                );
+            }
+        }
+        Pict::Pen => {
+            painter.line_segment([r.left_bottom(), r.right_top()], s);
+            painter.line_segment(
+                [
+                    egui::pos2(r.left(), r.bottom()),
+                    egui::pos2(r.left() + w * 0.3, r.bottom()),
+                ],
+                s,
+            );
+        }
+        Pict::Lock => {
+            let body = egui::Rect::from_min_max(
+                egui::pos2(r.left() + w * 0.1, r.center().y - h * 0.05),
+                egui::pos2(r.right() - w * 0.1, r.bottom()),
+            );
+            painter.rect_stroke(body, 0.0, s);
+            let shackle = egui::Rect::from_min_max(
+                egui::pos2(r.left() + w * 0.3, r.top()),
+                egui::pos2(r.right() - w * 0.3, body.top()),
+            );
+            painter.rect_stroke(shackle, 0.0, s);
+        }
+        Pict::Cog => {
+            // A hub with four teeth: distinct from the calendar grid.
+            painter.rect_stroke(r.shrink(w * 0.3), 0.0, s);
+            let t = w * 0.18;
+            for (a, b) in [
+                (
+                    egui::pos2(r.center().x, r.top()),
+                    egui::pos2(r.center().x, r.top() + t),
+                ),
+                (
+                    egui::pos2(r.center().x, r.bottom() - t),
+                    egui::pos2(r.center().x, r.bottom()),
+                ),
+                (
+                    egui::pos2(r.left(), r.center().y),
+                    egui::pos2(r.left() + t, r.center().y),
+                ),
+                (
+                    egui::pos2(r.right() - t, r.center().y),
+                    egui::pos2(r.right(), r.center().y),
+                ),
+            ] {
+                painter.line_segment([a, b], s);
+            }
+        }
+    }
+}
+
+/// A Motif button carrying a painted pictogram before its label.
+pub fn icon_button(ui: &mut egui::Ui, pict: Option<Pict>, label: &str) -> egui::Response {
+    let Some(pict) = pict else {
+        return button(ui, label);
+    };
+    let resp = button(ui, &format!("     {label}"));
+    let size = (resp.rect.height() * 0.42).clamp(8.0, 14.0);
+    let square = egui::Rect::from_min_size(
+        egui::pos2(resp.rect.left() + 8.0, resp.rect.center().y - size / 2.0),
+        egui::vec2(size, size),
+    );
+    pictogram(ui.painter(), square, pict, TEXT);
+    resp
+}
+
 /// Draw a two-pixel Motif bevel around `rect`. `raised` selects between the
 /// raised (light top-left) and sunken (dark top-left) variants.
 pub fn bevel(painter: &egui::Painter, rect: egui::Rect, raised: bool) {

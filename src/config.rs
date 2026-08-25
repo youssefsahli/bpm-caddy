@@ -24,6 +24,12 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 [ui]
 # Afficher le panneau de documentation d'équipe au démarrage.
 # show_docs_on_start = true
+# Échelle du texte (1.0 = taille de référence).
+# text_scale = 1.0
+# Densité de l'interface : "confortable" ou "compact".
+# density = "confortable"
+# Pictogrammes dans la barre d'outils.
+# icons = false
 # Masquer les montants du tableau de bord (mode discret au comptoir).
 # discreet_finances = true
 # Initiales de l'opérateur par défaut pour les entrées de notes.
@@ -189,6 +195,14 @@ impl Default for DatabaseConfig {
 #[serde(default)]
 pub struct UiConfig {
     pub show_docs_on_start: bool,
+    /// Text scale, 1.0 being the design size. The counter screen is
+    /// often far from the eye; the tablet is often small.
+    pub text_scale: f32,
+    /// "confortable" (default) or "compact": how much the interface
+    /// spends on padding.
+    pub density: String,
+    /// Draw the small pictograms next to the toolbar labels.
+    pub icons: bool,
     /// Mask revenue amounts on the dashboard until explicitly revealed,
     /// so figures are not readable over a shoulder at the counter.
     pub discreet_finances: bool,
@@ -200,6 +214,9 @@ impl Default for UiConfig {
     fn default() -> Self {
         Self {
             show_docs_on_start: true,
+            text_scale: 1.0,
+            density: "confortable".to_owned(),
+            icons: false,
             discreet_finances: true,
             operator: String::new(),
         }
@@ -370,6 +387,15 @@ impl Default for BillingConfig {
 }
 
 impl Config {
+    /// The density chosen in the options, as the `motif` enum.
+    pub fn density(&self) -> motif::Density {
+        if self.ui.density.trim().eq_ignore_ascii_case("compact") {
+            motif::Density::Compact
+        } else {
+            motif::Density::Comfortable
+        }
+    }
+
     pub fn path() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
