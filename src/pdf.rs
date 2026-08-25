@@ -441,7 +441,8 @@ type TableEdits = std::collections::HashMap<(String, usize, usize), String>;
 
 fn conversion_tables_source(edits: &TableEdits) -> String {
     let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm)\n#set text(size: 10pt)\n\
+        "#set page(paper: \"a4\", margin: 1.5cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n\
          #align(center)[#text(15pt, weight: \"bold\")[Tables de conversion]]\n",
     );
     for t in crate::tables::TABLES {
@@ -449,9 +450,18 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
             "#v(4mm)\n#text(weight: \"bold\", size: 12pt)[#{}]\n#v(1mm)\n",
             typst_str(t.title)
         ));
+        // Fractional columns, so a long word wraps inside its cell
+        // instead of spilling into the next one. The first column (the
+        // molecule) gets a little more room than the others.
+        let widths = std::iter::once("1.3fr")
+            .chain(std::iter::repeat_n(
+                "1fr",
+                t.columns.len().saturating_sub(1),
+            ))
+            .collect::<Vec<_>>()
+            .join(", ");
         src.push_str(&format!(
-            "#table(\n  columns: {},\n  inset: 5pt,\n  stroke: 0.6pt,\n",
-            t.columns.len()
+            "#table(\n  columns: ({widths}),\n  inset: 5pt,\n  stroke: 0.6pt,\n"
         ));
         for c in t.columns {
             src.push_str(&format!("  [*#{}*],\n", typst_str(c)));
