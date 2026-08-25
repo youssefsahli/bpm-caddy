@@ -48,6 +48,7 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # Modèles Typst personnalisés (fiche d'entretien et courrier CR).
 # bpm_template_path = "templates/bpm_layout.typ"
 # cr_template_path = "templates/cr_layout.typ"
+# carnet_template_path = "templates/carnet_layout.typ"
 
 [pharmacy]
 # Identité de l'officine, pour l'en-tête du courrier au médecin.
@@ -159,6 +160,7 @@ pub struct PharmacyConfig {
 pub struct TemplatesConfig {
     pub bpm_template_path: Option<PathBuf>,
     pub cr_template_path: Option<PathBuf>,
+    pub carnet_template_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -436,6 +438,13 @@ impl Config {
             .cr_template_path
             .clone()
             .unwrap_or_else(|| Self::path().with_file_name("cr_layout.typ"))
+    }
+
+    pub fn carnet_template_path(&self) -> PathBuf {
+        self.templates
+            .carnet_template_path
+            .clone()
+            .unwrap_or_else(|| Self::path().with_file_name("carnet_layout.typ"))
     }
 
     /// The yearly quota for an act kind (0 = no rule).
