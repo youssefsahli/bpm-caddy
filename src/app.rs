@@ -672,6 +672,9 @@ struct Session {
     drug_patients: Vec<Patient>,
     /// Conversion tables browser (inside the drug view).
     show_tables: bool,
+    /// The convention's cycle length in months, from the options: it
+    /// drives both the quota rule and the fee ranks.
+    cycle_months: u32,
     /// Substitution protocols: the list, the open one with its steps,
     /// what is being written, and the walk-through position.
     show_protocols: bool,
@@ -679,6 +682,9 @@ struct Session {
     protocol_open: Option<db::Protocol>,
     protocol_nodes: Vec<db::ProtocolNode>,
     protocol_new_title: String,
+    /// Editing buffer for the open protocol's title and subject: the
+    /// fields were re-cloned each frame, so typing went nowhere.
+    protocol_header: Option<(String, String)>,
     protocol_node_edit: Option<(i64, db::NodeKind, String)>,
     protocol_walk: Option<i64>,
     /// Team edits of the shown table, keyed by (row, col), plus the
@@ -717,7 +723,7 @@ struct PatientForm {
 }
 
 impl Session {
-    fn new(db: Db) -> Result<Self, String> {
+    fn new(db: Db, cycle_months: u32) -> Result<Self, String> {
         let patients = db.patients()?;
         let pending = db.pending_counts().unwrap_or_default();
         // First unlock of a fresh base: starter drug cards (names, DCI,
@@ -787,11 +793,13 @@ impl Session {
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
             show_tables: false,
+            cycle_months: cycle_months.max(1),
             show_protocols: false,
             protocols,
             protocol_open: None,
             protocol_nodes: Vec::new(),
             protocol_new_title: String::new(),
+            protocol_header: None,
             protocol_node_edit: None,
             protocol_walk: None,
             table_cells: std::collections::HashMap::new(),
@@ -998,7 +1006,8 @@ impl Session {
 
     /// Load everything the dashboard shows: summaries, appointments, today.
     fn refresh_dashboard(&mut self) {
-        match self.db.interview_summaries() {
+        let months = self.cycle_months;
+        match self.db.interview_summaries(months) {
             Ok(s) => self.summaries = s,
             Err(e) => self.error = Some(e),
         }
@@ -1120,9 +1129,20 @@ fn parse_hours(text: &str) -> Option<f64> {
         nums.push(v);
     }
     let lower = crate::fuzzy::sort_key(text);
-    let factor = if lower.contains("jour") {
-        24.0
-    } else if lower.contains("min") {
+    // The unit is read from whole words: "min" inside "administration"
+    // used to turn 5 hours into 5 minutes.
+    let word = |w: &str| {
+        lower
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|token| token == w)
+    };
+    let factor = if word("jour") || word("jours") || word("semaine") || word("semaines") {
+        if word("semaine") || word("semaines") {
+            24.0 * 7.0
+        } else {
+            24.0
+        }
+    } else if word("min") || word("mn") || word("minute") || word("minutes") {
         1.0 / 60.0
     } else {
         1.0
@@ -1182,7 +1202,10 @@ fn status_color(status: &str) -> egui::Color32 {
 
 /// Rank every interview of one patient inside its yearly cycle, keyed
 /// by interview id — the fee slot each act falls into.
-fn interview_ranks(interviews: &[db::Interview]) -> std::collections::HashMap<i64, usize> {
+fn interview_ranks(
+    interviews: &[db::Interview],
+    months: u32,
+) -> std::collections::HashMap<i64, usize> {
     let mut by_kind: std::collections::HashMap<InterviewKind, Vec<(i64, String)>> =
         std::collections::HashMap::new();
     for itv in interviews {
@@ -1194,7 +1217,7 @@ fn interview_ranks(interviews: &[db::Interview]) -> std::collections::HashMap<i6
         // The table is newest-first; cycles are computed oldest-first.
         rows.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
         let dates: Vec<String> = rows.iter().map(|(_, d)| d.clone()).collect();
-        for ((id, _), rank) in rows.iter().zip(db::cycle_ranks(&dates)) {
+        for ((id, _), rank) in rows.iter().zip(db::cycle_ranks_months(&dates, months)) {
             out.insert(*id, rank);
         }
     }
@@ -1403,7 +1426,9 @@ impl App {
             .ok()
             .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()));
         if let Some(pw) = stored_pw {
-            match Db::open(&config.db_path(), &pw).and_then(Session::new) {
+            match Db::open(&config.db_path(), &pw)
+                .and_then(|db| Session::new(db, config.rules.cycle_months))
+            {
                 Ok(mut session) => {
                     spawn_daily_backup(config.db_path(), pw.clone(), config.database.backups_keep);
                     // Demo hook: land on a specific view (screenshots, e2e).
@@ -1858,7 +1883,9 @@ impl App {
 
         self.remember_password = remember;
         if let Some(pw) = attempt {
-            match Db::open(&self.config.db_path(), &pw).and_then(Session::new) {
+            match Db::open(&self.config.db_path(), &pw)
+                .and_then(|db| Session::new(db, self.config.rules.cycle_months))
+            {
                 Ok(session) => {
                     spawn_daily_backup(
                         self.config.db_path(),
@@ -2484,17 +2511,32 @@ impl App {
                 // Convention rule: N acts per année d'accompagnement,
                 // next cycle at least 12 months after the first act.
                 let per_year = config.per_year(kind);
+                let months = config.rules.cycle_months.max(1);
                 let blocked = if per_year > 0 {
                     let dates = session
                         .db
                         .interview_dates_for(patient.id, kind)
                         .unwrap_or_default();
                     let today = session.db.today_iso().unwrap_or_default();
-                    db::yearly_rule_next_allowed(&dates, &today, per_year)
+                    db::rule_next_allowed(&dates, &today, per_year, months)
                 } else {
                     None
                 };
                 match blocked {
+                    // "Informer" states the rule but never stops the
+                    // act; "avertir" asks for a confirmation; "refuser"
+                    // declines, with no override button.
+                    Some(_) if config.rules.enforcement == RuleEnforcement::Inform => {
+                        session.rule_block = None;
+                        match session.db.add_interview_themed(patient.id, kind, &theme) {
+                            Ok(_) => {
+                                session.reload_interviews(patient.id);
+                                session.error =
+                                    Some(trn("rule_informed", &[&kind.label(), &per_year]));
+                            }
+                            Err(e) => session.error = Some(e),
+                        }
+                    }
                     Some(next) => {
                         session.rule_block = Some((
                             kind,
@@ -2517,7 +2559,13 @@ impl App {
             if let Some((kind, theme, msg)) = session.rule_block.clone() {
                 ui.add_space(4.0);
                 ui.colored_label(motif::ALERT, msg.as_str());
-                if motif::button(ui, tr("rule_override")).clicked() {
+                if config.rules.enforcement == RuleEnforcement::Block {
+                    ui.label(
+                        egui::RichText::new(tr("rule_blocked_hard"))
+                            .size(11.0)
+                            .color(motif::BG_DARK),
+                    );
+                } else if motif::button(ui, tr("rule_override")).clicked() {
                     session.rule_block = None;
                     match session.db.add_interview_themed(patient.id, kind, &theme) {
                         Ok(_) => session.reload_interviews(patient.id),
@@ -2637,7 +2685,7 @@ impl App {
         let mut set_theme: Option<(i64, String, String)> = None;
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
-        let ranks = interview_ranks(&interviews);
+        let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
         motif::column(ui, 900.0, |ui| {
             motif::section(ui, tr("itv_section"));
             ui.add_space(4.0);
@@ -3462,6 +3510,19 @@ impl App {
                 session.agenda_day = day;
                 session.load_day();
             }
+            // Clicking a patient in the day panel opens the record here
+            // too, not only in week mode.
+            if let Some(id) = open_id {
+                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                    session.view = MainView::Search;
+                    session.open_patient(p);
+                }
+            }
+            if let Some(err) = &session.error {
+                ui.vertical_centered(|ui| {
+                    ui.colored_label(red, err.as_str());
+                });
+            }
             return;
         }
 
@@ -4026,6 +4087,7 @@ impl App {
             session.protocol_nodes = session.db.protocol_nodes(p.id).unwrap_or_default();
             session.protocol_open = Some(p);
             session.protocol_walk = None;
+            session.protocol_header = None;
         }
     }
 
@@ -4037,7 +4099,7 @@ impl App {
         let mut walk = false;
         let mut print = false;
         let mut add: Option<(Option<i64>, db::Branch, db::NodeKind)> = None;
-        let mut delete: Option<i64> = None;
+        let mut delete: Option<(i64, String)> = None;
         let mut save_edit = false;
         let mut rename: Option<(String, String)> = None;
         motif::column(ui, 900.0, |ui| {
@@ -4148,7 +4210,7 @@ impl App {
                             .on_hover_text(tr("proto_delete_node"))
                             .clicked()
                         {
-                            delete = Some(node.id);
+                            delete = Some((node.id, node.text.clone()));
                         }
                     }
                 });
@@ -4201,9 +4263,11 @@ impl App {
                 reload(session);
             }
         }
-        if let Some(id) = delete {
-            if let Err(e) = session.db.delete_protocol_node(proto.id, id) {
-                session.error = Some(e);
+        if let Some((id, text)) = delete {
+            match session.db.delete_protocol_node(proto.id, id, &text) {
+                Ok(true) => {}
+                Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
+                Err(e) => session.error = Some(e),
             }
             session.protocol_node_edit = None;
             reload(session);
@@ -4238,10 +4302,12 @@ impl App {
                         session.protocols = session.db.protocols().unwrap_or_default();
                         session.protocol_open =
                             session.protocols.iter().find(|p| p.id == proto.id).cloned();
+                        session.protocol_header = None;
                     }
                     Ok(false) => {
                         session.error = Some(tr("proto_stale").to_owned());
                         session.protocols = session.db.protocols().unwrap_or_default();
+                        session.protocol_header = None;
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -4251,6 +4317,7 @@ impl App {
             session.protocol_open = None;
             session.protocol_node_edit = None;
             session.protocol_walk = None;
+            session.protocol_header = None;
         }
     }
 
@@ -4531,14 +4598,13 @@ impl App {
                 .unwrap_or_else(|| shipped.to_owned());
             match session
                 .db
-                .set_table_cell(t.short, r, c, value.trim(), shipped)
+                .set_table_cell(t.short, r, c, value.trim(), shipped, &previous)
             {
-                Ok(()) => {
-                    session.table_undo = Some((r, c, previous));
-                    session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
-                }
+                Ok(true) => session.table_undo = Some((r, c, previous)),
+                Ok(false) => session.error = Some(tr("tables_cell_stale").to_owned()),
                 Err(e) => session.error = Some(e),
             }
+            session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
             session.table_edit = None;
         }
         if undo {
@@ -4549,7 +4615,15 @@ impl App {
                     .and_then(|row| row.get(c))
                     .copied()
                     .unwrap_or("");
-                if let Err(e) = session.db.set_table_cell(t.short, r, c, &previous, shipped) {
+                let current = session
+                    .table_cells
+                    .get(&(r, c))
+                    .cloned()
+                    .unwrap_or_else(|| shipped.to_owned());
+                if let Err(e) = session
+                    .db
+                    .set_table_cell(t.short, r, c, &previous, shipped, &current)
+                {
                     session.error = Some(e);
                 }
                 session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
@@ -5120,10 +5194,15 @@ impl App {
                         });
                     });
                 if save_note {
-                    match session.db.set_class_note(&class, &buffer) {
-                        Ok(()) => {
+                    let expected = session.class_note.clone();
+                    match session.db.set_class_note(&class, &buffer, &expected) {
+                        Ok(true) => {
                             session.class_note = buffer.trim().to_owned();
                             session.class_note_edit = None;
+                        }
+                        Ok(false) => {
+                            session.class_note = session.db.class_note(&class).unwrap_or_default();
+                            session.error = Some(tr("drug_class_stale").to_owned());
                         }
                         Err(e) => session.error = Some(e),
                     }
@@ -5458,7 +5537,7 @@ impl App {
     fn export_controls(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         ui.vertical_centered(|ui| {
             if motif::button(ui, tr("dash_export")).clicked() {
-                match session.db.export_rows() {
+                match session.db.export_rows(config.rules.cycle_months.max(1)) {
                     Ok(rows) => {
                         let csv = interviews_csv(&rows, config);
                         let today = if session.today.is_empty() {
@@ -5943,7 +6022,7 @@ impl eframe::App for App {
                     }
                 }
                 if session.view == MainView::Dashboard {
-                    if let Ok(s) = session.db.interview_summaries() {
+                    if let Ok(s) = session.db.interview_summaries(session.cycle_months) {
                         session.summaries = s;
                     }
                     if let Ok(a) = session.db.upcoming_appointments() {
@@ -6948,6 +7027,10 @@ impl eframe::App for App {
         if let Some(cfg) = saved_cfg {
             // Live-apply everything except the database path (restart).
             self.config = cfg;
+            if let State::Unlocked(session) = &mut self.state {
+                session.cycle_months = self.config.rules.cycle_months.max(1);
+                session.refresh_dashboard();
+            }
         }
         if open_pw {
             self.pw_change = Some(PwChangeForm::default());
@@ -6990,6 +7073,27 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    #[test]
+    fn half_life_units_are_whole_words() {
+        use super::parse_hours;
+        // "min" inside "administration" used to divide by sixty: a
+        // five-hour half-life became five minutes on the curve.
+        assert_eq!(
+            parse_hours("environ 4 à 7 heures en administration répétée"),
+            Some(5.5)
+        );
+        assert_eq!(
+            parse_hours("environ 1 semaine, administration hebdomadaire"),
+            Some(168.0)
+        );
+        // The real units still work.
+        assert_eq!(parse_hours("30 min"), Some(0.5));
+        assert_eq!(parse_hours("45 minutes"), Some(0.75));
+        assert_eq!(parse_hours("≈ 7 jours"), Some(168.0));
+        assert_eq!(parse_hours("2 semaines"), Some(336.0));
+        assert_eq!(parse_hours("≈ 12 heures"), Some(12.0));
+    }
 
     #[test]
     fn free_text_markup_is_rendered() {
