@@ -15,6 +15,40 @@ use typst::{Library, World};
 use crate::config::PharmacyConfig;
 use crate::db::{Appointment, Drug, InterviewKind, Patient};
 
+/// Default A4 carnet page. `entry(head, operator, body)` draws one
+/// transmission; the operator's initials carry a stable colour so a
+/// page can be scanned by who wrote what.
+const DEFAULT_TRANS_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt)
+
+#let palette = (
+  rgb("#3a547e"), rgb("#2e6e4e"), rgb("#7e3a5e"),
+  rgb("#8b5a1a"), rgb("#1a6e8b"), rgb("#5e3a7e"),
+)
+#let op-color(op) = {
+  if op == "" { rgb("#5c5f6e") } else {
+    let sum = 0
+    for b in bytes(op) { sum += b }
+    palette.at(calc.rem(sum, palette.len()))
+  }
+}
+#let entry(head, op, body) = block(above: 3mm, below: 0mm)[
+  #box(fill: op-color(op), inset: (x: 3pt, y: 1.5pt))[
+    #text(size: 8.5pt, weight: "bold", fill: white)[#head]
+  ]
+  #v(1mm)
+  #body
+]
+
+#align(center)[#text(15pt, weight: "bold")[Carnet de transmissions]]
+#v(1mm)
+#align(center)[{{DAY}}]
+#v(4mm)
+#line(length: 100%, stroke: 0.6pt)
+{{ENTRIES}}
+"##;
+
 /// Default A4 interview sheet: patient header plus rounded boxes sized for
 /// handwritten notes during the interview.
 const DEFAULT_TEMPLATE: &str = r#"
@@ -577,28 +611,80 @@ pub fn open_conversion_tables() -> Result<PathBuf, String> {
 pub fn open_transmission_day(
     day_title: &str,
     entries: &[crate::db::Note],
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 2cm)\n#set text(size: 11pt)\n\
-         #align(center)[#text(15pt, weight: \"bold\")[Carnet de transmissions]]\n#v(1mm)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#{}]\n#v(4mm)\n#line(length: 100%, stroke: 0.6pt)\n#v(2mm)\n",
-        typst_str(day_title)
-    ));
+    let template = if template_path.exists() {
+        std::fs::read_to_string(template_path)
+            .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
+    } else {
+        DEFAULT_TRANS_TEMPLATE.to_owned()
+    };
+    compile_and_open(fill_trans_template(&template, day_title, entries), "carnet")
+}
+
+/// The embedded carnet template, for the in-app editor.
+pub fn default_trans_template() -> &'static str {
+    DEFAULT_TRANS_TEMPLATE
+}
+
+fn trans_entries_markup(entries: &[crate::db::Note]) -> String {
+    let mut out = String::new();
     for n in entries {
         let head = if n.operator.is_empty() {
             n.stamp()
         } else {
             format!("{} · {}", n.stamp(), n.operator)
         };
-        src.push_str(&format!(
-            "#text(size: 9pt, weight: \"bold\")[#{}]\n#v(0.5mm)\n#{}\n#v(2.5mm)\n",
+        out.push_str(&format!(
+            "#entry({}, {}, [#{}])\n",
             typst_str(&head),
+            typst_str(n.operator.trim()),
             typst_str(&n.body)
         ));
     }
-    compile_and_open(src, "carnet")
+    if out.is_empty() {
+        out.push_str("#text(style: \"italic\")[Aucune transmission ce jour.]\n");
+    }
+    out
+}
+
+fn fill_trans_template(template: &str, day_title: &str, entries: &[crate::db::Note]) -> String {
+    template
+        .replace("{{DAY}}", &format!("#{}", typst_str(day_title)))
+        .replace("{{ENTRIES}}", &trans_entries_markup(entries))
+}
+
+/// Validation for the carnet template editor.
+pub fn check_trans_template(template: &str) -> Result<(), String> {
+    let filled = fill_trans_template(template, "Lundi 24/08/2026", &sample_transmissions());
+    let world = PdfWorld::new(filled);
+    typst::compile::<PagedDocument>(&world)
+        .output
+        .map(|_| ())
+        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
+}
+
+/// Sample-data preview for the carnet template editor.
+pub fn preview_trans_template(template: &str) -> Result<PathBuf, String> {
+    let filled = fill_trans_template(template, "Lundi 24/08/2026", &sample_transmissions());
+    compile_and_open(filled, "apercu_carnet")
+}
+
+fn sample_transmissions() -> Vec<crate::db::Note> {
+    vec![
+        crate::db::Note {
+            id: 1,
+            operator: "CL".to_owned(),
+            body: "Rupture Eliquis 5 mg — dépannage possible pharmacie Centrale.".to_owned(),
+            created_at: "2026-08-24 18:40:00".to_owned(),
+        },
+        crate::db::Note {
+            id: 2,
+            operator: "YS".to_owned(),
+            body: "M. Dupont rappellera demain pour son BPM.".to_owned(),
+            created_at: "2026-08-24 19:05:00".to_owned(),
+        },
+    ]
 }
 
 /// Compile Typst source to a PDF in the temp dir and open it in the OS
@@ -715,6 +801,35 @@ fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn carnet_template_compiles_with_operator_colours() {
+        // The default template must compile, colour each operator, and
+        // survive a page with no entry at all.
+        check_trans_template(DEFAULT_TRANS_TEMPLATE).expect("le carnet par défaut doit compiler");
+        let empty = fill_trans_template(DEFAULT_TRANS_TEMPLATE, "Lundi 24/08/2026", &[]);
+        let world = PdfWorld::new(empty);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("une page vide doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let filled = fill_trans_template(
+                DEFAULT_TRANS_TEMPLATE,
+                "Lundi 24/08/2026",
+                &sample_transmissions(),
+            );
+            let world = PdfWorld::new(filled);
+            if let Ok(doc) = typst::compile::<PagedDocument>(&world).output {
+                if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                    let _ =
+                        std::fs::write(std::path::Path::new(&dir).join("carnet_exemple.pdf"), &pdf);
+                }
+            }
+        }
+    }
 
     #[test]
     fn drug_monograph_compiles_and_escapes() {

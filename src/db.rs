@@ -3395,6 +3395,40 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
+    /// The patients whose file moved most recently — an act created or
+    /// advanced — newest first. The dashboard's "reprendre où on en
+    /// était" list.
+    pub fn recent_patients(&self, limit: usize) -> Result<Vec<(Patient, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.id, p.last_name, p.first_name, p.birth_date, p.phone, p.notes,
+                        p.physician, p.email, p.address, MAX(i.updated_at) AS moved
+                 FROM patients p JOIN interviews i ON i.patient_id = p.id
+                 GROUP BY p.id ORDER BY moved DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([limit as i64], |r| {
+                Ok((
+                    Patient {
+                        id: r.get(0)?,
+                        last_name: r.get(1)?,
+                        first_name: r.get(2)?,
+                        birth_date: r.get(3)?,
+                        phone: r.get(4)?,
+                        notes: r.get(5)?,
+                        physician: r.get(6)?,
+                        email: r.get(7)?,
+                        address: r.get(8)?,
+                    },
+                    r.get::<_, String>(9)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn upcoming_appointments(&self) -> Result<Vec<Appointment>, String> {
         let mut stmt = self
             .conn

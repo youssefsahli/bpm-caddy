@@ -412,7 +412,13 @@ fn notes_box(
                         } else {
                             format!("{} · {}", n.stamp(), n.operator)
                         };
-                        ui.label(egui::RichText::new(head).size(11.0).color(motif::BG_DARK));
+                        // Stamped in the operator's own colour, so a
+                        // journal can be scanned by who wrote what.
+                        ui.label(
+                            egui::RichText::new(head)
+                                .size(11.0)
+                                .color(operator_color(&n.operator)),
+                        );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let label = if *confirm == Some(n.id) {
                                 tr("itv_delete_confirm")
@@ -552,6 +558,10 @@ struct Session {
     summaries: Vec<InterviewSummary>,
     /// Planned interviews for the dashboard's "RDV à venir" list.
     appointments: Vec<Appointment>,
+    /// Dashboard: patients whose file moved most recently, and the
+    /// notes written today (day notes and transmissions).
+    recent: Vec<(Patient, String)>,
+    today_notes: Vec<Note>,
     /// Path of the last CSV export, shown under the export button.
     export_notice: Option<String>,
     /// Today as ISO `YYYY-MM-DD`, to flag overdue appointments.
@@ -653,6 +663,8 @@ impl Session {
             view: MainView::Search,
             summaries: Vec::new(),
             appointments: Vec::new(),
+            recent: Vec::new(),
+            today_notes: Vec::new(),
             export_notice: None,
             today: String::new(),
             tomorrow: String::new(),
@@ -878,8 +890,40 @@ impl Session {
         self.today = self.db.today_iso().unwrap_or_default();
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
+        self.recent = self.db.recent_patients(6).unwrap_or_default();
+        // What the team wrote today: the day's notes, then the day's
+        // transmissions — the two journals a morning starts with.
+        let mut notes = self
+            .db
+            .notes_for(NoteSubject::Day, db::day_subject_id(&self.today))
+            .unwrap_or_default();
+        notes.extend(
+            self.db
+                .transmissions_for_day(&self.today)
+                .unwrap_or_default(),
+        );
+        self.today_notes = notes;
         self.export_notice = None;
     }
+}
+
+/// A stable colour per operator's initials, so a journal can be scanned
+/// by who wrote what. Derived from the text, no configuration needed.
+fn operator_color(operator: &str) -> egui::Color32 {
+    const PALETTE: [egui::Color32; 6] = [
+        egui::Color32::from_rgb(0x3a, 0x54, 0x7e),
+        egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+        egui::Color32::from_rgb(0x7e, 0x3a, 0x5e),
+        egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
+        egui::Color32::from_rgb(0x1a, 0x6e, 0x8b),
+        egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+    ];
+    let key = operator.trim();
+    if key.is_empty() {
+        return motif::BG_DARK;
+    }
+    let sum: u32 = key.bytes().map(u32::from).sum();
+    PALETTE[(sum as usize) % PALETTE.len()]
 }
 
 /// Stable color per act kind, for the agenda's week blocks and legend.
@@ -1099,6 +1143,8 @@ enum TplTarget {
     Fiche,
     /// The CR letter to the médecin traitant.
     Courrier,
+    /// The carnet de transmissions page.
+    Carnet,
 }
 
 #[derive(Default)]
@@ -1524,7 +1570,7 @@ impl App {
                 return;
             }
             if session.view == MainView::Transmissions {
-                Self::transmissions_view(ui, ctx, session, &operator);
+                Self::transmissions_view(ui, ctx, session, &operator, &config);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -2544,6 +2590,7 @@ impl App {
         ctx: &egui::Context,
         session: &mut Session,
         operator: &str,
+        config: &Config,
     ) {
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.wants_keyboard_input() {
             session.view = MainView::Search;
@@ -2565,9 +2612,11 @@ impl App {
                             db::weekday_fr(day).unwrap_or(""),
                             db::format_french_date(day)
                         );
-                        if let Err(e) =
-                            crate::pdf::open_transmission_day(&title, &session.trans_notes)
-                        {
+                        if let Err(e) = crate::pdf::open_transmission_day(
+                            &title,
+                            &session.trans_notes,
+                            &config.carnet_template_path(),
+                        ) {
                             session.error = Some(e);
                         }
                     }
@@ -4258,6 +4307,68 @@ impl App {
         });
         ui.add_space(14.0);
 
+        // Where the team left off: the files that moved most recently,
+        // and what was written today. Both open in one click.
+        let mut open_recent: Option<Patient> = None;
+        if !session.recent.is_empty() || !session.today_notes.is_empty() {
+            motif::column(ui, 900.0, |ui| {
+                ui.columns(2, |cols| {
+                    let ui = &mut cols[0];
+                    motif::section(ui, tr("dash_recent"));
+                    ui.add_space(4.0);
+                    if session.recent.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("dash_recent_empty"))
+                                .size(11.0)
+                                .color(motif::BG_DARK),
+                        );
+                    }
+                    for (p, moved) in &session.recent {
+                        ui.horizontal(|ui| {
+                            if ui
+                                .selectable_label(false, p.full_name())
+                                .on_hover_text(tr("dash_open_patient"))
+                                .clicked()
+                            {
+                                open_recent = Some(p.clone());
+                            }
+                            ui.label(
+                                egui::RichText::new(db::format_french_date(
+                                    &moved[..10.min(moved.len())],
+                                ))
+                                .size(11.0)
+                                .color(motif::BG_DARK),
+                            );
+                        });
+                    }
+                    let ui = &mut cols[1];
+                    motif::section(ui, tr("dash_today_notes"));
+                    ui.add_space(4.0);
+                    if session.today_notes.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("dash_today_notes_empty"))
+                                .size(11.0)
+                                .color(motif::BG_DARK),
+                        );
+                    }
+                    for note in session.today_notes.iter().take(6) {
+                        ui.label(
+                            egui::RichText::new(note.stamp())
+                                .size(10.0)
+                                .color(operator_color(&note.operator)),
+                        );
+                        ui.label(egui::RichText::new(&note.body).size(12.0));
+                        ui.add_space(2.0);
+                    }
+                });
+            });
+            ui.add_space(14.0);
+        }
+        if let Some(p) = open_recent {
+            session.view = MainView::Search;
+            session.open_patient(p);
+        }
+
         // Upcoming appointments: planned interviews not yet performed,
         // soonest first, overdue ones flagged. Clicking a row opens the
         // patient. Not financial data, so never masked.
@@ -4815,6 +4926,7 @@ impl eframe::App for App {
             let path = match target {
                 TplTarget::Fiche => self.config.template_path(),
                 TplTarget::Courrier => self.config.cr_template_path(),
+                TplTarget::Carnet => self.config.carnet_template_path(),
             };
             egui::Window::new(tr("tpl_title"))
                 .collapsible(false)
@@ -4827,6 +4939,7 @@ impl eframe::App for App {
                         for (t, label) in [
                             (TplTarget::Fiche, tr("tpl_target_fiche")),
                             (TplTarget::Courrier, tr("tpl_target_cr")),
+                            (TplTarget::Carnet, tr("tpl_target_carnet")),
                         ] {
                             let btn = motif::button(ui, label);
                             if *target == t {
@@ -4860,6 +4973,7 @@ impl eframe::App for App {
                             let check = match target {
                                 TplTarget::Fiche => crate::pdf::check_template(text),
                                 TplTarget::Courrier => crate::pdf::check_cr_template(text),
+                                TplTarget::Carnet => crate::pdf::check_trans_template(text),
                             };
                             match check {
                                 Ok(()) => {
@@ -4883,6 +4997,7 @@ impl eframe::App for App {
                             let preview = match target {
                                 TplTarget::Fiche => crate::pdf::preview_template(text),
                                 TplTarget::Courrier => crate::pdf::preview_cr_template(text),
+                                TplTarget::Carnet => crate::pdf::preview_trans_template(text),
                             };
                             if let Err(e) = preview {
                                 *message = Some((true, e));
@@ -4895,6 +5010,9 @@ impl eframe::App for App {
                             *text = match target {
                                 TplTarget::Fiche => crate::pdf::default_template().to_owned(),
                                 TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
+                                TplTarget::Carnet => {
+                                    crate::pdf::default_trans_template().to_owned()
+                                }
                             };
                             *message = None;
                         }
@@ -4921,10 +5039,12 @@ impl eframe::App for App {
             let path = match t {
                 TplTarget::Fiche => self.config.template_path(),
                 TplTarget::Courrier => self.config.cr_template_path(),
+                TplTarget::Carnet => self.config.carnet_template_path(),
             };
             let text = std::fs::read_to_string(&path).unwrap_or_else(|_| match t {
                 TplTarget::Fiche => crate::pdf::default_template().to_owned(),
                 TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
+                TplTarget::Carnet => crate::pdf::default_trans_template().to_owned(),
             });
             self.tpl_editor = Some(TplEditor {
                 target: t,
