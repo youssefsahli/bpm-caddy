@@ -722,9 +722,22 @@ pub fn open_week_plan(
     events: &[crate::db::Event],
     today: &str,
 ) -> Result<PathBuf, String> {
-    let Some(monday) = week.first() else {
+    if week.is_empty() {
         return Err("semaine vide".to_owned());
-    };
+    }
+    compile_and_open(
+        week_plan_source(week, appointments, events, today),
+        "semaine",
+    )
+}
+
+fn week_plan_source(
+    week: &[String],
+    appointments: &[Appointment],
+    events: &[crate::db::Event],
+    today: &str,
+) -> String {
+    let monday = week.first().map(String::as_str).unwrap_or("");
     let mut src = String::from(
         "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
          #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
@@ -782,11 +795,13 @@ pub fn open_week_plan(
             body
         ));
     }
+    // Full-height columns: the sheet is meant to be written on during
+    // the week, not just read.
     src.push_str(&format!(
-        "#table(columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr), inset: 4pt, \
+        "#table(columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr), rows: 16cm, inset: 4pt, \
          stroke: 0.5pt, align: top,\n{cells})\n"
     ));
-    compile_and_open(src, "semaine")
+    src
 }
 
 /// Compile and open the conversion tables as a printable A4 reference.
@@ -988,6 +1003,53 @@ fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn week_plan_compiles_with_hours_and_entries() {
+        use crate::db::{Event, EventCategory};
+        let week: Vec<String> = (24..=30).map(|d| format!("2026-08-{d:02}")).collect();
+        let rdvs = vec![
+            Appointment {
+                id: 1,
+                time: "09:30".to_owned(),
+                patient_id: 1,
+                patient_name: "Hélène Lefèvre".to_owned(),
+                phone: "06 12 34 56 78".to_owned(),
+                kind: InterviewKind::Aod,
+                date: "2026-08-27".to_owned(),
+            },
+            Appointment {
+                id: 2,
+                time: String::new(),
+                patient_id: 2,
+                patient_name: "Paul #eval \"Bernard\"".to_owned(),
+                phone: String::new(),
+                kind: InterviewKind::Asthme,
+                date: "2026-08-27".to_owned(),
+            },
+        ];
+        let events = vec![Event {
+            id: 1,
+            day: "2026-08-25".to_owned(),
+            time: "14:00".to_owned(),
+            title: "Formation AOD".to_owned(),
+            category: EventCategory::Formation,
+        }];
+        let src = week_plan_source(&week, &rdvs, &events, "2026-08-25");
+        // The hostile name is escaped, and the timed rendez-vous leads.
+        assert!(!src.contains("#eval \"Bernard\"]"));
+        assert!(src.find("09:30").unwrap() < src.find("Paul").unwrap());
+        let world = PdfWorld::new(src);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le plan de semaine doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("semaine_exemple.pdf"), &pdf);
+        }
+    }
 
     #[test]
     fn protocol_page_compiles_and_keeps_the_tree_order() {
