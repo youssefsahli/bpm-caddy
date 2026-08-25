@@ -2613,7 +2613,7 @@ impl App {
     /// Conversion tables (IPP, HBPM, statines…): selector, Motif table,
     /// caution line, and a printable A4 with all of them.
     fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
-        motif::column(ui, 700.0, |ui| {
+        motif::column(ui, 940.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
                 ui.heading(tr("tables_title"));
@@ -2631,7 +2631,8 @@ impl App {
             });
             ui.add_space(10.0);
             // Selector: one button per table, the active one sunken.
-            ui.horizontal(|ui| {
+            // There are more tables than fit on one line — let it wrap.
+            ui.horizontal_wrapped(|ui| {
                 for (i, t) in crate::tables::TABLES.iter().enumerate() {
                     let btn = motif::button(ui, t.short);
                     if i == session.table_selected {
@@ -2649,41 +2650,63 @@ impl App {
             ui.label(egui::RichText::new(t.title).strong().size(15.0));
             ui.add_space(6.0);
         });
-        // Sunken box around the table grid, centered.
+        // Sunken box around the table grid, centered. Reference cells
+        // are long sentences, so each column gets a fixed share of the
+        // width and wraps inside it; the box is then painted behind the
+        // content, once its real height is known.
         let avail = ui.available_rect_before_wrap();
         let t = &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
-        let w = avail.width().min(700.0);
-        let h = (t.rows.len() as f32 + 1.5) * 26.0 + 12.0;
-        let box_rect = egui::Rect::from_min_size(
-            egui::pos2(avail.center().x - w / 2.0, avail.top()),
-            egui::vec2(w, h),
+        let w = avail.width().min(940.0);
+        const PAD: f32 = 8.0;
+        const GAP: f32 = 20.0;
+        let cols = t.columns.len().max(1) as f32;
+        let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(80.0);
+        let bg = ui.painter().add(egui::Shape::Noop);
+        let content = egui::Rect::from_min_size(
+            egui::pos2(avail.center().x - w / 2.0 + PAD, avail.top() + PAD),
+            egui::vec2(w - 2.0 * PAD, avail.height().max(1.0)),
         );
-        ui.painter().rect_filled(box_rect, 0.0, motif::TROUGH);
-        motif::bevel(ui.painter(), box_rect, false);
-        let builder = egui::UiBuilder::new().max_rect(box_rect.shrink(8.0));
-        ui.allocate_new_ui(builder, |ui| {
-            egui::Grid::new(("conv_table", session.table_selected))
-                .num_columns(t.columns.len())
-                .spacing([24.0, 6.0])
-                .striped(false)
-                .show(ui, |ui| {
-                    for c in t.columns {
-                        ui.label(egui::RichText::new(*c).strong().size(13.0));
-                    }
-                    ui.end_row();
-                    for row in t.rows {
-                        for cell in *row {
-                            ui.label(egui::RichText::new(*cell).size(13.0));
+        let used = ui
+            .allocate_new_ui(egui::UiBuilder::new().max_rect(content), |ui| {
+                // A scope (not allocate_ui_with_layout) so the grid row
+                // grows with a cell that wraps to several lines.
+                let cell = |ui: &mut egui::Ui, text: egui::RichText| {
+                    ui.scope(|ui| {
+                        ui.set_max_width(col_w);
+                        ui.add(egui::Label::new(text).wrap());
+                    });
+                };
+                egui::Grid::new(("conv_table", session.table_selected))
+                    .num_columns(t.columns.len())
+                    .spacing([GAP, 8.0])
+                    .striped(false)
+                    .show(ui, |ui| {
+                        for c in t.columns {
+                            cell(ui, egui::RichText::new(*c).strong().size(13.0));
                         }
                         ui.end_row();
-                    }
-                });
-        });
+                        for row in t.rows {
+                            for c in *row {
+                                cell(ui, egui::RichText::new(*c).size(13.0));
+                            }
+                            ui.end_row();
+                        }
+                    });
+            })
+            .response
+            .rect;
+        let box_rect = egui::Rect::from_min_size(
+            egui::pos2(avail.center().x - w / 2.0, avail.top()),
+            egui::vec2(w, used.height() + 2.0 * PAD),
+        );
+        ui.painter()
+            .set(bg, egui::Shape::rect_filled(box_rect, 0.0, motif::TROUGH));
+        motif::bevel(ui.painter(), box_rect, false);
         // Drop below the box (the child ui only advanced by the grid's
         // own height), then the caution line on the column grid.
         let below = (box_rect.bottom() - ui.cursor().top()).max(0.0) + 10.0;
         ui.add_space(below);
-        motif::column(ui, 700.0, |ui| {
+        motif::column(ui, 940.0, |ui| {
             ui.label(
                 egui::RichText::new(t.caution)
                     .size(11.0)

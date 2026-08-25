@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-08-25
+
+### Added
+- Nine new reference tables, bringing the counter set to fifteen: AOD
+  posologies with their renal adaptation, inhaled-corticosteroid dose
+  steps, insulin action profiles, renal function (Cockcroft formula and
+  CKD stages, with the metformine thresholds), the Mac Isaac score and
+  what to do with the angina TROD, first-line cystitis treatments,
+  missed-pill conduct, non-opioid analgesic doses, and the adult
+  vaccination boosters — each with its own caution line, on screen and
+  in the printed A4 reference.
+- The starter drug base grows from ~200 to ~275 entries: more oral
+  anticancer drugs (osimertinib, olaparib, ITK…), cardiology,
+  pneumology and diabetes complements (insulins, tirzépatide, triple
+  inhalers), neurology and psychiatry, gastro-enterology, urology,
+  dermatology, ORL, ophthalmology, anti-infectives and immunology.
+
+### Changed
+- The tables view widened to 940 px and its selector wraps over several
+  rows; long reference cells now wrap inside their column and the
+  sunken box grows with the table instead of clipping it.
+
 ## [0.15.2] - 2026-08-25
 
 ### Fixed
