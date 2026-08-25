@@ -378,8 +378,11 @@ fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
 /// then every filled section in reading order, the pharmacokinetics as
 /// a short definition list, and the numbered sources at the foot.
 fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[db::Posologie]) {
-    let avail = ui.available_rect_before_wrap();
-    let sheet_w = avail.width().min(760.0);
+    // Measured against the visible slice: a sheet centred on a width
+    // the panel claimed but does not have loses its right margin — and
+    // with it the right-hand column of the posology table.
+    let avail = motif::visible_rect(ui);
+    let sheet_w = avail.width().min(860.0);
     let pad = 34.0;
     let width = sheet_w - 2.0 * pad;
     let bg = ui.painter().add(egui::Shape::Noop);
@@ -774,6 +777,33 @@ enum MainView {
     Transmissions,
 }
 
+/// One item open in the workspace notebook.
+///
+/// A tab is a *bookmark of a destination*, not a copy of the view's
+/// state: the session keeps one live view, and activating a tab points
+/// it back at that destination. Two patients, or a patient and a drug
+/// card, therefore stay one click apart all day — the counter's real
+/// working pattern, and the thing a single-view app made impossible.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum WorkTab {
+    Dashboard,
+    Search,
+    Agenda,
+    Carnet,
+    /// The drug base's list (no card open).
+    Drugs,
+    Patient(i64),
+    Drug(i64),
+}
+
+impl WorkTab {
+    /// Does this tab survive a "close"? The four standing views are
+    /// fixtures of the workspace; only opened files can be dismissed.
+    fn closable(&self) -> bool {
+        matches!(self, WorkTab::Patient(_) | WorkTab::Drug(_))
+    }
+}
+
 struct Session {
     db: Db,
     patients: Vec<Patient>,
@@ -922,6 +952,12 @@ struct Session {
     calc_half_life: f64,
     calc_interval: f64,
     table_selected: usize,
+    /// The workspace notebook: what the operator has opened, in the
+    /// order they opened it. The *active* tab is never stored — it is
+    /// derived from the live view each frame (see [`Session::current_tab`]),
+    /// so navigating by any other route (a dashboard row, a search
+    /// result, Escape) can never leave the strip pointing elsewhere.
+    tabs: Vec<WorkTab>,
     error: Option<String>,
 }
 
@@ -1042,10 +1078,196 @@ impl Session {
             calc_half_life: 12.0,
             calc_interval: 12.0,
             table_selected: 0,
+            // The five standing views are always in the strip, in a
+            // fixed order, so their position never moves under the
+            // pointer; opened files are appended after them.
+            tabs: vec![
+                WorkTab::Dashboard,
+                WorkTab::Search,
+                WorkTab::Drugs,
+                WorkTab::Agenda,
+                WorkTab::Carnet,
+            ],
             error: None,
         };
         session.set_patients(patients);
+        // The search view opens on the day's own panels, so the figures
+        // they show have to be loaded before the first frame.
+        session.refresh_dashboard();
         Ok(session)
+    }
+
+    /// Which tab the live view corresponds to right now.
+    fn current_tab(&self) -> WorkTab {
+        match self.view {
+            MainView::Dashboard => WorkTab::Dashboard,
+            MainView::Agenda => WorkTab::Agenda,
+            MainView::Transmissions => WorkTab::Carnet,
+            MainView::Drugs => match &self.drug_form {
+                Some(d) => WorkTab::Drug(d.id),
+                None => WorkTab::Drugs,
+            },
+            MainView::Search => match &self.viewing {
+                Some(p) => WorkTab::Patient(p.id),
+                None => WorkTab::Search,
+            },
+        }
+    }
+
+    /// Record the live view in the notebook, appending a tab for a file
+    /// opened for the first time. Called once per frame: whatever route
+    /// the operator took to get here, the strip ends up showing it.
+    fn note_tab(&mut self) {
+        let cur = self.current_tab();
+        if !self.tabs.contains(&cur) {
+            self.tabs.push(cur);
+        }
+    }
+
+    /// Point the live view at `tab`. Reloads whatever that destination
+    /// needs, exactly as opening it the long way would.
+    fn activate_tab(&mut self, tab: &WorkTab) {
+        self.flush_date_edits();
+        self.show_amounts = false;
+        match tab {
+            WorkTab::Dashboard => {
+                self.view = MainView::Dashboard;
+                self.refresh_dashboard();
+            }
+            WorkTab::Search => {
+                self.view = MainView::Search;
+                self.viewing = None;
+                // The home panels show the day: they need the same
+                // figures the dashboard does.
+                self.refresh_dashboard();
+            }
+            WorkTab::Agenda => {
+                self.view = MainView::Agenda;
+                self.refresh_dashboard();
+            }
+            WorkTab::Carnet => {
+                self.view = MainView::Transmissions;
+                self.trans_day = String::new();
+                self.load_transmissions();
+            }
+            WorkTab::Drugs => {
+                self.view = MainView::Drugs;
+                self.drug_form = None;
+                self.drug_base = None;
+                if let Ok(list) = self.db.drugs() {
+                    self.drugs = list;
+                }
+            }
+            WorkTab::Patient(id) => {
+                // The list is the authority on identity: another post
+                // may have corrected the name since the tab was opened.
+                if let Some(p) = self.patients.iter().find(|p| p.id == *id).cloned() {
+                    self.view = MainView::Search;
+                    self.open_patient(p);
+                } else {
+                    // Deleted elsewhere: drop the stale tab rather than
+                    // showing an empty file.
+                    self.close_tab(&WorkTab::Patient(*id));
+                }
+            }
+            WorkTab::Drug(id) => {
+                if let Some(d) = self.drugs.iter().find(|d| d.id == *id).cloned() {
+                    self.view = MainView::Drugs;
+                    self.open_drug_card(d);
+                } else {
+                    self.close_tab(&WorkTab::Drug(*id));
+                }
+            }
+        }
+    }
+
+    /// Close `tab`, falling back to the neighbour on its left when it
+    /// was the one on screen.
+    fn close_tab(&mut self, tab: &WorkTab) {
+        let Some(i) = self.tabs.iter().position(|t| t == tab) else {
+            return;
+        };
+        if !tab.closable() {
+            return;
+        }
+        let was_active = &self.current_tab() == tab;
+        self.tabs.remove(i);
+        if was_active {
+            let fallback = self
+                .tabs
+                .get(i.saturating_sub(1))
+                .cloned()
+                .unwrap_or(WorkTab::Search);
+            self.activate_tab(&fallback);
+        }
+    }
+
+    /// Move `delta` tabs along the strip (Ctrl+Tab and its shifted twin).
+    fn cycle_tab(&mut self, delta: i64) {
+        if self.tabs.is_empty() {
+            return;
+        }
+        let cur = self.current_tab();
+        let at = self.tabs.iter().position(|t| *t == cur).unwrap_or(0) as i64;
+        let n = self.tabs.len() as i64;
+        let next = self.tabs[(at + delta).rem_euclid(n) as usize].clone();
+        self.activate_tab(&next);
+    }
+
+    /// The drug base filtered by `drug_query`, best match first.
+    ///
+    /// Brand name and DCI both match ("elix" or "apixa"); the class and
+    /// the tags widen the net ("statine", "marge étroite"), scored below
+    /// an identity match.
+    fn drug_results(&self, limit: usize) -> Vec<Drug> {
+        let mut scored: Vec<(i32, &Drug)> = self
+            .drugs
+            .iter()
+            .filter_map(|d| {
+                let a = fuzzy::score(&self.drug_query, &d.name);
+                let b = if d.dci.is_empty() {
+                    None
+                } else {
+                    fuzzy::score(&self.drug_query, &d.dci)
+                };
+                let side = [d.class.as_str(), d.tags.as_str()]
+                    .into_iter()
+                    .filter(|t| !t.is_empty())
+                    .filter_map(|t| fuzzy::score(&self.drug_query, t))
+                    .max()
+                    .map(|s| s - 40);
+                a.max(b).max(side).map(|s| (s, d))
+            })
+            .collect();
+        scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
+        scored
+            .into_iter()
+            .take(limit)
+            .map(|(_, d)| d.clone())
+            .collect()
+    }
+
+    /// The label a tab shows: the view's name, or the file's.
+    fn tab_label(&self, tab: &WorkTab) -> String {
+        match tab {
+            WorkTab::Dashboard => tr("tab_dashboard").to_owned(),
+            WorkTab::Search => tr("tab_search").to_owned(),
+            WorkTab::Agenda => tr("tab_agenda").to_owned(),
+            WorkTab::Carnet => tr("tab_carnet").to_owned(),
+            WorkTab::Drugs => tr("tab_drugs").to_owned(),
+            WorkTab::Patient(id) => self
+                .patients
+                .iter()
+                .find(|p| p.id == *id)
+                .map(|p| p.full_name())
+                .unwrap_or_else(|| tr("tab_missing").to_owned()),
+            WorkTab::Drug(id) => self
+                .drugs
+                .iter()
+                .find(|d| d.id == *id)
+                .map(|d| d.name.trim().to_owned())
+                .unwrap_or_else(|| tr("tab_missing").to_owned()),
+        }
     }
 
     /// Open a drug card: load its baseline for CAS and the patients
@@ -1634,6 +1856,10 @@ pub struct App {
     last_activity: Instant,
     remember_password: bool,
     show_docs: bool,
+    /// The left navigator dock: the list the active view is browsing
+    /// (patients, drugs, the month), always in reach instead of taking
+    /// the whole screen every time you need the next file (F6).
+    show_nav: bool,
     /// Which content the right pane shows: "docs", "carnet", "notes".
     side_pane: String,
     doc_text: String,
@@ -1708,6 +1934,7 @@ impl App {
         let doc_text = std::fs::read_to_string(config.team_doc_path())
             .unwrap_or_else(|_| tr("team_doc_template").to_owned());
         let show_docs = config.ui.show_docs_on_start;
+        let show_nav = config.ui.show_nav_on_start;
 
         // Silent unlock when the OS credential manager holds the password.
         let mut state = State::Locked {
@@ -1824,6 +2051,7 @@ impl App {
             last_activity: Instant::now(),
             remember_password,
             show_docs,
+            show_nav,
             side_pane,
             doc_base: doc_text.clone(),
             doc_text,
@@ -1970,16 +2198,331 @@ impl App {
         }
     }
 
+    /// The left navigator dock: whatever list the active view is
+    /// browsing, kept beside the work instead of replacing it.
+    ///
+    /// Before this, reaching the next patient meant leaving the open one
+    /// (Escape, retype, re-open); the file being read and the list it
+    /// came from were the same screen. They are now two.
+    fn nav_dock(&mut self, ctx: &egui::Context) {
+        let State::Unlocked(session) = &mut self.state else {
+            return;
+        };
+        let view = session.view;
+        // A dock is a share of the window, not a fixed slab: at 1024 px
+        // a 232 px navigator and a 340 px notes pane left the work
+        // itself 430 px, narrower than either of them.
+        let screen = ctx.screen_rect().width();
+        egui::SidePanel::left("navigator")
+            .resizable(true)
+            .default_width((screen * 0.15).clamp(150.0, 232.0))
+            .min_width(130.0)
+            .max_width((screen * 0.3).clamp(180.0, 420.0))
+            .show(ctx, |ui| {
+                ui.add_space(6.0);
+                match view {
+                    MainView::Drugs => Self::nav_drugs(ui, session),
+                    MainView::Agenda => Self::nav_agenda(ui, session),
+                    MainView::Transmissions => Self::nav_carnet(ui, session),
+                    MainView::Dashboard | MainView::Search => Self::nav_patients(ui, session),
+                }
+            });
+    }
+
+    /// The dock's search box: a sunken full-width field with a caption.
+    fn nav_search(ui: &mut egui::Ui, hint: &str, text: &mut String) -> egui::Response {
+        let resp = ui.add_sized(
+            [ui.available_width(), 26.0],
+            egui::TextEdit::singleline(text).hint_text(hint),
+        );
+        motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
+        ui.add_space(6.0);
+        resp
+    }
+
+    /// The well every dock list sits in: it takes the rest of the pane,
+    /// so the list grows with the window instead of with the content.
+    fn nav_list<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) {
+        let rect = ui.available_rect_before_wrap();
+        if rect.height() < 20.0 {
+            return;
+        }
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("nav_list")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    add(ui);
+                });
+        });
+    }
+
+    /// Patients: the search that used to own the whole screen, docked.
+    fn nav_patients(ui: &mut egui::Ui, session: &mut Session) {
+        motif::section(ui, tr("nav_patients"));
+        ui.add_space(4.0);
+        if Self::nav_search(ui, tr("nav_search_hint"), &mut session.query).changed() {
+            session.selected = 0;
+            session.new_patient = None;
+        }
+        let results: Vec<Patient> = session.results().into_iter().cloned().collect();
+        let open = session.viewing.as_ref().map(|p| p.id);
+        let mut clicked: Option<Patient> = None;
+        ui.label(
+            egui::RichText::new(trf("nav_count", results.len()))
+                .size(10.5)
+                .color(motif::TEXT_FAINT),
+        );
+        ui.add_space(3.0);
+        Self::nav_list(ui, |ui| {
+            for p in &results {
+                let pending = session.pending.get(&p.id).copied().unwrap_or(0);
+                let mut text = p.full_name();
+                if pending > 0 {
+                    text.push_str(&format!("   ({pending})"));
+                }
+                if motif::list_row(ui, egui::RichText::new(text), open == Some(p.id))
+                    .on_hover_text(db::format_french_date(&p.birth_date))
+                    .clicked()
+                {
+                    clicked = Some(p.clone());
+                }
+            }
+        });
+        if let Some(p) = clicked {
+            session.view = MainView::Search;
+            session.show_amounts = false;
+            session.open_patient(p);
+        }
+    }
+
+    /// Drugs: the reference base's index, so a card can be compared with
+    /// the next one without going back through the search screen.
+    fn nav_drugs(ui: &mut egui::Ui, session: &mut Session) {
+        motif::section(ui, tr("nav_drugs"));
+        ui.add_space(4.0);
+        if Self::nav_search(ui, tr("drug_search_hint"), &mut session.drug_query).changed() {
+            session.drug_selected = 0;
+        }
+        let results = session.drug_results(60);
+        let open = session.drug_form.as_ref().map(|d| d.id);
+        let mut clicked: Option<Drug> = None;
+        ui.label(
+            egui::RichText::new(trf("nav_count", results.len()))
+                .size(10.5)
+                .color(motif::TEXT_FAINT),
+        );
+        ui.add_space(3.0);
+        Self::nav_list(ui, |ui| {
+            for d in &results {
+                let mut hover = d.dci.clone();
+                if !d.class.is_empty() {
+                    if !hover.is_empty() {
+                        hover.push_str(" — ");
+                    }
+                    hover.push_str(&d.class);
+                }
+                let row =
+                    motif::list_row(ui, egui::RichText::new(d.name.trim()), open == Some(d.id));
+                let row = if hover.is_empty() {
+                    row
+                } else {
+                    row.on_hover_text(hover)
+                };
+                if row.clicked() {
+                    clicked = Some(d.clone());
+                }
+            }
+        });
+        if let Some(d) = clicked {
+            session.open_drug_card(d);
+            session.error = None;
+        }
+    }
+
+    /// Agenda: a month at a glance, and the queue of rendez-vous.
+    ///
+    /// The dock browses; the view works. Picking a day here moves the
+    /// calendar without leaving whatever mode it is in.
+    fn nav_agenda(ui: &mut egui::Ui, session: &mut Session) {
+        motif::section(ui, tr("nav_month"));
+        ui.add_space(4.0);
+        if session.agenda_month_days.is_empty() {
+            session.agenda_month_days = session
+                .db
+                .month_grid(session.agenda_month_offset)
+                .unwrap_or_default();
+        }
+        ui.horizontal(|ui| {
+            if motif::button(ui, "‹").clicked() {
+                session.agenda_month_offset -= 1;
+                session.agenda_month_days = session
+                    .db
+                    .month_grid(session.agenda_month_offset)
+                    .unwrap_or_default();
+            }
+            if motif::button(ui, tr("agenda_this_week")).clicked() {
+                session.agenda_month_offset = 0;
+                session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
+            }
+            if motif::button(ui, "›").clicked() {
+                session.agenda_month_offset += 1;
+                session.agenda_month_days = session
+                    .db
+                    .month_grid(session.agenda_month_offset)
+                    .unwrap_or_default();
+            }
+        });
+        ui.add_space(4.0);
+        // Six rows of seven: the day's number, tinted by how loaded it
+        // is, with today ringed and the selected day filled.
+        let days = session.agenda_month_days.clone();
+        let mut pick: Option<String> = None;
+        if days.len() >= 28 {
+            let w = ui.available_width();
+            let cell = (w / 7.0).floor().max(14.0);
+            let rows = days.len().div_ceil(7);
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(cell * 7.0, cell * rows as f32 + 14.0),
+                egui::Sense::hover(),
+            );
+            for (i, label) in ["L", "M", "M", "J", "V", "S", "D"].iter().enumerate() {
+                ui.painter().text(
+                    egui::pos2(rect.left() + (i as f32 + 0.5) * cell, rect.top() + 6.0),
+                    egui::Align2::CENTER_CENTER,
+                    *label,
+                    egui::FontId::proportional(9.5),
+                    motif::TEXT_FAINT,
+                );
+            }
+            for (i, day) in days.iter().enumerate() {
+                let r = egui::Rect::from_min_size(
+                    egui::pos2(
+                        rect.left() + (i % 7) as f32 * cell,
+                        rect.top() + 14.0 + (i / 7) as f32 * cell,
+                    ),
+                    egui::vec2(cell - 1.0, cell - 1.0),
+                );
+                let load = session
+                    .appointments
+                    .iter()
+                    .filter(|a| &a.date == day)
+                    .count();
+                let selected = *day == session.agenda_day;
+                if selected {
+                    ui.painter().rect_filled(r, 0.0, motif::ACCENT);
+                } else if load > 0 {
+                    ui.painter().rect_filled(
+                        r,
+                        0.0,
+                        motif::ACCENT.gamma_multiply((0.18 + 0.14 * load as f32).min(0.6)),
+                    );
+                }
+                if *day == session.today {
+                    ui.painter()
+                        .rect_stroke(r, 0.0, egui::Stroke::new(1.5_f32, motif::ALERT));
+                }
+                let num = day.get(8..10).unwrap_or("").trim_start_matches('0');
+                ui.painter().text(
+                    r.center(),
+                    egui::Align2::CENTER_CENTER,
+                    num,
+                    egui::FontId::proportional(10.5),
+                    if selected {
+                        egui::Color32::WHITE
+                    } else {
+                        motif::TEXT
+                    },
+                );
+                let resp = ui.interact(r, ui.id().with(("navday", i)), egui::Sense::click());
+                if resp
+                    .on_hover_text(trn(
+                        "dash_load_tooltip",
+                        &[&db::format_french_date(day), &load],
+                    ))
+                    .clicked()
+                {
+                    pick = Some(day.clone());
+                }
+            }
+        }
+        if let Some(day) = pick {
+            session.agenda_day = day;
+            session.load_day();
+        }
+
+        ui.add_space(10.0);
+        motif::section(ui, tr("nav_next"));
+        ui.add_space(4.0);
+        let today = session.today.clone();
+        let mut open_id: Option<i64> = None;
+        Self::nav_list(ui, |ui| {
+            for rdv in session.appointments.iter().take(60) {
+                let overdue = !today.is_empty() && rdv.date < today;
+                let text = format!(
+                    "{}  {}",
+                    db::format_french_date(&rdv.date),
+                    rdv.patient_name
+                );
+                let label = if overdue {
+                    egui::RichText::new(text).color(motif::ALERT)
+                } else {
+                    egui::RichText::new(text)
+                };
+                if motif::list_row(ui, label, false)
+                    .on_hover_text(rdv.kind.label())
+                    .clicked()
+                {
+                    open_id = Some(rdv.patient_id);
+                }
+            }
+        });
+        if let Some(id) = open_id {
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.view = MainView::Search;
+                session.open_patient(p);
+            }
+        }
+    }
+
+    /// Carnet: the days that carry entries.
+    fn nav_carnet(ui: &mut egui::Ui, session: &mut Session) {
+        motif::section(ui, tr("nav_days"));
+        ui.add_space(4.0);
+        let days = session.trans_days.clone();
+        let current = session.trans_day.clone();
+        let mut pick: Option<String> = None;
+        Self::nav_list(ui, |ui| {
+            for day in &days {
+                if motif::list_row(
+                    ui,
+                    egui::RichText::new(db::format_french_date(day)),
+                    *day == current,
+                )
+                .clicked()
+                {
+                    pick = Some(day.clone());
+                }
+            }
+        });
+        if let Some(day) = pick {
+            session.trans_day = day;
+            session.load_transmissions();
+        }
+    }
+
     fn docs_pane(&mut self, ctx: &egui::Context) {
+        let screen = ctx.screen_rect().width();
         egui::SidePanel::right("team_docs")
             .resizable(true)
-            .default_width(340.0)
-            .min_width(240.0)
+            .default_width((screen * 0.21).clamp(220.0, 340.0))
+            .min_width(200.0)
             // A side panel that grows past the width it reserved leaves
             // the central view laid out wider than it is visible, and
             // everything on its right edge is clipped away — buttons
             // included. Cap it, and let the content inside wrap.
-            .max_width(520.0)
+            .max_width((screen * 0.36).clamp(260.0, 520.0))
             .show(ctx, |ui| {
                 ui.add_space(6.0);
                 // One pane, three contents: the shared documentation,
@@ -2268,13 +2811,14 @@ impl App {
                 return;
             }
 
-            motif::column(ui, 620.0, |ui| {
+            let idle = session.query.trim().is_empty();
+            motif::page(ui, 720.0, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.add_space(40.0);
+                    ui.add_space(if idle { 22.0 } else { 12.0 });
                     ui.heading("BPM-Caddy");
                     ui.label(tr("app_tagline"));
                 });
-                ui.add_space(18.0);
+                ui.add_space(14.0);
                 let search = ui.add_sized(
                     [ui.available_width(), 32.0],
                     egui::TextEdit::singleline(&mut session.query).hint_text(tr("search_hint")),
@@ -2293,7 +2837,10 @@ impl App {
 
             let results: Vec<Patient> = session.results().into_iter().cloned().collect();
 
-            if !results.is_empty() {
+            // An empty query matches everyone, and that list is already
+            // in the left dock: the middle of the screen is better spent
+            // on the day itself.
+            if !results.is_empty() && !idle {
                 // The list can shrink between frames (background refresh
                 // from another post): keep the selection in bounds.
                 session.selected = session.selected.min(results.len() - 1);
@@ -2315,8 +2862,8 @@ impl App {
                 }
 
                 // Sunken Motif list box, centered, with full-width rows.
-                let avail = ui.available_rect_before_wrap();
-                let w = avail.width().min(620.0);
+                let avail = motif::visible_rect(ui);
+                let w = avail.width().min(720.0);
                 let h = (avail.height() - 14.0).max(140.0);
                 let box_rect = egui::Rect::from_min_size(
                     egui::pos2(avail.center().x - w / 2.0, avail.top()),
@@ -2483,12 +3030,115 @@ impl App {
                 }
             }
 
+            if idle {
+                Self::home_panels(ui, session);
+            }
             if let Some(err) = &session.error {
                 ui.vertical_centered(|ui| {
                     ui.colored_label(motif::ALERT, err.as_str());
                 });
             }
         });
+    }
+
+    /// What the counter needs before anyone has typed anything: the
+    /// day's rendez-vous, the files the team touched last, and what was
+    /// written today. The search screen used to be a box on an empty
+    /// grey field the size of the window.
+    fn home_panels(ui: &mut egui::Ui, session: &mut Session) {
+        let body = motif::visible_rect(ui).shrink2(egui::vec2(10.0, 0.0));
+        if body.height() < 120.0 {
+            return;
+        }
+        let mut open_patient: Option<i64> = None;
+        let mut open_recent: Option<Patient> = None;
+        // The day and the recent files share the top row; the notes run
+        // the full width underneath, because they are prose.
+        let split = body.width() >= 760.0;
+        let rects: [egui::Rect; 3] = if split {
+            let rows = motif::split_rows(body, &[body.height() * 0.55, 0.0], 8.0);
+            let top = motif::split_columns(rows[0], 2, 8.0);
+            [top[0], top[1], rows[1]]
+        } else {
+            let rows = motif::split_rows(body, &[0.0, 0.0, 0.0], 8.0);
+            [rows[0], rows[1], rows[2]]
+        };
+        let titles = [tr("home_today"), tr("dash_recent"), tr("dash_today_notes")];
+        for (i, (title, rect)) in titles.iter().zip(rects).enumerate() {
+            motif::panel(ui, rect, Some(title), |ui| {
+                let body = ui.max_rect();
+                match i {
+                    0 => open_patient = Self::home_today(ui, session, body),
+                    1 => open_recent = Self::dash_recent(ui, session, body),
+                    _ => Self::dash_today_notes(ui, session, body),
+                }
+            });
+        }
+        ui.allocate_space(egui::vec2(body.width(), body.height()));
+        if let Some(p) = open_recent {
+            session.open_patient(p);
+        } else if let Some(id) = open_patient {
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.open_patient(p);
+            }
+        }
+    }
+
+    /// Today's rendez-vous, and what is already overdue.
+    fn home_today(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+        let today: Vec<&Appointment> = session
+            .appointments
+            .iter()
+            .filter(|a| !session.today.is_empty() && a.date <= session.today)
+            .collect();
+        if today.is_empty() {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("home_today_empty"),
+                egui::FontId::proportional(12.0),
+                motif::TEXT_DIM,
+            );
+            return None;
+        }
+        let mut open = None;
+        let rows: Vec<(String, bool, i64)> = today
+            .iter()
+            .map(|a| {
+                let overdue = a.date < session.today;
+                let hour = if a.time.is_empty() {
+                    String::new()
+                } else {
+                    format!("{}  ", a.time)
+                };
+                let mut text = format!("{hour}{}  ({})", a.patient_name, a.kind.label());
+                if overdue {
+                    text = format!("{}  {}", db::format_french_date(&a.date), text);
+                }
+                (text, overdue, a.patient_id)
+            })
+            .collect();
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("home_today")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for (text, overdue, id) in &rows {
+                        let label = if *overdue {
+                            egui::RichText::new(text).color(motif::ALERT)
+                        } else {
+                            egui::RichText::new(text).color(motif::ACCENT).strong()
+                        };
+                        if motif::list_row(ui, label, false)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            open = Some(*id);
+                        }
+                    }
+                });
+        });
+        open
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2515,358 +3165,491 @@ impl App {
                 return;
             }
         }
-        ui.add_space(16.0);
-        ui.horizontal(|ui| {
-            if motif::button(ui, tr("patient_back")).clicked() {
-                session.flush_date_edits();
-                session.viewing = None;
-            }
+
+        // An identity band across the top, then the two things the
+        // file is open for side by side: the acts table and the
+        // journal. It used to be one centred column three screens tall,
+        // so the table — the reason to open a fiche at all — began
+        // below the fold on every window.
+        let body = motif::visible_rect(ui).shrink(6.0);
+        // The band is as tall as its content: the act buttons wrap, and
+        // an open correction form is much taller than a header.
+        let band_h = Self::patient_band_height(ui, session, patient);
+        let rows = motif::split_rows(body, &[band_h, 0.0], 8.0);
+        motif::panel(ui, rows[0], None, |ui| {
+            let inner = ui.max_rect();
+            egui::ScrollArea::vertical()
+                .id_salt("patient_band")
+                .show(ui, |ui| {
+                    ui.set_max_width(inner.width());
+                    Self::patient_identity_pane(ui, ctx, session, patient, config, operator);
+                });
         });
-        ui.add_space(12.0);
-        let card = ui.available_rect_before_wrap().shrink(6.0);
-        motif::bevel(ui.painter(), card, true);
+        // The patient may have just been closed or deleted by the band.
+        if session.viewing.as_ref().map(|p| p.id) != Some(patient.id) {
+            return;
+        }
+        let work = rows[1];
+        // The acts table has ten columns, most of them buttons: it wants
+        // about a thousand pixels. The journal only gets a column of its
+        // own once that is satisfied — below that it goes underneath,
+        // and the table keeps the full width.
+        if work.width() >= 1320.0 {
+            let notes_w = (work.width() * 0.28).clamp(260.0, 400.0);
+            let acts = egui::Rect::from_min_size(
+                work.min,
+                egui::vec2(work.width() - notes_w - 8.0, work.height()),
+            );
+            let notes =
+                egui::Rect::from_min_max(egui::pos2(acts.right() + 8.0, work.top()), work.max);
+            motif::panel(ui, acts, Some(tr("itv_section")), |ui| {
+                Self::patient_acts_pane(ui, session, patient, config);
+            });
+            motif::panel(ui, notes, Some(tr("notes_section")), |ui| {
+                Self::patient_notes_pane(ui, session, patient, operator);
+            });
+        } else {
+            // Narrow: the journal goes under the table, still in view.
+            let notes_h = (work.height() * 0.34).clamp(140.0, 260.0);
+            let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
+            motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
+                Self::patient_acts_pane(ui, session, patient, config);
+            });
+            motif::panel(ui, stack[1], Some(tr("notes_section")), |ui| {
+                Self::patient_notes_pane(ui, session, patient, operator);
+            });
+        }
+    }
+
+    /// « Modifier » and « Supprimer… », with the two-step confirmation.
+    fn patient_actions(
+        ui: &mut egui::Ui,
+        session: &Session,
+        start_edit: &mut bool,
+        delete_click: &mut bool,
+    ) {
+        let del_label = if session.confirm_delete {
+            tr("patient_delete_confirm")
+        } else {
+            tr("patient_delete")
+        };
+        if motif::button(ui, del_label).clicked() {
+            *delete_click = true;
+        }
+        if session.edit_patient.is_none() && motif::button(ui, tr("patient_edit")).clicked() {
+            *start_edit = true;
+        }
+    }
+
+    /// How many lines a wrapped row of buttons with these labels takes
+    /// at `width`. Bands are carved rectangles, so their height has to
+    /// be known before the buttons are drawn — measured, not guessed.
+    fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let pad = ui.spacing().button_padding.x * 2.0 + 8.0;
+        let gap = ui.spacing().item_spacing.x;
+        let mut x = 0.0_f32;
+        let mut lines = 1.0_f32;
+        for label in labels {
+            let w = ui.fonts(|f| {
+                f.layout_no_wrap(label.to_owned(), font.clone(), motif::TEXT)
+                    .size()
+                    .x
+            }) + pad;
+            if x + w > width && x > 0.0 {
+                lines += 1.0;
+                x = 0.0;
+            }
+            x += w + gap;
+        }
+        lines
+    }
+
+    /// How tall the identity band needs to be: a header and one or two
+    /// wrapped button rows normally, much more with the correction form
+    /// open. Measured rather than guessed, so nothing is ever clipped.
+    fn patient_band_height(ui: &egui::Ui, session: &Session, patient: &Patient) -> f32 {
+        let w = motif::visible_rect(ui).width() - 40.0;
+        // The act buttons are the part that wraps.
+        let lines = Self::wrapped_rows(ui, w, InterviewKind::ALL.iter().map(|k| k.label()));
+        let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y + 8.0;
+        // Header (name, birth, contact, address, comment) + treatments +
+        // "nouvel entretien" + the wrapped act rows + the eligibility note.
+        let mut h = 96.0 + row * (2.0 + lines);
+        if !patient.address.is_empty() {
+            h += 18.0;
+        }
+        if !patient.notes.is_empty() {
+            h += 20.0;
+        }
+        if session.edit_patient.is_some() {
+            h += 9.0 * 34.0 + 40.0;
+        }
+        if session.rule_block.is_some() {
+            h += 46.0;
+        }
+        if session.patient_treats.len() < db::BPM_MIN_TREATMENTS {
+            h += 34.0;
+        }
+        if !session.treat_query.trim().is_empty() {
+            h += row;
+        }
+        // Whatever the band would like, the acts and the journal keep
+        // their half of the file: the band scrolls instead.
+        let avail = motif::visible_rect(ui).height();
+        h.min((avail * 0.45).max(avail - 340.0))
+    }
+
+    /// Who the patient is: identity, corrections, treatments, and the
+    /// buttons that start an act.
+    fn patient_identity_pane(
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+        operator: &str,
+    ) {
+        let _ = operator;
         let mut start_edit = false;
         let mut save_edit = false;
         let mut cancel_edit = false;
         let mut delete_click = false;
-        motif::column(ui, 760.0, |ui| {
-            ui.vertical_centered(|ui| {
-                ui.add_space(20.0);
-                ui.heading(patient.full_name());
-                ui.label(format!(
-                    "Né(e) le {}",
-                    db::format_french_date(&patient.birth_date)
-                ));
-                {
-                    // Contact line: phone · physician · email, whichever exist.
-                    let mut bits: Vec<String> = Vec::new();
-                    if !patient.phone.is_empty() {
-                        bits.push(trf("patient_phone", &patient.phone));
-                    }
-                    if !patient.physician.is_empty() {
-                        bits.push(trf("patient_physician", &patient.physician));
-                    }
-                    if !patient.email.is_empty() {
-                        bits.push(patient.email.clone());
-                    }
-                    // The memo requires the situation to be carried onto
-                    // the billing, so it belongs on the header.
-                    if let Some(key) = db::situation_label(&patient.situation) {
-                        if !patient.situation.is_empty() {
-                            bits.push(trf("patient_situation", tr(key)));
-                        }
-                    }
-                    if !bits.is_empty() {
-                        ui.label(bits.join("   ·   "));
-                    }
+        let mut back = false;
+        let cramped = motif::visible_rect(ui).width() < 620.0;
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            if motif::button(ui, tr("patient_back")).clicked() {
+                session.flush_date_edits();
+                session.viewing = None;
+                back = true;
+            }
+            ui.add_space(6.0);
+            ui.heading(patient.full_name());
+            ui.label(
+                egui::RichText::new(trf(
+                    "patient_born",
+                    db::format_french_date(&patient.birth_date),
+                ))
+                .color(motif::TEXT_DIM),
+            );
+            // The file's own actions live on its header line, hard
+            // right — they act on the patient, not on the acts below.
+            // Unless the name already fills the line, in which case they
+            // drop underneath rather than printing over it.
+            if !cramped {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    Self::patient_actions(ui, session, &mut start_edit, &mut delete_click);
+                });
+            }
+        });
+        if cramped {
+            ui.horizontal(|ui| {
+                Self::patient_actions(ui, session, &mut start_edit, &mut delete_click);
+            });
+        }
+        {
+            // Everything else about the patient on one quiet line under
+            // the name: contact, situation, address, comment. Wrapped,
+            // so a long address pushes a line instead of being cut.
+            let mut bits: Vec<String> = Vec::new();
+            if !patient.phone.is_empty() {
+                bits.push(trf("patient_phone", &patient.phone));
+            }
+            if !patient.physician.is_empty() {
+                bits.push(trf("patient_physician", &patient.physician));
+            }
+            if !patient.email.is_empty() {
+                bits.push(patient.email.clone());
+            }
+            // The memo requires the situation to be carried onto the
+            // billing, so it belongs on the header.
+            if let Some(key) = db::situation_label(&patient.situation) {
+                if !patient.situation.is_empty() {
+                    bits.push(trf("patient_situation", tr(key)));
                 }
-                if !patient.address.is_empty() {
-                    ui.label(
-                        egui::RichText::new(patient.address.as_str())
+            }
+            if !patient.address.is_empty() {
+                bits.push(patient.address.clone());
+            }
+            if !patient.notes.is_empty() {
+                bits.push(patient.notes.clone());
+            }
+            if !bits.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(bits.join("   ·   "))
                             .size(12.0)
                             .color(motif::TEXT_DIM),
-                    );
-                }
-                if !patient.notes.is_empty() {
-                    ui.label(egui::RichText::new(patient.notes.as_str()).italics());
-                }
-            });
+                    )
+                    .wrap(),
+                );
+            }
+        }
+        if back {
+            return;
+        }
+        if session.confirm_delete {
+            ui.colored_label(motif::ALERT, tr("patient_delete_warning"));
+        }
+        if let Some(form) = &mut session.edit_patient {
             ui.add_space(8.0);
-            // Identity corrections and removal (mistaken creation).
+            let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
+            egui::Grid::new("edit_patient")
+                .min_col_width(110.0)
+                .num_columns(2)
+                .spacing([12.0, 8.0])
+                .show(ui, |ui| {
+                    ui.label(dim(tr("form_last_name")));
+                    ui.add_sized(
+                        [240.0, 26.0],
+                        egui::TextEdit::singleline(&mut form.last_name),
+                    );
+                    ui.end_row();
+                    ui.label(dim(tr("form_first_name")));
+                    ui.add_sized(
+                        [240.0, 26.0],
+                        egui::TextEdit::singleline(&mut form.first_name),
+                    );
+                    ui.end_row();
+                    ui.label(dim(tr("form_birth")));
+                    ui.add_sized(
+                        [240.0, 26.0],
+                        egui::TextEdit::singleline(&mut form.birth_date)
+                            .hint_text(tr("form_birth_hint")),
+                    );
+                    ui.end_row();
+                    ui.label(dim(tr("form_phone")));
+                    ui.add_sized(
+                        [240.0, 26.0],
+                        egui::TextEdit::singleline(&mut form.phone)
+                            .hint_text(tr("form_phone_hint")),
+                    );
+                    ui.end_row();
+                    ui.label(dim(tr("form_comment")));
+                    ui.add_sized(
+                        [240.0, 26.0],
+                        egui::TextEdit::singleline(&mut form.notes)
+                            .hint_text(tr("form_comment_hint")),
+                    );
+                    ui.end_row();
+                    ui.label(dim(tr("form_physician")));
+                    ui.add_sized(
+                        [240.0, 26.0],
+                        egui::TextEdit::singleline(&mut form.physician)
+                            .hint_text(tr("form_physician_hint")),
+                    );
+                    ui.end_row();
+                    ui.label(dim(tr("form_email")));
+                    ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.email));
+                    ui.end_row();
+                    ui.label(dim(tr("form_address")));
+                    ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.address));
+                    ui.end_row();
+                    ui.label(dim(tr("form_situation")));
+                    ui.horizontal(|ui| {
+                        for (code, key) in db::SITUATIONS {
+                            let btn = motif::toggle(ui, tr(key), form.situation == *code);
+                            if btn.clicked() {
+                                form.situation = (*code).to_owned();
+                            }
+                        }
+                        ui.label(dim(tr("form_situation_hint")));
+                    });
+                    ui.end_row();
+                });
+            ui.add_space(6.0);
             ui.horizontal(|ui| {
-                if session.edit_patient.is_none() && motif::button(ui, tr("patient_edit")).clicked()
-                {
-                    start_edit = true;
+                if motif::button(ui, tr("form_save")).clicked() {
+                    save_edit = true;
                 }
-                let del_label = if session.confirm_delete {
-                    tr("patient_delete_confirm")
-                } else {
-                    tr("patient_delete")
-                };
-                if motif::button(ui, del_label).clicked() {
-                    delete_click = true;
+                if motif::button(ui, tr("form_cancel")).clicked() {
+                    cancel_edit = true;
                 }
             });
-            if session.confirm_delete {
-                ui.colored_label(motif::ALERT, tr("patient_delete_warning"));
+            if let Some(err) = &form.error {
+                ui.colored_label(motif::ALERT, err.as_str());
             }
-            if let Some(form) = &mut session.edit_patient {
-                ui.add_space(8.0);
-                let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
-                egui::Grid::new("edit_patient")
-                    .min_col_width(110.0)
-                    .num_columns(2)
-                    .spacing([12.0, 8.0])
-                    .show(ui, |ui| {
-                        ui.label(dim(tr("form_last_name")));
-                        ui.add_sized(
-                            [240.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.last_name),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("form_first_name")));
-                        ui.add_sized(
-                            [240.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.first_name),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("form_birth")));
-                        ui.add_sized(
-                            [240.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.birth_date)
-                                .hint_text(tr("form_birth_hint")),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("form_phone")));
-                        ui.add_sized(
-                            [240.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.phone)
-                                .hint_text(tr("form_phone_hint")),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("form_comment")));
-                        ui.add_sized(
-                            [240.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.notes)
-                                .hint_text(tr("form_comment_hint")),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("form_physician")));
-                        ui.add_sized(
-                            [240.0, 26.0],
-                            egui::TextEdit::singleline(&mut form.physician)
-                                .hint_text(tr("form_physician_hint")),
-                        );
-                        ui.end_row();
-                        ui.label(dim(tr("form_email")));
-                        ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.email));
-                        ui.end_row();
-                        ui.label(dim(tr("form_address")));
-                        ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.address));
-                        ui.end_row();
-                        ui.label(dim(tr("form_situation")));
-                        ui.horizontal(|ui| {
-                            for (code, key) in db::SITUATIONS {
-                                let btn = motif::toggle(ui, tr(key), form.situation == *code);
-                                if btn.clicked() {
-                                    form.situation = (*code).to_owned();
-                                }
-                            }
-                            ui.label(dim(tr("form_situation_hint")));
-                        });
-                        ui.end_row();
-                    });
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    if motif::button(ui, tr("form_save")).clicked() {
-                        save_edit = true;
-                    }
-                    if motif::button(ui, tr("form_cancel")).clicked() {
-                        cancel_edit = true;
-                    }
-                });
-                if let Some(err) = &form.error {
-                    ui.colored_label(motif::ALERT, err.as_str());
-                }
-            }
-            ui.add_space(16.0);
+        }
+        ui.add_space(16.0);
 
-            // Current treatments, linked to the drug base: chips open the
-            // drug card, "×" unlinks, the small picker adds by fuzzy name.
-            {
-                let mut remove_treat: Option<i64> = None;
-                let mut add_treat: Option<i64> = None;
-                let mut open_card: Option<Drug> = None;
-                ui.add_space(4.0);
+        // Current treatments, linked to the drug base: chips open the
+        // drug card, "×" unlinks, the small picker adds by fuzzy name.
+        {
+            let mut remove_treat: Option<i64> = None;
+            let mut add_treat: Option<i64> = None;
+            let mut open_card: Option<Drug> = None;
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(tr("treat_label")).color(motif::TEXT_DIM));
+                for t in &session.patient_treats {
+                    let chip = ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("  {}  ", t.name))
+                                .size(12.0)
+                                .color(egui::Color32::WHITE)
+                                .background_color(motif::ACCENT),
+                        )
+                        .sense(egui::Sense::click()),
+                    );
+                    if chip.on_hover_text(tr("treat_open_tooltip")).clicked() {
+                        open_card = Some(t.clone());
+                    }
+                    let x = ui.add(
+                        egui::Label::new(egui::RichText::new("×").size(12.0))
+                            .sense(egui::Sense::click()),
+                    );
+                    if x.on_hover_text(tr("treat_remove_tooltip")).clicked() {
+                        remove_treat = Some(t.id);
+                    }
+                }
+                ui.add_sized(
+                    [140.0, 20.0],
+                    egui::TextEdit::singleline(&mut session.treat_query)
+                        .hint_text(tr("treat_add_hint")),
+                );
+            });
+            if !session.treat_query.trim().is_empty() {
+                let q = session.treat_query.clone();
+                let mut scored: Vec<(i32, &Drug)> = session
+                    .drugs
+                    .iter()
+                    .filter(|d| session.patient_treats.iter().all(|t| t.id != d.id))
+                    .filter_map(|d| {
+                        let a = fuzzy::score(&q, &d.name);
+                        let b = if d.dci.is_empty() {
+                            None
+                        } else {
+                            fuzzy::score(&q, &d.dci)
+                        };
+                        a.max(b).map(|s| (s, d))
+                    })
+                    .collect();
+                scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(tr("treat_label")).color(motif::TEXT_DIM));
-                    for t in &session.patient_treats {
-                        let chip = ui.add(
+                    for (_, d) in scored.into_iter().take(4) {
+                        let sug = ui.add(
                             egui::Label::new(
-                                egui::RichText::new(format!("  {}  ", t.name))
-                                    .size(12.0)
-                                    .color(egui::Color32::WHITE)
-                                    .background_color(motif::ACCENT),
+                                egui::RichText::new(format!("+ {}", d.name)).size(12.0),
                             )
                             .sense(egui::Sense::click()),
                         );
-                        if chip.on_hover_text(tr("treat_open_tooltip")).clicked() {
-                            open_card = Some(t.clone());
-                        }
-                        let x = ui.add(
-                            egui::Label::new(egui::RichText::new("×").size(12.0))
-                                .sense(egui::Sense::click()),
-                        );
-                        if x.on_hover_text(tr("treat_remove_tooltip")).clicked() {
-                            remove_treat = Some(t.id);
+                        if sug.clicked() {
+                            add_treat = Some(d.id);
                         }
                     }
-                    ui.add_sized(
-                        [140.0, 20.0],
-                        egui::TextEdit::singleline(&mut session.treat_query)
-                            .hint_text(tr("treat_add_hint")),
-                    );
                 });
-                if !session.treat_query.trim().is_empty() {
-                    let q = session.treat_query.clone();
-                    let mut scored: Vec<(i32, &Drug)> = session
-                        .drugs
-                        .iter()
-                        .filter(|d| session.patient_treats.iter().all(|t| t.id != d.id))
-                        .filter_map(|d| {
-                            let a = fuzzy::score(&q, &d.name);
-                            let b = if d.dci.is_empty() {
-                                None
-                            } else {
-                                fuzzy::score(&q, &d.dci)
-                            };
-                            a.max(b).map(|s| (s, d))
-                        })
-                        .collect();
-                    scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
-                    ui.horizontal(|ui| {
-                        for (_, d) in scored.into_iter().take(4) {
-                            let sug = ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(format!("+ {}", d.name)).size(12.0),
-                                )
-                                .sense(egui::Sense::click()),
-                            );
-                            if sug.clicked() {
-                                add_treat = Some(d.id);
-                            }
-                        }
-                    });
-                }
-                if let Some(id) = remove_treat {
-                    if let Err(e) = session.db.remove_patient_drug(patient.id, id) {
-                        session.error = Some(e);
-                    }
-                    session.patient_treats =
-                        session.db.drugs_for_patient(patient.id).unwrap_or_default();
-                }
-                if let Some(id) = add_treat {
-                    if let Err(e) = session.db.add_patient_drug(patient.id, id) {
-                        session.error = Some(e);
-                    }
-                    session.treat_query.clear();
-                    session.patient_treats =
-                        session.db.drugs_for_patient(patient.id).unwrap_or_default();
-                }
-                if let Some(d) = open_card {
-                    session.open_drug_card(d);
-                    session.view = MainView::Drugs;
-                }
             }
-            ui.add_space(10.0);
+            if let Some(id) = remove_treat {
+                if let Err(e) = session.db.remove_patient_drug(patient.id, id) {
+                    session.error = Some(e);
+                }
+                session.patient_treats =
+                    session.db.drugs_for_patient(patient.id).unwrap_or_default();
+            }
+            if let Some(id) = add_treat {
+                if let Err(e) = session.db.add_patient_drug(patient.id, id) {
+                    session.error = Some(e);
+                }
+                session.treat_query.clear();
+                session.patient_treats =
+                    session.db.drugs_for_patient(patient.id).unwrap_or_default();
+            }
+            if let Some(d) = open_card {
+                session.open_drug_card(d);
+                session.view = MainView::Drugs;
+            }
+        }
+        ui.add_space(10.0);
 
-            // Ctrl+N opens the quick picker; the buttons below start an
-            // act directly (spec 3.1).
-            ui.horizontal(|ui| {
-                ui.label(tr("patient_new_interview"));
-                if motif::button(ui, tr("act_picker_open"))
-                    .on_hover_text(tr("act_picker_tooltip"))
-                    .clicked()
-                {
-                    session.act_picker = true;
-                }
-            });
-            let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
-            // (kind, thematic): the direct buttons create a themeless
-            // act, the picker attaches the theme chosen with it.
-            let mut new_act: Option<(InterviewKind, String)> = None;
-            ui.horizontal_wrapped(|ui| {
-                for kind in InterviewKind::ALL {
-                    if motif::button(ui, kind.label()).clicked() {
-                        new_act = Some((kind, String::new()));
-                    }
-                }
-            });
-            if ctrl_n {
+        // Ctrl+N opens the quick picker; the buttons below start an
+        // act directly (spec 3.1).
+        ui.horizontal(|ui| {
+            ui.label(tr("patient_new_interview"));
+            if motif::button(ui, tr("act_picker_open"))
+                .on_hover_text(tr("act_picker_tooltip"))
+                .clicked()
+            {
                 session.act_picker = true;
             }
-            if session.act_picker {
-                if let Some(kind) = act_picker_window(ctx, session) {
-                    new_act = Some((kind, std::mem::take(&mut session.act_theme)));
+        });
+        let ctrl_n = ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::N));
+        // (kind, thematic): the direct buttons create a themeless
+        // act, the picker attaches the theme chosen with it.
+        let mut new_act: Option<(InterviewKind, String)> = None;
+        ui.horizontal_wrapped(|ui| {
+            for kind in InterviewKind::ALL {
+                if motif::button(ui, kind.label()).clicked() {
+                    new_act = Some((kind, String::new()));
                 }
             }
-            if let Some((kind, theme)) = new_act {
-                // Convention rule: N acts per année d'accompagnement,
-                // next cycle at least 12 months after the first act.
-                let months = config.rules.cycle_months.max(1);
-                // How many acts the year allows: the convention's
-                // sequence for an accompaniment theme, the officine's
-                // own quota for the rest.
-                let dates_so_far = session
+        });
+        if ctrl_n {
+            session.act_picker = true;
+        }
+        if session.act_picker {
+            if let Some(kind) = act_picker_window(ctx, session) {
+                new_act = Some((kind, std::mem::take(&mut session.act_theme)));
+            }
+        }
+        if let Some((kind, theme)) = new_act {
+            // Convention rule: N acts per année d'accompagnement,
+            // next cycle at least 12 months after the first act.
+            let months = config.rules.cycle_months.max(1);
+            // How many acts the year allows: the convention's
+            // sequence for an accompaniment theme, the officine's
+            // own quota for the rest.
+            let dates_so_far = session
+                .db
+                .interview_dates_for(patient.id, kind)
+                .unwrap_or_default();
+            let year_now = db::cycle_positions(&dates_so_far, months)
+                .last()
+                .map(|(y, _)| *y)
+                .unwrap_or(0);
+            // « Autres anticancéreux » may close a sequence early,
+            // so a completed one simply opens the next: no quota to
+            // enforce there.
+            let per_year = if kind.sequence_may_finish_early() {
+                0
+            } else {
+                config.sequence_len(kind, year_now) as u32
+            };
+            let blocked = if per_year > 0 {
+                let dates = session
                     .db
                     .interview_dates_for(patient.id, kind)
                     .unwrap_or_default();
-                let year_now = db::cycle_positions(&dates_so_far, months)
-                    .last()
-                    .map(|(y, _)| *y)
-                    .unwrap_or(0);
-                // « Autres anticancéreux » may close a sequence early,
-                // so a completed one simply opens the next: no quota to
-                // enforce there.
-                let per_year = if kind.sequence_may_finish_early() {
-                    0
-                } else {
-                    config.sequence_len(kind, year_now) as u32
-                };
-                let blocked = if per_year > 0 {
-                    let dates = session
-                        .db
-                        .interview_dates_for(patient.id, kind)
-                        .unwrap_or_default();
-                    let today = session.db.today_iso().unwrap_or_default();
-                    db::rule_next_allowed(&dates, &today, per_year, months)
-                } else {
-                    None
-                };
-                match blocked {
-                    // "Informer" states the rule but never stops the
-                    // act; "avertir" asks for a confirmation; "refuser"
-                    // declines, with no override button.
-                    Some(_) if config.rules.enforcement == RuleEnforcement::Inform => {
-                        session.rule_block = None;
-                        match session.db.add_interview_themed(patient.id, kind, &theme) {
-                            Ok(_) => {
-                                session.reload_interviews(patient.id);
-                                session.error =
-                                    Some(trn("rule_informed", &[&kind.label(), &per_year]));
-                            }
-                            Err(e) => session.error = Some(e),
+                let today = session.db.today_iso().unwrap_or_default();
+                db::rule_next_allowed(&dates, &today, per_year, months)
+            } else {
+                None
+            };
+            match blocked {
+                // "Informer" states the rule but never stops the
+                // act; "avertir" asks for a confirmation; "refuser"
+                // declines, with no override button.
+                Some(_) if config.rules.enforcement == RuleEnforcement::Inform => {
+                    session.rule_block = None;
+                    match session.db.add_interview_themed(patient.id, kind, &theme) {
+                        Ok(_) => {
+                            session.reload_interviews(patient.id);
+                            session.error = Some(trn("rule_informed", &[&kind.label(), &per_year]));
                         }
-                    }
-                    Some(next) => {
-                        session.rule_block = Some((
-                            kind,
-                            theme,
-                            trn(
-                                "rule_blocked",
-                                &[&kind.label(), &per_year, &db::format_french_date(&next)],
-                            ),
-                        ));
-                    }
-                    None => {
-                        session.rule_block = None;
-                        match session.db.add_interview_themed(patient.id, kind, &theme) {
-                            Ok(_) => session.reload_interviews(patient.id),
-                            Err(e) => session.error = Some(e),
-                        }
+                        Err(e) => session.error = Some(e),
                     }
                 }
-            }
-            if let Some((kind, theme, msg)) = session.rule_block.clone() {
-                ui.add_space(4.0);
-                ui.colored_label(motif::ALERT, msg.as_str());
-                if config.rules.enforcement == RuleEnforcement::Block {
-                    ui.label(
-                        egui::RichText::new(tr("rule_blocked_hard"))
-                            .size(11.0)
-                            .color(motif::TEXT_DIM),
-                    );
-                } else if motif::button(ui, tr("rule_override")).clicked() {
+                Some(next) => {
+                    session.rule_block = Some((
+                        kind,
+                        theme,
+                        trn(
+                            "rule_blocked",
+                            &[&kind.label(), &per_year, &db::format_french_date(&next)],
+                        ),
+                    ));
+                }
+                None => {
                     session.rule_block = None;
                     match session.db.add_interview_themed(patient.id, kind, &theme) {
                         Ok(_) => session.reload_interviews(patient.id),
@@ -2874,69 +3657,40 @@ impl App {
                     }
                 }
             }
-
-            // Eligibility, as the memo states it: the bilan partagé de
-            // médication is for the patient on at least five treatments
-            // for six months or more. The linked treatments are what the
-            // app knows, so this informs rather than blocks.
-            if session.patient_treats.len() < db::BPM_MIN_TREATMENTS {
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new(trn(
-                        "rule_bpm_eligibility",
-                        &[&db::BPM_MIN_TREATMENTS, &session.patient_treats.len()],
-                    ))
-                    .size(11.0)
-                    .color(motif::TEXT_DIM),
-                );
-            }
-
-            ui.add_space(14.0);
-            // The journal sits under the acts: the reason to open a
-            // fiche is the entretien in progress, not last week's note.
-            // Dated notes journal for this patient.
-            motif::section(ui, tr("notes_section"));
+        }
+        if let Some((kind, theme, msg)) = session.rule_block.clone() {
             ui.add_space(4.0);
-            {
-                let (add, delete) = notes_box(
-                    ui,
-                    "patient_notes",
-                    &session.patient_notes,
-                    &mut session.note_text,
-                    &mut session.note_confirm,
-                    96.0,
-                    true,
+            ui.colored_label(motif::ALERT, msg.as_str());
+            if config.rules.enforcement == RuleEnforcement::Block {
+                ui.label(
+                    egui::RichText::new(tr("rule_blocked_hard"))
+                        .size(11.0)
+                        .color(motif::TEXT_DIM),
                 );
-                if let Some(body) = add {
-                    if let Err(e) =
-                        session
-                            .db
-                            .add_note(NoteSubject::Patient, patient.id, operator, &body)
-                    {
-                        session.error = Some(e);
-                    }
-                    session.note_text.clear();
-                    session.patient_notes = session
-                        .db
-                        .notes_for(NoteSubject::Patient, patient.id)
-                        .unwrap_or_default();
-                }
-                if let Some(id) = delete {
-                    if let Err(e) = session.db.delete_note(id) {
-                        session.error = Some(e);
-                    }
-                    session.patient_notes = session
-                        .db
-                        .notes_for(NoteSubject::Patient, patient.id)
-                        .unwrap_or_default();
+            } else if motif::button(ui, tr("rule_override")).clicked() {
+                session.rule_block = None;
+                match session.db.add_interview_themed(patient.id, kind, &theme) {
+                    Ok(_) => session.reload_interviews(patient.id),
+                    Err(e) => session.error = Some(e),
                 }
             }
+        }
 
-            ui.add_space(16.0);
-            if session.viewing_interviews.is_empty() {
-                ui.label(tr("patient_no_interviews"));
-            }
-        });
+        // Eligibility, as the memo states it: the bilan partagé de
+        // médication is for the patient on at least five treatments
+        // for six months or more. The linked treatments are what the
+        // app knows, so this informs rather than blocks.
+        if session.patient_treats.len() < db::BPM_MIN_TREATMENTS {
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(trn(
+                    "rule_bpm_eligibility",
+                    &[&db::BPM_MIN_TREATMENTS, &session.patient_treats.len()],
+                ))
+                .size(11.0)
+                .color(motif::TEXT_DIM),
+            );
+        }
 
         if start_edit {
             session.confirm_delete = false;
@@ -3020,7 +3774,8 @@ impl App {
                         if let Ok(list) = session.db.patients() {
                             session.set_patients(list);
                         }
-                        return;
+                        // `viewing` is now None: patient_view checks it
+                        // and skips the acts and journal panes.
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -3028,8 +3783,16 @@ impl App {
                 session.confirm_delete = true;
             }
         }
+    }
 
-        ui.add_space(6.0);
+    /// The acts table: every entretien of this file, its state, its
+    /// fee rank, its RDV.
+    fn patient_acts_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+    ) {
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut regress: Option<(i64, db::InterviewState)> = None;
@@ -3050,270 +3813,259 @@ impl App {
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
-        motif::column(ui, 900.0, |ui| {
-            motif::section(ui, tr("itv_section"));
-            ui.add_space(4.0);
-            // Long histories must not push the table off the card.
-            egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - 20.0)
-                .show(ui, |ui| {
-                    egui::Grid::new("interviews")
-                        .num_columns(10)
-                        .spacing([8.0, 6.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            if !interviews.is_empty() {
-                                for header in [
-                                    tr("itv_header_kind"),
-                                    tr("itv_header_act"),
-                                    tr("itv_header_theme"),
-                                    tr("itv_header_created"),
-                                    tr("itv_header_state"),
-                                    tr("itv_header_advance"),
-                                    tr("itv_header_sheet"),
-                                    tr("itv_header_duration"),
-                                    tr("itv_header_rdv"),
-                                    "",
-                                ] {
-                                    ui.label(
-                                        egui::RichText::new(header)
-                                            .size(11.0)
-                                            .color(motif::TEXT_DIM),
-                                    );
-                                }
-                                ui.end_row();
-                            }
-                            for itv in &interviews {
-                                let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
-                                // The theme, and nothing else: the act
-                                // code and the two flags have a column
-                                // of their own, so the row keeps one
-                                // line and the columns stay aligned.
-                                ui.label(egui::RichText::new(itv.kind.label()).strong());
-                                // The convention's act code, the step it
-                                // pays, and the two flags that change
-                                // what is billed.
-                                ui.horizontal(|ui| {
-                                    let step_name = itv
-                                        .kind
-                                        .step_label(year, rank)
-                                        .map(|s| s.to_owned())
-                                        .unwrap_or_else(|| rank_label(rank));
-                                    let code = itv.kind.act_code(year).unwrap_or("—");
-                                    ui.label(
-                                        egui::RichText::new(format!("{code} · {}", rank + 1))
-                                            .size(11.0)
-                                            .strong()
-                                            .color(motif::ACCENT),
-                                    )
-                                    .on_hover_text(format!(
-                                        "{step_name}\n{}",
-                                        trn(
-                                            "itv_fee_tooltip",
-                                            &[
-                                                &format!(
-                                                    "{:.2} €",
-                                                    config.act_total(
-                                                        itv.kind, year, rank, itv.remote
-                                                    )
-                                                ),
-                                                &(year + 1),
-                                                &itv.kind.coverage_rate(),
-                                            ],
-                                        )
-                                    ));
-                                    // Held remotely: the convention bills
-                                    // TPH on top of the act code.
-                                    if itv.kind.is_accompaniment()
-                                        && motif::toggle(ui, db::REMOTE_CODE, itv.remote)
-                                            .on_hover_text(trf(
-                                                "itv_remote_tooltip",
-                                                format!("{:.2} €", config.billing.teleconsultation),
-                                            ))
-                                            .clicked()
-                                    {
-                                        set_remote = Some((itv.id, !itv.remote, itv.remote));
-                                    }
-                                    // Anticancéreux only: the memo keeps
-                                    // the treatment-change derogation
-                                    // for those two themes alone.
-                                    if itv.kind.allows_treatment_change() {
-                                        if motif::toggle(
-                                            ui,
-                                            tr("itv_change_short_label"),
-                                            itv.treatment_change,
-                                        )
-                                        .on_hover_text(tr("itv_change_tooltip"))
-                                        .clicked()
-                                        {
-                                            set_change = Some((
-                                                itv.id,
-                                                !itv.treatment_change,
-                                                itv.treatment_change,
-                                            ));
-                                        }
-                                        // The derogation has conditions;
-                                        // say which one is not met yet
-                                        // rather than billing blind.
-                                        if let Some((before, after)) = treatment_change_shortfall(
-                                            &interviews,
-                                            itv,
-                                            config.rules.cycle_months.max(1),
-                                        ) {
-                                            ui.label(
-                                                egui::RichText::new("!")
-                                                    .strong()
-                                                    .color(motif::ALERT),
-                                            )
-                                            .on_hover_text(trn(
-                                                "itv_change_short",
-                                                &[&before, &after],
-                                            ));
-                                        }
-                                    }
-                                });
-                                let mut theme = itv.theme.clone();
-                                if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
-                                    set_theme = Some((itv.id, theme, itv.theme.clone()));
-                                }
-                                ui.label(db::format_french_date(
-                                    &itv.created_at[..10.min(itv.created_at.len())],
-                                ))
-                                .on_hover_text(tr("itv_created_tooltip"));
+        // The table is wide by nature — ten columns, most of them
+        // buttons. It scrolls both ways rather than losing its right
+        // hand columns silently to whatever width the pane happens to
+        // have.
+        egui::ScrollArea::both()
+            .id_salt("interviews")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                egui::Grid::new("interviews")
+                    .num_columns(10)
+                    .spacing([8.0, 6.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        if !interviews.is_empty() {
+                            for header in [
+                                tr("itv_header_kind"),
+                                tr("itv_header_act"),
+                                tr("itv_header_theme"),
+                                tr("itv_header_created"),
+                                tr("itv_header_state"),
+                                tr("itv_header_advance"),
+                                tr("itv_header_sheet"),
+                                tr("itv_header_duration"),
+                                tr("itv_header_rdv"),
+                                "",
+                            ] {
                                 ui.label(
-                                    egui::RichText::new(itv.state.label())
-                                        .color(egui::Color32::WHITE)
-                                        .background_color(motif::ACCENT),
+                                    egui::RichText::new(header)
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
                                 );
-                                ui.horizontal(|ui| {
-                                    // A misclicked advance is undone with the small
-                                    // "«" button (billing states must be correctable).
-                                    if itv.state.prev().is_some() {
-                                        let back = motif::button(ui, "«");
-                                        if back.on_hover_text(tr("itv_back_tooltip")).clicked() {
-                                            regress = Some((itv.id, itv.state));
-                                        }
-                                    }
-                                    if let Some(next) = itv.state.next() {
-                                        if motif::button(ui, &trf("itv_advance", next.label()))
-                                            .clicked()
-                                        {
-                                            advance = Some((itv.id, itv.state));
-                                        }
-                                    } else {
-                                        ui.label(tr("itv_done"));
-                                    }
-                                });
-                                ui.horizontal(|ui| {
-                                    if motif::button(ui, tr("itv_pdf"))
-                                        .on_hover_text(tr("itv_pdf_tooltip"))
-                                        .clicked()
-                                    {
-                                        print_req = Some((
-                                            itv.kind,
-                                            itv.scheduled_date.clone(),
-                                            itv.theme.clone(),
-                                        ));
-                                    }
-                                    if motif::button(ui, tr("itv_cr"))
-                                        .on_hover_text(tr("itv_cr_tooltip"))
-                                        .clicked()
-                                    {
-                                        cr_req = Some((
-                                            itv.kind,
-                                            itv.scheduled_date.clone(),
-                                            itv.theme.clone(),
-                                        ));
-                                    }
-                                });
-                                let mut minutes = itv.duration_minutes;
-                                let drag = ui.add(
-                                    egui::DragValue::new(&mut minutes)
-                                        .range(0..=480)
-                                        .suffix(tr("itv_minutes_suffix")),
-                                );
-                                if drag.changed() {
-                                    set_duration = Some((itv.id, minutes, itv.duration_minutes));
-                                }
-                                // Planned date: free text, committed when it parses
-                                // (or empties) and the field loses focus.
-                                let text = session.date_edits.entry(itv.id).or_insert_with(|| {
-                                    itv.scheduled_date
-                                        .as_deref()
-                                        .map(db::format_french_date)
-                                        .unwrap_or_default()
-                                });
-                                let field = ui.add_sized(
-                                    [100.0, 22.0],
-                                    egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
-                                );
-                                // The hour sits with its date; it only
-                                // means something once one is set.
-                                if itv.scheduled_date.is_some() {
-                                    let mut hour = itv.scheduled_time.clone();
-                                    let h = ui.add_sized(
-                                        [52.0, 22.0],
-                                        egui::TextEdit::singleline(&mut hour)
-                                            .hint_text(tr("agenda_hour_hint")),
-                                    );
-                                    if h.lost_focus() && hour != itv.scheduled_time {
-                                        let parsed = if hour.trim().is_empty() {
-                                            Some(String::new())
-                                        } else {
-                                            db::parse_hour(&hour)
-                                        };
-                                        if let Some(value) = parsed {
-                                            set_hour =
-                                                Some((itv.id, value, itv.scheduled_time.clone()));
-                                        }
-                                    }
-                                }
-                                if field.lost_focus() {
-                                    let year = session.db.current_year();
-                                    if text.trim().is_empty() {
-                                        if itv.scheduled_date.is_some() {
-                                            set_date =
-                                                Some((itv.id, None, itv.scheduled_date.clone()));
-                                        }
-                                    } else if let Ok(iso) =
-                                        // RDV dates are always 20xx ("26" → 2026).
-                                        db::parse_french_date(
-                                            text,
-                                            year,
-                                            db::YearHint::Future,
-                                        )
-                                    {
-                                        if itv.scheduled_date.as_deref() != Some(iso.as_str()) {
-                                            set_date = Some((
-                                                itv.id,
-                                                Some(iso),
-                                                itv.scheduled_date.clone(),
-                                            ));
-                                        }
-                                    }
-                                }
-                                // Remove a mistakenly added interview (two clicks).
-                                let confirm = session.confirm_delete_itv == Some(itv.id);
-                                let del = motif::button(
-                                    ui,
-                                    if confirm {
-                                        tr("itv_delete_confirm")
-                                    } else {
-                                        tr("itv_delete")
-                                    },
-                                );
-                                if del.on_hover_text(tr("itv_delete_tooltip")).clicked() {
-                                    if confirm {
-                                        delete_itv = Some((itv.id, itv.state));
-                                    } else {
-                                        session.confirm_delete_itv = Some(itv.id);
-                                    }
-                                }
-                                ui.end_row();
                             }
-                        });
-                });
-        });
+                            ui.end_row();
+                        }
+                        for itv in &interviews {
+                            let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
+                            // The theme, and nothing else: the act
+                            // code and the two flags have a column
+                            // of their own, so the row keeps one
+                            // line and the columns stay aligned.
+                            ui.label(egui::RichText::new(itv.kind.label()).strong());
+                            // The convention's act code, the step it
+                            // pays, and the two flags that change
+                            // what is billed.
+                            ui.horizontal(|ui| {
+                                let step_name = itv
+                                    .kind
+                                    .step_label(year, rank)
+                                    .map(|s| s.to_owned())
+                                    .unwrap_or_else(|| rank_label(rank));
+                                let code = itv.kind.act_code(year).unwrap_or("—");
+                                ui.label(
+                                    egui::RichText::new(format!("{code} · {}", rank + 1))
+                                        .size(11.0)
+                                        .strong()
+                                        .color(motif::ACCENT),
+                                )
+                                .on_hover_text(format!(
+                                    "{step_name}\n{}",
+                                    trn(
+                                        "itv_fee_tooltip",
+                                        &[
+                                            &format!(
+                                                "{:.2} €",
+                                                config.act_total(itv.kind, year, rank, itv.remote)
+                                            ),
+                                            &(year + 1),
+                                            &itv.kind.coverage_rate(),
+                                        ],
+                                    )
+                                ));
+                                // Held remotely: the convention bills
+                                // TPH on top of the act code.
+                                if itv.kind.is_accompaniment()
+                                    && motif::toggle(ui, db::REMOTE_CODE, itv.remote)
+                                        .on_hover_text(trf(
+                                            "itv_remote_tooltip",
+                                            format!("{:.2} €", config.billing.teleconsultation),
+                                        ))
+                                        .clicked()
+                                {
+                                    set_remote = Some((itv.id, !itv.remote, itv.remote));
+                                }
+                                // Anticancéreux only: the memo keeps
+                                // the treatment-change derogation
+                                // for those two themes alone.
+                                if itv.kind.allows_treatment_change() {
+                                    if motif::toggle(
+                                        ui,
+                                        tr("itv_change_short_label"),
+                                        itv.treatment_change,
+                                    )
+                                    .on_hover_text(tr("itv_change_tooltip"))
+                                    .clicked()
+                                    {
+                                        set_change = Some((
+                                            itv.id,
+                                            !itv.treatment_change,
+                                            itv.treatment_change,
+                                        ));
+                                    }
+                                    // The derogation has conditions;
+                                    // say which one is not met yet
+                                    // rather than billing blind.
+                                    if let Some((before, after)) = treatment_change_shortfall(
+                                        &interviews,
+                                        itv,
+                                        config.rules.cycle_months.max(1),
+                                    ) {
+                                        ui.label(
+                                            egui::RichText::new("!").strong().color(motif::ALERT),
+                                        )
+                                        .on_hover_text(trn("itv_change_short", &[&before, &after]));
+                                    }
+                                }
+                            });
+                            let mut theme = itv.theme.clone();
+                            if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
+                                set_theme = Some((itv.id, theme, itv.theme.clone()));
+                            }
+                            ui.label(db::format_french_date(
+                                &itv.created_at[..10.min(itv.created_at.len())],
+                            ))
+                            .on_hover_text(tr("itv_created_tooltip"));
+                            ui.label(
+                                egui::RichText::new(itv.state.label())
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(motif::ACCENT),
+                            );
+                            ui.horizontal(|ui| {
+                                // A misclicked advance is undone with the small
+                                // "«" button (billing states must be correctable).
+                                if itv.state.prev().is_some() {
+                                    let back = motif::button(ui, "«");
+                                    if back.on_hover_text(tr("itv_back_tooltip")).clicked() {
+                                        regress = Some((itv.id, itv.state));
+                                    }
+                                }
+                                if let Some(next) = itv.state.next() {
+                                    if motif::button(ui, &trf("itv_advance", next.label()))
+                                        .clicked()
+                                    {
+                                        advance = Some((itv.id, itv.state));
+                                    }
+                                } else {
+                                    ui.label(tr("itv_done"));
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, tr("itv_pdf"))
+                                    .on_hover_text(tr("itv_pdf_tooltip"))
+                                    .clicked()
+                                {
+                                    print_req = Some((
+                                        itv.kind,
+                                        itv.scheduled_date.clone(),
+                                        itv.theme.clone(),
+                                    ));
+                                }
+                                if motif::button(ui, tr("itv_cr"))
+                                    .on_hover_text(tr("itv_cr_tooltip"))
+                                    .clicked()
+                                {
+                                    cr_req = Some((
+                                        itv.kind,
+                                        itv.scheduled_date.clone(),
+                                        itv.theme.clone(),
+                                    ));
+                                }
+                            });
+                            let mut minutes = itv.duration_minutes;
+                            let drag = ui.add(
+                                egui::DragValue::new(&mut minutes)
+                                    .range(0..=480)
+                                    .suffix(tr("itv_minutes_suffix")),
+                            );
+                            if drag.changed() {
+                                set_duration = Some((itv.id, minutes, itv.duration_minutes));
+                            }
+                            // Planned date: free text, committed when it parses
+                            // (or empties) and the field loses focus.
+                            let text = session.date_edits.entry(itv.id).or_insert_with(|| {
+                                itv.scheduled_date
+                                    .as_deref()
+                                    .map(db::format_french_date)
+                                    .unwrap_or_default()
+                            });
+                            let field = ui.add_sized(
+                                [100.0, 22.0],
+                                egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                            );
+                            // The hour sits with its date; it only
+                            // means something once one is set.
+                            if itv.scheduled_date.is_some() {
+                                let mut hour = itv.scheduled_time.clone();
+                                let h = ui.add_sized(
+                                    [52.0, 22.0],
+                                    egui::TextEdit::singleline(&mut hour)
+                                        .hint_text(tr("agenda_hour_hint")),
+                                );
+                                if h.lost_focus() && hour != itv.scheduled_time {
+                                    let parsed = if hour.trim().is_empty() {
+                                        Some(String::new())
+                                    } else {
+                                        db::parse_hour(&hour)
+                                    };
+                                    if let Some(value) = parsed {
+                                        set_hour =
+                                            Some((itv.id, value, itv.scheduled_time.clone()));
+                                    }
+                                }
+                            }
+                            if field.lost_focus() {
+                                let year = session.db.current_year();
+                                if text.trim().is_empty() {
+                                    if itv.scheduled_date.is_some() {
+                                        set_date = Some((itv.id, None, itv.scheduled_date.clone()));
+                                    }
+                                } else if let Ok(iso) =
+                                    // RDV dates are always 20xx ("26" → 2026).
+                                    db::parse_french_date(
+                                        text,
+                                        year,
+                                        db::YearHint::Future,
+                                    )
+                                {
+                                    if itv.scheduled_date.as_deref() != Some(iso.as_str()) {
+                                        set_date =
+                                            Some((itv.id, Some(iso), itv.scheduled_date.clone()));
+                                    }
+                                }
+                            }
+                            // Remove a mistakenly added interview (two clicks).
+                            let confirm = session.confirm_delete_itv == Some(itv.id);
+                            let del = motif::button(
+                                ui,
+                                if confirm {
+                                    tr("itv_delete_confirm")
+                                } else {
+                                    tr("itv_delete")
+                                },
+                            );
+                            if del.on_hover_text(tr("itv_delete_tooltip")).clicked() {
+                                if confirm {
+                                    delete_itv = Some((itv.id, itv.state));
+                                } else {
+                                    session.confirm_delete_itv = Some(itv.id);
+                                }
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
         let stale_msg = tr("itv_stale");
         if let Some((id, changed, expected)) = set_change {
             match session.db.set_treatment_change(id, changed, expected) {
@@ -3483,10 +4235,57 @@ impl App {
                 session.error = Some(e);
             }
         }
+        if session.viewing_interviews.is_empty() {
+            ui.label(tr("patient_no_interviews"));
+        }
         if let Some(err) = &session.error {
-            ui.vertical_centered(|ui| {
-                ui.colored_label(motif::ALERT, err.as_str());
-            });
+            ui.colored_label(motif::ALERT, err.as_str());
+        }
+    }
+
+    /// The patient's dated notes journal.
+    fn patient_notes_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        operator: &str,
+    ) {
+        {
+            // The journal fills its pane: it used to be a 96 px box
+            // whatever room it had, with grey underneath it.
+            let height = (ui.available_height() - 42.0).clamp(50.0, 420.0);
+            let (add, delete) = notes_box(
+                ui,
+                "patient_notes",
+                &session.patient_notes,
+                &mut session.note_text,
+                &mut session.note_confirm,
+                height,
+                true,
+            );
+            if let Some(body) = add {
+                if let Err(e) =
+                    session
+                        .db
+                        .add_note(NoteSubject::Patient, patient.id, operator, &body)
+                {
+                    session.error = Some(e);
+                }
+                session.note_text.clear();
+                session.patient_notes = session
+                    .db
+                    .notes_for(NoteSubject::Patient, patient.id)
+                    .unwrap_or_default();
+            }
+            if let Some(id) = delete {
+                if let Err(e) = session.db.delete_note(id) {
+                    session.error = Some(e);
+                }
+                session.patient_notes = session
+                    .db
+                    .notes_for(NoteSubject::Patient, patient.id)
+                    .unwrap_or_default();
+            }
         }
     }
 
@@ -4017,9 +4816,7 @@ impl App {
         // compare-and-set writes the panel can make.
         let mut set_time: Option<(i64, String, String)> = None;
         let mut move_rdv: Option<(i64, String, String)> = None;
-        motif::column(ui, 940.0, |ui| {
-            motif::section(ui, &trf("agenda_day_title", db::format_french_date(&day)));
-            ui.add_space(4.0);
+        motif::page(ui, 940.0, |ui| {
             let rdvs: Vec<Appointment> = session
                 .appointments
                 .iter()
@@ -4147,34 +4944,48 @@ impl App {
                 });
             }
             ui.add_space(6.0);
-            ui.horizontal(|ui| {
+            // The category, the hour and the repeat are fixed-size
+            // controls; the title takes whatever the panel has left, so
+            // the row fits a docked column as well as a full window.
+            // Docked, the form breaks into short rows; given a full
+            // window it stays the single line it always was. Either way
+            // nothing runs off the right edge, which is what a fixed
+            // 250 px title field did as soon as the panel was a column.
+            let avail = ui.available_width();
+            let narrow = avail < 560.0;
+            let mut entered = false;
+            let category = |ui: &mut egui::Ui, session: &mut Session| {
                 egui::ComboBox::from_id_salt("event_cat")
                     .selected_text(session.event_category.label())
-                    .width(120.0)
+                    .width(110.0)
                     .show_ui(ui, |ui| {
                         for c in db::EventCategory::ALL {
                             ui.selectable_value(&mut session.event_category, c, c.label());
                         }
                     });
                 ui.add_sized(
-                    [56.0, 24.0],
+                    [52.0, 24.0],
                     egui::TextEdit::singleline(&mut session.event_time)
                         .hint_text(tr("agenda_hour_hint")),
                 );
-                let field = ui.add_sized(
-                    [250.0, 24.0],
+            };
+            let title = |ui: &mut egui::Ui, session: &mut Session, w: f32| -> egui::Response {
+                ui.add_sized(
+                    [w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_title)
                         .hint_text(tr("agenda_event_hint")),
-                );
-                let entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                )
+            };
+            let repeat = |ui: &mut egui::Ui, session: &mut Session| {
                 // Every week, every fortnight, every month or once.
+                let label = match session.event_repeat {
+                    7 => tr("agenda_repeat_week"),
+                    14 => tr("agenda_repeat_fortnight"),
+                    28 => tr("agenda_repeat_month"),
+                    _ => tr("agenda_repeat_once"),
+                };
                 egui::ComboBox::from_id_salt("event_repeat")
-                    .selected_text(match session.event_repeat {
-                        7 => tr("agenda_repeat_week"),
-                        14 => tr("agenda_repeat_fortnight"),
-                        28 => tr("agenda_repeat_month"),
-                        _ => tr("agenda_repeat_once"),
-                    })
+                    .selected_text(label)
                     .width(130.0)
                     .show_ui(ui, |ui| {
                         for (days, label) in [
@@ -4186,12 +4997,32 @@ impl App {
                             ui.selectable_value(&mut session.event_repeat, days, label);
                         }
                     });
-                if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
-                    && !session.event_title.trim().is_empty()
-                {
-                    add_event = true;
-                }
-            });
+            };
+            if narrow {
+                ui.horizontal(|ui| category(ui, session));
+                let field = title(ui, session, (avail - 12.0).max(120.0));
+                entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                ui.horizontal(|ui| {
+                    repeat(ui, session);
+                    if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
+                        && !session.event_title.trim().is_empty()
+                    {
+                        add_event = true;
+                    }
+                });
+            } else {
+                ui.horizontal(|ui| {
+                    category(ui, session);
+                    let field = title(ui, session, (avail - 360.0).clamp(140.0, 420.0));
+                    entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    repeat(ui, session);
+                    if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
+                        && !session.event_title.trim().is_empty()
+                    {
+                        add_event = true;
+                    }
+                });
+            }
             // The day's own notes, same journal widget as everywhere.
             ui.add_space(8.0);
             motif::section(ui, tr("agenda_day_notes"));
@@ -4301,7 +5132,6 @@ impl App {
             session.view = MainView::Search;
             return;
         }
-        let mut print_week = false;
         // Left and right arrows move the week or the month shown.
         if !ctx.wants_keyboard_input() {
             let step = ctx.input(|i| {
@@ -4330,93 +5160,7 @@ impl App {
                 }
             }
         }
-        motif::column(ui, 900.0, |ui| {
-            ui.add_space(24.0);
-            ui.horizontal(|ui| {
-                ui.heading(tr("agenda_title"));
-                if motif::button(ui, tr("agenda_print_week"))
-                    .on_hover_text(tr("agenda_print_week_tooltip"))
-                    .clicked()
-                {
-                    print_week = true;
-                }
-                if !session.appointments.is_empty()
-                    && motif::button(ui, tr("dash_print"))
-                        .on_hover_text(tr("dash_print_tooltip"))
-                        .clicked()
-                {
-                    let today = session
-                        .db
-                        .today_french()
-                        .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
-                    if let Err(e) = crate::pdf::open_appointment_list(&session.appointments, &today)
-                    {
-                        session.error = Some(e);
-                    }
-                }
-            });
-            ui.label(tr("agenda_subtitle"));
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                for (mode, label) in [
-                    (AgendaMode::Day, tr("agenda_mode_day")),
-                    (AgendaMode::Week, tr("agenda_mode_week")),
-                    (AgendaMode::Month, tr("agenda_mode_month")),
-                ] {
-                    let btn = motif::toggle(ui, label, session.agenda_mode == mode);
-                    if btn.clicked() {
-                        session.agenda_mode = mode;
-                        session.agenda_month = mode == AgendaMode::Month;
-                        if mode == AgendaMode::Month && session.agenda_month_days.is_empty() {
-                            session.agenda_month_days = session
-                                .db
-                                .month_grid(session.agenda_month_offset)
-                                .unwrap_or_default();
-                        }
-                    }
-                }
-            });
-            ui.add_space(6.0);
-            // Filter by act kind: an empty set shows everything, so the
-            // agenda opens complete and narrows only on demand.
-            ui.horizontal_wrapped(|ui| {
-                ui.label(
-                    egui::RichText::new(tr("agenda_filter"))
-                        .size(11.0)
-                        .color(motif::TEXT_DIM),
-                );
-                if motif::toggle(
-                    ui,
-                    tr("agenda_filter_all"),
-                    session.agenda_filter.is_empty(),
-                )
-                .on_hover_text(tr("agenda_filter_tooltip"))
-                .clicked()
-                {
-                    session.agenda_filter.clear();
-                }
-                for kind in InterviewKind::ALL {
-                    let on = session.agenda_filter.contains(&kind);
-                    // The same sunken-when-on idiom as everywhere else,
-                    // with the act's own colour as a marker so the
-                    // filter row and the grid read as one thing.
-                    let resp = motif::toggle(ui, kind.label(), on);
-                    let dot = egui::Rect::from_center_size(
-                        egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
-                        egui::vec2(4.0, resp.rect.height() - 10.0),
-                    );
-                    ui.painter().rect_filled(dot, 0.0, kind_color(kind));
-                    if resp.clicked() {
-                        if on {
-                            session.agenda_filter.remove(&kind);
-                        } else {
-                            session.agenda_filter.insert(kind);
-                        }
-                    }
-                }
-            });
-            ui.add_space(8.0);
-        });
+        let mut print_week = false;
         let red = motif::ALERT;
         let mut open_id: Option<i64> = None;
         // The filter applies to every part of the view at once.
@@ -4432,43 +5176,292 @@ impl App {
             .filter(|r| r.date < session.today)
             .cloned()
             .collect();
-        if !overdue.is_empty() {
-            motif::column(ui, 900.0, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        egui::RichText::new(trn(
-                            "agenda_overdue_banner",
-                            &[&overdue.len(), &db::format_french_date(&overdue[0].date)],
-                        ))
-                        .strong()
-                        .color(motif::ALERT),
-                    );
-                    for rdv in overdue.iter().take(4) {
-                        if ui
-                            .selectable_label(
-                                false,
-                                egui::RichText::new(&rdv.patient_name).color(motif::ALERT),
-                            )
-                            .on_hover_text(tr("agenda_overdue_tooltip"))
-                            .clicked()
-                        {
-                            open_id = Some(rdv.patient_id);
-                        }
-                    }
-                    if overdue.len() > 4 {
-                        ui.label(
-                            egui::RichText::new(trf("dash_more", overdue.len() - 4))
-                                .size(11.0)
-                                .color(motif::ALERT),
-                        );
-                    }
-                });
-            });
-            ui.add_space(8.0);
-        }
-
         // The grid's entries that are not acts (formation, réunion…).
         let grid_events = session.load_grid_events();
+        if session.agenda_day.is_empty() {
+            session.agenda_day = session.today.clone();
+            session.load_day();
+        }
+
+        // A control band across the top, then the calendar and the
+        // selected day side by side. The five sections used to run down
+        // one 900 px column, which left the week grid 150 px tall and
+        // pushed the day's own plan below the fold.
+        let body = motif::visible_rect(ui).shrink2(egui::vec2(4.0, 0.0));
+        // Both rows of the band wrap: measure them rather than assume
+        // one line each, which cut the last act kinds off the bottom.
+        let filter_lines = Self::wrapped_rows(
+            ui,
+            body.width() - 60.0,
+            std::iter::once(tr("agenda_filter_all"))
+                .chain(InterviewKind::ALL.iter().map(|k| k.label())),
+        );
+        let control_lines = Self::wrapped_rows(
+            ui,
+            body.width() - 20.0,
+            [
+                tr("agenda_mode_day"),
+                tr("agenda_mode_week"),
+                tr("agenda_mode_month"),
+                "‹",
+                tr("agenda_this_week"),
+                "›",
+                tr("agenda_week_of"),
+                tr("dash_print"),
+                tr("agenda_print_week"),
+            ]
+            .into_iter(),
+        );
+        let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y + 8.0;
+        let want =
+            row * (control_lines + filter_lines) + if overdue.is_empty() { 6.0 } else { row + 6.0 };
+        // However much the band would like, the calendar keeps most of
+        // the screen: past the cap the band scrolls instead.
+        let band_h = want.min((body.height() * 0.4).max(120.0));
+        let rows = motif::split_rows(body, &[band_h, 0.0], 6.0);
+        // Set inside the band's closure, applied after it: the closure
+        // already holds `session` uniquely.
+        let mut banner_open: Option<i64> = None;
+        motif::panel(ui, rows[0], None, |ui| {
+            let inner = ui.max_rect();
+            egui::ScrollArea::vertical()
+                .id_salt("agenda_band")
+                .show(ui, |ui| {
+                    ui.set_max_width(inner.width());
+                    ui.horizontal_wrapped(|ui| {
+                        for (mode, label) in [
+                            (AgendaMode::Day, tr("agenda_mode_day")),
+                            (AgendaMode::Week, tr("agenda_mode_week")),
+                            (AgendaMode::Month, tr("agenda_mode_month")),
+                        ] {
+                            let btn = motif::toggle(ui, label, session.agenda_mode == mode);
+                            if btn.clicked() {
+                                session.agenda_mode = mode;
+                                session.agenda_month = mode == AgendaMode::Month;
+                                if mode == AgendaMode::Month && session.agenda_month_days.is_empty()
+                                {
+                                    session.agenda_month_days = session
+                                        .db
+                                        .month_grid(session.agenda_month_offset)
+                                        .unwrap_or_default();
+                                }
+                            }
+                        }
+                        ui.add_space(10.0);
+                        Self::agenda_nav_buttons(ui, session);
+                        {
+                            if motif::button(ui, tr("agenda_print_week"))
+                                .on_hover_text(tr("agenda_print_week_tooltip"))
+                                .clicked()
+                            {
+                                print_week = true;
+                            }
+                            if !session.appointments.is_empty()
+                                && motif::button(ui, tr("dash_print"))
+                                    .on_hover_text(tr("dash_print_tooltip"))
+                                    .clicked()
+                            {
+                                let today = session
+                                    .db
+                                    .today_french()
+                                    .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+                                if let Err(e) =
+                                    crate::pdf::open_appointment_list(&session.appointments, &today)
+                                {
+                                    session.error = Some(e);
+                                }
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
+                    // Filter by act kind: an empty set shows everything, so the
+                    // agenda opens complete and narrows only on demand.
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(tr("agenda_filter"))
+                                .size(11.0)
+                                .color(motif::TEXT_DIM),
+                        );
+                        if motif::toggle(
+                            ui,
+                            tr("agenda_filter_all"),
+                            session.agenda_filter.is_empty(),
+                        )
+                        .on_hover_text(tr("agenda_filter_tooltip"))
+                        .clicked()
+                        {
+                            session.agenda_filter.clear();
+                        }
+                        for kind in InterviewKind::ALL {
+                            let on = session.agenda_filter.contains(&kind);
+                            // The same sunken-when-on idiom as everywhere else,
+                            // with the act's own colour as a marker so the
+                            // filter row and the grid read as one thing.
+                            let resp = motif::toggle(ui, kind.label(), on);
+                            let dot = egui::Rect::from_center_size(
+                                egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
+                                egui::vec2(4.0, resp.rect.height() - 10.0),
+                            );
+                            ui.painter().rect_filled(dot, 0.0, kind_color(kind));
+                            if resp.clicked() {
+                                if on {
+                                    session.agenda_filter.remove(&kind);
+                                } else {
+                                    session.agenda_filter.insert(kind);
+                                }
+                            }
+                        }
+                    });
+                    if !overdue.is_empty() {
+                        {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(trn(
+                                        "agenda_overdue_banner",
+                                        &[
+                                            &overdue.len(),
+                                            &db::format_french_date(&overdue[0].date),
+                                        ],
+                                    ))
+                                    .strong()
+                                    .color(motif::ALERT),
+                                );
+                                for rdv in overdue.iter().take(4) {
+                                    if ui
+                                        .selectable_label(
+                                            false,
+                                            egui::RichText::new(&rdv.patient_name)
+                                                .color(motif::ALERT),
+                                        )
+                                        .on_hover_text(tr("agenda_overdue_tooltip"))
+                                        .clicked()
+                                    {
+                                        banner_open = Some(rdv.patient_id);
+                                    }
+                                }
+                                if overdue.len() > 4 {
+                                    ui.label(
+                                        egui::RichText::new(trf("dash_more", overdue.len() - 4))
+                                            .size(11.0)
+                                            .color(motif::ALERT),
+                                    );
+                                }
+                            });
+                        }
+                    }
+                });
+        });
+
+        open_id = open_id.or(banner_open);
+
+        let work = rows[1];
+        // The day panel is a fixed column of forms; the calendar takes
+        // everything else.
+        let wide = work.width() >= 860.0;
+        let (cal, day) = if wide {
+            let day_w = (work.width() * 0.3).clamp(300.0, 420.0);
+            (
+                egui::Rect::from_min_max(
+                    work.min,
+                    egui::pos2(work.right() - day_w - 8.0, work.bottom()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(work.right() - day_w, work.top()), work.max),
+            )
+        } else {
+            let day_h = (work.height() * 0.42).clamp(150.0, 300.0);
+            let stack = motif::split_rows(work, &[0.0, day_h], 8.0);
+            (stack[0], stack[1])
+        };
+
+        let mut pick_day: Option<String> = None;
+        let cal_title = match session.agenda_mode {
+            AgendaMode::Day => tr("agenda_mode_day"),
+            AgendaMode::Week => tr("agenda_mode_week"),
+            AgendaMode::Month => tr("agenda_mode_month"),
+        };
+        motif::panel(ui, cal, Some(cal_title), |ui| {
+            let rect = ui.max_rect();
+            match session.agenda_mode {
+                AgendaMode::Day => {
+                    motif::inside(ui, rect, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("agenda_day_plan")
+                            .show(ui, |ui| {
+                                Self::agenda_day_plan(
+                                    ui,
+                                    session,
+                                    &grid_events,
+                                    config,
+                                    &mut open_id,
+                                );
+                            });
+                    });
+                }
+                AgendaMode::Month => {
+                    motif::inside(ui, rect, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("agenda_month")
+                            .show(ui, |ui| {
+                                Self::agenda_month_grid(
+                                    ui,
+                                    session,
+                                    &grid_events,
+                                    &mut pick_day,
+                                    &mut open_id,
+                                );
+                            });
+                    });
+                }
+                AgendaMode::Week => {
+                    Self::agenda_week_grid(
+                        ui,
+                        session,
+                        &grid_events,
+                        rect,
+                        &mut pick_day,
+                        &mut open_id,
+                    );
+                }
+            }
+        });
+
+        // The selected day, and — when there is room for it — what is
+        // coming after. On a narrow window the queue is dropped: the
+        // left dock already lists it, and the calendar needs the height
+        // more than a second copy of it does.
+        let day_rows = if wide {
+            motif::split_rows(day, &[0.0, (day.height() * 0.38).clamp(110.0, 260.0)], 6.0)
+        } else {
+            vec![day, egui::Rect::NOTHING]
+        };
+        motif::panel(
+            ui,
+            day_rows[0],
+            Some(&trf(
+                "agenda_day_title",
+                db::format_french_date(&session.agenda_day),
+            )),
+            |ui| {
+                let rect = ui.max_rect();
+                motif::inside(ui, rect, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("agenda_day_panel")
+                        .show(ui, |ui| {
+                            Self::agenda_day_panel(ui, session, operator, &mut open_id);
+                        });
+                });
+            },
+        );
+        if wide {
+            motif::panel(ui, day_rows[1], Some(tr("nav_next")), |ui| {
+                Self::agenda_upcoming(ui, session, &mut open_id);
+            });
+        }
+
+        if let Some(day) = pick_day.take() {
+            session.agenda_day = day;
+            session.load_day();
+        }
         if print_week {
             let week = if session.agenda_month {
                 session.agenda_month_days.clone()
@@ -4487,109 +5480,197 @@ impl App {
                 session.error = Some(e);
             }
         }
-        let mut pick_day: Option<String> = None;
-        if session.agenda_day.is_empty() {
-            session.agenda_day = session.today.clone();
-            session.load_day();
+        if let Some(id) = open_id {
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.view = MainView::Search;
+                session.open_patient(p);
+            }
         }
+        if let Some(err) = &session.error {
+            ui.colored_label(red, err.as_str());
+        }
+    }
 
-        if session.agenda_mode == AgendaMode::Day {
-            Self::agenda_day_plan(ui, session, &grid_events, config, &mut open_id);
-            Self::agenda_day_panel(ui, session, operator, &mut open_id);
-            if let Some(id) = open_id {
-                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
-                    session.view = MainView::Search;
-                    session.open_patient(p);
+    /// « ‹ · Aujourd'hui · › » plus the label of what is shown. One set
+    /// of controls for all three modes, instead of one per mode.
+    fn agenda_nav_buttons(ui: &mut egui::Ui, session: &mut Session) {
+        let step = |session: &mut Session, delta: i64| match session.agenda_mode {
+            AgendaMode::Day => {
+                let day = session.agenda_day.clone();
+                if let Some(next) = db::add_days(&day, delta) {
+                    session.agenda_day = next;
+                    session.load_day();
                 }
             }
-            if let Some(err) = &session.error {
-                ui.vertical_centered(|ui| {
-                    ui.colored_label(red, err.as_str());
-                });
+            AgendaMode::Month => {
+                session.agenda_month_offset += delta;
+                session.agenda_month_days = session
+                    .db
+                    .month_grid(session.agenda_month_offset)
+                    .unwrap_or_default();
             }
-            return;
+            AgendaMode::Week => {
+                session.agenda_offset += delta;
+                session.agenda_week = session
+                    .db
+                    .week_dates(session.agenda_offset)
+                    .unwrap_or_default();
+            }
+        };
+        if motif::button(ui, "‹")
+            .on_hover_text(tr("agenda_prev_week"))
+            .clicked()
+        {
+            step(session, -1);
         }
-        if session.agenda_month {
-            Self::agenda_month_grid(ui, session, &grid_events, &mut pick_day, &mut open_id);
-            Self::agenda_day_panel(ui, session, operator, &mut open_id);
-            if let Some(day) = pick_day {
-                session.agenda_day = day;
-                session.load_day();
-                session.agenda_mode = AgendaMode::Day;
-                session.agenda_month = false;
-            }
-            // Clicking a patient in the day panel opens the record here
-            // too, not only in week mode.
-            if let Some(id) = open_id {
-                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
-                    session.view = MainView::Search;
-                    session.open_patient(p);
+        if motif::button(ui, tr("agenda_this_week")).clicked() {
+            match session.agenda_mode {
+                AgendaMode::Day => {
+                    session.agenda_day = session.today.clone();
+                    session.load_day();
                 }
-            }
-            if let Some(err) = &session.error {
-                ui.vertical_centered(|ui| {
-                    ui.colored_label(red, err.as_str());
-                });
-            }
-            return;
-        }
-
-        // ---- Week grid (default view): Mon..Sun with colored blocks ----
-        motif::column(ui, 900.0, |ui| {
-            ui.horizontal(|ui| {
-                if motif::button(ui, "‹")
-                    .on_hover_text(tr("agenda_prev_week"))
-                    .clicked()
-                {
-                    session.agenda_offset -= 1;
-                    session.agenda_week = session
-                        .db
-                        .week_dates(session.agenda_offset)
-                        .unwrap_or_default();
+                AgendaMode::Month => {
+                    session.agenda_month_offset = 0;
+                    session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
                 }
-                if motif::button(ui, tr("agenda_this_week")).clicked() {
+                AgendaMode::Week => {
                     session.agenda_offset = 0;
-                    session.agenda_week = session
-                        .db
-                        .week_dates(session.agenda_offset)
-                        .unwrap_or_default();
+                    session.agenda_week = session.db.week_dates(0).unwrap_or_default();
                 }
-                if motif::button(ui, "›")
-                    .on_hover_text(tr("agenda_next_week"))
-                    .clicked()
-                {
-                    session.agenda_offset += 1;
-                    session.agenda_week = session
-                        .db
-                        .week_dates(session.agenda_offset)
-                        .unwrap_or_default();
-                }
-                if let Some(monday) = session.agenda_week.first() {
-                    ui.label(trf("agenda_week_of", db::format_french_date(monday)));
-                }
-            });
-        });
-        ui.add_space(6.0);
-        if session.agenda_week.len() == 7 {
-            let grid_w = (ui.available_width() - 24.0).min(940.0);
-            // Tall enough for the busiest day of the week, within
-            // reason: a fixed height hid entries behind a "+N" even
-            // when there was room on screen for them.
-            let busiest = session
+            }
+        }
+        if motif::button(ui, "›")
+            .on_hover_text(tr("agenda_next_week"))
+            .clicked()
+        {
+            step(session, 1);
+        }
+        let label = match session.agenda_mode {
+            AgendaMode::Day => db::format_french_date(&session.agenda_day),
+            AgendaMode::Month => session
+                .agenda_month_days
+                .get(15)
+                .map(|d| db::format_french_date(d))
+                .unwrap_or_default(),
+            AgendaMode::Week => session
                 .agenda_week
-                .iter()
-                .map(|d| {
-                    session.appointments.iter().filter(|r| r.date == *d).count()
-                        + grid_events.iter().filter(|e| e.day == *d).count()
-                })
-                .max()
-                .unwrap_or(0);
-            let grid_h = (36.0 + busiest as f32 * 24.0 + 8.0).clamp(150.0, 430.0);
-            let (alloc, _) =
-                ui.allocate_exact_size(egui::vec2(grid_w.max(420.0), grid_h), egui::Sense::hover());
-            let grid = egui::Rect::from_center_size(
-                egui::pos2(ui.max_rect().center().x, alloc.center().y),
-                alloc.size(),
+                .first()
+                .map(|m| trf("agenda_week_of", db::format_french_date(m)))
+                .unwrap_or_default(),
+        };
+        ui.label(egui::RichText::new(label).color(motif::TEXT_DIM));
+    }
+
+    /// Every planned rendez-vous still to come, day by day.
+    fn agenda_upcoming(ui: &mut egui::Ui, session: &Session, open_id: &mut Option<i64>) {
+        if session.appointments.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("dash_rdv_empty"))
+                    .size(11.5)
+                    .color(motif::TEXT_DIM),
+            );
+            return;
+        }
+        let rect = ui.available_rect_before_wrap();
+        if rect.height() < 20.0 {
+            return;
+        }
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("agenda_upcoming")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    let mut last: Option<&str> = None;
+                    for rdv in &session.appointments {
+                        if last != Some(rdv.date.as_str()) {
+                            last = Some(rdv.date.as_str());
+                            let day = db::weekday_fr(&rdv.date).unwrap_or("");
+                            let mut header = format!(
+                                "{}{} {}",
+                                day.chars()
+                                    .next()
+                                    .map(|c| c.to_uppercase().to_string())
+                                    .unwrap_or_default(),
+                                day.chars().skip(1).collect::<String>(),
+                                db::format_french_date(&rdv.date)
+                            );
+                            let overdue = !session.today.is_empty() && rdv.date < session.today;
+                            let color = if overdue {
+                                header.push_str(tr("agenda_overdue"));
+                                motif::ALERT
+                            } else if rdv.date == session.today {
+                                header.push_str(tr("agenda_today"));
+                                motif::ACCENT
+                            } else if rdv.date == session.tomorrow {
+                                header.push_str(tr("agenda_tomorrow"));
+                                motif::ACCENT
+                            } else {
+                                motif::TEXT_DIM
+                            };
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new(header).strong().size(11.5).color(color));
+                        }
+                        let hour = if rdv.time.is_empty() {
+                            String::new()
+                        } else {
+                            format!("{}  ", rdv.time)
+                        };
+                        let row = format!("{hour}{}  ({})", rdv.patient_name, rdv.kind.label());
+                        if motif::list_row(ui, egui::RichText::new(row), false)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            *open_id = Some(rdv.patient_id);
+                        }
+                    }
+                });
+        });
+    }
+
+    /// The week grid: Mon..Sun as columns of coloured blocks, filling
+    /// `rect`. Clicking a block opens the patient, clicking a column
+    /// header details that day.
+    fn agenda_week_grid(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        grid_events: &[db::Event],
+        rect: egui::Rect,
+        pick_day: &mut Option<String>,
+        open_id: &mut Option<i64>,
+    ) {
+        if session.agenda_week.len() != 7 || rect.height() < 60.0 {
+            return;
+        }
+        {
+            // The grid takes the height it is given rather than the
+            // height its busiest day happens to need: a week was 150 px
+            // tall on a 1000 px screen, hiding entries behind a "+N"
+            // with the room to show them sitting empty underneath.
+            // The legend has nine chips: at a narrow grid width it needs
+            // two lines, and a fixed one line dropped the last kinds.
+            let legend_rows = {
+                let font = egui::FontId::proportional(11.0);
+                let mut x = 0.0_f32;
+                let mut lines = 1.0_f32;
+                for kind in InterviewKind::ALL {
+                    let w = ui.fonts(|f| {
+                        f.layout_no_wrap(kind.label().to_owned(), font.clone(), motif::TEXT)
+                            .size()
+                            .x
+                    }) + 28.0;
+                    if x + w > rect.width() && x > 0.0 {
+                        lines += 1.0;
+                        x = 0.0;
+                    }
+                    x += w;
+                }
+                lines
+            };
+            let legend_h = 4.0 + 18.0 * legend_rows;
+            let grid = egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.right(), rect.bottom() - legend_h),
             );
             ui.painter().rect_filled(grid, 0.0, motif::TROUGH);
             motif::bevel(ui.painter(), grid, false);
@@ -4671,7 +5752,7 @@ impl App {
                         hover.push_str(&format!(" — {}", rdv.phone));
                     }
                     if resp.on_hover_text(hover).clicked() {
-                        open_id = Some(rdv.patient_id);
+                        *open_id = Some(rdv.patient_id);
                     }
                 }
                 // Entries that are not acts, in their own muted colour.
@@ -4714,7 +5795,7 @@ impl App {
                     .on_hover_text(tr("agenda_pick_day"))
                     .clicked()
                 {
-                    pick_day = Some(date.clone());
+                    *pick_day = Some(date.clone());
                 }
                 if day_rdvs.len() > max_blocks {
                     ui.painter().text(
@@ -4726,101 +5807,16 @@ impl App {
                     );
                 }
             }
-            // Legend: one colored chip per act kind.
-            ui.add_space(6.0);
-            motif::column(ui, 900.0, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for kind in InterviewKind::ALL {
-                        ui.label(
-                            egui::RichText::new(format!("  {}  ", kind.label()))
-                                .size(11.0)
-                                .color(egui::Color32::WHITE)
-                                .background_color(kind_color(kind)),
-                        );
-                    }
-                });
-            });
-        }
-        ui.add_space(10.0);
-        Self::agenda_day_panel(ui, session, operator, &mut open_id);
-        if let Some(day) = pick_day.take() {
-            session.agenda_day = day;
-            session.load_day();
-        }
-        ui.add_space(10.0);
-
-        if session.appointments.is_empty() {
-            if let Some(id) = open_id {
-                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
-                    session.view = MainView::Search;
-                    session.open_patient(p);
-                }
-            }
-            return;
-        }
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.vertical_centered(|ui| {
-                let mut last_date: Option<&str> = None;
-                for rdv in &session.appointments {
-                    if last_date != Some(rdv.date.as_str()) {
-                        last_date = Some(rdv.date.as_str());
-                        ui.add_space(10.0);
-                        // "Lundi 24/08/2026 — aujourd'hui"
-                        let day = db::weekday_fr(&rdv.date).unwrap_or("");
-                        let mut header = format!(
-                            "{}{} {}",
-                            day.chars()
-                                .next()
-                                .map(|c| c.to_uppercase().to_string())
-                                .unwrap_or_default(),
-                            day.chars().skip(1).collect::<String>(),
-                            db::format_french_date(&rdv.date)
-                        );
-                        let overdue = !session.today.is_empty() && rdv.date < session.today;
-                        let color = if overdue {
-                            header.push_str(tr("agenda_overdue"));
-                            red
-                        } else if rdv.date == session.today {
-                            header.push_str(tr("agenda_today"));
-                            motif::ACCENT
-                        } else if rdv.date == session.tomorrow {
-                            header.push_str(tr("agenda_tomorrow"));
-                            motif::ACCENT
-                        } else {
-                            motif::TEXT
-                        };
-                        ui.label(egui::RichText::new(header).strong().color(color).size(15.0));
-                        ui.add_space(2.0);
-                    }
-                    let hour = if rdv.time.is_empty() {
-                        String::new()
-                    } else {
-                        format!("{}   ", rdv.time)
-                    };
-                    let mut row = format!("{hour}{}   ({})", rdv.patient_name, rdv.kind.label());
-                    if !rdv.phone.is_empty() {
-                        row.push_str(&format!("   —  {}", rdv.phone));
-                    }
-                    let resp = ui.add(
-                        egui::Label::new(egui::RichText::new(row).size(14.0))
-                            .sense(egui::Sense::click()),
-                    );
-                    if resp.on_hover_text(tr("dash_open_patient")).clicked() {
-                        open_id = Some(rdv.patient_id);
-                    }
-                }
-                ui.add_space(12.0);
-            });
-        });
-        if let Some(id) = open_id {
-            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
-                session.view = MainView::Search;
-                session.open_patient(p);
-            }
-        }
-        if let Some(err) = &session.error {
-            ui.vertical_centered(|ui| {
-                ui.colored_label(red, err.as_str());
+            // Legend: one colored chip per act kind, on the strip left
+            // under the grid.
+            let legend =
+                egui::Rect::from_min_max(egui::pos2(rect.left(), grid.bottom() + 4.0), rect.max);
+            motif::inside(ui, legend, |ui| {
+                let items: Vec<(&str, egui::Color32)> = InterviewKind::ALL
+                    .iter()
+                    .map(|k| (k.label(), kind_color(*k)))
+                    .collect();
+                motif::chart::legend(ui, &items);
             });
         }
     }
@@ -5431,7 +6427,7 @@ impl App {
             .short;
             session.table_cells = session.db.table_cells(key).unwrap_or_default();
         }
-        motif::column(ui, 940.0, |ui| {
+        motif::page(ui, 1500.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
                 ui.heading(tr("tables_title"));
@@ -5480,9 +6476,14 @@ impl App {
         // are long sentences, so each column gets a fixed share of the
         // width and wraps inside it; the box is then painted behind the
         // content, once its real height is known.
-        let avail = ui.available_rect_before_wrap();
+        // The cells are long sentences: every pixel of width is one
+        // fewer line to wrap. The old 940 px cap left a quarter of a
+        // wide screen empty while the table wrapped to five lines.
+        let avail = motif::visible_rect(ui);
+        let avail =
+            egui::Rect::from_min_max(avail.min, egui::pos2(avail.right() - 14.0, avail.bottom()));
         let t = &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
-        let w = avail.width().min(940.0);
+        let w = avail.width().min(1500.0);
         const PAD: f32 = 8.0;
         const GAP: f32 = 20.0;
         let cols = t.columns.len().max(1) as f32;
@@ -5583,7 +6584,7 @@ impl App {
         let below = (box_rect.bottom() - ui.cursor().top()).max(0.0) + 10.0;
         ui.add_space(below);
         let (mut undo, mut reset) = (false, false);
-        motif::column(ui, 940.0, |ui| {
+        motif::page(ui, 1500.0, |ui| {
             ui.label(
                 egui::RichText::new(tr("tables_sources"))
                     .size(11.0)
@@ -5682,6 +6683,76 @@ impl App {
         }
     }
 
+    /// The open drug card's dated notes journal. Shared by the card's
+    /// side column and, on a narrow window, the foot of the monograph.
+    fn drug_notes_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        drug_id: i64,
+        operator: &str,
+        height: f32,
+    ) {
+        let (add, delete) = notes_box(
+            ui,
+            "drug_notes",
+            &session.drug_notes,
+            &mut session.note_text,
+            &mut session.note_confirm,
+            height,
+            true,
+        );
+        if let Some(body) = add {
+            if let Err(e) = session
+                .db
+                .add_note(NoteSubject::Drug, drug_id, operator, &body)
+            {
+                session.error = Some(e);
+            }
+            session.note_text.clear();
+            session.drug_notes = session
+                .db
+                .notes_for(NoteSubject::Drug, drug_id)
+                .unwrap_or_default();
+        }
+        if let Some(id) = delete {
+            if let Err(e) = session.db.delete_note(id) {
+                session.error = Some(e);
+            }
+            session.drug_notes = session
+                .db
+                .notes_for(NoteSubject::Drug, drug_id)
+                .unwrap_or_default();
+        }
+    }
+
+    /// Reverse lookup: who is on this drug (recalls, alerts). A real
+    /// list rather than a clipped row of chips — on a shortage or a
+    /// withdrawal this is the call list, and all of it matters.
+    fn drug_patients_pane(ui: &mut egui::Ui, session: &Session) -> Option<i64> {
+        let mut open = None;
+        let rect = ui.available_rect_before_wrap();
+        if rect.height() < 20.0 {
+            return None;
+        }
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("drug_patients")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for p in &session.drug_patients {
+                        if motif::list_row(ui, egui::RichText::new(p.full_name()), false)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            open = Some(p.id);
+                        }
+                    }
+                });
+        });
+        open
+    }
+
     /// Drug reference base (F3): fuzzy search, quick creation, and a
     /// card editor (dosage, interactions, IUP, antidote, notes) with
     /// compare-and-set saves. `doc` is the team-notes buffer so a card
@@ -5723,38 +6794,43 @@ impl App {
             return;
         }
 
-        motif::column(ui, 620.0, |ui| {
-            ui.add_space(24.0);
-            ui.horizontal(|ui| {
-                ui.heading(tr("drug_title"));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if session.drug_form.is_none()
-                        && motif::button(ui, tr("tables_button")).clicked()
-                    {
-                        session.show_tables = true;
-                    }
-                    if session.drug_form.is_none()
-                        && motif::button(ui, tr("proto_button"))
-                            .on_hover_text(tr("proto_button_tooltip"))
-                            .clicked()
-                    {
-                        session.show_protocols = true;
-                        session.protocols = session.db.protocols().unwrap_or_default();
-                    }
+        // The title block belongs to the base's index, not to an open
+        // card: the tab already says which drug is on screen, and the
+        // card needs every pixel of height it can get.
+        if session.drug_form.is_none() {
+            motif::page(ui, 720.0, |ui| {
+                ui.add_space(24.0);
+                ui.horizontal(|ui| {
+                    ui.heading(tr("drug_title"));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if session.drug_form.is_none()
+                            && motif::button(ui, tr("tables_button")).clicked()
+                        {
+                            session.show_tables = true;
+                        }
+                        if session.drug_form.is_none()
+                            && motif::button(ui, tr("proto_button"))
+                                .on_hover_text(tr("proto_button_tooltip"))
+                                .clicked()
+                        {
+                            session.show_protocols = true;
+                            session.protocols = session.db.protocols().unwrap_or_default();
+                        }
+                    });
                 });
+                ui.label(tr("drug_subtitle"));
+                // A base that predates the starter list (or was started by
+                // hand) shows almost nothing — point at the one-click fix.
+                if session.drugs.len() < db::STARTER_DRUG_COUNT / 4 {
+                    ui.label(
+                        egui::RichText::new(trf("drug_base_sparse", session.drugs.len()))
+                            .size(11.0)
+                            .color(motif::ALERT),
+                    );
+                }
+                ui.add_space(12.0);
             });
-            ui.label(tr("drug_subtitle"));
-            // A base that predates the starter list (or was started by
-            // hand) shows almost nothing — point at the one-click fix.
-            if session.drugs.len() < db::STARTER_DRUG_COUNT / 4 {
-                ui.label(
-                    egui::RichText::new(trf("drug_base_sparse", session.drugs.len()))
-                        .size(11.0)
-                        .color(motif::ALERT),
-                );
-            }
-            ui.add_space(12.0);
-        });
+        }
 
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
@@ -5777,7 +6853,7 @@ impl App {
             // The actions stay above the scroll: a full monograph is
             // several screens tall, and « Modifier » or « Enregistrer »
             // must never be something to go looking for.
-            motif::column(ui, 900.0, |ui| {
+            motif::page(ui, 1400.0, |ui| {
                 ui.add_space(8.0);
                 // Wrapped: a narrow window, or an open side pane, must
                 // push the last actions onto a second line rather than
@@ -5837,209 +6913,217 @@ impl App {
                 motif::bevel(ui.painter(), line, false);
                 ui.add_space(4.0);
             });
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                motif::column(ui, 900.0, |ui| {
-                    ui.add_space(18.0);
-                    if reading {
-                        drug_monograph(ui, form, &session.class_note, &session.posologies);
-                    }
-                    if !reading {
-                        ui.vertical_centered(|ui| {
-                            // Identity header: brand name big, DCI underneath.
-                            ui.heading(if form.name.trim().is_empty() {
-                                tr("drug_unnamed")
-                            } else {
-                                form.name.trim()
-                            });
-                            {
-                                let mut sub = form.dci.trim().to_owned();
-                                if !form.class.trim().is_empty() {
-                                    if !sub.is_empty() {
-                                        sub.push_str(" — ");
-                                    }
-                                    sub.push_str(form.class.trim());
-                                }
-                                if !sub.is_empty() {
-                                    ui.label(
-                                        egui::RichText::new(sub).italics().color(motif::TEXT_DIM),
-                                    );
-                                }
+            // The monograph is a document, so it keeps a reading
+            // measure; the width left over goes to the card's side
+            // matter — who is on this drug, and what the team wrote
+            // about it — instead of to grey gutters.
+            let body = motif::visible_rect(ui);
+            // Wide enough for a column beside the monograph? Otherwise
+            // the side matter becomes a band under it. Either way it is
+            // outside the monograph's scroll: the journal and the recall
+            // list were at the foot of a document several screens long,
+            // which is the same as not being there.
+            // The card's body scrolls, so its right edge belongs to the
+            // scrollbar: content laid out to the panel edge ends up
+            // underneath it.
+            let body =
+                egui::Rect::from_min_max(body.min, egui::pos2(body.right() - 14.0, body.bottom()));
+            let wide = body.width() >= 1180.0;
+            let (main, side_rect) = if wide {
+                let side_w = (body.width() * 0.28).clamp(260.0, 380.0);
+                (
+                    egui::Rect::from_min_max(
+                        body.min,
+                        egui::pos2(body.right() - side_w - 10.0, body.bottom() - 6.0),
+                    ),
+                    egui::Rect::from_min_max(
+                        egui::pos2(body.right() - side_w, body.top()),
+                        egui::pos2(body.right(), body.bottom() - 6.0),
+                    ),
+                )
+            } else {
+                let band = (body.height() * 0.26).clamp(140.0, 220.0);
+                let rows = motif::split_rows(body.shrink2(egui::vec2(0.0, 3.0)), &[0.0, band], 8.0);
+                (rows[0], rows[1])
+            };
+            let card_id = form.id;
+            motif::inside(ui, main, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("drug_card")
+                    .show(ui, |ui| {
+                        motif::page(ui, 900.0, |ui| {
+                            ui.add_space(18.0);
+                            if reading {
+                                drug_monograph(ui, form, &session.class_note, &session.posologies);
                             }
-                            if !form.antidote.trim().is_empty() {
-                                ui.label(
-                                    egui::RichText::new(trf(
-                                        "drug_antidote_banner",
-                                        form.antidote.trim(),
-                                    ))
-                                    .strong()
-                                    .color(motif::ALERT),
-                                );
-                            }
-                        });
-                        ui.add_space(12.0);
-                        // Two columns when there is room for them; one
-                        // underneath the other when the window is narrow
-                        // or the side pane is open, where two columns
-                        // left five words to a line.
-                        if ui.available_width() >= 720.0 {
-                            ui.columns(2, |cols| {
-                                drug_form_clinical(&mut cols[0], form);
-                                drug_form_pk(&mut cols[1], form);
-                            });
-                        } else {
-                            drug_form_clinical(ui, form);
-                            ui.add_space(12.0);
-                            drug_form_pk(ui, form);
-                        }
-                    }
-                    if !reading {
-                        // Posologies by indication, editable line by line.
-                        let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
-                        ui.add_space(8.0);
-                        motif::section(ui, tr("drug_sec_poso"));
-                        ui.add_space(4.0);
-                        let poso_drug = form.id;
-                        egui::Grid::new("poso_edit")
-                            .num_columns(4)
-                            .spacing([8.0, 5.0])
-                            .show(ui, |ui| {
-                                ui.label(dim(tr("poso_indication")));
-                                ui.label(dim(tr("poso_dose")));
-                                ui.label(dim(tr("poso_remark")));
-                                ui.label("");
-                                ui.end_row();
-                                for p in session.posologies.clone() {
-                                    let editing =
-                                        session.poso_edit.as_ref().is_some_and(|e| e.id == p.id);
-                                    if editing {
-                                        let e = session.poso_edit.as_mut().unwrap();
-                                        ui.add_sized(
-                                            [190.0, 22.0],
-                                            egui::TextEdit::singleline(&mut e.indication),
-                                        );
-                                        ui.add_sized(
-                                            [230.0, 22.0],
-                                            egui::TextEdit::singleline(&mut e.posologie),
-                                        );
-                                        ui.add_sized(
-                                            [210.0, 22.0],
-                                            egui::TextEdit::singleline(&mut e.remarque),
-                                        );
-                                        if motif::button(ui, tr("form_save")).clicked() {
-                                            poso_save = true;
-                                        }
+                            if !reading {
+                                ui.vertical_centered(|ui| {
+                                    // Identity header: brand name big, DCI underneath.
+                                    ui.heading(if form.name.trim().is_empty() {
+                                        tr("drug_unnamed")
                                     } else {
-                                        ui.label(&p.indication);
-                                        ui.label(&p.posologie);
-                                        ui.label(
-                                            egui::RichText::new(&p.remarque)
-                                                .size(11.0)
-                                                .color(motif::TEXT_DIM),
-                                        );
-                                        ui.horizontal(|ui| {
-                                            if motif::button(ui, tr("drug_edit")).clicked() {
-                                                poso_start_edit = Some(p.clone());
+                                        form.name.trim()
+                                    });
+                                    {
+                                        let mut sub = form.dci.trim().to_owned();
+                                        if !form.class.trim().is_empty() {
+                                            if !sub.is_empty() {
+                                                sub.push_str(" — ");
                                             }
-                                            if motif::button(ui, tr("itv_delete")).clicked() {
-                                                poso_delete = Some((p.id, p.indication.clone()));
-                                            }
-                                        });
+                                            sub.push_str(form.class.trim());
+                                        }
+                                        if !sub.is_empty() {
+                                            ui.label(
+                                                egui::RichText::new(sub)
+                                                    .italics()
+                                                    .color(motif::TEXT_DIM),
+                                            );
+                                        }
                                     }
-                                    ui.end_row();
-                                }
-                                ui.add_sized(
-                                    [190.0, 22.0],
-                                    egui::TextEdit::singleline(&mut session.poso_new.0)
-                                        .hint_text(tr("poso_indication")),
-                                );
-                                ui.add_sized(
-                                    [230.0, 22.0],
-                                    egui::TextEdit::singleline(&mut session.poso_new.1)
-                                        .hint_text(tr("poso_dose")),
-                                );
-                                ui.add_sized(
-                                    [210.0, 22.0],
-                                    egui::TextEdit::singleline(&mut session.poso_new.2)
-                                        .hint_text(tr("poso_remark")),
-                                );
-                                if motif::button(ui, tr("notes_add")).clicked()
-                                    && !session.poso_new.0.trim().is_empty()
-                                {
-                                    poso_add = Some(poso_drug);
-                                }
-                                ui.end_row();
-                            });
-                    }
-                    // Dated notes journal for this drug.
-                    ui.add_space(8.0);
-                    motif::section(ui, tr("drug_notes_section"));
-                    ui.add_space(4.0);
-                    let drug_id = form.id;
-                    let (note_add, note_delete) = notes_box(
-                        ui,
-                        "drug_notes",
-                        &session.drug_notes,
-                        &mut session.note_text,
-                        &mut session.note_confirm,
-                        80.0,
-                        true,
-                    );
-                    if let Some(body) = note_add {
-                        if let Err(e) =
-                            session
-                                .db
-                                .add_note(NoteSubject::Drug, drug_id, operator, &body)
-                        {
-                            session.error = Some(e);
-                        }
-                        session.note_text.clear();
-                        session.drug_notes = session
-                            .db
-                            .notes_for(NoteSubject::Drug, drug_id)
-                            .unwrap_or_default();
-                    }
-                    if let Some(id) = note_delete {
-                        if let Err(e) = session.db.delete_note(id) {
-                            session.error = Some(e);
-                        }
-                        session.drug_notes = session
-                            .db
-                            .notes_for(NoteSubject::Drug, drug_id)
-                            .unwrap_or_default();
-                    }
-
-                    // Reverse lookup: who is on this drug (recalls, alerts).
-                    if !session.drug_patients.is_empty() {
-                        ui.add_space(8.0);
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(tr("drug_patients_label"))
-                                    .color(motif::TEXT_DIM),
-                            );
-                            for p in session.drug_patients.iter().take(6) {
-                                let chip = ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(format!("  {}  ", p.full_name()))
-                                            .size(12.0)
-                                            .color(egui::Color32::WHITE)
-                                            .background_color(motif::BG_DARK),
-                                    )
-                                    .sense(egui::Sense::click()),
-                                );
-                                if chip.on_hover_text(tr("dash_open_patient")).clicked() {
-                                    open_patient_id = Some(p.id);
+                                    if !form.antidote.trim().is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(trf(
+                                                "drug_antidote_banner",
+                                                form.antidote.trim(),
+                                            ))
+                                            .strong()
+                                            .color(motif::ALERT),
+                                        );
+                                    }
+                                });
+                                ui.add_space(12.0);
+                                // Two columns when there is room for them; one
+                                // underneath the other when the window is narrow
+                                // or the side pane is open, where two columns
+                                // left five words to a line.
+                                if ui.available_width() >= 720.0 {
+                                    ui.columns(2, |cols| {
+                                        drug_form_clinical(&mut cols[0], form);
+                                        drug_form_pk(&mut cols[1], form);
+                                    });
+                                } else {
+                                    drug_form_clinical(ui, form);
+                                    ui.add_space(12.0);
+                                    drug_form_pk(ui, form);
                                 }
                             }
-                            if session.drug_patients.len() > 6 {
-                                ui.label(trf("dash_more", session.drug_patients.len() - 6));
+                            if !reading {
+                                // Posologies by indication, editable line by line.
+                                let dim = |t: &str| egui::RichText::new(t).color(motif::TEXT_DIM);
+                                ui.add_space(8.0);
+                                motif::section(ui, tr("drug_sec_poso"));
+                                ui.add_space(4.0);
+                                // The three text columns share whatever is left
+                                // after the row's buttons: hard-coded widths
+                                // pushed « Remarque » off the card as soon as a
+                                // dock was open.
+                                let poso_w = (ui.available_width() - 190.0).max(240.0);
+                                let poso_drug = form.id;
+                                egui::Grid::new("poso_edit")
+                                    .num_columns(4)
+                                    .spacing([8.0, 5.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("poso_indication")));
+                                        ui.label(dim(tr("poso_dose")));
+                                        ui.label(dim(tr("poso_remark")));
+                                        ui.label("");
+                                        ui.end_row();
+                                        for p in session.posologies.clone() {
+                                            let editing = session
+                                                .poso_edit
+                                                .as_ref()
+                                                .is_some_and(|e| e.id == p.id);
+                                            if editing {
+                                                let e = session.poso_edit.as_mut().unwrap();
+                                                ui.add_sized(
+                                                    [poso_w * 0.3, 22.0],
+                                                    egui::TextEdit::singleline(&mut e.indication),
+                                                );
+                                                ui.add_sized(
+                                                    [poso_w * 0.38, 22.0],
+                                                    egui::TextEdit::singleline(&mut e.posologie),
+                                                );
+                                                ui.add_sized(
+                                                    [poso_w * 0.32, 22.0],
+                                                    egui::TextEdit::singleline(&mut e.remarque),
+                                                );
+                                                if motif::button(ui, tr("form_save")).clicked() {
+                                                    poso_save = true;
+                                                }
+                                            } else {
+                                                ui.label(&p.indication);
+                                                ui.label(&p.posologie);
+                                                ui.label(
+                                                    egui::RichText::new(&p.remarque)
+                                                        .size(11.0)
+                                                        .color(motif::TEXT_DIM),
+                                                );
+                                                ui.horizontal(|ui| {
+                                                    if motif::button(ui, tr("drug_edit")).clicked()
+                                                    {
+                                                        poso_start_edit = Some(p.clone());
+                                                    }
+                                                    if motif::button(ui, tr("itv_delete")).clicked()
+                                                    {
+                                                        poso_delete =
+                                                            Some((p.id, p.indication.clone()));
+                                                    }
+                                                });
+                                            }
+                                            ui.end_row();
+                                        }
+                                        ui.add_sized(
+                                            [poso_w * 0.3, 22.0],
+                                            egui::TextEdit::singleline(&mut session.poso_new.0)
+                                                .hint_text(tr("poso_indication")),
+                                        );
+                                        ui.add_sized(
+                                            [poso_w * 0.38, 22.0],
+                                            egui::TextEdit::singleline(&mut session.poso_new.1)
+                                                .hint_text(tr("poso_dose")),
+                                        );
+                                        ui.add_sized(
+                                            [poso_w * 0.32, 22.0],
+                                            egui::TextEdit::singleline(&mut session.poso_new.2)
+                                                .hint_text(tr("poso_remark")),
+                                        );
+                                        if motif::button(ui, tr("notes_add")).clicked()
+                                            && !session.poso_new.0.trim().is_empty()
+                                        {
+                                            poso_add = Some(poso_drug);
+                                        }
+                                        ui.end_row();
+                                    });
+                            }
+                            if let Some(err) = &session.error {
+                                ui.add_space(6.0);
+                                ui.colored_label(motif::ALERT, err.as_str());
                             }
                         });
-                    }
-                    if let Some(err) = &session.error {
-                        ui.add_space(6.0);
-                        ui.colored_label(motif::ALERT, err.as_str());
-                    }
-                });
+                    });
+            });
+            // Stacked beside the monograph, or side by side under it.
+            let (recalls, journal) = if wide {
+                let rows = motif::split_rows(side_rect, &[0.0, 0.0], 8.0);
+                (rows[0], rows[1])
+            } else {
+                let cols = motif::split_columns(side_rect, 2, 8.0);
+                (cols[0], cols[1])
+            };
+            motif::panel(ui, recalls, Some(tr("drug_patients_label")), |ui| {
+                if session.drug_patients.is_empty() {
+                    ui.label(
+                        egui::RichText::new(tr("drug_patients_none"))
+                            .size(11.5)
+                            .color(motif::TEXT_DIM),
+                    );
+                } else if let Some(id) = Self::drug_patients_pane(ui, session) {
+                    open_patient_id = Some(id);
+                }
+            });
+            motif::panel(ui, journal, Some(tr("drug_notes_section")), |ui| {
+                let h = (ui.available_height() - 34.0).clamp(50.0, 420.0);
+                Self::drug_notes_pane(ui, session, card_id, operator, h);
             });
 
             if let Some(text) = session.class_note_edit.clone() {
@@ -6276,34 +7360,7 @@ impl App {
             }
             ui.add_space(12.0);
 
-            let mut scored: Vec<(i32, &Drug)> = session
-                .drugs
-                .iter()
-                .filter_map(|d| {
-                    // Brand name and DCI both match ("elix" or "apixa");
-                    // the class and the tags widen the net ("statine",
-                    // "marge étroite"), scored below an identity match.
-                    let a = fuzzy::score(&session.drug_query, &d.name);
-                    let b = if d.dci.is_empty() {
-                        None
-                    } else {
-                        fuzzy::score(&session.drug_query, &d.dci)
-                    };
-                    let side = [d.class.as_str(), d.tags.as_str()]
-                        .into_iter()
-                        .filter(|t| !t.is_empty())
-                        .filter_map(|t| fuzzy::score(&session.drug_query, t))
-                        .max()
-                        .map(|s| s - 40);
-                    a.max(b).max(side).map(|s| (s, d))
-                })
-                .collect();
-            scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
-            let results: Vec<Drug> = scored
-                .into_iter()
-                .take(20)
-                .map(|(_, d)| d.clone())
-                .collect();
+            let results: Vec<Drug> = session.drug_results(20);
 
             if !results.is_empty() {
                 session.drug_selected = session.drug_selected.min(results.len() - 1);
@@ -6393,9 +7450,17 @@ impl App {
         }
     }
 
-    /// A raised KPI box: title on top, big value below.
-    fn kpi_box(ui: &mut egui::Ui, width: f32, title: &str, value: &str) {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 78.0), egui::Sense::hover());
+    /// A raised KPI tile: caption, big figure, and an optional trend
+    /// sparkline under it. `rect` is carved by the caller, so a row of
+    /// tiles shares the width evenly instead of each guessing at it.
+    fn kpi_tile(
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        title: &str,
+        value: &str,
+        trend: &[f64],
+        note: Option<&str>,
+    ) {
         ui.painter().rect_filled(rect, 0.0, motif::BG);
         motif::bevel(ui.painter(), rect, true);
         // The figure is what the eye should land on: the caption above
@@ -6406,37 +7471,69 @@ impl App {
             .flat_map(|c| [c, '\u{2009}'])
             .collect();
         ui.painter().text(
-            egui::pos2(rect.center().x, rect.top() + 17.0),
-            egui::Align2::CENTER_CENTER,
+            egui::pos2(rect.left() + 12.0, rect.top() + 13.0),
+            egui::Align2::LEFT_CENTER,
             caption.trim_end(),
             egui::FontId::proportional(10.0),
             motif::TEXT_DIM,
         );
-        // A hairline under the caption, in the Motif two-tone.
-        let y = rect.top() + 28.0;
-        let (x0, x1) = (rect.left() + 14.0, rect.right() - 14.0);
-        ui.painter().line_segment(
-            [egui::pos2(x0, y), egui::pos2(x1, y)],
-            egui::Stroke::new(1.0_f32, motif::BG_DARK),
+        motif::rule(
+            ui.painter(),
+            rect.left() + 12.0,
+            rect.right() - 12.0,
+            rect.top() + 22.0,
         );
-        ui.painter().line_segment(
-            [egui::pos2(x0, y + 1.0), egui::pos2(x1, y + 1.0)],
-            egui::Stroke::new(1.0_f32, motif::BG_LIGHT),
-        );
+        // The figure shrinks rather than overflowing its tile: a five
+        // figure revenue must stay inside the bevel.
+        let mut size = 24.0_f32;
+        let fits = |size: f32| {
+            ui.fonts(|f| {
+                f.layout_no_wrap(
+                    value.to_owned(),
+                    egui::FontId::proportional(size),
+                    motif::ACCENT,
+                )
+                .size()
+                .x
+            }) <= rect.width() - 24.0
+        };
+        while size > 12.0 && !fits(size) {
+            size -= 1.0;
+        }
         ui.painter().text(
-            egui::pos2(rect.center().x, rect.top() + 53.0),
-            egui::Align2::CENTER_CENTER,
+            egui::pos2(rect.left() + 12.0, rect.top() + 44.0),
+            egui::Align2::LEFT_CENTER,
             value,
-            egui::FontId::proportional(24.0),
+            egui::FontId::proportional(size),
             motif::ACCENT,
         );
+        if let Some(note) = note {
+            ui.painter().text(
+                egui::pos2(rect.right() - 12.0, rect.top() + 46.0),
+                egui::Align2::RIGHT_CENTER,
+                elide(ui, note, rect.width() * 0.45, 10.5),
+                egui::FontId::proportional(10.5),
+                motif::TEXT_FAINT,
+            );
+        }
+        // The trend says whether the figure is going anywhere — the one
+        // thing a bare number can never say.
+        if trend.len() >= 2 && rect.height() > 70.0 {
+            let strip = egui::Rect::from_min_max(
+                egui::pos2(rect.left() + 12.0, rect.bottom() - 26.0),
+                egui::pos2(rect.right() - 12.0, rect.bottom() - 8.0),
+            );
+            motif::chart::sparkline(ui, strip, trend, motif::ACCENT);
+        }
     }
 
     /// The "Exporter CSV" button with its status line: writes every
     /// interview (with fees) to `exports/` next to the database and
     /// opens the file, for billing reconciliation with the LGO.
     fn export_controls(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
-        ui.vertical_centered(|ui| {
+        // Right-to-left inside the header bar: the buttons hug the
+        // corner instead of stacking down the middle of the page.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if motif::button(ui, tr("dash_export")).clicked() {
                 match session.db.export_rows(config.rules.cycle_months.max(1)) {
                     Ok(rows) => {
@@ -6493,57 +7590,76 @@ impl App {
                 }
             }
             if let Some(notice) = &session.export_notice {
-                ui.label(notice.as_str());
+                ui.label(
+                    egui::RichText::new(elide(ui, notice, 260.0, 10.5))
+                        .size(10.5)
+                        .color(motif::TEXT_FAINT),
+                )
+                .on_hover_text(notice.as_str());
             }
         });
     }
 
-    /// Financial & statistical dashboard (spec 3.3): KPIs, pipeline funnel,
-    /// monthly billed vs pending revenue.
+    /// Financial & statistical dashboard (spec 3.3).
+    ///
+    /// Laid out as a grid of panels that reflows with the window rather
+    /// than a single centred column: the counter's screen is wide, and
+    /// the figures it has to hold — revenue, pipeline, act mix, the
+    /// week's load, what the team wrote — belong side by side, not
+    /// stacked three screens deep.
     fn dashboard_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
-        ui.add_space(10.0);
-        ui.vertical_centered(|ui| {
+        // ---- Header: title, the discreet-mode switch, the exports ----
+        let masked = config.ui.discreet_finances && !session.show_amounts;
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
             ui.heading(tr("dash_title"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if config.ui.discreet_finances {
+                    // Deliberately unobtrusive: a small unlabeled square,
+                    // raised while masked, sunken while shown.
+                    let (rect, resp) =
+                        ui.allocate_exact_size(egui::vec2(30.0, 20.0), egui::Sense::click());
+                    ui.painter().rect_filled(
+                        rect,
+                        0.0,
+                        if masked { motif::BG } else { motif::TROUGH },
+                    );
+                    motif::bevel(ui.painter(), rect, masked);
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "•••",
+                        egui::FontId::proportional(10.0),
+                        motif::TEXT_DIM,
+                    );
+                    if resp.on_hover_text(tr("dash_discreet_tooltip")).clicked() {
+                        session.show_amounts = !session.show_amounts;
+                    }
+                }
+                Self::export_controls(ui, session, config);
+            });
         });
         ui.add_space(6.0);
 
-        // Discreet finances: amounts stay masked at the counter. The
-        // reveal control is deliberately unobtrusive — a small unlabeled
-        // square in the corner, raised while masked, sunken while shown.
-        let masked = config.ui.discreet_finances && !session.show_amounts;
-        if config.ui.discreet_finances {
-            let rect = egui::Rect::from_min_size(
-                egui::pos2(ui.max_rect().right() - 36.0, ui.max_rect().top() + 4.0),
-                egui::vec2(26.0, 18.0),
-            );
-            let resp = ui.interact(rect, ui.id().with("discreet_toggle"), egui::Sense::click());
-            ui.painter()
-                .rect_filled(rect, 0.0, if masked { motif::BG } else { motif::TROUGH });
-            motif::bevel(ui.painter(), rect, masked);
-            ui.painter().text(
-                rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "•••",
-                egui::FontId::proportional(10.0),
-                motif::TEXT_DIM,
-            );
-            if resp.clicked() {
-                session.show_amounts = !session.show_amounts;
+        // ---- The figures every panel below reads from ----
+        let money = |v: f64| {
+            if masked {
+                "•••".to_owned()
+            } else {
+                format!("{v:.0} €")
             }
-        }
-
-        let billed: f64 = session
-            .summaries
-            .iter()
-            .filter(|s| s.state == InterviewState::Billed)
-            .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
-            .sum();
-        let pending: f64 = session
-            .summaries
-            .iter()
-            .filter(|s| s.state != InterviewState::Billed)
-            .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
-            .sum();
+        };
+        let total = |rows: &dyn Fn(&InterviewSummary) -> bool| -> f64 {
+            session
+                .summaries
+                .iter()
+                .filter(|s| rows(s))
+                .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
+                .sum()
+        };
+        let billed = total(&|s| s.state == InterviewState::Billed);
+        let pending = total(&|s| s.state != InterviewState::Billed);
         let billed_count = session
             .summaries
             .iter()
@@ -6557,286 +7673,17 @@ impl App {
             .map(|s| s.duration_minutes)
             .sum();
         let roi = if billed_minutes > 0 {
-            format!("{:.0} €/h", billed / (billed_minutes as f64 / 60.0))
+            let v = billed / (billed_minutes as f64 / 60.0);
+            if masked {
+                "•••".to_owned()
+            } else {
+                format!("{v:.0} €/h")
+            }
         } else {
             "— €/h".to_owned()
         };
 
-        let kpi_w = ((ui.available_width() - 70.0) / 4.0).clamp(110.0, 190.0);
-        ui.horizontal(|ui| {
-            let total = kpi_w * 4.0 + 30.0;
-            ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
-            let money = |v: &str| {
-                if masked {
-                    "•••".to_owned()
-                } else {
-                    v.to_owned()
-                }
-            };
-            Self::kpi_box(
-                ui,
-                kpi_w,
-                tr("dash_billed"),
-                &money(&format!("{billed:.0} €")),
-            );
-            Self::kpi_box(
-                ui,
-                kpi_w,
-                tr("dash_pending"),
-                &money(&format!("{pending:.0} €")),
-            );
-            Self::kpi_box(
-                ui,
-                kpi_w,
-                tr("dash_billed_count"),
-                &billed_count.to_string(),
-            );
-            Self::kpi_box(ui, kpi_w, tr("dash_hourly"), &money(&roi));
-        });
-        ui.add_space(18.0);
-
-        // Pipeline funnel: one sunken bar per state.
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new(tr("dash_pipeline")).strong());
-        });
-        ui.add_space(6.0);
-        let max_count = InterviewState::ALL
-            .iter()
-            .map(|st| session.summaries.iter().filter(|s| s.state == *st).count())
-            .max()
-            .unwrap_or(0)
-            .max(1);
-        for st in InterviewState::ALL {
-            let count = session.summaries.iter().filter(|s| s.state == st).count();
-            ui.horizontal(|ui| {
-                ui.add_space((ui.available_width() / 2.0 - 235.0).max(0.0));
-                ui.add_sized([110.0, 20.0], egui::Label::new(st.label()));
-                let (rect, _) =
-                    ui.allocate_exact_size(egui::vec2(300.0, 20.0), egui::Sense::hover());
-                ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
-                motif::bevel(ui.painter(), rect, false);
-                let mut fill = rect.shrink(3.0);
-                fill.set_width(fill.width() * (count as f32 / max_count as f32));
-                if count > 0 {
-                    ui.painter().rect_filled(fill, 0.0, motif::ACCENT);
-                }
-                ui.label(count.to_string());
-            });
-        }
-        ui.add_space(10.0);
-        // One chip per theme, wrapped: a single joined line broke
-        // between a label and its own count.
-        ui.label(egui::RichText::new(tr("dash_per_kind")).size(12.0));
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            for kind in InterviewKind::ALL {
-                let n = session.summaries.iter().filter(|s| s.kind == kind).count();
-                let (rect, resp) = ui.allocate_exact_size(
-                    egui::vec2(
-                        ui.fonts(|f| {
-                            f.layout_no_wrap(
-                                format!("{}  {n}", kind.label()),
-                                egui::FontId::proportional(11.5),
-                                motif::TEXT,
-                            )
-                            .size()
-                            .x
-                        }) + 16.0,
-                        20.0,
-                    ),
-                    egui::Sense::hover(),
-                );
-                if ui.is_rect_visible(rect) {
-                    let empty = n == 0;
-                    ui.painter().rect_filled(
-                        rect,
-                        0.0,
-                        if empty { motif::BG } else { motif::TROUGH },
-                    );
-                    motif::bevel(ui.painter(), rect, empty);
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        format!("{}  {n}", kind.label()),
-                        egui::FontId::proportional(11.5),
-                        if empty {
-                            motif::TEXT_FAINT
-                        } else {
-                            motif::TEXT
-                        },
-                    );
-                }
-                if let Some(code) = kind.act_code(0) {
-                    resp.on_hover_text(trn("dash_kind_tooltip", &[&code, &n]));
-                }
-            }
-        });
-        ui.add_space(14.0);
-
-        // Where the team left off: the files that moved most recently,
-        // and what was written today. Both open in one click.
-        let mut open_recent: Option<Patient> = None;
-        if !session.recent.is_empty() || !session.today_notes.is_empty() {
-            motif::column(ui, 900.0, |ui| {
-                ui.columns(2, |cols| {
-                    // `columns` justifies its children, which stretches
-                    // the spaces of wrapped text: keep a plain top-down
-                    // layout for these two lists.
-                    let left = egui::Layout::top_down(egui::Align::LEFT);
-                    cols[0].with_layout(left, |ui| {
-                        motif::section(ui, tr("dash_recent"));
-                        ui.add_space(4.0);
-                        if session.recent.is_empty() {
-                            ui.label(
-                                egui::RichText::new(tr("dash_recent_empty"))
-                                    .size(11.0)
-                                    .color(motif::TEXT_DIM),
-                            );
-                        }
-                        for (p, moved) in &session.recent {
-                            ui.horizontal(|ui| {
-                                if ui
-                                    .selectable_label(false, p.full_name())
-                                    .on_hover_text(tr("dash_open_patient"))
-                                    .clicked()
-                                {
-                                    open_recent = Some(p.clone());
-                                }
-                                ui.label(
-                                    egui::RichText::new(db::format_french_date(
-                                        &moved[..10.min(moved.len())],
-                                    ))
-                                    .size(11.0)
-                                    .color(motif::TEXT_DIM),
-                                );
-                            });
-                        }
-                    });
-                    cols[1].with_layout(left, |ui| {
-                        motif::section(ui, tr("dash_today_notes"));
-                        ui.add_space(4.0);
-                        if session.today_notes.is_empty() {
-                            ui.label(
-                                egui::RichText::new(tr("dash_today_notes_empty"))
-                                    .size(11.0)
-                                    .color(motif::TEXT_DIM),
-                            );
-                        }
-                        for note in session.today_notes.iter().take(6) {
-                            ui.label(
-                                egui::RichText::new(note.stamp())
-                                    .size(10.0)
-                                    .color(operator_color(&note.operator)),
-                            );
-                            ui.add(
-                                egui::Label::new(rich_text(&note.body, 12.0, motif::TEXT)).wrap(),
-                            );
-                            ui.add_space(2.0);
-                        }
-                    });
-                });
-            });
-            ui.add_space(14.0);
-        }
-        if let Some(p) = open_recent {
-            session.view = MainView::Search;
-            session.open_patient(p);
-        }
-
-        // Upcoming appointments: planned interviews not yet performed,
-        // soonest first, overdue ones flagged. Clicking a row opens the
-        // patient. Not financial data, so never masked.
-        if !session.appointments.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.horizontal(|ui| {
-                    ui.add_space(ui.available_width() / 2.0 - 80.0);
-                    ui.label(egui::RichText::new(tr("dash_rdv")).strong());
-                    // Paper companion for the counter: the full list with
-                    // phone numbers, ready to print.
-                    if motif::button(ui, tr("dash_print"))
-                        .on_hover_text(tr("dash_print_tooltip"))
-                        .clicked()
-                    {
-                        let today = session
-                            .db
-                            .today_french()
-                            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
-                        if let Err(e) =
-                            crate::pdf::open_appointment_list(&session.appointments, &today)
-                        {
-                            session.error = Some(e);
-                        }
-                    }
-                });
-            });
-            ui.add_space(6.0);
-            let mut open_id: Option<i64> = None;
-            let shown = 8.min(session.appointments.len());
-            ui.vertical_centered(|ui| {
-                for rdv in &session.appointments[..shown] {
-                    let overdue = !session.today.is_empty() && rdv.date < session.today;
-                    let today = !session.today.is_empty() && rdv.date == session.today;
-                    let phone = if rdv.phone.is_empty() {
-                        String::new()
-                    } else {
-                        format!("   —  {}", rdv.phone)
-                    };
-                    let text = format!(
-                        "{}   {}   ({}){}{}",
-                        db::format_french_date(&rdv.date),
-                        rdv.patient_name,
-                        rdv.kind.label(),
-                        phone,
-                        if overdue {
-                            tr("dash_overdue")
-                        } else if today {
-                            tr("dash_today")
-                        } else {
-                            ""
-                        }
-                    );
-                    let label = egui::RichText::new(text).size(14.0);
-                    let label = if overdue {
-                        label.color(motif::ALERT)
-                    } else if today {
-                        label.color(motif::ACCENT).strong()
-                    } else {
-                        label
-                    };
-                    let row = ui.add(egui::Label::new(label).sense(egui::Sense::click()));
-                    if row.on_hover_text(tr("dash_open_patient")).clicked() {
-                        open_id = Some(rdv.patient_id);
-                    }
-                }
-                if session.appointments.len() > shown {
-                    ui.label(trf("dash_more", session.appointments.len() - shown));
-                }
-            });
-            if let Some(id) = open_id {
-                if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
-                    session.view = MainView::Search;
-                    session.show_amounts = false;
-                    session.open_patient(p);
-                    return;
-                }
-            }
-            ui.add_space(18.0);
-        }
-
-        // Monthly revenue: billed (dark blue) vs pending (grey), last 12 months.
-        ui.vertical_centered(|ui| {
-            ui.label(egui::RichText::new(tr("dash_monthly")).strong());
-        });
-        ui.add_space(6.0);
-        if masked {
-            ui.vertical_centered(|ui| {
-                ui.label("• • •");
-            });
-            ui.add_space(14.0);
-            Self::export_controls(ui, session, config);
-            return;
-        }
+        // Revenue per month, billed against pending, oldest first.
         let mut months: Vec<String> = session
             .summaries
             .iter()
@@ -6851,86 +7698,443 @@ impl App {
         months.sort();
         months.dedup();
         let months: Vec<String> = months.into_iter().rev().take(12).rev().collect();
-
-        if months.is_empty() {
-            ui.vertical_centered(|ui| {
-                ui.label(tr("dash_empty"));
-            });
-            ui.add_space(14.0);
-            Self::export_controls(ui, session, config);
-            return;
-        }
-
         let per_month: Vec<(String, f64, f64)> = months
             .iter()
             .map(|m| {
-                let b: f64 = session
-                    .summaries
-                    .iter()
-                    .filter(|s| s.state == InterviewState::Billed && &s.updated_month == m)
-                    .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
-                    .sum();
-                let p: f64 = session
-                    .summaries
-                    .iter()
-                    .filter(|s| s.state != InterviewState::Billed && &s.created_month == m)
-                    .map(|s| config.act_total(s.kind, s.fee_year, s.fee_rank, s.remote))
-                    .sum();
+                let b = total(&|s| s.state == InterviewState::Billed && &s.updated_month == m);
+                let p = total(&|s| s.state != InterviewState::Billed && &s.created_month == m);
                 (m.clone(), b, p)
             })
             .collect();
-        let max_val = per_month
-            .iter()
-            .map(|(_, b, p)| b.max(*p))
-            .fold(1.0_f64, f64::max);
+        let trend: Vec<f64> = if masked {
+            Vec::new()
+        } else {
+            per_month.iter().map(|(_, b, _)| *b).collect()
+        };
 
-        let chart_w = (per_month.len() as f32 * 70.0).min(ui.available_width() - 40.0);
-        let (chart, _) =
-            ui.allocate_exact_size(egui::vec2(chart_w.max(140.0), 190.0), egui::Sense::hover());
-        let chart = egui::Rect::from_center_size(
-            egui::pos2(ui.max_rect().center().x, chart.center().y),
-            chart.size(),
-        );
-        ui.painter().rect_filled(chart, 0.0, motif::TROUGH);
-        motif::bevel(ui.painter(), chart, false);
-        let plot = chart.shrink(10.0);
-        let slot = plot.width() / per_month.len() as f32;
-        for (i, (month, b, p)) in per_month.iter().enumerate() {
-            let x0 = plot.left() + i as f32 * slot;
-            let bar_w = (slot - 18.0).clamp(6.0, 24.0);
-            let scale = |v: f64| (v / max_val) as f32 * (plot.height() - 26.0);
-            let billed_rect = egui::Rect::from_min_max(
-                egui::pos2(
-                    x0 + slot / 2.0 - bar_w - 1.0,
-                    plot.bottom() - 16.0 - scale(*b),
+        egui::ScrollArea::vertical()
+            .id_salt("dashboard")
+            .show(ui, |ui| {
+                let full = motif::visible_rect(ui).shrink2(egui::vec2(4.0, 0.0));
+                let w = full.width();
+                let gutter = 8.0;
+
+                // ---- KPI row: four across, two-up on a narrow window ----
+                let per_row = if w >= 720.0 { 4 } else { 2 };
+                let tile_h = if trend.len() >= 2 { 96.0 } else { 72.0 };
+                let rows = 4_usize.div_ceil(per_row);
+                let kpi_rect = egui::Rect::from_min_size(
+                    full.min,
+                    egui::vec2(w, rows as f32 * (tile_h + gutter) - gutter),
+                );
+                let tiles: [(&str, String, &[f64], Option<String>); 4] = [
+                    (
+                        tr("dash_billed"),
+                        money(billed),
+                        &trend[..],
+                        Some(trf("dash_acts_n", billed_count)),
+                    ),
+                    (tr("dash_pending"), money(pending), &[], None),
+                    (
+                        tr("dash_billed_count"),
+                        billed_count.to_string(),
+                        &[],
+                        Some(trf("dash_of_n", session.summaries.len())),
+                    ),
+                    (
+                        tr("dash_hourly"),
+                        roi.clone(),
+                        &[],
+                        Some(trf("dash_minutes", billed_minutes)),
+                    ),
+                ];
+                motif::inside(ui, kpi_rect, |ui| {
+                    for r in 0..rows {
+                        let band = egui::Rect::from_min_size(
+                            egui::pos2(
+                                kpi_rect.left(),
+                                kpi_rect.top() + r as f32 * (tile_h + gutter),
+                            ),
+                            egui::vec2(w, tile_h),
+                        );
+                        for (i, cell) in motif::split_columns(band, per_row, gutter)
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let Some((title, value, trend, note)) = tiles.get(r * per_row + i)
+                            else {
+                                break;
+                            };
+                            Self::kpi_tile(ui, cell, title, value, trend, note.as_deref());
+                        }
+                    }
+                });
+                ui.add_space(gutter);
+
+                // ---- The panel grid ----
+                let cols = motif::column_count(w, 400.0, 2);
+                let mut open_patient: Option<i64> = None;
+                let mut open_recent: Option<Patient> = None;
+
+                // Each entry is (title, height, painter). They are dealt
+                // into the columns in order, so a one-column window
+                // simply stacks them in the same reading order.
+                let panels: Vec<(&str, f32)> = vec![
+                    (tr("dash_pipeline"), 172.0),
+                    (tr("dash_monthly"), 232.0),
+                    (tr("dash_per_kind"), 232.0),
+                    (tr("dash_rdv"), 232.0),
+                    (tr("dash_recent"), 190.0),
+                    (tr("dash_today_notes"), 190.0),
+                ];
+                let mut y = vec![full.top() + kpi_rect.height() + gutter; cols];
+                let lanes = motif::split_columns(
+                    egui::Rect::from_min_size(egui::pos2(full.left(), 0.0), egui::vec2(w, 1.0)),
+                    cols,
+                    gutter,
+                );
+                let mut bottom = y[0];
+                for (i, (title, height)) in panels.iter().enumerate() {
+                    // Shortest-column-first keeps the two lanes level
+                    // even though the panels are different heights.
+                    let lane = if cols == 1 {
+                        0
+                    } else {
+                        y.iter()
+                            .enumerate()
+                            .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                            .map(|(k, _)| k)
+                            .unwrap_or(0)
+                    };
+                    let rect = egui::Rect::from_min_size(
+                        egui::pos2(lanes[lane].left(), y[lane]),
+                        egui::vec2(lanes[lane].width(), *height),
+                    );
+                    y[lane] += height + gutter;
+                    bottom = bottom.max(y[lane]);
+                    motif::panel(ui, rect, Some(title), |ui| {
+                        let body = ui.max_rect();
+                        match i {
+                            0 => Self::dash_pipeline(ui, session, body),
+                            1 => Self::dash_monthly(ui, body, &per_month, masked),
+                            2 => Self::dash_per_kind(ui, session, config, body),
+                            3 => open_patient = Self::dash_appointments(ui, session, body),
+                            4 => open_recent = Self::dash_recent(ui, session, body),
+                            _ => Self::dash_today_notes(ui, session, body),
+                        }
+                    });
+                }
+                // Claim the grid's full height so the scroll area knows
+                // how far it goes: the panels were painted into rects,
+                // not laid out by the cursor.
+                ui.allocate_space(egui::vec2(w, bottom - full.top() - kpi_rect.height()));
+
+                if let Some(p) = open_recent {
+                    session.view = MainView::Search;
+                    session.show_amounts = false;
+                    session.open_patient(p);
+                } else if let Some(id) = open_patient {
+                    if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                        session.view = MainView::Search;
+                        session.show_amounts = false;
+                        session.open_patient(p);
+                    }
+                }
+                if let Some(err) = &session.error {
+                    ui.colored_label(motif::ALERT, err.as_str());
+                }
+            });
+    }
+
+    /// The pipeline funnel: how many acts sit at each state.
+    fn dash_pipeline(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) {
+        let rows: Vec<motif::chart::Row> = InterviewState::ALL
+            .iter()
+            .enumerate()
+            .map(|(i, st)| motif::chart::Row {
+                label: st.label(),
+                value: session.summaries.iter().filter(|s| s.state == *st).count() as f64,
+                // The ramp runs from grey to the accent blue: the
+                // further right in the pipeline, the more "done" it is.
+                color: motif::ACCENT.lerp_to_gamma(
+                    motif::chart::SERIES[1],
+                    1.0 - i as f32 / (InterviewState::ALL.len() - 1) as f32,
                 ),
-                egui::pos2(x0 + slot / 2.0 - 1.0, plot.bottom() - 16.0),
-            );
-            let pending_rect = egui::Rect::from_min_max(
-                egui::pos2(x0 + slot / 2.0 + 1.0, plot.bottom() - 16.0 - scale(*p)),
-                egui::pos2(x0 + slot / 2.0 + bar_w + 1.0, plot.bottom() - 16.0),
-            );
-            ui.painter().rect_filled(billed_rect, 0.0, motif::ACCENT);
-            ui.painter().rect_filled(pending_rect, 0.0, motif::BG_DARK);
-            // "2026-08" → "08/26"
-            let label = match (month.get(5..7), month.get(2..4)) {
-                (Some(mm), Some(yy)) => format!("{mm}/{yy}"),
-                _ => month.clone(),
-            };
+            })
+            .collect();
+        motif::chart::hbars(ui, rect, &rows, 96.0, &|v| format!("{v:.0}"));
+    }
+
+    /// Billed against pending revenue, one column per month.
+    fn dash_monthly(
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        per_month: &[(String, f64, f64)],
+        masked: bool,
+    ) {
+        if masked {
+            let inner = motif::chart::frame(ui, rect);
             ui.painter().text(
-                egui::pos2(x0 + slot / 2.0, plot.bottom() - 6.0),
+                inner.center(),
                 egui::Align2::CENTER_CENTER,
+                "• • •",
+                egui::FontId::proportional(16.0),
+                motif::TEXT_DIM,
+            );
+            return;
+        }
+        if per_month.is_empty() {
+            let inner = motif::chart::frame(ui, rect);
+            ui.painter().text(
+                inner.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("dash_empty"),
+                egui::FontId::proportional(12.0),
+                motif::TEXT_DIM,
+            );
+            return;
+        }
+        let rows = motif::split_rows(rect, &[0.0, 16.0], 4.0);
+        // "2026-08" → "08/26"
+        let labels: Vec<String> = per_month
+            .iter()
+            .map(|(m, _, _)| match (m.get(5..7), m.get(2..4)) {
+                (Some(mm), Some(yy)) => format!("{mm}/{yy}"),
+                _ => m.clone(),
+            })
+            .collect();
+        let values: Vec<[f64; 2]> = per_month.iter().map(|(_, b, p)| [*b, *p]).collect();
+        let groups: Vec<motif::chart::Group> = labels
+            .iter()
+            .zip(&values)
+            .map(|(label, v)| motif::chart::Group {
                 label,
-                egui::FontId::proportional(10.0),
-                motif::TEXT,
+                values: &v[..],
+            })
+            .collect();
+        let colors = [motif::ACCENT, motif::chart::SERIES[1]];
+        let hovered = motif::chart::bars(ui, rows[0], &groups, &colors, &|v| format!("{v:.0}"));
+        if let Some(i) = hovered {
+            let (m, b, p) = &per_month[i];
+            egui::show_tooltip_text(
+                ui.ctx(),
+                ui.layer_id(),
+                ui.id().with("dash_monthly_tip"),
+                trn(
+                    "dash_monthly_tooltip",
+                    &[m, &format!("{b:.0}"), &format!("{p:.0}")],
+                ),
             );
         }
-        ui.add_space(6.0);
-        ui.vertical_centered(|ui| {
-            ui.label(tr("dash_legend"));
+        motif::inside(ui, rows[1], |ui| {
+            motif::chart::legend(
+                ui,
+                &[
+                    (tr("dash_legend_billed"), motif::ACCENT),
+                    (tr("dash_legend_pending"), motif::chart::SERIES[1]),
+                ],
+            );
         });
-        ui.add_space(14.0);
-        Self::export_controls(ui, session, config);
+    }
+
+    /// The act mix: how many of each theme, against its yearly quota.
+    fn dash_per_kind(ui: &mut egui::Ui, session: &Session, config: &Config, rect: egui::Rect) {
+        let counts: Vec<(InterviewKind, usize)> = InterviewKind::ALL
+            .iter()
+            .map(|k| {
+                (
+                    *k,
+                    session.summaries.iter().filter(|s| s.kind == *k).count(),
+                )
+            })
+            .collect();
+        let rows = motif::split_rows(rect, &[16.0, 0.0], 6.0);
+        // A single stacked bar first: the mix as one shape, before the
+        // per-theme numbers underneath it.
+        let parts: Vec<(f64, egui::Color32)> = counts
+            .iter()
+            .filter(|(_, n)| *n > 0)
+            .map(|(k, n)| (*n as f64, kind_color(*k)))
+            .collect();
+        motif::chart::stacked(ui, rows[0], &parts);
+        let bars: Vec<motif::chart::Row> = counts
+            .iter()
+            .map(|(k, n)| motif::chart::Row {
+                label: k.label(),
+                value: *n as f64,
+                color: kind_color(*k),
+            })
+            .collect();
+        let hovered = motif::chart::hbars(ui, rows[1], &bars, 160.0, &|v| format!("{v:.0}"));
+        if let Some(i) = hovered {
+            let (kind, n) = counts[i];
+            let quota = config.per_year(kind);
+            let text = match kind.act_code(0) {
+                Some(code) if quota > 0 => trn("dash_kind_quota", &[&code, &n, &quota]),
+                Some(code) => trn("dash_kind_tooltip", &[&code, &n]),
+                None => trf("dash_acts_n", n),
+            };
+            egui::show_tooltip_text(ui.ctx(), ui.layer_id(), ui.id().with("dash_kind_tip"), text);
+        }
+    }
+
+    /// Planned interviews not yet performed, soonest first, with the
+    /// load of the coming weeks above them. Returns a patient to open.
+    fn dash_appointments(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+    ) -> Option<i64> {
+        if session.appointments.is_empty() {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("dash_rdv_empty"),
+                egui::FontId::proportional(12.0),
+                motif::TEXT_DIM,
+            );
+            return None;
+        }
+        let rows = motif::split_rows(rect, &[18.0, 12.0, 0.0], 3.0);
+        // The 28 days from today: how loaded each one is. A month of
+        // work in one strip of pixels.
+        let days: Vec<String> = (0..28)
+            .filter_map(|i| db::add_days(&session.today, i))
+            .collect();
+        if days.len() == 28 {
+            let load: Vec<f64> = days
+                .iter()
+                .map(|d| session.appointments.iter().filter(|a| &a.date == d).count() as f64)
+                .collect();
+            if let Some(i) = motif::chart::heat_strip(ui, rows[0], &load, motif::ACCENT) {
+                egui::show_tooltip_text(
+                    ui.ctx(),
+                    ui.layer_id(),
+                    ui.id().with("dash_load_tip"),
+                    trn(
+                        "dash_load_tooltip",
+                        &[&db::format_french_date(&days[i]), &(load[i] as i64)],
+                    ),
+                );
+            }
+            ui.painter().text(
+                egui::pos2(rows[1].left(), rows[1].center().y),
+                egui::Align2::LEFT_CENTER,
+                tr("dash_load_caption"),
+                egui::FontId::proportional(10.0),
+                motif::TEXT_FAINT,
+            );
+        }
+        let mut open = None;
+        let today = session.today.clone();
+        let appointments = session.appointments.clone();
+        motif::inside(ui, rows[2], |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_rdv")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for rdv in &appointments {
+                        let overdue = !today.is_empty() && rdv.date < today;
+                        let is_today = !today.is_empty() && rdv.date == today;
+                        let mut text = format!(
+                            "{}   {}   ({})",
+                            db::format_french_date(&rdv.date),
+                            rdv.patient_name,
+                            rdv.kind.label()
+                        );
+                        if !rdv.phone.is_empty() {
+                            text.push_str(&format!("   —  {}", rdv.phone));
+                        }
+                        if overdue {
+                            text.push_str(tr("dash_overdue"));
+                        } else if is_today {
+                            text.push_str(tr("dash_today"));
+                        }
+                        let label = egui::RichText::new(text);
+                        let label = if overdue {
+                            label.color(motif::ALERT)
+                        } else if is_today {
+                            label.color(motif::ACCENT).strong()
+                        } else {
+                            label
+                        };
+                        if motif::list_row(ui, label, false)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            open = Some(rdv.patient_id);
+                        }
+                    }
+                });
+        });
+        open
+    }
+
+    /// The files that moved most recently. Returns one to open.
+    fn dash_recent(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<Patient> {
+        if session.recent.is_empty() {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("dash_recent_empty"),
+                egui::FontId::proportional(12.0),
+                motif::TEXT_DIM,
+            );
+            return None;
+        }
+        let mut open = None;
+        let recent = session.recent.clone();
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_recent")
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    for (p, moved) in &recent {
+                        let text = format!(
+                            "{}      {}",
+                            p.full_name(),
+                            db::format_french_date(&moved[..10.min(moved.len())])
+                        );
+                        if motif::list_row(ui, egui::RichText::new(text), false)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            open = Some(p.clone());
+                        }
+                    }
+                });
+        });
+        open
+    }
+
+    /// What the team wrote today: day notes and transmissions.
+    fn dash_today_notes(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) {
+        if session.today_notes.is_empty() {
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("dash_today_notes_empty"),
+                egui::FontId::proportional(12.0),
+                motif::TEXT_DIM,
+            );
+            return;
+        }
+        let notes = session.today_notes.clone();
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_notes")
+                .show(ui, |ui| {
+                    for note in &notes {
+                        ui.label(
+                            egui::RichText::new(note.stamp())
+                                .size(10.0)
+                                .color(operator_color(&note.operator)),
+                        );
+                        ui.add(egui::Label::new(rich_text(&note.body, 12.0, motif::TEXT)).wrap());
+                        ui.add_space(3.0);
+                    }
+                });
+        });
     }
 }
 
@@ -6985,7 +8189,8 @@ impl eframe::App for App {
                         session.viewing_interviews = list;
                     }
                 }
-                if session.view == MainView::Dashboard {
+                // The search view's home panels read the same rows.
+                if matches!(session.view, MainView::Dashboard | MainView::Search) {
                     if let Ok(s) = session.db.interview_summaries(session.cycle_months) {
                         session.summaries = s;
                     }
@@ -7042,10 +8247,13 @@ impl eframe::App for App {
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
             self.show_docs = !self.show_docs;
         }
-        let mut toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
-        let mut toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
-        let mut toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
-        let mut toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
+        if ctx.input(|i| i.key_pressed(egui::Key::F6)) {
+            self.show_nav = !self.show_nav;
+        }
+        let toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
+        let toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
+        let toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
+        let toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -7060,39 +8268,34 @@ impl eframe::App for App {
                         self.config.db_path().display(),
                         Config::path().display()
                     ));
+                // The dock toggles sit next to the name, on the left:
+                // they act on the frame around the work, not on the work.
+                if matches!(self.state, State::Unlocked(_)) {
+                    ui.add_space(10.0);
+                    if motif::toggle(ui, tr("toolbar_nav"), self.show_nav)
+                        .on_hover_text(tr("toolbar_nav_tooltip"))
+                        .clicked()
+                    {
+                        self.show_nav = !self.show_nav;
+                    }
+                    if motif::toggle(ui, tr("toolbar_docs"), self.show_docs)
+                        .on_hover_text(tr("toolbar_docs_tooltip"))
+                        .clicked()
+                    {
+                        self.show_docs = !self.show_docs;
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Optional pictograms: painted, not typed (the
                     // bundled font has almost no symbols). They cost
                     // width, so they are off by default.
                     let icons = self.config.ui.icons;
                     let pict = |p: motif::Pict| if icons { Some(p) } else { None };
-                    if motif::icon_button(ui, pict(motif::Pict::Doc), tr("toolbar_docs")).clicked()
+                    if !matches!(self.state, State::Unlocked(_))
+                        && motif::icon_button(ui, pict(motif::Pict::Doc), tr("toolbar_docs"))
+                            .clicked()
                     {
                         self.show_docs = !self.show_docs;
-                    }
-                    if matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(ui, pict(motif::Pict::Chart), tr("toolbar_dashboard"))
-                            .clicked()
-                    {
-                        toggle_dashboard = true;
-                    }
-                    if matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(ui, pict(motif::Pict::Pill), tr("toolbar_drugs"))
-                            .clicked()
-                    {
-                        toggle_drugs = true;
-                    }
-                    if matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(ui, pict(motif::Pict::Calendar), tr("toolbar_agenda"))
-                            .clicked()
-                    {
-                        toggle_agenda = true;
-                    }
-                    if matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(ui, pict(motif::Pict::Pen), tr("toolbar_trans"))
-                            .clicked()
-                    {
-                        toggle_trans = true;
                     }
                     if let State::Unlocked(session) = &mut self.state {
                         if motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock"))
@@ -7151,6 +8354,88 @@ impl eframe::App for App {
             });
             ui.add_space(4.0);
         });
+
+        // The workspace notebook: where the operator is, and everything
+        // they have open. It replaces the row of view buttons the
+        // toolbar used to carry — those said what you could reach, never
+        // where you were.
+        if matches!(self.state, State::Unlocked(_)) {
+            // Ctrl+Tab walks the strip; Ctrl+W closes the open file.
+            let (cycle, back, close) = ctx.input_mut(|i| {
+                (
+                    i.consume_key(egui::Modifiers::CTRL, egui::Key::Tab),
+                    i.consume_key(
+                        egui::Modifiers::CTRL | egui::Modifiers::SHIFT,
+                        egui::Key::Tab,
+                    ),
+                    i.consume_key(egui::Modifiers::CTRL, egui::Key::W),
+                )
+            });
+            egui::TopBottomPanel::top("notebook")
+                .frame(
+                    egui::Frame::none()
+                        .fill(motif::BG)
+                        .inner_margin(egui::Margin::symmetric(6.0, 0.0)),
+                )
+                .show(ctx, |ui| {
+                    let State::Unlocked(session) = &mut self.state else {
+                        return;
+                    };
+                    session.note_tab();
+                    let cur = session.current_tab();
+                    let active = session.tabs.iter().position(|t| *t == cur).unwrap_or(0);
+                    let labels: Vec<(String, bool, Option<egui::Color32>)> = session
+                        .tabs
+                        .iter()
+                        .map(|t| {
+                            let tint = match t {
+                                WorkTab::Patient(_) => Some(motif::ACCENT),
+                                WorkTab::Drug(_) => Some(motif::chart::SERIES[2]),
+                                _ => None,
+                            };
+                            (session.tab_label(t), t.closable(), tint)
+                        })
+                        .collect();
+                    let tabs: Vec<motif::Tab> = labels
+                        .iter()
+                        .map(|(label, closable, tint)| {
+                            let mut t = motif::Tab::new(label);
+                            if *closable {
+                                t = t.closable();
+                            }
+                            if let Some(c) = tint {
+                                t = t.tint(*c);
+                            }
+                            t
+                        })
+                        .collect();
+                    let action = motif::tab_strip(ui, &tabs, active);
+                    match action {
+                        Some(motif::TabAction::Select(i)) => {
+                            if let Some(t) = session.tabs.get(i).cloned() {
+                                if t != cur {
+                                    session.activate_tab(&t);
+                                }
+                            }
+                        }
+                        Some(motif::TabAction::Close(i)) => {
+                            if let Some(t) = session.tabs.get(i).cloned() {
+                                session.close_tab(&t);
+                            }
+                        }
+                        None => {}
+                    }
+                    if back {
+                        session.cycle_tab(-1);
+                    } else if cycle {
+                        session.cycle_tab(1);
+                    }
+                    if close {
+                        let cur = session.current_tab();
+                        session.close_tab(&cur);
+                    }
+                });
+        }
 
         // Motif status bar: the at-a-glance numbers and which base this
         // post is on (multi-post support aid).
@@ -8076,9 +9361,12 @@ impl eframe::App for App {
         }
 
         // The docs pane may hold patient-adjacent notes: never show it on
-        // the lock screen.
+        // the lock screen. Same for the navigator, which lists patients.
         if self.show_docs && matches!(self.state, State::Unlocked(_)) {
             self.docs_pane(ctx);
+        }
+        if self.show_nav && matches!(self.state, State::Unlocked(_)) {
+            self.nav_dock(ctx);
         }
 
         // Debounced auto-save runs even when the pane is hidden.
@@ -8311,6 +9599,84 @@ mod tests {
     fn identical_notes_merge_to_themselves() {
         let base = "# Notes\n\n- a\n";
         assert_eq!(merge_team_notes(base, base, base), base);
+    }
+
+    /// A session on a scratch database, for the notebook tests.
+    fn scratch_session(tag: &str) -> super::Session {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-tab-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = crate::db::Db::open(&dir.join("live.db"), "secret").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
+        super::Session::new(db, 12).unwrap()
+    }
+
+    #[test]
+    fn the_open_tab_follows_the_live_view() {
+        let mut s = scratch_session("follow");
+        assert_eq!(s.current_tab(), super::WorkTab::Search);
+        // Opening a patient by any route — not only by clicking a tab —
+        // must be what the strip then points at.
+        let p = s.patients[0].clone();
+        s.open_patient(p.clone());
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(p.id));
+        s.note_tab();
+        assert!(s.tabs.contains(&super::WorkTab::Patient(p.id)));
+        // And noting it twice does not open it twice.
+        let before = s.tabs.len();
+        s.note_tab();
+        assert_eq!(s.tabs.len(), before);
+    }
+
+    #[test]
+    fn closing_the_open_file_falls_back_to_its_left_neighbour() {
+        let mut s = scratch_session("close");
+        let (a, b) = (s.patients[0].clone(), s.patients[1].clone());
+        s.open_patient(a.clone());
+        s.note_tab();
+        s.open_patient(b.clone());
+        s.note_tab();
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(b.id));
+        s.close_tab(&super::WorkTab::Patient(b.id));
+        assert_eq!(s.current_tab(), super::WorkTab::Patient(a.id));
+        assert!(!s.tabs.contains(&super::WorkTab::Patient(b.id)));
+    }
+
+    #[test]
+    fn the_standing_views_cannot_be_closed() {
+        let mut s = scratch_session("standing");
+        let before = s.tabs.clone();
+        for tab in before.clone() {
+            s.close_tab(&tab);
+        }
+        assert_eq!(s.tabs, before);
+    }
+
+    #[test]
+    fn cycling_wraps_in_both_directions() {
+        let mut s = scratch_session("cycle");
+        s.activate_tab(&super::WorkTab::Dashboard);
+        assert_eq!(s.current_tab(), super::WorkTab::Dashboard);
+        // Dashboard is first: back one wraps to the last standing view.
+        s.cycle_tab(-1);
+        assert_eq!(s.current_tab(), *s.tabs.last().unwrap());
+        s.cycle_tab(1);
+        assert_eq!(s.current_tab(), super::WorkTab::Dashboard);
+    }
+
+    #[test]
+    fn a_tab_whose_file_is_gone_drops_itself() {
+        let mut s = scratch_session("gone");
+        let p = s.patients[0].clone();
+        s.open_patient(p.clone());
+        s.note_tab();
+        // Another post deletes the patient; the tab survives in the
+        // strip until it is next activated, and then removes itself.
+        s.db.delete_patient(p.id).unwrap();
+        s.set_patients(s.db.patients().unwrap());
+        s.activate_tab(&super::WorkTab::Patient(p.id));
+        assert!(!s.tabs.contains(&super::WorkTab::Patient(p.id)));
     }
 
     #[test]

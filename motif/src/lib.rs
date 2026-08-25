@@ -6,6 +6,14 @@
 
 use eframe::egui::{self, Color32, Rounding, Stroke, Vec2};
 
+pub mod chart;
+pub mod layout;
+
+pub use layout::{
+    column_count, inside, page, panel, rule, split_columns, split_rows, tab_strip, visible_rect,
+    vrule, well, Tab, TabAction,
+};
+
 /// Classic mwm blue-grey widget background.
 pub const BG: Color32 = Color32::from_rgb(0xae, 0xb2, 0xc3);
 /// Top/left bevel highlight.
