@@ -22,6 +22,25 @@ pub const TEXT: Color32 = Color32::BLACK;
 /// Errors and destructive warnings (Motif dark red).
 pub const ALERT: Color32 = Color32::from_rgb(0x8b, 0x1a, 0x1a);
 
+/// Paper: the sheet a printed monograph would be read on, for the
+/// document-style views inside the grey Motif shell.
+pub const PAPER: Color32 = Color32::from_rgb(0xf6, 0xf4, 0xec);
+/// Ink on that sheet, and the lighter shade for secondary lines.
+pub const INK: Color32 = Color32::from_rgb(0x1a, 0x1a, 0x20);
+pub const INK_LIGHT: Color32 = Color32::from_rgb(0x55, 0x55, 0x60);
+
+/// Draw a sheet of paper: flat fill, a thin ink border and a hard
+/// shadow to the lower right, in keeping with the square Motif look.
+pub fn sheet(painter: &egui::Painter, rect: egui::Rect) {
+    let shadow = egui::Rect::from_min_max(
+        egui::pos2(rect.min.x + 4.0, rect.min.y + 4.0),
+        egui::pos2(rect.max.x + 4.0, rect.max.y + 4.0),
+    );
+    painter.rect_filled(shadow, 0.0, BG_DARK);
+    painter.rect_filled(rect, 0.0, PAPER);
+    painter.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, INK_LIGHT));
+}
+
 /// Lay content out in a fixed-width column centered in the available
 /// space — the page grid every view aligns to. Content inside is
 /// normal top-down, left-aligned layout.

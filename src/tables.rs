@@ -7,15 +7,15 @@
 //!
 //! The values are the classic published reference equivalences taught
 //! in French pharmacy practice. They are deliberately static reference
-//! data (like the starter drug list) — each table carries its own
-//! caution line, shown on screen and on the printout.
+//! data (like the starter drug list) — each table carries its numbered
+//! sources, shown on screen and on the printout.
 
 pub struct ConvTable {
     /// Short name for the selector buttons.
     pub short: &'static str,
     pub title: &'static str,
-    /// Shown under the table, on screen and in the PDF.
-    pub caution: &'static str,
+    /// Numbered under the table, on screen and in the PDF.
+    pub sources: &'static [&'static str],
     pub columns: &'static [&'static str],
     pub rows: &'static [&'static [&'static str]],
 }
@@ -24,7 +24,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "IPP",
         title: "IPP — équivalences de doses",
-        caution: "Doses AMM françaises usuelles ; adapter à l'indication (RGO, œsophagite, éradication…).",
+        sources: &[
+            "RCP des spécialités, base de données publique des médicaments (ANSM)",
+            "HAS — bon usage des inhibiteurs de la pompe à protons chez l'adulte",
+        ],
         columns: &["DCI (spécialité)", "Pleine dose / j", "Demi-dose / j"],
         rows: &[
             &["Oméprazole (Mopral)", "20 mg", "10 mg"],
@@ -37,7 +40,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "HBPM",
         title: "HBPM — posologies usuelles",
-        caution: "Posologies usuelles adulte, fonction rénale normale ; vérifier l'indication, le poids et la clairance.",
+        sources: &[
+            "RCP des spécialités (ANSM)",
+            "SFMV / SFAR — traitement anticoagulant de la MTEV",
+        ],
         columns: &["DCI (spécialité)", "Curatif", "Prophylaxie"],
         rows: &[
             &["Énoxaparine (Lovenox)", "100 UI/kg x2/j", "4 000 UI x1/j"],
@@ -58,7 +64,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Statines",
         title: "Statines — doses d'efficacité comparable",
-        caution: "Équivalences approximatives sur la baisse du LDL-c ; l'intensité cible dépend du risque cardiovasculaire.",
+        sources: &[
+            "ESC/EAS 2019 — prise en charge des dyslipidémies",
+            "HAS — bon usage des statines",
+        ],
         columns: &["DCI (spécialité)", "Dose ≈ équivalente"],
         rows: &[
             &["Rosuvastatine (Crestor)", "5 mg"],
@@ -71,7 +80,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Corticoïdes",
         title: "Corticoïdes — équivalences anti-inflammatoires",
-        caution: "Équivalence anti-inflammatoire approximative ; durées d'action et effets minéralocorticoïdes différents.",
+        sources: &[
+            "Équivalences anti-inflammatoires classiques (pharmacologie clinique)",
+            "RCP des spécialités (ANSM)",
+        ],
         columns: &["DCI", "Dose équivalente", "vs prednisone"],
         rows: &[
             &["Prednisone (Cortancyl)", "5 mg", "référence"],
@@ -86,7 +98,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Opioïdes",
         title: "Opioïdes — équianalgésie (réf. morphine orale)",
-        caution: "Ratios indicatifs de la littérature ; toute rotation impose une titration individuelle et prudente.",
+        sources: &[
+            "SFETD — rotation des opioïdes et équianalgésie",
+            "RCP des spécialités (ANSM)",
+        ],
         columns: &["Opioïde", "Conversion", "Exemple ≈ 60 mg morphine orale / j"],
         rows: &[
             &["Codéine (orale)", "÷ 6", "360 mg/j"],
@@ -101,7 +116,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Benzodiazépines",
         title: "Benzodiazépines — équivalences (réf. diazépam 10 mg)",
-        caution: "Équivalences approximatives (table d'Ashton) utilisées pour la déprescription ; demi-vies très différentes.",
+        sources: &[
+            "Ashton C. H. — Benzodiazepines: how they work and how to withdraw, 2002",
+            "HAS — arrêt des benzodiazépines et médicaments apparentés",
+        ],
         columns: &["DCI (spécialité)", "Dose ≈ diazépam 10 mg"],
         rows: &[
             &["Diazépam (Valium)", "10 mg — référence"],
@@ -116,7 +134,11 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "AOD",
         title: "AOD — posologies et adaptation rénale",
-        caution: "Posologies AMM en FA non valvulaire et MTEV ; vérifier la clairance (Cockcroft), le poids, l'âge et les interactions (P-gp, CYP3A4).",
+        sources: &[
+            "RCP Eliquis, Xarelto, Pradaxa, Lixiana (ANSM)",
+            "ESC 2020 — fibrillation atriale",
+            "GIHP — gestion péri-opératoire des AOD",
+        ],
         columns: &["DCI (spécialité)", "FA non valvulaire", "Dose réduite si", "MTEV"],
         rows: &[
             &[
@@ -154,7 +176,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Cortico. inhalés",
         title: "Corticoïdes inhalés — paliers de dose (adulte)",
-        caution: "Doses quotidiennes totales, adulte, d'après les paliers GINA ; elles dépendent du dispositif — se référer au RCP.",
+        sources: &[
+            "GINA — Global Strategy for Asthma Management and Prevention, paliers de dose adulte",
+            "RCP des dispositifs inhalés (ANSM)",
+        ],
         columns: &["DCI (exemples)", "Faible", "Moyenne", "Forte"],
         rows: &[
             &[
@@ -182,7 +207,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Insulines",
         title: "Insulines — profils d'action",
-        caution: "Délais indicatifs : ils varient avec la dose, le site d'injection et le patient ; la titration reste individuelle.",
+        sources: &[
+            "RCP des spécialités (ANSM)",
+            "SFD — référentiel insulinothérapie du diabète",
+        ],
         columns: &["Type (spécialités)", "Début", "Pic", "Durée"],
         rows: &[
             &[
@@ -202,7 +230,11 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Fonction rénale",
         title: "Fonction rénale — calcul et stades",
-        caution: "L'adaptation des doses des AOD, HBPM et metformine se fait sur la clairance de Cockcroft ; les stades servent au suivi néphrologique.",
+        sources: &[
+            "Cockcroft D. W., Gault M. H. — Nephron, 1976",
+            "KDIGO 2012 — classification de la maladie rénale chronique",
+            "RCP metformine (ANSM)",
+        ],
         columns: &["Repère", "Valeur"],
         rows: &[
             &[
@@ -224,7 +256,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Angine",
         title: "Angine — score de Mac Isaac et TROD",
-        caution: "Le score oriente le TROD chez l'adulte ; chez l'enfant de plus de 3 ans le TROD est réalisé d'emblée. Antibiotique seulement si TROD positif.",
+        sources: &[
+            "HAS / SPILF — angine aiguë et test rapide d'orientation diagnostique",
+            "Mac Isaac W. J. et al. — CMAJ, 1998",
+        ],
         columns: &["Critère", "Points"],
         rows: &[
             &["Fièvre > 38 °C", "+1"],
@@ -241,7 +276,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Cystite",
         title: "Cystite simple — traitements de première intention",
-        caution: "Femme non enceinte, sans facteur de risque de complication ; fièvre, douleur lombaire ou grossesse imposent un avis médical.",
+        sources: &[
+            "SPILF — infections urinaires bactériennes communautaires de l'adulte",
+            "HAS — cystite aiguë simple",
+        ],
         columns: &["Rang", "Traitement", "Durée"],
         rows: &[
             &["1re intention", "Fosfomycine trométamol (Monuril) 3 g", "dose unique"],
@@ -262,7 +300,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Contraception",
         title: "Contraception — conduite à tenir en cas d'oubli",
-        caution: "Repères usuels ; la contraception d'urgence est d'autant plus efficace qu'elle est prise tôt (lévonorgestrel ≤ 72 h, ulipristal ≤ 120 h).",
+        sources: &[
+            "HAS — contraception : conduite à tenir en cas d'oubli",
+            "RCP des spécialités (ANSM)",
+        ],
         columns: &["Situation", "Conduite à tenir"],
         rows: &[
             &[
@@ -294,7 +335,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Antalgiques",
         title: "Antalgiques non opioïdes — doses adulte usuelles",
-        caution: "Doses maximales adulte à fonction rénale et hépatique normales ; réduire chez le sujet âgé, de faible poids ou insuffisant rénal.",
+        sources: &[
+            "RCP des spécialités (ANSM)",
+            "ANSM — bon usage du paracétamol et des AINS",
+        ],
         columns: &["Molécule", "Dose usuelle", "Maximum / 24 h"],
         rows: &[
             &["Paracétamol", "500 mg à 1 g toutes les 6 h", "3 g (4 g sur avis, jamais si < 50 kg)"],
@@ -309,7 +353,10 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Vaccins",
         title: "Vaccination à l'officine — rappels adultes",
-        caution: "Repères du calendrier vaccinal, révisé chaque année : vérifier la version en vigueur et le périmètre de vaccination du pharmacien.",
+        sources: &[
+            "Calendrier des vaccinations et recommandations vaccinales (ministère chargé de la Santé)",
+            "HAS — vaccination par le pharmacien d'officine",
+        ],
         columns: &["Vaccin", "Rythme adulte"],
         rows: &[
             &[
@@ -330,7 +377,11 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Pédiatrie",
         title: "Pédiatrie — doses usuelles par poids",
-        caution: "Toujours calculer sur le poids réel et vérifier la concentration du flacon ; fièvre chez le nourrisson de moins de 3 mois, mauvaise tolérance ou doute : avis médical.",
+        sources: &[
+            "RCP pédiatriques (ANSM)",
+            "GPIP / SFP — antibiothérapie chez l'enfant",
+            "OMS — solutions de réhydratation orale",
+        ],
         columns: &["Molécule", "Dose par prise", "Rythme", "Maximum / 24 h"],
         rows: &[
             &["Paracétamol", "15 mg/kg", "toutes les 6 h", "60 mg/kg (4 prises)"],
@@ -375,7 +426,11 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Broyage",
         title: "Écraser ou ouvrir — règles et pièges",
-        caution: "À vérifier au cas par cas (RCP, listes SFPC / OMÉDIT) : écraser une forme non prévue sort de l'AMM et engage la responsabilité de l'équipe.",
+        sources: &[
+            "SFPC — liste nationale des médicaments écrasables",
+            "OMÉDIT — bon usage de l'écrasement des comprimés et de l'ouverture des gélules",
+            "RCP des spécialités (ANSM)",
+        ],
         columns: &["Forme ou molécule", "Conduite à tenir"],
         rows: &[
             &[
@@ -427,7 +482,7 @@ mod tests {
         assert!(TABLES.len() >= 6);
         for t in TABLES {
             assert!(!t.title.is_empty());
-            assert!(!t.caution.is_empty());
+            assert!(!t.sources.is_empty());
             assert!(!t.rows.is_empty());
             for row in t.rows {
                 assert_eq!(

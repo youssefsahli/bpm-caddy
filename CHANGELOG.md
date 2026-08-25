@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-08-25
+
+### Added
+- Drug cards open as a **monograph on a sheet of paper**: uppercase
+  section headings over hairlines, the sections in reading order
+  (indications, mécanisme d'action, posologie, contre-indications,
+  interactions, effets indésirables, surveillance, conseils au
+  patient), the pharmacokinetics as a definition list and the numbered
+  sources at the foot. "Modifier" switches to the editable form,
+  "Imprimer" typesets the same sheet as an A4 PDF.
+- Six new fields on every card — indications, mécanisme d'action,
+  contre-indications, effets indésirables, surveillance and sources —
+  stored, edited and saved compare-and-set like the rest.
+- Reference monographs for ~60 drugs, written at monograph depth: the
+  anticoagulants (AOD, AVK, HBPM), the inhalers, the narrow-margin
+  drugs, the oral anticancer drugs, and now the antibiotics and the
+  psychotropes, each with its own numbered sources.
+
+### Changed
+- Reference tables carry **numbered sources** instead of a prose
+  caution line, on screen and in the printout.
+- The monograph headings read in full: "Posologie", "Conseils au
+  patient", "Notes de l'équipe".
+
 ## [0.17.0] - 2026-08-25
 
 ### Added
