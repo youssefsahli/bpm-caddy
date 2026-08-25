@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-08-25
+
+### Added
+- Every one of the 275 drug cards now ships a full monograph: the last
+  ones are the oral tyrosine-kinase inhibitors and the cytotoxics taken
+  at home (osimertinib, erlotinib, sunitinib, sorafénib, dasatinib,
+  nilotinib, olaparib, témozolomide, hydroxycarbamide), the remaining
+  insulins and the sulfamide. Each carries its indications, mechanism,
+  posology, contraindications, interactions, adverse effects,
+  monitoring, counselling points, pharmacokinetics and numbered
+  sources.
+
 ## [0.31.0] - 2026-08-25
 
 ### Added
