@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-08-25
+
+### Added
+- Formes et dosages on every drug card, shown with the
+  pharmacokinetics on screen and on the printed monograph.
+- Class notes: a note shared by every card of the same therapeutic
+  class ("Note de classe…"), written once and read on all of them.
+- "Rechercher…" opens the public ANSM medicines database in the
+  browser, pre-filled with the card's brand name and DCI. The app
+  itself stays offline.
+
 ## [0.23.0] - 2026-08-25
 
 ### Added

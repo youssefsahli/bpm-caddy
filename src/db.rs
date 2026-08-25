@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS drugs (
     smr         TEXT NOT NULL DEFAULT '',
     tags        TEXT NOT NULL DEFAULT '',
     toxicity    TEXT NOT NULL DEFAULT '',
+    forms       TEXT NOT NULL DEFAULT '',
     antidote    TEXT NOT NULL DEFAULT '',
     notes       TEXT NOT NULL DEFAULT '',
     half_life   TEXT NOT NULL DEFAULT '',
@@ -56,6 +57,11 @@ CREATE TABLE IF NOT EXISTS drugs (
     elimination TEXT NOT NULL DEFAULT '',
     renal       TEXT NOT NULL DEFAULT '',
     pregnancy   TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS class_notes (
+    class       TEXT PRIMARY KEY,
+    body        TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE IF NOT EXISTS table_cells (
     table_key   TEXT NOT NULL,
@@ -114,6 +120,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE drugs ADD COLUMN smr TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN toxicity TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN forms TEXT NOT NULL DEFAULT ''",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -448,6 +455,8 @@ pub struct Drug {
     /// Niveau de toxicité / marge thérapeutique, avec les DI et CI
     /// retenues dans la littérature.
     pub toxicity: String,
+    /// Formes et dosages disponibles, une par ligne.
+    pub forms: String,
     pub antidote: String,
     /// The team's own notes.
     pub notes: String,
@@ -570,6 +579,7 @@ pub struct StarterDetail {
     pub smr: &'static str,
     pub tags: &'static str,
     pub toxicity: &'static str,
+    pub forms: &'static str,
 }
 
 pub const STARTER_DETAILS: &[StarterDetail] = &[
@@ -592,6 +602,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "aod, surveillance biologique, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Xarelto",
@@ -612,6 +623,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "aod, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Pradaxa",
@@ -632,6 +644,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "aod, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Lixiana",
@@ -652,6 +665,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "aod, surveillance biologique, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Coumadine",
@@ -672,6 +686,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Previscan",
@@ -692,6 +707,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Sintrom",
@@ -712,6 +728,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Lovenox",
@@ -732,6 +749,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "hbpm, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Kardégic",
@@ -752,6 +770,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiagrégant, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Plavix",
@@ -772,6 +791,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiagrégant, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Xanax",
@@ -792,6 +812,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Stilnox",
@@ -812,6 +833,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "hypnotique, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Imovane",
@@ -832,6 +854,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "hypnotique, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Tahor",
@@ -852,6 +875,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "statine, surveillance biologique, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Cordarone",
@@ -872,6 +896,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiarythmique, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Digoxine",
@@ -892,6 +917,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "digitalique, marge thérapeutique étroite, surveillance biologique",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Glucophage",
@@ -912,6 +938,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "biguanide",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Ozempic",
@@ -932,6 +959,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "analogue glp-1",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Lantus",
@@ -952,6 +980,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "insuline, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Ventoline",
@@ -972,6 +1001,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "bêta-2 mimétique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Symbicort",
@@ -992,6 +1022,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "csi + bdla",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Seretide",
@@ -1012,6 +1043,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "csi + bdla",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Spiriva",
@@ -1032,6 +1064,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "anticholinergique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Singulair",
@@ -1052,6 +1085,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antileucotriène",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Levothyrox",
@@ -1072,6 +1106,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "hormone thyroïdienne, marge thérapeutique étroite, surveillance biologique",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Inexium",
@@ -1092,6 +1127,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "ipp",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Amoxicilline",
@@ -1112,6 +1148,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "pénicilline",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Augmentin",
@@ -1132,6 +1169,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "pénicilline + inhibiteur",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Pyostacine",
@@ -1152,6 +1190,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "streptogramine",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Cortancyl",
@@ -1172,6 +1211,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "corticoïde, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Méthotrexate",
@@ -1192,6 +1232,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "immunosuppresseur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Zithromax",
@@ -1212,6 +1253,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "macrolide, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Ciflox",
@@ -1232,6 +1274,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "fluoroquinolone",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Oflocet",
@@ -1252,6 +1295,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "fluoroquinolone",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Monuril",
@@ -1272,6 +1316,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antibiotique urinaire",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Furadantine",
@@ -1292,6 +1337,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antibiotique urinaire, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Selexid",
@@ -1312,6 +1358,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "pénicilline",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Bactrim",
@@ -1332,6 +1379,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "sulfamide antibactérien, surveillance biologique, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Doxycycline",
@@ -1352,6 +1400,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "cycline, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Flagyl",
@@ -1372,6 +1421,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "nitro-imidazolé",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Triflucan",
@@ -1392,6 +1442,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antifongique azolé, surveillance biologique, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Zelitrex",
@@ -1412,6 +1463,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiviral, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Atarax",
@@ -1432,6 +1484,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antihistaminique h1 sédatif, contre-indiqué grossesse, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Seroplex",
@@ -1452,6 +1505,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "isrs, surveillance biologique, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Zoloft",
@@ -1472,6 +1526,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "isrs, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Deroxat",
@@ -1492,6 +1547,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "isrs, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Effexor",
@@ -1512,6 +1568,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "irsna",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Cymbalta",
@@ -1532,6 +1589,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "irsna",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Laroxyl",
@@ -1552,6 +1610,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antidépresseur tricyclique, surveillance biologique, vigilance conduite",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Téralithe",
@@ -1572,6 +1631,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "thymorégulateur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Dépakote",
@@ -1592,6 +1652,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "thymorégulateur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Lamictal",
@@ -1612,6 +1673,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Keppra",
@@ -1632,6 +1694,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiépileptique, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Tégrétol",
@@ -1652,6 +1715,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Fosamax",
@@ -1672,6 +1736,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "bisphosphonate, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Xeloda",
@@ -1692,6 +1757,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "anticancéreux oral, fluoropyrimidine, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Abilify",
@@ -1712,6 +1778,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Zyprexa",
@@ -1732,6 +1799,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Leponex",
@@ -1752,6 +1820,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antipsychotique, nfs obligatoire, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
         toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        forms: "",
     },
     StarterDetail {
         name: "Tavanic",
@@ -1772,6 +1841,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "fluoroquinolone, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
     StarterDetail {
         name: "Prolia",
@@ -1792,6 +1862,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "anti-rankl, semestriel, contre-indiqué grossesse",
         toxicity: "",
+        forms: "",
     },
 ];
 
@@ -2569,7 +2640,8 @@ impl Db {
                 "SELECT d.id, d.name, d.dci, d.class, d.dosage, d.ddi, d.iup, d.antidote,
                         d.notes, d.half_life, d.auc, d.elimination, d.renal, d.pregnancy,
                         d.indications, d.mechanism, d.contraindications, d.adverse,
-                        d.monitoring, d.sources, d.status, d.smr, d.tags, d.toxicity
+                        d.monitoring, d.sources, d.status, d.smr, d.tags, d.toxicity,
+                        d.forms
                  FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
                  WHERE pd.patient_id = ?1 ORDER BY d.name COLLATE NOCASE",
             )
@@ -2601,6 +2673,7 @@ impl Db {
                     smr: r.get(21)?,
                     tags: r.get(22)?,
                     toxicity: r.get(23)?,
+                    forms: r.get(24)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -2871,7 +2944,7 @@ impl Db {
                 "SELECT id, name, dci, class, dosage, ddi, iup, antidote, notes,
                         half_life, auc, elimination, renal, pregnancy,
                         indications, mechanism, contraindications, adverse,
-                        monitoring, sources, status, smr, tags, toxicity
+                        monitoring, sources, status, smr, tags, toxicity, forms
                  FROM drugs ORDER BY name COLLATE NOCASE",
             )
             .map_err(|e| e.to_string())?;
@@ -2902,6 +2975,7 @@ impl Db {
                     smr: r.get(21)?,
                     tags: r.get(22)?,
                     toxicity: r.get(23)?,
+                    forms: r.get(24)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -2970,6 +3044,7 @@ impl Db {
                 ("smr", d.smr),
                 ("tags", d.tags),
                 ("toxicity", d.toxicity),
+                ("forms", d.forms),
             ] {
                 if value.is_empty() {
                     continue;
@@ -3048,14 +3123,14 @@ impl Db {
                         elimination = ?11, renal = ?12, pregnancy = ?13, indications = ?14,
                         mechanism = ?15, contraindications = ?16, adverse = ?17,
                         monitoring = ?18, sources = ?19, status = ?20, smr = ?21,
-                        tags = ?22, toxicity = ?23
-                 WHERE id = ?24 AND name = ?25 AND dci = ?26 AND class = ?27 AND dosage = ?28
-                   AND ddi = ?29 AND iup = ?30 AND antidote = ?31 AND notes = ?32
-                   AND half_life = ?33 AND auc = ?34 AND elimination = ?35 AND renal = ?36
-                   AND pregnancy = ?37 AND indications = ?38 AND mechanism = ?39
-                   AND contraindications = ?40 AND adverse = ?41 AND monitoring = ?42
-                   AND sources = ?43 AND status = ?44 AND smr = ?45 AND tags = ?46
-                   AND toxicity = ?47",
+                        tags = ?22, toxicity = ?23, forms = ?24
+                 WHERE id = ?25 AND name = ?26 AND dci = ?27 AND class = ?28 AND dosage = ?29
+                   AND ddi = ?30 AND iup = ?31 AND antidote = ?32 AND notes = ?33
+                   AND half_life = ?34 AND auc = ?35 AND elimination = ?36 AND renal = ?37
+                   AND pregnancy = ?38 AND indications = ?39 AND mechanism = ?40
+                   AND contraindications = ?41 AND adverse = ?42 AND monitoring = ?43
+                   AND sources = ?44 AND status = ?45 AND smr = ?46 AND tags = ?47
+                   AND toxicity = ?48 AND forms = ?49",
                 rusqlite::params![
                     new.name,
                     new.dci,
@@ -3080,6 +3155,7 @@ impl Db {
                     new.smr,
                     new.tags,
                     new.toxicity,
+                    new.forms,
                     expected.id,
                     expected.name,
                     expected.dci,
@@ -3104,6 +3180,7 @@ impl Db {
                     expected.smr,
                     expected.tags,
                     expected.toxicity,
+                    expected.forms,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -3316,6 +3393,48 @@ impl Db {
             out.insert((r, c), v);
         }
         Ok(out)
+    }
+
+    /// The team's note for a therapeutic class, shown on every card of
+    /// that class.
+    pub fn class_note(&self, class: &str) -> Result<String, String> {
+        let key = class.trim();
+        if key.is_empty() {
+            return Ok(String::new());
+        }
+        self.conn
+            .query_row(
+                "SELECT body FROM class_notes WHERE class = ?1 COLLATE NOCASE",
+                [key],
+                |r| r.get(0),
+            )
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(String::new()),
+                other => Err(other.to_string()),
+            })
+    }
+
+    /// Write (or clear) the note of a therapeutic class.
+    pub fn set_class_note(&self, class: &str, body: &str) -> Result<(), String> {
+        let key = class.trim();
+        if key.is_empty() {
+            return Ok(());
+        }
+        if body.trim().is_empty() {
+            self.conn
+                .execute("DELETE FROM class_notes WHERE class = ?1", [key])
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO class_notes (class, body) VALUES (?1, ?2)
+                 ON CONFLICT(class) DO UPDATE SET body = excluded.body,
+                     updated_at = datetime('now', 'localtime')",
+                (key, body.trim()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Every table edit, for the printout.
@@ -4330,6 +4449,59 @@ mod tests {
             .collect();
         ranks.sort_unstable();
         assert_eq!(ranks, vec![0, 1]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn class_notes_are_shared_and_clearable() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-class-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("class.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        assert_eq!(db.class_note("AOD").unwrap(), "");
+        db.set_class_note("AOD", "  Toujours vérifier la clairance.  ")
+            .unwrap();
+        // Stored trimmed, found whatever the case of the class.
+        assert_eq!(
+            db.class_note("AOD").unwrap(),
+            "Toujours vérifier la clairance."
+        );
+        assert_eq!(
+            db.class_note("aod").unwrap(),
+            "Toujours vérifier la clairance."
+        );
+        // An empty body clears the note rather than storing a blank.
+        db.set_class_note("AOD", "   ").unwrap();
+        assert_eq!(db.class_note("AOD").unwrap(), "");
+        // A card with no class is a no-op, never an error.
+        db.set_class_note("", "rien").unwrap();
+        assert_eq!(db.class_note("").unwrap(), "");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn table_cells_override_and_reset() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-cells-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cells.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.set_table_cell("IPP", 0, 1, "25 mg", "20 mg").unwrap();
+        assert_eq!(
+            db.table_cells("IPP").unwrap().get(&(0, 1)).unwrap(),
+            "25 mg"
+        );
+        // Writing the shipped value back drops the override entirely.
+        db.set_table_cell("IPP", 0, 1, "20 mg", "20 mg").unwrap();
+        assert!(db.table_cells("IPP").unwrap().is_empty());
+        db.set_table_cell("IPP", 0, 1, "25 mg", "20 mg").unwrap();
+        db.set_table_cell("IPP", 1, 2, "15 mg", "20 mg").unwrap();
+        assert_eq!(db.all_table_cells().unwrap().len(), 2);
+        assert_eq!(db.reset_table("IPP").unwrap(), 2);
+        assert!(db.all_table_cells().unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
     }

@@ -559,6 +559,7 @@ fn monograph_source(d: &Drug) -> String {
         ));
     }
     let pk = [
+        ("Formes et dosages", d.forms.as_str()),
         ("Demi-vie", d.half_life.as_str()),
         ("AUC / exposition", d.auc.as_str()),
         ("Élimination", d.elimination.as_str()),
@@ -866,6 +867,7 @@ mod tests {
             smr: String::new(),
             tags: "aod, surveillance biologique".to_owned(),
             toxicity: String::new(),
+            forms: "Comprimé pelliculé 2,5 mg et 5 mg".to_owned(),
         };
         let source = monograph_source(&d);
         // Hostile text is escaped, never interpreted as Typst markup.
