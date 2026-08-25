@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] - 2026-08-25
+
+### Added
+- 101 more monographs: neurology (epilepsy, migraine, Parkinson,
+  multiple sclerosis, myorelaxants) and rheumatology and immunology
+  (AINS, corticosteroids, biotherapies, JAK inhibitors, bone). 657 of
+  the 812 cards now carry a full monograph — indications, mechanism,
+  posology, contraindications, interactions, adverse effects,
+  surveillance, counter advice, pharmacokinetics, renal adaptation,
+  pregnancy and sources.
+
 ## [0.37.0] - 2026-08-25
 
 ### Added
