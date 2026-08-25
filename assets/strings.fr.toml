@@ -49,6 +49,13 @@ opts_db_note = "Un changement de chemin prend effet au redémarrage. L'enregistr
 opts_fee_initial = "Initial"
 opts_fee_suivi1 = "1er suivi"
 opts_fee_suivi2 = "2e suivi +"
+opts_fee_unused = "Rang au-delà du quota de cet acte — aucun tarif à saisir."
+opts_cycle_months = "Durée du cycle (mois)"
+opts_cycle_suffix = " mois"
+opts_enforcement = "Quota atteint"
+opts_enforce_warn = "Avertir (forçable)"
+opts_enforce_inform = "Informer seulement"
+opts_enforce_block = "Refuser"
 rank_initial = "Initial"
 rank_suivi_1 = "1er suivi"
 rank_suivi_n = "{}e suivi"
@@ -89,6 +96,8 @@ opts_save_error = "Enregistrement impossible : {}"
 # --- Règles conventionnelles ---
 rule_blocked = "Règle {} : {} acte(s) max par année d'accompagnement — prochaine année possible le {}."
 rule_override = "Créer quand même"
+rule_informed = "Règle {} : {} acte(s) par année d'accompagnement — quota déjà atteint, acte créé quand même."
+rule_blocked_hard = "Création refusée : les règles sont appliquées strictement (Options › Règles)."
 
 # --- Éditeur de modèle Typst ---
 tpl_title = "Modèles PDF (Typst)"

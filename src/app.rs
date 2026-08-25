@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::config::{ActFees, Config};
+use crate::config::{ActFees, Config, RuleEnforcement};
 use crate::db::{
     self, Appointment, Db, Drug, Interview, InterviewKind, InterviewState, InterviewSummary, Note,
     NoteSubject, Patient,
@@ -1325,11 +1325,16 @@ impl App {
                         .hint_text(tr("lock_password_hint")),
                 );
                 motif::bevel(ui.painter(), field.rect.expand(2.0), false);
+                // The lock screen holds a single field, so any Enter
+                // press submits. The previous focus-based idiom silently
+                // failed here: pressing Enter makes the field surrender
+                // focus, and the re-focus below then made `lost_focus()`
+                // false again, so Enter did nothing.
+                let submitted = ui.input(|i| i.key_pressed(egui::Key::Enter));
                 if !ctx.wants_keyboard_input() {
                     field.request_focus();
                 }
 
-                let submitted = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                 ui.add_space(10.0);
                 ui.checkbox(&mut remember, tr("lock_remember"));
                 if (motif::button(ui, tr("lock_unlock")).clicked() || submitted)
@@ -4596,6 +4601,19 @@ impl eframe::App for App {
                                 .num_columns(4)
                                 .spacing([12.0, 6.0])
                                 .show(ui, |ui| {
+                                    // Quotas in the same order as the
+                                    // fee rows below.
+                                    let quotas: [u32; 9] = [
+                                        editor.cfg.rules.bpm_per_year,
+                                        editor.cfg.rules.aod_per_year,
+                                        editor.cfg.rules.avk_per_year,
+                                        editor.cfg.rules.asthme_per_year,
+                                        editor.cfg.rules.anticancereux_per_year,
+                                        editor.cfg.rules.trod_angine_per_year,
+                                        editor.cfg.rules.trod_cystite_per_year,
+                                        editor.cfg.rules.vaccination_per_year,
+                                        editor.cfg.rules.prevention_per_year,
+                                    ];
                                     let fees: [(&str, &mut ActFees); 9] = [
                                         ("BPM", &mut editor.cfg.billing.bpm),
                                         ("AOD", &mut editor.cfg.billing.aod),
@@ -4616,24 +4634,62 @@ impl eframe::App for App {
                                         ui.label(dim(h));
                                     }
                                     ui.end_row();
-                                    for (label, fees) in fees {
+                                    for (i, (label, fees)) in fees.into_iter().enumerate() {
                                         ui.label(dim(label));
-                                        for slot in [
-                                            &mut fees.initial,
-                                            &mut fees.suivi_1,
-                                            &mut fees.suivi_2,
-                                        ] {
-                                            ui.add(
-                                                egui::DragValue::new(slot)
-                                                    .range(0.0..=500.0)
-                                                    .suffix(" €"),
-                                            );
+                                        // One price column per act the
+                                        // quota allows in a cycle: a kind
+                                        // limited to two acts has no
+                                        // third rate to fill in.
+                                        let quota = quotas[i] as usize;
+                                        let shown = if quota == 0 {
+                                            ActFees::SLOTS
+                                        } else {
+                                            quota.min(ActFees::SLOTS)
+                                        };
+                                        for rank in 0..ActFees::SLOTS {
+                                            if rank < shown {
+                                                ui.add(
+                                                    egui::DragValue::new(fees.slot_mut(rank))
+                                                        .range(0.0..=500.0)
+                                                        .suffix(" €"),
+                                                );
+                                            } else {
+                                                ui.label(dim("—"))
+                                                    .on_hover_text(tr("opts_fee_unused"));
+                                            }
                                         }
                                         ui.end_row();
                                     }
                                 });
                             ui.add_space(8.0);
                             motif::section(ui, tr("opts_rules"));
+                            egui::Grid::new("opts_rules_cycle")
+                                .num_columns(2)
+                                .spacing([12.0, 6.0])
+                                .show(ui, |ui| {
+                                    ui.label(dim(tr("opts_cycle_months")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.rules.cycle_months)
+                                            .range(1..=36)
+                                            .suffix(tr("opts_cycle_suffix")),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("opts_enforcement")));
+                                    ui.horizontal(|ui| {
+                                        for (level, label) in [
+                                            (RuleEnforcement::Warn, tr("opts_enforce_warn")),
+                                            (RuleEnforcement::Inform, tr("opts_enforce_inform")),
+                                            (RuleEnforcement::Block, tr("opts_enforce_block")),
+                                        ] {
+                                            ui.radio_value(
+                                                &mut editor.cfg.rules.enforcement,
+                                                level,
+                                                label,
+                                            );
+                                        }
+                                    });
+                                    ui.end_row();
+                                });
                             egui::Grid::new("opts_rules")
                                 .num_columns(4)
                                 .spacing([12.0, 6.0])
