@@ -7070,10 +7070,16 @@ impl App {
                         }
                     });
                 };
+                // Striped: six columns of full sentences, and a row that
+                // wraps to four lines in one column and one in the next
+                // is impossible to follow across without a band behind
+                // it. The band is a shade of the trough the table sits
+                // in, not egui's default hover blue.
+                ui.visuals_mut().faint_bg_color = egui::Color32::from_rgb(0x8b, 0x8f, 0xa1);
                 egui::Grid::new(("conv_table", session.table_selected))
                     .num_columns(t.columns.len())
                     .spacing([GAP, 8.0])
-                    .striped(false)
+                    .striped(true)
                     .show(ui, |ui| {
                         for c in t.columns {
                             cell(ui, egui::RichText::new(*c).strong().size(13.0));
@@ -7480,24 +7486,33 @@ impl App {
         if session.drug_form.is_none() {
             motif::page(ui, 720.0, |ui| {
                 ui.add_space(24.0);
+                // The two side doors go hard right on a wide page and
+                // drop to their own line on a narrow one, where they
+                // used to be drawn over the title.
+                let roomy = ui.available_width() >= 620.0;
+                let doors = |ui: &mut egui::Ui, session: &mut Session| {
+                    if motif::button(ui, tr("tables_button")).clicked() {
+                        session.show_tables = true;
+                    }
+                    if motif::button(ui, tr("proto_button"))
+                        .on_hover_text(tr("proto_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_protocols = true;
+                        session.protocols = session.db.protocols().unwrap_or_default();
+                    }
+                };
                 ui.horizontal(|ui| {
                     ui.heading(tr("drug_title"));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if session.drug_form.is_none()
-                            && motif::button(ui, tr("tables_button")).clicked()
-                        {
-                            session.show_tables = true;
-                        }
-                        if session.drug_form.is_none()
-                            && motif::button(ui, tr("proto_button"))
-                                .on_hover_text(tr("proto_button_tooltip"))
-                                .clicked()
-                        {
-                            session.show_protocols = true;
-                            session.protocols = session.db.protocols().unwrap_or_default();
-                        }
-                    });
+                    if roomy {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            doors(ui, session);
+                        });
+                    }
                 });
+                if !roomy {
+                    ui.horizontal_wrapped(|ui| doors(ui, session));
+                }
                 ui.label(tr("drug_subtitle"));
                 // A base that predates the starter list (or was started by
                 // hand) shows almost nothing — point at the one-click fix.
@@ -9444,10 +9459,18 @@ impl eframe::App for App {
                 TplTarget::Courrier => self.config.cr_template_path(),
                 TplTarget::Carnet => self.config.carnet_template_path(),
             };
+            // A Typst source is code: give it the screen. A fixed
+            // 680x540 box meant scrolling a page-long template through
+            // a porthole on a monitor with room for all of it.
+            let screen = ctx.screen_rect().size();
+            let editor_h = (screen.y - 260.0).clamp(300.0, 900.0);
             egui::Window::new(tr("tpl_title"))
                 .collapsible(false)
                 .resizable(true)
-                .default_size([680.0, 540.0])
+                .default_size([
+                    (screen.x * 0.62).clamp(620.0, 1100.0),
+                    (screen.y * 0.86).clamp(480.0, 1100.0),
+                ])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
                     // Which template: the interview sheet or the CR letter.
@@ -9471,10 +9494,10 @@ impl eframe::App for App {
                     );
                     ui.add_space(4.0);
                     egui::ScrollArea::vertical()
-                        .max_height(380.0)
+                        .max_height(editor_h)
                         .show(ui, |ui| {
                             ui.add_sized(
-                                [ui.available_width(), 372.0],
+                                [ui.available_width(), editor_h - 8.0],
                                 egui::TextEdit::multiline(text)
                                     .font(egui::TextStyle::Monospace)
                                     .code_editor(),

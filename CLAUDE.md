@@ -51,8 +51,11 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_SEED_DB=<path> cargo test seed_demo` — create a demo database
 - `BPM_CADDY_TEST_PDF_OUT=<dir> cargo test pdf` — write the sample PDF
 
-Headless run (screenshots): `./scripts/screenshots.sh` regenerates the
-three README screenshots from a fresh demo seed. For manual runs:
+Headless runs: `./scripts/screenshots.sh` regenerates the README
+screenshots from a fresh demo seed, and `./scripts/smoke.sh` opens every
+view once and fails on any panic — that is how the Ctrl+N crash (nine
+digit keys for ten acts) was found. Both shoot against a throwaway
+`XDG_CONFIG_HOME`, never the operator's own config. For manual runs:
 `xvfb-run` + ImageMagick `import`, and **`unset WAYLAND_DISPLAY` inside
 the xvfb shell** or the window opens on the real desktop instead.
 
