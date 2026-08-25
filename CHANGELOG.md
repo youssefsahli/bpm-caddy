@@ -5,6 +5,48 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-08-25
+
+### Changed
+- The billing follows the Assurance Maladie memo *Aide à la
+  facturation — accompagnement pharmaceutique* instead of the fee model
+  the app had invented. Every entretien now carries the act code the
+  memo prescribes (BMI/BMS, ASI/ASS, AC1/AC3, AC2/AC4), the step of the
+  sequence it fills, and the amount that step bills: BMI 15 + 15 + 15 +
+  20 = 65 €, ASI 15 + 15 + 20 = 50 €, AC1 15 + 15 + 30 = 60 €, AC2 15 +
+  15 + 50 = 80 €, and 10 + 20 = 30 € for every "années suivantes"
+  sequence. The code and the step show under the type on the patient
+  card; hovering gives the amount, the year of accompaniment and the
+  coverage rate.
+- The anticancéreux theme splits in two, as the memo does: *anticancéreux
+  au long cours* (AC1/AC3) and *anticancéreux (autres)* (AC2/AC4), which
+  bill differently. Interviews recorded under the old single theme are
+  read as *long cours*.
+- The quota per year is no longer a number to set by hand: it is the
+  length of the sequence the memo defines for that theme and that year
+  — four entretiens for a first bilan de médication, three for a first
+  AOD/AVK/asthme year, two for every following year.
+- The Options fee grid is the memo's own table: one line per theme and
+  per year, the act code, the amount of each entretien of the sequence,
+  and the annual total. `config.toml` takes the same two rows
+  (`annee_1`, `annees_suivantes`); a file written for an earlier version
+  is still read and keeps billing what it billed.
+- The CSV export gains Code acte, Année, Étape, À distance, Situation
+  and Prise en charge (%).
+
+### Added
+- The patient's situation — ALD, AT/MP, maternité — is recorded on the
+  fiche and travels to the export, the memo requiring it to be taken
+  into account when billing.
+- An "À distance" button on each entretien of an accompaniment: the TPH
+  code the memo adds for a remote entretien, billed on top of the act
+  code. Its amount is an option, the memo giving none.
+- The code traceur TAC (adhésion, 0,01 €), billed once per patient and
+  per theme when they join, is an option of its own.
+- 179 more monographs: cardiology and hypertension, lipids and diabetes,
+  anti-infectives, vaccines and pneumology. 454 of the 812 cards now
+  carry a full monograph.
+
 ## [0.34.0] - 2026-08-25
 
 ### Added
