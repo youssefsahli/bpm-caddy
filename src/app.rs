@@ -142,6 +142,34 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
     out
 }
 
+/// The acts still to invoice — performed but not yet billed — turned
+/// into the lines of the printable recap.
+fn billing_lines(rows: &[db::ExportRow], config: &Config) -> Vec<crate::pdf::BillingLine> {
+    rows.iter()
+        .filter(|r| r.state == InterviewState::Performed)
+        .map(|r| crate::pdf::BillingLine {
+            date: r
+                .scheduled_date
+                .clone()
+                .unwrap_or_else(|| r.created_date.clone()),
+            patient: r.patient_name.clone(),
+            kind: r.kind.label().to_owned(),
+            code: r.kind.act_code(r.fee_year).unwrap_or("—").to_owned(),
+            step: r
+                .kind
+                .step_label(r.fee_year, r.fee_rank)
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| rank_label(r.fee_rank)),
+            situation: db::situation_label(&r.situation)
+                .map(|k| tr(k).to_owned())
+                .unwrap_or_else(|| r.situation.clone()),
+            remote: r.remote,
+            coverage: r.kind.coverage_rate(),
+            fee: config.act_total(r.kind, r.fee_year, r.fee_rank, r.remote),
+        })
+        .collect()
+}
+
 /// The uppercase heading of a monograph section, with its hairline.
 fn mono_heading(ui: &mut egui::Ui, width: f32, title: &str) {
     ui.add_space(10.0);
@@ -6363,6 +6391,33 @@ impl App {
                                 session.export_notice = Some(trf("dash_exported", file.display()));
                             }
                             Err(e) => session.error = Some(trf("dash_export_error", e)),
+                        }
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+            // The paper companion of the export: the acts to invoice,
+            // with the code, the step and the amount the memo sets.
+            if motif::button(ui, tr("dash_billing_recap"))
+                .on_hover_text(tr("dash_billing_recap_tooltip"))
+                .clicked()
+            {
+                match session.db.export_rows(config.rules.cycle_months.max(1)) {
+                    Ok(rows) => {
+                        let today = if session.today.is_empty() {
+                            session.db.today_iso().unwrap_or_default()
+                        } else {
+                            session.today.clone()
+                        };
+                        let lines = billing_lines(&rows, config);
+                        if lines.is_empty() {
+                            session.export_notice = Some(tr("dash_billing_none").to_owned());
+                        } else if let Err(e) = crate::pdf::open_billing_recap(
+                            &lines,
+                            tr("dash_billing_period"),
+                            &db::format_french_date(&today),
+                        ) {
+                            session.error = Some(e);
                         }
                     }
                     Err(e) => session.error = Some(e),

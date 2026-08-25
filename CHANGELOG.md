@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] - 2026-08-25
+
+### Added
+- A printable billing recap, beside the CSV export on the dashboard: the
+  entretiens performed and not yet billed, one line each with the date,
+  the patient, the theme, the act code (with TPH when it was held
+  remotely), the step of the sequence, the situation to declare, the
+  coverage rate and the amount, and the total at the foot. A landscape
+  A4 page carrying the memo's practical rules underneath, so the sheet
+  can go straight to whoever does the invoicing.
+
 ## [0.36.0] - 2026-08-25
 
 ### Added

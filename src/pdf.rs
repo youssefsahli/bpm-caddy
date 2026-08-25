@@ -988,6 +988,82 @@ fn appointment_list_source(rdvs: &[Appointment], today_french: &str) -> String {
     )
 }
 
+/// One line of the printable billing recap: what the memo asks the
+/// pharmacy to send — the act code, the step it pays, the situation to
+/// declare and the amount, patient by patient.
+pub struct BillingLine {
+    pub date: String,
+    pub patient: String,
+    pub kind: String,
+    pub code: String,
+    pub step: String,
+    pub situation: String,
+    pub remote: bool,
+    pub coverage: u32,
+    pub fee: f64,
+}
+
+/// Build the billing recap: the acts to invoice, their codes and their
+/// amounts, with the total at the foot.
+fn billing_recap_source(lines: &[BillingLine], period: &str, today_french: &str) -> String {
+    let mut rows = String::new();
+    let mut total = 0.0;
+    for l in lines {
+        total += l.fee;
+        let code = if l.remote {
+            format!("{} + {}", l.code, crate::db::REMOTE_CODE)
+        } else {
+            l.code.clone()
+        };
+        rows.push_str(&format!(
+            "{}, {}, {}, {}, {}, {}, {}, {},\n",
+            typst_str(&crate::db::format_french_date(&l.date)),
+            typst_str(&l.patient),
+            typst_str(&l.kind),
+            typst_str(&code),
+            typst_str(&l.step),
+            typst_str(&l.situation),
+            typst_str(&format!("{} %", l.coverage)),
+            typst_str(&format!("{:.2} EUR", l.fee).replace('.', ",")),
+        ));
+    }
+    let total = format!("{total:.2} EUR").replace('.', ",");
+    let count = lines.len();
+    format!(
+        r#"
+#set page(paper: "a4", margin: 1.5cm, flipped: true)
+#set text(size: 10pt)
+#align(center)[#text(16pt, weight: "bold")[Récapitulatif de facturation]]
+#v(1mm)
+#align(center)[{period} — édité le {today_french}]
+#v(5mm)
+#table(
+  columns: (auto, 1fr, auto, auto, auto, auto, auto, auto),
+  inset: 6pt,
+  stroke: 0.6pt,
+  [*Date*], [*Patient*], [*Thème*], [*Code acte*], [*Étape*], [*Situation*],
+  [*Prise en charge*], [*Montant*],
+{rows})
+#v(4mm)
+#text(weight: "bold")[{count} acte(s) — total {total}]
+#v(3mm)
+#text(9pt)[Prestation facturée en tiers payant, indépendamment de tout code CIP, aux prix TTC. Une seule pharmacie accompagne un patient : celle qui a débuté la séquence annuelle perçoit la rémunération.]
+"#
+    )
+}
+
+/// Compile and open the billing recap for printing.
+pub fn open_billing_recap(
+    lines: &[BillingLine],
+    period: &str,
+    today_french: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        billing_recap_source(lines, period, today_french),
+        "facturation",
+    )
+}
+
 /// Compile and open the RDV list for printing.
 pub fn open_appointment_list(rdvs: &[Appointment], today_french: &str) -> Result<PathBuf, String> {
     compile_and_open(appointment_list_source(rdvs, today_french), "rdv")
@@ -1003,6 +1079,44 @@ fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn billing_recap_compiles_and_totals_the_acts() {
+        let line = |patient: &str, code: &str, fee: f64, remote| BillingLine {
+            date: "2026-08-24".to_owned(),
+            patient: patient.to_owned(),
+            kind: "Bilan de médication".to_owned(),
+            code: code.to_owned(),
+            step: "Entretien initial".to_owned(),
+            situation: "ALD".to_owned(),
+            remote,
+            coverage: 70,
+            fee,
+        };
+        let lines = vec![
+            line("Hélène Lefèvre", "BMI", 15.0, false),
+            // A hostile name must not inject markup into the page.
+            line("Paul #eval \"Bernard\"", "BMI", 20.5, true),
+        ];
+        let src = billing_recap_source(&lines, "Août 2026", "24/08/2026");
+        assert!(!src.contains("#eval \"Bernard\"]"));
+        // The TPH code sits beside the act code, and the total adds up.
+        assert!(src.contains("BMI + TPH"));
+        assert!(src.contains("35,50 EUR"));
+        let world = PdfWorld::new(src);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le récapitulatif doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("facturation_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
 
     #[test]
     fn week_plan_compiles_with_hours_and_entries() {
