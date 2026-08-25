@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-08-25
+
+### Added
+- Rendez-vous now have an hour. It is typed the fast way — 9, 9h30,
+  930, 09:30 — on the patient's interview table or straight from the
+  agenda's day panel, it leads the block on the week grid and the line
+  in the day list, and the day is ordered by it with the untimed
+  rendez-vous last. Agenda entries carry one too.
+- A rendez-vous can be moved from the agenda: "Déplacer" takes a date
+  in the usual compact form, without opening the record. Both writes
+  are compare-and-set on what the screen showed.
+- The agenda filters by act kind: click the kinds to narrow the grid,
+  the day panel and the list at once, "Tous" to see everything again.
+- "Imprimer la semaine" typesets the week on a landscape A4 page, one
+  column per day, rendez-vous and other entries in the order of the
+  day.
+- The left and right arrows move the agenda a week — or a month in
+  month view.
+- 1017 posology lines over 168 drugs, against 368 over 60: the
+  anticoagulants and opioids, the inhalers and insulins, Parkinson,
+  psychiatry, urology and contraception, each with the lesser-known
+  uses marked where they lie outside the AMM.
+
 ## [0.32.0] - 2026-08-25
 
 ### Added

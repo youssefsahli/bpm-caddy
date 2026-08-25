@@ -638,7 +638,13 @@ struct Session {
     day_note_text: String,
     day_note_confirm: Option<i64>,
     event_title: String,
+    event_time: String,
     event_category: db::EventCategory,
+    /// Agenda filter: the act kinds shown (all when empty), and the
+    /// rendez-vous whose hour or date is being changed.
+    agenda_filter: std::collections::HashSet<InterviewKind>,
+    rdv_time_edit: Option<(i64, String)>,
+    rdv_move_edit: Option<(i64, String)>,
     /// Week shown in the agenda, relative to the current one.
     agenda_offset: i64,
     /// In-progress text of the per-interview date fields, keyed by id.
@@ -774,7 +780,11 @@ impl Session {
             day_note_text: String::new(),
             day_note_confirm: None,
             event_title: String::new(),
+            event_time: String::new(),
             event_category: db::EventCategory::Formation,
+            agenda_filter: std::collections::HashSet::new(),
+            rdv_time_edit: None,
+            rdv_move_edit: None,
             agenda_offset: 0,
             date_edits: std::collections::HashMap::new(),
             show_amounts: false,
@@ -2683,6 +2693,8 @@ impl App {
         let mut delete_itv: Option<(i64, db::InterviewState)> = None;
         // (interview id, new theme, the theme this PC saw — CAS).
         let mut set_theme: Option<(i64, String, String)> = None;
+        // (interview id, new hour, the hour this PC saw — CAS).
+        let mut set_hour: Option<(i64, String, String)> = None;
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
@@ -2806,6 +2818,27 @@ impl App {
                                     [100.0, 22.0],
                                     egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
                                 );
+                                // The hour sits with its date; it only
+                                // means something once one is set.
+                                if itv.scheduled_date.is_some() {
+                                    let mut hour = itv.scheduled_time.clone();
+                                    let h = ui.add_sized(
+                                        [52.0, 22.0],
+                                        egui::TextEdit::singleline(&mut hour)
+                                            .hint_text(tr("agenda_hour_hint")),
+                                    );
+                                    if h.lost_focus() && hour != itv.scheduled_time {
+                                        let parsed = if hour.trim().is_empty() {
+                                            Some(String::new())
+                                        } else {
+                                            db::parse_hour(&hour)
+                                        };
+                                        if let Some(value) = parsed {
+                                            set_hour =
+                                                Some((itv.id, value, itv.scheduled_time.clone()));
+                                        }
+                                    }
+                                }
                                 if field.lost_focus() {
                                     let year = session.db.current_year();
                                     if text.trim().is_empty() {
@@ -2853,6 +2886,19 @@ impl App {
                 });
         });
         let stale_msg = tr("itv_stale");
+        if let Some((id, hour, expected)) = set_hour {
+            match session.db.set_scheduled_time(id, &hour, &expected) {
+                Ok(true) => {
+                    session.error = None;
+                    session.reload_interviews(patient.id);
+                }
+                Ok(false) => {
+                    session.reload_interviews(patient.id);
+                    session.error = Some(stale_msg.to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
         if let Some((id, theme, expected)) = set_theme {
             match session.db.set_theme(id, &theme, &expected) {
                 Ok(true) => {
@@ -3309,6 +3355,10 @@ impl App {
         let day = session.agenda_day.clone();
         let mut delete_event: Option<(i64, String)> = None;
         let mut add_event = false;
+        // (id, typed text, the value this PC displayed) for the two
+        // compare-and-set writes the panel can make.
+        let mut set_time: Option<(i64, String, String)> = None;
+        let mut move_rdv: Option<(i64, String, String)> = None;
         motif::column(ui, 940.0, |ui| {
             motif::section(ui, &trf("agenda_day_title", db::format_french_date(&day)));
             ui.add_space(4.0);
@@ -3327,6 +3377,40 @@ impl App {
             }
             for rdv in &rdvs {
                 ui.horizontal(|ui| {
+                    // The hour, typed the fast way: 9, 9h30, 930, 09:30.
+                    let editing = session
+                        .rdv_time_edit
+                        .as_ref()
+                        .is_some_and(|(id, _)| *id == rdv.id);
+                    if editing {
+                        let (_, text) = session.rdv_time_edit.as_mut().unwrap();
+                        let field = ui.add_sized(
+                            [56.0, 22.0],
+                            egui::TextEdit::singleline(text).hint_text(tr("agenda_hour_hint")),
+                        );
+                        if field.lost_focus() {
+                            set_time = Some((rdv.id, text.clone(), rdv.time.clone()));
+                        } else {
+                            field.request_focus();
+                        }
+                    } else {
+                        let shown = if rdv.time.is_empty() {
+                            tr("agenda_no_hour").to_owned()
+                        } else {
+                            rdv.time.clone()
+                        };
+                        if ui
+                            .add_sized(
+                                [56.0, 20.0],
+                                egui::Button::new(egui::RichText::new(shown).size(12.0).strong())
+                                    .fill(motif::BG),
+                            )
+                            .on_hover_text(tr("agenda_hour_tooltip"))
+                            .clicked()
+                        {
+                            session.rdv_time_edit = Some((rdv.id, rdv.time.clone()));
+                        }
+                    }
                     ui.label(
                         egui::RichText::new(format!("  {}  ", rdv.kind.label()))
                             .size(11.0)
@@ -3347,10 +3431,37 @@ impl App {
                                 .color(motif::BG_DARK),
                         );
                     }
+                    // Moving a rendez-vous without opening the record.
+                    let moving = session
+                        .rdv_move_edit
+                        .as_ref()
+                        .is_some_and(|(id, _)| *id == rdv.id);
+                    if moving {
+                        let (_, text) = session.rdv_move_edit.as_mut().unwrap();
+                        let field = ui.add_sized(
+                            [96.0, 22.0],
+                            egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                        );
+                        if field.lost_focus() {
+                            move_rdv = Some((rdv.id, text.clone(), rdv.date.clone()));
+                        } else {
+                            field.request_focus();
+                        }
+                    } else if motif::button(ui, tr("agenda_move"))
+                        .on_hover_text(tr("agenda_move_tooltip"))
+                        .clicked()
+                    {
+                        session.rdv_move_edit = Some((rdv.id, db::format_french_date(&rdv.date)));
+                    }
                 });
             }
             for ev in session.events.clone() {
                 ui.horizontal(|ui| {
+                    if ev.time.is_empty() {
+                        ui.add_space(48.0);
+                    } else {
+                        ui.label(egui::RichText::new(&ev.time).size(12.0).strong());
+                    }
                     ui.label(
                         egui::RichText::new(format!("  {}  ", ev.category.label()))
                             .size(11.0)
@@ -3376,8 +3487,13 @@ impl App {
                             ui.selectable_value(&mut session.event_category, c, c.label());
                         }
                     });
+                ui.add_sized(
+                    [56.0, 24.0],
+                    egui::TextEdit::singleline(&mut session.event_time)
+                        .hint_text(tr("agenda_hour_hint")),
+                );
                 let field = ui.add_sized(
-                    [320.0, 24.0],
+                    [250.0, 24.0],
                     egui::TextEdit::singleline(&mut session.event_title)
                         .hint_text(tr("agenda_event_hint")),
                 );
@@ -3404,13 +3520,54 @@ impl App {
         );
         if add_event {
             let title = session.event_title.trim().to_owned();
-            match session.db.add_event(&day, &title, session.event_category) {
+            let time = db::parse_hour(&session.event_time).unwrap_or_default();
+            match session
+                .db
+                .add_event(&day, &time, &title, session.event_category)
+            {
                 Ok(_) => {
                     session.event_title.clear();
+                    session.event_time.clear();
                     session.load_day();
                 }
                 Err(e) => session.error = Some(e),
             }
+        }
+        if let Some((id, typed, expected)) = set_time {
+            // An empty field clears the hour; anything unreadable is
+            // refused, leaving the hour as it was.
+            let time = if typed.trim().is_empty() {
+                Some(String::new())
+            } else {
+                db::parse_hour(&typed)
+            };
+            if let Some(time) = time {
+                match session.db.set_scheduled_time(id, &time, &expected) {
+                    Ok(true) => {}
+                    Ok(false) => session.error = Some(tr("itv_stale").to_owned()),
+                    Err(e) => session.error = Some(e),
+                }
+                session.refresh_dashboard();
+            }
+            session.rdv_time_edit = None;
+        }
+        if let Some((id, typed, expected)) = move_rdv {
+            let year = session.db.current_year();
+            match db::parse_french_date(&typed, year, db::YearHint::Future) {
+                Ok(iso) => match session
+                    .db
+                    .set_scheduled_date(id, Some(&iso), Some(&expected))
+                {
+                    Ok(true) => {
+                        session.refresh_dashboard();
+                        session.load_day();
+                    }
+                    Ok(false) => session.error = Some(tr("itv_stale").to_owned()),
+                    Err(e) => session.error = Some(e),
+                },
+                Err(e) => session.error = Some(e),
+            }
+            session.rdv_move_edit = None;
         }
         if let Some((id, title)) = delete_event {
             match session.db.delete_event(id, &title) {
@@ -3446,10 +3603,39 @@ impl App {
             session.view = MainView::Search;
             return;
         }
+        let mut print_week = false;
+        // Left and right arrows move the week or the month shown.
+        if !ctx.wants_keyboard_input() {
+            let step = ctx.input(|i| {
+                i.key_pressed(egui::Key::ArrowRight) as i64
+                    - i.key_pressed(egui::Key::ArrowLeft) as i64
+            });
+            if step != 0 {
+                if session.agenda_month {
+                    session.agenda_month_offset += step;
+                    session.agenda_month_days = session
+                        .db
+                        .month_grid(session.agenda_month_offset)
+                        .unwrap_or_default();
+                } else {
+                    session.agenda_offset += step;
+                    session.agenda_week = session
+                        .db
+                        .week_dates(session.agenda_offset)
+                        .unwrap_or_default();
+                }
+            }
+        }
         motif::column(ui, 900.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
                 ui.heading(tr("agenda_title"));
+                if motif::button(ui, tr("agenda_print_week"))
+                    .on_hover_text(tr("agenda_print_week_tooltip"))
+                    .clicked()
+                {
+                    print_week = true;
+                }
                 if !session.appointments.is_empty()
                     && motif::button(ui, tr("dash_print"))
                         .on_hover_text(tr("dash_print_tooltip"))
@@ -3490,13 +3676,68 @@ impl App {
                     }
                 }
             });
+            ui.add_space(6.0);
+            // Filter by act kind: an empty set shows everything, so the
+            // agenda opens complete and narrows only on demand.
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(tr("agenda_filter"))
+                        .size(11.0)
+                        .color(motif::BG_DARK),
+                );
+                if ui
+                    .selectable_label(session.agenda_filter.is_empty(), tr("agenda_filter_all"))
+                    .on_hover_text(tr("agenda_filter_tooltip"))
+                    .clicked()
+                {
+                    session.agenda_filter.clear();
+                }
+                for kind in InterviewKind::ALL {
+                    let on = session.agenda_filter.contains(&kind);
+                    let label = egui::RichText::new(kind.label()).color(if on {
+                        egui::Color32::WHITE
+                    } else {
+                        kind_color(kind)
+                    });
+                    if ui.selectable_label(on, label).clicked() {
+                        if on {
+                            session.agenda_filter.remove(&kind);
+                        } else {
+                            session.agenda_filter.insert(kind);
+                        }
+                    }
+                }
+            });
             ui.add_space(8.0);
         });
+        // The filter applies to every part of the view at once.
+        if !session.agenda_filter.is_empty() {
+            let keep = session.agenda_filter.clone();
+            session.appointments.retain(|r| keep.contains(&r.kind));
+        }
 
         let red = motif::ALERT;
         let mut open_id: Option<i64> = None;
         // The grid's entries that are not acts (formation, réunion…).
         let grid_events = session.load_grid_events();
+        if print_week {
+            let week = if session.agenda_month {
+                session.agenda_month_days.clone()
+            } else {
+                session.agenda_week.clone()
+            };
+            // The month grid prints as its first seven days: the week
+            // plan is a week, whichever view asked for it.
+            let week: Vec<String> = week.into_iter().take(7).collect();
+            if let Err(e) = crate::pdf::open_week_plan(
+                &week,
+                &session.appointments,
+                &grid_events,
+                &session.today,
+            ) {
+                session.error = Some(e);
+            }
+        }
         let mut pick_day: Option<String> = None;
         if session.agenda_day.is_empty() {
             session.agenda_day = session.today.clone();
@@ -3629,10 +3870,16 @@ impl App {
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
                     ui.painter().rect_filled(block, 0.0, kind_color(rdv.kind));
+                    // The hour leads the block when it is known.
+                    let label = if rdv.time.is_empty() {
+                        rdv.patient_name.clone()
+                    } else {
+                        format!("{} {}", rdv.time, rdv.patient_name)
+                    };
                     ui.painter().with_clip_rect(block.shrink(2.0)).text(
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
-                        &rdv.patient_name,
+                        label,
                         egui::FontId::proportional(11.0),
                         egui::Color32::WHITE,
                     );
@@ -3663,10 +3910,15 @@ impl App {
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
                     ui.painter().rect_filled(block, 0.0, motif::BG_DARK);
+                    let label = if ev.time.is_empty() {
+                        ev.title.clone()
+                    } else {
+                        format!("{} {}", ev.time, ev.title)
+                    };
                     ui.painter().with_clip_rect(block.shrink(2.0)).text(
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
-                        &ev.title,
+                        label,
                         egui::FontId::proportional(11.0),
                         egui::Color32::WHITE,
                     );
@@ -3758,7 +4010,12 @@ impl App {
                         ui.label(egui::RichText::new(header).strong().color(color).size(15.0));
                         ui.add_space(2.0);
                     }
-                    let mut row = format!("{}   ({})", rdv.patient_name, rdv.kind.label());
+                    let hour = if rdv.time.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{}   ", rdv.time)
+                    };
+                    let mut row = format!("{hour}{}   ({})", rdv.patient_name, rdv.kind.label());
                     if !rdv.phone.is_empty() {
                         row.push_str(&format!("   —  {}", rdv.phone));
                     }
