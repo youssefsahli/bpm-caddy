@@ -650,6 +650,70 @@ fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
     src
 }
 
+/// One substitution protocol as a printable A4 page: the decision tree
+/// as an indented list, questions in bold, branches labelled.
+pub fn open_protocol(
+    title: &str,
+    subject: &str,
+    nodes: &[crate::db::ProtocolNode],
+) -> Result<PathBuf, String> {
+    compile_and_open(protocol_source(title, subject, nodes), "protocole")
+}
+
+fn protocol_source(title: &str, subject: &str, nodes: &[crate::db::ProtocolNode]) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 2cm)\n\
+         #set text(size: 11pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[#{}]]\n",
+        typst_str(title)
+    ));
+    if !subject.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(10pt, style: \"italic\")[#{}]]\n",
+            typst_str(subject.trim())
+        ));
+    }
+    src.push_str("#v(3mm)\n#line(length: 100%, stroke: 0.6pt)\n#v(2mm)\n");
+    // Depth-first, "yes" branch before "no", same order as on screen.
+    let mut stack: Vec<(&crate::db::ProtocolNode, usize)> = nodes
+        .iter()
+        .filter(|n| n.parent_id.is_none())
+        .rev()
+        .map(|n| (n, 0))
+        .collect();
+    while let Some((node, depth)) = stack.pop() {
+        let tag = match node.branch {
+            crate::db::Branch::Yes => "Oui — ",
+            crate::db::Branch::No => "Non — ",
+            crate::db::Branch::Root => "",
+        };
+        let body = if node.kind == crate::db::NodeKind::Question {
+            format!(
+                "#text(weight: \"bold\")[#{} ?]",
+                typst_str(&format!("{tag}{}", node.text.trim_end_matches('?').trim()))
+            )
+        } else {
+            format!("#{}", typst_str(&format!("{tag}{}", node.text.trim())))
+        };
+        src.push_str(&format!(
+            "#pad(left: {}mm)[{}]\n#v(1.2mm)\n",
+            depth * 7,
+            body
+        ));
+        let mut children: Vec<&crate::db::ProtocolNode> = nodes
+            .iter()
+            .filter(|n| n.parent_id == Some(node.id))
+            .collect();
+        children.sort_by_key(|n| (n.branch != crate::db::Branch::Yes, n.position));
+        for child in children.into_iter().rev() {
+            stack.push((child, depth + 1));
+        }
+    }
+    src
+}
+
 /// Compile and open the conversion tables as a printable A4 reference.
 pub fn open_conversion_tables(edits: &TableEdits) -> Result<PathBuf, String> {
     compile_and_open(conversion_tables_source(edits), "tables")
@@ -849,6 +913,67 @@ fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protocol_page_compiles_and_keeps_the_tree_order() {
+        use crate::db::{Branch, NodeKind, ProtocolNode};
+        let node =
+            |id: i64, parent: Option<i64>, branch, kind, text: &str, position| ProtocolNode {
+                id,
+                parent_id: parent,
+                branch,
+                kind,
+                text: text.to_owned(),
+                position,
+            };
+        let nodes = vec![
+            node(
+                1,
+                None,
+                Branch::Root,
+                NodeKind::Question,
+                "Clairance inférieure à 30 mL/min",
+                0,
+            ),
+            node(
+                2,
+                Some(1),
+                Branch::Yes,
+                NodeKind::Action,
+                "Appeler le prescripteur *pour un relais*",
+                1,
+            ),
+            node(
+                3,
+                Some(1),
+                Branch::No,
+                NodeKind::Question,
+                "Apixaban disponible",
+                2,
+            ),
+            node(4, Some(3), Branch::Yes, NodeKind::Action, "Délivrer", 3),
+        ];
+        let source = protocol_source("AOD indisponible", "AOD", &nodes);
+        // The "yes" branch is written before the "no" one, and deeper
+        // steps are indented further.
+        let yes = source.find("Appeler le prescripteur").unwrap();
+        let no = source.find("Apixaban disponible").unwrap();
+        assert!(yes < no);
+        assert!(source.contains("#pad(left: 7mm)"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le protocole doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("protocole_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
 
     #[test]
     fn carnet_template_compiles_with_operator_colours() {
