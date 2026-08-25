@@ -29,7 +29,22 @@ root package. CI enforces `cargo fmt --all --check`,
   `MIGRATIONS` (`src/db.rs`).
 - Keep the Motif look: square corners, `motif::bevel` raised for
   buttons/panels, sunken for inputs/troughs; charts are painted by hand,
-  no plotting library.
+  no plotting library — `motif::chart` has bars, hbars, stacked,
+  sparkline, meter, pips, heat strip and legend.
+- **Layout is carved, not stacked.** A view computes rectangles with
+  `motif::split_rows` / `split_columns` and fills them with
+  `motif::panel` / `well` / `inside`; it does not centre a fixed-width
+  column and let content run down the page. Measure against
+  `motif::visible_rect(ui)`, never `available_rect_before_wrap` alone —
+  a dock that grew past the width it reserved leaves the central view
+  laid out wider than it is visible.
+- A band whose height depends on its content (wrapped buttons, filters)
+  measures it with `Self::wrapped_rows` and is **capped**, scrolling past
+  its share rather than crowding out the panes under it. Every layout
+  must survive 1024x700 with both docks open — `scripts/smoke.sh` and a
+  screenshot at that size are the check.
+- `allocate_new_ui` only sets a max rect and egui paints through it: use
+  `motif::inside` when content must not escape its frame.
 - The database is shared between PCs: every write to a shared row
   (states, RDV dates, patient identity, deletions) is compare-and-set
   against the values the UI displayed (`WHERE … AND <old values>`,
@@ -43,7 +58,8 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
-  agenda_month|protocols|template|options|tables|carnet|keys|act_picker`
+  agenda_month|protocols|protocol_open|template|options|tables|calc|
+  carnet|keys|act_picker`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the

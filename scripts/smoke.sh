@@ -26,8 +26,8 @@ cargo build || exit 1
 
 views=(
     search dashboard patient drugs drug_card drug_edit
-    agenda agenda_day agenda_month tables carnet protocols
-    template options keys act_picker
+    agenda agenda_day agenda_month tables calc carnet
+    protocols protocol_open template options keys act_picker
 )
 
 failed=0
