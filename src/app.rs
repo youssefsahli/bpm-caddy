@@ -209,6 +209,30 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug) {
                             .color(motif::ALERT),
                     );
                 }
+                if !d.status.trim().is_empty() {
+                    ui.add_space(3.0);
+                    ui.label(
+                        egui::RichText::new(format!("  {}  ", d.status.trim()))
+                            .size(11.0)
+                            .strong()
+                            .color(egui::Color32::WHITE)
+                            .background_color(status_color(&d.status)),
+                    );
+                }
+                let tags: Vec<&str> = d
+                    .tags
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .collect();
+                if !tags.is_empty() {
+                    ui.add_space(3.0);
+                    ui.label(
+                        egui::RichText::new(tags.join("  ·  "))
+                            .size(10.0)
+                            .color(motif::INK_LIGHT),
+                    );
+                }
             });
             ui.add_space(6.0);
             let top = ui.cursor().top();
@@ -224,8 +248,10 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug) {
                 (tr("drug_sec_ci"), d.contraindications.as_str()),
                 (tr("drug_ddi"), d.ddi.as_str()),
                 (tr("drug_sec_adverse"), d.adverse.as_str()),
+                (tr("drug_sec_toxicity"), d.toxicity.as_str()),
                 (tr("drug_sec_monitoring"), d.monitoring.as_str()),
                 (tr("drug_iup"), d.iup.as_str()),
+                (tr("drug_sec_smr"), d.smr.as_str()),
             ] {
                 mono_section(ui, width, title, body);
             }
@@ -812,6 +838,18 @@ fn kind_color(kind: InterviewKind) -> egui::Color32 {
         InterviewKind::Avk => egui::Color32::from_rgb(0x6e, 0x2e, 0x2e),
         InterviewKind::Anticancereux => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
         InterviewKind::Vaccination => egui::Color32::from_rgb(0x2e, 0x6e, 0x6e),
+    }
+}
+
+/// The badge colour of a drug's administrative status: a rupture or a
+/// withdrawal must be seen before the card is read.
+fn status_color(status: &str) -> egui::Color32 {
+    match db::DrugStatus::parse(status) {
+        Some(db::DrugStatus::Withdrawn) => motif::ALERT,
+        Some(db::DrugStatus::Shortage) => egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
+        Some(db::DrugStatus::OffLabel) => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+        Some(db::DrugStatus::Marketed) => egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+        None => motif::BG_DARK,
     }
 }
 
@@ -3210,6 +3248,32 @@ impl App {
                                             .desired_rows(3),
                                     );
                                     ui.end_row();
+                                    ui.label(dim(tr("drug_status")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.status),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_tags")))
+                                        .on_hover_text(tr("drug_tags_hint"));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.tags),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_smr")));
+                                    ui.add_sized(
+                                        [w, 26.0],
+                                        egui::TextEdit::singleline(&mut form.smr),
+                                    );
+                                    ui.end_row();
+                                    ui.label(dim(tr("drug_sec_toxicity")));
+                                    ui.add_sized(
+                                        [w, 64.0],
+                                        egui::TextEdit::multiline(&mut form.toxicity)
+                                            .desired_rows(3),
+                                    );
+                                    ui.end_row();
                                 });
                         });
                     }
@@ -3437,14 +3501,22 @@ impl App {
                 .drugs
                 .iter()
                 .filter_map(|d| {
-                    // Brand name and DCI both match ("elix" or "apixa").
+                    // Brand name and DCI both match ("elix" or "apixa");
+                    // the class and the tags widen the net ("statine",
+                    // "marge étroite"), scored below an identity match.
                     let a = fuzzy::score(&session.drug_query, &d.name);
                     let b = if d.dci.is_empty() {
                         None
                     } else {
                         fuzzy::score(&session.drug_query, &d.dci)
                     };
-                    a.max(b).map(|s| (s, d))
+                    let side = [d.class.as_str(), d.tags.as_str()]
+                        .into_iter()
+                        .filter(|t| !t.is_empty())
+                        .filter_map(|t| fuzzy::score(&session.drug_query, t))
+                        .max()
+                        .map(|s| s - 40);
+                    a.max(b).max(side).map(|s| (s, d))
                 })
                 .collect();
             scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));

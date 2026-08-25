@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-08-25
+
+### Added
+- Four more fields on every drug card: statut administratif (badge
+  coloured by what it says — rupture, retrait, hors AMM,
+  commercialisé), évaluation SMR / ASMR, étiquettes, and toxicité /
+  marge thérapeutique. All four print on the A4 monograph.
+- The reference cards ship with their étiquettes and their toxicité
+  derived from the monograph itself (classe, marge étroite,
+  surveillance biologique, contre-indication grossesse, vigilance
+  conduite), plus the encadrements that change dispensing (Previscan
+  en poursuite seulement, NFS de la clozapine, ordonnance sécurisée du
+  zolpidem, accord de soins du valproate).
+- The drug search matches the class and the étiquettes as well as the
+  brand and the DCI: typing "statine" or "marge étroite" finds the
+  cards, ranked below an identity match.
+
 ## [0.19.0] - 2026-08-25
 
 ### Fixed

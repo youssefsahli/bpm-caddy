@@ -481,6 +481,18 @@ fn monograph_source(d: &Drug) -> String {
         ));
     }
     src.push_str("#v(2mm)\n#line(length: 100%, stroke: 1pt)\n");
+    if !d.status.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(9pt)[Statut : #{}]]\n",
+            typst_str(d.status.trim())
+        ));
+    }
+    if !d.tags.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(8pt, style: \"italic\")[#{}]]\n",
+            typst_str(d.tags.trim())
+        ));
+    }
     for (title, body) in [
         ("Indications", d.indications.as_str()),
         ("Mécanisme d'action", d.mechanism.as_str()),
@@ -488,8 +500,10 @@ fn monograph_source(d: &Drug) -> String {
         ("Contre-indications", d.contraindications.as_str()),
         ("Interactions", d.ddi.as_str()),
         ("Effets indésirables", d.adverse.as_str()),
+        ("Toxicité / marge thérapeutique", d.toxicity.as_str()),
         ("Surveillance", d.monitoring.as_str()),
         ("Conseils au patient", d.iup.as_str()),
+        ("Évaluation SMR / ASMR", d.smr.as_str()),
     ] {
         if body.trim().is_empty() {
             continue;
@@ -725,6 +739,10 @@ mod tests {
             adverse: "Saignements".to_owned(),
             monitoring: "Clairance annuelle".to_owned(),
             sources: "RCP Eliquis (ANSM)\nESC 2020".to_owned(),
+            status: "Commercialisé".to_owned(),
+            smr: String::new(),
+            tags: "aod, surveillance biologique".to_owned(),
+            toxicity: String::new(),
         };
         let source = monograph_source(&d);
         // Hostile text is escaped, never interpreted as Typst markup.

@@ -45,6 +45,10 @@ CREATE TABLE IF NOT EXISTS drugs (
     adverse     TEXT NOT NULL DEFAULT '',
     monitoring  TEXT NOT NULL DEFAULT '',
     sources     TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL DEFAULT '',
+    smr         TEXT NOT NULL DEFAULT '',
+    tags        TEXT NOT NULL DEFAULT '',
+    toxicity    TEXT NOT NULL DEFAULT '',
     antidote    TEXT NOT NULL DEFAULT '',
     notes       TEXT NOT NULL DEFAULT '',
     half_life   TEXT NOT NULL DEFAULT '',
@@ -91,6 +95,10 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE drugs ADD COLUMN adverse TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN monitoring TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN sources TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN status TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN smr TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN toxicity TEXT NOT NULL DEFAULT ''",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -290,6 +298,47 @@ pub struct Interview {
     pub created_at: String,
 }
 
+/// The administrative statuses the base recognises. Anything else is
+/// kept as free text and shown as written.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DrugStatus {
+    /// Commercialisé, rien à signaler.
+    Marketed,
+    /// Rupture ou tension d'approvisionnement.
+    Shortage,
+    /// Retiré du marché ou arrêt de commercialisation.
+    Withdrawn,
+    /// Prescription hors AMM, ATU/accès précoce, ou non remboursé.
+    OffLabel,
+}
+
+impl DrugStatus {
+    /// Recognise a status from the text on the card, tolerant of case
+    /// and of the usual French wordings.
+    pub fn parse(text: &str) -> Option<Self> {
+        let t = crate::fuzzy::sort_key(text);
+        if t.is_empty() {
+            return None;
+        }
+        if t.contains("rupture") || t.contains("tension") || t.contains("contingent") {
+            Some(Self::Shortage)
+        } else if t.contains("retir") || t.contains("arret") || t.contains("suspendu") {
+            Some(Self::Withdrawn)
+        } else if t.contains("hors amm")
+            || t.contains("sans amm")
+            || t.contains("acces precoce")
+            || t.contains("atu")
+            || t.contains("non rembours")
+        {
+            Some(Self::OffLabel)
+        } else if t.contains("commercialis") || t.contains("disponible") {
+            Some(Self::Marketed)
+        } else {
+            None
+        }
+    }
+}
+
 /// One entry of the team's drug reference base (shared, encrypted with
 /// the patient data): the facts wanted at the counter in one glance.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -318,6 +367,18 @@ pub struct Drug {
     pub monitoring: String,
     /// Références, une par ligne : numérotées à l'affichage.
     pub sources: String,
+    /// Statut administratif : commercialisé, retiré, rupture, hors
+    /// AMM… ([`DrugStatus`] reconnaît les valeurs usuelles).
+    pub status: String,
+    /// Dernière évaluation SMR / ASMR de la commission de la
+    /// transparence, telle que notée par l'équipe.
+    pub smr: String,
+    /// Étiquettes libres, séparées par des virgules : elles filtrent la
+    /// recherche et se lisent sur la fiche.
+    pub tags: String,
+    /// Niveau de toxicité / marge thérapeutique, avec les DI et CI
+    /// retenues dans la littérature.
+    pub toxicity: String,
     pub antidote: String,
     /// The team's own notes.
     pub notes: String,
@@ -424,6 +485,10 @@ pub struct StarterDetail {
     pub pregnancy: &'static str,
     /// One reference per line, numbered when displayed.
     pub sources: &'static str,
+    pub status: &'static str,
+    pub smr: &'static str,
+    pub tags: &'static str,
+    pub toxicity: &'static str,
 }
 
 pub const STARTER_DETAILS: &[StarterDetail] = &[
@@ -442,6 +507,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 30 à 50 mL/min : dose habituelle, réduite si les autres critères sont réunis. 15 à 29 mL/min : 2,5 mg deux fois par jour, prudence. Inférieure à 15 mL/min ou dialyse : non recommandé.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement ; relais par une héparine de bas poids moléculaire si une anticoagulation est nécessaire.",
         sources: "RCP Eliquis — base de données publique des médicaments (ANSM)\nESC 2020 — prise en charge de la fibrillation atriale\nHAS — bon usage des anticoagulants oraux directs",
+        status: "",
+        smr: "",
+        tags: "aod, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Xarelto",
@@ -458,6 +527,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 15 à 49 mL/min : 15 mg par jour en fibrillation atriale. Inférieure à 15 mL/min : non recommandé.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement.",
         sources: "RCP Xarelto — base de données publique des médicaments (ANSM)\nESC 2020 — fibrillation atriale\nHAS — bon usage des anticoagulants oraux directs",
+        status: "",
+        smr: "",
+        tags: "aod, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Pradaxa",
@@ -474,6 +547,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 30 à 50 mL/min : envisager 110 mg deux fois par jour. Inférieure à 30 mL/min : contre-indiqué. Dialysable, contrairement aux anti-Xa.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement.",
         sources: "RCP Pradaxa — base de données publique des médicaments (ANSM)\nESC 2020 — fibrillation atriale\nHAS — bon usage des anticoagulants oraux directs",
+        status: "",
+        smr: "",
+        tags: "aod, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Lixiana",
@@ -490,6 +567,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 15 à 50 mL/min : 30 mg par jour. Inférieure à 15 mL/min : non recommandé.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement.",
         sources: "RCP Lixiana — base de données publique des médicaments (ANSM)\nESC 2020 — fibrillation atriale",
+        status: "",
+        smr: "",
+        tags: "aod, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Coumadine",
@@ -506,6 +587,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique liée à la clairance, la posologie étant guidée par l'INR ; prudence et contrôles rapprochés en cas d'insuffisance rénale sévère, qui majore le risque hémorragique.",
         pregnancy: "Contre-indiqué pendant la grossesse en raison du risque d'embryopathie au premier trimestre et d'hémorragie fœtale et néonatale en fin de grossesse, sauf situation exceptionnelle comme certaines prothèses mécaniques ; l'allaitement est possible, la warfarine passant très peu dans le lait.",
         sources: "RCP Coumadine — base de données publique des médicaments (ANSM)\nHAS — bon usage des antivitamines K et carnet de suivi AVK\nESC 2020 — prise en charge de la fibrillation atriale",
+        status: "",
+        smr: "",
+        tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Previscan",
@@ -522,6 +607,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Contre-indiqué en cas d'insuffisance rénale sévère ; en cas d'atteinte rénale modérée, surveillance rapprochée de l'INR et de la créatininémie, la fluindione pouvant elle-même être en cause dans une dégradation rénale.",
         pregnancy: "Contre-indiqué pendant la grossesse en raison du risque d'embryofœtopathie et d'hémorragie néonatale, et contre-indiqué pendant l'allaitement, contrairement à la warfarine.",
         sources: "RCP Previscan — base de données publique des médicaments (ANSM)\nANSM — point d'information sur le risque immuno-allergique de la fluindione et restriction de primo-prescription\nHAS — bon usage des antivitamines K",
+        status: "Poursuite seulement — plus d'initiation chez un nouveau patient",
+        smr: "",
+        tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Sintrom",
@@ -538,6 +627,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique fondée sur la clairance, la dose étant guidée par l'INR ; surveillance rapprochée en cas d'insuffisance rénale, qui augmente le risque hémorragique.",
         pregnancy: "Contre-indiqué pendant la grossesse en raison du risque d'embryofœtopathie et d'hémorragie néonatale, sauf situation exceptionnelle telle qu'une prothèse valvulaire mécanique ; l'allaitement est possible sous acénocoumarol.",
         sources: "RCP Sintrom — base de données publique des médicaments (ANSM)\nHAS — bon usage des antivitamines K et carnet de suivi AVK\nESC 2020 — prise en charge de la fibrillation atriale",
+        status: "",
+        smr: "",
+        tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Lovenox",
@@ -554,6 +647,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance de 30 à 50 mL/min : surveillance clinique renforcée, réduction de dose à envisager selon l'indication. Clairance de 15 à 30 mL/min : doses curatives contre-indiquées, prophylaxie possible à posologie réduite. Clairance inférieure à 15 mL/min : non recommandé en dehors de la dialyse.",
         pregnancy: "Utilisable pendant la grossesse quel qu'en soit le terme, l'énoxaparine ne franchissant pas la barrière placentaire, et compatible avec l'allaitement ; c'est l'anticoagulant de référence chez la femme enceinte.",
         sources: "RCP Lovenox — base de données publique des médicaments (ANSM)\nANSM — bon usage des héparines de bas poids moléculaire et surveillance plaquettaire\nHAS — prévention et traitement de la maladie thromboembolique veineuse",
+        status: "",
+        smr: "",
+        tags: "hbpm, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Kardégic",
@@ -570,6 +667,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Contre-indiqué en cas d'insuffisance rénale sévère. Prudence et surveillance de la fonction rénale en cas d'insuffisance rénale modérée, en particulier en association aux diurétiques, aux inhibiteurs de l'enzyme de conversion et aux sartans.",
         pregnancy: "Contre-indiqué à partir du début du sixième mois de grossesse en raison du risque de fermeture prématurée du canal artériel et de toxicité rénale fœtale ; utilisable avant ce terme uniquement sur indication médicale précise, et allaitement à éviter au long cours, un passage dans le lait étant décrit.",
         sources: "RCP Kardégic — base de données publique des médicaments (ANSM)\nESC — syndromes coronariens aigus et traitement antiagrégant plaquettaire\nHAS — bon usage des antiagrégants plaquettaires",
+        status: "",
+        smr: "",
+        tags: "antiagrégant, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Plavix",
@@ -586,6 +687,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique ; l'expérience est limitée en cas d'insuffisance rénale sévère, où le risque hémorragique justifie une prudence particulière.",
         pregnancy: "Par prudence, à éviter pendant la grossesse en l'absence de données suffisantes, sauf nécessité ; allaitement contre-indiqué.",
         sources: "RCP Plavix — base de données publique des médicaments (ANSM)\nESC — syndromes coronariens aigus et traitement antiagrégant plaquettaire\nHAS — bon usage des antiagrégants plaquettaires",
+        status: "",
+        smr: "",
+        tags: "antiagrégant, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Xanax",
@@ -602,6 +707,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation particulière en insuffisance rénale légère à modérée ; en insuffisance rénale sévère, prudence et posologie minimale efficace du fait de l'accumulation des métabolites conjugués.",
         pregnancy: "Éviter pendant la grossesse, en particulier en fin de grossesse où une exposition expose le nouveau-né à une hypotonie, des difficultés de succion et un syndrome de sevrage ; l'allaitement est déconseillé en cas de prise régulière du fait de la somnolence du nourrisson.",
         sources: "RCP Xanax — base de données publique des médicaments (ANSM)\nHAS — quelle place pour les benzodiazépines dans l'anxiété et arrêt des benzodiazépines chez le sujet âgé\nANSM — état des lieux de la consommation des benzodiazépines",
+        status: "",
+        smr: "",
+        tags: "benzodiazépine, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Stilnox",
@@ -618,6 +727,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation formelle, la molécule n'étant pas éliminée sous forme active par le rein ; prudence et posologie réduite chez l'insuffisant rénal fragile ou âgé.",
         pregnancy: "Éviter pendant la grossesse, en particulier au troisième trimestre où l'exposition expose le nouveau-né à une hypotonie et à un syndrome de sevrage ; l'allaitement est déconseillé en cas de prise répétée, le passage lacté étant faible mais la somnolence du nourrisson possible.",
         sources: "RCP Stilnox — base de données publique des médicaments (ANSM)\nANSM — conditions de prescription et de délivrance du zolpidem sur ordonnance sécurisée\nHAS — prise en charge de l'insomnie chez l'adulte en premier recours",
+        status: "Ordonnance sécurisée, 28 jours, sans chevauchement",
+        smr: "",
+        tags: "hypnotique, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Imovane",
@@ -634,6 +747,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation obligatoire, mais la posologie réduite de 3,75 mg est recommandée en insuffisance rénale, la marge de sécurité étant faible chez ces patients souvent âgés.",
         pregnancy: "Éviter pendant la grossesse, en particulier en fin de grossesse où l'exposition expose le nouveau-né à une hypotonie, des difficultés de succion et un syndrome de sevrage ; l'allaitement est déconseillé, la zopiclone passant dans le lait.",
         sources: "RCP Imovane — base de données publique des médicaments (ANSM)\nHAS — prise en charge de l'insomnie chez l'adulte en premier recours\nHAS — prescription médicamenteuse chez le sujet âgé, médicaments à éviter",
+        status: "",
+        smr: "",
+        tags: "hypnotique, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Tahor",
@@ -650,6 +767,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de la posologie à la fonction rénale, l'élimination étant biliaire ; l'insuffisance rénale reste toutefois un facteur de risque de toxicité musculaire qui incite à la prudence sur les fortes doses.",
         pregnancy: "Contre-indiquée pendant la grossesse, avec contraception efficace requise chez la femme en âge de procréer et arrêt du traitement en cas de désir de grossesse ; allaitement contre-indiqué.",
         sources: "RCP Tahor — base de données publique des médicaments (ANSM)\nESC/EAS — prise en charge des dyslipidémies\nHAS — principales dyslipidémies, stratégies de prise en charge",
+        status: "",
+        smr: "",
+        tags: "statine, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Cordarone",
@@ -666,6 +787,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de la posologie à la fonction rénale, l'élimination n'étant pas rénale. La kaliémie doit en revanche être surveillée chez l'insuffisant rénal en raison du risque de torsades de pointes.",
         pregnancy: "Contre-indiquée pendant la grossesse sauf situation exceptionnelle, du fait de la charge iodée et du risque de dysthyroïdie et de goitre fœtal ; allaitement contre-indiqué.",
         sources: "RCP Cordarone — base de données publique des médicaments (ANSM)\nESC 2020 — prise en charge de la fibrillation atriale\nHAS — bon usage des antiarythmiques et surveillance sous amiodarone",
+        status: "",
+        smr: "",
+        tags: "antiarythmique, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Digoxine",
@@ -682,6 +807,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "L'adaptation à la clairance de la créatinine est indispensable : espacement des prises ou réduction de dose dès l'insuffisance rénale modérée, doses minimales et digoxinémies rapprochées en cas d'insuffisance sévère. La digoxine n'est pas efficacement épurée par l'hémodialyse du fait de son grand volume de distribution.",
         pregnancy: "Utilisable pendant la grossesse si l'indication maternelle le justifie, avec surveillance rapprochée de la digoxinémie dont les besoins peuvent varier ; passage faible dans le lait, allaitement possible.",
         sources: "RCP Digoxine — base de données publique des médicaments (ANSM)\nESC 2021 — insuffisance cardiaque aiguë et chronique\nESC 2020 — prise en charge de la fibrillation atriale",
+        status: "",
+        smr: "",
+        tags: "digitalique, marge thérapeutique étroite, surveillance biologique",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Glucophage",
@@ -698,6 +827,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Débit de filtration glomérulaire supérieur ou égal à 60 mL/min : posologie usuelle. Entre 45 et 59 mL/min : dose maximale réduite, surveillance rapprochée. Entre 30 et 44 mL/min : dose fortement réduite, poursuite possible mais instauration déconseillée. Inférieur à 30 mL/min : contre-indiqué.",
         pregnancy: "La metformine peut être utilisée pendant la grossesse lorsque cela est jugé nécessaire, l'insuline restant le traitement de référence du diabète gestationnel et pré-gestationnel ; le passage dans le lait est faible et l'allaitement est possible avec surveillance du nourrisson.",
         sources: "RCP Glucophage — base de données publique des médicaments (ANSM)\nHAS — stratégie médicamenteuse du contrôle glycémique du diabète de type 2\nSFD — prise de position sur la prise en charge médicamenteuse du diabète de type 2",
+        status: "",
+        smr: "",
+        tags: "biguanide",
+        toxicity: "",
     },
     StarterDetail {
         name: "Ozempic",
@@ -714,6 +847,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique en cas d'insuffisance rénale légère, modérée ou sévère. L'expérience est limitée en insuffisance rénale terminale et l'utilisation n'y est pas recommandée. Une déshydratation liée aux troubles digestifs peut aggraver une insuffisance rénale préexistante.",
         pregnancy: "À éviter pendant la grossesse et à interrompre au moins deux mois avant une conception programmée en raison de la longue demi-vie ; allaitement déconseillé faute de données, un relais par insuline étant proposé.",
         sources: "RCP Ozempic — base de données publique des médicaments (ANSM)\nHAS — stratégie médicamenteuse du contrôle glycémique du diabète de type 2\nSFD — prise de position sur la prise en charge médicamenteuse du diabète de type 2",
+        status: "",
+        smr: "",
+        tags: "analogue glp-1",
+        toxicity: "",
     },
     StarterDetail {
         name: "Lantus",
@@ -730,6 +867,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas de règle d'adaptation chiffrée, mais les besoins en insuline diminuent en cas d'insuffisance rénale du fait d'une clairance réduite de l'insuline : réduction prudente des doses et surveillance glycémique rapprochée. Même précaution en cas d'insuffisance hépatique.",
         pregnancy: "Utilisable pendant la grossesse, l'insuline étant le traitement de référence du diabète chez la femme enceinte, avec adaptation fréquente des doses au fil des trimestres ; allaitement possible, sans restriction, avec surveillance des besoins qui peuvent diminuer.",
         sources: "RCP Lantus — base de données publique des médicaments (ANSM)\nHAS — stratégie médicamenteuse du contrôle glycémique du diabète de type 2\nSFD — référentiel de bonnes pratiques, insulinothérapie et autosurveillance glycémique",
+        status: "",
+        smr: "",
+        tags: "insuline, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Ventoline",
@@ -746,6 +887,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique pour la forme inhalée ; prudence en cas d'insuffisance rénale sévère lors de l'utilisation de fortes doses répétées.",
         pregnancy: "Utilisable pendant toute la grossesse et compatible avec l'allaitement : le contrôle de l'asthme maternel prime, une crise non traitée étant plus dangereuse pour le fœtus que le traitement.",
         sources: "RCP Ventoline — base de données publique des médicaments (ANSM)\nGINA — recommandations pour la prise en charge de l'asthme\nHAS — parcours de soins de l'asthme de l'adulte et de l'enfant",
+        status: "",
+        smr: "",
+        tags: "bêta-2 mimétique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Symbicort",
@@ -762,6 +907,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique.",
         pregnancy: "Peut être poursuivi pendant la grossesse et l'allaitement, le budésonide étant le corticoïde inhalé le mieux documenté dans cette situation ; l'objectif reste le contrôle de l'asthme maternel.",
         sources: "RCP Symbicort — base de données publique des médicaments (ANSM)\nGINA — recommandations pour la prise en charge de l'asthme\nHAS — bon usage des associations corticoïde inhalé et bêta-2 de longue durée d'action",
+        status: "",
+        smr: "",
+        tags: "csi + bdla",
+        toxicity: "",
     },
     StarterDetail {
         name: "Seretide",
@@ -778,6 +927,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation posologique.",
         pregnancy: "Peut être poursuivi pendant la grossesse et l'allaitement si le contrôle de l'asthme l'exige, en privilégiant la dose minimale efficace de corticoïde inhalé.",
         sources: "RCP Seretide — base de données publique des médicaments (ANSM)\nGINA — recommandations pour la prise en charge de l'asthme\nANSM — mise en garde sur l'association fluticasone inhalée et ritonavir ou cobicistat",
+        status: "",
+        smr: "",
+        tags: "csi + bdla",
+        toxicity: "",
     },
     StarterDetail {
         name: "Spiriva",
@@ -794,6 +947,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de la dose, la posologie étant unique ; en cas de clairance inférieure ou égale à 50 mL/min, utiliser uniquement si le bénéfice attendu justifie le risque, avec surveillance clinique renforcée.",
         pregnancy: "Données limitées : à éviter pendant la grossesse et l'allaitement sauf nécessité, après réévaluation du rapport bénéfice-risque par le prescripteur.",
         sources: "RCP Spiriva — base de données publique des médicaments (ANSM)\nGOLD — rapport annuel sur la prise en charge de la bronchopneumopathie chronique obstructive\nHAS — parcours de soins de la bronchopneumopathie chronique obstructive",
+        status: "",
+        smr: "",
+        tags: "anticholinergique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Singulair",
@@ -810,6 +967,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation.",
         pregnancy: "Peut être poursuivi pendant la grossesse si le contrôle de l'asthme l'impose, l'expérience clinique étant rassurante, et l'allaitement est possible sous surveillance du nourrisson.",
         sources: "RCP Singulair — base de données publique des médicaments (ANSM)\nANSM — point d'information sur les troubles neuropsychiatriques associés au montélukast\nGINA — recommandations pour la prise en charge de l'asthme",
+        status: "",
+        smr: "",
+        tags: "antileucotriène",
+        toxicity: "",
     },
     StarterDetail {
         name: "Levothyrox",
@@ -826,6 +987,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de la posologie à la fonction rénale.",
         pregnancy: "Le traitement doit impérativement être poursuivi et généralement augmenté pendant la grossesse, avec contrôle de la TSH à chaque trimestre ; allaitement possible, le passage dans le lait étant négligeable aux doses substitutives.",
         sources: "RCP Levothyrox — base de données publique des médicaments (ANSM)\nHAS — hypothyroïdie de l'adulte, pertinence des dosages et prise en charge\nANSM — recommandations de suivi lors d'un changement de spécialité de lévothyroxine",
+        status: "",
+        smr: "",
+        tags: "hormone thyroïdienne, marge thérapeutique étroite, surveillance biologique",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Inexium",
@@ -842,6 +1007,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de la posologie en cas d'insuffisance rénale, y compris sévère, l'élimination étant sous forme de métabolites inactifs.",
         pregnancy: "Utilisable pendant la grossesse si nécessaire, les données disponibles étant rassurantes ; allaitement déconseillé faute de données sur le passage dans le lait, sauf nécessité clairement établie.",
         sources: "RCP Inexium — base de données publique des médicaments (ANSM)\nHAS — bon usage des inhibiteurs de la pompe à protons chez l'adulte et déprescription",
+        status: "",
+        smr: "",
+        tags: "ipp",
+        toxicity: "",
     },
     StarterDetail {
         name: "Amoxicilline",
@@ -858,6 +1027,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 10 à 30 mL/min : espacer les prises à toutes les 12 heures. Inférieure à 10 mL/min : une seule prise par 24 heures, avec une dose unitaire réduite.",
         pregnancy: "Utilisable pendant toute la grossesse et pendant l'allaitement ; c'est l'un des antibiotiques de premier choix dans ces situations.",
         sources: "RCP Amoxicilline — base de données publique des médicaments (ANSM)\nHAS et SPILF — antibiothérapie des infections respiratoires hautes et basses de l'adulte et de l'enfant\nANSM — bon usage des antibiotiques",
+        status: "",
+        smr: "",
+        tags: "pénicilline",
+        toxicity: "",
     },
     StarterDetail {
         name: "Augmentin",
@@ -874,6 +1047,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 10 à 30 mL/min : deux prises par jour avec une dose unitaire réduite. Inférieure à 10 mL/min : une prise par 24 heures. Le dosage à 1 g/125 mg n'est pas adapté en dessous de 30 mL/min.",
         pregnancy: "Utilisable pendant la grossesse et l'allaitement lorsqu'une association est nécessaire, l'amoxicilline seule restant préférée quand elle suffit.",
         sources: "RCP Augmentin — base de données publique des médicaments (ANSM)\nHAS et SPILF — antibiothérapie des infections respiratoires et des infections cutanées bactériennes\nANSM — bon usage des antibiotiques",
+        status: "",
+        smr: "",
+        tags: "pénicilline + inhibiteur",
+        toxicity: "",
     },
     StarterDetail {
         name: "Pyostacine",
@@ -890,6 +1067,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de la posologie en cas d'insuffisance rénale, l'élimination étant principalement biliaire.",
         pregnancy: "Utilisable pendant la grossesse quel qu'en soit le terme lorsqu'elle est indiquée ; pendant l'allaitement, un antibiotique mieux évalué chez le nourrisson est préféré quand une alternative existe.",
         sources: "RCP Pyostacine — base de données publique des médicaments (ANSM)\nSPILF et SFD — prise en charge des infections cutanées bactériennes courantes\nANSM — bon usage des antibiotiques",
+        status: "",
+        smr: "",
+        tags: "streptogramine",
+        toxicity: "",
     },
     StarterDetail {
         name: "Cortancyl",
@@ -906,6 +1087,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation systématique de la posologie à la fonction rénale ; la surveillance de la kaliémie, de la volémie et de la pression artérielle doit toutefois être renforcée chez l'insuffisant rénal.",
         pregnancy: "Utilisable pendant la grossesse si l'indication maternelle le justifie, la prednisone passant peu la barrière placentaire, avec surveillance de la pression artérielle et de la glycémie maternelles ; allaitement possible aux doses usuelles, en espaçant si possible la tétée de la prise.",
         sources: "RCP Cortancyl — base de données publique des médicaments (ANSM)\nHAS — corticothérapie systémique prolongée, mesures associées et prévention de l'ostéoporose cortisonique",
+        status: "",
+        smr: "",
+        tags: "corticoïde, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Méthotrexate",
@@ -922,6 +1107,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "La clairance de la créatinine conditionne directement la toxicité : réduction de dose et espacement en cas d'insuffisance rénale légère à modérée, avec surveillance hématologique rapprochée ; contre-indiqué en cas d'insuffisance rénale sévère. Toute déshydratation, tout épisode fébrile ou toute introduction d'un néphrotoxique impose de réévaluer la fonction rénale.",
         pregnancy: "Contre-indiqué pendant la grossesse en raison d'un risque tératogène et abortif majeur, avec contraception efficace exigée chez les deux sexes pendant le traitement et après son arrêt ; allaitement contre-indiqué.",
         sources: "RCP Méthotrexate — base de données publique des médicaments (ANSM)\nANSM — mesures de réduction du risque d'erreur de rythme d'administration du méthotrexate par voie orale\nHAS — polyarthrite rhumatoïde, prise en charge et traitements de fond",
+        status: "",
+        smr: "",
+        tags: "immunosuppresseur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Zithromax",
@@ -938,6 +1127,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation pour une clairance supérieure à 10 mL/min ; prudence en dessous, les données étant limitées.",
         pregnancy: "Utilisable pendant la grossesse et pendant l'allaitement lorsqu'un macrolide est indiqué.",
         sources: "RCP Zithromax — base de données publique des médicaments (ANSM)\nHAS et SPILF — antibiothérapie des infections respiratoires hautes et basses\nHAS — dépistage et prise en charge des infections à Chlamydia trachomatis",
+        status: "",
+        smr: "",
+        tags: "macrolide, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Ciflox",
@@ -954,6 +1147,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 30 à 60 mL/min : ne pas dépasser 1000 mg par jour. Inférieure à 30 mL/min : ne pas dépasser 500 mg par jour.",
         pregnancy: "Non recommandée pendant la grossesse, où une alternative est privilégiée ; le passage dans le lait fait déconseiller l'allaitement pendant le traitement.",
         sources: "RCP Ciprofloxacine — base de données publique des médicaments (ANSM)\nANSM — restriction d'utilisation des fluoroquinolones et effets indésirables invalidants et durables\nSPILF — prise en charge des infections urinaires bactériennes communautaires de l'adulte",
+        status: "",
+        smr: "",
+        tags: "fluoroquinolone",
+        toxicity: "",
     },
     StarterDetail {
         name: "Oflocet",
@@ -970,6 +1167,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 20 à 50 mL/min : moitié de la dose quotidienne habituelle. Inférieure à 20 mL/min : 100 mg toutes les 24 heures.",
         pregnancy: "Non recommandée pendant la grossesse, où une alternative est privilégiée ; allaitement déconseillé pendant le traitement.",
         sources: "RCP Ofloxacine — base de données publique des médicaments (ANSM)\nANSM — restriction d'utilisation des fluoroquinolones et effets indésirables invalidants et durables\nSPILF — prise en charge des infections urinaires bactériennes communautaires de l'adulte",
+        status: "",
+        smr: "",
+        tags: "fluoroquinolone",
+        toxicity: "",
     },
     StarterDetail {
         name: "Monuril",
@@ -986,6 +1187,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation en cas d'atteinte légère à modérée. Non recommandée en dessous d'une clairance de 10 mL/min, les concentrations urinaires devenant insuffisantes.",
         pregnancy: "Utilisable pendant la grossesse, où elle fait partie des traitements de première intention de la cystite ; utilisable également pendant l'allaitement.",
         sources: "RCP Monuril — base de données publique des médicaments (ANSM)\nSPILF — prise en charge des infections urinaires bactériennes communautaires de l'adulte\nHAS — cystite aiguë simple de la femme",
+        status: "",
+        smr: "",
+        tags: "antibiotique urinaire",
+        toxicity: "",
     },
     StarterDetail {
         name: "Furadantine",
@@ -1002,6 +1207,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Contre-indiquée en dessous d'une clairance de 45 mL/min : l'efficacité urinaire devient insuffisante et la toxicité systémique augmente. Pas d'adaptation au-dessus de ce seuil.",
         pregnancy: "Utilisable pendant la grossesse en dehors de la période proche de l'accouchement, où elle est contre-indiquée du fait du risque d'hémolyse néonatale ; allaitement possible sauf déficit en G6PD chez le nourrisson.",
         sources: "RCP Furadantine — base de données publique des médicaments (ANSM)\nANSM — restriction d'utilisation de la nitrofurantoïne et risques hépatiques et pulmonaires\nSPILF — prise en charge des infections urinaires bactériennes communautaires de l'adulte",
+        status: "",
+        smr: "",
+        tags: "antibiotique urinaire, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Selexid",
@@ -1018,6 +1227,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation en cas d'atteinte légère à modérée. En cas d'insuffisance rénale sévère, l'usage est déconseillé, les concentrations urinaires devenant insuffisantes.",
         pregnancy: "Utilisable à tous les termes de la grossesse, où il fait partie des traitements de première intention de la cystite ; utilisable également pendant l'allaitement.",
         sources: "RCP Selexid — base de données publique des médicaments (ANSM)\nSPILF — prise en charge des infections urinaires bactériennes communautaires de l'adulte\nHAS — cystite aiguë simple de la femme",
+        status: "",
+        smr: "",
+        tags: "pénicilline",
+        toxicity: "",
     },
     StarterDetail {
         name: "Bactrim",
@@ -1034,6 +1247,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 15 à 30 mL/min : moitié de la dose habituelle. Inférieure à 15 mL/min : contre-indiqué en dehors d'un cadre spécialisé avec surveillance.",
         pregnancy: "À éviter au premier trimestre en raison de l'effet antifolique et contre-indiqué en fin de grossesse du fait du risque d'ictère nucléaire chez le nouveau-né ; allaitement déconseillé chez le nouveau-né prématuré, ictérique ou déficitaire en G6PD.",
         sources: "RCP Bactrim — base de données publique des médicaments (ANSM)\nSPILF — prise en charge des infections urinaires bactériennes communautaires de l'adulte\nANSM — bon usage des antibiotiques",
+        status: "",
+        smr: "",
+        tags: "sulfamide antibactérien, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Doxycycline",
@@ -1050,6 +1267,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation : c'est la cycline utilisable chez l'insuffisant rénal, y compris en dialyse.",
         pregnancy: "Contre-indiquée à partir du deuxième trimestre en raison de l'atteinte des bourgeons dentaires et de l'os fœtal ; l'allaitement est déconseillé et une alternative est privilégiée.",
         sources: "RCP Doxycycline — base de données publique des médicaments (ANSM)\nHAS — borréliose de Lyme et autres maladies vectorielles à tiques\nHCSP — recommandations sanitaires pour les voyageurs, chimioprophylaxie du paludisme",
+        status: "",
+        smr: "",
+        tags: "cycline, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Flagyl",
@@ -1066,6 +1287,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation en cas d'insuffisance rénale ; en revanche, la posologie doit être réduite en cas d'insuffisance hépatique sévère.",
         pregnancy: "Utilisable pendant la grossesse quel qu'en soit le terme lorsqu'il est indiqué ; pendant l'allaitement, un traitement de courte durée est possible, mais l'allaitement est suspendu 12 à 24 heures après une prise unique de 2 g.",
         sources: "RCP Flagyl — base de données publique des médicaments (ANSM)\nCNGOF et HAS — prise en charge des infections génitales basses de la femme\nANSM — bon usage des antibiotiques",
+        status: "",
+        smr: "",
+        tags: "nitro-imidazolé",
+        toxicity: "",
     },
     StarterDetail {
         name: "Triflucan",
@@ -1082,6 +1307,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Prise unique : pas d'adaptation. Traitements répétés avec une clairance inférieure à 50 mL/min : dose de charge habituelle puis moitié de la dose d'entretien.",
         pregnancy: "La prise unique de 150 mg est possible si nécessaire, mais un traitement local est préféré pendant la grossesse ; les fortes doses et les traitements prolongés sont contre-indiqués en raison d'un risque malformatif. L'allaitement est possible après une prise unique.",
         sources: "RCP Triflucan — base de données publique des médicaments (ANSM)\nANSM — fluconazole et risque malformatif lors d'une exposition pendant la grossesse\nHAS — prise en charge des candidoses vulvovaginales",
+        status: "",
+        smr: "",
+        tags: "antifongique azolé, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Zelitrex",
@@ -1098,6 +1327,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Adaptation indispensable. Dans le zona : 1 g deux fois par jour si la clairance est de 30 à 49 mL/min, 1 g par jour si elle est de 10 à 29 mL/min, et 500 mg par jour en dessous de 10 mL/min. Les posologies de l'herpès sont réduites selon le même principe.",
         pregnancy: "Utilisable pendant la grossesse et pendant l'allaitement lorsqu'un traitement est nécessaire, l'aciclovir et le valaciclovir étant les antiviraux les mieux évalués dans cette situation.",
         sources: "RCP Zelitrex — base de données publique des médicaments (ANSM)\nHAS — prise en charge du zona et prévention des douleurs post-zostériennes\nHAS — dépistage et prise en charge de l'herpès génital",
+        status: "",
+        smr: "",
+        tags: "antiviral, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Atarax",
@@ -1114,6 +1347,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Insuffisance rénale modérée à sévère : réduire la posologie quotidienne, en pratique de moitié, du fait de l'accumulation de la cétirizine, éliminée par voie rénale. Insuffisance rénale légère : pas d'adaptation nécessaire.",
         pregnancy: "Contre-indiqué pendant la grossesse selon le résumé des caractéristiques du produit, notamment en fin de grossesse en raison des effets atropiniques et sédatifs chez le nouveau-né ; l'allaitement est contre-indiqué, l'hydroxyzine et son métabolite passant dans le lait et exposant le nourrisson à une sédation.",
         sources: "RCP Atarax — base de données publique des médicaments (ANSM)\nANSM — hydroxyzine, restriction des conditions d'utilisation et risque d'allongement de l'intervalle QT\nHAS — prescription médicamenteuse chez le sujet âgé, médicaments à éviter",
+        status: "",
+        smr: "",
+        tags: "antihistaminique h1 sédatif, contre-indiqué grossesse, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Seroplex",
@@ -1130,6 +1367,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation si la clairance est supérieure à 30 mL/min. En dessous de 30 mL/min, prudence et titration lente, les données étant limitées.",
         pregnancy: "Utilisation possible pendant la grossesse si elle est nécessaire, en prévenant l'équipe obstétricale d'un syndrome d'adaptation néonatale et d'un risque faible d'hypertension artérielle pulmonaire persistante du nouveau-né en cas d'exposition tardive ; l'allaitement est possible sous surveillance du nourrisson, le passage dans le lait étant faible.",
         sources: "RCP Seroplex — base de données publique des médicaments (ANSM)\nHAS — épisode dépressif caractérisé de l'adulte, prise en charge en premier recours\nANSM — bon usage des médicaments allongeant l'intervalle QT",
+        status: "",
+        smr: "",
+        tags: "isrs, surveillance biologique, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Zoloft",
@@ -1146,6 +1387,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation, quel que soit le degré d'insuffisance rénale : l'élimination du produit inchangé par le rein est négligeable. La dialyse ne modifie pas la posologie.",
         pregnancy: "Utilisable pendant la grossesse si nécessaire, en informant l'équipe obstétricale du risque de syndrome d'adaptation néonatale et d'hypertension artérielle pulmonaire persistante du nouveau-né en cas d'exposition au troisième trimestre ; c'est l'un des ISRS de choix pendant l'allaitement, le passage dans le lait étant très faible.",
         sources: "RCP Zoloft — base de données publique des médicaments (ANSM)\nHAS — épisode dépressif caractérisé de l'adulte, prise en charge en premier recours\nCRAT — antidépresseurs et grossesse",
+        status: "",
+        smr: "",
+        tags: "isrs, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Deroxat",
@@ -1162,6 +1407,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance inférieure à 30 mL/min : débuter à 10 mg par jour et ne pas dépasser la fourchette basse des posologies. Au-dessus de 30 mL/min, posologie habituelle.",
         pregnancy: "Éviter en première intention au premier trimestre du fait d'un signal de malformations cardiaques discuté, préférer un autre ISRS chez une femme en projet de grossesse ; en cas d'exposition tardive, prévenir de la possibilité d'un syndrome d'adaptation néonatale ; l'allaitement est possible avec surveillance du nourrisson.",
         sources: "RCP Deroxat — base de données publique des médicaments (ANSM)\nHAS — épisode dépressif caractérisé de l'adulte, prise en charge en premier recours\nCRAT — antidépresseurs et grossesse",
+        status: "",
+        smr: "",
+        tags: "isrs, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Effexor",
@@ -1178,6 +1427,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 30 à 50 mL/min : prudence, réduction de la dose à envisager. Clairance inférieure à 30 mL/min ou hémodialyse : réduire la posologie quotidienne d'environ la moitié et administrer la dose après la séance de dialyse.",
         pregnancy: "Utilisation possible pendant la grossesse si elle est nécessaire, en prévenant l'équipe obstétricale d'un syndrome d'adaptation néonatale en cas d'exposition tardive ; l'allaitement est envisageable sous surveillance du nourrisson, le passage lacté étant faible mais non négligeable.",
         sources: "RCP Effexor LP — base de données publique des médicaments (ANSM)\nHAS — épisode dépressif caractérisé de l'adulte, prise en charge en premier recours\nCRAT — antidépresseurs et grossesse",
+        status: "",
+        smr: "",
+        tags: "irsna",
+        toxicity: "",
     },
     StarterDetail {
         name: "Cymbalta",
@@ -1194,6 +1447,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance supérieure à 30 mL/min : pas d'adaptation. Clairance inférieure à 30 mL/min : contre-indiqué, les métabolites s'accumulant.",
         pregnancy: "Éviter pendant la grossesse en l'absence d'alternative, les données restant plus limitées que pour les ISRS, et prévenir l'équipe obstétricale d'un possible syndrome d'adaptation néonatale en cas d'exposition tardive ; l'allaitement est déconseillé, d'autres molécules mieux documentées lui étant préférées.",
         sources: "RCP Cymbalta — base de données publique des médicaments (ANSM)\nHAS — épisode dépressif caractérisé de l'adulte, prise en charge en premier recours\nCRAT — antidépresseurs et grossesse",
+        status: "",
+        smr: "",
+        tags: "irsna",
+        toxicity: "",
     },
     StarterDetail {
         name: "Laroxyl",
@@ -1210,6 +1467,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation formelle en insuffisance rénale légère à modérée ; en insuffisance rénale sévère, prudence, titration lente et posologie minimale efficace, les métabolites pouvant s'accumuler.",
         pregnancy: "Utilisable pendant la grossesse si nécessaire, l'amitriptyline étant l'un des tricycliques les mieux documentés, en signalant à l'équipe obstétricale une possible symptomatologie atropinique ou de sevrage chez le nouveau-né en cas d'exposition en fin de grossesse ; l'allaitement est possible sous surveillance de la somnolence du nourrisson.",
         sources: "RCP Laroxyl — base de données publique des médicaments (ANSM)\nHAS — prise en charge des douleurs neuropathiques chroniques\nCRAT — antidépresseurs et grossesse",
+        status: "",
+        smr: "",
+        tags: "antidépresseur tricyclique, surveillance biologique, vigilance conduite",
+        toxicity: "",
     },
     StarterDetail {
         name: "Téralithe",
@@ -1226,6 +1487,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Contre-indiqué en cas d'insuffisance rénale. En cas d'altération modérée de la fonction rénale, l'usage relève d'une décision spécialisée avec réduction de dose et lithiémies rapprochées. Une baisse de la clairance sous traitement impose de réévaluer la poursuite.",
         pregnancy: "Grossesse déconseillée avec risque malformatif cardiaque au premier trimestre : la poursuite ne se discute qu'en milieu spécialisé, avec lithiémies rapprochées et échographie cardiaque fœtale ; allaitement contre-indiqué du fait du passage dans le lait.",
         sources: "RCP Téralithe — base de données publique des médicaments (ANSM)\nHAS — troubles bipolaires, repérage et prise en charge\nANSM — bon usage du lithium et surveillance de la lithiémie",
+        status: "",
+        smr: "",
+        tags: "thymorégulateur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Dépakote",
@@ -1242,6 +1507,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation formelle en insuffisance rénale, mais l'hypoalbuminémie et la baisse de liaison protéique augmentent la fraction libre : interpréter la valprotémie totale avec prudence et ajuster sur la clinique, en réduisant si nécessaire la posologie.",
         pregnancy: "Contre-indiqué pendant la grossesse dans le trouble bipolaire, et contre-indiqué chez la femme en âge de procréer sauf respect strict du programme de prévention des grossesses : contraception efficace continue, information et accord de soins annuel cosignés, test de grossesse avant l'instauration et pendant le suivi, prescription initiale annuelle réservée au spécialiste ; l'allaitement est possible mais doit être discuté au cas par cas, le passage lacté étant faible.",
         sources: "RCP Dépakote — base de données publique des médicaments (ANSM)\nANSM — programme de prévention des grossesses sous valproate et dérivés, conditions de prescription et de délivrance\nHAS — trouble bipolaire, repérage et prise en charge",
+        status: "Prescription encadrée chez la femme en âge de procréer (accord de soins)",
+        smr: "",
+        tags: "thymorégulateur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Lamictal",
@@ -1258,6 +1527,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation en insuffisance rénale légère à modérée. En insuffisance rénale sévère ou en dialyse, prudence et doses d'entretien réduites, le métabolite glucuroconjugué s'accumulant ; l'hémodialyse épure une part de la lamotrigine.",
         pregnancy: "C'est l'un des antiépileptiques les mieux tolérés pendant la grossesse et il peut être poursuivi si nécessaire, avec supplémentation en acide folique ; les concentrations chutent fortement au cours de la grossesse et remontent après l'accouchement, ce qui impose des dosages réguliers et un réajustement des doses ; l'allaitement est possible sous surveillance de la somnolence et de l'éruption cutanée du nourrisson.",
         sources: "RCP Lamictal — base de données publique des médicaments (ANSM)\nANSM — antiépileptiques et grossesse, information des patientes\nHAS — trouble bipolaire, repérage et prise en charge",
+        status: "",
+        smr: "",
+        tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Keppra",
@@ -1274,6 +1547,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "L'adaptation est indispensable et se fait sur la clairance. Clairance 50 à 79 mL/min : 500 à 1 000 mg deux fois par jour. Clairance 30 à 49 mL/min : 250 à 750 mg deux fois par jour. Clairance inférieure à 30 mL/min : 250 à 500 mg deux fois par jour. Hémodialyse : dose quotidienne réduite avec une dose supplémentaire après chaque séance, le lévétiracétam étant largement épuré.",
         pregnancy: "C'est, avec la lamotrigine, l'antiépileptique le mieux documenté et le plus utilisable pendant la grossesse, à poursuivre en monothérapie à la dose minimale efficace avec supplémentation en acide folique ; les concentrations baissent nettement au cours de la grossesse, ce qui peut imposer une augmentation de dose puis un retour à la posologie antérieure après l'accouchement ; l'allaitement est possible sous surveillance de la somnolence du nourrisson.",
         sources: "RCP Keppra — base de données publique des médicaments (ANSM)\nANSM — antiépileptiques et grossesse, information des patientes\nHAS — épilepsies, parcours de soins",
+        status: "",
+        smr: "",
+        tags: "antiépileptique, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Tégrétol",
@@ -1290,6 +1567,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation systématique en insuffisance rénale légère à modérée. En insuffisance rénale sévère, prudence, surveillance clinique et dosages plasmatiques, l'accumulation des métabolites étant possible.",
         pregnancy: "Éviter pendant la grossesse en raison d'un risque malformatif accru, notamment de spina bifida ; si la poursuite est indispensable, maintenir la dose minimale efficace en monothérapie, avec supplémentation en acide folique et suivi échographique spécialisé, et ne jamais interrompre sans avis ; l'allaitement est possible sous surveillance de la somnolence et de la prise de poids du nourrisson.",
         sources: "RCP Tégrétol — base de données publique des médicaments (ANSM)\nANSM — antiépileptiques et grossesse, information des patientes\nANSM — carbamazépine et interaction avec les contraceptifs hormonaux",
+        status: "",
+        smr: "",
+        tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Fosamax",
@@ -1306,6 +1587,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Contre-indiqué en dessous d'une clairance de 35 mL/min. Pas d'adaptation de dose au-dessus de ce seuil.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement.",
         sources: "RCP Fosamax — base de données publique des médicaments (ANSM)\nHAS — prise en charge médicamenteuse de l'ostéoporose post-ménopausique\nANSM — ostéonécrose de la mâchoire sous bisphosphonates",
+        status: "",
+        smr: "",
+        tags: "bisphosphonate, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Xeloda",
@@ -1322,6 +1607,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Clairance 30 à 50 mL/min : réduire la dose à 75 % de la dose initiale. Inférieure à 30 mL/min : contre-indiqué.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement, avec contraception efficace chez la femme comme chez l'homme pendant le traitement et après son arrêt.",
         sources: "RCP Xeloda — base de données publique des médicaments (ANSM)\nANSM — recherche du déficit en dihydropyrimidine déshydrogénase avant tout traitement par fluoropyrimidine\nINCa — fiches de bon usage des anticancéreux oraux",
+        status: "",
+        smr: "",
+        tags: "anticancéreux oral, fluoropyrimidine, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Abilify",
@@ -1338,6 +1627,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation, l'élimination rénale du produit inchangé étant négligeable, y compris en insuffisance rénale sévère.",
         pregnancy: "Utilisation possible pendant la grossesse si elle est nécessaire, en prévenant l'équipe obstétricale d'un risque de syndrome extrapyramidal ou de sevrage néonatal en cas d'exposition en fin de grossesse ; l'allaitement est déconseillé, les données étant limitées et la demi-vie très longue.",
         sources: "RCP Abilify — base de données publique des médicaments (ANSM)\nHAS — schizophrénies, parcours de soins\nANSM — aripiprazole et troubles du contrôle des impulsions",
+        status: "",
+        smr: "",
+        tags: "antipsychotique atypique, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Zyprexa",
@@ -1354,6 +1647,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation obligatoire, l'élimination rénale du produit inchangé étant faible ; il est toutefois recommandé de débuter à 5 mg par jour en cas d'insuffisance rénale, comme en cas d'insuffisance hépatique modérée.",
         pregnancy: "Utilisation possible pendant la grossesse si elle est nécessaire, l'olanzapine faisant partie des antipsychotiques les mieux documentés, avec surveillance de la glycémie et de la prise de poids maternelles et information de l'équipe obstétricale d'un risque de syndrome extrapyramidal ou de sevrage néonatal en cas d'exposition tardive ; l'allaitement est déconseillé, le passage lacté étant non négligeable.",
         sources: "RCP Zyprexa — base de données publique des médicaments (ANSM)\nHAS — schizophrénies, parcours de soins\nANSM — antipsychotiques et troubles métaboliques, suivi recommandé",
+        status: "",
+        smr: "",
+        tags: "antipsychotique atypique, surveillance biologique",
+        toxicity: "",
     },
     StarterDetail {
         name: "Leponex",
@@ -1370,6 +1667,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Insuffisance rénale légère à modérée : réduction de la posologie et titration très prudente. Insuffisance rénale sévère : contre-indiqué.",
         pregnancy: "À n'utiliser pendant la grossesse que si le bénéfice est clairement supérieur au risque, en surveillant la glycémie maternelle et en prévenant l'équipe obstétricale d'un risque de syndrome extrapyramidal ou de sevrage néonatal ainsi que d'agranulocytose néonatale, avec NFS du nouveau-né ; l'allaitement est contre-indiqué.",
         sources: "RCP Leponex — base de données publique des médicaments (ANSM)\nANSM — clozapine, conditions de prescription et de délivrance et surveillance hématologique\nHAS — schizophrénies, parcours de soins",
+        status: "Délivrance conditionnée à la NFS (carnet de surveillance)",
+        smr: "",
+        tags: "antipsychotique, nfs obligatoire, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
+        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
     },
     StarterDetail {
         name: "Tavanic",
@@ -1386,6 +1687,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Adaptation nécessaire dès une clairance inférieure à 50 mL/min : dose de charge habituelle, puis dose d'entretien réduite de moitié entre 20 et 50 mL/min et au quart en dessous de 20 mL/min.",
         pregnancy: "Contre-indiquée pendant la grossesse et l'allaitement ; une alternative est utilisée dans ces situations.",
         sources: "RCP Tavanic — base de données publique des médicaments (ANSM)\nANSM — restriction d'utilisation des fluoroquinolones et effets indésirables invalidants et durables\nSPILF — antibiothérapie des pneumonies aiguës communautaires et des infections urinaires de l'adulte",
+        status: "",
+        smr: "",
+        tags: "fluoroquinolone, contre-indiqué grossesse",
+        toxicity: "",
     },
     StarterDetail {
         name: "Prolia",
@@ -1402,6 +1707,10 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         renal: "Pas d'adaptation de dose quelle que soit la clairance, mais le risque d'hypocalcémie augmente fortement en dessous de 30 mL/min et chez le dialysé, ce qui impose une supplémentation et une surveillance calcique rapprochées.",
         pregnancy: "Contre-indiqué pendant la grossesse, avec contraception efficace pendant le traitement et plusieurs mois après ; l'allaitement est déconseillé.",
         sources: "RCP Prolia — base de données publique des médicaments (ANSM)\nHAS — prise en charge médicamenteuse de l'ostéoporose post-ménopausique\nANSM — ostéonécrose de la mâchoire et fractures atypiques sous antirésorbeurs osseux",
+        status: "",
+        smr: "",
+        tags: "anti-rankl, semestriel, contre-indiqué grossesse",
+        toxicity: "",
     },
 ];
 
@@ -2179,7 +2488,7 @@ impl Db {
                 "SELECT d.id, d.name, d.dci, d.class, d.dosage, d.ddi, d.iup, d.antidote,
                         d.notes, d.half_life, d.auc, d.elimination, d.renal, d.pregnancy,
                         d.indications, d.mechanism, d.contraindications, d.adverse,
-                        d.monitoring, d.sources
+                        d.monitoring, d.sources, d.status, d.smr, d.tags, d.toxicity
                  FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
                  WHERE pd.patient_id = ?1 ORDER BY d.name COLLATE NOCASE",
             )
@@ -2207,6 +2516,10 @@ impl Db {
                     adverse: r.get(17)?,
                     monitoring: r.get(18)?,
                     sources: r.get(19)?,
+                    status: r.get(20)?,
+                    smr: r.get(21)?,
+                    tags: r.get(22)?,
+                    toxicity: r.get(23)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -2477,7 +2790,7 @@ impl Db {
                 "SELECT id, name, dci, class, dosage, ddi, iup, antidote, notes,
                         half_life, auc, elimination, renal, pregnancy,
                         indications, mechanism, contraindications, adverse,
-                        monitoring, sources
+                        monitoring, sources, status, smr, tags, toxicity
                  FROM drugs ORDER BY name COLLATE NOCASE",
             )
             .map_err(|e| e.to_string())?;
@@ -2504,6 +2817,10 @@ impl Db {
                     adverse: r.get(17)?,
                     monitoring: r.get(18)?,
                     sources: r.get(19)?,
+                    status: r.get(20)?,
+                    smr: r.get(21)?,
+                    tags: r.get(22)?,
+                    toxicity: r.get(23)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -2568,6 +2885,10 @@ impl Db {
                 ("renal", d.renal),
                 ("pregnancy", d.pregnancy),
                 ("sources", d.sources),
+                ("status", d.status),
+                ("smr", d.smr),
+                ("tags", d.tags),
+                ("toxicity", d.toxicity),
             ] {
                 if value.is_empty() {
                     continue;
@@ -2645,13 +2966,15 @@ impl Db {
                         iup = ?6, antidote = ?7, notes = ?8, half_life = ?9, auc = ?10,
                         elimination = ?11, renal = ?12, pregnancy = ?13, indications = ?14,
                         mechanism = ?15, contraindications = ?16, adverse = ?17,
-                        monitoring = ?18, sources = ?19
-                 WHERE id = ?20 AND name = ?21 AND dci = ?22 AND class = ?23 AND dosage = ?24
-                   AND ddi = ?25 AND iup = ?26 AND antidote = ?27 AND notes = ?28
-                   AND half_life = ?29 AND auc = ?30 AND elimination = ?31 AND renal = ?32
-                   AND pregnancy = ?33 AND indications = ?34 AND mechanism = ?35
-                   AND contraindications = ?36 AND adverse = ?37 AND monitoring = ?38
-                   AND sources = ?39",
+                        monitoring = ?18, sources = ?19, status = ?20, smr = ?21,
+                        tags = ?22, toxicity = ?23
+                 WHERE id = ?24 AND name = ?25 AND dci = ?26 AND class = ?27 AND dosage = ?28
+                   AND ddi = ?29 AND iup = ?30 AND antidote = ?31 AND notes = ?32
+                   AND half_life = ?33 AND auc = ?34 AND elimination = ?35 AND renal = ?36
+                   AND pregnancy = ?37 AND indications = ?38 AND mechanism = ?39
+                   AND contraindications = ?40 AND adverse = ?41 AND monitoring = ?42
+                   AND sources = ?43 AND status = ?44 AND smr = ?45 AND tags = ?46
+                   AND toxicity = ?47",
                 rusqlite::params![
                     new.name,
                     new.dci,
@@ -2672,6 +2995,10 @@ impl Db {
                     new.adverse,
                     new.monitoring,
                     new.sources,
+                    new.status,
+                    new.smr,
+                    new.tags,
+                    new.toxicity,
                     expected.id,
                     expected.name,
                     expected.dci,
@@ -2692,6 +3019,10 @@ impl Db {
                     expected.adverse,
                     expected.monitoring,
                     expected.sources,
+                    expected.status,
+                    expected.smr,
+                    expected.tags,
+                    expected.toxicity,
                 ],
             )
             .map_err(|e| e.to_string())?;
