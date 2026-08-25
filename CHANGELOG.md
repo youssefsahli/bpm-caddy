@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-08-25
+
+### Changed
+- The seventeen reference tables are rewritten wider and deeper: 95
+  columns and 158 rows in all, against 40 and 108. The IPP table gains
+  the forms, the moment of intake and the clopidogrel remark; HBPM the
+  renal threshold, the monitoring and the antidote; the statins their
+  LDL band, intensity and interaction risk; the corticoids their
+  duration of action and mineralocorticoid effect; the opioids their
+  delay, duration, forms and renal caution; the benzodiazepines their
+  half-life, indication and elderly caution — and the same for the
+  eleven others (AOD antidote and renal follow-up, inhaler devices and
+  rinsing, insulin timing and storage, what each CKD stage changes for
+  metformine, AOD and HBPM, the conduct per Mac Isaac band, cystitis
+  durations and follow-up, missed-pill delays, analgesic paliers and
+  cautions, who may be vaccinated by the pharmacist, paediatric forms
+  and daily maxima, and the alternative to crushing).
+- The printed reference now typesets in fixed fractional columns with
+  French hyphenation, so a long word wraps inside its cell instead of
+  spilling over the next one. It runs to sixteen A4 pages.
+
+### Note
+- Table corrections made with 0.23.0 or 0.24.0 are dropped on upgrade:
+  the tables changed shape, so a cell edited before no longer points at
+  the value it was written for. Corrections made from 0.25.0 on are
+  kept as usual.
+
 ## [0.24.0] - 2026-08-25
 
 ### Added

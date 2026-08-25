@@ -121,6 +121,11 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE drugs ADD COLUMN tags TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN toxicity TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN forms TEXT NOT NULL DEFAULT ''",
+    // The reference tables gained columns in 0.25.0, so a cell edited
+    // before that no longer points at the value it was written for.
+    // Only those older edits are dropped; later ones are kept, and the
+    // statement is a no-op on every subsequent start.
+    "DELETE FROM table_cells WHERE updated_at < '2026-08-25 12:00:00'",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
