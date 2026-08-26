@@ -1399,6 +1399,9 @@ impl Session {
         // Same for the two counter answers a card was missing: they
         // only ever fill an empty field.
         let _ = db.seed_conduite();
+        // The protocols too: a base opened before they existed gets
+        // them, and a tree the team rewrote is never replaced.
+        let _ = db.seed_protocols();
         let drugs = db.drugs().unwrap_or_default();
         let protocols = db.protocols().unwrap_or_default();
         let mut session = Self {
@@ -10856,7 +10859,18 @@ impl App {
                         } else {
                             egui::RichText::new(&node.text)
                         };
-                        if ui.selectable_label(false, label).clicked() {
+                        // A conduite is a sentence, not a caption: it
+                        // wraps to what is left after the buttons
+                        // instead of running off the right edge.
+                        let clicked = ui
+                            .scope(|ui| {
+                                ui.set_max_width((ui.available_width() - 330.0).max(220.0));
+                                ui.add(egui::Label::new(label).wrap().sense(egui::Sense::click()))
+                                    .on_hover_text(tr("proto_edit_node"))
+                                    .clicked()
+                            })
+                            .inner;
+                        if clicked {
                             session.protocol_node_edit =
                                 Some((node.id, node.kind, node.text.clone()));
                         }
