@@ -150,6 +150,7 @@ patient_tab_acts = "Entretiens"
 patient_tab_vaccins = "Vaccinations"
 patient_tab_bio = "Biologie"
 treat_interactions = "{} interaction(s) repérée(s) entre ces traitements — le détail est sur le bilan, et au survol"
+revue_label = "Revue d'ordonnance :"
 bilan_print = "Bilan…"
 bilan_print_tooltip = "Imprimer le bilan partagé de médication : les traitements, les interactions que la fiche repère entre eux, la biologie et ce qu'elle change, ce que le calendrier vaccinal réclame, les actes de l'année — et les cadres à remplir pendant l'entretien"
 

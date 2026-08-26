@@ -16,7 +16,8 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   pure and tested; the preparations themselves live in the base),
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
-  tested)
+  tested), `src/revue.rs` (what a set of treatments says about itself:
+  doublons, associations, cascades — same shape, same discipline)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -68,7 +69,7 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|calc|
-  carnet|vaccins|bio|vaccine_map|ordonnance|codex|codex_open|keys|
+  carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|codex_open|keys|
   act_picker`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

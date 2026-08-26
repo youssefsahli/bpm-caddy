@@ -27381,6 +27381,23 @@ mod tests {
             if minutes > 0 {
                 db.set_duration(iid, minutes, 0).unwrap();
             }
+            // The second patient carries the ordonnance a bilan partagé
+            // de médication exists for: the triade néfaste, and the
+            // anticholinergique given against the anticholinestérasique.
+            if last == "Martin" {
+                for name in ["Coversyl", "Lasilix", "Advil", "Aricept", "Ditropan"] {
+                    if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
+                        db.add_patient_drug(pid, d.id).unwrap();
+                    }
+                }
+                db.add_note(
+                    NoteSubject::Patient,
+                    pid,
+                    "CL",
+                    "Ordonnance à revoir avec le Dr : AINS au long cours, et Ditropan sous Aricept.",
+                )
+                .unwrap();
+            }
             // A little biology on the demo's first patient, enough to
             // show a trend and to make the reading rules speak.
             if last == "Dupont" {

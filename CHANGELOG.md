@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.58.0] - 2026-08-27
+
+### Added
+- **La revue d'ordonnance** — what a set of treatments says about
+  itself, which is the other half of a bilan partagé de médication.
+  Twenty-two rules read the classes and the tags the cards already
+  carry: la triade néfaste (bloqueur du SRA + diurétique + AINS), le
+  double blocage IEC-sartan, l'anticoagulant avec un AINS, la
+  benzodiazépine avec un opioïde, l'anticholinergique donné sous
+  anticholinestérasique, le lithium exposé, le méthotrexate exposé,
+  deux AINS, deux IPP, deux benzodiazépines, deux allongeurs du QT, la
+  charge anticholinergique, trois sédatifs, la statine avec un fibrate,
+  le clopidogrel avec l'oméprazole, l'ISRS avec un antithrombotique, la
+  digoxine sous diurétique, l'œdème traité par un diurétique, la
+  lévothyroxine et les bisphosphonates à distance des cations. Une
+  association fixe compte pour ses deux moitiés ; un doublon demande
+  deux boîtes distinctes.
+- The points show as chips on the patient file, coloured by how loudly
+  they ask, with the sentence and the médicaments concerned on hover —
+  and in full on the bilan, under « Revue de l'ordonnance ».
+- `BPM_CADDY_START_VIEW=revue` opens the file whose ordonnance has
+  something to say, and the demo's second patient now carries the
+  ordonnance a bilan exists for.
+
 ## [0.57.0] - 2026-08-27
 
 ### Added
