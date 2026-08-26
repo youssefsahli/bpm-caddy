@@ -29,12 +29,6 @@ pub struct Antibiotic {
     pub caution: &'static str,
 }
 
-/// A probiotic offered alongside an antibiotic course.
-pub struct Probiotic {
-    pub name: &'static str,
-    pub posologies: &'static [&'static str],
-}
-
 /// Everything one indication offers.
 pub struct Protocol {
     /// The heading of the ordonnance ("Angine à streptocoque A").
@@ -143,25 +137,6 @@ const CYSTITE: Protocol = Protocol {
     ],
 };
 
-/// The probiotics offered alongside, for either indication.
-pub const PROBIOTICS: &[Probiotic] = &[
-    Probiotic {
-        name: "Saccharomyces boulardii 200 mg",
-        posologies: &[
-            "1 gélule deux fois par jour pendant la durée du traitement et 7 jours après",
-            "1 gélule par jour pendant la durée du traitement",
-        ],
-    },
-    Probiotic {
-        name: "Lactobacillus rhamnosus GG",
-        posologies: &["1 dose par jour pendant la durée du traitement et 7 jours après"],
-    },
-    Probiotic {
-        name: "Lactobacillus LB inactivé",
-        posologies: &["2 gélules deux fois par jour"],
-    },
-];
-
 /// The protocol a positive TROD opens, if the act has one.
 pub fn protocol(kind: InterviewKind) -> Option<&'static Protocol> {
     match kind {
@@ -196,9 +171,12 @@ pub struct Choice {
     /// The posology, pre-filled from the chosen molecule and freely
     /// editable — « we can choose or free write ».
     pub posology: String,
-    /// Index into [`PROBIOTICS`], if one is added.
-    pub probiotic: Option<usize>,
-    pub probiotic_posology: String,
+    /// The adjuvant drug card chosen from the base, by name. It is a
+    /// name rather than an id because the ordonnance is a document:
+    /// what matters is what gets printed, and a card renamed or
+    /// deleted afterwards must not change a prescription already made.
+    pub adjuvant: Option<String>,
+    pub adjuvant_posology: String,
     pub conseils: bool,
     pub temps_de_prise: bool,
     /// Anything the pharmacist adds by hand.
@@ -217,10 +195,10 @@ impl Choice {
                 caution: atb.caution.to_owned(),
             });
         }
-        if let Some(p) = self.probiotic.and_then(|i| PROBIOTICS.get(i)) {
+        if let Some(name) = self.adjuvant.as_ref().filter(|n| !n.trim().is_empty()) {
             out.push(Line {
-                name: p.name.to_owned(),
-                posology: self.probiotic_posology.trim().to_owned(),
+                name: name.trim().to_owned(),
+                posology: self.adjuvant_posology.trim().to_owned(),
                 caution: String::new(),
             });
         }
@@ -313,8 +291,8 @@ mod tests {
         let choice = Choice {
             antibiotic: Some(0),
             posology: "1 g deux fois par jour pendant 6 jours".to_owned(),
-            probiotic: Some(0),
-            probiotic_posology: "1 gélule deux fois par jour".to_owned(),
+            adjuvant: Some("Lactéol".to_owned()),
+            adjuvant_posology: "2 gélules deux fois par jour".to_owned(),
             conseils: true,
             temps_de_prise: false,
             extra: "Paracétamol 1 g si douleur\n\n  \n".to_owned(),
@@ -323,7 +301,7 @@ mod tests {
         assert_eq!(lines.len(), 3);
         assert_eq!(lines[0].name, "Amoxicilline 1 g");
         assert_eq!(lines[0].posology, "1 g deux fois par jour pendant 6 jours");
-        assert_eq!(lines[1].name, "Saccharomyces boulardii 200 mg");
+        assert_eq!(lines[1].name, "Lactéol");
         // Blank lines in the free text do not become empty prescriptions.
         assert_eq!(lines[2].name, "Paracétamol 1 g si douleur");
 
@@ -361,9 +339,6 @@ mod tests {
                 assert!(!atb.posologies.is_empty(), "{}", atb.name);
                 assert!(!atb.situation.is_empty(), "{}", atb.name);
             }
-        }
-        for p in PROBIOTICS {
-            assert!(!p.posologies.is_empty(), "{}", p.name);
         }
     }
 }

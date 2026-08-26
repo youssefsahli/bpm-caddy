@@ -3935,6 +3935,21 @@ impl App {
             session.ordonnance = None;
             return;
         }
+        // Read once per frame, before the window borrows the session:
+        // the base is small and this is a modal the operator opened on
+        // purpose, so a query per frame is cheaper than a cache that
+        // could go stale against another post's edit.
+        let adjuvant_tag = config.ordonnance.adjuvant_tag.clone();
+        let adjuvants: Vec<(Drug, Vec<db::Posologie>)> = session
+            .db
+            .drugs_with_tag(&adjuvant_tag)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|d| {
+                let posologies = session.db.posologies(d.id).unwrap_or_default();
+                (d, posologies)
+            })
+            .collect();
         let mut close = false;
         let mut print = false;
         egui::Window::new(trf("ord_title", protocol.indication))
@@ -4026,40 +4041,58 @@ impl App {
                         ui.add_space(8.0);
                         motif::section(ui, tr("ord_probio_section"));
                         ui.add_space(4.0);
+                        // The adjuvants are drug cards carrying the
+                        // configured tag: adding one to the list means
+                        // adding a card to the base, not editing the app.
+                        if adjuvants.is_empty() {
+                            ui.label(
+                                egui::RichText::new(trf("ord_probio_empty", &adjuvant_tag))
+                                    .size(11.0)
+                                    .color(motif::TEXT_DIM),
+                            );
+                        }
                         ui.horizontal_wrapped(|ui| {
-                            if motif::toggle(ui, tr("ord_probio_none"), choice.probiotic.is_none())
+                            if motif::toggle(ui, tr("ord_probio_none"), choice.adjuvant.is_none())
                                 .clicked()
                             {
-                                choice.probiotic = None;
+                                choice.adjuvant = None;
+                                choice.adjuvant_posology.clear();
                             }
-                            for (i, p) in crate::ordonnance::PROBIOTICS.iter().enumerate() {
-                                if motif::toggle(ui, p.name, choice.probiotic == Some(i)).clicked()
-                                {
-                                    choice.probiotic = Some(i);
-                                    choice.probiotic_posology = p
-                                        .posologies
+                            for (drug, posologies) in &adjuvants {
+                                let picked = choice.adjuvant.as_deref() == Some(drug.name.as_str());
+                                let resp = motif::toggle(ui, &drug.name, picked);
+                                let resp = if drug.dci.trim().is_empty() {
+                                    resp
+                                } else {
+                                    resp.on_hover_text(&drug.dci)
+                                };
+                                if resp.clicked() {
+                                    choice.adjuvant = Some(drug.name.clone());
+                                    // The team's own first posology line
+                                    // for that card, when it wrote one.
+                                    choice.adjuvant_posology = posologies
                                         .first()
-                                        .map(|s| (*s).to_owned())
+                                        .map(|p| p.posologie.clone())
                                         .unwrap_or_default();
                                 }
                             }
                         });
-                        if let Some(p) = choice
-                            .probiotic
-                            .and_then(|i| crate::ordonnance::PROBIOTICS.get(i))
+                        if let Some((_, posologies)) = adjuvants
+                            .iter()
+                            .find(|(d, _)| choice.adjuvant.as_deref() == Some(d.name.as_str()))
                         {
-                            if p.posologies.len() > 1 {
+                            if posologies.len() > 1 {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.add_space(12.0);
-                                    for schema in p.posologies {
-                                        if motif::toggle(
-                                            ui,
-                                            schema,
-                                            choice.probiotic_posology == *schema,
-                                        )
-                                        .clicked()
-                                        {
-                                            choice.probiotic_posology = (*schema).to_owned();
+                                    for p in posologies {
+                                        let on = choice.adjuvant_posology == p.posologie;
+                                        let label = if p.indication.trim().is_empty() {
+                                            p.posologie.clone()
+                                        } else {
+                                            format!("{} — {}", p.indication, p.posologie)
+                                        };
+                                        if motif::toggle(ui, &label, on).clicked() {
+                                            choice.adjuvant_posology = p.posologie.clone();
                                         }
                                     }
                                 });
@@ -4068,7 +4101,7 @@ impl App {
                                 ui.add_space(12.0);
                                 ui.add_sized(
                                     [ui.available_width().max(120.0), 24.0],
-                                    egui::TextEdit::singleline(&mut choice.probiotic_posology)
+                                    egui::TextEdit::singleline(&mut choice.adjuvant_posology)
                                         .hint_text(tr("ord_posology_hint")),
                                 );
                             });

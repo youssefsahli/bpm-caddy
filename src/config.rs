@@ -85,6 +85,13 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # d'adhésion. Laissé vide, la ligne du bulletin reste à remplir à la main.
 # am_number = "3400123"
 
+[ordonnance]
+# Les fiches du référentiel médicaments portant cette étiquette sont
+# proposées comme adjuvant dans l'ordonnance après un TROD positif.
+# Ajoutez une fiche, étiquetez-la, écrivez-y ses posologies : elle
+# apparaît dans la liste.
+# adjuvant_tag = "probiotique"
+
 [rules]
 # Nombre maximal d'actes par année d'accompagnement (cycle glissant à
 # partir du premier acte ; 0 = sans limite).
@@ -113,6 +120,7 @@ pub struct Config {
     pub templates: TemplatesConfig,
     pub pharmacy: PharmacyConfig,
     pub rules: RulesConfig,
+    pub ordonnance: OrdonnanceConfig,
 }
 
 /// Convention rules: how many acts of each kind per "année
@@ -184,6 +192,24 @@ pub struct PharmacyConfig {
     /// the bulletin d'adhésion. Empty leaves that line blank.
     #[serde(default)]
     pub am_number: String,
+}
+
+/// What the ordonnance box offers alongside the antibiotic.
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct OrdonnanceConfig {
+    /// Drug cards carrying this tag are offered as adjuvants. Point it
+    /// at whatever tag the officine actually uses; every card so tagged
+    /// joins the list, with its own posology lines.
+    pub adjuvant_tag: String,
+}
+
+impl Default for OrdonnanceConfig {
+    fn default() -> Self {
+        Self {
+            adjuvant_tag: "probiotique".to_owned(),
+        }
+    }
 }
 
 /// Custom Typst templates; the embedded default is used when unset.
