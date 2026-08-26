@@ -1181,6 +1181,10 @@ struct Session {
     /// Two-step confirmation on filling the carnet with the doses the
     /// calendar says are owed.
     vacc_fill_confirm: bool,
+    /// Who to call back, read from the whole base's biology against
+    /// each patient's own treatments. Computed when the dashboard is
+    /// refreshed, not per frame.
+    bio_watch: Vec<BioWatch>,
     /// The patient's biology, and the line being added to it.
     bio_results: Vec<db::BioResult>,
     bio_query: String,
@@ -1422,6 +1426,7 @@ impl Session {
             vacc_edit_base: (String::new(), String::new()),
             vacc_confirm: None,
             vacc_fill_confirm: false,
+            bio_watch: Vec::new(),
             bio_results: Vec::new(),
             bio_query: String::new(),
             bio_new_code: String::new(),
@@ -1975,6 +1980,7 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
+        self.bio_watch = bio_watch(&self.db);
         self.protocols = self.db.protocols().unwrap_or_default();
         // What the team wrote today: the day's notes, then the day's
         // transmissions — the two journals a morning starts with.
@@ -2371,6 +2377,60 @@ fn parse_hours(text: &str) -> Option<f64> {
 /// of — the field stays free text, so that must not be an error.
 fn config_operator_label(config: &Config, initials: &str) -> Option<String> {
     config.pharmacy.operator(initials).map(|o| o.label())
+}
+
+/// One line of the dashboard's biology watchlist: a patient, and what
+/// their latest results say about their own treatments.
+struct BioWatch {
+    patient_id: i64,
+    name: String,
+    alerts: usize,
+    warns: usize,
+    /// The loudest finding, in one line — the reason to call.
+    first: String,
+}
+
+/// Read the whole base's biology against each patient's treatments, and
+/// keep the files that have something to say. Sorted loudest first: the
+/// panel is a call list, not a table.
+fn bio_watch(db: &Db) -> Vec<BioWatch> {
+    let mut out: Vec<BioWatch> = Vec::new();
+    for row in db.bio_watchlist().unwrap_or_default() {
+        let readings: Vec<crate::biology::Reading> = row
+            .readings
+            .iter()
+            .map(|(code, value, date)| crate::biology::Reading {
+                code: code.as_str(),
+                value: *value,
+                date: date.as_str(),
+            })
+            .collect();
+        let findings = crate::biology::read(&readings, &row.treatments);
+        let alerts = findings
+            .iter()
+            .filter(|f| f.severity == crate::biology::Severity::Alert)
+            .count();
+        let warns = findings
+            .iter()
+            .filter(|f| f.severity == crate::biology::Severity::Warn)
+            .count();
+        if alerts == 0 && warns == 0 {
+            continue;
+        }
+        out.push(BioWatch {
+            patient_id: row.patient_id,
+            name: row.patient_name,
+            alerts,
+            warns,
+            first: findings.first().map(|f| f.text.clone()).unwrap_or_default(),
+        });
+    }
+    out.sort_by(|a, b| {
+        (b.alerts, b.warns)
+            .cmp(&(a.alerts, a.warns))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    out
 }
 
 /// The colour a biology level is shown in: the two critical ones in
@@ -12684,6 +12744,7 @@ impl App {
                 let cols = motif::column_count(w, 340.0, 2);
                 let mut open_patient: Option<i64> = None;
                 let mut open_recent: Option<Patient> = None;
+                let mut open_bio: Option<i64> = None;
 
                 // Each entry is (title, height, painter). They are dealt
                 // into the columns in order, so a one-column window
@@ -12696,6 +12757,12 @@ impl App {
                     (tr("dash_recent"), 190.0),
                     (tr("dash_today_notes"), 190.0),
                 ];
+                // The call list only claims a panel when it has
+                // something to say: an empty « rien à revoir » box on
+                // every dashboard would train the eye to skip it.
+                if !session.bio_watch.is_empty() {
+                    panels.insert(4, (tr("dash_bio"), 190.0));
+                }
                 // On a tall screen the natural grid stopped short and
                 // left a band of grey under it; stretch the panels to
                 // fill what is there, within reason — a funnel of five
@@ -12743,8 +12810,17 @@ impl App {
                             1 => Self::dash_monthly(ui, body, &per_month, masked),
                             2 => Self::dash_per_kind(ui, session, config, body),
                             3 => open_patient = Self::dash_appointments(ui, session, body),
-                            4 => open_recent = Self::dash_recent(ui, session, body),
-                            _ => Self::dash_today_notes(ui, session, body),
+                            _ => match *title {
+                                t if t == tr("dash_bio") => {
+                                    if let Some(id) = Self::dash_bio(ui, session, body) {
+                                        open_bio = Some(id);
+                                    }
+                                }
+                                t if t == tr("dash_recent") => {
+                                    open_recent = Self::dash_recent(ui, session, body)
+                                }
+                                _ => Self::dash_today_notes(ui, session, body),
+                            },
                         }
                     });
                 }
@@ -12753,7 +12829,16 @@ impl App {
                 // not laid out by the cursor.
                 ui.allocate_space(egui::vec2(w, bottom - full.top() - kpi_rect.height()));
 
-                if let Some(p) = open_recent {
+                if let Some(id) = open_bio {
+                    if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                        session.view = MainView::Search;
+                        session.show_amounts = false;
+                        session.open_patient(p);
+                        // Straight to the tab the panel was talking
+                        // about: the reason to open this file is on it.
+                        session.patient_tab = PatientTab::Bio;
+                    }
+                } else if let Some(p) = open_recent {
                     session.view = MainView::Search;
                     session.show_amounts = false;
                     session.open_patient(p);
@@ -12768,6 +12853,48 @@ impl App {
                     ui.colored_label(motif::ALERT, err.as_str());
                 }
             });
+    }
+
+    /// Who to call back: the files whose latest biology says something
+    /// about their own treatments, loudest first.
+    fn dash_bio(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+        let mut open = None;
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_bio")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for w in &session.bio_watch {
+                        let tag = if w.alerts > 0 {
+                            (trf("dash_bio_alerts", w.alerts), motif::ALERT)
+                        } else {
+                            (
+                                trf("dash_bio_warns", w.warns),
+                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
+                            )
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("  {}  ", tag.0))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(tag.1),
+                            );
+                            if motif::list_row(ui, egui::RichText::new(&w.name).size(12.5), false)
+                                .on_hover_text(&w.first)
+                                .clicked()
+                            {
+                                open = Some(w.patient_id);
+                            }
+                        });
+                    }
+                });
+        });
+        ui.allocate_space(rect.size());
+        open
     }
 
     /// The pipeline funnel: how many acts sit at each state.
