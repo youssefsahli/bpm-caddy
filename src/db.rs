@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS patients (
     situation   TEXT NOT NULL DEFAULT '',
     nir         TEXT NOT NULL DEFAULT '',
     regime      TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    -- Local time, like every other stamp in this base: the counter
+    -- works in its own clock, and an act entered after midnight in a
+    -- pharmacie de garde must carry that day, not the UTC one.
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE IF NOT EXISTS interviews (
     id          INTEGER PRIMARY KEY,
@@ -36,8 +39,8 @@ CREATE TABLE IF NOT EXISTS interviews (
     theme       TEXT NOT NULL DEFAULT '',
     trod_result TEXT NOT NULL DEFAULT '',
     operator    TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE IF NOT EXISTS drugs (
     id          INTEGER PRIMARY KEY,
@@ -22966,7 +22969,8 @@ impl Db {
     ) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO patients (last_name, first_name, birth_date) VALUES (?1, ?2, ?3)",
+                "INSERT INTO patients (last_name, first_name, birth_date, created_at)
+                 VALUES (?1, ?2, ?3, datetime('now', 'localtime'))",
                 (last_name, first_name, birth_date),
             )
             .map_err(|e| e.to_string())?;
@@ -23383,8 +23387,13 @@ impl Db {
     ) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO interviews (patient_id, kind, theme, operator)
-                 VALUES (?1, ?2, ?3, ?4)",
+                // The stamps are written here rather than left to the
+                // column default: a base created by an older version
+                // still defaults to UTC, and the day an act belongs to
+                // is the counter's day.
+                "INSERT INTO interviews (patient_id, kind, theme, operator, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, datetime('now', 'localtime'),
+                         datetime('now', 'localtime'))",
                 (patient_id, kind.as_str(), theme, operator.trim()),
             )
             .map_err(|e| e.to_string())?;
@@ -25510,7 +25519,7 @@ impl Db {
         let changed = self
             .conn
             .execute(
-                "UPDATE interviews SET state = ?1, updated_at = datetime('now')
+                "UPDATE interviews SET state = ?1, updated_at = datetime('now', 'localtime')
                  WHERE id = ?2 AND state = ?3",
                 (new.as_str(), id, expected.as_str()),
             )
@@ -27151,6 +27160,88 @@ mod tests {
         assert!(db.preparations().unwrap().iter().any(|p| p.id == id));
         assert!(!db.delete_preparation(id, "Autre nom").unwrap());
         assert!(db.delete_preparation(id, "Pommade de l'officine").unwrap());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A new act carries the counter's day, not the UTC one. Between
+    /// 22 h and minuit UTC — after midnight in France — the two differ,
+    /// and a pharmacie de garde works then.
+    #[test]
+    fn a_new_act_is_stamped_in_the_counter_s_own_day() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-clock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("clock.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let today = db.today_iso().unwrap();
+        let act = &db.interviews_for(pid).unwrap()[0];
+        assert_eq!(
+            &act.created_at[..10],
+            today,
+            "l'acte doit porter le jour du comptoir"
+        );
+        // And so does the file itself.
+        let created: String = db
+            .conn
+            .query_row(
+                "SELECT substr(created_at, 1, 10) FROM patients WHERE id = ?1",
+                [pid],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(created, today);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Moving an act to the day it was held is not cosmetic: the date
+    /// places it in its cycle, and the cycle picks the fee. This is the
+    /// billing consequence, checked end to end.
+    #[test]
+    fn moving_an_act_moves_its_year_and_its_rank() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-move-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("move.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let first = db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let second = db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let today = db.today_iso().unwrap();
+        // Both created today: same year, ranks 0 and 1.
+        let ranks: Vec<(usize, usize)> = db
+            .export_rows(12)
+            .unwrap()
+            .iter()
+            .map(|r| (r.fee_year, r.fee_rank))
+            .collect();
+        assert_eq!(ranks, vec![(0, 0), (0, 1)]);
+        // The first one actually happened two years ago: it opens its
+        // own cycle, and the one left today becomes the first of the
+        // current year.
+        assert!(db.set_created_date(first, "2024-03-02", &today).unwrap());
+        let rows = db.export_rows(12).unwrap();
+        let moved = rows
+            .iter()
+            .find(|r| r.created_date == "2024-03-02")
+            .expect("l'acte déplacé est là");
+        let stayed = rows
+            .iter()
+            .find(|r| r.created_date == today)
+            .expect("l'autre aussi");
+        assert_eq!((moved.fee_year, moved.fee_rank), (0, 0));
+        // Two years later, the second act opens the next année
+        // d'accompagnement — and is its first entretien, not its second.
+        assert_eq!(stayed.fee_rank, 0);
+        assert!(
+            stayed.fee_year >= 1,
+            "année {} attendue ≥ 1",
+            stayed.fee_year
+        );
+        let _ = second;
 
         let _ = std::fs::remove_file(&path);
     }
