@@ -1188,6 +1188,8 @@ struct Session {
     /// each patient's own treatments. Computed when the dashboard is
     /// refreshed, not per frame.
     bio_watch: Vec<BioWatch>,
+    /// The accompaniments whose next entretien is not in the agenda.
+    to_schedule: Vec<ToSchedule>,
     /// The patient's biology, and the line being added to it.
     bio_results: Vec<db::BioResult>,
     bio_query: String,
@@ -1436,6 +1438,7 @@ impl Session {
             vacc_confirm: None,
             vacc_fill_confirm: false,
             bio_watch: Vec::new(),
+            to_schedule: Vec::new(),
             bio_results: Vec::new(),
             bio_query: String::new(),
             bio_new_code: String::new(),
@@ -1995,6 +1998,12 @@ impl Session {
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
         self.bio_watch = bio_watch(&self.db);
+        // The sequences waiting for their next rendez-vous, read from
+        // the same export the CSV is made of.
+        self.to_schedule = to_schedule(
+            &self.db.export_rows(months).unwrap_or_default(),
+            &self.db.today_iso().unwrap_or_default(),
+        );
         self.protocols = self.db.protocols().unwrap_or_default();
         // What the team wrote today: the day's notes, then the day's
         // transmissions — the two journals a morning starts with.
@@ -2405,6 +2414,98 @@ fn parse_hours(text: &str) -> Option<f64> {
 /// of — the field stays free text, so that must not be an error.
 fn config_operator_label(config: &Config, initials: &str) -> Option<String> {
     config.pharmacy.operator(initials).map(|o| o.label())
+}
+
+/// One accompaniment whose year is started and whose next entretien is
+/// not in the agenda.
+struct ToSchedule {
+    patient_id: i64,
+    name: String,
+    kind: InterviewKind,
+    /// Acts done in this année d'accompagnement, and what the sequence
+    /// holds.
+    done: usize,
+    total: usize,
+    /// The last act's date, ISO.
+    last: String,
+}
+
+/// Which sequences are waiting for their next rendez-vous.
+///
+/// An accompaniment is a sequence: the convention pays the entretiens
+/// of a year in order, and a year left half-done pays half. This reads
+/// the export — where each act already carries its year and its rank —
+/// and keeps the files whose year is started, not finished, and with
+/// nothing in the agenda.
+fn to_schedule(rows: &[db::ExportRow], today: &str) -> Vec<ToSchedule> {
+    use std::collections::HashMap;
+    struct Group {
+        patient_id: i64,
+        name: String,
+        kind: InterviewKind,
+        year: usize,
+        done: usize,
+        last: String,
+        planned: bool,
+    }
+    let mut groups: HashMap<(i64, &'static str), Group> = HashMap::new();
+    for r in rows {
+        if !r.kind.is_accompaniment() {
+            continue;
+        }
+        let entry = groups
+            .entry((r.patient_id, r.kind.as_str()))
+            .or_insert_with(|| Group {
+                patient_id: r.patient_id,
+                name: r.patient_name.clone(),
+                kind: r.kind,
+                year: r.fee_year,
+                done: 0,
+                last: String::new(),
+                planned: false,
+            });
+        // Only the year the file is in: a sequence closed last year is
+        // not waiting for anything.
+        if r.fee_year > entry.year {
+            entry.year = r.fee_year;
+            entry.done = 0;
+            entry.last = String::new();
+        }
+        if r.fee_year == entry.year {
+            entry.done += 1;
+            if r.created_date > entry.last {
+                entry.last = r.created_date.clone();
+            }
+        }
+        // A rendez-vous still to come, whatever the year it belongs to,
+        // means the file is already in the agenda.
+        if let Some(date) = &r.scheduled_date {
+            if date.as_str() >= today {
+                entry.planned = true;
+            }
+        }
+    }
+    let mut out: Vec<ToSchedule> = groups
+        .into_values()
+        .filter(|g| !g.planned)
+        .filter_map(|g| {
+            // The length of the year's sequence is the convention's,
+            // not the officine's quota: these kinds all have one.
+            let total = g.kind.sequence(g.year).len();
+            (g.done < total).then_some(ToSchedule {
+                patient_id: g.patient_id,
+                name: g.name,
+                kind: g.kind,
+                done: g.done,
+                total,
+                last: g.last,
+            })
+        })
+        .collect();
+    // The file left waiting longest comes first: that is the one the
+    // year is about to run out on.
+    out.sort_by(|a, b| a.last.cmp(&b.last).then_with(|| a.name.cmp(&b.name)));
+    out
 }
 
 /// One line of the dashboard's call list: a patient, and what their
@@ -13052,6 +13153,11 @@ impl App {
                 if !session.bio_watch.is_empty() {
                     panels.insert(4, (tr("dash_bio"), 190.0));
                 }
+                // Same rule for the sequences waiting on a rendez-vous:
+                // the panel appears when there is one, and not before.
+                if !session.to_schedule.is_empty() {
+                    panels.insert(4, (tr("dash_schedule"), 190.0));
+                }
                 // On a tall screen the natural grid stopped short and
                 // left a band of grey under it; stretch the panels to
                 // fill what is there, within reason — a funnel of five
@@ -13103,6 +13209,11 @@ impl App {
                                 t if t == tr("dash_bio") => {
                                     if let Some(id) = Self::dash_bio(ui, session, body) {
                                         open_bio = Some(id);
+                                    }
+                                }
+                                t if t == tr("dash_schedule") => {
+                                    if let Some(id) = Self::dash_schedule(ui, session, body) {
+                                        open_patient = Some(id);
                                     }
                                 }
                                 t if t == tr("dash_recent") => {
@@ -13290,6 +13401,49 @@ impl App {
                 .table_cells(crate::tables::TABLES[ti].short)
                 .unwrap_or_default();
         }
+    }
+
+    /// The accompaniments waiting for their next rendez-vous: a year
+    /// left half-done pays half, and the patient waits twice as long.
+    fn dash_schedule(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+        let mut open = None;
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_schedule")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for s in &session.to_schedule {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("  {}  ", s.kind.label()))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(motif::ACCENT),
+                            );
+                            ui.label(
+                                egui::RichText::new(format!("{} / {}", s.done, s.total))
+                                    .size(11.0)
+                                    .color(motif::TEXT_DIM),
+                            );
+                            if motif::list_row(ui, egui::RichText::new(&s.name).size(12.5), false)
+                                .on_hover_text(if s.last.is_empty() {
+                                    tr("dash_schedule_tooltip").to_owned()
+                                } else {
+                                    trf("dash_schedule_last", db::format_french_date(&s.last))
+                                })
+                                .clicked()
+                            {
+                                open = Some(s.patient_id);
+                            }
+                        });
+                    }
+                });
+        });
+        ui.allocate_space(rect.size());
+        open
     }
 
     /// The pipeline funnel: how many acts sit at each state.
@@ -15385,9 +15539,123 @@ mod tests {
         assert!(super::drug_link_index(&short).is_empty());
     }
 
+    /// The panel that says who to call for a rendez-vous: it must skip
+    /// what is already in the agenda, and count the year the file is
+    /// actually in.
+    #[test]
+    fn the_sequences_waiting_on_a_rendez_vous() {
+        use crate::db::{ExportRow, InterviewState};
+        let act = |id: i64, name: &str, kind, year, rank, day: &str, rdv: Option<&str>| ExportRow {
+            patient_id: id,
+            patient_name: name.to_owned(),
+            phone: String::new(),
+            birth_date: "1958-07-03".to_owned(),
+            kind,
+            state: InterviewState::Performed,
+            created_date: day.to_owned(),
+            scheduled_date: rdv.map(str::to_owned),
+            duration_minutes: 30,
+            theme: String::new(),
+            fee_rank: rank,
+            fee_year: year,
+            remote: false,
+            situation: String::new(),
+            treatment_change: false,
+            operator: String::new(),
+        };
+        let rows = [
+            // Dupont : deux BPM faits sur les quatre de l'année 1, rien
+            // au calendrier.
+            act(
+                1,
+                "Jean Dupont",
+                InterviewKind::Bpm,
+                0,
+                0,
+                "2026-02-03",
+                None,
+            ),
+            act(
+                1,
+                "Jean Dupont",
+                InterviewKind::Bpm,
+                0,
+                1,
+                "2026-05-14",
+                None,
+            ),
+            // Martin : un AOD fait, le suivant est déjà pris.
+            act(
+                2,
+                "Claire Martin",
+                InterviewKind::Aod,
+                0,
+                0,
+                "2026-06-01",
+                Some("2026-09-01"),
+            ),
+            // Moreau : la séquence de l'année est complète.
+            act(
+                3,
+                "Lucie Moreau",
+                InterviewKind::Aod,
+                0,
+                0,
+                "2026-01-05",
+                None,
+            ),
+            act(
+                3,
+                "Lucie Moreau",
+                InterviewKind::Aod,
+                0,
+                1,
+                "2026-04-05",
+                None,
+            ),
+            act(
+                3,
+                "Lucie Moreau",
+                InterviewKind::Aod,
+                0,
+                2,
+                "2026-07-05",
+                None,
+            ),
+            // Bernard : un TROD, qui n'est pas un accompagnement.
+            act(
+                4,
+                "Paul Bernard",
+                InterviewKind::TrodAngine,
+                0,
+                0,
+                "2026-08-01",
+                None,
+            ),
+        ];
+        let waiting = super::to_schedule(&rows, "2026-08-27");
+        let names: Vec<&str> = waiting.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Jean Dupont"]);
+        assert_eq!(waiting[0].done, 2);
+        assert_eq!(waiting[0].total, 4);
+        assert_eq!(waiting[0].last, "2026-05-14");
+        // A rendez-vous already past does not count as planned.
+        let stale = [act(
+            5,
+            "Hélène Lefèvre",
+            InterviewKind::Avk,
+            0,
+            0,
+            "2026-01-10",
+            Some("2026-02-01"),
+        )];
+        assert_eq!(super::to_schedule(&stale, "2026-08-27").len(), 1);
+    }
+
     #[test]
     fn csv_export_is_french_excel_friendly() {
         let rows = [ExportRow {
+            patient_id: 1,
             patient_name: "Jean; \"Le Grand\" Dupont".to_owned(),
             phone: "06 12 34 56 78".to_owned(),
             birth_date: "1958-07-03".to_owned(),

@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.67.0] - 2026-08-27
+
+### Added
+- **« À programmer » on the dashboard** — the accompaniments whose year
+  is started, not finished, and with nothing in the agenda. A sequence
+  left half-done pays half and makes the patient wait twice as long;
+  the panel says which files are in that state, how far each one is
+  (« BPM 2/4 »), when the last entretien was, and opens the file in one
+  click. Read from the same export the CSV is made of, and it appears
+  only when it has something to say.
+
+### Changed
+- The screenshots are regenerated on the new demo base, and the export
+  rows carry the file's id so a reading of the export can open it.
+
 ## [0.66.0] - 2026-08-27
 
 ### Added

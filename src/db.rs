@@ -658,6 +658,9 @@ pub struct InterviewSummary {
 /// One interview joined with its patient, for the CSV export.
 #[derive(Clone, Debug)]
 pub struct ExportRow {
+    /// The file this act belongs to, so a reading of the export can
+    /// open it.
+    pub patient_id: i64,
     pub patient_name: String,
     /// May be empty.
     pub phone: String,
@@ -23942,6 +23945,7 @@ impl Db {
                 treatment_change && kind.allows_treatment_change(),
             ));
             out.push(ExportRow {
+                patient_id,
                 patient_name,
                 phone,
                 birth_date,
