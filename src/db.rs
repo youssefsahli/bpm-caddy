@@ -19191,6 +19191,67 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Nerisone", "Dermatose inflammatoire corticosensible de l'adulte", "1 application par jour sur les lésions jusqu'à amélioration nette, puis espacement progressif avant l'arrêt", "Une seule application quotidienne suffit : deux ne font pas mieux et augmentent l'atrophie cutanée."),
     ("Nerisone", "Quantité à appliquer", "Mesurer en unités phalangettes : la quantité déposée de la pulpe au premier pli de l'index couvre deux paumes de main", "L'erreur la plus fréquente est le sous-dosage par crainte du corticoïde, qui fait traîner la poussée et multiplie les cures."),
     ("Nerisone", "Zones à risque", "À éviter sur le visage, les paupières et les plis, et à ne pas appliquer sous pansement occlusif sans avis", "Activité forte : sur ces zones, la pénétration est bien plus élevée et l'atrophie survient vite."),
+    // --- IEC : la toux est un effet de classe, pas une allergie ---
+    ("Renitec", "Hypertension artérielle de l'adulte", "5 mg par jour en une prise, puis 10 à 40 mg par jour en une ou deux prises selon la réponse", "La première prise se fait de préférence le soir : l'hypotension de première dose est plus marquée chez le patient déjà sous diurétique."),
+    ("Renitec", "Insuffisance cardiaque avec dysfonction ventriculaire gauche", "2,5 mg par jour à l'instauration, puis augmentation progressive jusqu'à 20 mg par jour en deux prises", "Créatininémie et kaliémie une à deux semaines après chaque augmentation : c'est le contrôle que l'on oublie le plus souvent en ville."),
+    ("Renitec", "Grossesse", "Contre-indiqué aux deuxième et troisième trimestres, à interrompre dès qu'une grossesse est envisagée", "Toxicité rénale fœtale : chez une femme en âge de procréer, poser la question à la délivrance plutôt que d'attendre qu'elle la pose."),
+    ("Lopril", "Hypertension artérielle de l'adulte", "25 à 50 mg par jour en deux prises, à distance des repas", "Le seul inhibiteur de l'enzyme de conversion dont l'absorption est nettement diminuée par les aliments : une heure avant ou deux heures après un repas."),
+    ("Lopril", "Insuffisance cardiaque", "6,25 à 12,5 mg trois fois par jour à l'instauration, puis augmentation progressive", "Demi-vie courte, d'où les trois prises : l'oubli d'une prise se voit plus vite qu'avec les molécules à une prise par jour."),
+    ("Zestril", "Hypertension artérielle de l'adulte", "10 mg par jour en une prise, puis 20 à 40 mg par jour selon la réponse", "Une prise par jour à heure fixe ; l'effet plein s'apprécie après deux à quatre semaines, pas sur la mesure du lendemain."),
+    ("Zestril", "Toux sèche persistante", "Sans modification de la posologie", "Effet de classe survenant chez environ un patient sur dix, parfois après plusieurs mois : elle ne cède pas aux antitussifs et justifie un changement de classe, décidé par le prescripteur."),
+    ("Fozitec", "Hypertension artérielle de l'adulte", "10 mg par jour en une prise, puis 20 à 40 mg par jour selon la réponse", "Double élimination, rénale et hépatique : souvent préféré quand la fonction rénale est altérée."),
+    ("Acuitel", "Hypertension artérielle de l'adulte", "10 à 20 mg par jour en une prise, puis jusqu'à 40 mg par jour selon la réponse", "Angio-œdème du visage, des lèvres ou de la langue : arrêt immédiat et appel du 15, quel que soit le délai depuis l'instauration."),
+    ("Acuitel", "Associations à surveiller", "Sans modification de la posologie", "Anti-inflammatoires non stéroïdiens, sels de régime enrichis en potassium et diurétiques épargneurs de potassium : le trio qui fait monter la kaliémie."),
+    // --- Bêtabloquants : jamais d'arrêt brutal ---
+    ("Kredex", "Insuffisance cardiaque chronique stable", "3,125 mg deux fois par jour pendant 2 semaines, puis doublement toutes les 2 semaines selon la tolérance, jusqu'à 25 mg deux fois par jour", "À prendre au cours des repas : cela ralentit l'absorption et limite nettement l'hypotension orthostatique des premiers paliers."),
+    ("Kredex", "Fatigue des premières semaines", "Sans modification de la posologie sans avis", "Une aggravation transitoire de la fatigue et de l'essoufflement est attendue à l'instauration : elle ne signifie pas que le traitement ne convient pas, et c'est ce qui fait abandonner si on ne l'annonce pas."),
+    ("Temerit", "Hypertension artérielle de l'adulte", "5 mg par jour en une prise, à heure fixe", "Bêtabloquant cardiosélectif avec effet vasodilatateur : mieux toléré sur le plan des extrémités froides, mais la prudence chez l'asthmatique reste la règle."),
+    ("Temerit", "Insuffisance cardiaque du sujet âgé", "1,25 mg par jour à l'instauration, puis augmentation par paliers de 1 à 2 semaines", "Titration lente indispensable après 70 ans ; contrôler pouls et tension à chaque palier."),
+    ("Lopressor", "Hypertension artérielle et angor de l'adulte", "100 à 200 mg par jour, en une prise pour la forme à libération prolongée ou en deux prises pour la forme classique", "Ne pas croquer ni écraser la forme à libération prolongée : la dose entière passerait d'un coup."),
+    ("Célectol", "Hypertension artérielle de l'adulte", "200 mg par jour en une prise le matin, à jeun, avant le petit-déjeuner", "La prise à jeun est spécifique à cette molécule : un repas réduit son absorption de moitié."),
+    ("Corgard", "Hypertension artérielle et angor de l'adulte", "40 à 80 mg par jour en une seule prise", "Demi-vie longue et élimination rénale : espacer les prises chez l'insuffisant rénal, et se méfier de l'accumulation chez la personne âgée."),
+    ("Kerlone", "Hypertension artérielle de l'adulte", "20 mg par jour en une prise, réduits à 10 mg par jour chez le sujet âgé ou l'insuffisant rénal", "Comme tout bêtabloquant : ne jamais interrompre brutalement, le rebond expose à une poussée hypertensive et à l'ischémie myocardique."),
+    // --- Statines : le soir pour celles à demi-vie courte ---
+    ("Zocor", "Hypercholestérolémie et prévention cardiovasculaire", "20 à 40 mg par jour en une prise le soir", "Le soir parce que la synthèse hépatique du cholestérol est nocturne : cela compte pour la simvastatine, beaucoup moins pour l'atorvastatine ou la rosuvastatine."),
+    ("Zocor", "Interactions à vérifier à la délivrance", "Dose à ne pas dépasser en cas d'association, et 80 mg à éviter en pratique courante", "C'est la statine la plus exposée : contre-indiquée avec l'itraconazole et les macrolides, dose plafonnée avec l'amlodipine, le vérapamil et le diltiazem, et pas de pamplemousse."),
+    ("Zocor", "Douleurs musculaires", "Ne pas arrêter de soi-même", "Dosage des CPK avant toute décision : la plupart des myalgies ne sont pas d'origine musculaire vraie, et l'arrêt injustifié d'une statine coûte cher en prévention secondaire."),
+    ("Elisor", "Hypercholestérolémie et prévention cardiovasculaire", "20 à 40 mg par jour en une prise le soir", "Non métabolisée par le CYP3A4 : c'est la statine du patient polymédiqué, et le pamplemousse ne pose pas de problème avec elle."),
+    ("Vasten", "Hypercholestérolémie et prévention cardiovasculaire", "20 à 40 mg par jour en une prise le soir", "Même molécule que l'autre spécialité de pravastatine : vérifier qu'elles ne sont pas délivrées en double lors d'un changement de marque."),
+    // --- Inhibiteurs calciques : l'œdème des chevilles n'est pas du sel ---
+    ("Loxen", "Hypertension artérielle de l'adulte", "20 mg trois fois par jour, ou 50 mg deux fois par jour pour la forme à libération prolongée", "La forme à libération prolongée s'avale entière ; passer de l'une à l'autre change le rythme des prises, source classique d'erreur."),
+    ("Adalate", "Hypertension artérielle et angor de l'adulte", "Forme à libération prolongée, 20 mg deux fois par jour ou 30 mg une fois par jour selon la présentation", "Ne jamais croquer : la nifédipine libérée d'un coup provoque une chute tensionnelle brutale. L'enveloppe du comprimé retrouvée dans les selles est normale."),
+    ("Flodil", "Hypertension artérielle de l'adulte", "5 mg par jour en une prise le matin, portés à 10 mg par jour selon la réponse", "À avaler entier avec de l'eau, sans pamplemousse ni jus de pamplemousse, qui augmentent nettement les concentrations."),
+    ("Flodil", "Œdèmes des chevilles", "Sans modification de la posologie sans avis", "Effet dose-dépendant des dihydropyridines, lié à la vasodilatation et non à une rétention d'eau : ni régime sans sel ni diurétique ne le corrigent, seule la baisse de dose ou le changement de classe."),
+    // --- Fibrates : l'association à une statine se surveille ---
+    ("Lipanthyl", "Hypertriglycéridémie et dyslipidémie mixte", "145 à 160 mg par jour en une prise, au cours d'un repas", "Les mesures diététiques et la réduction de l'alcool font une part majeure du résultat sur les triglycérides : le fibrate ne les remplace pas."),
+    ("Lipanthyl", "Association à une statine", "Sans modification de la posologie, mais sous surveillance", "Le risque musculaire est majoré : toute douleur musculaire diffuse, inexpliquée ou accompagnée d'urines foncées impose un arrêt et un dosage des CPK le jour même."),
+    ("Lipur", "Hypertriglycéridémie sévère", "600 mg deux fois par jour, 30 minutes avant le repas du matin et celui du soir", "Association aux statines déconseillée, contrairement aux autres fibrates : le gemfibrozil est celui qui expose le plus à la rhabdomyolyse."),
+    ("Béfizal", "Hypertriglycéridémie et dyslipidémie mixte", "400 mg par jour en une prise pour la forme à libération prolongée, au cours d'un repas", "Potentialise les antivitamines K : contrôle rapproché de l'INR à l'instauration et à l'arrêt."),
+    // --- Substituts nicotiniques : le sous-dosage fait échouer le sevrage ---
+    ("Nicorette", "Sevrage tabagique, forme orale", "1 gomme ou pastille dès l'envie de fumer, environ toutes les 1 à 2 heures, sans dépasser le nombre d'unités indiqué pour le dosage utilisé", "Technique du mâcher-parquer pour les gommes : mâcher lentement jusqu'au picotement, puis parquer la gomme contre la joue et reprendre. Mâchée en continu, la nicotine est avalée et donne des nausées."),
+    ("Nicorette", "Association patch et forme orale", "Le patch couvre le besoin de fond, la forme orale couvre les envies ponctuelles", "L'association des deux formes est recommandée et double les chances de succès : ce n'est pas un surdosage."),
+    ("Nicotinell", "Sevrage tabagique, dispositif transdermique", "1 patch par jour, dosage choisi selon la consommation : le plus fort au-dessus de 20 cigarettes par jour, l'intermédiaire entre 10 et 20", "Sur peau saine, sèche et sans poils, en changeant de site chaque jour ; la même zone ne se réutilise pas avant plusieurs jours."),
+    ("Nicotinell", "Durée du traitement", "Environ 3 mois, avec une décroissance progressive des dosages", "Arrêter au bout de trois semaines parce que « ça va mieux » est le scénario de rechute le plus fréquent."),
+    ("Niquitin", "Sevrage tabagique, dispositif transdermique", "1 patch par jour, sur 24 heures ou sur 16 heures selon la présentation", "Le patch 16 heures, retiré au coucher, convient à ceux que le patch 24 heures empêche de dormir ou fait rêver de façon désagréable."),
+    ("Niquitin", "Fumer avec un patch", "Sans retirer le patch", "Griller une cigarette sous patch n'est pas dangereux et vaut mieux qu'une rechute complète : le dire lève un frein fréquent à l'observance."),
+    // --- Mucolytiques : jamais avant 2 ans, jamais avec un antitussif ---
+    ("Fluimucil", "Toux grasse de l'adulte", "200 mg trois fois par jour, sans dépasser 5 jours en automédication", "Ne pas prendre le soir : la mobilisation des sécrétions gêne le sommeil. Sachets à dissoudre dans un demi-verre d'eau."),
+    ("Fluimucil", "Contre-indication pédiatrique", "Contre-indiqué avant 2 ans", "Retrait pédiatrique : chez le nourrisson, le mucolytique majore l'encombrement au lieu de le soulager. Un lavage de nez au sérum physiologique est la bonne réponse."),
+    ("Rhinathiol", "Toux grasse de l'adulte", "15 mL de sirop à 5 % trois fois par jour, sur une durée courte", "Ne pas associer à un antitussif ni à un antihistaminique asséchant : fluidifier et bloquer la toux en même temps n'a pas de sens."),
+    ("Bisolvon", "Toux grasse de l'adulte", "8 à 16 mg trois fois par jour, sur une durée courte", "Une toux grasse qui dure au-delà d'une semaine, ou qui s'accompagne de fièvre, d'essoufflement ou de crachats colorés, relève d'un avis médical."),
+    // --- Insulines lentes : une concentration, un stylo ---
+    ("Toujeo", "Diabète, insuline basale", "1 injection par jour à heure fixe, dose adaptée à l'autosurveillance glycémique", "Insuline glargine à 300 unités par mL : ne jamais transvaser dans une seringue et ne jamais échanger le stylo avec une glargine à 100, la graduation n'est pas la même."),
+    ("Toujeo", "Passage depuis une autre insuline basale", "Dose adaptée par le prescripteur, souvent légèrement supérieure à l'unité près pour une glargine 100", "Renforcer l'autosurveillance dans les jours suivant tout changement de basale."),
+    ("Abasaglar", "Diabète, insuline basale", "1 injection par jour à heure fixe, dose adaptée à l'autosurveillance glycémique", "Biosimilaire de la glargine 100 : la substitution ne s'improvise pas au comptoir, elle relève du prescripteur et s'accompagne d'une surveillance renforcée."),
+    ("Levemir", "Diabète, insuline basale", "1 à 2 injections par jour, à heure fixe, dose adaptée à l'autosurveillance glycémique", "Rotation des sites d'injection à chaque fois : les lipodystrophies rendent l'absorption imprévisible et sont une cause fréquente de déséquilibre inexpliqué."),
+    ("Levemir", "Conservation", "Entre 2 et 8 °C avant ouverture, puis à température ambiante pendant la durée indiquée par la notice", "Jamais au congélateur ni contre la paroi du réfrigérateur : une insuline gelée est à jeter, même redevenue liquide."),
+    // --- Vaccins : le schéma est celui du calendrier en vigueur ---
+    ("Engerix B", "Vaccination contre l'hépatite B chez l'adulte", "3 doses selon un schéma 0, 1 et 6 mois, par voie intramusculaire dans le deltoïde", "Un schéma interrompu ne se recommence jamais depuis le début : on reprend là où il s'est arrêté, quel que soit le retard."),
+    ("Engerix B", "Contrôle de l'immunité", "Sans dose supplémentaire systématique", "Le dosage des anticorps anti-HBs n'est utile que chez les professionnels de santé et les patients à risque, pas en population générale."),
+    ("Havrix", "Vaccination contre l'hépatite A", "1 dose, suivie d'un rappel de 6 à 12 mois plus tard, par voie intramusculaire", "La première dose protège déjà pour un départ imminent : elle peut être faite jusqu'à la veille du voyage."),
+    ("Bexsero", "Vaccination contre le méningocoque B", "Schéma du calendrier vaccinal en vigueur, variable selon l'âge à la première dose", "Fièvre fréquente chez le nourrisson : le paracétamol donné à titre préventif au moment de la vaccination puis dans les heures qui suivent est recommandé pour ce vaccin."),
+    ("Comirnaty", "Vaccination contre la Covid-19", "Dose de la campagne en cours, par voie intramusculaire dans le deltoïde", "Coadministration possible avec le vaccin grippal, sur deux sites d'injection distincts."),
+    ("Comirnaty", "Après l'injection", "Surveillance de 15 minutes sur place", "Comme pour toute vaccination à l'officine : garder la personne assise et surveillée, et disposer du nécessaire de prise en charge d'une réaction anaphylactique."),
     // GENERATED-POSOLOGIES-END
 ];
 
@@ -24296,7 +24357,18 @@ mod tests {
         db.seed_drugs_if_empty().unwrap();
         db.seed_posologies().unwrap();
 
-        for brand in ["Xalatan", "Maxalt", "Malarone", "Nasonex", "Coltramyl"] {
+        for brand in [
+            "Xalatan",
+            "Maxalt",
+            "Malarone",
+            "Nasonex",
+            "Coltramyl",
+            "Kredex",
+            "Nicotinell",
+            "Zocor",
+            "Lipur",
+            "Engerix B",
+        ] {
             let card = db
                 .drugs()
                 .unwrap()
