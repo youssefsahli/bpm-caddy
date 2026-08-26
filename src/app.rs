@@ -5203,6 +5203,7 @@ impl App {
         let mut delete: Option<(i64, String)> = None;
         let mut add = false;
         let mut print = false;
+        let mut bill = false;
 
         motif::panel(ui, rect, Some(tr("vacc_section")), |ui| {
             let inner = ui.max_rect();
@@ -5445,6 +5446,29 @@ impl App {
                                 print = true;
                             }
                         });
+                        // A dose given today and no act billed for it:
+                        // the officine is paid for the vaccination, and
+                        // a dose recorded without its acte is money the
+                        // team has already earned.
+                        let given_today = lines.iter().any(|v| v.given_on == today);
+                        let billed_today = session.viewing_interviews.iter().any(|i| {
+                            i.kind == InterviewKind::Vaccination && i.created_at.starts_with(&today)
+                        });
+                        if given_today && !billed_today {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tr("vacc_not_billed"))
+                                        .size(11.0)
+                                        .color(motif::ALERT),
+                                );
+                                if motif::button(ui, tr("vacc_bill"))
+                                    .on_hover_text(tr("vacc_bill_tooltip"))
+                                    .clicked()
+                                {
+                                    bill = true;
+                                }
+                            });
+                        }
                         if !config.disclaimers.vaccins.trim().is_empty() {
                             ui.label(
                                 egui::RichText::new(config.disclaimers.vaccins.trim())
@@ -5552,6 +5576,20 @@ impl App {
                     }
                     Err(e) => session.error = Some(e),
                 }
+            }
+        }
+        if bill {
+            // The act carries the day the dose was given and the
+            // initials of whoever gave it: it is the same event.
+            match session
+                .db
+                .add_interview_by(patient.id, InterviewKind::Vaccination, "", operator)
+            {
+                Ok(_) => {
+                    session.error = None;
+                    session.reload_interviews(patient.id);
+                }
+                Err(e) => session.error = Some(e),
             }
         }
         if print {
@@ -7368,6 +7406,9 @@ impl App {
         let mut set_made: Option<(i64, String, String)> = None;
         // (interview id, who did it, the initials this PC saw — CAS).
         let mut set_by: Option<(i64, String, String)> = None;
+        // (day, initials) of a vaccination act whose dose is to be
+        // written in the carnet.
+        let mut to_carnet: Option<(String, String)> = None;
         let mut delete_itv: Option<(i64, db::InterviewState)> = None;
         // (interview id, new theme, the theme this PC saw — CAS).
         let mut set_theme: Option<(i64, String, String)> = None;
@@ -7616,6 +7657,20 @@ impl App {
                                 {
                                     bulletin_req = Some(itv.kind);
                                 }
+                                // A vaccination act and a carnet line
+                                // are the same event written twice:
+                                // this jumps to the second one with the
+                                // day and the initials already set.
+                                if itv.kind == InterviewKind::Vaccination
+                                    && motif::button(ui, tr("itv_to_carnet"))
+                                        .on_hover_text(tr("itv_to_carnet_tooltip"))
+                                        .clicked()
+                                {
+                                    to_carnet = Some((
+                                        itv.created_at[..10.min(itv.created_at.len())].to_owned(),
+                                        itv.operator.clone(),
+                                    ));
+                                }
                                 // A TROD is read once, and what it read
                                 // decides whether there is anything to
                                 // dispense at all.
@@ -7774,6 +7829,11 @@ impl App {
                 }
                 Err(e) => session.error = Some(e),
             }
+        }
+        if let Some((day, who)) = to_carnet {
+            session.patient_tab = PatientTab::Vaccins;
+            session.vacc_new_date = db::format_french_date(&day);
+            session.vacc_new.operator = who;
         }
         if let Some((id, who, expected)) = set_by {
             match session.db.set_interview_operator(id, &who, &expected) {
