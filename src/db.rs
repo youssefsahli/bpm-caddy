@@ -18124,7 +18124,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Lovenox", "Grossesse à risque thrombotique ou syndrome des antiphospholipides obstétrical", "Dose prophylactique ou curative selon le risque, en injection sous-cutanée quotidienne", "Les héparines de bas poids moléculaire ne passent pas la barrière placentaire et remplacent les antivitamines K pendant la grossesse."),
     ("Lovenox", "Insuffisance rénale et surveillance", "Adaptation posologique en cas de clairance inférieure à 30 mL/min, contre-indication de la dose curative dans l'insuffisance rénale sévère", "Surveillance des plaquettes en cas de contexte chirurgical ou traumatique, et activité anti-Xa si poids extrême ou insuffisance rénale."),
     ("Kardégic", "Prévention secondaire après infarctus du myocarde, AVC ischémique ou AIT", "75 mg à 160 mg une fois par jour, sachet dissous dans un demi-verre d'eau", "Traitement au long cours, à ne pas interrompre sans avis médical."),
-    ("Kardégic", "Angor stable et artériopathie oblitérante des membres inférieurs", "75 mg une fois par jour", ""),
+    ("Kardégic", "Angor stable et artériopathie oblitérante des membres inférieurs", "75 mg une fois par jour", "À vie sauf décision contraire : l'arrêt spontané, notamment avant un soin dentaire, expose à un accident ischémique. Toute interruption se décide avec le prescripteur."),
     ("Kardégic", "Bithérapie antiagrégante après pose d'endoprothèse coronaire", "75 mg par jour en association au clopidogrel, au prasugrel ou au ticagrélor", "L'aspirine est poursuivie à vie, l'inhibiteur de P2Y12 pour une durée définie par le cardiologue."),
     ("Kardégic", "Phase aiguë d'un syndrome coronarien aigu", "Dose de charge de 250 à 300 mg en une prise, puis relais par la dose d'entretien", "Le dosage à 300 mg n'est pas une posologie d'entretien."),
     ("Kardégic", "Prévention de la prééclampsie et du retard de croissance chez la femme à risque", "100 à 160 mg une fois par jour le soir, débutés avant 16 semaines d'aménorrhée et poursuivis jusqu'à 35 semaines", "Hors AMM pour cette spécialité, mais pratique recommandée en obstétrique. La prise vespérale est associée à une meilleure efficacité."),
@@ -18132,18 +18132,18 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Plavix", "Syndrome coronarien aigu", "Dose de charge de 300 mg, portée à 600 mg avant angioplastie, puis 75 mg une fois par jour", "Toujours en association à l'aspirine, sauf contre-indication."),
     ("Plavix", "Bithérapie antiagrégante après pose d'endoprothèse coronaire", "75 mg une fois par jour, pendant 6 à 12 mois selon le contexte", "Un arrêt prématuré expose à la thrombose de stent : ne jamais suspendre la bithérapie sans avis cardiologique."),
     ("Plavix", "Prévention secondaire après AVC ischémique, infarctus du myocarde ou artériopathie des membres inférieurs", "75 mg une fois par jour en monothérapie", "Souvent préféré à l'aspirine dans l'artériopathie périphérique."),
-    ("Plavix", "Alternative en cas d'intolérance ou d'allergie à l'aspirine", "75 mg une fois par jour", ""),
+    ("Plavix", "Alternative en cas d'intolérance ou d'allergie à l'aspirine", "75 mg une fois par jour", "Vérifier l'association à un inhibiteur de la pompe à protons : l'oméprazole et l'ésoméprazole diminuent son activation, le pantoprazole est préféré."),
     ("Plavix", "Fibrillation atriale chez un patient récusé pour l'anticoagulation", "75 mg une fois par jour, éventuellement associé à l'aspirine", "Option de repli nettement moins efficace que l'anticoagulation, réservée aux contre-indications formelles."),
     ("Plavix", "Gestion péri-opératoire et interactions", "Arrêt 5 à 7 jours avant une chirurgie à risque hémorragique, sur décision médicale", "Éviter l'oméprazole et l'ésoméprazole qui diminuent l'activation du clopidogrel : préférer le pantoprazole."),
     ("Tahor", "Hypercholestérolémie primaire et dyslipidémie mixte", "10 mg une fois par jour, augmentés par paliers d'au moins 4 semaines jusqu'à 80 mg par jour", "Adaptation sur le taux de LDL cholestérol, pas sur les symptômes."),
     ("Tahor", "Prévention secondaire après syndrome coronarien aigu ou AVC ischémique", "40 à 80 mg une fois par jour", "Traitement de forte intensité, avec un objectif de LDL cholestérol abaissé fixé par le cardiologue."),
-    ("Tahor", "Prévention primaire chez le patient à haut risque cardiovasculaire, notamment diabétique", "10 à 20 mg une fois par jour", ""),
+    ("Tahor", "Prévention primaire chez le patient à haut risque cardiovasculaire, notamment diabétique", "10 à 20 mg une fois par jour", "Une douleur musculaire diffuse impose un dosage des CPK avant tout arrêt : la plupart des myalgies sous statine ne sont pas d'origine musculaire vraie."),
     ("Tahor", "Hypercholestérolémie familiale hétérozygote", "10 mg par jour initialement, jusqu'à 80 mg par jour, souvent associés à l'ézétimibe", "Prise en charge spécialisée, dépistage familial recommandé."),
     ("Tahor", "Modalités de prise et surveillance", "Une prise par jour, à n'importe quel moment de la journée", "Demi-vie longue : contrairement à la simvastatine, la prise du soir n'est pas nécessaire. Éviter le pamplemousse. Consulter en cas de myalgies diffuses ou d'urines foncées."),
     ("Cordarone", "Maintien du rythme sinusal après cardioversion d'une fibrillation atriale", "Dose de charge de 600 mg par jour pendant 8 à 10 jours, puis entretien de 100 à 200 mg par jour", "L'entretien est souvent prescrit 5 jours sur 7, la longue demi-vie autorisant les fenêtres."),
     ("Cordarone", "Contrôle du rythme dans la fibrillation atriale ou le flutter", "Dose d'entretien minimale efficace, généralement 200 mg par jour", "Molécule de choix en cas de cardiopathie sous-jacente ou d'insuffisance cardiaque."),
     ("Cordarone", "Troubles du rythme ventriculaire documentés et symptomatiques", "Dose de charge hospitalière puis entretien de 200 mg par jour", "Souvent associée à un défibrillateur implantable pour réduire les chocs."),
-    ("Cordarone", "Tachycardies supraventriculaires, y compris sur syndrome de Wolff-Parkinson-White", "Posologie adaptée par le cardiologue selon le trouble du rythme", ""),
+    ("Cordarone", "Tachycardies supraventriculaires, y compris sur syndrome de Wolff-Parkinson-White", "Posologie adaptée par le cardiologue selon le trouble du rythme", "Surveillance thyroïdienne, hépatique et ophtalmologique régulière, et photoprotection stricte : les effets indésirables sont retardés et le patient ne les rattache pas au traitement."),
     ("Cordarone", "Surveillance du traitement au long cours", "Bilan thyroïdien et hépatique avant l'instauration, puis tous les 6 mois", "Radiographie thoracique de référence, examen ophtalmologique en cas de troubles visuels, photoprotection stricte toute l'année."),
     ("Cordarone", "Interactions médicamenteuses fréquentes", "Réduire environ de moitié la dose de digoxine en cas d'association", "Renforcement de l'effet des antivitamines K, contrôle rapproché de l'INR. Risque de torsades de pointes avec les autres allongeurs du QT."),
     ("Digoxine", "Ralentissement de la fréquence ventriculaire dans la fibrillation atriale", "0,125 à 0,25 mg une fois par jour", "Peu efficace à l'effort : souvent associée à un bêtabloquant."),
@@ -18154,7 +18154,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Aldactone", "Insuffisance cardiaque à fraction d'éjection réduite", "25 mg une fois par jour, éventuellement portés à 50 mg selon la tolérance", "Contrôle de la kaliémie et de la créatininémie 1 semaine après l'instauration puis régulièrement, surtout en association à un IEC ou un sartan."),
     ("Aldactone", "Hyperaldostéronisme primaire", "50 à 100 mg par jour, adaptés à la pression artérielle et à la kaliémie", "Traitement médical de référence des formes non chirurgicales. Arrêt nécessaire avant les tests diagnostiques hormonaux."),
     ("Aldactone", "Œdèmes et ascite de la cirrhose", "Débuter par une dose faible et augmenter progressivement, souvent en association au furosémide", "Diurétique de première intention dans l'ascite, la rétention étant liée à l'hyperaldostéronisme secondaire. Suivi du poids et de la natrémie."),
-    ("Aldactone", "Œdèmes d'origine cardiaque ou rénale, syndrome néphrotique", "Posologie adaptée à la réponse clinique et à la kaliémie", ""),
+    ("Aldactone", "Œdèmes d'origine cardiaque ou rénale, syndrome néphrotique", "Posologie adaptée à la réponse clinique et à la kaliémie", "Kaliémie et créatininémie à contrôler après toute modification de dose : pas de sel de régime enrichi en potassium ni d'automédication par anti-inflammatoire."),
     ("Aldactone", "Hypertension artérielle résistante en quatrième ligne", "25 mg une fois par jour", "Ajout à une trithérapie déjà optimisée comportant un diurétique thiazidique."),
     ("Aldactone", "Acné et hirsutisme de la femme", "Habituellement 50 à 100 mg par jour, en traitement prolongé de plusieurs mois", "Hors AMM, usage établi en dermatologie pour son effet antiandrogénique. Contraception efficace indispensable, contre-indication en cas de grossesse. Le bénéfice n'apparaît qu'après 3 à 6 mois."),
     ("Aldactone", "Hyperandrogénie du syndrome des ovaires polykystiques", "Posologie antiandrogénique équivalente à celle utilisée dans l'hirsutisme, adaptée à la tolérance", "Hors AMM, souvent associée à une contraception œstroprogestative."),
@@ -18167,7 +18167,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Lasilix", "Conseils de prise et surveillance", "Prise le matin, seconde prise éventuelle avant 16 heures", "Éviter la prise vespérale à cause de la nycturie. Surveillance de la kaliémie, de la natrémie, de la créatininémie. Risque d'hypotension orthostatique et de goutte."),
     ("Triatec", "Hypertension artérielle essentielle", "1,25 à 2,5 mg par jour en début de traitement, puis 2,5 à 10 mg par jour en une prise", "Débuter à faible dose chez le sujet âgé ou sous diurétique, risque d'hypotension de première dose."),
     ("Triatec", "Insuffisance cardiaque à fraction d'éjection réduite", "1,25 mg deux fois par jour, doublés toutes les 1 à 2 semaines jusqu'à 10 mg par jour selon la tolérance", "Rechercher la dose maximale tolérée : c'est elle qui apporte le bénéfice pronostique."),
-    ("Triatec", "Post-infarctus du myocarde avec dysfonction ventriculaire gauche", "2,5 mg deux fois par jour, débutés à partir du troisième jour, puis augmentation progressive", ""),
+    ("Triatec", "Post-infarctus du myocarde avec dysfonction ventriculaire gauche", "2,5 mg deux fois par jour, débutés à partir du troisième jour, puis augmentation progressive", "Toux sèche persistante : c'est un effet de classe, elle ne cède pas aux antitussifs et justifie un changement de classe, pas un arrêt sec."),
     ("Triatec", "Prévention cardiovasculaire chez le patient à haut risque", "10 mg une fois par jour, atteints par paliers", "Indication de protection vasculaire indépendante du niveau de pression artérielle."),
     ("Triatec", "Néphropathie diabétique ou glomérulaire avec protéinurie", "1,25 mg par jour initialement, augmentés progressivement selon la tolérance et la protéinurie", "Une élévation modérée de la créatininémie après instauration est attendue et ne justifie pas systématiquement l'arrêt."),
     ("Triatec", "Surveillance et effets indésirables", "Contrôle de la créatininémie et de la kaliémie 1 à 2 semaines après toute augmentation de dose", "Toux sèche persistante chez environ un patient sur dix, imposant le passage à un sartan. Arrêt immédiat en cas de grossesse ou d'angio-œdème."),
@@ -18343,30 +18343,30 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Seroplex", "Trouble panique avec ou sans agoraphobie", "5 mg par jour la première semaine, puis 10 mg par jour, maximum 20 mg par jour", "La dose initiale réduite limite l'aggravation transitoire de l'anxiété en début de traitement."),
     ("Seroplex", "Trouble anxieux généralisé", "10 mg par jour, augmentation possible à 20 mg par jour selon la réponse", "Efficacité à évaluer sur 4 à 6 semaines."),
     ("Seroplex", "Trouble obsessionnel compulsif", "10 mg par jour, augmentation progressive jusqu'à 20 mg par jour", "Les doses sont souvent plus élevées et le délai d'action plus long que dans la dépression."),
-    ("Seroplex", "Anxiété sociale", "10 mg par jour, ajustement entre 5 et 20 mg par jour après 2 à 4 semaines", ""),
+    ("Seroplex", "Anxiété sociale", "10 mg par jour, ajustement entre 5 et 20 mg par jour après 2 à 4 semaines", "L'effet anxiolytique met deux à quatre semaines à s'installer, et l'anxiété peut augmenter les premiers jours : le dire évite l'arrêt à la première semaine."),
     ("Seroplex", "Sujet âgé de plus de 65 ans", "Ne pas dépasser 10 mg par jour", "Risque d'allongement de l'intervalle QT et d'hyponatrémie ; surveiller la natrémie en cas de confusion ou de chutes."),
     ("Deroxat", "Épisode dépressif caractérisé", "20 mg par jour le matin, augmentation par paliers de 10 mg si besoin, maximum 50 mg par jour", "Prise au cours du petit-déjeuner pour limiter les nausées initiales."),
     ("Deroxat", "Trouble obsessionnel compulsif", "20 mg par jour, augmentation par paliers de 10 mg jusqu'à 40 mg par jour, maximum 60 mg par jour", "Dose habituellement plus élevée que dans la dépression, avec un délai d'action de plusieurs semaines."),
     ("Deroxat", "Trouble panique", "10 mg par jour la première semaine, puis augmentation par paliers de 10 mg jusqu'à 40 mg par jour, maximum 60 mg", "Débuter bas : risque d'exacerbation initiale des attaques de panique."),
-    ("Deroxat", "Anxiété sociale, trouble anxieux généralisé, état de stress post-traumatique", "20 mg par jour, augmentation par paliers de 10 mg si nécessaire, maximum 50 mg par jour", ""),
+    ("Deroxat", "Anxiété sociale, trouble anxieux généralisé, état de stress post-traumatique", "20 mg par jour, augmentation par paliers de 10 mg si nécessaire, maximum 50 mg par jour", "Arrêt toujours progressif : la paroxétine est celle dont le syndrome d'interruption est le plus marqué, avec sensations de décharges électriques et vertiges."),
     ("Deroxat", "Bouffées de chaleur de la ménopause", "Faible dose quotidienne, inférieure aux doses antidépressives, à ajuster sur la réponse clinique", "Hors AMM ; formellement à éviter sous tamoxifène, la paroxétine inhibant le CYP2D6 et sa bioactivation."),
     ("Deroxat", "Arrêt du traitement", "Décroissance par paliers de 10 mg à intervalles d'au moins une semaine", "Syndrome de sevrage fréquent et marqué avec cette molécule : sensations vertigineuses, décharges électriques, irritabilité."),
     ("Effexor", "Épisode dépressif caractérisé", "Forme LP : 75 mg par jour en une prise au cours d'un repas, augmentation possible par paliers de 75 mg jusqu'à 225 mg par jour", "Contrôler la pression artérielle, surtout au-delà de 150 mg par jour."),
     ("Effexor", "Trouble anxieux généralisé et anxiété sociale", "Forme LP : 75 mg par jour, augmentation possible jusqu'à 225 mg par jour selon la réponse", "La plupart des patients répondent à 75 mg par jour."),
-    ("Effexor", "Prévention des récidives dépressives", "Poursuite de la dose ayant permis la rémission, pendant au moins 6 mois", ""),
+    ("Effexor", "Prévention des récidives dépressives", "Poursuite de la dose ayant permis la rémission, pendant au moins 6 mois", "Poursuivre après la guérison est la règle, pas un oubli du prescripteur : c'est ce qui divise le risque de rechute."),
     ("Effexor", "Douleur neuropathique", "Forme LP, débuter à faible dose et augmenter progressivement selon la tolérance", "Hors AMM, usage établi en deuxième intention ; effet antalgique lié à la composante noradrénergique des doses plus élevées."),
     ("Effexor", "Bouffées de chaleur de la ménopause", "Doses faibles, inférieures aux doses antidépressives, en une prise quotidienne", "Hors AMM, usage établi ; option compatible avec le tamoxifène, contrairement à la paroxétine."),
     ("Effexor", "Arrêt du traitement", "Décroissance très progressive sur plusieurs semaines, par paliers", "Syndrome de sevrage marqué et demi-vie courte : l'oubli d'une seule prise peut déjà être symptomatique."),
     ("Cymbalta", "Épisode dépressif caractérisé", "60 mg par jour en une prise, indépendamment des repas ; maximum 120 mg par jour en 2 prises", "Aucun bénéfice démontré au-delà de 60 mg par jour dans cette indication."),
     ("Cymbalta", "Douleur neuropathique diabétique périphérique", "60 mg par jour en une prise ; débuter à 30 mg par jour une semaine si la tolérance digestive est incertaine", "Réévaluer l'efficacité après 2 mois ; traitement de première intention dans cette indication."),
-    ("Cymbalta", "Trouble anxieux généralisé", "30 mg par jour, augmentation à 60 mg par jour selon la réponse, maximum 120 mg par jour", ""),
+    ("Cymbalta", "Trouble anxieux généralisé", "30 mg par jour, augmentation à 60 mg par jour selon la réponse, maximum 120 mg par jour", "Gélules à avaler entières : ouvrir ou saupoudrer sur les aliments détruit l'enrobage gastro-résistant."),
     ("Cymbalta", "Incontinence urinaire d'effort de la femme", "40 mg deux fois par jour, avec une phase d'initiation à 20 mg deux fois par jour pendant 2 semaines", "Indication portée par la spécialité dosée à cet effet ; associer systématiquement une rééducation périnéale."),
     ("Cymbalta", "Fibromyalgie et douleurs ostéoarticulaires chroniques", "Débuter à 30 mg par jour puis augmenter selon la tolérance", "Hors AMM en France ; nausées initiales fréquentes mais généralement transitoires."),
     ("Cymbalta", "Modalités de prise", "Avaler la gélule entière, sans l'ouvrir ni l'écraser", "Contre-indiqué en cas d'insuffisance hépatique et si la clairance de la créatinine est inférieure à 30 mL/min."),
     ("Atarax", "Manifestations mineures de l'anxiété chez l'adulte", "50 mg par jour en 3 prises réparties (12,5 mg matin et midi, 25 mg le soir) ; maximum 100 mg par jour", "Alternative non benzodiazépinique, sans risque de dépendance, mais sédative."),
     ("Atarax", "Prurit et urticaire chez l'adulte", "25 mg le soir, augmentation possible à 25 mg trois fois par jour selon l'intensité ; maximum 100 mg par jour", "Indication très fréquente au comptoir : l'effet antihistaminique H1 est ici recherché autant que la sédation nocturne."),
     ("Atarax", "Prurit chez l'enfant de plus de 30 mois", "1 mg/kg et par jour en 2 à 3 prises, jusqu'à 2 mg/kg et par jour si nécessaire", "Sirop gradué en kilogrammes ; ne pas dépasser 2 mg/kg et par jour, contre-indiqué avant 30 mois."),
-    ("Atarax", "Prémédication avant anesthésie", "1 mg/kg en prise unique, 1 heure avant l'intervention, chez l'adulte comme chez l'enfant", ""),
+    ("Atarax", "Prémédication avant anesthésie", "1 mg/kg en prise unique, 1 heure avant l'intervention, chez l'adulte comme chez l'enfant", "Somnolence marquée jusqu'au lendemain : prévoir un accompagnant et pas de conduite le jour même."),
     ("Atarax", "Sujet âgé", "Débuter à la moitié de la dose habituelle, sans dépasser 50 mg par jour", "Effets anticholinergiques et risque de chute ; molécule à éviter en cas de troubles cognitifs ou d'adénome prostatique."),
     ("Atarax", "Précautions cardiaques", "Respecter les doses maximales et la durée la plus courte possible", "Risque d'allongement du QT : contre-indiqué avec les autres médicaments torsadogènes et en cas d'hypokaliémie."),
     ("Xanax", "Manifestations anxieuses sévères ou invalidantes", "0,25 à 0,5 mg trois fois par jour, adaptation progressive selon la réponse ; maximum 4 mg par jour", "Durée totale limitée à 12 semaines, période de décroissance comprise."),
@@ -18391,8 +18391,8 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Dépakote", "Femme en âge de procréer", "Prescription uniquement en cas d'inefficacité ou d'intolérance aux alternatives, avec contraception efficace", "Accord de soins annuel, prescription initiale spécialisée, mention obligatoire du pictogramme : risque tératogène et de troubles neurodéveloppementaux majeurs."),
     ("Dépakote", "Prophylaxie de la migraine", "Utilisation possible en dernier recours, à dose adaptée à la tolérance", "Hors AMM en France et à proscrire chez la femme en âge de procréer ; d'autres classes doivent être privilégiées."),
     ("Dépakote", "Surveillance biologique", "Bilan hépatique et numération plaquettaire avant traitement puis régulièrement les 6 premiers mois", "Alerter devant asthénie, vomissements, douleurs abdominales ou ecchymoses : hépatite et pancréatite possibles."),
-    ("Dépakote", "Modalités de prise", "Comprimés gastro-résistants à avaler entiers, sans les écraser ni les croquer, au cours des repas", ""),
-    ("Keppra", "Épilepsie partielle en monothérapie chez l'adulte et l'adolescent de plus de 16 ans", "250 mg deux fois par jour pendant 2 semaines, puis 500 mg deux fois par jour ; augmentation possible par paliers de 250 mg deux fois par jour toutes les 2 semaines, maximum 1500 mg deux fois par jour", ""),
+    ("Dépakote", "Modalités de prise", "Comprimés gastro-résistants à avaler entiers, sans les écraser ni les croquer, au cours des repas", "Chez toute femme en âge de procréer, l'accord de soins et la contraception efficace se vérifient à chaque délivrance : le valproate est tératogène."),
+    ("Keppra", "Épilepsie partielle en monothérapie chez l'adulte et l'adolescent de plus de 16 ans", "250 mg deux fois par jour pendant 2 semaines, puis 500 mg deux fois par jour ; augmentation possible par paliers de 250 mg deux fois par jour toutes les 2 semaines, maximum 1500 mg deux fois par jour", "Irritabilité, agressivité ou humeur triste sont fréquentes et dose-dépendantes : à signaler au neurologue, elles cèdent souvent à un ajustement."),
     ("Keppra", "Épilepsie partielle en association chez l'adulte", "500 mg deux fois par jour d'emblée, augmentation par paliers de 500 mg deux fois par jour toutes les 2 à 4 semaines, maximum 1500 mg deux fois par jour", "Pas de titration lente nécessaire : dose efficace atteinte dès l'initiation."),
     ("Keppra", "Myoclonies de l'épilepsie myoclonique juvénile et crises généralisées tonicocloniques", "500 mg deux fois par jour, augmentation par paliers de 500 mg deux fois par jour toutes les 2 semaines, dose cible 1500 mg deux fois par jour", "En association, à partir de 12 ans pour les myoclonies."),
     ("Keppra", "Enfant et adolescent de 6 mois à 17 ans, moins de 50 kg", "10 mg/kg deux fois par jour, augmentation par paliers de 10 mg/kg deux fois par jour toutes les 2 semaines, maximum 30 mg/kg deux fois par jour", "Solution buvable avec seringues graduées adaptées à la tranche d'âge : vérifier la bonne seringue à la délivrance."),
@@ -18437,12 +18437,12 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Doliprane", "Adulte ou adolescent de moins de 50 kg", "15 mg/kg par prise toutes les 6 heures, soit 60 mg/kg et par jour au maximum", "Point souvent oublié chez l'adolescent : la règle du poids prime sur la présentation adulte."),
     ("Doliprane", "Enfant et nourrisson", "15 mg/kg par prise, toutes les 6 heures, soit 60 mg/kg et par jour réparti en 4 prises ; intervalle minimal de 4 heures en cas de besoin", "Suspension buvable avec pipette graduée en kilogrammes : une graduation correspond au poids de l'enfant, jamais à son âge."),
     ("Doliprane", "Insuffisance hépatique, dénutrition, alcoolisme chronique, sujet âgé fragile", "Réduire la dose journalière maximale, habituellement à 2 à 3 g par jour, et espacer les prises d'au moins 8 heures en cas d'insuffisance rénale sévère", "Dose maximale exacte à fixer avec le prescripteur selon le degré d'atteinte."),
-    ("Doliprane", "Durée d'automédication", "Ne pas dépasser 3 jours en cas de fièvre et 5 jours en cas de douleur sans avis médical", ""),
+    ("Doliprane", "Durée d'automédication", "Ne pas dépasser 3 jours en cas de fièvre et 5 jours en cas de douleur sans avis médical", "4 g par jour au maximum chez l'adulte, et vérifier qu'aucun autre médicament pris ne contient déjà du paracétamol : c'est le premier mécanisme de surdosage."),
     ("Doliprane", "Risque de surdosage par cumul", "Vérifier l'absence de paracétamol dans les autres médicaments pris, notamment les associations antigrippales et antalgiques codéinés", "Cause la plus fréquente de surdosage accidentel ; toxicité hépatique dose-dépendante et retardée."),
     ("Advil", "Douleur ou fièvre de l'adulte et de l'adolescent de plus de 12 ans", "200 à 400 mg par prise, à renouveler si besoin toutes les 6 heures ; maximum 1200 mg par jour en automédication", "Les posologies supérieures, jusqu'à 2400 mg par jour, relèvent exclusivement de la prescription médicale."),
     ("Advil", "Enfant à partir de 3 mois et plus de 5 kg", "20 à 30 mg/kg et par jour, soit 7,5 à 10 mg/kg par prise toutes les 6 à 8 heures, sans dépasser 30 mg/kg et par jour", "Suspension buvable avec pipette graduée en kilogrammes ; à prendre au cours d'un repas."),
     ("Advil", "Dysménorrhée", "400 mg par prise dès les premières douleurs, à renouveler toutes les 6 heures si nécessaire, dans la limite de la dose journalière", "Efficacité meilleure si la prise est précoce plutôt qu'à douleur installée."),
-    ("Advil", "Durée d'automédication", "Ne pas dépasser 3 jours en cas de fièvre et 5 jours en cas de douleur sans avis médical", ""),
+    ("Advil", "Durée d'automédication", "Ne pas dépasser 3 jours en cas de fièvre et 5 jours en cas de douleur sans avis médical", "Jamais avec un autre anti-inflammatoire, et à éviter en cas de varicelle, de déshydratation ou d'infection en cours d'évolution."),
     ("Advil", "Grossesse", "Contre-indication absolue à partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée", "Toxicité rénale fœtale et fermeture du canal artériel ; à éviter également avant ce terme sans avis médical."),
     ("Advil", "Situations où l'AINS doit être écarté", "Ne pas délivrer en cas de varicelle, d'infection cutanée ou ORL évolutive, d'antécédent d'ulcère, d'insuffisance rénale ou de déshydratation", "Le paracétamol reste le premier choix en cas de fièvre chez l'enfant, en particulier lors d'une éruption."),
     ("Advil", "Associations à éviter", "Ne pas associer à un autre AINS ni à l'aspirine à dose antalgique ; prudence avec anticoagulants, IEC, sartans et diurétiques", "L'association IEC ou sartan, diurétique et AINS expose à une insuffisance rénale aiguë."),
@@ -18465,7 +18465,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Previscan", "Instauration d'un nouveau traitement antivitamine K", "Aucune : l'instauration de fluindione n'est plus recommandée chez un patient non encore traité", "Restriction de l'ANSM depuis 2018 en raison d'atteintes immuno-allergiques rénales, hépatiques et hématologiques survenant surtout dans les 6 premiers mois. Préférer la warfarine pour toute nouvelle mise sous antivitamine K."),
     ("Previscan", "Conseils d'observance et surveillance", "Une prise par jour, de préférence le soir, à heure fixe, avec carnet de suivi INR", "Apports en vitamine K réguliers plutôt que supprimés. En cas d'oubli constaté dans les 8 heures, prendre la dose ; au-delà, sauter la prise sans doubler. Fièvre, éruption ou œdème dans les premiers mois imposent un avis médical rapide."),
     ("Sintrom", "Fibrillation atriale et prévention des accidents thromboemboliques", "Comprimé quadrisécable à 4 mg, dose initiale usuelle 4 mg par jour, puis dose adaptée à l'INR, cible 2 à 3", "Débuter à 1 ou 2 mg chez le sujet âgé. La forme Minisintrom à 1 mg permet les ajustements fins."),
-    ("Sintrom", "Maladie thromboembolique veineuse, traitement et prévention des récidives", "Dose adaptée à un INR cible de 2 à 3, avec relais héparinique pendant au moins 5 jours", ""),
+    ("Sintrom", "Maladie thromboembolique veineuse, traitement et prévention des récidives", "Dose adaptée à un INR cible de 2 à 3, avec relais héparinique pendant au moins 5 jours", "Le carnet de suivi accompagne chaque prise de sang et se montre à tout soignant ; aucune automédication par aspirine ou anti-inflammatoire."),
     ("Sintrom", "Prothèse valvulaire mécanique", "Dose adaptée à un INR cible de 2,5 à 3,5 selon le type et la position de la valve", "Contrôle rapproché après toute modification de traitement associé."),
     ("Sintrom", "Patient instable ou à demi-vie courte recherchée", "Prise quotidienne unique, parfois fractionnée en deux prises sur avis du prescripteur", "Demi-vie plus courte que celle de la fluindione ou de la warfarine : l'INR se déséquilibre et se corrige plus vite, ce qui impose une régularité stricte des horaires."),
     ("Sintrom", "Interactions à repérer au comptoir", "Contrôle de l'INR 3 à 5 jours après tout ajout ou retrait de médicament", "Amiodarone, antibiotiques, antifongiques azolés, AINS et millepertuis modifient l'INR. Pas d'automédication par aspirine ou ibuprofène."),
@@ -18484,7 +18484,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Tramadol", "Douleur modérée à intense, forme à libération immédiate", "50 à 100 mg par prise, à renouveler toutes les 4 à 6 heures, sans dépasser 400 mg par jour", "Débuter à 50 mg chez le patient naïf. Le tramadol a une puissance de l'ordre du cinquième de celle de la morphine orale : 400 mg par jour représentent un plafond au-delà duquel il faut passer à un palier 3."),
     ("Tramadol", "Douleur chronique, forme à libération prolongée", "100 mg deux fois par jour, adaptés par paliers jusqu'à 200 mg deux fois par jour au maximum", "La forme à libération prolongée s'avale entière. Les interdoses éventuelles se font avec la forme immédiate, dans la limite de 400 mg de tramadol par jour toutes formes confondues."),
     ("Tramadol", "Sujet âgé de plus de 75 ans", "Débuter à dose réduite et espacer les prises d'au moins 6 heures", "Confusion, hyponatrémie et chutes sont fréquentes. Réévaluer rapidement l'intérêt du traitement."),
-    ("Tramadol", "Insuffisance rénale ou hépatique", "Intervalle porté à 12 heures si clairance inférieure à 30 mL/min ; formes à libération prolongée déconseillées en insuffisance sévère", ""),
+    ("Tramadol", "Insuffisance rénale ou hépatique", "Intervalle porté à 12 heures si clairance inférieure à 30 mL/min ; formes à libération prolongée déconseillées en insuffisance sévère", "Chez la personne âgée, confusion, nausées et chutes sont fréquentes : commencer bas, et se méfier de l'association aux antidépresseurs sérotoninergiques."),
     ("Tramadol", "Durée de prescription et arrêt", "Prescription limitée à 12 semaines pour la douleur chronique, avec réévaluation régulière ; arrêt progressif après usage prolongé", "Encadrement renforcé depuis 2020, ordonnance sécurisée. L'arrêt brutal expose à un syndrome de sevrage."),
     ("Tramadol", "Risque sérotoninergique et convulsif", "Vérifier systématiquement les traitements associés avant délivrance", "Association aux antidépresseurs ISRS, IRSNA, triptans ou IMAO : risque de syndrome sérotoninergique. Seuil épileptogène abaissé. Efficacité imprévisible chez les métaboliseurs lents du CYP2D6."),
     ("Skenan", "Instauration d'un traitement morphinique chez l'adulte naïf", "Gélules à libération prolongée toutes les 12 heures, dose initiale usuelle 30 mg matin et soir, soit 60 mg par jour", "Débuter à 10 ou 20 mg deux fois par jour chez le sujet âgé, l'insuffisant rénal ou le patient fragile. Adaptation tous les 1 à 2 jours selon la consommation d'interdoses."),
@@ -18563,12 +18563,12 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Cardensiel", "Dose cible et entretien", "10 mg une fois par jour, ou la dose maximale tolérée", "C'est la dose atteinte, et non l'instauration seule, qui apporte le bénéfice sur la mortalité : ne pas laisser la titration inachevée."),
     ("Cardensiel", "Hypertension artérielle et angor d'effort stable", "5 mg une fois par jour, portés si besoin à 10 mg par jour", "Le bisoprolol est cardiosélectif, mais la sélectivité disparaît aux fortes doses."),
     ("Cardensiel", "Aggravation transitoire pendant la titration", "Réduire au palier précédent ou suspendre temporairement, sur avis médical", "Fatigue, essoufflement ou prise de poids sont fréquents en début de titration et cèdent souvent : ne pas arrêter sans avis."),
-    ("Cardensiel", "Insuffisance rénale ou hépatique sévère", "Ne pas dépasser 10 mg par jour, augmentation particulièrement prudente", ""),
+    ("Cardensiel", "Insuffisance rénale ou hépatique sévère", "Ne pas dépasser 10 mg par jour, augmentation particulièrement prudente", "Ne jamais arrêter brutalement un bêtabloquant : l'arrêt se fait par paliers sur une à deux semaines sous contrôle médical."),
     ("Cardensiel", "Précautions à la délivrance", "Prise le matin, avec ou sans aliments, sans jamais interrompre brutalement", "L'arrêt brutal expose à un effet rebond avec angor ou trouble du rythme. Contre-indiqué dans l'asthme et la bradycardie sévère ; masque les signes d'hypoglycémie chez le diabétique insulinotraité."),
     ("Ténormine", "Hypertension artérielle essentielle", "50 à 100 mg une fois par jour en une prise", "N'est plus un antihypertenseur de première intention, notamment après 60 ans et en cas de syndrome métabolique."),
     ("Ténormine", "Angor d'effort stable", "100 mg par jour, en une ou deux prises, adaptés à la fréquence cardiaque de repos", "Objectif habituel de fréquence de repos entre 55 et 60 battements par minute."),
-    ("Ténormine", "Prévention secondaire après infarctus du myocarde", "100 mg par jour, en une ou deux prises", ""),
-    ("Ténormine", "Troubles du rythme supraventriculaires", "Posologie adaptée par le cardiologue à la fréquence ventriculaire", ""),
+    ("Ténormine", "Prévention secondaire après infarctus du myocarde", "100 mg par jour, en une ou deux prises", "Prendre le pouls avant la prise en cas de sensation de ralentissement ; ne pas arrêter seul, même si la tension paraît normale."),
+    ("Ténormine", "Troubles du rythme supraventriculaires", "Posologie adaptée par le cardiologue à la fréquence ventriculaire", "Prudence chez l'asthmatique et l'artéritique, et vigilance chez le diabétique : le bêtabloquant masque les signes d'hypoglycémie."),
     ("Ténormine", "Insuffisance rénale", "Réduire la dose ou espacer les prises si clairance inférieure à 35 mL/min", "Élimination essentiellement rénale, contrairement au bisoprolol ou au propranolol : point clé chez le sujet âgé."),
     ("Ténormine", "Précautions et arrêt", "Prise quotidienne à heure fixe, arrêt toujours progressif sur plusieurs jours", "Contre-indiqué dans l'asthme et la bradycardie sévère. Masque les signes adrénergiques de l'hypoglycémie. Peut aggraver un phénomène de Raynaud."),
     ("Diamicron", "Diabète de type 2 insuffisamment contrôlé, forme à libération modifiée 30 mg", "30 mg une fois par jour au petit-déjeuner, augmentés par paliers d'au moins un mois jusqu'à 120 mg par jour au maximum", "Le comprimé à 60 mg est sécable ; les formes à libération modifiée s'avalent sans être croquées."),
@@ -18611,21 +18611,21 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Spiriva", "Manipulation du dispositif", "Amorçage du Respimat avant la première utilisation, puis réamorçage après plus de 7 jours sans usage", "La cartouche du Respimat délivre un nombre de doses limité et l'indicateur passe au rouge : anticiper le renouvellement."),
     ("Inipomp", "Reflux gastro-œsophagien avec œsophagite", "40 mg une fois par jour le matin avant le petit-déjeuner, pendant 4 à 8 semaines", "La prise se fait environ 30 minutes avant le repas : à jeun, l'efficacité chute."),
     ("Inipomp", "Reflux non compliqué et entretien", "20 mg une fois par jour, éventuellement à la demande lors des périodes symptomatiques", "Réévaluer régulièrement la poursuite : les traitements au long cours sans indication sont fréquents."),
-    ("Inipomp", "Ulcère gastrique ou duodénal", "40 mg une fois par jour, 4 semaines pour l'ulcère duodénal, 4 à 8 semaines pour l'ulcère gastrique", ""),
+    ("Inipomp", "Ulcère gastrique ou duodénal", "40 mg une fois par jour, 4 semaines pour l'ulcère duodénal, 4 à 8 semaines pour l'ulcère gastrique", "30 minutes avant le petit-déjeuner ; c'est l'inhibiteur de la pompe à protons de choix chez le patient sous clopidogrel."),
     ("Inipomp", "Éradication d'Helicobacter pylori", "40 mg deux fois par jour, en association aux antibiotiques du protocole, pendant 10 à 14 jours", "Le doublement de la dose est spécifique de cette indication. Insister sur l'observance complète : un traitement incomplet favorise les résistances."),
     ("Inipomp", "Prévention des lésions gastroduodénales sous AINS chez le patient à risque", "20 mg une fois par jour pendant toute la durée du traitement par AINS", "Indication réservée aux patients à risque : âge avancé, antécédent d'ulcère, association aux antiagrégants ou aux corticoïdes."),
     ("Inipomp", "Patient sous clopidogrel", "20 à 40 mg par jour selon l'indication", "Le pantoprazole est l'inhibiteur de la pompe à protons de choix avec le clopidogrel, l'oméprazole et l'ésoméprazole diminuant son activation."),
     ("Inipomp", "Traitement prolongé et arrêt", "Diminution progressive plutôt qu'arrêt brutal après plusieurs mois de traitement", "Rebond d'hypersécrétion acide à l'arrêt. Un traitement au long cours expose à l'hypomagnésémie, à la carence en vitamine B12 et aux infections digestives."),
     ("Mopral", "Reflux gastro-œsophagien avec œsophagite", "20 mg une fois par jour le matin, 30 minutes avant le petit-déjeuner, pendant 4 à 8 semaines", "40 mg par jour en cas d'œsophagite sévère ou résistante."),
     ("Mopral", "Symptômes de reflux sans œsophagie documentée", "10 à 20 mg par jour, pendant 2 à 4 semaines", "Une automédication qui se prolonge au-delà de 2 semaines doit conduire à une consultation."),
-    ("Mopral", "Ulcère gastrique ou duodénal", "20 mg une fois par jour, 4 semaines pour le duodénum, 4 à 8 semaines pour l'estomac", ""),
-    ("Mopral", "Éradication d'Helicobacter pylori", "20 mg deux fois par jour en association aux antibiotiques, pendant 10 à 14 jours", ""),
+    ("Mopral", "Ulcère gastrique ou duodénal", "20 mg une fois par jour, 4 semaines pour le duodénum, 4 à 8 semaines pour l'estomac", "À prendre le matin à jeun, 30 minutes avant le repas : l'efficacité chute nettement s'il est pris pendant ou après."),
+    ("Mopral", "Éradication d'Helicobacter pylori", "20 mg deux fois par jour en association aux antibiotiques, pendant 10 à 14 jours", "Le contrôle de l'éradication se fait au moins 4 semaines après la fin du traitement, et sous inhibiteur de la pompe à protons arrêté depuis 2 semaines."),
     ("Mopral", "Syndrome de Zollinger-Ellison", "Dose initiale de 60 mg par jour, adaptée ensuite à la sécrétion acide, parfois fractionnée en deux prises au-delà de 80 mg par jour", "Prise en charge spécialisée, doses très supérieures aux indications courantes."),
     ("Mopral", "Enfant de plus de 1 an", "Environ 1 mg/kg par jour en une prise, sans dépasser la dose adulte, dose adaptée au poids par le prescripteur", "Les gélules gastrorésistantes peuvent être ouvertes et les microgranules dispersés dans un liquide légèrement acide, sans être écrasés."),
     ("Mopral", "Interactions à repérer", "Vérifier l'ordonnance à la recherche d'un antiagrégant ou d'un anticonvulsivant", "À éviter avec le clopidogrel : préférer le pantoprazole. Diminue l'absorption des médicaments nécessitant un milieu acide, notamment les antifongiques azolés et certains anticancéreux oraux."),
     ("Méthotrexate", "Rythme d'administration, règle absolue", "Une seule prise par SEMAINE, le même jour chaque semaine, jamais quotidienne", "L'erreur de prise quotidienne est la cause d'accidents mortels par aplasie et mucite. Écrire le jour choisi sur la boîte et le vérifier à chaque délivrance."),
     ("Méthotrexate", "Polyarthrite rhumatoïde et rhumatismes inflammatoires", "7,5 à 15 mg une fois par semaine en début de traitement, augmentés progressivement jusqu'à 20 à 25 mg par semaine selon la réponse", "Efficacité jugée après 6 à 12 semaines. Passage à la voie sous-cutanée en cas d'intolérance digestive ou de réponse insuffisante."),
-    ("Méthotrexate", "Psoriasis sévère et rhumatisme psoriasique", "Dose hebdomadaire unique, habituellement dans la même fourchette que pour la polyarthrite, adaptée à la réponse", ""),
+    ("Méthotrexate", "Psoriasis sévère et rhumatisme psoriasique", "Dose hebdomadaire unique, habituellement dans la même fourchette que pour la polyarthrite, adaptée à la réponse", "Une seule prise par semaine, le même jour : la prise quotidienne par erreur est une intoxication grave. Supplémentation en acide folique le lendemain ou le surlendemain."),
     ("Méthotrexate", "Supplémentation en acide folique", "5 mg d'acide folique en une prise hebdomadaire, 24 à 48 heures après la prise de méthotrexate", "Jamais le même jour que le méthotrexate : la supplémentation réduit la toxicité hématologique, hépatique et digestive sans annuler l'efficacité."),
     ("Méthotrexate", "Surveillance biologique", "Hémogramme, transaminases et créatininémie avant traitement, puis toutes les 2 à 4 semaines au début, ensuite tous les 1 à 3 mois", "Toute fièvre, angine, aphtose buccale, toux ou dyspnée impose l'arrêt et un avis médical immédiat."),
     ("Méthotrexate", "Contre-indications et interactions", "Contraception efficace chez la femme et chez l'homme, poursuivie plusieurs mois après l'arrêt", "Formellement contre-indiqué pendant la grossesse et l'allaitement. Association déconseillée aux AINS à forte dose, au triméthoprime et au sulfaméthoxazole, aux pénicillines et aux inhibiteurs de la pompe à protons à forte dose, qui majorent la toxicité. Adaptation ou arrêt en insuffisance rénale."),
@@ -18639,13 +18639,13 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Josacine", "Angine documentée à streptocoque du groupe A en cas d'allergie aux bêtalactamines, adulte", "1 à 2 g par jour en 2 prises, pendant 5 jours", "Durée courte de 5 jours propre aux macrolides dans l'angine, contre 6 jours pour l'amoxicilline."),
     ("Josacine", "Angine à streptocoque de l'enfant en cas d'allergie aux bêtalactamines", "50 mg/kg par jour en 2 prises, pendant 5 jours", "Suspension buvable avec pipette graduée en kilogrammes : vérifier la lecture avec les parents."),
     ("Josacine", "Infections respiratoires basses et sinusites", "1 à 2 g par jour en 2 prises chez l'adulte, 50 mg/kg par jour en 2 prises chez l'enfant", "Durée adaptée au foyer, habituellement 7 à 10 jours."),
-    ("Josacine", "Infections cutanées et dentaires", "Posologie adulte usuelle de 1 à 2 g par jour en 2 prises", ""),
+    ("Josacine", "Infections cutanées et dentaires", "Posologie adulte usuelle de 1 à 2 g par jour en 2 prises", "Macrolide : vérifier les interactions, notamment avec les statines, la colchicine et les anticoagulants oraux."),
     ("Josacine", "Conservation de la suspension buvable", "Reconstitution avec de l'eau jusqu'au trait, agitation avant chaque prise", "Suspension reconstituée à conserver selon la notice et à jeter à la fin du traitement : ne jamais garder un reste pour un épisode ultérieur."),
     ("Josacine", "Interactions à vérifier", "Contrôler l'ordonnance en cours avant délivrance", "Contre-indiqué avec les alcaloïdes de l'ergot de seigle et les médicaments allongeant le QT. Renforce l'effet des antivitamines K : contrôle de l'INR pendant et après le traitement."),
     ("Orelox", "Otite moyenne aiguë purulente de l'enfant", "8 mg/kg par jour, répartis en 2 prises à 12 heures d'intervalle, pendant 8 à 10 jours avant 2 ans", "Céphalosporine de deuxième intention, l'amoxicilline restant le traitement de référence. Suspension à prendre au cours des repas."),
     ("Orelox", "Angine documentée à streptocoque de l'enfant en cas d'allergie aux pénicillines sans allergie aux céphalosporines", "8 mg/kg par jour en 2 prises, pendant 5 jours", "L'allergie croisée entre pénicillines et céphalosporines existe mais reste rare : la prescription suppose que l'allergie aux céphalosporines a été écartée."),
-    ("Orelox", "Angine et sinusite de l'adulte", "100 mg deux fois par jour, pendant 5 jours dans l'angine et 5 jours dans la sinusite maxillaire", ""),
-    ("Orelox", "Infections respiratoires basses de l'adulte", "100 mg deux fois par jour, pendant 10 jours", ""),
+    ("Orelox", "Angine et sinusite de l'adulte", "100 mg deux fois par jour, pendant 5 jours dans l'angine et 5 jours dans la sinusite maxillaire", "Au cours des repas ; diarrhées fréquentes. Ne pas délivrer sur une angine sans test rapide positif."),
+    ("Orelox", "Infections respiratoires basses de l'adulte", "100 mg deux fois par jour, pendant 10 jours", "Aller au bout de la durée prescrite même si la fièvre tombe en 48 heures."),
     ("Orelox", "Infections urinaires basses non compliquées de l'adulte", "100 mg deux fois par jour, durée fixée par le prescripteur", "Place limitée par les recommandations actuelles, qui privilégient d'autres molécules dans la cystite simple."),
     ("Orelox", "Modalités de prise et tolérance", "Prise au cours des repas pour améliorer l'absorption et la tolérance", "Diarrhées fréquentes, en particulier chez l'enfant. Une diarrhée sévère ou glairo-sanglante pendant ou après le traitement fait suspecter une colite à Clostridioides difficile."),
     ("Oroken", "Infections ORL de l'enfant, otite moyenne aiguë", "8 mg/kg par jour, répartis en 2 prises à 12 heures d'intervalle", "Suspension buvable reconstituée, pipette graduée au poids. Agiter avant chaque prise."),
@@ -18658,7 +18658,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Oflocet", "Prostatite aiguë ou chronique", "200 mg deux à trois fois par jour, pendant 14 jours au moins, souvent 21 jours dans les formes chroniques", "Bonne diffusion prostatique, ce qui justifie la place des fluoroquinolones dans cette indication malgré leurs restrictions d'usage."),
     ("Oflocet", "Cystite aiguë simple de la femme, schéma monodose", "400 mg en une prise unique, avec la spécialité dédiée à cette indication", "Traitement de recours uniquement : la fosfomycine-trométamol reste la première intention."),
     ("Oflocet", "Urétrites et cervicites non gonococciques, infections génitales", "200 mg deux fois par jour, durée définie par le prescripteur", "Traiter les partenaires selon le protocole et rechercher les autres infections sexuellement transmissibles."),
-    ("Oflocet", "Insuffisance rénale", "Réduction de dose ou espacement des prises selon la clairance de la créatinine", ""),
+    ("Oflocet", "Insuffisance rénale", "Réduction de dose ou espacement des prises selon la clairance de la créatinine", "Fluoroquinolone : douleur tendineuse, notamment au talon, impose l'arrêt immédiat et un avis. Photoprotection et pas de prise simultanée avec le calcium, le fer ou le magnésium."),
     ("Oflocet", "Effets indésirables imposant l'arrêt", "Arrêt immédiat et avis médical en cas de douleur tendineuse", "Risque de tendinopathie et de rupture du tendon d'Achille, majoré après 60 ans, sous corticoïdes et chez le transplanté. Éviter tout effort intense pendant et après le traitement."),
     ("Oflocet", "Précautions à la délivrance", "Prise à distance d'au moins 2 heures des sels de fer, de calcium, de magnésium, de zinc et des pansements gastriques", "Photosensibilisation : protection solaire stricte. Contre-indiqué chez l'enfant et l'adolescent en croissance sauf situation exceptionnelle, ainsi que pendant la grossesse et l'allaitement. Abaisse le seuil épileptogène."),
     ("Zovirax", "Herpès génital, primo-infection", "200 mg cinq fois par jour, toutes les 4 heures pendant la journée, pendant 10 jours", "Débuter le plus tôt possible, idéalement dans les 48 heures suivant les premiers signes."),
@@ -18687,19 +18687,19 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Nurofen", "Affections rhumatologiques sur prescription", "Jusqu'à 1 200 à 2 400 mg par jour en 3 prises, selon la prescription", "Au-delà de 1 200 mg par jour, la surveillance rénale et digestive s'impose et le risque cardiovasculaire augmente."),
     ("Nurofen", "Situations imposant de refuser la délivrance", "Aucune prise en cas de varicelle, d'infection cutanée évolutive, à partir du début du 6e mois de grossesse ou en cas d'ulcère évolutif", "Contre-indication formelle à partir de 24 semaines d'aménorrhée, quelle que soit la dose. Éviter en cas de déshydratation, de fièvre chez le sujet âgé et d'association aux IEC, sartans et diurétiques."),
     ("Voltarène", "Poussée douloureuse d'arthrose ou lombalgie", "50 mg deux à trois fois par jour au cours des repas, ou 75 à 100 mg par jour en forme à libération prolongée", "Traitement de la durée la plus courte possible, à la dose minimale efficace."),
-    ("Voltarène", "Rhumatisme inflammatoire chronique", "100 à 150 mg par jour en doses fractionnées, sans dépasser 150 mg par jour", ""),
+    ("Voltarène", "Rhumatisme inflammatoire chronique", "100 à 150 mg par jour en doses fractionnées, sans dépasser 150 mg par jour", "Risque cardiovasculaire supérieur à celui des autres anti-inflammatoires : à éviter en cas d'antécédent coronarien ou d'insuffisance cardiaque."),
     ("Voltarène", "Crise de goutte ou arthrite microcristalline", "150 mg par jour en doses fractionnées dès les premières heures, pendant quelques jours seulement", "Efficace uniquement s'il est débuté très tôt dans la crise."),
     ("Voltarène", "Colique néphrétique", "75 mg en injection intramusculaire, éventuellement renouvelée, en milieu médicalisé", "Traitement de référence de la crise, plus efficace que la morphine sur la douleur lithiasique, sous réserve d'une fonction rénale connue."),
     ("Voltarène", "Traumatologie et tendinopathie superficielle, forme locale", "Gel appliqué en massage 3 à 4 fois par jour sur la zone douloureuse, pendant 7 à 14 jours", "Ne pas appliquer sous pansement occlusif ni sur peau lésée, et protéger la zone du soleil."),
     ("Voltarène", "Contre-indications cardiovasculaires propres au diclofénac", "Aucune prescription en cas de cardiopathie ischémique, d'artériopathie, d'antécédent d'AVC ou d'insuffisance cardiaque", "Le diclofénac est l'AINS au risque thrombotique artériel le plus marqué : sa délivrance en France est soumise à prescription médicale obligatoire pour cette raison."),
     ("Bi-Profénid", "Poussée aiguë de rhumatisme inflammatoire ou d'arthrose", "1 comprimé à 150 mg matin et soir au cours des repas, sans dépasser 300 mg de kétoprofène par jour", "Le comprimé associe une fraction à libération immédiate et une fraction à libération prolongée : il ne doit être ni écrasé ni croqué."),
     ("Bi-Profénid", "Lombosciatique et radiculalgie aiguë", "150 mg deux fois par jour pendant quelques jours, puis relais par une dose plus faible", "Durée courte, avec réévaluation rapide."),
-    ("Bi-Profénid", "Douleur post-opératoire, notamment en chirurgie dentaire", "150 mg deux fois par jour pendant 2 à 3 jours", ""),
+    ("Bi-Profénid", "Douleur post-opératoire, notamment en chirurgie dentaire", "150 mg deux fois par jour pendant 2 à 3 jours", "Au cours des repas et sur une durée courte ; un anti-inflammatoire ne se prend jamais en même temps qu'un autre."),
     ("Bi-Profénid", "Crise de goutte et arthrite microcristalline", "Dose maximale d'emblée sur une durée brève, puis arrêt dès la résolution de la crise", "Alternative à la colchicine, notamment en cas d'intolérance digestive à celle-ci."),
     ("Bi-Profénid", "Prévention des complications digestives", "Prise systématique au milieu du repas, associée à un inhibiteur de la pompe à protons chez le patient à risque", "Protection gastrique justifiée après 65 ans, en cas d'antécédent d'ulcère, ou d'association à un antiagrégant, un anticoagulant ou un corticoïde."),
     ("Bi-Profénid", "Photosensibilisation propre au kétoprofène", "Éviction solaire pendant tout le traitement et dans les 2 semaines suivant l'arrêt pour les formes locales", "Le kétoprofène en gel est la première cause de photoallergie médicamenteuse en France : le risque existe aussi, plus modérément, par voie orale."),
     ("Celebrex", "Arthrose symptomatique en poussée", "200 mg par jour en une prise, ou 100 mg deux fois par jour, sans dépasser 400 mg par jour", "Traitement de la durée la plus courte possible, réévalué régulièrement."),
-    ("Celebrex", "Polyarthrite rhumatoïde", "100 à 200 mg deux fois par jour, sans dépasser 400 mg par jour", ""),
+    ("Celebrex", "Polyarthrite rhumatoïde", "100 à 200 mg deux fois par jour, sans dépasser 400 mg par jour", "Meilleure tolérance digestive, mais le risque cardiovasculaire demeure : contre-indiqué après un infarctus ou un accident vasculaire cérébral."),
     ("Celebrex", "Spondylarthrite ankylosante", "200 mg par jour en une ou deux prises, portés à 400 mg par jour en cas de réponse insuffisante après 2 semaines", "Les AINS sont ici le traitement de fond de première ligne, souvent pris en continu sur avis rhumatologique."),
     ("Celebrex", "Patient à risque digestif élevé", "Dose minimale efficace, éventuellement associée à un inhibiteur de la pompe à protons", "L'épargne digestive du célécoxib est réelle mais partielle, et disparaît en cas d'association à l'aspirine à faible dose."),
     ("Celebrex", "Contre-indications à vérifier avant délivrance", "Aucune prescription en cas de cardiopathie ischémique, d'artériopathie, d'antécédent d'AVC ou d'insuffisance cardiaque de classe II à IV", "Contre-indiqué également en cas d'allergie aux sulfamides, la molécule en comportant le motif chimique."),
@@ -18720,8 +18720,8 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Vogalène", "Nausées induites par un traitement médicamenteux", "Prises régulières encadrant l'administration du médicament émétisant", "En chimiothérapie, la métopimazine n'est qu'un traitement d'appoint : les protocoles reposent sur les sétrons."),
     ("Vogalène", "Effets indésirables et précautions", "Utiliser la dose minimale efficace, sur la durée la plus courte", "Somnolence, hypotension orthostatique et, plus rarement, syndrome extrapyramidal, surtout chez l'enfant et le sujet âgé. Prudence en cas d'allongement de l'intervalle QT et d'association à l'alcool."),
     ("Zophren", "Prévention des nausées et vomissements de la chimiothérapie", "8 mg avant la cure, par voie orale ou intraveineuse, puis 8 mg deux fois par jour pendant 3 à 5 jours", "Souvent associé à la dexaméthasone, et à un antagoniste NK1 pour les protocoles hautement émétisants."),
-    ("Zophren", "Nausées et vomissements post-opératoires", "4 mg en intraveineuse lente à l'induction ou en fin d'intervention, renouvelables", ""),
-    ("Zophren", "Vomissements de la radiothérapie", "8 mg 1 à 2 heures avant la séance, puis toutes les 8 à 12 heures selon la tolérance", ""),
+    ("Zophren", "Nausées et vomissements post-opératoires", "4 mg en intraveineuse lente à l'induction ou en fin d'intervention, renouvelables", "Constipation fréquente ; allongement possible du QT, à prendre en compte avec les autres médicaments qui l'allongent."),
+    ("Zophren", "Vomissements de la radiothérapie", "8 mg 1 à 2 heures avant la séance, puis toutes les 8 à 12 heures selon la tolérance", "Le lyophilisat oral fond sur la langue sans eau, ce qui aide quand boire déclenche les nausées."),
     ("Zophren", "Vomissements de la gastro-entérite aiguë de l'enfant", "Dose unique orale rapportée au poids, de l'ordre de 0,15 mg/kg, généralement 2 mg entre 8 et 15 kg, 4 mg entre 15 et 30 kg, 8 mg au-delà de 30 kg", "Usage hors AMM en France, mais pratique validée aux urgences pédiatriques pour permettre la réhydratation orale et éviter la perfusion. Dose unique, pas de traitement d'entretien."),
     ("Zophren", "Précautions cardiaques et interactions", "Éviter les doses élevées et l'injection intraveineuse rapide chez le patient à risque rythmique", "Allongement dose-dépendant de l'intervalle QT : corriger l'hypokaliémie et l'hypomagnésémie. Association contre-indiquée à l'apomorphine."),
     ("Zophren", "Effets indésirables courants", "Prévoir un laxatif en cas de traitement prolongé", "Constipation quasi constante, céphalées et bouffées de chaleur. Ne pas confondre l'inefficacité sur les nausées anticipatoires, qui relèvent d'un anxiolytique."),
@@ -18733,7 +18733,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Aerius", "Rhinite allergique saisonnière ou perannuelle", "5 mg une fois par jour, à heure fixe, avec ou sans aliments", "Dans les formes intermittentes, le traitement peut être limité à la période d'exposition pollinique."),
     ("Aerius", "Urticaire chronique spontanée", "5 mg une fois par jour, en traitement continu de plusieurs semaines à plusieurs mois", "En cas de contrôle insuffisant, les recommandations prévoient une augmentation progressive de la dose sous contrôle médical, hors AMM."),
     ("Aerius", "Traitement de l'enfant", "Sirop dosé à 0,5 mg/mL : 2,5 mL par jour de 1 à 5 ans, 5 mL par jour de 6 à 11 ans, 10 mL ou 1 comprimé à partir de 12 ans", "Doser à la seringue ou au gobelet fourni."),
-    ("Aerius", "Prurit et manifestations allergiques cutanées", "5 mg une fois par jour, en cure courte", ""),
+    ("Aerius", "Prurit et manifestations allergiques cutanées", "5 mg une fois par jour, en cure courte", "Un antihistaminique calme le prurit mais ne traite pas la cause : une urticaire qui dure au-delà de six semaines relève d'un avis."),
     ("Aerius", "Choix par rapport aux autres antihistaminiques", "Une prise quotidienne, matin ou soir selon la tolérance", "Antihistaminique de deuxième génération peu sédatif, métabolite actif de la loratadine. La somnolence reste possible : évaluer avant la conduite lors des premières prises."),
     ("Zyrtec", "Rhinite allergique et conjonctivite allergique de l'adulte", "10 mg une fois par jour, de préférence le soir", "Prise vespérale conseillée car la cétirizine est le plus sédatif des antihistaminiques de deuxième génération."),
     ("Zyrtec", "Urticaire chronique spontanée insuffisamment contrôlée", "10 mg par jour en première intention, puis augmentation progressive jusqu'à 4 fois la dose, soit 40 mg par jour, sur décision médicale", "Cette montée de dose est recommandée par les sociétés savantes d'allergologie mais reste hors AMM : elle ne se fait jamais en automédication."),
@@ -18741,7 +18741,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Zyrtec", "Prurit d'origine allergique et dermatite atopique", "10 mg par jour chez l'adulte, en cure de quelques jours à quelques semaines", "Effet antiprurigineux d'appoint : il ne remplace pas les dermocorticoïdes et les émollients."),
     ("Zyrtec", "Insuffisance rénale", "Dose réduite de moitié en cas d'insuffisance rénale modérée, davantage espacée en cas d'atteinte sévère", "Élimination essentiellement rénale, contrairement à la loratadine."),
     ("Zyrtec", "Précautions avant un bilan allergologique", "Arrêt du traitement quelques jours avant la réalisation des tests cutanés", "Un antihistaminique poursuivi négative les prick-tests : vérifier la consigne du prescripteur."),
-    ("Clarityne", "Rhinite allergique saisonnière ou perannuelle", "10 mg une fois par jour, avec ou sans aliments", ""),
+    ("Clarityne", "Rhinite allergique saisonnière ou perannuelle", "10 mg une fois par jour, avec ou sans aliments", "Peu sédatif, ce qui en fait un choix commode pour la journée et pour les conducteurs."),
     ("Clarityne", "Urticaire chronique idiopathique", "10 mg une fois par jour, en traitement continu", "Comme pour la cétirizine, une augmentation de dose peut être décidée par le médecin en cas de contrôle insuffisant, hors AMM."),
     ("Clarityne", "Traitement de l'enfant de plus de 2 ans", "5 mg par jour en dessous de 30 kg, 10 mg par jour au-delà de 30 kg", "Le sirop est dosé à 1 mg/mL : la posologie se règle sur le poids et non sur l'âge."),
     ("Clarityne", "Patient exerçant une activité nécessitant de la vigilance", "10 mg le matin", "C'est l'antihistaminique de deuxième génération le moins sédatif : souvent préféré chez le conducteur professionnel et le sportif."),
@@ -18795,7 +18795,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Fludex", "Précautions chez le sportif et en cas de goutte", "Prise matinale unique, avec hydratation adaptée", "Substance figurant sur la liste des produits dopants, en tant que masquant. Peut favoriser une hyperuricémie et une crise de goutte."),
     ("Flécaïne", "Maintien du rythme sinusal après cardioversion d'une fibrillation atriale", "50 à 100 mg deux fois par jour, ou 100 à 200 mg par jour en forme à libération prolongée, sans dépasser 300 mg par jour", "Réservée au cœur structurellement sain : elle est contre-indiquée en cas de cardiopathie ischémique, d'infarctus ancien ou d'insuffisance cardiaque."),
     ("Flécaïne", "Réduction d'un accès récent de fibrillation atriale, protocole de la dose de charge orale", "Prise orale unique de 200 à 300 mg selon le poids, à domicile, chez un patient dont l'efficacité et la tolérance ont d'abord été vérifiées en milieu hospitalier", "Schéma dit de la pilule dans la poche, méconnu au comptoir : il n'est autorisé qu'après validation hospitalière et impose la prise associée d'un bêtabloquant ou d'un inhibiteur calcique bradycardisant, pour éviter un flutter conduit en 1 pour 1."),
-    ("Flécaïne", "Tachycardies jonctionnelles et syndrome de Wolff-Parkinson-White", "50 à 100 mg deux fois par jour, adaptés par le cardiologue", ""),
+    ("Flécaïne", "Tachycardies jonctionnelles et syndrome de Wolff-Parkinson-White", "50 à 100 mg deux fois par jour, adaptés par le cardiologue", "Antiarythmique à marge étroite : surveillance électrocardiographique, et aucune automédication sans vérifier les interactions."),
     ("Flécaïne", "Troubles du rythme ventriculaire documentés sur cœur sain", "Posologie initiale faible, augmentée sous contrôle électrocardiographique", "Instauration souvent hospitalière."),
     ("Flécaïne", "Surveillance du traitement", "Électrocardiogramme avant traitement, après instauration et à chaque changement de dose", "Surveiller l'élargissement du QRS : une augmentation marquée impose la réduction de la dose. Corriger toute hypokaliémie ou hyperkaliémie, qui modifie l'effet du médicament."),
     ("Flécaïne", "Interactions et précautions", "Réévaluation de la dose en cas d'insuffisance rénale ou hépatique et chez le sujet âgé", "Concentrations augmentées par l'amiodarone, la fluoxétine, la paroxétine et la cimétidine. Le lait, riche en calcium, peut réduire l'absorption chez le nourrisson traité."),
@@ -18816,17 +18816,17 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Forxiga", "Conduite à tenir en cas de maladie intercurrente ou de chirurgie", "Suspension du traitement en cas de jeûne, de déshydratation, d'infection aiguë sévère ou avant une intervention programmée, reprise après stabilisation", "Risque d'acidocétose à glycémie normale ou peu élevée, piège diagnostique majeur : des nausées, une dyspnée ou une douleur abdominale sous gliflozine imposent un dosage des corps cétoniques."),
     ("Jardiance", "Diabète de type 2", "10 mg une fois par jour le matin, portés si besoin à 25 mg par jour pour le contrôle glycémique", "Seule la dose de 10 mg est retenue dans les indications cardiaque et rénale."),
     ("Jardiance", "Insuffisance cardiaque, à fraction d'éjection réduite comme préservée", "10 mg une fois par jour, chez le patient diabétique comme non diabétique", "Fait partie des quatre classes du traitement de fond de l'insuffisance cardiaque à fraction d'éjection réduite."),
-    ("Jardiance", "Maladie rénale chronique", "10 mg une fois par jour, en association au traitement néphroprotecteur habituel", ""),
+    ("Jardiance", "Maladie rénale chronique", "10 mg une fois par jour, en association au traitement néphroprotecteur habituel", "Boire suffisamment et surveiller l'hygiène intime : mycoses génitales et infections urinaires sont les effets les plus fréquents. Suspendre en cas de déshydratation, de fièvre ou de jeûne prolongé."),
     ("Jardiance", "Prévention cardiovasculaire chez le diabétique de type 2 à haut risque", "10 mg par jour, en complément de la metformine", "Réduction démontrée de la mortalité cardiovasculaire, qui en fait un choix préférentiel après la metformine chez le coronarien."),
     ("Jardiance", "Effets indésirables et surveillance", "Vérifier les apports hydriques, surtout chez le sujet âgé et sous diurétique", "Hypovolémie et hypotension possibles : une réduction de la dose de diurétique de l'anse est souvent nécessaire à l'instauration. Mycoses génitales fréquentes, risque d'acidocétose euglycémique en cas de jeûne ou d'affection aiguë."),
     ("Trulicity", "Diabète de type 2 en association aux antidiabétiques oraux", "0,75 mg une fois par semaine en injection sous-cutanée, puis 1,5 mg par semaine, avec possibilité de monter à 3 mg puis 4,5 mg par paliers d'au moins 4 semaines", "Injection le même jour chaque semaine, à n'importe quelle heure, indépendamment des repas."),
-    ("Trulicity", "Diabète de type 2 en monothérapie en cas d'intolérance à la metformine", "0,75 mg une fois par semaine", ""),
+    ("Trulicity", "Diabète de type 2 en monothérapie en cas d'intolérance à la metformine", "0,75 mg une fois par semaine", "Une injection par semaine, le même jour ; le stylo se conserve au réfrigérateur avant usage et se sort 30 minutes avant l'injection."),
     ("Trulicity", "Diabète de type 2 avec surpoids ou risque cardiovasculaire élevé", "1,5 mg par semaine, éventuellement augmentés selon la réponse", "Bénéfice sur le poids et sur les événements cardiovasculaires, ce qui explique le choix de la classe chez le patient obèse ou vasculaire."),
     ("Trulicity", "Association à l'insuline ou à un sulfamide", "Dose habituelle du dulaglutide, avec réduction de l'insuline basale ou du sulfamide", "Le risque d'hypoglycémie vient de l'insuline ou du sulfamide associés."),
     ("Trulicity", "Oubli d'injection et conservation", "Injection rattrapée s'il reste au moins 3 jours avant la dose suivante, sinon dose oubliée sautée sans doublement", "Conservation au réfrigérateur entre 2 et 8 degrés, sortie du stylo 30 minutes avant l'injection pour limiter la douleur ; conservation possible à température ambiante pour une durée limitée indiquée sur la boîte."),
     ("Trulicity", "Effets indésirables et contre-indications", "Montée de dose progressive pour limiter les troubles digestifs", "Nausées, vomissements et diarrhées surtout en début de traitement. Contre-indiqué en cas d'antécédent personnel ou familial de cancer médullaire de la thyroïde ou de néoplasie endocrinienne multiple de type 2. Signaler le traitement avant toute anesthésie générale, du fait du ralentissement de la vidange gastrique."),
     ("Victoza", "Diabète de type 2, instauration", "0,6 mg une fois par jour en injection sous-cutanée pendant au moins 1 semaine, puis 1,2 mg par jour, éventuellement 1,8 mg par jour", "La dose de 0,6 mg n'est qu'une dose d'adaptation digestive, sans effet glycémique suffisant."),
-    ("Victoza", "Diabète de type 2 en association à la metformine ou à un autre antidiabétique", "1,2 à 1,8 mg une fois par jour, à heure fixe, indépendamment des repas", ""),
+    ("Victoza", "Diabète de type 2 en association à la metformine ou à un autre antidiabétique", "1,2 à 1,8 mg une fois par jour, à heure fixe, indépendamment des repas", "Nausées fréquentes les premières semaines, puis elles s'atténuent : ne pas arrêter pour cela, la montée de dose est progressive pour cette raison."),
     ("Victoza", "Diabète de type 2 avec maladie cardiovasculaire établie", "1,8 mg par jour, atteints par paliers", "Réduction démontrée des événements cardiovasculaires majeurs."),
     ("Victoza", "Association à l'insuline basale", "Dose usuelle de liraglutide avec réduction de 10 à 20 pour cent de l'insuline basale à l'instauration", "Adaptation à faire selon les glycémies capillaires, en lien avec le prescripteur."),
     ("Victoza", "Demande de traitement de l'obésité", "Cette spécialité relève du diabète de type 2 ; le liraglutide dans l'obésité correspond à une autre spécialité, avec une titration jusqu'à 3 mg par jour", "Ne jamais adapter cette présentation à une visée d'amaigrissement : les indications, les dosages et la prise en charge diffèrent."),
@@ -18840,7 +18840,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Zyloric", "Goutte chronique et hyperuricémie symptomatique", "100 mg par jour en une prise après le repas, augmentés par paliers de 100 mg toutes les 2 à 4 semaines selon l'uricémie, habituellement 200 à 300 mg par jour", "La cible est biologique : uricémie inférieure à 60 mg/L, soit environ 360 micromol/L, et plus basse encore en présence de tophus."),
     ("Zyloric", "Prévention des crises lors de l'instauration", "Colchicine à faible dose associée pendant les 3 à 6 premiers mois du traitement hypo-uricémiant", "La baisse rapide de l'uricémie déclenche des crises : ne jamais arrêter l'allopurinol pendant une crise survenant sous traitement bien conduit."),
     ("Zyloric", "Prévention du syndrome de lyse tumorale avant chimiothérapie", "Doses élevées, de l'ordre de 300 à 600 mg par jour, débutées 24 à 48 heures avant la cure et poursuivies pendant celle-ci, avec hydratation abondante", "Indication oncologique bien réelle et rarement identifiée au comptoir : une ordonnance d'allopurinol chez un patient sans goutte, à l'entrée en chimiothérapie, correspond à cette prophylaxie."),
-    ("Zyloric", "Lithiase urique ou oxalocalcique récidivante", "100 à 300 mg par jour, associés à une hydratation abondante et à une alcalinisation des urines si nécessaire", ""),
+    ("Zyloric", "Lithiase urique ou oxalocalcique récidivante", "100 à 300 mg par jour, associés à une hydratation abondante et à une alcalinisation des urines si nécessaire", "Ne jamais instaurer ni arrêter pendant une crise de goutte. Toute éruption cutanée impose l'arrêt immédiat et un avis : risque de toxidermie grave."),
     ("Zyloric", "Insuffisance rénale", "Débuter à 50 à 100 mg par jour et augmenter très progressivement en fonction de la clairance et de l'uricémie", "Le risque d'hypersensibilité grave augmente lorsque la dose initiale est trop forte chez l'insuffisant rénal."),
     ("Zyloric", "Risque cutané et dépistage génétique", "Arrêt immédiat et avis urgent devant toute éruption cutanée, même modeste", "Risque de DRESS et de syndrome de Lyell, plus élevé chez les porteurs de l'allèle HLA-B*5801, fréquent dans les populations d'origine asiatique, chez qui un dépistage préalable est recommandé."),
     ("Zyloric", "Interaction majeure avec les immunosuppresseurs", "Association à l'azathioprine ou à la mercaptopurine imposant une réduction très importante de la dose de l'immunosuppresseur, sur avis spécialisé", "Association habituellement évitée : l'allopurinol bloque leur catabolisme et expose à une aplasie médullaire. Vigilance également avec les antivitamines K."),
@@ -18854,11 +18854,11 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Colchicine", "Prévention des crises lors de l'instauration d'un hypo-uricémiant", "0,5 à 1 mg par jour pendant 3 à 6 mois", "Dose plus faible, prolongée, à ne pas confondre avec la dose de crise."),
     ("Colchicine", "Péricardite aiguë et péricardites récidivantes", "0,5 mg deux fois par jour, ou 0,5 mg par jour si le poids est inférieur à 70 kg, pendant 3 mois dans une première poussée et 6 mois en cas de récidive, en association à l'aspirine ou à un AINS", "Indication majeure et souvent méconnue au comptoir : la colchicine réduit de moitié le risque de récidive et fait partie du traitement standard, y compris après chirurgie cardiaque."),
     ("Colchicine", "Fièvre méditerranéenne familiale", "1 à 2 mg par jour en une ou deux prises, en traitement continu à vie", "Elle prévient non seulement les accès fébriles mais aussi l'amylose rénale : l'observance est vitale et le traitement ne doit jamais être interrompu spontanément."),
-    ("Colchicine", "Autres arthrites microcristallines, notamment chondrocalcinose", "Schéma comparable à celui de la crise de goutte, adapté à la tolérance digestive", ""),
+    ("Colchicine", "Autres arthrites microcristallines, notamment chondrocalcinose", "Schéma comparable à celui de la crise de goutte, adapté à la tolérance digestive", "La diarrhée est le premier signe de surdosage et impose de réduire la dose. Marge thérapeutique étroite : interactions majeures avec les macrolides et le pamplemousse."),
     ("Colchicine", "Signe d'alerte de surdosage", "Arrêt immédiat du traitement dès l'apparition d'une diarrhée", "La diarrhée est le premier signe de toxicité et précède les atteintes hématologiques et neuromusculaires, potentiellement mortelles. La marge thérapeutique est étroite, il n'existe pas d'antidote."),
     ("Colchicine", "Interactions et insuffisance rénale", "Réduction de la dose en cas d'insuffisance rénale ou hépatique et chez le sujet âgé", "Association contre-indiquée aux macrolides, notamment la clarithromycine, et à la pristinamycine ; prudence extrême avec la ciclosporine, le vérapamil, le diltiazem, les statines et le pamplemousse. Ces associations ont causé des décès."),
     ("Fosamax", "Ostéoporose post-ménopausique", "70 mg une fois par semaine, le même jour chaque semaine, ou 10 mg par jour selon la présentation", "Réduction démontrée des fractures vertébrales et de l'extrémité supérieure du fémur."),
-    ("Fosamax", "Ostéoporose masculine", "70 mg une fois par semaine", ""),
+    ("Fosamax", "Ostéoporose masculine", "70 mg une fois par semaine", "Le matin à jeun, avec un grand verre d'eau du robinet, debout ou assis, et rester ainsi 30 minutes sans se recoucher ni rien avaler d'autre."),
     ("Fosamax", "Ostéoporose cortisonique", "70 mg une fois par semaine, à débuter dès l'instauration d'une corticothérapie prolongée chez le patient à risque", "La prévention se met en place au début de la corticothérapie, pas lorsque la densité osseuse s'est déjà dégradée."),
     ("Fosamax", "Modalités de prise, déterminantes pour l'efficacité et la tolérance", "Au lever, à jeun, avec un grand verre d'eau du robinet, en restant assis ou debout pendant au moins 30 minutes, sans rien absorber d'autre pendant ce délai", "Ni eau minérale riche en calcium, ni café, ni lait : la biodisponibilité est très faible et toute prise alimentaire l'annule. La position redressée prévient l'œsophagite."),
     ("Fosamax", "Apports associés indispensables", "Correction préalable d'une carence en vitamine D et apports calciques suffisants, alimentaires ou médicamenteux", "Les sels de calcium et le fer doivent être pris à distance, jamais dans les 30 minutes suivant le bisphosphonate."),
@@ -18871,7 +18871,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Uvedose", "Supplémentation du nourrisson et de l'enfant", "Apports quotidiens de vitamine D en gouttes, de l'ordre de 400 à 800 UI par jour selon l'alimentation, plutôt que des doses de charge espacées", "Les recommandations pédiatriques françaises privilégient désormais l'administration quotidienne. Les ampoules fortement dosées ne sont pas la forme adaptée au nourrisson."),
     ("Uvedose", "Modalités d'administration et risque de surdosage", "Contenu de l'ampoule avalé directement ou versé sur une cuillère, de préférence au cours d'un repas contenant des lipides", "Ne jamais rapprocher les ampoules de sa propre initiative : la vitamine D s'accumule et le surdosage entraîne une hypercalcémie. Vérifier l'absence de doublon avec une association calcium-vitamine D."),
     ("Tardyferon", "Anémie ferriprive de l'adulte", "1 à 2 comprimés par jour, soit 80 à 160 mg de fer élément, pendant au moins 3 mois et jusqu'à normalisation de la ferritine", "L'hémoglobine se corrige en quelques semaines, mais le traitement doit être poursuivi bien au-delà pour reconstituer les réserves : c'est la cause la plus fréquente de rechute."),
-    ("Tardyferon", "Carence martiale sans anémie", "1 comprimé par jour, sur plusieurs semaines à plusieurs mois, selon la ferritine de contrôle", ""),
+    ("Tardyferon", "Carence martiale sans anémie", "1 comprimé par jour, sur plusieurs semaines à plusieurs mois, selon la ferritine de contrôle", "À distance du thé, du café, du calcium et des pansements gastriques, qui bloquent l'absorption. Selles noires normales, constipation fréquente."),
     ("Tardyferon", "Supplémentation pendant la grossesse", "1 comprimé par jour en cas de carence documentée ou de facteurs de risque, à partir du deuxième trimestre", "La supplémentation systématique n'est pas recommandée : elle se fonde sur l'hémogramme et la ferritine."),
     ("Tardyferon", "Amélioration de la tolérance et de l'absorption", "Une prise unique quotidienne, à jeun ou avant un repas, éventuellement un jour sur deux en cas de mauvaise tolérance digestive", "Fractionner la dose dans la journée n'améliore pas l'absorption : l'hepcidine induite par la première prise bloque les suivantes. Le schéma en prise unique, voire alterné un jour sur deux, est aujourd'hui privilégié."),
     ("Tardyferon", "Interactions alimentaires et médicamenteuses", "Prise à distance du thé, du café, des produits laitiers et des sels de calcium ; un apport en vitamine C améliore l'absorption", "Respecter au moins 2 heures avec la lévothyroxine, les cyclines, les fluoroquinolones, les biphosphonates et les pansements gastriques."),
@@ -18937,18 +18937,18 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Abilify", "Schizophrénie de l'adulte", "10 ou 15 mg une fois par jour, entretien à 15 mg par jour, sans dépasser 30 mg par jour", "Prise indifférente par rapport aux repas. L'effet complet demande plusieurs semaines."),
     ("Abilify", "Épisode maniaque du trouble bipolaire de type I", "15 mg une fois par jour en monothérapie ou en association au lithium ou au valproate, maximum 30 mg par jour", "Poursuivi à la même dose en prévention des récidives chez les patients répondeurs."),
     ("Abilify", "Schizophrénie de l'adolescent à partir de 15 ans", "2 mg par jour pendant 2 jours, 5 mg par jour pendant 2 jours, puis 10 mg par jour, augmentation ultérieure par paliers de 5 mg", "La solution buvable facilite la titration initiale."),
-    ("Abilify", "Épisode maniaque de l'adolescent à partir de 13 ans", "Titration identique jusqu'à une dose cible de 10 mg par jour, durée de traitement limitée à 12 semaines", ""),
+    ("Abilify", "Épisode maniaque de l'adolescent à partir de 13 ans", "Titration identique jusqu'à une dose cible de 10 mg par jour, durée de traitement limitée à 12 semaines", "Surveiller poids, tour de taille et bilan métabolique : la prise de poids est un motif fréquent d'arrêt chez l'adolescent."),
     ("Abilify", "Traitement d'entretien par forme injectable à libération prolongée", "400 mg en intramusculaire toutes les 4 semaines, avec poursuite du traitement oral pendant les 14 premiers jours", "Réduction possible à 300 mg en cas d'effets indésirables ou de métabolisme lent du CYP2D6."),
     ("Abilify", "Profil de tolérance à expliquer", "Une prise par jour, de préférence le matin", "Akathisie fréquente en début de traitement, à distinguer d'une aggravation de l'agitation. Impact métabolique moindre que l'olanzapine, et pas d'hyperprolactinémie, la prolactine ayant plutôt tendance à baisser."),
     ("Zyprexa", "Schizophrénie", "10 mg une fois par jour, adaptés ensuite entre 5 et 20 mg par jour", "Prise indifférente par rapport aux repas, souvent le soir en raison de la sédation."),
-    ("Zyprexa", "Épisode maniaque du trouble bipolaire", "15 mg par jour en monothérapie, ou 10 mg par jour en association au lithium ou au valproate, maximum 20 mg par jour", ""),
+    ("Zyprexa", "Épisode maniaque du trouble bipolaire", "15 mg par jour en monothérapie, ou 10 mg par jour en association au lithium ou au valproate, maximum 20 mg par jour", "Prise de poids et augmentation de l'appétit sont marquées : bilan métabolique de référence puis surveillance régulière."),
     ("Zyprexa", "Prévention des récidives du trouble bipolaire", "10 mg par jour, ou poursuite de la dose ayant permis le contrôle de l'épisode", "Réservé aux patients ayant répondu à l'olanzapine lors de l'épisode aigu."),
     ("Zyprexa", "Agitation aiguë chez le patient schizophrène ou maniaque", "Forme intramusculaire, 10 mg en injection unique, renouvelable après 2 heures, sans dépasser 20 mg par jour toutes formes confondues", "Ne pas associer à une benzodiazépine parentérale dans l'heure qui suit : risque d'hypotension et de dépression respiratoire."),
     ("Zyprexa", "Nausées et vomissements réfractaires en oncologie et en soins palliatifs", "2,5 à 10 mg une fois par jour, le soir", "Hors AMM en France, mais usage bien établi et soutenu par les essais dans les vomissements chimio-induits et les nausées réfractaires. La sédation est ici recherchée ou tolérée."),
     ("Zyprexa", "Troubles du comportement du sujet âgé dément", "Non indiqué dans cette situation", "Surmortalité et augmentation du risque d'accident vasculaire cérébral démontrées chez le patient âgé dément."),
     ("Zyprexa", "Surveillance métabolique", "Poids, tour de taille, glycémie et bilan lipidique avant le traitement, puis régulièrement", "Prise de poids parmi les plus marquées de la classe, souvent dès les premières semaines. La forme orodispersible se délite sur la langue et aide à l'observance."),
     ("Risperdal", "Schizophrénie", "2 mg le premier jour, 4 mg le deuxième jour, entretien habituel de 4 à 6 mg par jour, sans dépasser 16 mg par jour", "Au-delà de 10 mg par jour, les effets extrapyramidaux augmentent sans gain d'efficacité démontré."),
-    ("Risperdal", "Épisode maniaque du trouble bipolaire", "2 mg une fois par jour, adaptés par paliers d'au moins 24 heures et de 1 mg, entre 1 et 6 mg par jour", ""),
+    ("Risperdal", "Épisode maniaque du trouble bipolaire", "2 mg une fois par jour, adaptés par paliers d'au moins 24 heures et de 1 mg, entre 1 et 6 mg par jour", "Rechercher raideur, tremblement ou impatiences des jambes, plus fréquents au-delà de 4 mg par jour."),
     ("Risperdal", "Agressivité persistante de la démence d'Alzheimer", "0,25 mg deux fois par jour, augmentés par paliers de 0,25 mg deux fois par jour, dose usuelle 0,5 mg deux fois par jour", "Indication autorisée mais strictement limitée aux formes sévères avec risque pour le patient ou autrui, et pour 6 semaines au maximum. Réévaluation régulière obligatoire."),
     ("Risperdal", "Troubles des conduites avec agressivité chez l'enfant à partir de 5 ans", "0,25 mg par jour si le poids est inférieur à 50 kg, 0,5 mg par jour au-delà, augmentés par paliers d'au moins 48 heures", "Concerne notamment les troubles du spectre de l'autisme et le retard mental. Traitement symptomatique de courte durée, réévalué."),
     ("Risperdal", "Traitement d'entretien par forme injectable à libération prolongée", "25 mg en intramusculaire toutes les 2 semaines, avec couverture orale pendant les 3 premières semaines", "La libération ne débute qu'à la troisième semaine : la couverture orale initiale n'est pas facultative."),
@@ -18984,15 +18984,15 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Rivotril", "Conditions de prescription et de délivrance", "Ordonnance sécurisée, prescription initiale annuelle réservée aux neurologues et pédiatres, chevauchement interdit", "Vérifier la date de la prescription initiale spécialisée avant de renouveler."),
     ("Rivotril", "Arrêt du traitement", "Diminution très progressive, sur plusieurs semaines à plusieurs mois", "Un arrêt brutal expose à la recrudescence des crises et à l'état de mal."),
     ("Xeroquel", "Schizophrénie", "300 mg le premier jour, 600 mg le deuxième jour, puis 600 mg par jour en une prise, dans un intervalle usuel de 400 à 800 mg par jour", "Forme à libération prolongée : comprimé avalé entier, ni coupé ni écrasé."),
-    ("Xeroquel", "Épisode maniaque du trouble bipolaire", "300 mg le premier jour, 600 mg le deuxième jour, puis ajustement entre 400 et 800 mg par jour", ""),
+    ("Xeroquel", "Épisode maniaque du trouble bipolaire", "300 mg le premier jour, 600 mg le deuxième jour, puis ajustement entre 400 et 800 mg par jour", "Somnolence marquée et hypotension au lever pendant la titration : se lever en deux temps les premiers jours."),
     ("Xeroquel", "Épisode dépressif du trouble bipolaire", "50 mg le premier jour, 100 mg le deuxième, 200 mg le troisième, 300 mg le quatrième, en une prise le soir", "La titration lente et la prise vespérale limitent la sédation et l'hypotension orthostatique."),
-    ("Xeroquel", "Prévention des récidives du trouble bipolaire", "300 à 800 mg par jour en une prise le soir, à la dose ayant contrôlé l'épisode", ""),
+    ("Xeroquel", "Prévention des récidives du trouble bipolaire", "300 à 800 mg par jour en une prise le soir, à la dose ayant contrôlé l'épisode", "La forme à libération prolongée s'avale entière ; le soir, à distance d'un repas riche en graisses."),
     ("Xeroquel", "Traitement adjuvant des épisodes dépressifs majeurs insuffisamment améliorés par un antidépresseur", "50 mg par jour les deux premiers jours, 150 mg par jour à partir du troisième, sans dépasser 300 mg par jour", "Indication d'appoint, en complément et non en remplacement de l'antidépresseur."),
     ("Xeroquel", "Insomnie", "Pratique répandue à 25 à 50 mg le soir, sans validation", "Hors AMM et à signaler comme tel : rapport bénéfice-risque défavorable dans cette indication, avec prise de poids, effets métaboliques, hypotension et syndrome des jambes sans repos pour un bénéfice hypnotique non démontré."),
     ("Xeroquel", "Conseils de prise et surveillance", "Une prise par jour le soir, au moins 1 heure avant le repas ou à distance de celui-ci", "Poids, glycémie et bilan lipidique à l'instauration puis régulièrement. Somnolence marquée les premiers jours : prudence au volant."),
     ("Solian", "Schizophrénie à symptômes positifs prédominants", "400 à 800 mg par jour en deux prises, sans dépasser 1 200 mg par jour", "Au-delà de 400 mg par jour, la dose est répartie en deux prises."),
     ("Solian", "Schizophrénie à symptômes négatifs prédominants", "50 à 300 mg par jour en une seule prise", "Particularité de la molécule : l'effet sur les symptômes déficitaires s'obtient aux doses faibles, l'effet antipsychotique aux doses fortes."),
-    ("Solian", "Épisode psychotique aigu", "Doses initiales élevées en milieu hospitalier, puis réduction à la dose minimale efficace", ""),
+    ("Solian", "Épisode psychotique aigu", "Doses initiales élevées en milieu hospitalier, puis réduction à la dose minimale efficace", "Élimination rénale : adapter chez la personne âgée et l'insuffisant rénal. Galactorrhée et troubles des règles sont fréquents et à signaler."),
     ("Solian", "Insuffisance rénale", "Dose réduite de moitié si la clairance est comprise entre 30 et 60 mL/min, réduite au tiers entre 10 et 30 mL/min", "Élimination principalement rénale, sans métabolisme hépatique significatif : la fonction rénale conditionne toute la posologie."),
     ("Solian", "Effets indésirables à surveiller", "Contrôle de la prolactinémie en cas de signes cliniques, ECG avant les fortes doses", "Hyperprolactinémie très fréquente : aménorrhée, galactorrhée, gynécomastie, troubles sexuels. Allongement de l'espace QT dose-dépendant, à prendre en compte avec les autres allongeurs du QT."),
     ("Anafranil", "Épisode dépressif majeur", "25 mg par jour en début de traitement, augmentés progressivement jusqu'à 75 à 150 mg par jour, en une prise le soir ou en plusieurs prises", "Délai d'action de 2 à 4 semaines. Le risque suicidaire peut augmenter transitoirement en début de traitement, surtout chez le sujet jeune."),
@@ -19019,8 +19019,8 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Stresam", "Contre-indications à vérifier", "Ne pas délivrer en cas de contre-indication : vérifier l'ordonnance", "Insuffisance hépatique ou rénale sévère, myasthénie, état de choc, antécédent de réaction hépatique ou cutanée à l'étifoxine. Déconseillé pendant la grossesse et l'allaitement."),
     ("Stresam", "Conseils associés", "Prises réparties dans la journée, au cours des repas", "Somnolence possible en début de traitement, alcool à éviter. L'efficacité s'apprécie sur les symptômes physiques : palpitations, tension musculaire, troubles digestifs."),
     ("Epitomax", "Épilepsie de l'adulte en monothérapie", "25 mg le soir pendant 1 semaine, augmentation par paliers hebdomadaires de 25 à 50 mg par jour, dose cible usuelle 100 mg par jour en deux prises", "Maximum 500 mg par jour. La titration lente conditionne la tolérance neurologique."),
-    ("Epitomax", "Épilepsie de l'adulte en association", "25 à 50 mg par jour la première semaine, augmentation hebdomadaire de 25 à 50 mg, entretien de 200 à 400 mg par jour en deux prises", ""),
-    ("Epitomax", "Épilepsie de l'enfant à partir de 6 ans", "1 à 3 mg par kg et par jour le soir pendant 1 semaine, puis paliers hebdomadaires jusqu'à 5 à 9 mg par kg et par jour en deux prises", ""),
+    ("Epitomax", "Épilepsie de l'adulte en association", "25 à 50 mg par jour la première semaine, augmentation hebdomadaire de 25 à 50 mg, entretien de 200 à 400 mg par jour en deux prises", "Boire abondamment : risque de lithiase rénale. Troubles de la mémoire et du langage, fourmillements et perte de poids sont dose-dépendants."),
+    ("Epitomax", "Épilepsie de l'enfant à partir de 6 ans", "1 à 3 mg par kg et par jour le soir pendant 1 semaine, puis paliers hebdomadaires jusqu'à 5 à 9 mg par kg et par jour en deux prises", "Surveiller le poids et la transpiration : l'hypersudation et le coup de chaleur sont un risque réel chez l'enfant en été."),
     ("Epitomax", "Traitement de fond de la migraine", "25 mg le soir pendant 1 semaine, augmentation par paliers hebdomadaires de 25 mg, dose cible 100 mg par jour en deux prises, maximum 200 mg par jour", "Indication autorisée mais souvent méconnue. Certains patients répondent dès 50 mg par jour. Efficacité jugée sur la fréquence des crises après 2 à 3 mois ; sans effet sur la crise elle-même."),
     ("Epitomax", "Femme en âge de procréer", "Contraception efficace indispensable pendant tout le traitement", "Tératogène et responsable de troubles du neurodéveloppement. Depuis 2024, prescription initiale annuelle réservée au spécialiste, accord de soins signé et mention obligatoire sur l'ordonnance. Contre-indiqué pendant la grossesse dans la migraine."),
     ("Epitomax", "Effets indésirables à anticiper", "Boissons abondantes tout au long du traitement", "Paresthésies des extrémités, perte d'appétit et de poids, ralentissement idéatoire et manque du mot, lithiases rénales. Consulter en urgence devant une baisse brutale de la vision ou une douleur oculaire dans le premier mois : glaucome aigu par fermeture de l'angle."),
@@ -19098,7 +19098,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Norlevo", "Contraception d'urgence après un rapport non protégé", "1 comprimé de 1,5 mg en prise unique, le plus tôt possible et au plus tard dans les 72 heures suivant le rapport", "L'efficacité décroît fortement avec le délai : la prise dans les 12 premières heures est la plus efficace. Au-delà de 72 heures, préférer l'acétate d'ulipristal, utilisable jusqu'à 120 heures."),
     ("Norlevo", "Rattrapage après un oubli de pilule ou un accident de préservatif", "1 comprimé en prise unique, puis poursuite immédiate de la contraception habituelle", "Préservatif pendant les 7 jours suivants, et test de grossesse si les règles tardent de plus de 5 jours."),
     ("Norlevo", "Femme en surpoids ou obèse", "Efficacité diminuée au-delà d'un IMC de 25 et fortement réduite au-delà de 30, ou pour un poids supérieur à 70 kg environ", "Orienter alors vers l'acétate d'ulipristal ou, mieux, vers la pose d'un dispositif intra-utérin au cuivre dans les 5 jours, méthode la plus efficace quel que soit le poids."),
-    ("Norlevo", "Vomissements après la prise", "Vomissements dans les 3 heures : reprendre immédiatement un comprimé", ""),
+    ("Norlevo", "Vomissements après la prise", "Vomissements dans les 3 heures : reprendre immédiatement un comprimé", "Vérifier aussi les inducteurs enzymatiques : sous rifampicine, millepertuis ou certains antiépileptiques, le lévonorgestrel est moins efficace et un dispositif intra-utérin est préférable."),
     ("Norlevo", "Délivrance et conseils associés", "Prise unique, sans ordonnance, avec délivrance gratuite et anonyme en pharmacie", "Occasion de proposer une contraception régulière et un dépistage des infections sexuellement transmissibles. Ne pas associer à l'acétate d'ulipristal, chacun diminuant l'effet de l'autre."),
     ("Norlevo", "Limites de la méthode", "Aucune répétition systématique : ce n'est pas une méthode de contraception régulière", "Agit en retardant l'ovulation : sans effet si l'ovulation a déjà eu lieu, et sans effet abortif sur une grossesse débutée. Efficacité réduite par les inducteurs enzymatiques."),
     ("Décapeptyl", "Cancer de la prostate localement avancé ou métastatique", "3 mg en intramusculaire tous les 28 jours, ou 11,25 mg tous les 3 mois, ou 22,5 mg tous les 6 mois", "Respecter scrupuleusement les dates d'injection : un retard expose à la remontée de la testostérone. Conservation et reconstitution selon la notice, injection réalisée immédiatement après reconstitution."),
@@ -19108,6 +19108,89 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Décapeptyl", "Puberté précoce centrale", "Injections mensuelles ou trimestrielles, posologie adaptée au poids de l'enfant", "Prise en charge endocrinologique spécialisée, avec suivi de la croissance et de l'âge osseux."),
     ("Décapeptyl", "Assistance médicale à la procréation", "Forme à 0,1 mg en injection sous-cutanée quotidienne, selon le protocole défini par le centre", "Ne pas confondre cette forme quotidienne avec les formes retard : les dosages ne sont pas interchangeables."),
     ("Décapeptyl", "Effets indésirables du blocage hormonal", "Densitométrie osseuse et surveillance métabolique en cas de traitement prolongé", "Bouffées de chaleur, sueurs, baisse de la libido, troubles de l'humeur, prise de poids, perte osseuse. Chez l'homme, surveillance de la glycémie, du bilan lipidique et de la tolérance cardiovasculaire."),
+    // --- Triptans : la crise de migraine, pas le fond ---
+    ("Zomig", "Crise de migraine avec ou sans aura chez l'adulte", "2,5 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 2 heures si la crise récidive, sans dépasser 10 mg par jour", "À prendre sur la céphalée, jamais pendant l'aura : pris trop tôt le triptan est inefficace et la dose est perdue."),
+    ("Zomig", "Crise ne cédant pas à la première dose", "Ne pas reprendre de triptan pour la même crise", "Une deuxième dose n'a d'intérêt que sur une récidive après amélioration, pas sur un échec : sur un échec, changer de molécule à la crise suivante."),
+    ("Zomig", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Au-delà, le traitement de crise entretient lui-même les céphalées : c'est la céphalée par abus médicamenteux, et elle impose un traitement de fond."),
+    ("Maxalt", "Crise de migraine avec ou sans aura chez l'adulte", "10 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 2 heures, sans dépasser 20 mg par jour", "Le lyophilisat oral fond sur la langue sans eau : utile en cas de nausées, mais il n'agit pas plus vite que le comprimé."),
+    ("Maxalt", "Patient traité par propranolol", "5 mg par prise, sans dépasser 10 mg par jour, et au moins 2 heures entre la prise de propranolol et celle du rizatriptan", "Le propranolol double les concentrations de rizatriptan : c'est l'interaction à repérer à la délivrance, le patient migraineux étant souvent sous bêtabloquant de fond."),
+    ("Maxalt", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Tenir un agenda des crises : c'est ce qui permet de décider d'un traitement de fond."),
+    ("Relpax", "Crise de migraine avec ou sans aura chez l'adulte", "40 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 2 heures, sans dépasser 80 mg par jour", "Si 40 mg ont été insuffisants sur une crise, le prescripteur peut passer à 80 mg d'emblée sur les crises suivantes."),
+    ("Relpax", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Céphalée par abus médicamenteux au-delà : réévaluation et traitement de fond."),
+    ("Naramig", "Crise de migraine avec ou sans aura chez l'adulte", "2,5 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 4 heures, sans dépasser 5 mg par jour", "Le délai de renouvellement est de 4 heures ici, contre 2 pour les autres triptans : demi-vie longue, action plus lente mais récidives moins fréquentes."),
+    ("Naramig", "Migraine à récidive fréquente dans les 24 heures", "2,5 mg, en tenant compte de la durée d'action prolongée", "Souvent préféré quand la crise repart systématiquement le lendemain d'un autre triptan."),
+    ("Almogran", "Crise de migraine avec ou sans aura chez l'adulte", "12,5 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 2 heures, sans dépasser 25 mg par jour", "Tolérance réputée bonne ; comme tous les triptans, contre-indiqué en cas de coronaropathie, d'antécédent d'accident vasculaire cérébral ou d'hypertension non contrôlée."),
+    // --- AINS : dose minimale efficace, durée la plus courte ---
+    ("Profénid", "Poussée douloureuse en rhumatologie chez l'adulte", "100 mg deux fois par jour au cours des repas, sans dépasser 200 mg par jour en ville", "Toujours au milieu du repas et avec un grand verre d'eau ; la forme LP à 200 mg permet une prise unique quotidienne."),
+    ("Profénid", "Durée et associations", "La durée la plus courte possible, sans jamais associer un autre anti-inflammatoire non stéroïdien ni l'aspirine à dose anti-inflammatoire", "Un inhibiteur de la pompe à protons n'est justifié que chez le patient à risque : âge avancé, antécédent d'ulcère, association à un anticoagulant, un antiagrégant ou un corticoïde."),
+    ("Profénid", "Grossesse", "Contre-indiqué à partir de 24 semaines d'aménorrhée, soit 6 mois révolus", "Interdiction absolue et non une simple précaution : fermeture du canal artériel et toxicité rénale fœtale. Avant ce terme, à éviter également."),
+    ("Apranax", "Poussée douloureuse en rhumatologie chez l'adulte", "550 mg deux fois par jour au cours des repas, sans dépasser 1100 mg par jour", "Demi-vie longue : deux prises par jour suffisent, ce qui en fait un anti-inflammatoire commode sur les douleurs de la journée entière."),
+    ("Apranax", "Dysménorrhée", "550 mg à la première douleur, puis 275 mg toutes les 6 à 8 heures selon les besoins", "Le commencer dès les premiers signes, et non une fois la douleur installée, change nettement le résultat."),
+    ("Apranax", "Grossesse", "Contre-indiqué à partir de 24 semaines d'aménorrhée", "Comme tout anti-inflammatoire non stéroïdien, y compris en prise unique et y compris en automédication."),
+    ("Feldène", "Poussée douloureuse en rhumatologie chez l'adulte", "20 mg par jour en une seule prise, au cours d'un repas", "Jamais en première intention et jamais en traitement d'attaque : le piroxicam expose plus que les autres au risque digestif et aux toxidermies graves."),
+    ("Feldène", "Réévaluation", "Traitement à réévaluer au plus tard après 14 jours", "Restriction d'utilisation européenne : l'instauration relève d'un prescripteur expérimenté et la poursuite doit être justifiée."),
+    ("Nifluril", "Poussée douloureuse en rhumatologie et en oto-rhino-laryngologie chez l'adulte", "250 mg deux à trois fois par jour au cours des repas", "La forme suppositoire à 700 mg n'est pas mieux tolérée sur le plan digestif : le risque des anti-inflammatoires est systémique, pas local."),
+    ("Nifluril", "Grossesse", "Contre-indiqué à partir de 24 semaines d'aménorrhée", "Vaut aussi pour le gel et les suppositoires."),
+    ("Indocid", "Poussée douloureuse en rhumatologie chez l'adulte", "25 mg deux à trois fois par jour au cours des repas, sans dépasser 150 mg par jour", "Céphalées et vertiges sont fréquents et souvent dose-dépendants : prévenir avant la première prise, notamment avant de conduire."),
+    ("Indocid", "Crise de goutte", "Schéma d'attaque puis décroissance rapide sur quelques jours, fixé par le prescripteur", "L'anti-inflammatoire traite la crise, il ne remplace pas le traitement hypo-uricémiant de fond, qui ne doit être ni arrêté ni instauré pendant la crise sans avis."),
+    ("Surgam", "Poussée douloureuse en rhumatologie chez l'adulte", "200 mg deux fois par jour ou 100 mg trois fois par jour, au cours des repas", "Comme tous les anti-inflammatoires non stéroïdiens : la dose minimale efficace, la durée la plus courte, et jamais deux anti-inflammatoires ensemble."),
+    // --- Antihistaminiques H1 de deuxième génération ---
+    ("Xyzall", "Rhinite allergique et urticaire chronique de l'adulte et de l'enfant d'au moins 6 ans", "5 mg par jour en une prise, de préférence le soir", "Peu sédatif aux doses usuelles, mais la somnolence reste possible : le vérifier avant de conduire ou d'utiliser une machine."),
+    ("Xyzall", "Insuffisance rénale", "Espacement des prises selon la clairance de la créatinine", "Élimination essentiellement rénale : chez la personne âgée, penser à la fonction rénale avant de renouveler une automédication prolongée."),
+    ("Primalan", "Rhinite allergique et urticaire de l'adulte", "5 mg deux fois par jour, ou 10 mg le soir en une prise", "Plus sédatif et plus atropinique que les antihistaminiques récents : à éviter chez la personne âgée, en cas de glaucome par fermeture de l'angle ou de troubles urinaires prostatiques."),
+    ("Primalan", "Enfant à partir de 2 ans", "Sirop à la dose rapportée au poids, selon le résumé des caractéristiques du produit", "La pipette est graduée en kilogrammes : montrer la graduation à utiliser plutôt que de donner une dose en millilitres."),
+    ("Kestin", "Rhinite allergique de l'adulte et de l'adolescent d'au moins 12 ans", "10 mg par jour en une prise", "Peut se prendre indifféremment au cours ou en dehors des repas."),
+    ("Kestin", "Urticaire", "10 mg par jour, augmentable à 20 mg par jour selon la réponse", "Le doublement de dose sur l'urticaire chronique est une pratique établie, mais il se décide avec le prescripteur."),
+    ("Inorial", "Rhinite allergique et urticaire de l'adulte et de l'enfant d'au moins 12 ans", "20 mg par jour en une prise, à jeun : une heure avant ou deux heures après un repas", "Le point de conseil essentiel : un repas ou un jus de fruit diminue nettement l'absorption. Une prise le matin à jeun ou au coucher est la plus simple à tenir."),
+    ("Inorial", "Conduite automobile", "Aux doses recommandées, pas d'altération de la vigilance démontrée", "Ne pas l'associer à l'alcool ni à un autre sédatif pour autant."),
+    // --- Corticoïdes nasaux : un traitement de fond, pas un décongestionnant ---
+    ("Pivalone", "Rhinite inflammatoire de courte durée chez l'adulte", "1 pulvérisation dans chaque narine deux à trois fois par jour", "Traitement court, de quelques jours : ce n'est pas un corticoïde nasal de fond comme les autres de cette classe."),
+    ("Nasonex", "Rhinite allergique saisonnière ou perannuelle de l'adulte et de l'adolescent", "2 pulvérisations dans chaque narine une fois par jour, puis 1 pulvérisation par narine en entretien dès que les symptômes sont contrôlés", "L'effet n'est pas immédiat : il s'installe sur plusieurs jours et le traitement doit être pris tous les jours, y compris les jours où le nez est libre."),
+    ("Nasonex", "Enfant de 6 à 11 ans", "1 pulvérisation dans chaque narine une fois par jour", "Surveiller la croissance en cas de traitement prolongé chez l'enfant."),
+    ("Nasonex", "Technique de pulvérisation", "Se moucher avant, puis pulvériser en dirigeant l'embout vers l'extérieur de la narine, sans renifler fort", "Viser vers l'extérieur et non vers la cloison évite la plupart des saignements de nez, qui sont la première cause d'arrêt du traitement."),
+    ("Avamys", "Rhinite allergique de l'adulte et de l'adolescent", "2 pulvérisations dans chaque narine une fois par jour, puis 1 pulvérisation par narine en entretien", "Le flacon s'amorce avant la première utilisation et se réamorce après un arrêt prolongé, sinon la première dose est de l'air."),
+    ("Avamys", "Enfant de 6 à 11 ans", "1 pulvérisation dans chaque narine une fois par jour", "Le dispositif se tient droit, fenêtre vers soi ; l'appui se fait sur le côté, ce qui déroute souvent les premiers jours."),
+    ("Nasacort", "Rhinite allergique de l'adulte et de l'enfant d'au moins 6 ans", "2 pulvérisations dans chaque narine une fois par jour, réduites à 1 pulvérisation par narine dès l'amélioration", "Comme pour tous les corticoïdes nasaux, prévenir que le bénéfice se juge après plusieurs jours de prise régulière."),
+    // --- Antifongiques topiques ---
+    ("Pevaryl", "Mycose cutanée des plis, du tronc ou des pieds", "1 à 2 applications par jour sur la lésion et son pourtour, pendant 2 à 4 semaines selon la localisation", "Poursuivre une à deux semaines après la disparition des lésions : l'arrêt à la guérison apparente est la première cause de récidive."),
+    ("Pevaryl", "Intertrigo des plis et macération", "1 application par jour, la poudre étant préférée dans les plis et les chaussures", "Bien sécher les plis après la toilette, en tamponnant ; traiter aussi chaussures et chaussettes pour ne pas se recontaminer."),
+    ("Mycoster", "Mycose cutanée", "1 à 2 applications par jour, pendant 2 à 4 semaines", "Masser jusqu'à pénétration complète et se laver les mains après, sauf si ce sont les mains qui sont traitées."),
+    ("Mycoster", "Onychomycose sans atteinte matricielle", "Solution filmogène en 1 application par jour sur l'ongle atteint", "Traitement long, de plusieurs mois, et l'ongle ne redevient normal qu'en repoussant : le dire d'emblée évite l'abandon au bout de trois semaines."),
+    ("Amycor", "Mycose cutanée", "1 application par jour, de préférence le soir, pendant 2 à 4 semaines", "Une seule application quotidienne suffit, ce qui aide à l'observance sur un traitement long."),
+    ("Fonx", "Mycose cutanée", "1 à 2 applications par jour sur la lésion et son pourtour", "Déborder de deux centimètres autour de la lésion : le champignon est actif en périphérie, là où la peau paraît saine."),
+    // --- Collyres antiglaucomateux : une goutte, le soir ---
+    ("Xalatan", "Hypertonie intraoculaire et glaucome à angle ouvert", "1 goutte dans l'œil ou les yeux à traiter, une fois par jour, le soir", "Une seule goutte : l'œil n'en retient pas davantage et doubler ne fait que diminuer l'efficacité de cette classe."),
+    ("Xalatan", "Association à d'autres collyres", "Espacer les instillations d'au moins 5 minutes", "Instiller le collyre le plus fluide en premier ; un gel ou une pommade se met toujours en dernier."),
+    ("Xalatan", "Conservation", "Flacon conservé entre 2 et 8 °C avant ouverture, puis 4 semaines à température ambiante après ouverture", "C'est le collyre dont la conservation au réfrigérateur avant ouverture surprend le plus les patients : le préciser à la délivrance."),
+    ("Xalatan", "Effets à annoncer", "Sans modification de la posologie", "Brunissement progressif et définitif de l'iris sur les yeux clairs, allongement et épaississement des cils, parfois creusement de la paupière : à annoncer, sinon le traitement est arrêté seul."),
+    ("Monoprost", "Hypertonie intraoculaire et glaucome à angle ouvert", "1 goutte dans l'œil ou les yeux à traiter, une fois par jour, le soir", "Unidoses sans conservateur : à privilégier en cas de sécheresse oculaire ou d'intolérance au chlorure de benzalkonium des flacons multidoses."),
+    ("Monoprost", "Emploi des unidoses", "Une unidose pour les deux yeux, jetée immédiatement après usage", "Ne jamais conserver une unidose entamée pour le lendemain, même si elle paraît encore pleine."),
+    ("Lumigan", "Hypertonie intraoculaire et glaucome à angle ouvert", "1 goutte dans l'œil ou les yeux à traiter, une fois par jour, le soir", "Ne pas dépasser une instillation par jour : plus fréquent, l'effet hypotonisant diminue."),
+    ("Lumigan", "Effets à annoncer", "Sans modification de la posologie", "Rougeur oculaire fréquente, allongement des cils et brunissement de l'iris possibles ; le brunissement est définitif."),
+    ("Travatan", "Hypertonie intraoculaire et glaucome à angle ouvert", "1 goutte dans l'œil ou les yeux à traiter, une fois par jour, le soir", "Fermer l'œil et appuyer sur le coin interne pendant une à deux minutes après l'instillation : cela améliore l'effet local et limite le passage général."),
+    ("Travatan", "Port de lentilles souples", "Retirer les lentilles avant l'instillation et attendre 15 minutes avant de les remettre", "Le conservateur se fixe sur les lentilles souples."),
+    // --- Myorelaxants ---
+    ("Liorésal", "Spasticité d'origine neurologique chez l'adulte", "Débuter à 5 mg trois fois par jour, puis augmenter progressivement tous les 3 jours jusqu'à la dose utile, habituellement de 30 à 75 mg par jour", "L'augmentation lente conditionne la tolérance : somnolence et faiblesse musculaire cèdent souvent si les paliers sont respectés."),
+    ("Liorésal", "Arrêt du traitement", "Diminution progressive sur une à deux semaines, jamais d'arrêt brutal", "Un arrêt brutal expose à une aggravation de la spasticité, à une confusion et à des convulsions : point de vigilance majeur au comptoir."),
+    ("Coltramyl", "Contracture musculaire douloureuse en traitement d'appoint chez l'adulte et l'adolescent d'au moins 16 ans", "4 mg deux fois par jour, sans dépasser 8 mg par jour et 7 jours de traitement par voie orale", "La durée est un maximum réglementaire et non une indication : au-delà, le rapport bénéfice-risque n'est plus favorable."),
+    ("Coltramyl", "Grossesse et procréation", "Contre-indiqué pendant la grossesse et l'allaitement", "Restriction liée à un risque génotoxique : contraception efficace chez la femme en âge de procréer, à vérifier à la délivrance."),
+    ("Lumirelax", "Contracture musculaire douloureuse en traitement d'appoint chez l'adulte", "Deux comprimés à 500 mg trois fois par jour, soit 3 g par jour, sur une durée courte", "Somnolence fréquente en début de traitement : prévenir avant de conduire, et éviter l'alcool."),
+    ("Dantrium", "Spasticité chronique d'origine neurologique chez l'adulte", "25 mg par jour en une prise pendant 7 jours, puis augmentation progressive par paliers hebdomadaires, sans dépasser 400 mg par jour", "La montée de dose est lente et se fait sous surveillance : l'effet utile n'apparaît qu'après plusieurs semaines."),
+    ("Dantrium", "Surveillance hépatique", "Bilan hépatique avant l'instauration puis régulièrement pendant le traitement", "Hépatotoxicité dose-dépendante et parfois grave : tout ictère, urines foncées ou fatigue inhabituelle impose un arrêt et un avis le jour même."),
+    // --- Antipaludiques : la prophylaxie se prend avant, pendant et après ---
+    ("Malarone", "Chimioprophylaxie du paludisme chez l'adulte", "1 comprimé par jour, à heure fixe et au cours d'un repas ou avec une boisson lactée, à débuter 24 à 48 heures avant le départ, à poursuivre pendant tout le séjour et 7 jours après le retour", "Les 7 jours après le retour sont la particularité de cette association et la source d'erreur la plus fréquente : les autres schémas demandent 4 semaines."),
+    ("Malarone", "Traitement de l'accès palustre simple chez l'adulte", "4 comprimés en une prise unique quotidienne pendant 3 jours consécutifs, au cours d'un repas", "En cas de vomissement dans l'heure suivant la prise, la dose est à reprendre."),
+    ("Malarone", "Enfant", "Dose rapportée au poids, avec une forme pédiatrique dédiée", "Ne jamais fractionner un comprimé adulte pour obtenir une dose enfant : utiliser la forme pédiatrique."),
+    ("Lariam", "Chimioprophylaxie du paludisme chez l'adulte", "1 comprimé à 250 mg une fois par semaine, toujours le même jour, à débuter au moins 10 jours avant le départ, à poursuivre pendant le séjour et 3 semaines après le retour", "Les 10 jours d'avance servent à tester la tolérance : en cas de trouble neuropsychique pendant cette période, il reste le temps de changer de molécule avant de partir."),
+    ("Lariam", "Antécédents à rechercher avant la délivrance", "Contre-indiqué en cas d'antécédent de dépression, d'anxiété généralisée, de psychose, de convulsions ou de tentative de suicide", "Question à poser systématiquement au comptoir : anxiété, cauchemars, humeur triste ou vertiges imposent d'arrêter et de consulter."),
+    ("Nivaquine", "Chimioprophylaxie du paludisme en zone sans chloroquinorésistance", "100 mg par jour chez l'adulte, à débuter la veille du départ, à poursuivre pendant le séjour et 4 semaines après le retour", "Les zones où la chloroquine seule suffit encore sont devenues rares : vérifier le pays sur les recommandations de l'année en cours."),
+    ("Nivaquine", "Prévention des intoxications accidentelles", "Sans modification de la posologie", "Toxicité majeure chez l'enfant dès un ou deux comprimés : insister sur le rangement hors de portée, y compris pendant le voyage."),
+    ("Riamet", "Traitement de l'accès palustre simple chez l'adulte d'au moins 35 kg", "4 comprimés à l'heure zéro, puis à 8, 24, 36, 48 et 60 heures, soit 24 comprimés en 3 jours", "Chaque prise se fait au cours d'un repas ou avec une boisson lactée : sans corps gras l'absorption est très insuffisante et le traitement échoue."),
+    ("Riamet", "Vomissement après une prise", "Reprendre la dose si le vomissement survient dans l'heure", "Un accès palustre qui vomit ses prises relève de l'hôpital : ne pas s'obstiner à domicile."),
+    // --- Dermocorticoïde ---
+    ("Nerisone", "Dermatose inflammatoire corticosensible de l'adulte", "1 application par jour sur les lésions jusqu'à amélioration nette, puis espacement progressif avant l'arrêt", "Une seule application quotidienne suffit : deux ne font pas mieux et augmentent l'atrophie cutanée."),
+    ("Nerisone", "Quantité à appliquer", "Mesurer en unités phalangettes : la quantité déposée de la pulpe au premier pli de l'index couvre deux paumes de main", "L'erreur la plus fréquente est le sous-dosage par crainte du corticoïde, qui fait traîner la poussée et multiplie les cures."),
+    ("Nerisone", "Zones à risque", "À éviter sur le visage, les paupières et les plis, et à ne pas appliquer sous pansement occlusif sans avis", "Activité forte : sur ces zones, la pénétration est bien plus élevée et l'atrophie survient vite."),
     // GENERATED-POSOLOGIES-END
 ];
 
@@ -21988,6 +22071,25 @@ impl Db {
     }
 
     /// The drug reference base, alphabetical.
+    /// Drug cards carrying `tag`, matched case-insensitively inside the
+    /// comma-separated tag list.
+    ///
+    /// This is how the ordonnance finds its adjuvants: tag a card
+    /// « probiotique » and it joins the list, with whatever posology
+    /// lines the team wrote on it. No second, parallel catalogue to
+    /// keep in step with the base.
+    pub fn drugs_with_tag(&self, tag: &str) -> Result<Vec<Drug>, String> {
+        let needle = tag.trim().to_lowercase();
+        if needle.is_empty() {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .drugs()?
+            .into_iter()
+            .filter(|d| d.tags.split(',').any(|t| t.trim().to_lowercase() == needle))
+            .collect())
+    }
+
     pub fn drugs(&self) -> Result<Vec<Drug>, String> {
         let mut stmt = self
             .conn
@@ -24170,6 +24272,181 @@ mod tests {
         assert_eq!(weekday_fr("2000-01-01"), Some("samedi"));
         assert_eq!(weekday_fr("1958-07-03"), Some("jeudi"));
         assert_eq!(weekday_fr("pas-une-date"), None);
+    }
+
+    /// The ordonnance's adjuvant list is whatever the base carries
+    /// under the tag — adding a product is adding a card, not editing
+    /// the app.
+    /// A posology line names its card by brand, and the seeder groups
+    /// consecutive lines under one drug: a name that matches nothing is
+    /// silently dropped, and a brand split into two runs loses the
+    /// second. Both are invisible at the counter, so they are checked
+    /// here.
+    /// A spot-check that the new lines actually reach a seeded base and
+    /// come back in the order they were written.
+    #[test]
+    fn the_new_posology_lines_seed_onto_their_cards() {
+        // A directory of its own: the tests in this binary share one
+        // process id, so two using the same name race each other.
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-newposo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("newposo.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+        db.seed_posologies().unwrap();
+
+        for brand in ["Xalatan", "Maxalt", "Malarone", "Nasonex", "Coltramyl"] {
+            let card = db
+                .drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.name == brand)
+                .unwrap_or_else(|| panic!("{brand} absent du référentiel"));
+            let rows = db.posologies(card.id).unwrap();
+            assert!(!rows.is_empty(), "{brand} : aucune posologie semée");
+            let expected: Vec<&str> = STARTER_POSOLOGIES
+                .iter()
+                .filter(|(b, ..)| *b == brand)
+                .map(|(_, indication, ..)| *indication)
+                .collect();
+            assert_eq!(
+                rows.iter()
+                    .map(|r| r.indication.as_str())
+                    .collect::<Vec<_>>(),
+                expected,
+                "{brand} : ordre des lignes"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn every_posology_names_a_real_card_and_stays_in_one_run() {
+        let names: std::collections::HashSet<&str> =
+            STARTER_DRUGS.iter().map(|(n, ..)| *n).collect();
+        let mut seen_runs: std::collections::HashMap<&str, usize> = Default::default();
+        let mut previous = "";
+        for (brand, indication, posologie, remarque) in STARTER_POSOLOGIES {
+            assert!(
+                names.contains(brand),
+                "posologie « {indication} » rattachée à « {brand} », qui n'est pas une fiche"
+            );
+            assert!(!indication.trim().is_empty(), "{brand} : indication vide");
+            assert!(!posologie.trim().is_empty(), "{brand} : posologie vide");
+            assert!(!remarque.trim().is_empty(), "{brand} : remarque vide");
+            if *brand != previous {
+                *seen_runs.entry(brand).or_default() += 1;
+                previous = brand;
+            }
+        }
+        let split: Vec<&&str> = seen_runs
+            .iter()
+            .filter(|(_, runs)| **runs > 1)
+            .map(|(brand, _)| brand)
+            .collect();
+        assert!(
+            split.is_empty(),
+            "lignes non contiguës, la seconde série serait perdue : {split:?}"
+        );
+    }
+
+    /// The monograph set is the app's main clinical asset: every card
+    /// must carry a full monograph and its sources. A card added
+    /// without them would render as a page of blank headings at the
+    /// counter, which is worse than no card at all.
+    #[test]
+    fn every_starter_card_carries_a_sourced_monograph() {
+        let names: std::collections::HashSet<&str> =
+            STARTER_DRUGS.iter().map(|(n, ..)| *n).collect();
+        let detailed: std::collections::HashSet<&str> =
+            STARTER_DETAILS.iter().map(|d| d.name).collect();
+        assert_eq!(names.len(), STARTER_DRUGS.len(), "nom de fiche en double");
+        let missing: Vec<&&str> = names.difference(&detailed).collect();
+        assert!(missing.is_empty(), "fiches sans monographie : {missing:?}");
+        let orphan: Vec<&&str> = detailed.difference(&names).collect();
+        assert!(orphan.is_empty(), "monographies sans fiche : {orphan:?}");
+
+        // The clinical body of a monograph, and the sources behind it.
+        // `status`, `smr` and `forms` are deliberately not in this list:
+        // they are the officine's to fill, and empty ones simply do not
+        // render.
+        let required: [(&str, fn(&StarterDetail) -> &str); 13] = [
+            ("indications", |d| d.indications),
+            ("mechanism", |d| d.mechanism),
+            ("dosage", |d| d.dosage),
+            ("contraindications", |d| d.contraindications),
+            ("ddi", |d| d.ddi),
+            ("adverse", |d| d.adverse),
+            ("monitoring", |d| d.monitoring),
+            ("iup", |d| d.iup),
+            ("half_life", |d| d.half_life),
+            ("elimination", |d| d.elimination),
+            ("renal", |d| d.renal),
+            ("pregnancy", |d| d.pregnancy),
+            ("sources", |d| d.sources),
+        ];
+        for detail in STARTER_DETAILS {
+            for (label, get) in required {
+                assert!(
+                    !get(detail).trim().is_empty(),
+                    "{} : le champ « {label} » est vide",
+                    detail.name
+                );
+            }
+            assert!(
+                !detail.tags.trim().is_empty(),
+                "{} : aucune étiquette",
+                detail.name
+            );
+        }
+    }
+
+    #[test]
+    fn drugs_are_found_by_an_exact_tag_among_several() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-tag-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tag.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+
+        let tagged = |name: &str, tags: &str| {
+            let id = db.add_drug(name).unwrap();
+            let mut d = db
+                .drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.id == id)
+                .unwrap();
+            let seen = d.clone();
+            d.tags = tags.to_owned();
+            assert!(db.update_drug(&d, &seen).unwrap());
+            id
+        };
+        let lactibiane = tagged("Lactibiane", "probiotique, flore intestinale");
+        // Leading space and different case must still match.
+        tagged("Lactéol", "antidiarrhéique,  Probiotique");
+        // A tag that merely *contains* the word is not the same tag.
+        tagged("Gynophilus", "probiotique vaginal");
+        tagged("Doliprane", "antalgique");
+
+        let found = db.drugs_with_tag("probiotique").unwrap();
+        let names: Vec<&str> = found.iter().map(|d| d.name.as_str()).collect();
+        assert!(names.contains(&"Lactibiane"), "{names:?}");
+        assert!(names.contains(&"Lactéol"), "{names:?}");
+        assert!(!names.contains(&"Gynophilus"), "{names:?}");
+        assert!(!names.contains(&"Doliprane"), "{names:?}");
+
+        // The card's own posology lines are what the box offers.
+        db.add_posologie(lactibiane, "Antibiothérapie", "1 gélule par jour", "")
+            .unwrap();
+        assert_eq!(db.posologies(lactibiane).unwrap().len(), 1);
+
+        // An empty tag matches nothing rather than everything.
+        assert!(db.drugs_with_tag("  ").unwrap().is_empty());
+        assert!(db.drugs_with_tag("probio").unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

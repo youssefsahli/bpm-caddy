@@ -99,6 +99,11 @@ if they drift. Change a protocol in one place and change it in the
 other. Nothing there is auto-selected and every posology is editable —
 the app proposes, the pharmacist decides, and the box says so.
 
+The ordonnance's adjuvants are **not** a list in the code: they are the
+drug cards tagged `[ordonnance] adjuvant_tag` (default `probiotique`),
+with that card's own posology lines as its schemas. Adding a product is
+adding a fiche. Resist any pull to hard-code a second catalogue.
+
 ## Releases
 
 Push a `v*` tag → `.github/workflows/release.yml` builds app + launcher

@@ -5,6 +5,42 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.50.0] - 2026-08-26
+
+### Added
+- **Posologies for ten classes that had none.** 74 lines across the
+  triptans, the AINS, the antihistaminiques H1, the corticoïdes nasaux,
+  the antifongiques topiques, the collyres antiglaucomateux, the
+  myorelaxants, the antipaludiques and the dermocorticoïdes — indication
+  by indication, each with the counter remark that goes with it (the
+  4-hour interval that is Naramig's alone, Inorial taken away from
+  food, Malarone's 7 days after the return where the others ask 4
+  weeks, the fatty meal Riamet needs to be absorbed at all).
+- **Two content invariants, as tests.** Every starter card must carry a
+  full monograph and its sources, and every posology line must name a
+  real card and keep its lines in one run — a brand split into two runs
+  silently loses the second at seeding, and neither failure is visible
+  at the counter.
+
+### Fixed
+- 52 posology lines shipped with an empty remark, so the card showed an
+  indication and a dose with nothing beside them. All 52 now carry the
+  point that matters at the counter — the weekly-not-daily rule on
+  méthotrexate, the 30 minutes upright after Fosamax, the eruption that
+  means stopping Zyloric, the accord de soins on Dépakote.
+
+### Changed
+- **The ordonnance's adjuvants come from the drug base, not a built-in
+  list.** Any card tagged « probiotique » is offered, with the posology
+  lines the team wrote on that card as its schemas. Adding Lactibiane,
+  Lactéol, an Aragan or an Aromasantis product is adding a fiche and
+  tagging it — no second catalogue inside the app to keep in step with
+  the base, and nothing to recompile.
+- `[ordonnance] adjuvant_tag` in `config.toml` picks the tag, for an
+  officine that files its conseil associé under another word.
+- The section is « Adjuvant (probiotique, conseil associé) », and says
+  where to add one when the base has nothing tagged.
+
 ## [0.49.0] - 2026-08-26
 
 ### Added
