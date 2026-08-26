@@ -534,7 +534,8 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
             .collect::<Vec<_>>()
             .join("   ");
         src.push_str(&format!(
-            "#text(size: 8pt)[Sources : #{}]\n",
+            "#text(size: 8pt)[Relu en : #{} — Sources : #{}]\n",
+            typst_str(t.reviewed),
             typst_str(&sources)
         ));
     }
@@ -609,6 +610,8 @@ fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
         ("Toxicité / marge thérapeutique", d.toxicity.as_str()),
         ("Surveillance", d.monitoring.as_str()),
         ("Conseils au patient", d.iup.as_str()),
+        ("En cas d'oubli", d.missed_dose.as_str()),
+        ("Ce qui doit faire consulter", d.red_flags.as_str()),
         ("Évaluation SMR / ASMR", d.smr.as_str()),
     ] {
         if body.trim().is_empty() {
@@ -695,6 +698,172 @@ fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
             typst_str(&list)
         ));
     }
+    src
+}
+
+/// Everything the file knows about one patient, gathered for the bilan
+/// partagé de médication. The caller assembles it; this module only
+/// lays it out.
+pub struct BilanData<'a> {
+    pub patient: &'a Patient,
+    /// French date of the day the bilan is printed.
+    pub today: &'a str,
+    /// (nom, DCI et classe, posologie) — the treatments the file holds.
+    pub treatments: Vec<(String, String, String)>,
+    /// (A ↔ B, the sentence of A's monograph that names B).
+    pub interactions: Vec<(String, String)>,
+    /// (date, analyte, valeur, lecture).
+    pub biology: Vec<(String, String, String, String)>,
+    /// (niveau, ce que ça change).
+    pub findings: Vec<(String, String)>,
+    /// What the calendrier vaccinal still owes.
+    pub vaccines: Vec<String>,
+    /// (date, acte, thème, état) — the year's accompaniment.
+    pub acts: Vec<(String, String, String, String)>,
+    /// Who signs it.
+    pub signature: &'a str,
+}
+
+/// The bilan partagé de médication on paper: what the file knows, laid
+/// out so the entretien can be held with it in hand, and with the
+/// blanks the pharmacist fills during it.
+pub fn open_bilan(data: &BilanData, pharmacy: &PharmacyConfig) -> Result<PathBuf, String> {
+    compile_and_open(
+        bilan_source(data, pharmacy),
+        &format!("bilan_{}", data.patient.id),
+    )
+}
+
+fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.6cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n\
+         #let sec(t) = [#v(3mm) #text(11pt, weight: \"bold\")[#t] #v(1mm) #line(length: 100%, stroke: 0.6pt) #v(1.5mm)]\n",
+    );
+    src.push_str(&format!(
+        "#grid(columns: (1fr, auto), [#text(weight: \"bold\")[#{}]], [#align(right)[#text(9pt)[Bilan partagé de médication — #{}]]])\n",
+        typst_str(&pharmacy.name),
+        typst_str(data.today)
+    ));
+    src.push_str("#v(2mm)#line(length: 100%, stroke: 0.8pt)#v(3mm)\n");
+    src.push_str(&format!(
+        "#text(14pt, weight: \"bold\")[#{}] #h(4mm) #text(10pt)[né(e) le #{}]\n",
+        typst_str(&data.patient.full_name()),
+        typst_str(&crate::db::format_french_date(&data.patient.birth_date))
+    ));
+    let mut header = Vec::new();
+    if !data.patient.physician.trim().is_empty() {
+        header.push(format!(
+            "Médecin traitant : {}",
+            data.patient.physician.trim()
+        ));
+    }
+    if !data.patient.phone.trim().is_empty() {
+        header.push(format!("Tél : {}", data.patient.phone.trim()));
+    }
+    if !header.is_empty() {
+        src.push_str(&format!(
+            "\\\n#text(9pt)[#{}]\n",
+            typst_str(&header.join("   ·   "))
+        ));
+    }
+
+    // --- Treatments -------------------------------------------------
+    src.push_str("#sec[Traitements connus à l'officine]\n");
+    if data.treatments.is_empty() {
+        src.push_str("#text(9.5pt, style: \"italic\")[Aucun traitement rattaché à la fiche.]\n");
+    } else {
+        let mut rows = String::new();
+        for (name, about, poso) in &data.treatments {
+            rows.push_str(&format!(
+                "{}, {}, {},\n",
+                typst_str(name),
+                typst_str(about),
+                typst_str(poso)
+            ));
+        }
+        src.push_str(&format!(
+            "#table(columns: (auto, 1fr, 1fr), inset: 5pt, stroke: 0.5pt,\n  [*Médicament*], [*DCI et classe*], [*Posologie*],\n{rows})\n"
+        ));
+    }
+
+    // --- What the file itself can see -------------------------------
+    if !data.interactions.is_empty() {
+        src.push_str("#sec[Interactions repérées entre ces traitements]\n");
+        for (pair, sentence) in &data.interactions {
+            src.push_str(&format!(
+                "#block(below: 2mm)[#text(weight: \"bold\", size: 9.5pt)[#{}] #linebreak() #text(9.5pt)[#{}]]\n",
+                typst_str(pair),
+                typst_str(sentence)
+            ));
+        }
+    }
+
+    // --- Biology ----------------------------------------------------
+    if !data.biology.is_empty() {
+        src.push_str("#sec[Biologie]\n");
+        let mut rows = String::new();
+        for (date, label, value, level) in &data.biology {
+            rows.push_str(&format!(
+                "{}, {}, {}, {},\n",
+                typst_str(date),
+                typst_str(label),
+                typst_str(value),
+                typst_str(level)
+            ));
+        }
+        src.push_str(&format!(
+            "#table(columns: (auto, 1fr, auto, auto), inset: 5pt, stroke: 0.5pt,\n  [*Prélevé le*], [*Analyte*], [*Valeur*], [*Lecture*],\n{rows})\n"
+        ));
+    }
+    if !data.findings.is_empty() {
+        src.push_str("#v(2mm)\n");
+        for (level, text) in &data.findings {
+            src.push_str(&format!(
+                "#block(below: 1.8mm)[#text(8.5pt, weight: \"bold\")[#{}] #text(9.5pt)[ — #{}]]\n",
+                typst_str(level),
+                typst_str(text)
+            ));
+        }
+    }
+
+    // --- Vaccines and acts ------------------------------------------
+    if !data.vaccines.is_empty() {
+        src.push_str("#sec[Vaccinations à jour ?]\n");
+        for line in &data.vaccines {
+            src.push_str(&format!(
+                "#block(below: 1.2mm)[#text(9.5pt)[— #{}]]\n",
+                typst_str(line)
+            ));
+        }
+    }
+    if !data.acts.is_empty() {
+        src.push_str("#sec[Accompagnement à l'officine]\n");
+        let mut rows = String::new();
+        for (date, kind, theme, state) in &data.acts {
+            rows.push_str(&format!(
+                "{}, {}, {}, {},\n",
+                typst_str(date),
+                typst_str(kind),
+                typst_str(theme),
+                typst_str(state)
+            ));
+        }
+        src.push_str(&format!(
+            "#table(columns: (auto, auto, 1fr, auto), inset: 5pt, stroke: 0.5pt,\n  [*Date*], [*Acte*], [*Thème*], [*État*],\n{rows})\n"
+        ));
+    }
+
+    // --- What is written during the entretien ------------------------
+    src.push_str("#sec[Analyse pharmaceutique et points d'attention]\n");
+    src.push_str("#box(width: 100%, height: 4.2cm, stroke: 0.7pt)\n");
+    src.push_str("#sec[Plan d'action convenu avec le patient]\n");
+    src.push_str("#box(width: 100%, height: 3.4cm, stroke: 0.7pt)\n");
+    src.push_str("#v(3mm)\n");
+    src.push_str(&format!(
+        "#grid(columns: (1fr, auto), [#text(9pt)[Pharmacien : #{}]], [#box(width: 6cm, height: 1.8cm, stroke: 0.7pt)])\n",
+        typst_str(data.signature)
+    ));
     src
 }
 
@@ -1751,6 +1920,8 @@ mod tests {
             tags: "aod, surveillance biologique".to_owned(),
             toxicity: String::new(),
             forms: "Comprimé pelliculé 2,5 mg et 5 mg".to_owned(),
+            missed_dose: "Dans les 6 heures, sinon sauter la prise.".to_owned(),
+            red_flags: "Selles noires, traumatisme crânien.".to_owned(),
         };
         let source = monograph_source(&d, &[]);
         // Hostile text is escaped, never interpreted as Typst markup.
@@ -1960,6 +2131,88 @@ mod tests {
                 &pdf,
             );
         }
+    }
+
+    /// The bilan gathers the whole file on one sheet, and every value
+    /// on it goes through the same escaping as anywhere else.
+    #[test]
+    fn the_bilan_gathers_the_file_and_escapes_it() {
+        let patient = sample_patient();
+        let data = BilanData {
+            patient: &patient,
+            today: "26/08/2026",
+            treatments: vec![
+                (
+                    "Eliquis".to_owned(),
+                    "apixaban — AOD".to_owned(),
+                    "5 mg x2/j".to_owned(),
+                ),
+                (
+                    "Zithromax #eval \"x\"".to_owned(),
+                    "azithromycine — macrolide".to_owned(),
+                    "500 mg/j".to_owned(),
+                ),
+            ],
+            interactions: vec![(
+                "Eliquis ↔ Zithromax".to_owned(),
+                "Les macrolides augmentent l'exposition à l'apixaban.".to_owned(),
+            )],
+            biology: vec![(
+                "20/08/2026".to_owned(),
+                "Kaliémie".to_owned(),
+                "5,4 mmol/L".to_owned(),
+                "élevé".to_owned(),
+            )],
+            findings: vec![("ALERTE".to_owned(), "Kaliémie élevée sous IEC.".to_owned())],
+            vaccines: vec!["dTP — rappel décennal attendu".to_owned()],
+            acts: vec![(
+                "20/08/2026".to_owned(),
+                "BPM".to_owned(),
+                "Observance".to_owned(),
+                "Réalisé".to_owned(),
+            )],
+            signature: "Claire Leroy, pharmacien titulaire",
+        };
+        let source = bilan_source(&data, &sample_pharmacy());
+        assert!(source.contains("Interactions repérées"));
+        assert!(source.contains("Plan d'action"));
+        // Hostile text goes in as a string literal, never as markup.
+        assert!(!source.contains("#eval \"x\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le bilan doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("bilan_exemple.pdf"), &pdf);
+        }
+    }
+
+    /// An empty file still prints a usable sheet: the bilan is also the
+    /// form one fills when there is nothing recorded yet.
+    #[test]
+    fn an_empty_file_still_prints_a_bilan() {
+        let patient = sample_patient();
+        let data = BilanData {
+            patient: &patient,
+            today: "26/08/2026",
+            treatments: Vec::new(),
+            interactions: Vec::new(),
+            biology: Vec::new(),
+            findings: Vec::new(),
+            vaccines: Vec::new(),
+            acts: Vec::new(),
+            signature: "",
+        };
+        let world = PdfWorld::new(bilan_source(&data, &sample_pharmacy()));
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("un bilan vide doit compiler");
+        assert!(typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir")
+            .starts_with(b"%PDF-"));
     }
 
     /// The fiche de fabrication is the record the bonnes pratiques ask

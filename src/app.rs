@@ -244,6 +244,12 @@ fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
             ui.label(dim(tr("drug_iup")));
             field_box(ui, "fld_iup", w, 150.0, &mut form.iup);
             ui.end_row();
+            ui.label(dim(tr("drug_missed")));
+            field_box(ui, "fld_missed", w, 84.0, &mut form.missed_dose);
+            ui.end_row();
+            ui.label(dim(tr("drug_flags")));
+            field_box(ui, "fld_flags", w, 84.0, &mut form.red_flags);
+            ui.end_row();
             ui.label(dim(tr("drug_antidote")));
             ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.antidote));
             ui.end_row();
@@ -590,6 +596,8 @@ fn drug_monograph(
                     d.monitoring.as_str(),
                 ),
                 ("iup", tr("drug_iup"), d.iup.as_str()),
+                ("missed_dose", tr("drug_missed"), d.missed_dose.as_str()),
+                ("red_flags", tr("drug_flags"), d.red_flags.as_str()),
                 ("smr", tr("drug_sec_smr"), d.smr.as_str()),
             ] {
                 if let Some(id) =
@@ -1145,6 +1153,9 @@ struct Session {
     rule_block: Option<(InterviewKind, String, String)>,
     /// The viewed patient's current treatments (from the drug base).
     patient_treats: Vec<Drug>,
+    /// What the file sees between those treatments: (A ↔ B, the
+    /// sentence of A's own monograph that names B).
+    patient_interactions: Vec<(String, String)>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Which half of the patient file is on screen: the acts, or the
@@ -1376,6 +1387,9 @@ impl Session {
         // preparations existed gets them here, without touching a
         // formula the team has since rewritten.
         let _ = db.seed_preparations();
+        // Same for the two counter answers a card was missing: they
+        // only ever fill an empty field.
+        let _ = db.seed_conduite();
         let drugs = db.drugs().unwrap_or_default();
         let protocols = db.protocols().unwrap_or_default();
         let mut session = Self {
@@ -1395,6 +1409,7 @@ impl Session {
             act_theme: String::new(),
             rule_block: None,
             patient_treats: Vec::new(),
+            patient_interactions: Vec::new(),
             patient_notes: Vec::new(),
             patient_tab: PatientTab::default(),
             vaccinations: Vec::new(),
@@ -1882,7 +1897,7 @@ impl Session {
 
     fn open_patient(&mut self, patient: Patient) {
         self.reload_interviews(patient.id);
-        self.patient_treats = self.db.drugs_for_patient(patient.id).unwrap_or_default();
+        self.reload_treatments(patient.id);
         self.patient_notes = self
             .db
             .notes_for(NoteSubject::Patient, patient.id)
@@ -1896,6 +1911,17 @@ impl Session {
         self.rule_block = None;
         self.load_carnet(patient.id);
         self.viewing = Some(patient);
+    }
+
+    /// (Re)read the patient's treatments, and with them the
+    /// interactions the file can see between them.
+    ///
+    /// The cross-check walks every card's interaction text against an
+    /// index of the whole base: it is done when the list changes, not
+    /// sixty times a second.
+    fn reload_treatments(&mut self, patient_id: i64) {
+        self.patient_treats = self.db.drugs_for_patient(patient_id).unwrap_or_default();
+        self.patient_interactions = interactions_between(&self.patient_treats);
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -2137,6 +2163,65 @@ fn link_segments(
         out.push(MonoSeg::Text(text[plain_from..].to_owned()));
     }
     out
+}
+
+/// The interactions the file can see by itself: for each treatment, the
+/// sentences of its own monograph that name another treatment on the
+/// same file.
+///
+/// Nothing is inferred — what is reported is what the card already
+/// says, quoted, with the pair it concerns. A patient on Eliquis and on
+/// a macrolide gets the sentence from the Eliquis card that names that
+/// macrolide, and nothing else.
+fn interactions_between(drugs: &[Drug]) -> Vec<(String, String)> {
+    let index = drug_link_index(drugs);
+    let mut seen: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for d in drugs {
+        if d.ddi.trim().is_empty() {
+            continue;
+        }
+        let mut offset = 0usize;
+        for seg in link_segments(&d.ddi, &index, d.id) {
+            match seg {
+                MonoSeg::Text(t) => offset += t.len(),
+                MonoSeg::Link(t, id) => {
+                    let here = offset;
+                    offset += t.len();
+                    // Only the other drugs of this file, and each pair
+                    // once — the same sentence often names a class and
+                    // one of its brands.
+                    let Some(other) = drugs.iter().find(|o| o.id == id) else {
+                        continue;
+                    };
+                    if !seen.insert((d.id, other.id)) {
+                        continue;
+                    }
+                    let sentence = sentence_around(&d.ddi, here, t.len());
+                    out.push((
+                        format!("{} ↔ {}", d.name.trim(), other.name.trim()),
+                        sentence,
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The sentence of `text` containing the span at `from`, so a quoted
+/// interaction reads as a sentence and not as a fragment.
+fn sentence_around(text: &str, from: usize, len: usize) -> String {
+    let start = text[..from]
+        .rfind(['.', ';', '\n'])
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let tail = from + len;
+    let end = text[tail..]
+        .find(['.', ';'])
+        .map(|i| tail + i + 1)
+        .unwrap_or(text.len());
+    text[start..end].trim().to_owned()
 }
 
 /// Link every prose field of one card against the rest of the base.
@@ -6054,6 +6139,7 @@ impl App {
         session: &Session,
         start_edit: &mut bool,
         delete_click: &mut bool,
+        bilan: &mut bool,
     ) {
         let del_label = if session.confirm_delete {
             tr("patient_delete_confirm")
@@ -6065,6 +6151,147 @@ impl App {
         }
         if session.edit_patient.is_none() && motif::button(ui, tr("patient_edit")).clicked() {
             *start_edit = true;
+        }
+        if motif::button(ui, tr("bilan_print"))
+            .on_hover_text(tr("bilan_print_tooltip"))
+            .clicked()
+        {
+            *bilan = true;
+        }
+    }
+
+    /// Gather what the file knows and print the bilan partagé de
+    /// médication: the treatments, the interactions the file can see
+    /// between them, the biology and what it changes, what the
+    /// calendrier vaccinal owes, the year's acts — and the blanks the
+    /// pharmacist fills during the entretien.
+    fn print_bilan(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let treats = session.patient_treats.clone();
+        let treatments: Vec<(String, String, String)> = treats
+            .iter()
+            .map(|d| {
+                let about = match (d.dci.trim().is_empty(), d.class.trim().is_empty()) {
+                    (false, false) => format!("{} — {}", d.dci.trim(), d.class.trim()),
+                    (false, true) => d.dci.trim().to_owned(),
+                    (true, false) => d.class.trim().to_owned(),
+                    (true, true) => String::new(),
+                };
+                let poso = if d.dosage.trim().is_empty() {
+                    d.forms.lines().next().unwrap_or("").trim().to_owned()
+                } else {
+                    d.dosage.trim().to_owned()
+                };
+                (d.name.trim().to_owned(), about, poso)
+            })
+            .collect();
+        let interactions = session.patient_interactions.clone();
+        // The biology, most recent first, and what it changes read
+        // against these same treatments.
+        let biology: Vec<(String, String, String, String)> = session
+            .bio_results
+            .iter()
+            .take(12)
+            .map(|r| {
+                let level = crate::biology::find(&r.code)
+                    .map(|a| crate::biology::level_word(crate::biology::level(a, r.value)))
+                    .unwrap_or("")
+                    .to_owned();
+                (
+                    if r.taken_on.is_empty() {
+                        "—".to_owned()
+                    } else {
+                        db::format_french_date(&r.taken_on)
+                    },
+                    r.label.clone(),
+                    format!("{} {}", crate::codex::format_quantity(r.value), r.unit),
+                    level,
+                )
+            })
+            .collect();
+        let readings: Vec<crate::biology::Reading> = session
+            .bio_results
+            .iter()
+            .filter(|r| !r.code.is_empty())
+            .map(|r| crate::biology::Reading {
+                code: r.code.as_str(),
+                value: r.value,
+                date: r.taken_on.as_str(),
+            })
+            .collect();
+        let words: Vec<String> = treats
+            .iter()
+            .flat_map(|d| {
+                [
+                    d.name.clone(),
+                    d.dci.clone(),
+                    d.class.clone(),
+                    d.tags.clone(),
+                ]
+            })
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        let findings: Vec<(String, String)> = crate::biology::read(&readings, &words)
+            .into_iter()
+            .map(|f| {
+                let level = match f.severity {
+                    crate::biology::Severity::Alert => tr("bio_alert"),
+                    crate::biology::Severity::Warn => tr("bio_warn"),
+                    crate::biology::Severity::Info => tr("bio_info"),
+                };
+                (level.to_owned(), f.text)
+            })
+            .collect();
+        // What the calendrier still owes, in the same words as the
+        // carnet's own panel.
+        let doses: Vec<crate::vaccines::Dose> = session
+            .vaccinations
+            .iter()
+            .map(|v| crate::vaccines::Dose {
+                code: v.code.as_str(),
+                date: v.given_on.as_str(),
+            })
+            .collect();
+        let age = db::age_on(&patient.birth_date, &session.today);
+        let birth_year = patient.birth_date.get(..4).and_then(|y| y.parse().ok());
+        let vaccines: Vec<String> =
+            crate::vaccines::due_lines(age, birth_year, &session.today, &doses)
+                .into_iter()
+                .filter(|l| l.level != crate::vaccines::DueLevel::Ok)
+                .map(|l| format!("{} — {}", l.label, l.detail))
+                .collect();
+        let acts: Vec<(String, String, String, String)> = session
+            .viewing_interviews
+            .iter()
+            .take(12)
+            .map(|i| {
+                (
+                    db::format_french_date(&i.created_at[..10.min(i.created_at.len())]),
+                    i.kind.label().to_owned(),
+                    i.theme.clone(),
+                    i.state.label().to_owned(),
+                )
+            })
+            .collect();
+        let signature = config.pharmacy.signature_for(operator);
+        let data = crate::pdf::BilanData {
+            patient,
+            today: &today,
+            treatments,
+            interactions,
+            biology,
+            findings,
+            vaccines,
+            acts,
+            signature: &signature,
+        };
+        if let Err(e) = crate::pdf::open_bilan(&data, &config.pharmacy) {
+            session.error = Some(e);
+        } else {
+            session.error = None;
         }
     }
 
@@ -6150,6 +6377,7 @@ impl App {
         let mut save_edit = false;
         let mut cancel_edit = false;
         let mut delete_click = false;
+        let mut print_bilan = false;
         let mut back = false;
         let cramped = motif::visible_rect(ui).width() < 620.0;
         ui.add_space(2.0);
@@ -6174,13 +6402,25 @@ impl App {
             // drop underneath rather than printing over it.
             if !cramped {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    Self::patient_actions(ui, session, &mut start_edit, &mut delete_click);
+                    Self::patient_actions(
+                        ui,
+                        session,
+                        &mut start_edit,
+                        &mut delete_click,
+                        &mut print_bilan,
+                    );
                 });
             }
         });
         if cramped {
             ui.horizontal(|ui| {
-                Self::patient_actions(ui, session, &mut start_edit, &mut delete_click);
+                Self::patient_actions(
+                    ui,
+                    session,
+                    &mut start_edit,
+                    &mut delete_click,
+                    &mut print_bilan,
+                );
             });
         }
         {
@@ -6220,6 +6460,9 @@ impl App {
                     .wrap(),
                 );
             }
+        }
+        if print_bilan {
+            Self::print_bilan(session, patient, config, operator);
         }
         if back {
             return;
@@ -6397,21 +6640,41 @@ impl App {
                 if let Err(e) = session.db.remove_patient_drug(patient.id, id) {
                     session.error = Some(e);
                 }
-                session.patient_treats =
-                    session.db.drugs_for_patient(patient.id).unwrap_or_default();
+                session.reload_treatments(patient.id);
             }
             if let Some(id) = add_treat {
                 if let Err(e) = session.db.add_patient_drug(patient.id, id) {
                     session.error = Some(e);
                 }
                 session.treat_query.clear();
-                session.patient_treats =
-                    session.db.drugs_for_patient(patient.id).unwrap_or_default();
+                session.reload_treatments(patient.id);
             }
             if let Some(d) = open_card {
                 session.open_drug_card(d);
                 session.view = MainView::Drugs;
             }
+        }
+        // What the file sees between those treatments. It says how many
+        // and shows them on hover: the whole list belongs to the bilan,
+        // not to the header of a file being read at the counter.
+        if !session.patient_interactions.is_empty() {
+            let details = session
+                .patient_interactions
+                .iter()
+                .map(|(pair, sentence)| format!("{pair}\n{sentence}"))
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(trf(
+                    "treat_interactions",
+                    session.patient_interactions.len(),
+                ))
+                .size(11.5)
+                .strong()
+                .color(motif::ALERT),
+            )
+            .on_hover_text(details);
         }
         ui.add_space(10.0);
 
@@ -10746,6 +11009,14 @@ impl App {
         ui.add_space(below);
         let (mut undo, mut reset) = (false, false);
         motif::page(ui, 1500.0, |ui| {
+            // When this table was last read against its sources: a
+            // reference nobody can date is a reference nobody trusts.
+            ui.label(
+                egui::RichText::new(trf("tables_reviewed", t.reviewed))
+                    .size(11.0)
+                    .color(motif::ACCENT),
+            );
+            ui.add_space(3.0);
             ui.label(
                 egui::RichText::new(tr("tables_sources"))
                     .size(11.0)
