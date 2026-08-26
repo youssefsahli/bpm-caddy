@@ -68,7 +68,7 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
-  agenda_month|protocols|protocol_open|template|options|tables|calc|
+  agenda_month|protocols|protocol_open|template|options|tables|tables_search|calc|
   carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|codex_open|keys|
   act_picker`
   — land on a specific view (screenshots, e2e)

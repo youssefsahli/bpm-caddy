@@ -1300,6 +1300,8 @@ struct Session {
     drug_patients: Vec<Patient>,
     /// Conversion tables browser (inside the drug view).
     show_tables: bool,
+    /// One search across every reference table at once.
+    table_query: String,
     /// The codex: the preparations, what is open, and the quantity the
     /// counter actually has to make.
     show_codex: bool,
@@ -1498,6 +1500,7 @@ impl Session {
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
             show_tables: false,
+            table_query: String::new(),
             show_codex: false,
             preparations: Vec::new(),
             codex_query: String::new(),
@@ -1953,6 +1956,9 @@ impl Session {
         self.bio_results = self.db.bio_results(patient_id).unwrap_or_default();
         self.bio_confirm = None;
         self.bio_edit = None;
+        // The trend panel follows the file it is on: the analyte
+        // clicked on the previous patient means nothing here.
+        self.bio_focus = None;
     }
 
     fn reload_interviews(&mut self, patient_id: i64) {
@@ -2998,6 +3004,14 @@ impl App {
                         }
                         Ok("tables") => {
                             session.show_tables = true;
+                            session.view = MainView::Drugs;
+                        }
+                        // The search across all the tables, with
+                        // something typed in it: the results list is a
+                        // code path of its own.
+                        Ok("tables_search") => {
+                            session.show_tables = true;
+                            session.table_query = "pamplemousse".to_owned();
                             session.view = MainView::Drugs;
                         }
                         Ok("carnet") => {
@@ -5683,6 +5697,17 @@ impl App {
                         egui::TextEdit::singleline(&mut session.bio_query)
                             .hint_text(tr("bio_pick_hint")),
                     );
+                    // Typing over a picked analyte unpicks it: a line
+                    // must never be stored with one analyte's name and
+                    // another's code.
+                    let picked_label =
+                        crate::biology::find(&session.bio_new_code).map(|a| a.label.to_owned());
+                    if let Some(label) = picked_label {
+                        if session.bio_query.trim() != label {
+                            session.bio_new_code.clear();
+                            session.bio_new_unit.clear();
+                        }
+                    }
                     ui.add_sized(
                         [70.0, 22.0],
                         egui::TextEdit::singleline(&mut session.bio_new_value)
@@ -11055,7 +11080,16 @@ impl App {
                     session.calc_open = !session.calc_open;
                 }
             });
-            ui.add_space(10.0);
+            ui.add_space(8.0);
+            // One search across all twenty-five tables: at the counter
+            // the question is « où est-ce que j'ai lu ça », and it is
+            // not answered by clicking through twenty-five tabs.
+            ui.add_sized(
+                [ui.available_width().min(420.0), 24.0],
+                egui::TextEdit::singleline(&mut session.table_query)
+                    .hint_text(tr("tables_search_hint")),
+            );
+            ui.add_space(8.0);
             // Selector: one button per table, the active one sunken.
             // There are more tables than fit on one line — let it wrap.
             ui.horizontal_wrapped(|ui| {
@@ -11071,6 +11105,13 @@ impl App {
             });
             ui.add_space(12.0);
         });
+        // While something is being looked for, the rows that answer it
+        // take the place of the open table — whichever table they are
+        // in. Clicking one opens its table where it stands.
+        if !session.table_query.trim().is_empty() {
+            Self::tables_search_results(ui, session);
+            return;
+        }
         // The calculators sit above the table, not a page below it: the
         // button that opens them is up here, and a tool you asked for
         // should not have to be scrolled to.
@@ -11712,7 +11753,13 @@ impl App {
                     session.show_codex = false;
                 }
             } else if session.show_tables {
-                session.show_tables = false;
+                // A search in progress is what Escape clears first:
+                // the tables themselves are one more Escape away.
+                if session.table_query.trim().is_empty() {
+                    session.show_tables = false;
+                } else {
+                    session.table_query.clear();
+                }
             } else {
                 session.view = MainView::Search;
                 return;
@@ -13011,6 +13058,112 @@ impl App {
         });
         ui.allocate_space(rect.size());
         open
+    }
+
+    /// The rows of every table that answer what is being typed, with
+    /// the table they come from. The team's own corrections are what is
+    /// searched and shown: paper and screen never disagree.
+    fn tables_search_results(ui: &mut egui::Ui, session: &mut Session) {
+        let query = session.table_query.trim().to_owned();
+        let edits = session.db.all_table_cells().unwrap_or_default();
+        let cell_of = |short: &str, ri: usize, ci: usize, shipped: &'static str| -> String {
+            edits
+                .get(&(short.to_owned(), ri, ci))
+                .cloned()
+                .unwrap_or_else(|| shipped.to_owned())
+        };
+        let needle = fuzzy::sort_key(&query);
+        let mut hits: Vec<(usize, usize, Vec<String>)> = Vec::new();
+        for (ti, t) in crate::tables::TABLES.iter().enumerate() {
+            for (ri, row) in t.rows.iter().enumerate() {
+                let cells: Vec<String> = row
+                    .iter()
+                    .enumerate()
+                    .map(|(ci, cell)| cell_of(t.short, ri, ci, cell))
+                    .collect();
+                // Plain containment, accent- and case-insensitive: a
+                // fuzzy subsequence over 237 rows of prose matches
+                // everything and answers nothing.
+                if cells.iter().any(|c| fuzzy::sort_key(c).contains(&needle)) {
+                    hits.push((ti, ri, cells));
+                }
+            }
+        }
+        let mut open: Option<usize> = None;
+        motif::page(ui, 1500.0, |ui| {
+            ui.label(
+                egui::RichText::new(trn(
+                    "tables_search_count",
+                    &[&hits.len(), &crate::tables::TABLES.len()],
+                ))
+                .size(11.5)
+                .color(motif::TEXT_DIM),
+            );
+            ui.add_space(6.0);
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 40.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("tables_search")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for (ti, _ri, cells) in &hits {
+                            let table = &crate::tables::TABLES[*ti];
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, table.short)
+                                    .on_hover_text(table.title)
+                                    .clicked()
+                                {
+                                    open = Some(*ti);
+                                }
+                                ui.label(
+                                    egui::RichText::new(cells.first().cloned().unwrap_or_default())
+                                        .size(12.5)
+                                        .strong(),
+                                );
+                            });
+                            // The rest of the row, in reading order:
+                            // what makes it the answer is rarely in the
+                            // first column.
+                            let rest = cells
+                                .iter()
+                                .skip(1)
+                                .filter(|c| c.trim() != "—" && !c.trim().is_empty())
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join("   ·   ");
+                            if !rest.is_empty() {
+                                ui.scope(|ui| {
+                                    ui.set_max_width(ui.available_width());
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(rest)
+                                                .size(11.5)
+                                                .color(motif::TEXT_DIM),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                            }
+                            ui.add_space(6.0);
+                        }
+                    });
+            });
+            ui.allocate_space(rect.size());
+        });
+        if let Some(ti) = open {
+            session.table_selected = ti;
+            session.table_query.clear();
+            session.table_edit = None;
+            session.table_undo = None;
+            session.table_cells = session
+                .db
+                .table_cells(crate::tables::TABLES[ti].short)
+                .unwrap_or_default();
+        }
     }
 
     /// The pipeline funnel: how many acts sit at each state.
