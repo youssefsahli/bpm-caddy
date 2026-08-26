@@ -16,6 +16,10 @@ pub struct ConvTable {
     /// Short name for the selector buttons.
     pub short: &'static str,
     pub title: &'static str,
+    /// When this table was last read against its sources, and against
+    /// which edition. A reference table without a date is a reference
+    /// table nobody dares use: this one says how old it is.
+    pub reviewed: &'static str,
     /// Numbered under the table, on screen and in the PDF.
     pub sources: &'static [&'static str],
     pub columns: &'static [&'static str],
@@ -26,6 +30,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "IPP",
         title: "IPP — équivalences, formes et prise",
+        reviewed: "Août 2026 — RCP à jour et fiche HAS sur le bon usage des IPP",
         sources: &[
             "RCP des spécialités, base de données publique des médicaments (ANSM)",
             "HAS — bon usage des inhibiteurs de la pompe à protons chez l'adulte",
@@ -46,6 +51,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "HBPM",
         title: "HBPM — posologies, rein, surveillance",
+        reviewed: "Août 2026 — RCP à jour ; recommandations MTEV en vigueur",
         sources: &[
             "RCP des spécialités (ANSM)",
             "SFMV / SFAR — traitement anticoagulant de la MTEV",
@@ -65,6 +71,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Statines",
         title: "Statines — intensité, efficacité, interactions",
+        reviewed: "Août 2026 — ESC/EAS 2019, RCP à jour",
         sources: &[
             "ESC/EAS 2019 — prise en charge des dyslipidémies",
             "HAS — bon usage des statines",
@@ -89,6 +96,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Corticoïdes",
         title: "Corticoïdes — équivalences, durée, formes",
+        reviewed: "Août 2026 — RCP à jour",
         sources: &[
             "Équivalences anti-inflammatoires classiques (pharmacologie clinique)",
             "RCP des spécialités (ANSM)",
@@ -110,6 +118,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Opioïdes",
         title: "Opioïdes — équianalgésie et repères pratiques",
+        reviewed: "Août 2026 — recommandations douleur en vigueur, RCP à jour",
         sources: &[
             "SFETD — rotation des opioïdes et équianalgésie",
             "RCP des spécialités (ANSM)",
@@ -133,6 +142,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Benzodiazépines",
         title: "Benzodiazépines — équivalences, demi-vie, indication",
+        reviewed: "Août 2026 — fiches HAS sur l'arrêt des benzodiazépines, RCP à jour",
         sources: &[
             "Ashton C. H. — Benzodiazepines: how they work and how to withdraw, 2002",
             "HAS — arrêt des benzodiazépines et médicaments apparentés",
@@ -157,6 +167,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "AOD",
         title: "AOD — posologies, adaptation rénale et antidotes",
+        reviewed: "Août 2026 — RCP à jour ; antidotes disponibles en France",
         sources: &[
             "RCP Eliquis, Xarelto, Pradaxa, Lixiana (ANSM, base de données publique des médicaments)",
             "ESC 2020 — prise en charge de la fibrillation atriale",
@@ -170,11 +181,17 @@ pub const TABLES: &[ConvTable] = &[
             &["Édoxaban (Lixiana)", "60 mg x1/j", "30 mg x1/j si DFG 15 à 50, poids ≤ 60 kg ou inhibiteur de la P-gp", "60 mg x1/j après au moins 5 jours d'héparine", "10 à 14 h ; pas d'antidote spécifique, CCP en hémorragie grave", "DFG au moins une fois par an, plus souvent si DFG abaissé"],
             &["Limites rénales", "Dabigatran : contre-indiqué si DFG < 30 — autres AOD : DFG < 15", "AVK si DFG effondré, valve mécanique ou SAPL", "Relais héparine ou AVK selon l'avis du prescripteur", "L'élimination rénale du dabigatran est la plus forte des quatre", "Recalculer le DFG à chaque épisode aigu : fièvre, diarrhée, canicule, diurétique"],
             &["Repères de dispensation", "Pas d'AINS ni d'aspirine sans avis médical", "Ne jamais réduire la dose de sa propre initiative", "La durée de traitement est fixée par le prescripteur", "Un oubli n'est pas rattrapé si la prise suivante est proche", "Signaler saignements, selles noires, anémie ou chute inexpliquée"],
+            &["Prise et alimentation", "Rivaroxaban 15 et 20 mg : au cours d'un repas, sinon l'absorption chute", "Apixaban, dabigatran et édoxaban : indifférent", "Dabigatran : gélule avalée entière, jamais ouverte — la poudre multiplie l'absorption", "Apixaban et rivaroxaban peuvent être écrasés et donnés dans de l'eau ou de la compote", "Le dabigatran se conserve dans son flacon ou sa plaquette d'origine : l'humidité le dégrade"],
+            &["Oubli d'une prise", "Deux prises par jour : prendre dès que possible dans les 6 h, sinon sauter", "Une prise par jour : prendre dans les 12 h, sinon sauter", "Jamais deux doses le même moment pour rattraper", "Un oubli répété se signale : c'est le motif d'échec le plus fréquent", "Un pilulier hebdomadaire n'est pas contre-indiqué, mais le dabigatran n'y va pas"],
+            &["Interactions qui comptent", "Inhibiteurs puissants du CYP3A4 et de la P-gp (kétoconazole, itraconazole, ritonavir, clarithromycine) : exposition augmentée", "Inducteurs (rifampicine, carbamazépine, phénytoïne, millepertuis) : exposition diminuée, association déconseillée", "Vérapamil et amiodarone : dose de dabigatran à revoir", "AINS, aspirine, antiagrégants, ISRS : risque hémorragique additif", "Aucun contrôle biologique de routine : l'INR ne mesure rien ici"],
+            &["Geste invasif ou chirurgie", "Arrêt 24 h avant un geste à risque hémorragique faible", "48 h avant un geste à risque élevé", "Plus long si la fonction rénale est altérée, surtout pour le dabigatran", "Reprise sur avis, en général 24 à 72 h après, quand l'hémostase est acquise", "Extraction dentaire simple : le plus souvent sans arrêt, avec des mesures locales"],
+            &["Ce qui fait arrêter et appeler", "Saignement qui ne cède pas à la compression", "Selles noires ou sang dans les urines", "Traumatisme crânien, même sans perte de connaissance", "Grossesse : les AOD sont contre-indiqués", "Insuffisance hépatique sévère ou coagulopathie : contre-indication"],
         ],
     },
     ConvTable {
         short: "Cortico. inhalés",
         title: "Corticoïdes inhalés — paliers de dose, dispositifs et rinçage (adulte)",
+        reviewed: "Août 2026 — GINA en vigueur, RCP à jour",
         sources: &[
             "GINA — Global Strategy for Asthma Management and Prevention, tableau des paliers de dose adulte",
             "RCP des dispositifs inhalés (ANSM)",
@@ -188,11 +205,16 @@ pub const TABLES: &[ConvTable] = &[
             &["Ciclésonide (Alvesco)", "80 à 160 µg", "> 160 à 320 µg", "> 320 µg", "Aérosol-doseur, chambre d'inhalation possible", "Rincer quand même : prodrogue activée dans le poumon, effets locaux moindres"],
             &["Mométasone (Asmanex)", "200 µg", "400 µg", "> 400 µg", "Poudre (Twisthaler) : inspiration profonde et rapide, jamais de chambre", "Rincer et cracher après la prise"],
             &["Repères communs", "Viser la dose la plus faible qui contrôle l'asthme", "Toute augmentation est décidée par le prescripteur", "Doses fortes prolongées : effets systémiques possibles", "Chambre d'inhalation avec les aérosols-doseurs, jamais avec les poudres ; laver la chambre à l'eau savonneuse et laisser sécher à l'air", "Rincer la bouche prévient candidose et dysphonie ; vérifier la technique à chaque délivrance"],
+            &["Association fixe corticoïde + bêta-2 de longue durée", "Le corticoïde ne s'arrête pas quand l'asthme va mieux", "Le bêta-2 de longue durée n'est jamais utilisé seul dans l'asthme", "Certaines associations servent aussi de traitement de secours : c'est l'ordonnance qui le dit, pas la boîte", "Même dispositif que le corticoïde seul", "Vérifier qu'un second corticoïde inhalé n'a pas été ajouté à côté : le doublon est fréquent après un changement de marque"],
+            &["Ce qui trahit un asthme non contrôlé", "Symptômes diurnes plus de deux fois par semaine", "Réveils nocturnes", "Recours au traitement de secours plus de deux fois par semaine", "Limitation de l'activité physique", "Trois flacons de secours délivrés dans l'année, ou un flacon par mois : signaler au prescripteur"],
+            &["Enfant", "Les paliers de dose sont plus bas que chez l'adulte : ne pas transposer ce tableau", "Chambre d'inhalation systématique avec les aérosols-doseurs", "Masque jusqu'à 3 ou 4 ans, embout buccal ensuite", "Surveiller la croissance sous doses fortes prolongées", "Rincer la bouche et laver le visage après le masque"],
+            &["Effets locaux et ce qu'on en fait", "Candidose buccale : rinçage insuffisant ou technique perfectible", "Dysphonie : plus fréquente avec les poudres", "Toux à l'inhalation : souvent le débit d'inspiration ou l'excipient", "Aucun de ces effets ne justifie d'arrêter le traitement de fond", "Reprendre la technique, proposer une chambre, en parler au prescripteur"],
         ],
     },
     ConvTable {
         short: "Insulines",
         title: "Insulines — profils d'action, injection et conservation",
+        reviewed: "Août 2026 — RCP à jour",
         sources: &[
             "RCP des spécialités (ANSM, base de données publique des médicaments)",
             "SFD — référentiel insulinothérapie et prise en charge du diabète",
@@ -214,6 +236,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Fonction rénale",
         title: "Fonction rénale — stades et conséquences pratiques",
+        reviewed: "Août 2026 — classification KDIGO, adaptations issues des RCP",
         sources: &[
             "Cockcroft D. W., Gault M. H. — Nephron, 1976",
             "KDIGO — classification de la maladie rénale chronique",
@@ -234,6 +257,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Angine",
         title: "Angine — score de Mac Isaac, TROD et antibiothérapie",
+        reviewed: "Août 2026 — protocole de dispensation après TROD en vigueur",
         sources: &[
             "HAS / SPILF — angine aiguë de l'adulte et de l'enfant, test rapide d'orientation diagnostique",
             "Mac Isaac W. J. et al. — CMAJ, 1998",
@@ -254,6 +278,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Cystite",
         title: "Cystite simple — traitements, contre-indications et suivi",
+        reviewed: "Août 2026 — protocole de dispensation après TROD en vigueur, recommandations SPILF",
         sources: &[
             "SPILF — infections urinaires bactériennes communautaires de l'adulte",
             "HAS — cystite aiguë simple, prise en charge et dispensation à l'officine",
@@ -274,6 +299,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Contraception",
         title: "Contraception — oubli, délai toléré et rattrapage",
+        reviewed: "Août 2026 — recommandations HAS sur la contraception",
         sources: &[
             "HAS — contraception : conduite à tenir en cas d'oubli et contraception d'urgence",
             "RCP des spécialités contraceptives (ANSM)",
@@ -294,6 +320,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Antalgiques",
         title: "Antalgiques — palier, doses adulte et précautions",
+        reviewed: "Août 2026 — RCP à jour, seuils de paracétamol révisés",
         sources: &[
             "RCP des spécialités (ANSM, base de données publique des médicaments)",
             "ANSM — bon usage du paracétamol, des AINS et des antalgiques opioïdes",
@@ -316,6 +343,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Vaccins",
         title: "Vaccination à l'officine — population, schéma et rôle du pharmacien",
+        reviewed: "Août 2026 — calendrier vaccinal en vigueur",
         sources: &[
             "Calendrier des vaccinations et recommandations vaccinales (ministère chargé de la Santé)",
             "HAS — extension des compétences vaccinales du pharmacien d'officine",
@@ -339,6 +367,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Pédiatrie",
         title: "Pédiatrie — doses usuelles, formes et maximum par jour",
+        reviewed: "Août 2026 — RCP à jour",
         sources: &[
             "RCP pédiatriques (ANSM, base de données publique des médicaments)",
             "GPIP / SFP — antibiothérapie et prise en charge de la fièvre chez l'enfant",
@@ -360,6 +389,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Broyage",
         title: "Écraser ou ouvrir — règles, raisons et alternatives",
+        reviewed: "Août 2026 — listes de l'OMÉDIT, RCP à jour",
         sources: &[
             "SFPC — liste nationale des médicaments écrasables et recommandations associées",
             "OMÉDIT — bon usage de l'écrasement des comprimés et de l'ouverture des gélules",
@@ -383,6 +413,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Interactions",
         title: "Interactions à repérer à la délivrance — aliments, plantes et inducteurs",
+        reviewed: "Août 2026 — thésaurus des interactions médicamenteuses de l'ANSM",
         sources: &[
             "ANSM — Thésaurus des interactions médicamenteuses",
             "RCP des spécialités concernées, base de données publique des médicaments",
@@ -404,6 +435,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Urgence",
         title: "Urgence au comptoir — reconnaître, agir, orienter",
+        reviewed: "Août 2026 — recommandations de premiers secours en vigueur",
         sources: &[
             "Recommandations de la Société française de médecine d'urgence",
             "HAS — prise en charge de l'anaphylaxie ; conduite à tenir devant une hypoglycémie",
@@ -425,6 +457,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Grossesse",
         title: "Grossesse et allaitement — ce qui se délivre au comptoir",
+        reviewed: "Août 2026 — CRAT consulté, RCP à jour",
         sources: &[
             "CRAT — Centre de référence sur les agents tératogènes",
             "ANSM — anti-inflammatoires non stéroïdiens et grossesse, point d'information",
@@ -443,6 +476,113 @@ pub const TABLES: &[ConvTable] = &[
             &["Allaitement, situations courantes", "La plupart des antibiotiques usuels, dont l'amoxicilline", "Fluconazole en dose unique, antihistaminiques peu sédatifs", "Codéine, dérivés de l'ergot de seigle, iode à forte dose", "Interrompre l'allaitement est rarement la bonne réponse : vérifier la molécule au CRAT avant de le proposer."],
         ],
     },
+    ConvTable {
+        short: "Sujet âgé",
+        title: "Sujet âgé — médicaments à réévaluer et ce qu'on propose à la place",
+        reviewed: "Août 2026 — critères de Laroche adaptés à la pratique française, STOPP/START v2",
+        sources: &[
+            "Laroche M.-L. et al. — liste des médicaments potentiellement inappropriés à la personne âgée en France",
+            "STOPP/START version 2, adaptation française",
+            "HAS — programme « prescription médicamenteuse chez le sujet âgé »",
+        ],
+        columns: &["Médicament ou classe", "Pourquoi il pose problème après 75 ans", "Ce qui se propose à la place", "Si on le garde"],
+        rows: &[
+            &["Benzodiazépines à demi-vie longue (diazépam, clorazépate, bromazépam)", "Chutes, fractures, confusion et troubles de mémoire, par accumulation du métabolite actif", "Molécule à demi-vie courte à dose réduite, et surtout un plan d'arrêt progressif", "Dose de moitié, réévaluation à chaque renouvellement, jamais d'association à un autre sédatif"],
+            &["Anticholinergiques (oxybutynine, hydroxyzine, antihistaminiques de 1re génération)", "Confusion, rétention urinaire, constipation, sécheresse buccale, glaucome aigu — la charge anticholinergique s'additionne sur toute l'ordonnance", "Antihistaminique de 2e génération, mesures non médicamenteuses pour la vessie", "Compter la charge anticholinergique de l'ordonnance entière, pas molécule par molécule"],
+            &["AINS au long cours", "Hémorragie digestive, insuffisance rénale aiguë, décompensation d'insuffisance cardiaque, hypertension", "Paracétamol en première intention, topiques locaux, avis pour un antalgique de palier adapté", "Durée la plus courte possible, IPP associé, créatinine et tension contrôlées"],
+            &["Sulfamides hypoglycémiants à demi-vie longue (glibenclamide)", "Hypoglycémies prolongées et graves, souvent nocturnes, chez un patient qui mange moins", "Molécule à demi-vie courte, ou une classe sans risque hypoglycémique", "Cible d'HbA1c relevée, resucrage expliqué à l'entourage"],
+            &["Digoxine au-delà de 0,125 mg/j", "Marge étroite, élimination rénale, toxicité majorée par l'hypokaliémie", "Réévaluer l'indication ; contrôler kaliémie et fonction rénale", "Digoxinémie prélevée au moins six heures après la prise, kaliémie surveillée"],
+            &["Association de trois psychotropes ou plus", "Chutes, syndrome confusionnel, dépendance ; chaque molécule est justifiable, l'addition ne l'est pas", "Hiérarchiser et arrêter dans l'ordre : le plus récent et le moins indispensable d'abord", "Un seul changement à la fois, à quinze jours d'intervalle"],
+            &["IPP prescrit sans indication réévaluée", "Hypomagnésémie, carence en B12, fractures, infections digestives, interactions", "Demi-dose, puis prise à la demande, puis arrêt avec décroissance", "Réévaluer l'indication à chaque bilan de médication : c'est le premier candidat à l'arrêt"],
+            &["Antihypertenseurs à dose inchangée après un amaigrissement", "Hypotension orthostatique et chutes : la dose n'a pas bougé, le patient si", "Mesure de la tension debout et couchée, allègement discuté avec le prescripteur", "Tension debout à chaque renouvellement, lever en deux temps expliqué"],
+            &["Ce qui manque souvent (START)", "Vitamine D chez le sujet à risque de chute, anticoagulant dans la fibrillation atriale, IEC après infarctus, laxatif sous opioïde", "Le signaler au prescripteur : l'absence de traitement utile est aussi une erreur de prescription", "Le bilan partagé de médication est le moment de le dire"],
+        ],
+    },
+    ConvTable {
+        short: "Inhalateurs",
+        title: "Dispositifs inhalés — technique, contrôle et erreurs qui font échouer le traitement",
+        reviewed: "Août 2026 — notices des dispositifs commercialisés en France, GINA en vigueur",
+        sources: &[
+            "Notices et RCP des dispositifs (ANSM)",
+            "GINA — Global Initiative for Asthma, édition en vigueur",
+            "Société de pneumologie de langue française — éducation thérapeutique de l'asthmatique",
+        ],
+        columns: &["Dispositif", "Comment on l'arme", "Comment on inspire", "L'erreur qui fait tout rater", "Ce qu'on vérifie"],
+        rows: &[
+            &["Aérosol-doseur pressurisé (spray)", "Agiter, retirer le capuchon, expirer à fond hors de l'appareil", "Inspiration lente et profonde, déclenchement au tout début de l'inspiration, puis 10 secondes d'apnée", "Déclencher avant ou après le début de l'inspiration : le produit se dépose dans la bouche", "Faire une démonstration à chaque renouvellement ; proposer une chambre d'inhalation dès qu'il y a un doute"],
+            &["Spray + chambre d'inhalation", "Agiter, emboîter le spray, une bouffée à la fois dans la chambre", "Cinq à dix respirations calmes dans l'embout, ou masque bien appliqué chez l'enfant", "Envoyer deux bouffées d'un coup dans la chambre : la seconde se perd sur les parois", "Chambre lavée à l'eau savonneuse une fois par semaine et séchée à l'air libre, jamais essuyée"],
+            &["Turbuhaler (poudre)", "Tenir vertical, tourner la molette jusqu'au déclic, ne pas secouer après", "Inspiration rapide, forte et profonde, puis apnée", "Souffler dans l'appareil : l'humidité colle la poudre et la dose est perdue", "Le patient doit sentir peu ou pas de goût : c'est normal, ce n'est pas un signe d'échec"],
+            &["Diskus / Accuhaler (poudre)", "Ouvrir, pousser le levier jusqu'au clic, garder à plat", "Inspiration rapide et profonde par l'embout, puis apnée", "Incliner l'appareil après l'armement : la dose tombe", "Le compteur de doses : au rouge, la commande de renouvellement est déjà en retard"],
+            &["Respimat (brumisat)", "Tourner la base d'un demi-tour jusqu'au déclic, ouvrir le capuchon", "Inspiration lente et profonde en appuyant sur le bouton, puis apnée", "Inspirer trop vite : le brouillard va se déposer dans la gorge", "Amorçage à la première utilisation, et après plus de sept jours sans emploi"],
+            &["Nébuliseur", "Verser la dose dans la cuve, brancher le compresseur", "Respiration calme au masque ou à l'embout, dix à quinze minutes", "Cuve mal rincée : le résidu de la veille modifie la dose du jour", "Rincer la cuve après chaque séance, désinfecter selon la notice"],
+            &["Corticoïde inhalé, quel que soit le dispositif", "—", "—", "Ne pas se rincer la bouche : candidose et dysphonie", "Rinçage systématique, eau recrachée ; brossage des dents après la prise du matin"],
+            &["Bronchodilatateur de secours", "—", "—", "Une consommation qui augmente est un asthme qui se déséquilibre, pas un traitement qui marche", "Compter les flacons délivrés dans l'année : au-delà de trois, l'ordonnance de fond se réévalue"],
+        ],
+    },
+    ConvTable {
+        short: "Antidiabétiques",
+        title: "Antidiabétiques oraux et injectables — ce qui change au comptoir",
+        reviewed: "Août 2026 — RCP à jour, recommandations SFD en vigueur",
+        sources: &[
+            "RCP des spécialités (ANSM)",
+            "Société francophone du diabète — prise de position sur la prise en charge du diabète de type 2",
+            "HAS — parcours de soins du patient diabétique de type 2",
+        ],
+        columns: &["Classe (exemples)", "Risque d'hypoglycémie", "Fonction rénale", "Effets à annoncer", "Ce qu'on dit à la délivrance"],
+        rows: &[
+            &["Metformine (Glucophage, Stagid)", "Non en monothérapie", "Dose réduite de moitié si DFG 30 à 45, contre-indiquée en dessous de 30", "Troubles digestifs à l'instauration, goût métallique, carence en B12 au long cours", "Pendant ou après le repas, titration lente ; arrêt 48 h avant un examen avec produit de contraste iodé, et pendant toute déshydratation (fièvre, diarrhée, vomissements)"],
+            &["Sulfamides (gliclazide, glimépiride)", "Oui, réel et parfois prolongé", "Prudence, contre-indiqués en insuffisance rénale sévère", "Prise de poids, hypoglycémies", "Ne jamais sauter le repas qui suit la prise ; resucrage expliqué à l'entourage ; l'alcool à jeun majore l'hypoglycémie"],
+            &["Inhibiteurs de la DPP-4 (sitagliptine, vildagliptine)", "Non seuls", "Dose adaptée au DFG selon la molécule", "Généralement bien tolérés ; pancréatite rare", "Douleur abdominale intense et persistante : consulter sans attendre"],
+            &["Agonistes du GLP-1 (liraglutide, dulaglutide, sémaglutide)", "Non seuls", "Utilisables jusqu'à un DFG bas selon la molécule", "Nausées et satiété à l'instauration, perte de poids, troubles digestifs", "Titration lente ; injection à jour fixe pour les formes hebdomadaires ; conservation au réfrigérateur avant première utilisation"],
+            &["Inhibiteurs de SGLT2 (dapagliflozine, empagliflozine)", "Non seuls", "Bénéfice rénal et cardiaque démontré ; efficacité glycémique moindre quand le DFG baisse", "Infections génitales mycosiques, polyurie, déplétion volémique", "Boire suffisamment ; hygiène intime expliquée ; arrêt en cas de jeûne, de chirurgie ou de maladie aiguë — risque d'acidocétose à glycémie normale"],
+            &["Insuline basale", "Oui", "Besoins réduits quand le rein s'altère", "Prise de poids, lipodystrophies", "Rotation des sites, contrôle de la glycémie au réveil, jamais de transvasement d'un stylo à un autre"],
+            &["Situations qui changent tout", "—", "—", "Fièvre, vomissements, diarrhée, jeûne, chirurgie", "Règles de jour de maladie : hydratation, contrôle plus fréquent, arrêt temporaire de la metformine et des SGLT2, l'insuline ne s'arrête jamais"],
+            &["Objectif d'HbA1c", "—", "—", "—", "7 % pour la plupart ; 8 % ou plus chez le sujet âgé fragile, où l'hypoglycémie coûte plus cher que quelques dixièmes"],
+        ],
+    },
+    ConvTable {
+        short: "Collyres",
+        title: "Collyres et formes ophtalmiques — ordre, délai, conservation",
+        reviewed: "Août 2026 — RCP à jour, recommandations d'usage des collyres",
+        sources: &[
+            "RCP des spécialités ophtalmiques (ANSM)",
+            "Société française d'ophtalmologie — bon usage des collyres",
+        ],
+        columns: &["Situation", "Règle", "Pourquoi", "Ce qu'on ajoute"],
+        rows: &[
+            &["Deux collyres à la même heure", "Attendre au moins 5 minutes entre les deux", "Le cul-de-sac conjonctival tient environ 30 µL : la deuxième goutte chasse la première", "L'ordre suit la viscosité : le plus fluide d'abord"],
+            &["Collyre et gel ou pommade", "Le collyre d'abord, le gel ou la pommade en dernier, 5 à 10 minutes après", "La pommade forme un film qui empêche la pénétration de ce qui suit", "La pommade le soir de préférence : elle trouble la vision"],
+            &["Technique d'instillation", "Tirer la paupière inférieure, regarder vers le haut, une seule goutte dans le cul-de-sac", "Une goutte de plus déborde et ne sert à rien, sauf à augmenter le passage systémique", "Fermer l'œil sans le serrer et comprimer l'angle interne 1 à 2 minutes"],
+            &["Bêtabloquant en collyre (timolol)", "Compression de l'angle interne indispensable", "Le passage systémique existe : bradycardie, bronchospasme chez l'asthmatique", "Signaler tout essoufflement ou ralentissement du pouls ; prévenir le médecin traitant du collyre"],
+            &["Lentilles de contact", "Retirer avant l'instillation, remettre 15 minutes après", "Les conservateurs, le chlorure de benzalkonium en tête, s'accumulent dans les lentilles souples", "Préférer les unidoses sans conservateur en cas de port permanent"],
+            &["Après ouverture", "Flacon multidose : 15 jours sauf mention contraire du RCP ; unidose : usage immédiat", "Contamination du flacon, surtout en cas de contact avec l'œil ou les cils", "Noter la date d'ouverture sur le flacon ; ne pas toucher l'embout"],
+            &["Un flacon, un patient", "Jamais de partage, même entre les deux yeux d'un même patient en cas d'infection", "Transmission d'une conjonctivite d'un œil à l'autre et d'une personne à l'autre", "Un flacon par œil en cas de conjonctivite unilatérale contagieuse"],
+            &["Œil rouge au comptoir", "Douleur intense, baisse de vision, port de lentilles, traumatisme ou photophobie : orientation le jour même", "Ce sont les signes qui séparent une conjonctivite banale d'une urgence ophtalmologique", "Ne pas délivrer de corticoïde local sans avis : un herpès cornéen s'aggrave sous corticoïde"],
+        ],
+    },
+    ConvTable {
+        short: "Automédication",
+        title: "Automédication — ce qui se refuse au comptoir, et ce qu'on propose",
+        reviewed: "Août 2026 — RCP à jour, recommandations de bon usage en vigueur",
+        sources: &[
+            "RCP des spécialités de médication officinale (ANSM)",
+            "Cespharm — fiches de conseil à l'officine",
+            "ANSM — points d'information sur le bon usage des AINS et du paracétamol",
+        ],
+        columns: &["Demande", "Ce qui bloque", "Ce qu'on propose", "Quand on oriente"],
+        rows: &[
+            &["AINS chez un patient sous anticoagulant ou antiagrégant", "Risque hémorragique digestif multiplié ; l'association n'est pas une question de dose", "Paracétamol, topique local, chaud ou froid selon la douleur", "Douleur non soulagée à 48 h, ou saignement, selles noires, vomissement sanglant : le jour même"],
+            &["AINS avec IEC ou sartan et diurétique", "La triade néfaste : insuffisance rénale aiguë, d'autant plus vite qu'il fait chaud", "Paracétamol, hydratation", "Prise de poids brutale, œdèmes, urines rares : consultation"],
+            &["AINS après 15 semaines d'aménorrhée", "Contre-indication absolue : fermeture du canal artériel et atteinte rénale fœtale", "Paracétamol à la dose efficace la plus faible", "Toute douleur qui résiste chez une femme enceinte : avis médical"],
+            &["Paracétamol « en plus » d'un autre médicament", "Doublon involontaire : le paracétamol est dans quantité de spécialités contre le rhume et la douleur", "Vérifier l'ordonnance et l'armoire à pharmacie, une seule source à la fois", "Dose cumulée dépassée, ou insuffisance hépatique : avis immédiat"],
+            &["Vasoconstricteur oral ou nasal contre le rhume", "Accidents cardiovasculaires et neurologiques rapportés ; contre-indiqué en cas d'hypertension, de coronaropathie, de glaucome, avant 15 ans et pendant la grossesse", "Lavage de nez au sérum salé, humidification, paracétamol si fièvre", "Fièvre au-delà de trois jours, douleur de sinus unilatérale, essoufflement"],
+            &["Sirop antitussif chez l'enfant", "Codéine et dérivés interdits avant 12 ans ; les antitussifs n'ont pas fait la preuve de leur intérêt", "Hydratation, lavage de nez, position surélevée, patience", "Toux fébrile, gêne respiratoire, toux qui dure plus d'une semaine"],
+            &["Laxatif demandé de façon répétée", "Constipation chronique non explorée, et laxatifs stimulants au long cours", "Laxatif osmotique, fibres, eau, activité physique, horaire régulier", "Sang, amaigrissement, alternance diarrhée-constipation, changement récent du transit après 50 ans"],
+            &["Antidiarrhéique ralentisseur du transit", "Contre-indiqué en cas de fièvre, de glaires ou de sang : on garde le germe", "Réhydratation orale d'abord, régime adapté, argile ou racécadotril selon le cas", "Fièvre, sang, déshydratation, nourrisson ou personne âgée : consultation"],
+            &["Millepertuis demandé « parce que c'est naturel »", "Inducteur enzymatique puissant : contraceptifs, anticoagulants, immunosuppresseurs, antirétroviraux, anticancéreux perdent leur efficacité", "Vérifier l'ordonnance entière avant tout conseil", "Humeur triste durable, idées noires : consultation, pas une plante"],
+            &["Complément « pour la fatigue » chez un patient polymédiqué", "Interactions ignorées, doublons de vitamines, surcharge en potassium ou en vitamine D", "Reprendre le sommeil, l'alimentation et l'observance avant d'ajouter quoi que ce soit", "Fatigue nouvelle et persistante : bilan médical, pas un complément"],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -456,6 +596,13 @@ mod tests {
         for t in TABLES {
             assert!(!t.title.is_empty());
             assert!(!t.sources.is_empty());
+            // A reference table without a review date is one nobody
+            // dares use: it must say how old it is.
+            assert!(
+                !t.reviewed.trim().is_empty(),
+                "table sans date de relecture : {}",
+                t.title
+            );
             assert!(!t.rows.is_empty());
             assert!(!t.columns.is_empty());
             // The selector shows `short`: two tables sharing one would
@@ -496,6 +643,11 @@ mod tests {
             "Grossesse",
             "Pédiatrie",
             "Écraser",
+            "Sujet âgé",
+            "Dispositifs inhalés",
+            "Antidiabétiques",
+            "Collyres",
+            "Automédication",
         ] {
             assert!(
                 TABLES.iter().any(|t| t.title.starts_with(prefix)),

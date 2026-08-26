@@ -64,7 +64,10 @@ CREATE TABLE IF NOT EXISTS drugs (
     auc         TEXT NOT NULL DEFAULT '',
     elimination TEXT NOT NULL DEFAULT '',
     renal       TEXT NOT NULL DEFAULT '',
-    pregnancy   TEXT NOT NULL DEFAULT ''
+    pregnancy   TEXT NOT NULL DEFAULT '',
+    -- Conduite à tenir en cas d'oubli, et les signes qui font consulter.
+    missed_dose TEXT NOT NULL DEFAULT '',
+    red_flags   TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS drug_field_locks (
     drug_id     INTEGER NOT NULL REFERENCES drugs(id),
@@ -182,6 +185,8 @@ CREATE TABLE IF NOT EXISTS patient_travel (
 
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
+    "ALTER TABLE drugs ADD COLUMN missed_dose TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN red_flags TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS biology (
         id          INTEGER PRIMARY KEY,
         patient_id  INTEGER NOT NULL REFERENCES patients(id),
@@ -1022,6 +1027,12 @@ pub struct Drug {
     /// Formes et dosages disponibles, une par ligne.
     pub forms: String,
     pub antidote: String,
+    /// Ce qu'on fait quand une prise a été oubliée — la question la
+    /// plus posée au comptoir, et celle qui a le moins de réponse
+    /// écrite quelque part.
+    pub missed_dose: String,
+    /// Les signes qui doivent faire consulter sans attendre.
+    pub red_flags: String,
     /// The team's own notes.
     pub notes: String,
     /// Demi-vie d'élimination.
@@ -19549,6 +19560,567 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
     },
 ];
 
+/// What to do when a dose has been missed, and what must send the
+/// patient to a doctor — written per class, because that is the level
+/// at which these two answers are true.
+///
+/// `key` is looked for inside a card's class, its tags, its DCI and its
+/// name (case- and accent-insensitively, as SQLite compares here): the
+/// first entry that matches a card fills it, and a card the team has
+/// already written to is never touched. More specific keys come first.
+pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
+    (
+        "AOD",
+        "Deux prises par jour : prendre l'oubli dans les 6 heures, sinon sauter la dose. Une prise par jour : dans les 12 heures, sinon sauter. Jamais deux doses ensemble pour rattraper, et un oubli répété se signale au prescripteur.",
+        "Saignement qui ne s'arrête pas à la compression, selles noires, sang dans les urines ou les crachats, traumatisme crânien même sans perte de connaissance, fatigue et pâleur inhabituelles.",
+    ),
+    (
+        "AVK",
+        "Oubli constaté le jour même : prendre la dose. Constaté le lendemain : passer la dose, ne jamais doubler, et le signaler au moment du prochain INR.",
+        "Saignement de gencives ou de nez qui se répète, hématomes spontanés, selles noires, urines rouges, traumatisme crânien, règles beaucoup plus abondantes.",
+    ),
+    (
+        "HBPM",
+        "Injection oubliée : la faire dès que l'oubli est constaté si l'injection suivante est encore loin ; sinon passer, sans jamais doubler.",
+        "Saignement, hématome au point d'injection qui grossit, douleur ou gonflement d'un mollet, essoufflement brutal, douleur thoracique.",
+    ),
+    (
+        "héparine",
+        "Injection oubliée : la faire dès que l'oubli est constaté si l'injection suivante est encore loin ; sinon passer, sans jamais doubler.",
+        "Saignement, hématome qui grossit, chute des plaquettes signalée par le laboratoire, douleur ou gonflement d'un mollet.",
+    ),
+    (
+        "antiagrégant",
+        "Prendre dès que l'oubli est constaté ; si la prise suivante est proche, passer la dose sans doubler.",
+        "Saignement prolongé après une coupure, selles noires, hématomes spontanés, saignement de nez répété.",
+    ),
+    (
+        "statine",
+        "Prendre l'oubli dans la journée ; sinon reprendre à la prise suivante, sans doubler. Un comprimé oublié de temps en temps ne compromet pas le traitement — l'arrêt, si.",
+        "Douleur musculaire diffuse et inexpliquée, faiblesse musculaire, urines foncées, jaunissement des yeux ou de la peau.",
+    ),
+    (
+        "fibrate",
+        "Prendre au cours du repas suivant si l'oubli est récent ; sinon passer sans doubler.",
+        "Douleur musculaire diffuse, urines foncées, douleur abdominale intense, jaunisse.",
+    ),
+    (
+        "IEC",
+        "Prendre dès que l'oubli est constaté ; si la prise suivante est proche, passer la dose sans doubler.",
+        "Gonflement du visage, des lèvres ou de la langue — urgence immédiate ; toux sèche tenace, malaise en se levant, prise de poids rapide, urines rares.",
+    ),
+    (
+        "ARA II",
+        "Prendre dès que l'oubli est constaté ; si la prise suivante est proche, passer la dose sans doubler.",
+        "Gonflement du visage ou de la langue, malaise au lever, prise de poids rapide, urines rares, crampes et faiblesse (kaliémie).",
+    ),
+    (
+        "bêtabloquant",
+        "Prendre dès que l'oubli est constaté, sans jamais doubler. Ne jamais interrompre le traitement de sa propre initiative : l'arrêt brutal expose à une poussée d'hypertension et à l'ischémie.",
+        "Pouls très lent, malaise, essoufflement au moindre effort, jambes gonflées, mains et pieds froids et douloureux, asthme qui se réveille.",
+    ),
+    (
+        "bêta-bloquant",
+        "Prendre dès que l'oubli est constaté, sans jamais doubler. Ne jamais interrompre brutalement un traitement prolongé.",
+        "Pouls très lent, malaise, essoufflement, jambes gonflées, respiration sifflante.",
+    ),
+    (
+        "inhibiteur calcique",
+        "Prendre dès que l'oubli est constaté ; sinon passer la dose.",
+        "Œdème des chevilles qui gêne, palpitations, malaise au lever, constipation opiniâtre.",
+    ),
+    (
+        "diurétique",
+        "Prendre le matin dès que l'oubli est constaté ; passer la dose si la journée est déjà avancée, pour ne pas se lever la nuit.",
+        "Crampes, faiblesse, palpitations, vertiges au lever, prise ou perte de poids rapide, urines très rares.",
+    ),
+    (
+        "antialdostérone",
+        "Prendre dès que l'oubli est constaté dans la journée ; sinon passer.",
+        "Crampes, faiblesse musculaire, palpitations, fourmillements : la kaliémie se contrôle. Gonflement douloureux des seins chez l'homme.",
+    ),
+    (
+        "digitalique",
+        "Prendre dès que l'oubli est constaté dans la journée ; sinon passer, jamais deux doses.",
+        "Nausées, perte d'appétit, vision jaune ou trouble, pouls lent ou irrégulier, confusion : suspicion de surdosage, prise à suspendre et avis le jour même.",
+    ),
+    (
+        "hormone thyroïdienne",
+        "Prendre dès que l'oubli est constaté le jour même, à jeun ; sinon passer sans doubler le lendemain. Le comprimé se prend à heure fixe, à distance du calcium, du fer, des IPP et du café.",
+        "Palpitations, tremblements, insomnie, perte de poids (surdosage) ; fatigue, frilosité, prise de poids, constipation (sous-dosage).",
+    ),
+    (
+        "biguanide",
+        "Prendre pendant le repas suivant si l'oubli est récent ; sinon passer, sans doubler.",
+        "Vomissements, douleurs abdominales, crampes, respiration rapide et grande fatigue : arrêter et consulter sans attendre. Arrêt temporaire en cas de fièvre, de diarrhée ou de vomissements.",
+    ),
+    (
+        "sulfamide hypoglycémiant",
+        "Prendre uniquement si le repas correspondant n'est pas terminé ; sinon passer la dose. Une dose prise sans repas expose à l'hypoglycémie.",
+        "Sueurs, tremblements, faim brutale, vision trouble, confusion : resucrer immédiatement, puis contrôler la glycémie et prévenir le médecin si cela se répète.",
+    ),
+    (
+        "glinide",
+        "La prise est liée au repas : pas de repas, pas de comprimé. Un repas sauté fait sauter la dose.",
+        "Sueurs, tremblements, faim brutale, confusion : resucrage immédiat.",
+    ),
+    (
+        "insuline",
+        "Ne jamais rattraper une injection oubliée par une double dose : contrôler la glycémie et suivre le protocole écrit par le prescripteur.",
+        "Glycémies élevées répétées avec nausées, douleur abdominale ou haleine fruitée ; hypoglycémie sévère avec confusion : appeler.",
+    ),
+    (
+        "iSGLT2",
+        "Prendre dès que l'oubli est constaté dans la journée ; sinon passer.",
+        "Douleur abdominale, nausées, vomissements et respiration rapide, même avec une glycémie normale (acidocétose) ; douleur ou rougeur du périnée ; infection génitale.",
+    ),
+    (
+        "analogue GLP-1",
+        "Forme hebdomadaire : injecter dans les trois jours qui suivent l'oubli, puis reprendre le jour habituel. Forme quotidienne : passer la dose oubliée.",
+        "Douleur abdominale intense et persistante irradiant dans le dos, vomissements répétés, déshydratation.",
+    ),
+    (
+        "gliptine",
+        "Prendre dès que l'oubli est constaté ; sinon passer, sans doubler.",
+        "Douleur abdominale intense et persistante, éruption cutanée bulleuse, gonflement du visage.",
+    ),
+    (
+        "IPP",
+        "Prendre le matin suivant si l'oubli est constaté tard dans la journée ; ne pas doubler.",
+        "Selles noires ou vomissement de sang : urgence. Diarrhée profuse pendant ou après un antibiotique, crampes et fatigue sous traitement prolongé.",
+    ),
+    (
+        "corticoïde inhalé",
+        "Prendre la bouffée oubliée dès que l'oubli est constaté, sauf si la prise suivante est proche. Le traitement de fond ne s'arrête pas parce que la respiration va bien.",
+        "Recours au traitement de secours plus de deux fois par semaine, réveils nocturnes, essoufflement qui ne cède pas après le secours : consultation, et urgence si la parole devient difficile.",
+    ),
+    (
+        "CSI + BDLA",
+        "Prendre la bouffée oubliée dès que l'oubli est constaté, sauf si la prise suivante est proche. Ne jamais arrêter le corticoïde en gardant le bronchodilatateur.",
+        "Recours au secours plus de deux fois par semaine, réveils nocturnes, essoufflement qui ne cède pas : consultation ; parole hachée ou lèvres bleues : urgence.",
+    ),
+    (
+        "bêta-2",
+        "Traitement de secours : il se prend à la demande, il ne se rattrape pas. Traitement de fond : prendre dès que l'oubli est constaté.",
+        "Besoin croissant du traitement de secours, tremblement et palpitations marquées, essoufflement qui résiste : consultation.",
+    ),
+    (
+        "corticoïde",
+        "Prendre dès que l'oubli est constaté le matin même ; passer si la journée est avancée. Un traitement prolongé ne s'arrête jamais brutalement.",
+        "Fièvre ou infection (les signes sont masqués), douleur abdominale, troubles visuels, humeur très perturbée, œdèmes, glycémie qui monte.",
+    ),
+    (
+        "antiépileptique",
+        "Prendre dès que l'oubli est constaté, sauf si la prise suivante est proche ; ne jamais doubler. Les oublis répétés sont la première cause de récidive de crise.",
+        "Crise inhabituelle ou plus longue, éruption cutanée étendue surtout dans les huit premières semaines, fièvre avec aphtes, jaunisse, idées noires.",
+    ),
+    (
+        "benzodiazépine",
+        "Un hypnotique oublié ne se rattrape pas au milieu de la nuit. Pour un anxiolytique, passer la dose si la suivante est proche.",
+        "Chutes, confusion, somnolence dans la journée ; après un usage prolongé, un arrêt brutal expose à l'anxiété, à l'insomnie de rebond et aux convulsions.",
+    ),
+    (
+        "hypnotique",
+        "Un hypnotique oublié ne se rattrape pas au milieu de la nuit : la prise du lendemain reprend le rythme.",
+        "Somnolence au réveil, conduites nocturnes sans souvenir, chutes ; usage qui dure au-delà de quatre semaines.",
+    ),
+    (
+        "ISRS",
+        "Prendre dès que l'oubli est constaté ; sinon passer. Les oublis répétés donnent des sensations de décharge électrique, des vertiges et une irritabilité qui ne sont pas une rechute.",
+        "Idées noires ou agitation dans les premières semaines, saignements inhabituels, confusion et nausées chez la personne âgée (hyponatrémie), agitation avec fièvre et tremblements.",
+    ),
+    (
+        "IRSNa",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler. L'arrêt brutal donne un syndrome de sevrage marqué.",
+        "Idées noires ou agitation dans les premières semaines, tension qui monte, saignements inhabituels, sueurs et tremblements.",
+    ),
+    (
+        "antidépresseur",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler. Ne pas arrêter de soi-même : la décroissance se fait par paliers.",
+        "Idées noires ou agitation dans les premières semaines, palpitations, confusion, rétention urinaire, sueurs profuses avec fièvre.",
+    ),
+    (
+        "antipsychotique",
+        "Prendre dès que l'oubli est constaté ; ne jamais doubler. Signaler un oubli répété : c'est ce qui précède la rechute.",
+        "Fièvre avec rigidité, sueurs et confusion : urgence. Mouvements anormaux du visage ou de la langue, malaise au lever, constipation opiniâtre, fièvre avec mal de gorge.",
+    ),
+    (
+        "thymorégulateur",
+        "Prendre dès que l'oubli est constaté si la prise suivante est encore loin ; sinon passer sans doubler.",
+        "Tremblement marqué, diarrhée, vomissements, somnolence ou confusion : suspicion de surdosage. Toute déshydratation, canicule ou régime sans sel modifie la lithémie.",
+    ),
+    (
+        "opioïde",
+        "Prendre la dose oubliée si la douleur revient et que la prise suivante est éloignée ; sinon passer, sans jamais doubler ni rapprocher les prises.",
+        "Somnolence excessive, respiration lente ou irrégulière, confusion : urgence. Constipation qui s'installe : elle se prévient dès le premier jour.",
+    ),
+    (
+        "AINS",
+        "Traitement à la demande : prendre si la douleur le justifie. Traitement régulier : passer la dose si la suivante est proche, et ne jamais doubler.",
+        "Douleur d'estomac, selles noires, vomissement de sang, gonflement des jambes, urines rares, éruption cutanée, essoufflement.",
+    ),
+    (
+        "antalgique",
+        "Prendre dès que la douleur le justifie, en respectant l'intervalle minimal entre deux prises et la dose maximale par jour.",
+        "Douleur qui ne cède plus aux doses habituelles, fièvre qui dure, et pour le paracétamol toute prise dépassant la dose maximale : avis immédiat.",
+    ),
+    (
+        "pénicilline",
+        "Prendre dès que l'oubli est constaté, puis espacer les prises suivantes de l'intervalle habituel. Ne jamais arrêter parce que les symptômes ont cédé.",
+        "Éruption cutanée avec fièvre, gonflement du visage ou gêne respiratoire : urgence. Diarrhée abondante pendant ou après le traitement.",
+    ),
+    (
+        "céphalosporine",
+        "Prendre dès que l'oubli est constaté, puis espacer les prises suivantes de l'intervalle habituel. Le traitement se termine, même si tout va mieux.",
+        "Éruption avec fièvre, gonflement du visage, diarrhée abondante pendant ou après le traitement.",
+    ),
+    (
+        "macrolide",
+        "Prendre dès que l'oubli est constaté, puis reprendre l'intervalle habituel ; ne jamais doubler.",
+        "Palpitations ou malaise (allongement du QT), diarrhée abondante, jaunisse, éruption cutanée.",
+    ),
+    (
+        "fluoroquinolone",
+        "Prendre dès que l'oubli est constaté, à distance du calcium, du fer et des pansements gastriques, puis reprendre l'intervalle habituel.",
+        "Douleur d'un tendon, en particulier au talon : arrêt immédiat et avis. Fourmillements persistants, palpitations, confusion chez la personne âgée, coup de soleil anormal.",
+    ),
+    (
+        "cycline",
+        "Prendre dès que l'oubli est constaté, avec un grand verre d'eau et sans s'allonger dans l'heure qui suit, à distance du calcium et du fer.",
+        "Brûlure derrière le sternum, coup de soleil anormalement rapide, éruption cutanée, maux de tête avec troubles visuels.",
+    ),
+    (
+        "nitro-imidazolé",
+        "Prendre dès que l'oubli est constaté au cours d'un repas, puis reprendre l'intervalle habituel.",
+        "Fourmillements persistants des mains ou des pieds, goût métallique gênant, éruption. Aucun alcool pendant le traitement et les trois jours qui suivent.",
+    ),
+    (
+        "antituberculeux",
+        "Prendre dès que l'oubli est constaté, à jeun, et ne jamais interrompre le traitement : la résistance se construit sur les oublis.",
+        "Jaunisse, urines foncées, nausées persistantes, fourmillements des extrémités, baisse de la vision ou des couleurs.",
+    ),
+    (
+        "biphosphonate",
+        "Forme hebdomadaire ou mensuelle : prendre le lendemain matin, puis reprendre le jour habituel. Jamais deux comprimés le même jour.",
+        "Douleur de cuisse ou d'aine qui persiste, douleur de mâchoire après un soin dentaire, brûlure œsophagienne, douleur oculaire.",
+    ),
+    (
+        "bisphosphonate",
+        "Forme hebdomadaire ou mensuelle : prendre le lendemain matin, puis reprendre le jour habituel. Rester debout ou assis droit 30 minutes après la prise.",
+        "Douleur de cuisse ou d'aine qui persiste, douleur de mâchoire après un soin dentaire, brûlure œsophagienne.",
+    ),
+    (
+        "immunosuppresseur",
+        "Prendre dès que l'oubli est constaté si la dose suivante est encore loin ; sinon passer, sans doubler. Tout oubli répété se signale au spécialiste.",
+        "Fièvre, toux, brûlures urinaires ou tout signe d'infection : consultation rapide, le traitement en masque les signes. Aphtes, saignements, éruption étendue.",
+    ),
+    (
+        "méthotrexate",
+        "La prise est hebdomadaire : un oubli se rattrape dans les deux jours, jamais en doublant la semaine suivante, et jamais deux prises la même semaine.",
+        "Aphtes, fièvre, toux sèche et essoufflement, éruption, saignements : arrêt et avis le jour même.",
+    ),
+    (
+        "anti-TNF",
+        "Injection oubliée : la faire dès que l'oubli est constaté, puis reprendre le rythme à partir de cette date. Ne jamais rapprocher deux injections.",
+        "Fièvre, toux qui dure, sueurs nocturnes, amaigrissement : consultation rapide. Toute infection en cours suspend l'injection suivante.",
+    ),
+    (
+        "inhibiteur JAK",
+        "Prendre dès que l'oubli est constaté si la dose suivante est encore loin ; sinon passer.",
+        "Fièvre ou signe d'infection, zona, douleur ou gonflement d'un mollet, essoufflement brutal, douleur thoracique.",
+    ),
+    (
+        "anticancéreux",
+        "Ne jamais rattraper une dose oubliée d'anticancéreux oral sans avis : c'est le protocole qui fixe la conduite, pas le patient.",
+        "Fièvre : urgence absolue sous chimiothérapie. Aphtes empêchant de s'alimenter, diarrhée profuse, éruption cutanée, saignement, mains et pieds douloureux.",
+    ),
+    (
+        "hormonothérapie",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler.",
+        "Douleur ou gonflement d'un mollet, essoufflement brutal, saignement génital inhabituel, douleur osseuse nouvelle.",
+    ),
+    (
+        "agoniste dopaminergique",
+        "Prendre dès que l'oubli est constaté : l'horaire compte ici plus qu'ailleurs, les blocages suivent les décalages.",
+        "Endormissement brutal, hallucinations, jeu pathologique ou achats compulsifs — à signaler même s'ils semblent sans rapport avec le traitement.",
+    ),
+    (
+        "antiparkinsonien",
+        "Prendre dès que l'oubli est constaté, à l'horaire le plus proche possible de l'habitude ; les prises se répartissent dans la journée pour une raison.",
+        "Blocages plus fréquents, mouvements involontaires, endormissement brutal, hallucinations, chute de tension au lever.",
+    ),
+    (
+        "anticholinestérasique",
+        "Prendre dès que l'oubli est constaté ; si plusieurs jours ont été oubliés, ne pas reprendre seul : la dose se réintroduit progressivement.",
+        "Malaise, pouls lent, vomissements, perte de poids, chutes.",
+    ),
+    (
+        "triptan",
+        "Un triptan se prend au début de la crise : une prise oubliée ne se rattrape pas, et la dose maximale par jour reste la même.",
+        "Céphalée inhabituelle, brutale, avec fièvre, raideur de nuque ou déficit neurologique : urgence. Douleur thoracique après la prise. Plus de dix jours de traitement de crise par mois : céphalées par abus médicamenteux.",
+    ),
+    (
+        "antimigraineux de fond",
+        "Prendre dès que l'oubli est constaté ; sinon passer. Le traitement de fond s'évalue sur deux à trois mois, pas sur une crise.",
+        "Céphalée inhabituelle ou brutale, aggravation nette de la fréquence des crises, effets indésirables persistants.",
+    ),
+    (
+        "hypo-uricémiant",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler. Ne pas arrêter pendant une crise de goutte si le traitement était déjà en cours.",
+        "Éruption cutanée sous allopurinol : arrêt immédiat et avis — c'est le signe qui précède les réactions graves. Fièvre avec atteinte de la bouche ou des yeux.",
+    ),
+    (
+        "antihistaminique H1",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler.",
+        "Somnolence gênante, bouche très sèche, difficulté à uriner chez l'homme âgé, palpitations.",
+    ),
+    (
+        "fer",
+        "Prendre dès que l'oubli est constaté, à distance du thé, du café, du calcium et des pansements gastriques ; sinon passer.",
+        "Selles noires sous fer sont attendues, mais douleur abdominale intense, vomissements ou constipation sévère : avis.",
+    ),
+    (
+        "vitamine D",
+        "Forme mensuelle ou trimestrielle : prendre dès que l'oubli est constaté, puis reprendre le rythme habituel.",
+        "Nausées, soif intense, urines abondantes, confusion : signes d'hypercalcémie, à ne pas ignorer.",
+    ),
+    (
+        "substitut nicotinique",
+        "Un patch oublié se pose dès que l'oubli est constaté ; les formes orales se prennent à l'envie, sans horaire.",
+        "Palpitations, insomnie et nausées : le dosage est trop fort. Envie irrépressible malgré le patch : une forme orale s'ajoute, ce n'est pas un échec.",
+    ),
+    (
+        "rétinoïde",
+        "Prendre dès que l'oubli est constaté au cours d'un repas ; sinon passer sans doubler.",
+        "Grossesse : contre-indication absolue, la contraception et les tests ne se négocient pas. Céphalées avec troubles visuels, douleurs musculaires, humeur très perturbée.",
+    ),
+    (
+        "contraception",
+        "Le délai toléré dépend de la pilule et de la semaine du cycle : voir la table de référence « Contraception » avant de répondre.",
+        "Douleur d'un mollet, essoufflement brutal, douleur thoracique, migraine avec aura, troubles visuels : arrêt et urgence.",
+    ),
+    (
+        "progestatif",
+        "Le délai toléré est court pour les pilules progestatives : voir la table « Contraception ».",
+        "Saignements prolongés, douleur pelvienne intense, douleur d'un mollet, essoufflement brutal.",
+    ),
+    (
+        "estrogène",
+        "Prendre ou appliquer dès que l'oubli est constaté ; sinon passer sans doubler.",
+        "Douleur d'un mollet, essoufflement brutal, douleur thoracique, migraine avec aura, saignement génital inhabituel.",
+    ),
+    (
+        "collyre",
+        "Instiller dès que l'oubli est constaté, sauf si l'instillation suivante est proche. Une goutte de plus ne remplace pas une goutte oubliée.",
+        "Douleur oculaire intense, baisse de la vision, œil rouge avec photophobie : avis ophtalmologique le jour même.",
+    ),
+    (
+        "dermocorticoïde",
+        "Appliquer dès que l'oubli est constaté ; sinon reprendre à l'application suivante, sans doubler la quantité.",
+        "Peau qui s'amincit, vergetures, rougeur qui s'étend, surinfection ; aggravation à l'arrêt sur le visage.",
+    ),
+    (
+        "antifongique",
+        "Prendre ou appliquer dès que l'oubli est constaté, puis reprendre le rythme. Le traitement se poursuit jusqu'au terme prévu, même quand la lésion a disparu.",
+        "Jaunisse, urines foncées, nausées persistantes pour les formes orales ; extension de la lésion malgré le traitement.",
+    ),
+    (
+        "antiviral",
+        "Prendre dès que l'oubli est constaté, puis reprendre l'intervalle habituel ; l'efficacité tient à la régularité.",
+        "Éruption cutanée étendue, fièvre, atteinte de la bouche ou des yeux ; pour les antiviraux de l'hépatite, tout arrêt non prévu se signale.",
+    ),
+    (
+        "antirétroviral",
+        "Prendre dès que l'oubli est constaté si l'on est loin de la prise suivante ; sinon passer. Les oublis répétés créent des résistances : ils se signalent toujours.",
+        "Éruption avec fièvre, essoufflement, jaunisse, fièvre inexpliquée, amaigrissement.",
+    ),
+    (
+        "laxatif",
+        "Une prise oubliée se reprend simplement à l'occasion suivante ; il n'y a rien à rattraper.",
+        "Absence de selles avec douleur abdominale et vomissements, sang dans les selles, alternance récente du transit après 50 ans.",
+    ),
+    (
+        "antidiarrhéique",
+        "Le traitement se prend à la demande : une prise oubliée ne se rattrape pas.",
+        "Fièvre, sang ou glaires dans les selles, déshydratation, diarrhée qui dure plus de deux jours : consultation, et arrêt du ralentisseur du transit.",
+    ),
+    (
+        "antiémétique",
+        "Prendre dès que l'oubli est constaté si les nausées reviennent ; sinon passer.",
+        "Mouvements anormaux du visage ou du cou, agitation, malaise : arrêt et avis. Vomissements qui empêchent de boire.",
+    ),
+    (
+        "alpha-bloquant",
+        "Prendre dès que l'oubli est constaté ; sinon passer. Après plusieurs jours d'arrêt, la reprise se fait à dose progressive.",
+        "Malaise au lever, vertiges, palpitations ; avant une chirurgie de la cataracte, le prévenir à l'ophtalmologiste.",
+    ),
+    (
+        "inhibiteur PDE5",
+        "Le traitement se prend à la demande : une prise oubliée ne se rattrape pas, et la dose maximale par jour reste la même.",
+        "Érection prolongée et douloureuse au-delà de quatre heures : urgence. Douleur thoracique pendant l'effort, baisse brutale de la vision ou de l'audition.",
+    ),
+    (
+        "dérivé nitré",
+        "La forme d'action rapide se prend à la crise. Pour les formes prolongées, prendre dès que l'oubli est constaté en respectant la fenêtre libre de la journée.",
+        "Douleur thoracique qui ne cède pas après deux prises espacées de cinq minutes : appeler le 15. Malaise au lever, céphalées intenses.",
+    ),
+    (
+        "antiarythmique",
+        "Prendre dès que l'oubli est constaté ; sinon passer, jamais deux doses.",
+        "Palpitations nouvelles, malaise, essoufflement, pouls très lent ou très irrégulier ; sous amiodarone, essoufflement d'effort, toux sèche, troubles visuels ou thyroïdiens.",
+    ),
+    (
+        "anticholinergique vésical",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler.",
+        "Impossibilité d'uriner, douleur oculaire avec vision floue (glaucome aigu), confusion chez la personne âgée, constipation opiniâtre.",
+    ),
+    (
+        "bêta-3 agoniste vésical",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler.",
+        "Tension qui monte, palpitations, impossibilité d'uriner.",
+    ),
+    (
+        "antipaludique",
+        "Prophylaxie : prendre dès que l'oubli est constaté, puis reprendre le rythme — la régularité fait toute l'efficacité, et le traitement se poursuit après le retour selon la molécule. Traitement curatif : suivre le schéma sans sauter de prise.",
+        "Fièvre pendant le séjour ou dans les trois mois qui suivent le retour : consultation en urgence, avec mention du voyage. Vomissements dans l'heure suivant la prise : redonner une dose.",
+    ),
+    (
+        "vaccin",
+        "Un rendez-vous de rappel manqué ne fait pas recommencer le schéma : la dose se rattrape, et la suite reprend le calendrier là où elle en était.",
+        "Fièvre élevée, gonflement étendu du bras, réaction allergique dans l'heure : avis. Toute réaction inhabituelle se déclare en pharmacovigilance.",
+    ),
+    (
+        "myorelaxant",
+        "Prendre dès que l'oubli est constaté ; sinon passer. Le traitement est de courte durée par nature.",
+        "Somnolence marquée, faiblesse, chute ; sous thiocolchicoside, la contre-indication en cas de grossesse est absolue.",
+    ),
+    (
+        "antispasmodique",
+        "Le traitement se prend à la demande : une prise oubliée ne se rattrape pas.",
+        "Douleur abdominale intense et continue, fièvre, vomissements, arrêt des selles et des gaz : consultation.",
+    ),
+    (
+        "mucolytique",
+        "Prendre dès que l'oubli est constaté ; sinon passer. Pas de prise le soir : les sécrétions fluidifiées gênent le sommeil.",
+        "Essoufflement, fièvre qui dure, expectoration purulente ou sanglante ; toux qui dépasse une semaine.",
+    ),
+    (
+        "antiparasitaire",
+        "Prendre dès que l'oubli est constaté ; le traitement du foyer et la seconde prise éventuelle se font aux dates prévues.",
+        "Lésions qui s'étendent, surinfection, démangeaison qui persiste au-delà de quinze jours après un traitement bien conduit.",
+    ),
+    (
+        "antihelminthique",
+        "Prendre dès que l'oubli est constaté ; la seconde prise, quand elle est prévue, reste à quinze jours de la première.",
+        "Douleur abdominale intense, vomissements, ou récidive répétée malgré le traitement du foyer.",
+    ),
+    (
+        "scabicide",
+        "L'application se fait selon le protocole ; une application oubliée se refait le jour même, et le traitement du foyer et du linge se fait en même temps.",
+        "Démangeaison qui persiste au-delà de quatre semaines, lésions surinfectées, échec malgré un traitement bien conduit.",
+    ),
+    (
+        "anti-CGRP",
+        "Injection mensuelle oubliée : la faire dès que l'oubli est constaté, puis reprendre le rythme à partir de cette date.",
+        "Constipation sévère, réaction au point d'injection qui s'étend, tension qui monte, céphalée inhabituelle ou brutale.",
+    ),
+    (
+        "SEP",
+        "Prendre ou injecter dès que l'oubli est constaté si la dose suivante est encore loin ; sinon passer, et signaler tout oubli répété au neurologue.",
+        "Fièvre ou signe d'infection, troubles neurologiques nouveaux, essoufflement, réaction à la perfusion : avis rapide.",
+    ),
+    (
+        "anti-PCSK9",
+        "Injection oubliée : la faire dès que l'oubli est constaté, puis reprendre le rythme habituel à partir de cette date.",
+        "Réaction au point d'injection qui s'étend, douleur musculaire inexpliquée, symptômes grippaux persistants.",
+    ),
+    (
+        "IMAO-B",
+        "Prendre dès que l'oubli est constaté, à l'horaire le plus proche de l'habitude ; sinon passer.",
+        "Endormissement brutal, hallucinations, mouvements involontaires, malaise au lever.",
+    ),
+    (
+        "ICOMT",
+        "Prendre dès que l'oubli est constaté, avec la dose de lévodopa correspondante ; sinon passer.",
+        "Diarrhée qui s'installe, urines colorées (sans gravité), mouvements involontaires, somnolence brutale.",
+    ),
+    (
+        "aminosalicylé",
+        "Prendre dès que l'oubli est constaté ; sinon passer. Le traitement d'entretien se poursuit même en période calme : c'est lui qui espace les poussées.",
+        "Sang dans les selles, diarrhée qui s'aggrave, fièvre, douleur abdominale intense : poussée à évaluer.",
+    ),
+    (
+        "antihypertenseur central",
+        "Prendre dès que l'oubli est constaté ; ne jamais arrêter brutalement : l'arrêt expose à une poussée hypertensive de rebond.",
+        "Tension qui remonte brutalement, malaise au lever, sécheresse de bouche gênante, somnolence.",
+    ),
+    (
+        "aminoside",
+        "Traitement injectable à horaire fixe : un oubli se signale au service ou au prescripteur, il ne se rattrape pas seul.",
+        "Baisse de l'audition, bourdonnements, vertiges, baisse des urines : arrêt et avis immédiat.",
+    ),
+    (
+        "anti-IL",
+        "Injection oubliée : la faire dès que l'oubli est constaté, puis reprendre le rythme à partir de cette date.",
+        "Fièvre, toux persistante, brûlures urinaires ou tout signe d'infection : consultation rapide, le traitement en masque les signes.",
+    ),
+    (
+        "alkylant",
+        "Ne jamais rattraper une dose oubliée d'anticancéreux sans avis : le protocole fixe la conduite.",
+        "Fièvre : urgence absolue. Saignement, aphtes empêchant de s'alimenter, sang dans les urines, essoufflement.",
+    ),
+    (
+        "antimétabolite",
+        "Ne jamais rattraper une dose oubliée sans avis : le protocole fixe la conduite, et certaines prises sont hebdomadaires.",
+        "Fièvre, aphtes, diarrhée profuse, saignement, éruption cutanée : avis le jour même.",
+    ),
+    (
+        "immunothérapie",
+        "Les perfusions suivent un calendrier hospitalier : un rendez-vous manqué se signale au service, il ne se rattrape pas seul.",
+        "Diarrhée, éruption, essoufflement, fatigue majeure, soif intense : les effets auto-immuns peuvent survenir des mois après le début.",
+    ),
+    (
+        "anti-CD20",
+        "Les perfusions suivent un calendrier hospitalier : un rendez-vous manqué se signale au service.",
+        "Fièvre, toux, zona, réaction pendant ou après la perfusion, troubles neurologiques nouveaux.",
+    ),
+    (
+        "GnRH",
+        "L'injection suit un calendrier strict : un retard se signale au prescripteur, il ne se rattrape pas de soi-même.",
+        "Bouffées de chaleur invalidantes, douleur osseuse nouvelle, difficulté à uriner, humeur très perturbée.",
+    ),
+    (
+        "antiseptique",
+        "L'application se fait à la demande selon le protocole de soin ; une application oubliée se reprend simplement.",
+        "Plaie qui rougit, gonfle, devient douloureuse ou suinte, fièvre, traînée rouge remontant le membre : consultation.",
+    ),
+    (
+        "acide biliaire",
+        "Prendre dès que l'oubli est constaté ; sinon passer sans doubler.",
+        "Douleur de l'hypocondre droit, fièvre, jaunisse, urines foncées.",
+    ),
+    (
+        "anticholinergique inhalé",
+        "Prendre la bouffée oubliée dès que l'oubli est constaté, sauf si la prise suivante est proche.",
+        "Bouche très sèche, difficulté à uriner, douleur oculaire avec vision floue, essoufflement qui s'aggrave.",
+    ),
+    (
+        "antileucotriène",
+        "Prendre dès que l'oubli est constaté, le soir de préférence ; sinon passer.",
+        "Cauchemars, agitation, humeur très perturbée, idées noires : à signaler, même chez l'enfant. Asthme qui s'aggrave.",
+    ),
+    (
+        "enzymes pancréatiques",
+        "Les gélules se prennent avec le repas : une prise oubliée ne se rattrape pas après le repas.",
+        "Selles grasses persistantes, amaigrissement, douleur abdominale, ballonnement majeur.",
+    ),
+    (
+        "chélateur du phosphore",
+        "Le comprimé se prend au moment du repas : oublié, il ne sert plus à rien après.",
+        "Crampes, fourmillements, douleur osseuse, démangeaisons.",
+    ),
+];
+
 /// How many drugs a fresh base starts with.
 pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
 
@@ -22107,7 +22679,7 @@ impl Db {
                         d.notes, d.half_life, d.auc, d.elimination, d.renal, d.pregnancy,
                         d.indications, d.mechanism, d.contraindications, d.adverse,
                         d.monitoring, d.sources, d.status, d.smr, d.tags, d.toxicity,
-                        d.forms
+                        d.forms, d.missed_dose, d.red_flags
                  FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
                  WHERE pd.patient_id = ?1 ORDER BY d.name COLLATE NOCASE",
             )
@@ -22140,6 +22712,8 @@ impl Db {
                     tags: r.get(22)?,
                     toxicity: r.get(23)?,
                     forms: r.get(24)?,
+                    missed_dose: r.get(25)?,
+                    red_flags: r.get(26)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -22490,7 +23064,8 @@ impl Db {
                 "SELECT id, name, dci, class, dosage, ddi, iup, antidote, notes,
                         half_life, auc, elimination, renal, pregnancy,
                         indications, mechanism, contraindications, adverse,
-                        monitoring, sources, status, smr, tags, toxicity, forms
+                        monitoring, sources, status, smr, tags, toxicity, forms,
+                        missed_dose, red_flags
                  FROM drugs ORDER BY name COLLATE NOCASE",
             )
             .map_err(|e| e.to_string())?;
@@ -22522,6 +23097,8 @@ impl Db {
                     tags: r.get(22)?,
                     toxicity: r.get(23)?,
                     forms: r.get(24)?,
+                    missed_dose: r.get(25)?,
+                    red_flags: r.get(26)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -22560,6 +23137,7 @@ impl Db {
         self.fill_starter_details()?;
         self.seed_posologies()?;
         self.seed_preparations()?;
+        self.seed_conduite()?;
         Ok(inserted)
     }
 
@@ -22642,6 +23220,7 @@ impl Db {
         self.fill_starter_details()?;
         self.seed_posologies()?;
         self.seed_preparations()?;
+        self.seed_conduite()?;
         Ok(inserted)
     }
 
@@ -22689,14 +23268,16 @@ impl Db {
                         elimination = ?11, renal = ?12, pregnancy = ?13, indications = ?14,
                         mechanism = ?15, contraindications = ?16, adverse = ?17,
                         monitoring = ?18, sources = ?19, status = ?20, smr = ?21,
-                        tags = ?22, toxicity = ?23, forms = ?24
-                 WHERE id = ?25 AND name = ?26 AND dci = ?27 AND class = ?28 AND dosage = ?29
-                   AND ddi = ?30 AND iup = ?31 AND antidote = ?32 AND notes = ?33
-                   AND half_life = ?34 AND auc = ?35 AND elimination = ?36 AND renal = ?37
-                   AND pregnancy = ?38 AND indications = ?39 AND mechanism = ?40
-                   AND contraindications = ?41 AND adverse = ?42 AND monitoring = ?43
-                   AND sources = ?44 AND status = ?45 AND smr = ?46 AND tags = ?47
-                   AND toxicity = ?48 AND forms = ?49",
+                        tags = ?22, toxicity = ?23, forms = ?24,
+                        missed_dose = ?25, red_flags = ?26
+                 WHERE id = ?27 AND name = ?28 AND dci = ?29 AND class = ?30 AND dosage = ?31
+                   AND ddi = ?32 AND iup = ?33 AND antidote = ?34 AND notes = ?35
+                   AND half_life = ?36 AND auc = ?37 AND elimination = ?38 AND renal = ?39
+                   AND pregnancy = ?40 AND indications = ?41 AND mechanism = ?42
+                   AND contraindications = ?43 AND adverse = ?44 AND monitoring = ?45
+                   AND sources = ?46 AND status = ?47 AND smr = ?48 AND tags = ?49
+                   AND toxicity = ?50 AND forms = ?51
+                   AND missed_dose = ?52 AND red_flags = ?53",
                 rusqlite::params![
                     new.name,
                     new.dci,
@@ -22722,6 +23303,8 @@ impl Db {
                     new.tags,
                     new.toxicity,
                     new.forms,
+                    new.missed_dose,
+                    new.red_flags,
                     expected.id,
                     expected.name,
                     expected.dci,
@@ -22747,6 +23330,8 @@ impl Db {
                     expected.tags,
                     expected.toxicity,
                     expected.forms,
+                    expected.missed_dose,
+                    expected.red_flags,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -23274,6 +23859,35 @@ impl Db {
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
+    }
+
+    /// Fill « en cas d'oubli » and « ce qui doit faire consulter » on
+    /// every card whose class, tags, DCI or name matches a rule, and
+    /// only where the field is still empty.
+    ///
+    /// Idempotent by construction: a card the team has written to keeps
+    /// what it says, and running this twice adds nothing. The rules are
+    /// class-level because that is the level at which these two answers
+    /// are true — a card that needs its own wording gets it by hand.
+    pub fn seed_conduite(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut filled = 0;
+        for (key, missed, flags) in STARTER_CONDUITE {
+            let like = format!("%{key}%");
+            filled += tx
+                .execute(
+                    "UPDATE drugs SET missed_dose = ?1, red_flags = ?2
+                     WHERE missed_dose = '' AND red_flags = ''
+                       AND (class LIKE ?3 OR tags LIKE ?3 OR dci LIKE ?3 OR name LIKE ?3)",
+                    (missed, flags, &like),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(filled)
     }
 
     /// Seed the codex, once. Like the drug base: a preparation the
@@ -25606,6 +26220,64 @@ mod tests {
         // Deleting the patient takes the biology with it.
         db.delete_patient(pid).unwrap();
         assert!(db.bio_results(pid).unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The two counter answers a monograph was missing: what to do
+    /// when a dose is missed, and what makes the patient consult.
+    #[test]
+    fn the_conduite_fills_the_cards_it_names_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-conduite-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("conduite.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+        let all = db.drugs().unwrap();
+        // A good half of the base is covered by the class rules; the
+        // rest is the specialities nobody has a general answer for.
+        let filled = all.iter().filter(|d| !d.missed_dose.is_empty()).count();
+        assert!(
+            filled > all.len() / 3,
+            "seulement {filled} fiches sur {} renseignées",
+            all.len()
+        );
+        // Both fields go together: a card never says what to do without
+        // saying what to watch for.
+        for d in &all {
+            assert_eq!(
+                d.missed_dose.is_empty(),
+                d.red_flags.is_empty(),
+                "{} : une seule des deux conduites",
+                d.name
+            );
+        }
+        // The classes that carry the most risk are all covered.
+        for name in ["Eliquis", "Previscan", "Levothyrox", "Glucophage", "Zocor"] {
+            let card = all.iter().find(|d| d.name == name);
+            if let Some(card) = card {
+                assert!(
+                    !card.missed_dose.is_empty(),
+                    "{name} sans conduite en cas d'oubli"
+                );
+            }
+        }
+        // Running it again changes nothing.
+        assert_eq!(db.seed_conduite().unwrap(), 0);
+        // And a card the team has written to is left alone.
+        let mut edited = all
+            .iter()
+            .find(|d| !d.missed_dose.is_empty())
+            .expect("au moins une fiche renseignée")
+            .clone();
+        let base = edited.clone();
+        edited.missed_dose = "La conduite de l'officine.".to_owned();
+        assert!(db.update_drug(&edited, &base).unwrap());
+        db.seed_conduite().unwrap();
+        let after = db.drugs().unwrap();
+        let kept = after.iter().find(|d| d.id == edited.id).unwrap();
+        assert_eq!(kept.missed_dose, "La conduite de l'officine.");
 
         let _ = std::fs::remove_file(&path);
     }

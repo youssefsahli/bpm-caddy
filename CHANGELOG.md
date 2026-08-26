@@ -5,6 +5,53 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.56.0] - 2026-08-26
+
+### Added
+- **Le bilan partagé de médication, imprimé avec ce que la fiche
+  sait.** Un bouton « Bilan… » sur le dossier patient : les traitements
+  avec leur DCI, leur classe et leur posologie ; **les interactions que
+  la fiche repère elle-même entre ces traitements** — pour chaque
+  médicament, les phrases de sa propre monographie qui nomment un autre
+  médicament du dossier, citées telles quelles, une paire à la fois ;
+  la biologie avec sa lecture et ce qu'elle change ; ce que le
+  calendrier vaccinal réclame encore ; les actes de l'année. Puis les
+  deux cadres qui se remplissent pendant l'entretien — analyse
+  pharmaceutique et plan d'action — et la signature. Un dossier vide
+  imprime le formulaire qu'on remplit à la main.
+- **Five reference tables more**, on the questions the twenty others
+  did not answer. « Sujet âgé » — les médicaments à réévaluer après 75
+  ans, pourquoi, et ce qui se propose à la place, y compris ce qui
+  manque (START). « Inhalateurs » — la technique dispositif par
+  dispositif, et l'erreur qui fait rater le traitement pour chacun.
+  « Antidiabétiques » — hypoglycémie, rein, effets à annoncer, et les
+  règles de jour de maladie. « Collyres » — l'ordre, le délai de cinq
+  minutes, la compression de l'angle interne, l'œil rouge qu'on
+  oriente. « Automédication » — ce qui se refuse au comptoir, et ce
+  qu'on propose à la place. Vingt-cinq tables, 237 lignes.
+- **Chaque table dit quand elle a été relue**, et contre quelle
+  édition de ses sources : la ligne « Relu en… » s'affiche sous la
+  table et s'imprime avec elle. Une table de référence qu'on ne peut
+  pas dater est une table dont on ne se sert pas.
+- **Deux réponses de plus sur chaque monographie** : « En cas d'oubli »
+  et « Ce qui doit faire consulter ». Ce sont les deux questions les
+  plus posées au comptoir et les moins écrites quelque part. 110 règles
+  de classe les remplissent — l'oubli d'un AVK constaté le lendemain
+  qui ne se rattrape pas, la gélule de dabigatran, le sulfamide qu'on
+  ne prend pas sans le repas, le méthotrexate hebdomadaire, le
+  bêtabloquant qu'on n'arrête jamais d'un coup — et 423 des 505 fiches
+  de départ en héritent. Elles ne remplissent qu'un champ vide : une
+  fiche que l'équipe a écrite garde ce qu'elle dit. Les deux sections
+  s'affichent sur la fiche, s'éditent dans le formulaire et
+  s'impriment avec la monographie.
+- **Les deux tables les plus minces sont étoffées.** Les AOD gagnent la
+  prise et l'alimentation (le rivaroxaban 15 et 20 mg au repas, la
+  gélule de dabigatran qu'on n'ouvre jamais), la conduite en cas
+  d'oubli, les interactions qui comptent, l'arrêt avant un geste
+  invasif et ce qui fait appeler. Les corticoïdes inhalés gagnent
+  l'association fixe, les signes d'un asthme non contrôlé, l'enfant, et
+  les effets locaux qui ne justifient pas d'arrêter le fond.
+
 ## [0.55.0] - 2026-08-26
 
 ### Added
