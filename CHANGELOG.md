@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.65.1] - 2026-08-27
+
+### Fixed
+- **The upgrade path is tested.** A base written by the first version —
+  no DCI, no class, no monograph, no biology, no codex — is opened, and
+  every column the current code reads has to be there. It is what the
+  migrations are for, and it is only true if they run. Five columns of
+  that first version are listed among them too: they cost nothing when
+  they already exist, and they turn a « no such column » on a
+  hand-repaired base into a no-op.
+- The Options dialog writes the whole configuration back through the
+  TOML serializer; a round trip with the team list and the mentions is
+  now a test, since an array of tables in the wrong place is exactly
+  what that serializer refuses.
+
 ## [0.65.0] - 2026-08-27
 
 ### Added
