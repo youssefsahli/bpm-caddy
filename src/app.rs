@@ -354,13 +354,31 @@ fn mono_heading(ui: &mut egui::Ui, width: f32, title: &str) {
 
 /// One section of the printed-looking monograph: the heading, then the
 /// text wrapped to the sheet's width. Empty sections are skipped.
-fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
+///
+/// Given the linked segments of that field, the names of other cards in
+/// the prose are clickable; returns the card asked for, if one was.
+///
+/// The reader following an interaction from Eliquis to the miconazole
+/// that contraindicates it was reading the name, closing the card,
+/// typing it into the search box: the name on the page is the door.
+fn mono_section_linked(
+    ui: &mut egui::Ui,
+    width: f32,
+    title: &str,
+    body: &str,
+    segments: Option<&[MonoSeg]>,
+) -> Option<i64> {
     let body = body.trim();
     if body.is_empty() {
-        return;
+        return None;
     }
     mono_heading(ui, width, title);
-    // Blank lines in the stored text separate paragraphs.
+    // With links, the segments are the text: they were cut from this
+    // very field, so they are walked rather than matched back against
+    // it. Without them, the plain paragraphs are drawn as before.
+    if let Some(segs) = segments {
+        return mono_linked_body(ui, width, segs);
+    }
     for para in body.split("\n\n") {
         let para = para.trim();
         if para.is_empty() {
@@ -374,12 +392,105 @@ fn mono_section(ui: &mut egui::Ui, width: f32, title: &str, body: &str) {
         });
         ui.add_space(3.0);
     }
+    None
+}
+
+/// Draw a field that carries links, paragraph by paragraph. A blank
+/// line inside a plain segment is a paragraph break — the only place
+/// one can occur, since a link is a molecule's name.
+fn mono_linked_body(ui: &mut egui::Ui, width: f32, segments: &[MonoSeg]) -> Option<i64> {
+    let mut paragraphs: Vec<Vec<(&str, Option<i64>)>> = vec![Vec::new()];
+    for seg in segments {
+        match seg {
+            MonoSeg::Link(text, id) => {
+                paragraphs
+                    .last_mut()
+                    .expect("never empty")
+                    .push((text, Some(*id)));
+            }
+            MonoSeg::Text(text) => {
+                for (i, part) in text.split("\n\n").enumerate() {
+                    if i > 0 {
+                        paragraphs.push(Vec::new());
+                    }
+                    if !part.is_empty() {
+                        paragraphs
+                            .last_mut()
+                            .expect("never empty")
+                            .push((part, None));
+                    }
+                }
+            }
+        }
+    }
+    let mut clicked = None;
+    for para in &mut paragraphs {
+        // The stored text is written with line breaks the sheet does
+        // not keep: the paragraph's own edges are trimmed, the rest
+        // flows.
+        if let Some(first) = para.first_mut() {
+            first.0 = first.0.trim_start();
+        }
+        if let Some(last) = para.last_mut() {
+            last.0 = last.0.trim_end();
+        }
+        if para.iter().all(|(t, _)| t.trim().is_empty()) {
+            continue;
+        }
+        ui.scope(|ui| {
+            ui.set_max_width(width);
+            ui.horizontal_wrapped(|ui| {
+                // The segments carry their own spacing: an inserted
+                // gutter would open a hole before every comma.
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for (text, link) in para.iter() {
+                    match link {
+                        Some(id) => {
+                            if ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(*text)
+                                            .size(13.0)
+                                            .color(motif::ACCENT)
+                                            .underline(),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .on_hover_text(tr("drug_link_tooltip"))
+                                .clicked()
+                            {
+                                clicked = Some(*id);
+                            }
+                        }
+                        None => {
+                            let mut job = rich_text(text, 13.0, motif::INK);
+                            job.wrap.max_width = width;
+                            ui.add(egui::Label::new(job).wrap());
+                        }
+                    }
+                }
+            });
+        });
+        ui.add_space(3.0);
+    }
+    clicked
 }
 
 /// The drug card as a printed monograph on a sheet of paper: identity,
 /// then every filled section in reading order, the pharmacokinetics as
 /// a short definition list, and the numbered sources at the foot.
-fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[db::Posologie]) {
+fn drug_monograph(
+    ui: &mut egui::Ui,
+    d: &Drug,
+    class_note: &str,
+    posologies: &[db::Posologie],
+    links: &MonoLinks,
+) -> Option<i64> {
+    // The other card the reader asked for, by clicking a name in the
+    // prose. Opened by the caller once the sheet is drawn.
+    let mut follow: Option<i64> = None;
     // Measured against the visible slice: a sheet centred on a width
     // the panel claimed but does not have loses its right margin — and
     // with it the right-hand column of the posology table.
@@ -457,19 +568,35 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[d
                 top,
                 egui::Stroke::new(1.2_f32, motif::INK),
             );
-            for (title, body) in [
-                (tr("drug_sec_indications"), d.indications.as_str()),
-                (tr("drug_sec_mechanism"), d.mechanism.as_str()),
-                (tr("drug_dosage"), d.dosage.as_str()),
-                (tr("drug_sec_ci"), d.contraindications.as_str()),
-                (tr("drug_ddi"), d.ddi.as_str()),
-                (tr("drug_sec_adverse"), d.adverse.as_str()),
-                (tr("drug_sec_toxicity"), d.toxicity.as_str()),
-                (tr("drug_sec_monitoring"), d.monitoring.as_str()),
-                (tr("drug_iup"), d.iup.as_str()),
-                (tr("drug_sec_smr"), d.smr.as_str()),
+            for (field, title, body) in [
+                (
+                    "indications",
+                    tr("drug_sec_indications"),
+                    d.indications.as_str(),
+                ),
+                ("mechanism", tr("drug_sec_mechanism"), d.mechanism.as_str()),
+                ("dosage", tr("drug_dosage"), d.dosage.as_str()),
+                (
+                    "contraindications",
+                    tr("drug_sec_ci"),
+                    d.contraindications.as_str(),
+                ),
+                ("ddi", tr("drug_ddi"), d.ddi.as_str()),
+                ("adverse", tr("drug_sec_adverse"), d.adverse.as_str()),
+                ("toxicity", tr("drug_sec_toxicity"), d.toxicity.as_str()),
+                (
+                    "monitoring",
+                    tr("drug_sec_monitoring"),
+                    d.monitoring.as_str(),
+                ),
+                ("iup", tr("drug_iup"), d.iup.as_str()),
+                ("smr", tr("drug_sec_smr"), d.smr.as_str()),
             ] {
-                mono_section(ui, width, title, body);
+                if let Some(id) =
+                    mono_section_linked(ui, width, title, body, links.get(field).map(Vec::as_slice))
+                {
+                    follow = Some(id);
+                }
             }
             // Posologies by indication: the mainstream ones and the
             // less obvious, each with what changes it.
@@ -604,13 +731,24 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[d
                         }
                     });
             }
-            mono_section(ui, width, tr("drug_notes"), &d.notes);
-            mono_section(
+            if let Some(id) = mono_section_linked(
+                ui,
+                width,
+                tr("drug_notes"),
+                &d.notes,
+                links.get("notes").map(Vec::as_slice),
+            ) {
+                follow = Some(id);
+            }
+            if let Some(id) = mono_section_linked(
                 ui,
                 width,
                 &trf("drug_class_note", d.class.trim()),
                 class_note,
-            );
+                links.get("class_note").map(Vec::as_slice),
+            ) {
+                follow = Some(id);
+            }
             let sources: Vec<&str> = d
                 .sources
                 .lines()
@@ -673,6 +811,7 @@ fn drug_monograph(ui: &mut egui::Ui, d: &Drug, class_note: &str, posologies: &[d
     );
     let below = (sheet_rect.bottom() - ui.cursor().top()).max(0.0) + 12.0;
     ui.add_space(below);
+    follow
 }
 
 /// French name of an act's rank inside its année d'accompagnement.
@@ -989,6 +1128,9 @@ struct Session {
     vacc_edit_base: (String, String),
     /// Two-step delete confirmation for one carnet line.
     vacc_confirm: Option<i64>,
+    /// Two-step confirmation on filling the carnet with the doses the
+    /// calendar says are owed.
+    vacc_fill_confirm: bool,
     /// In-progress country search of the travel panel.
     travel_query: String,
     /// The open ordonnance box, after a positive TROD.
@@ -1046,6 +1188,11 @@ struct Session {
     rdv_move_edit: Option<(i64, String)>,
     /// Week shown in the agenda, relative to the current one.
     agenda_offset: i64,
+    /// Whether the card's technical sheet is unfolded beside it.
+    drug_tech_open: bool,
+    /// The prose of the open card, cut into plain text and links to
+    /// other cards. Computed when the card is opened, not per frame.
+    mono_links: MonoLinks,
     /// In-progress text of the per-interview date fields, keyed by id.
     date_edits: std::collections::HashMap<i64, String>,
     /// The same, for the column holding the day the act was held.
@@ -1182,6 +1329,7 @@ impl Session {
             vacc_edit_date: String::new(),
             vacc_edit_base: (String::new(), String::new()),
             vacc_confirm: None,
+            vacc_fill_confirm: false,
             travel_query: String::new(),
             ordonnance: None,
             drug_notes: Vec::new(),
@@ -1217,6 +1365,8 @@ impl Session {
             rdv_time_edit: None,
             rdv_move_edit: None,
             agenda_offset: 0,
+            drug_tech_open: true,
+            mono_links: MonoLinks::new(),
             date_edits: std::collections::HashMap::new(),
             made_edits: std::collections::HashMap::new(),
             show_amounts: false,
@@ -1469,6 +1619,7 @@ impl Session {
         self.note_text.clear();
         self.note_confirm = None;
         self.class_note = self.db.class_note(&d.class).unwrap_or_default();
+        self.mono_links = mono_links(&d, &self.class_note, &self.drugs);
         self.posologies = self.db.posologies(d.id).unwrap_or_default();
         self.poso_new = (String::new(), String::new(), String::new());
         self.poso_edit = None;
@@ -1647,6 +1798,7 @@ impl Session {
         self.vacc_edit = None;
         self.vacc_edit_date.clear();
         self.vacc_confirm = None;
+        self.vacc_fill_confirm = false;
     }
 
     fn reload_interviews(&mut self, patient_id: i64) {
@@ -1752,6 +1904,203 @@ fn rich_text(text: &str, size: f32, color: egui::Color32) -> egui::text::LayoutJ
     }
     push(&mut job, &mut buf, bold, italic, mark);
     job
+}
+
+/// One piece of a monograph paragraph: plain prose, or the name of
+/// another card in the base.
+#[derive(Clone, Debug, PartialEq)]
+enum MonoSeg {
+    Text(String),
+    /// The words as written, and the card they name.
+    Link(String, i64),
+}
+
+/// The linked prose of one card, by field name ("ddi", "monitoring"…).
+type MonoLinks = std::collections::HashMap<&'static str, Vec<MonoSeg>>;
+
+/// The fields whose prose is scanned for other cards' names. Prose
+/// only: a dose or a date has no molecule in it.
+const LINKED_FIELDS: [&str; 11] = [
+    "indications",
+    "mechanism",
+    "dosage",
+    "contraindications",
+    "ddi",
+    "adverse",
+    "toxicity",
+    "monitoring",
+    "iup",
+    "notes",
+    "class_note",
+];
+
+/// Every card's name and DCI, folded, pointing at its id — the index
+/// behind the clickable molecules.
+///
+/// Multi-word entries are kept whole ("acide acétylsalicylique"), and
+/// matched longest first, so the two words are one link rather than a
+/// broken pair.
+fn drug_link_index(drugs: &[Drug]) -> std::collections::HashMap<String, i64> {
+    let mut index = std::collections::HashMap::new();
+    for d in drugs {
+        for term in [d.name.as_str(), d.dci.as_str()] {
+            let key = fuzzy::sort_key(term.trim());
+            // One-letter and two-letter keys would light up half the
+            // page ("PA", "ml"): a molecule's name is longer.
+            if key.chars().count() < 4 {
+                continue;
+            }
+            index.entry(key).or_insert(d.id);
+        }
+    }
+    index
+}
+
+/// Cut `text` into prose and links, matching the longest run of words
+/// first. `self_id` is never linked: a card does not point at itself.
+fn link_segments(
+    text: &str,
+    index: &std::collections::HashMap<String, i64>,
+    self_id: i64,
+) -> Vec<MonoSeg> {
+    // Word boundaries as byte ranges, so the prose between two links —
+    // punctuation, spacing, line breaks — is carried over untouched.
+    let mut words: Vec<(usize, usize)> = Vec::new();
+    let mut start: Option<usize> = None;
+    for (i, c) in text.char_indices() {
+        // The apostrophe is a separator, not a letter: French elides
+        // ("l'acide acétylsalicylique"), and a word starting with "l'"
+        // matches no molecule. The hyphen stays inside the word —
+        // « N-acétylcystéine » is one name.
+        let part = c.is_alphanumeric() || c == '-';
+        match (part, start) {
+            (true, None) => start = Some(i),
+            (false, Some(s)) => {
+                words.push((s, i));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(s) = start {
+        words.push((s, text.len()));
+    }
+    let mut out: Vec<MonoSeg> = Vec::new();
+    let mut plain_from = 0usize;
+    let mut w = 0usize;
+    // Three words is enough for the longest DCI in the base
+    // ("acide acétylsalicylique", "sulfaméthoxazole triméthoprime").
+    while w < words.len() {
+        let mut hit = None;
+        for len in (1..=3.min(words.len() - w)).rev() {
+            let from = words[w].0;
+            let to = words[w + len - 1].1;
+            let key = fuzzy::sort_key(&text[from..to]);
+            if let Some(&id) = index.get(&key) {
+                if id != self_id {
+                    hit = Some((len, from, to, id));
+                }
+                break;
+            }
+        }
+        match hit {
+            Some((len, from, to, id)) => {
+                if from > plain_from {
+                    out.push(MonoSeg::Text(text[plain_from..from].to_owned()));
+                }
+                out.push(MonoSeg::Link(text[from..to].to_owned(), id));
+                plain_from = to;
+                w += len;
+            }
+            None => w += 1,
+        }
+    }
+    if plain_from < text.len() {
+        out.push(MonoSeg::Text(text[plain_from..].to_owned()));
+    }
+    out
+}
+
+/// Link every prose field of one card against the rest of the base.
+/// Done once, when the card is opened: the monograph is redrawn sixty
+/// times a second and this is not work for a frame.
+fn mono_links(d: &Drug, class_note: &str, drugs: &[Drug]) -> MonoLinks {
+    let index = drug_link_index(drugs);
+    let mut map = MonoLinks::new();
+    for field in LINKED_FIELDS {
+        let text = match field {
+            "indications" => d.indications.as_str(),
+            "mechanism" => d.mechanism.as_str(),
+            "dosage" => d.dosage.as_str(),
+            "contraindications" => d.contraindications.as_str(),
+            "ddi" => d.ddi.as_str(),
+            "adverse" => d.adverse.as_str(),
+            "toxicity" => d.toxicity.as_str(),
+            "monitoring" => d.monitoring.as_str(),
+            "iup" => d.iup.as_str(),
+            "notes" => d.notes.as_str(),
+            "class_note" => class_note,
+            _ => "",
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        let segs = link_segments(text, &index, d.id);
+        // Nothing to click: leave the field out and let the monograph
+        // draw it as the plain paragraph it is.
+        if segs.iter().any(|s| matches!(s, MonoSeg::Link(..))) {
+            map.insert(field, segs);
+        }
+    }
+    map
+}
+
+/// The outside bases a card can be looked up in. The application never
+/// talks to any of them: it hands a URL to the browser, and that is the
+/// whole of its network life.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lookup {
+    /// Base de données publique des médicaments (ANSM) — what is
+    /// marketed, under which presentations.
+    Ansm,
+    /// PubChem — what the molecule is: structure, mass, solubility.
+    PubChem,
+    /// PubMed — what has been published on it, newest first.
+    PubMed,
+}
+
+impl Lookup {
+    /// The query to send: the DCI when the card has one — an
+    /// international name is what the foreign bases index — and the
+    /// brand name for the French one, which is filed under it.
+    fn url(self, d: &Drug) -> String {
+        let dci = d.dci.trim();
+        let name = d.name.trim();
+        let international = if dci.is_empty() { name } else { dci };
+        match self {
+            Self::Ansm => {
+                let query = if dci.is_empty() {
+                    name.to_owned()
+                } else {
+                    format!("{name} {dci}")
+                };
+                format!(
+                    "https://base-donnees-publique.medicaments.gouv.fr/index.php#result:{}",
+                    urlencode(&query)
+                )
+            }
+            Self::PubChem => format!(
+                "https://pubchem.ncbi.nlm.nih.gov/#query={}",
+                urlencode(international)
+            ),
+            // Sorted by date: the point of the button is the latest
+            // publication, not the most cited one from 1998.
+            Self::PubMed => format!(
+                "https://pubmed.ncbi.nlm.nih.gov/?term={}&sort=date",
+                urlencode(international)
+            ),
+        }
+    }
 }
 
 /// Percent-encode a query for a URL handed to the browser.
@@ -3507,7 +3856,7 @@ impl App {
                 return;
             }
             if session.view == MainView::VaccineMap {
-                Self::vaccine_map_view(ui, session);
+                Self::vaccine_map_view(ui, session, &config);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -4592,12 +4941,14 @@ impl App {
                                 print = true;
                             }
                         });
-                        ui.label(
-                            egui::RichText::new(tr("vacc_source"))
-                                .size(10.0)
-                                .italics()
-                                .color(motif::TEXT_FAINT),
-                        );
+                        if !config.disclaimers.vaccins.trim().is_empty() {
+                            ui.label(
+                                egui::RichText::new(config.disclaimers.vaccins.trim())
+                                    .size(10.0)
+                                    .italics()
+                                    .color(motif::TEXT_FAINT),
+                            );
+                        }
                     });
             });
         });
@@ -4732,7 +5083,42 @@ impl App {
         // foot of the carnet: the panel says what to do, and the click
         // is the doing.
         let mut pick: Option<&'static str> = None;
+        // What the carnet is already waiting on: a line with a code and
+        // no date is a dose planned, not a dose given, and planning it
+        // twice helps nobody.
+        let planned: std::collections::HashSet<String> = session
+            .vaccinations
+            .iter()
+            .filter(|v| v.given_on.trim().is_empty() && !v.code.is_empty())
+            .map(|v| v.code.clone())
+            .collect();
+        let owed: Vec<&vaccines::DueLine> = lines
+            .iter()
+            .filter(|l| l.level != vaccines::DueLevel::Ok && !planned.contains(l.code))
+            .collect();
+        let mut fill = false;
         motif::panel(ui, rect, Some(tr("vacc_due_section")), |ui| {
+            // One click writes the whole schedule into the carnet, as
+            // undated lines the counter then fills in, corrects or
+            // deletes one by one. Nothing is recorded as given.
+            if !owed.is_empty() {
+                let label = if session.vacc_fill_confirm {
+                    trf("vacc_fill_confirm", owed.len().to_string())
+                } else {
+                    tr("vacc_fill").to_owned()
+                };
+                if motif::button(ui, &label)
+                    .on_hover_text(tr("vacc_fill_tooltip"))
+                    .clicked()
+                {
+                    if session.vacc_fill_confirm {
+                        fill = true;
+                    } else {
+                        session.vacc_fill_confirm = true;
+                    }
+                }
+                ui.add_space(4.0);
+            }
             egui::ScrollArea::vertical()
                 .id_salt("vacc_due")
                 .auto_shrink([false, false])
@@ -4790,6 +5176,30 @@ impl App {
                 .position(|v| v.code == code)
                 .map(|i| i + 1)
                 .unwrap_or(0);
+        }
+        if fill {
+            session.vacc_fill_confirm = false;
+            let mut written = 0;
+            for line in &owed {
+                let planned_dose = db::Vaccination {
+                    code: line.code.to_owned(),
+                    label: line.label.to_owned(),
+                    // No date, no lot, no site: nothing has been given.
+                    // The line is the appointment, not the act.
+                    remark: format!("{} — {}", tr("vacc_fill_remark"), line.detail),
+                    ..Default::default()
+                };
+                match session.db.add_vaccination(patient.id, &planned_dose) {
+                    Ok(_) => written += 1,
+                    Err(e) => {
+                        session.error = Some(e);
+                        break;
+                    }
+                }
+            }
+            if written > 0 {
+                session.load_carnet(patient.id);
+            }
         }
     }
 
@@ -6432,7 +6842,7 @@ impl App {
     /// blocks laid out roughly where they belong. Hovering a square
     /// gives the country's group and what a traveller owes for it;
     /// clicking pins it in the detail panel.
-    fn vaccine_map_view(ui: &mut egui::Ui, session: &mut Session) {
+    fn vaccine_map_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui).shrink(6.0);
         // The lens buttons wrap: measure the band before carving it.
         let lens_h = {
@@ -6598,13 +7008,18 @@ impl App {
         if let Some(code) = pick {
             session.map_country = Some(code);
         }
-        Self::map_detail_pane(ui, session, detail_rect);
+        Self::map_detail_pane(ui, session, detail_rect, config);
     }
 
     /// The pinned country: its group, what it asks of a traveller, and
     /// — when a patient file is open — the button that records it as a
     /// destination on that file.
-    fn map_detail_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+    fn map_detail_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        config: &Config,
+    ) {
         let country = session.map_country.and_then(vaccines::country);
         let title = country.map(|c| c.name).unwrap_or(tr("map_detail_title"));
         let open_patient = session.viewing.as_ref().map(|p| (p.id, p.full_name()));
@@ -6672,12 +7087,14 @@ impl App {
                         }
                         ui.add_space(6.0);
                     }
-                    ui.label(
-                        egui::RichText::new(tr("vacc_source"))
-                            .size(10.5)
-                            .italics()
-                            .color(motif::TEXT_FAINT),
-                    );
+                    if !config.disclaimers.vaccins.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(config.disclaimers.vaccins.trim())
+                                .size(10.5)
+                                .italics()
+                                .color(motif::TEXT_FAINT),
+                        );
+                    }
                 });
         });
         if let Some((pid, code)) = add_travel {
@@ -9277,6 +9694,145 @@ impl App {
         open
     }
 
+    /// The card's technical sheet: what the monograph says in prose,
+    /// read here as property and value — and, where a number is worth a
+    /// shape, as a small chart.
+    ///
+    /// The prose is what a pharmacist reads once; this is what gets
+    /// looked at again at the counter, mid-sentence, and it must be
+    /// legible without reading a paragraph. Returns the keyword clicked,
+    /// which sends the base's search to it.
+    fn drug_tech_pane(ui: &mut egui::Ui, d: &Drug, rect: egui::Rect) -> Option<String> {
+        let mut search = None;
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("drug_tech")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // The identity, as chips one can click: the DCI, the
+                    // class and the tags are the three ways a card is
+                    // looked for again.
+                    ui.horizontal_wrapped(|ui| {
+                        let mut chip = |ui: &mut egui::Ui, text: &str, tooltip: &str| {
+                            if text.trim().is_empty() {
+                                return;
+                            }
+                            if motif::toggle(ui, text.trim(), false)
+                                .on_hover_text(tooltip)
+                                .clicked()
+                            {
+                                search = Some(text.trim().to_owned());
+                            }
+                        };
+                        chip(ui, &d.dci, tr("drug_tech_search_tooltip"));
+                        chip(ui, &d.class, tr("drug_tech_search_tooltip"));
+                        for tag in d.tags.split(',') {
+                            chip(ui, tag, tr("drug_tech_search_tooltip"));
+                        }
+                    });
+                    ui.add_space(6.0);
+                    // The half-life as a shape: what is left a day after
+                    // the last dose, and how long until it is gone.
+                    if let Some(hl) = parse_hours(&d.half_life) {
+                        if hl > 0.0 {
+                            let left = 100.0 * 0.5_f64.powf(24.0 / hl);
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    "drug_tech_left",
+                                    &[&format!("{left:.0}"), &format!("{:.0}", hl * 5.0)],
+                                ))
+                                .size(11.0)
+                                .color(motif::TEXT_DIM),
+                            );
+                            let w = ui.available_width().min(280.0);
+                            let (bar, _) =
+                                ui.allocate_exact_size(egui::vec2(w, 14.0), egui::Sense::hover());
+                            motif::chart::meter(ui, bar, (left / 100.0) as f32, motif::ACCENT);
+                            let span = (hl * 5.0).clamp(6.0, 240.0);
+                            let curve: Vec<f64> = (0..=48)
+                                .map(|i| {
+                                    let t = span * i as f64 / 48.0;
+                                    100.0 * 0.5_f64.powf(t / hl)
+                                })
+                                .collect();
+                            let (plot, resp) =
+                                ui.allocate_exact_size(egui::vec2(w, 40.0), egui::Sense::hover());
+                            motif::chart::sparkline(ui, plot.shrink(2.0), &curve, motif::ACCENT);
+                            resp.on_hover_text(trf("drug_decay_tooltip", format!("{hl:.1}")));
+                            ui.add_space(6.0);
+                        }
+                    }
+                    // A narrow therapeutic margin is not a property among
+                    // others: it is the reason to look the card up.
+                    if !d.toxicity.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("drug_sec_toxicity"))
+                                .size(10.5)
+                                .strong()
+                                .color(motif::ALERT),
+                        );
+                        ui.label(
+                            egui::RichText::new(d.toxicity.trim())
+                                .size(11.0)
+                                .color(motif::TEXT),
+                        );
+                        ui.add_space(6.0);
+                    }
+                    egui::Grid::new(("drug_tech_grid", d.id))
+                        .num_columns(2)
+                        .spacing([8.0, 5.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for (label, value) in [
+                                (tr("drug_status"), d.status.as_str()),
+                                (tr("drug_forms"), d.forms.as_str()),
+                                (tr("drug_half_life"), d.half_life.as_str()),
+                                (tr("drug_auc"), d.auc.as_str()),
+                                (tr("drug_elimination"), d.elimination.as_str()),
+                                (tr("drug_renal"), d.renal.as_str()),
+                                (tr("drug_pregnancy"), d.pregnancy.as_str()),
+                                (tr("drug_iup"), d.iup.as_str()),
+                                (tr("drug_antidote"), d.antidote.as_str()),
+                                (tr("drug_sec_smr"), d.smr.as_str()),
+                                (tr("drug_dosage"), d.dosage.as_str()),
+                            ] {
+                                if value.trim().is_empty() {
+                                    continue;
+                                }
+                                ui.scope(|ui| {
+                                    ui.set_max_width(84.0);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(label)
+                                                .size(10.5)
+                                                .color(motif::TEXT_DIM),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                                // Long prose is kept to three lines here
+                                // and read in full in the monograph: this
+                                // pane is a glance, not a second copy.
+                                ui.scope(|ui| {
+                                    ui.set_max_width((ui.available_width() - 4.0).max(60.0));
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(value.trim())
+                                                .size(11.5)
+                                                .color(motif::TEXT),
+                                        )
+                                        .truncate(),
+                                    )
+                                    .on_hover_text(value.trim());
+                                });
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+        search
+    }
+
     /// The open drug card's dated notes journal. Shared by the card's
     /// side column and, on a narrow window, the foot of the monograph.
     fn drug_notes_pane(
@@ -9447,13 +10003,21 @@ impl App {
             let mut insert_note = false;
             let mut edit = false;
             let mut edit_class = false;
-            let mut lookup = false;
+            // Which outside base the « Rechercher » buttons open, in
+            // the browser: the app itself stays offline.
+            let mut lookup: Option<Lookup> = None;
             let mut poso_add: Option<i64> = None;
             let mut poso_save = false;
             let mut poso_start_edit: Option<db::Posologie> = None;
             let mut poso_delete: Option<(i64, String)> = None;
             let mut print_mono = false;
             let mut open_patient_id: Option<i64> = None;
+            // A molecule clicked inside the monograph: the card it
+            // names is opened once the sheet has been drawn.
+            let mut follow_link: Option<i64> = None;
+            // A keyword clicked in the technical sheet — a DCI, a class,
+            // a tag: the base's search is sent to it.
+            let mut search_keyword: Option<String> = None;
             // The actions stay above the scroll: a full monograph is
             // several screens tall, and « Modifier » or « Enregistrer »
             // must never be something to go looking for.
@@ -9481,11 +10045,18 @@ impl App {
                         {
                             edit_class = true;
                         }
-                        if motif::button(ui, tr("drug_lookup"))
-                            .on_hover_text(tr("drug_lookup_tooltip"))
-                            .clicked()
-                        {
-                            lookup = true;
+                        for (source, label, tooltip) in [
+                            (Lookup::Ansm, tr("drug_lookup"), tr("drug_lookup_tooltip")),
+                            (
+                                Lookup::PubChem,
+                                tr("drug_pubchem"),
+                                tr("drug_pubchem_tooltip"),
+                            ),
+                            (Lookup::PubMed, tr("drug_pubmed"), tr("drug_pubmed_tooltip")),
+                        ] {
+                            if motif::button(ui, label).on_hover_text(tooltip).clicked() {
+                                lookup = Some(source);
+                            }
                         }
                         if motif::button(ui, tr("drug_print"))
                             .on_hover_text(tr("drug_print_tooltip"))
@@ -9564,7 +10135,13 @@ impl App {
                         motif::page(ui, 900.0, |ui| {
                             ui.add_space(18.0);
                             if reading {
-                                drug_monograph(ui, form, &session.class_note, &session.posologies);
+                                follow_link = drug_monograph(
+                                    ui,
+                                    form,
+                                    &session.class_note,
+                                    &session.posologies,
+                                    &session.mono_links,
+                                );
                             }
                             if !reading {
                                 ui.vertical_centered(|ui| {
@@ -9713,13 +10290,66 @@ impl App {
                     });
             });
             // Stacked beside the monograph, or side by side under it.
-            let (recalls, journal) = if wide {
-                let rows = motif::split_rows(side_rect, &[0.0, 0.0], 8.0);
-                (rows[0], rows[1])
+            // The technical sheet is collapsible: folded, it gives its
+            // height back to the recall list and the journal rather
+            // than leaving a stub panel.
+            let tech_h = if session.drug_tech_open {
+                (side_rect.height() * 0.46).clamp(180.0, 460.0)
             } else {
-                let cols = motif::split_columns(side_rect, 2, 8.0);
-                (cols[0], cols[1])
+                30.0
             };
+            let (tech, recalls, journal) = if wide {
+                let rows = motif::split_rows(side_rect, &[tech_h, 0.0, 0.0], 8.0);
+                (rows[0], rows[1], rows[2])
+            } else {
+                // Under the monograph the three share the width, but not
+                // equally: the technical sheet is a table and a chart,
+                // the two others are lists of short lines.
+                let gap = 8.0;
+                let usable = side_rect.width() - 2.0 * gap;
+                let tech_w = (usable * 0.40).max(200.0);
+                let rest = ((usable - tech_w) / 2.0).max(120.0);
+                let cut = |from: f32, w: f32| {
+                    egui::Rect::from_min_size(
+                        egui::pos2(side_rect.left() + from, side_rect.top()),
+                        egui::vec2(w, side_rect.height()),
+                    )
+                };
+                (
+                    cut(0.0, tech_w),
+                    cut(tech_w + gap, rest),
+                    cut(tech_w + rest + 2.0 * gap, rest),
+                )
+            };
+            let mut fold = false;
+            motif::panel(ui, tech, Some(tr("drug_tech_section")), |ui| {
+                if motif::button(
+                    ui,
+                    if session.drug_tech_open {
+                        tr("drug_tech_fold")
+                    } else {
+                        tr("drug_tech_unfold")
+                    },
+                )
+                .on_hover_text(tr("drug_tech_tooltip"))
+                .clicked()
+                {
+                    fold = true;
+                }
+                if session.drug_tech_open {
+                    let body = ui.available_rect_before_wrap();
+                    if body.height() > 30.0 {
+                        if let Some(card) = session.drug_form.clone() {
+                            if let Some(word) = Self::drug_tech_pane(ui, &card, body) {
+                                search_keyword = Some(word);
+                            }
+                        }
+                    }
+                }
+            });
+            if fold {
+                session.drug_tech_open = !session.drug_tech_open;
+            }
             motif::panel(ui, recalls, Some(tr("drug_patients_label")), |ui| {
                 if session.drug_patients.is_empty() {
                     ui.label(
@@ -9853,26 +10483,16 @@ impl App {
             if edit_class {
                 session.class_note_edit = Some(session.class_note.clone());
             }
-            if lookup {
+            if let Some(source) = lookup {
                 // The app stays offline: the query is handed to the
-                // browser, on the public ANSM database.
-                let query = session
-                    .drug_form
-                    .as_ref()
-                    .map(|d| {
-                        if d.dci.trim().is_empty() {
-                            d.name.trim().to_owned()
-                        } else {
-                            format!("{} {}", d.name.trim(), d.dci.trim())
-                        }
-                    })
-                    .unwrap_or_default();
-                let url = format!(
-                    "https://base-donnees-publique.medicaments.gouv.fr/index.php#result:{}",
-                    urlencode(&query)
-                );
-                if let Err(e) = open::that(&url) {
-                    session.error = Some(trf("drug_lookup_error", e));
+                // browser. The ANSM base answers « est-il commercialisé,
+                // sous quelles présentations » ; PubChem answers « quelle
+                // est cette molécule » ; PubMed answers « qu'a-t-on
+                // publié dessus », newest first.
+                if let Some(card) = session.drug_form.as_ref() {
+                    if let Err(e) = open::that(source.url(card)) {
+                        session.error = Some(trf("drug_lookup_error", e));
+                    }
                 }
             }
             if print_mono {
@@ -9948,6 +10568,25 @@ impl App {
                 if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
                     session.view = MainView::Search;
                     session.open_patient(p);
+                }
+            }
+            // A keyword closes the card and searches the base for it:
+            // « les autres AOD », « les autres probiotiques », asked by
+            // clicking rather than by retyping.
+            if let Some(word) = search_keyword {
+                session.drug_query = word;
+                session.drug_form = None;
+                session.drug_base = None;
+                session.drug_selected = 0;
+                session.error = None;
+                return;
+            }
+            // Following a name in the prose opens that card, in its own
+            // tab, exactly as clicking it in the list would.
+            if let Some(id) = follow_link {
+                if let Some(d) = session.drugs.iter().find(|d| d.id == id).cloned() {
+                    session.open_drug_card(d);
+                    session.error = None;
                 }
             }
             return;
@@ -11713,6 +12352,10 @@ impl eframe::App for App {
                                         &mut editor.cfg.disclaimers.carnet,
                                     ),
                                     (
+                                        tr("opts_mention_vaccins"),
+                                        &mut editor.cfg.disclaimers.vaccins,
+                                    ),
+                                    (
                                         tr("opts_mention_calc"),
                                         &mut editor.cfg.disclaimers.calculator,
                                     ),
@@ -12503,6 +13146,72 @@ mod tests {
             i.kind = InterviewKind::Bpm;
         }
         assert_eq!(super::treatment_change_shortfall(&bpm, &bpm[2], 12), None);
+    }
+
+    /// The names in the prose are what the reader follows: they have to
+    /// be found whatever the case and the accents, taken whole when the
+    /// DCI is two words, and never point at the card being read.
+    #[test]
+    fn the_prose_links_to_the_cards_it_names() {
+        use crate::db::Drug;
+        let drugs = vec![
+            Drug {
+                id: 1,
+                name: "Eliquis".to_owned(),
+                dci: "apixaban".to_owned(),
+                ..Default::default()
+            },
+            Drug {
+                id: 2,
+                name: "Daktarin".to_owned(),
+                dci: "miconazole".to_owned(),
+                ..Default::default()
+            },
+            Drug {
+                id: 3,
+                name: "Kardégic".to_owned(),
+                dci: "acide acétylsalicylique".to_owned(),
+                ..Default::default()
+            },
+        ];
+        let index = super::drug_link_index(&drugs);
+        let segs = super::link_segments(
+            "Le MICONAZOLE est contre-indiqué ; l\'acide acetylsalicylique majore le risque, \
+             et l\'apixaban lui-même n\'y change rien.",
+            &index,
+            // Reading the Eliquis card: apixaban is not a link on it.
+            1,
+        );
+        let links: Vec<(&str, i64)> = segs
+            .iter()
+            .filter_map(|s| match s {
+                super::MonoSeg::Link(t, id) => Some((t.as_str(), *id)),
+                super::MonoSeg::Text(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            links,
+            vec![("MICONAZOLE", 2), ("acide acetylsalicylique", 3)]
+        );
+        // The prose comes back whole: nothing is dropped or reordered.
+        let rebuilt: String = segs
+            .iter()
+            .map(|s| match s {
+                super::MonoSeg::Text(t) => t.as_str(),
+                super::MonoSeg::Link(t, _) => t.as_str(),
+            })
+            .collect();
+        assert!(rebuilt.starts_with("Le MICONAZOLE est contre-indiqué"));
+        assert!(rebuilt.ends_with("n\'y change rien."));
+        // A short word is not a molecule: "ml", "PA" and the like must
+        // not light up.
+        let short = vec![Drug {
+            id: 9,
+            name: "Ac".to_owned(),
+            dci: "ml".to_owned(),
+            ..Default::default()
+        }];
+        assert!(super::drug_link_index(&short).is_empty());
     }
 
     #[test]
