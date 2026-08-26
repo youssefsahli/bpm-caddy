@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.63.0] - 2026-08-27
+
+### Added
+- **A mode d'emploi the team can hold.** The shortcut window (F12) now
+  prints the application's own handout: fifteen sections in two columns
+  on one sheet — ouvrir la base, trouver un patient, créer et suivre un
+  entretien, ce que l'acte imprime, le bilan et le plan de prise, la
+  biologie, le carnet, le référentiel, les tables et le codex, l'agenda,
+  le tableau de bord, les réglages, les raccourcis, et ce que
+  l'application ne décide pas. One copy beside the counter PC, one in
+  the binder. A test keeps it to a sheet.
+
 ## [0.62.0] - 2026-08-27
 
 ### Added

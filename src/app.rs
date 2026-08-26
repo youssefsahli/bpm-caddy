@@ -3985,6 +3985,7 @@ impl App {
             ("230826 · 2308", tr("keys_dates")),
         ];
         let mut open = true;
+        let mut print_guide = false;
         egui::Window::new(tr("keys_title"))
             .collapsible(false)
             .resizable(false)
@@ -3992,6 +3993,16 @@ impl App {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
+                // The shortcuts are half the answer; the other half is
+                // what the application is for, and that one is printed
+                // and kept beside the poste.
+                if motif::button(ui, tr("keys_guide"))
+                    .on_hover_text(tr("keys_guide_tooltip"))
+                    .clicked()
+                {
+                    print_guide = true;
+                }
+                ui.add_space(6.0);
                 egui::Grid::new("keys")
                     .num_columns(2)
                     .spacing([18.0, 3.0])
@@ -4034,6 +4045,13 @@ impl App {
                         }
                     });
             });
+        if print_guide {
+            if let Err(e) = crate::pdf::open_guide(&self.config.pharmacy) {
+                if let State::Unlocked(s) = &mut self.state {
+                    s.error = Some(e);
+                }
+            }
+        }
         if !open {
             self.show_keys = false;
         }
