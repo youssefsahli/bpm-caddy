@@ -1022,6 +1022,9 @@ enum PatientTab {
     #[default]
     Acts,
     Vaccins,
+    /// The biology: what the laboratory said, and what it changes for
+    /// the treatments on the file.
+    Bio,
 }
 
 /// The ordonnance being composed after a positive TROD.
@@ -1167,6 +1170,23 @@ struct Session {
     /// Two-step confirmation on filling the carnet with the doses the
     /// calendar says are owed.
     vacc_fill_confirm: bool,
+    /// The patient's biology, and the line being added to it.
+    bio_results: Vec<db::BioResult>,
+    bio_query: String,
+    bio_new_code: String,
+    bio_new_unit: String,
+    bio_new_value: String,
+    bio_new_date: String,
+    /// Two-step delete confirmation for one result.
+    bio_confirm: Option<i64>,
+    /// The result being corrected, with the value and the date the row
+    /// was displayed with — the compare-and-set baseline.
+    bio_edit: Option<db::BioResult>,
+    bio_edit_value: String,
+    bio_edit_date: String,
+    bio_edit_base: (f64, String),
+    /// The analyte whose trend the right-hand panel is showing.
+    bio_focus: Option<String>,
     /// In-progress country search of the travel panel.
     travel_query: String,
     /// The open ordonnance box, after a positive TROD.
@@ -1387,6 +1407,18 @@ impl Session {
             vacc_edit_base: (String::new(), String::new()),
             vacc_confirm: None,
             vacc_fill_confirm: false,
+            bio_results: Vec::new(),
+            bio_query: String::new(),
+            bio_new_code: String::new(),
+            bio_new_unit: String::new(),
+            bio_new_value: String::new(),
+            bio_new_date: String::new(),
+            bio_confirm: None,
+            bio_edit: None,
+            bio_edit_value: String::new(),
+            bio_edit_date: String::new(),
+            bio_edit_base: (0.0, String::new()),
+            bio_focus: None,
             travel_query: String::new(),
             ordonnance: None,
             drug_notes: Vec::new(),
@@ -1871,11 +1903,20 @@ impl Session {
     /// colleague's version back on screen.
     fn load_carnet(&mut self, patient_id: i64) {
         self.vaccinations = self.db.vaccinations(patient_id).unwrap_or_default();
+        self.load_biology(patient_id);
         self.travels = self.db.travels(patient_id).unwrap_or_default();
         self.vacc_edit = None;
         self.vacc_edit_date.clear();
         self.vacc_confirm = None;
         self.vacc_fill_confirm = false;
+    }
+
+    /// (Re)read the patient's biology. Called on open and after every
+    /// write, like every other cache on a shared row.
+    fn load_biology(&mut self, patient_id: i64) {
+        self.bio_results = self.db.bio_results(patient_id).unwrap_or_default();
+        self.bio_confirm = None;
+        self.bio_edit = None;
     }
 
     fn reload_interviews(&mut self, patient_id: i64) {
@@ -2245,6 +2286,19 @@ fn parse_hours(text: &str) -> Option<f64> {
 /// of — the field stays free text, so that must not be an error.
 fn config_operator_label(config: &Config, initials: &str) -> Option<String> {
     config.pharmacy.operator(initials).map(|o| o.label())
+}
+
+/// The colour a biology level is shown in: the two critical ones in
+/// the alert colour, the ordinary deviations in the warmer one — a
+/// kaliémie at 5,2 and a kaliémie at 6,3 must not read the same.
+fn bio_level_color(level: crate::biology::Level) -> egui::Color32 {
+    match level {
+        crate::biology::Level::CriticalLow | crate::biology::Level::CriticalHigh => motif::ALERT,
+        crate::biology::Level::Low | crate::biology::Level::High => {
+            egui::Color32::from_rgb(0x7a, 0x5c, 0x1f)
+        }
+        _ => motif::TEXT_DIM,
+    }
 }
 
 /// A stable colour per operator's initials, so a journal can be scanned
@@ -2781,7 +2835,7 @@ impl App {
                                 });
                             }
                         }
-                        Ok("vaccins") => {
+                        Ok(v @ ("vaccins" | "bio")) => {
                             let pick = session
                                 .patients
                                 .iter()
@@ -2791,7 +2845,11 @@ impl App {
                             if let Some(p) = pick {
                                 session.open_patient(p);
                             }
-                            session.patient_tab = PatientTab::Vaccins;
+                            session.patient_tab = if v == "bio" {
+                                PatientTab::Bio
+                            } else {
+                                PatientTab::Vaccins
+                            };
                         }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
@@ -4334,24 +4392,27 @@ impl App {
         if session.viewing.as_ref().map(|p| p.id) != Some(patient.id) {
             return;
         }
-        // The file has two halves — the acts and the carnet de
-        // vaccination — and each wants the whole work area. They take
-        // turns behind a notebook strip instead of sharing a split.
+        // The file has three halves — the acts, the carnet de
+        // vaccination and the biology — and each wants the whole work
+        // area. They take turns behind a notebook strip instead of
+        // sharing a split.
         let strip = motif::split_rows(rows[1], &[28.0, 0.0], 4.0);
         let active = match session.patient_tab {
             PatientTab::Acts => 0,
             PatientTab::Vaccins => 1,
+            PatientTab::Bio => 2,
         };
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
                 motif::Tab::new(tr("patient_tab_acts")),
                 motif::Tab::new(tr("patient_tab_vaccins")),
+                motif::Tab::new(tr("patient_tab_bio")),
             ];
             if let Some(motif::TabAction::Select(i)) = motif::tab_strip(ui, &tabs, active) {
-                session.patient_tab = if i == 0 {
-                    PatientTab::Acts
-                } else {
-                    PatientTab::Vaccins
+                session.patient_tab = match i {
+                    0 => PatientTab::Acts,
+                    1 => PatientTab::Vaccins,
+                    _ => PatientTab::Bio,
                 };
             }
         });
@@ -4360,6 +4421,10 @@ impl App {
         Self::ordonnance_box(ctx, session, patient, config, operator);
         if session.patient_tab == PatientTab::Vaccins {
             Self::patient_vaccins_pane(ui, session, patient, operator, work, config);
+            return;
+        }
+        if session.patient_tab == PatientTab::Bio {
+            Self::patient_bio_pane(ui, session, patient, work);
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
@@ -4754,7 +4819,10 @@ impl App {
             (stack[0], stack[1])
         };
         let (due, travel) = if wide {
-            let rows = motif::split_rows(side, &[0.0, 0.0], 8.0);
+            // Half each, stated: two flexible rows would both take the
+            // whole height and the second would fall off the pane.
+            let half = ((side.height() - 8.0) / 2.0).max(60.0);
+            let rows = motif::split_rows(side, &[half, 0.0], 8.0);
             (rows[0], rows[1])
         } else {
             let cols = motif::split_columns(side, 2, 8.0);
@@ -5146,6 +5214,582 @@ impl App {
                 session.error = Some(e);
             }
         }
+    }
+
+    /// The patient's biology: the results as the laboratory gave them,
+    /// what each one is worth against its reference interval, and what
+    /// the whole reads against the treatments on the file.
+    ///
+    /// Carved like the carnet: the table on the left, the reading and
+    /// the trend on the right once there is room for them.
+    fn patient_bio_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        work: egui::Rect,
+    ) {
+        let wide = work.width() >= 1180.0;
+        let (table, side) = if wide {
+            let side_w = (work.width() * 0.34).clamp(320.0, 460.0);
+            (
+                egui::Rect::from_min_size(
+                    work.min,
+                    egui::vec2(work.width() - side_w - 8.0, work.height()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(work.right() - side_w, work.top()), work.max),
+            )
+        } else {
+            let rows = motif::split_rows(
+                work,
+                &[0.0, (work.height() * 0.42).clamp(160.0, 300.0)],
+                8.0,
+            );
+            (rows[0], rows[1])
+        };
+        Self::bio_table_pane(ui, session, patient, table);
+        // The trend takes a fixed band at the foot and the reading
+        // takes what is left: two flexible rows would each claim the
+        // whole height, and the second would land off the screen.
+        let trend_h = (side.height() * 0.34).clamp(120.0, 220.0);
+        let panes = motif::split_rows(side, &[0.0, trend_h], 8.0);
+        Self::bio_reading_pane(ui, session, panes[0]);
+        Self::bio_trend_pane(ui, session, panes[1]);
+    }
+
+    /// The results themselves: one line per reading, with what it is
+    /// worth beside it, and the row that adds one at the foot.
+    fn bio_table_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+    ) {
+        let results = session.bio_results.clone();
+        let mut delete: Option<(i64, f64)> = None;
+        let mut add = false;
+        let mut start_edit: Option<db::BioResult> = None;
+        let mut save_edit = false;
+        let mut pick: Option<&'static crate::biology::Analyte> = None;
+        let mut focus: Option<String> = None;
+        motif::panel(ui, rect, Some(tr("bio_section")), |ui| {
+            let foot = 78.0;
+            let body = ui.available_rect_before_wrap();
+            if body.height() < foot + 40.0 {
+                return;
+            }
+            let rows = motif::split_rows(body, &[0.0, foot], 6.0);
+            let inner = motif::well(ui, rows[0]);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("bio_results")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if results.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("bio_empty"))
+                                    .size(11.5)
+                                    .color(motif::TEXT_DIM),
+                            );
+                            return;
+                        }
+                        egui::Grid::new("bio_grid")
+                            .num_columns(6)
+                            .spacing([10.0, 5.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for header in [
+                                    tr("bio_col_date"),
+                                    tr("bio_col_analyte"),
+                                    tr("bio_col_value"),
+                                    tr("bio_col_level"),
+                                    tr("bio_col_interval"),
+                                    "",
+                                ] {
+                                    ui.label(
+                                        egui::RichText::new(header)
+                                            .size(10.5)
+                                            .color(motif::TEXT_DIM),
+                                    );
+                                }
+                                ui.end_row();
+                                for r in &results {
+                                    ui.label(
+                                        egui::RichText::new(if r.taken_on.is_empty() {
+                                            "—".to_owned()
+                                        } else {
+                                            db::format_french_date(&r.taken_on)
+                                        })
+                                        .size(11.5),
+                                    );
+                                    // The analyte's name opens its trend
+                                    // on the right: a value alone says
+                                    // little, three in a row say where
+                                    // it is going.
+                                    if ui
+                                        .add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&r.label).size(12.0),
+                                            )
+                                            .sense(egui::Sense::click()),
+                                        )
+                                        .on_hover_text(tr("bio_trend_tooltip"))
+                                        .clicked()
+                                        && !r.code.is_empty()
+                                    {
+                                        focus = Some(r.code.clone());
+                                    }
+                                    // The value is corrected in place:
+                                    // a result typed one digit wrong is
+                                    // the common case, and re-adding the
+                                    // line loses its date.
+                                    if session.bio_edit.as_ref().map(|e| e.id) == Some(r.id) {
+                                        ui.horizontal(|ui| {
+                                            ui.add_sized(
+                                                [58.0, 20.0],
+                                                egui::TextEdit::singleline(
+                                                    &mut session.bio_edit_value,
+                                                ),
+                                            );
+                                            ui.add_sized(
+                                                [80.0, 20.0],
+                                                egui::TextEdit::singleline(
+                                                    &mut session.bio_edit_date,
+                                                )
+                                                .hint_text(tr("itv_rdv_hint")),
+                                            );
+                                            if motif::button(ui, tr("form_save")).clicked() {
+                                                save_edit = true;
+                                            }
+                                        });
+                                    } else if ui
+                                        .add(
+                                            egui::Label::new(
+                                                egui::RichText::new(format!(
+                                                    "{} {}",
+                                                    crate::codex::format_quantity(r.value),
+                                                    r.unit
+                                                ))
+                                                .size(12.0)
+                                                .strong(),
+                                            )
+                                            .sense(egui::Sense::click()),
+                                        )
+                                        .on_hover_text(tr("bio_edit_tooltip"))
+                                        .clicked()
+                                    {
+                                        start_edit = Some(r.clone());
+                                    }
+                                    // What the value is worth: only the
+                                    // catalogue's analytes have an
+                                    // interval to be read against.
+                                    match crate::biology::find(&r.code) {
+                                        Some(a) => {
+                                            let level = crate::biology::level(a, r.value);
+                                            if level.notable() {
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "  {}  ",
+                                                        crate::biology::level_word(level)
+                                                    ))
+                                                    .size(10.5)
+                                                    .strong()
+                                                    .color(egui::Color32::WHITE)
+                                                    .background_color(bio_level_color(level)),
+                                                );
+                                            } else {
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        crate::biology::level_word(level),
+                                                    )
+                                                    .size(10.5)
+                                                    .color(motif::TEXT_DIM),
+                                                );
+                                            }
+                                            ui.label(
+                                                egui::RichText::new(crate::biology::interval_text(
+                                                    a,
+                                                ))
+                                                .size(10.5)
+                                                .color(motif::TEXT_DIM),
+                                            )
+                                            .on_hover_text(a.note);
+                                        }
+                                        None => {
+                                            ui.label("");
+                                            ui.label(
+                                                egui::RichText::new(tr("bio_free_line"))
+                                                    .size(10.5)
+                                                    .color(motif::TEXT_DIM),
+                                            );
+                                        }
+                                    }
+                                    let confirm = session.bio_confirm == Some(r.id);
+                                    if motif::button(
+                                        ui,
+                                        if confirm {
+                                            tr("itv_delete_confirm")
+                                        } else {
+                                            tr("itv_delete")
+                                        },
+                                    )
+                                    .clicked()
+                                    {
+                                        if confirm {
+                                            delete = Some((r.id, r.value));
+                                        } else {
+                                            session.bio_confirm = Some(r.id);
+                                        }
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            });
+            // The line being added: the analyte, the value, the date.
+            motif::inside(ui, rows[1], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let w = (ui.available_width() * 0.3).clamp(120.0, 220.0);
+                    ui.add_sized(
+                        [w, 22.0],
+                        egui::TextEdit::singleline(&mut session.bio_query)
+                            .hint_text(tr("bio_pick_hint")),
+                    );
+                    ui.add_sized(
+                        [70.0, 22.0],
+                        egui::TextEdit::singleline(&mut session.bio_new_value)
+                            .hint_text(tr("bio_value_hint")),
+                    );
+                    ui.label(
+                        egui::RichText::new(&session.bio_new_unit)
+                            .size(11.5)
+                            .color(motif::TEXT_DIM),
+                    );
+                    ui.add_sized(
+                        [92.0, 22.0],
+                        egui::TextEdit::singleline(&mut session.bio_new_date)
+                            .hint_text(tr("itv_rdv_hint")),
+                    );
+                    if motif::button(ui, tr("notes_add")).clicked() {
+                        add = true;
+                    }
+                });
+                // The catalogue, filtered as it is typed: three lines,
+                // enough to choose without hiding the table.
+                if !session.bio_query.trim().is_empty() && session.bio_new_code.is_empty() {
+                    ui.horizontal_wrapped(|ui| {
+                        for a in crate::biology::search(&session.bio_query)
+                            .into_iter()
+                            .take(4)
+                        {
+                            if motif::toggle(ui, a.label, false)
+                                .on_hover_text(a.note)
+                                .clicked()
+                            {
+                                pick = Some(a);
+                            }
+                        }
+                    });
+                }
+            });
+        });
+        if let Some(r) = start_edit {
+            session.bio_edit_value = crate::codex::format_quantity(r.value);
+            session.bio_edit_date = if r.taken_on.is_empty() {
+                String::new()
+            } else {
+                db::format_french_date(&r.taken_on)
+            };
+            session.bio_edit_base = (r.value, r.taken_on.clone());
+            session.bio_edit = Some(r);
+        }
+        if save_edit {
+            Self::bio_save_edit(session, patient);
+        }
+        if let Some(a) = pick {
+            session.bio_new_code = a.code.to_owned();
+            session.bio_new_unit = a.unit.to_owned();
+            session.bio_query = a.label.to_owned();
+        }
+        if let Some(code) = focus {
+            session.bio_focus = Some(code);
+        }
+        if add {
+            Self::bio_add_result(session, patient);
+        }
+        if let Some((id, value)) = delete {
+            session.bio_confirm = None;
+            match session.db.delete_bio_result(id, value) {
+                Ok(true) => {
+                    session.error = None;
+                    session.load_biology(patient.id);
+                }
+                Ok(false) => {
+                    session.load_biology(patient.id);
+                    session.error = Some(tr("bio_stale").to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
+    /// Record the line at the foot of the table: the analyte picked or
+    /// typed, the value read the French way, and the date — empty
+    /// meaning today, like the carnet.
+    fn bio_add_result(session: &mut Session, patient: &Patient) {
+        let label = session.bio_query.trim().to_owned();
+        if label.is_empty() {
+            session.error = Some(tr("bio_needs_analyte").to_owned());
+            return;
+        }
+        let Some((value, _)) = crate::codex::parse_amount(&session.bio_new_value) else {
+            session.error = Some(tr("bio_needs_value").to_owned());
+            return;
+        };
+        let today = session.today.clone();
+        let year = session.db.current_year();
+        let taken_on = if session.bio_new_date.trim().is_empty() {
+            today
+        } else {
+            match db::parse_french_date(&session.bio_new_date, year, db::YearHint::Future) {
+                Ok(iso) => iso,
+                Err(e) => {
+                    session.error = Some(e);
+                    return;
+                }
+            }
+        };
+        // An analyte chosen from the catalogue keeps its code and its
+        // unit; one typed by hand is stored as written and reads as
+        // written.
+        let code = session.bio_new_code.clone();
+        let unit = if session.bio_new_unit.trim().is_empty() {
+            crate::biology::find(&code)
+                .map(|a| a.unit.to_owned())
+                .unwrap_or_default()
+        } else {
+            session.bio_new_unit.clone()
+        };
+        let row = db::BioResult {
+            id: 0,
+            code,
+            label,
+            value,
+            unit,
+            taken_on,
+            remark: String::new(),
+        };
+        match session.db.add_bio_result(patient.id, &row) {
+            Ok(_) => {
+                session.error = None;
+                session.bio_query.clear();
+                session.bio_new_value.clear();
+                session.bio_new_date.clear();
+                session.bio_new_code.clear();
+                session.bio_new_unit.clear();
+                session.load_biology(patient.id);
+            }
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// Write back a corrected result. Compare-and-set on the value and
+    /// the date the row was displayed with.
+    fn bio_save_edit(session: &mut Session, patient: &Patient) {
+        let Some(mut edited) = session.bio_edit.clone() else {
+            return;
+        };
+        let Some((value, _)) = crate::codex::parse_amount(&session.bio_edit_value) else {
+            session.error = Some(tr("bio_needs_value").to_owned());
+            return;
+        };
+        let year = session.db.current_year();
+        let taken_on = if session.bio_edit_date.trim().is_empty() {
+            String::new()
+        } else {
+            match db::parse_french_date(&session.bio_edit_date, year, db::YearHint::Future) {
+                Ok(iso) => iso,
+                Err(e) => {
+                    session.error = Some(e);
+                    return;
+                }
+            }
+        };
+        edited.value = value;
+        edited.taken_on = taken_on;
+        let base = session.bio_edit_base.clone();
+        match session.db.update_bio_result(&edited, (base.0, &base.1)) {
+            Ok(true) => {
+                session.error = None;
+                session.bio_edit = None;
+                session.load_biology(patient.id);
+            }
+            Ok(false) => {
+                session.load_biology(patient.id);
+                session.error = Some(tr("bio_stale").to_owned());
+            }
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// What the biology says about the treatments on the file: the
+    /// point of recording it at a pharmacy counter rather than at a
+    /// laboratory.
+    fn bio_reading_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let readings: Vec<crate::biology::Reading> = session
+            .bio_results
+            .iter()
+            .filter(|r| !r.code.is_empty())
+            .map(|r| crate::biology::Reading {
+                code: r.code.as_str(),
+                value: r.value,
+                date: r.taken_on.as_str(),
+            })
+            .collect();
+        // Everything the file knows about what the patient takes: the
+        // brand, the DCI, the class and the tags all feed the rules.
+        let treatments: Vec<String> = session
+            .patient_treats
+            .iter()
+            .flat_map(|d| {
+                [
+                    d.name.clone(),
+                    d.dci.clone(),
+                    d.class.clone(),
+                    d.tags.clone(),
+                ]
+            })
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        let findings = crate::biology::read(&readings, &treatments);
+        motif::panel(ui, rect, Some(tr("bio_reading")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("bio_reading")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if findings.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("bio_reading_empty"))
+                                .size(11.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                        return;
+                    }
+                    for f in &findings {
+                        let (label, color) = match f.severity {
+                            crate::biology::Severity::Alert => (tr("bio_alert"), motif::ALERT),
+                            crate::biology::Severity::Warn => {
+                                (tr("bio_warn"), egui::Color32::from_rgb(0x7a, 0x5c, 0x1f))
+                            }
+                            crate::biology::Severity::Info => (tr("bio_info"), motif::ACCENT),
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("  {label}  "))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(color),
+                            );
+                            ui.label(
+                                egui::RichText::new(f.code)
+                                    .size(10.5)
+                                    .color(motif::TEXT_DIM),
+                            );
+                        });
+                        ui.label(egui::RichText::new(&f.text).size(11.5));
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+    }
+
+    /// One analyte over time: the shape of a series is what says
+    /// whether a number is a blip or a slope.
+    fn bio_trend_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        // Whichever analyte was clicked, or the one with the most
+        // readings — a single value has no trend to show.
+        let code = session.bio_focus.clone().unwrap_or_else(|| {
+            let mut counts: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
+            for r in &session.bio_results {
+                if !r.code.is_empty() {
+                    *counts.entry(r.code.as_str()).or_default() += 1;
+                }
+            }
+            counts
+                .into_iter()
+                .max_by_key(|&(_, n)| n)
+                .map(|(c, _)| c.to_owned())
+                .unwrap_or_default()
+        });
+        // Oldest first: a trend is read left to right.
+        let mut series: Vec<(String, f64)> = session
+            .bio_results
+            .iter()
+            .filter(|r| r.code == code)
+            .map(|r| (r.taken_on.clone(), r.value))
+            .collect();
+        series.sort_by(|a, b| a.0.cmp(&b.0));
+        let analyte = crate::biology::find(&code);
+        let title = analyte
+            .map(|a| format!("{} — {}", tr("bio_trend"), a.label))
+            .unwrap_or_else(|| tr("bio_trend").to_owned());
+        motif::panel(ui, rect, Some(&title), |ui| {
+            if series.len() < 2 {
+                ui.label(
+                    egui::RichText::new(tr("bio_trend_empty"))
+                        .size(11.5)
+                        .color(motif::TEXT_DIM),
+                );
+                return;
+            }
+            let values: Vec<f64> = series.iter().map(|(_, v)| *v).collect();
+            let body = ui.available_rect_before_wrap();
+            let plot = egui::Rect::from_min_size(
+                body.min,
+                egui::vec2(body.width(), (body.height() - 34.0).clamp(40.0, 160.0)),
+            );
+            motif::chart::sparkline(ui, plot.shrink(3.0), &values, motif::ACCENT);
+            // The reference interval as a band behind the curve: the
+            // question is not the value, it is whether it is inside.
+            if let Some(a) = analyte {
+                let (min, max) = values
+                    .iter()
+                    .fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+                let span = (max - min).max(f64::EPSILON);
+                let y_of = |v: f64| {
+                    plot.bottom() - ((v - min) / span) as f32 * (plot.height() - 6.0) - 3.0
+                };
+                for bound in [a.low, a.high].into_iter().flatten() {
+                    if bound >= min && bound <= max {
+                        ui.painter().hline(
+                            plot.left()..=plot.right(),
+                            y_of(bound),
+                            egui::Stroke::new(0.8_f32, motif::ALERT),
+                        );
+                    }
+                }
+                ui.painter()
+                    .rect_stroke(plot, 0.0, egui::Stroke::new(0.8_f32, motif::TEXT_FAINT));
+            }
+            ui.allocate_space(plot.size());
+            ui.add_space(2.0);
+            let first = series.first().expect("checked above");
+            let last = series.last().expect("checked above");
+            ui.label(
+                egui::RichText::new(trn(
+                    "bio_trend_span",
+                    &[
+                        &db::format_french_date(&first.0),
+                        &crate::codex::format_quantity(first.1),
+                        &db::format_french_date(&last.0),
+                        &crate::codex::format_quantity(last.1),
+                    ],
+                ))
+                .size(10.5)
+                .color(motif::TEXT_DIM),
+            );
+        });
     }
 
     /// What the calendrier vaccinal still owes this patient, read
@@ -10993,7 +11637,11 @@ impl App {
                 30.0
             };
             let (tech, recalls, journal) = if wide {
-                let rows = motif::split_rows(side_rect, &[tech_h, 0.0, 0.0], 8.0);
+                // Each row's height is stated: a zero row takes all the
+                // flex there is, so two of them would overlap and the
+                // last would be drawn past the bottom of the card.
+                let left = (side_rect.height() - tech_h - 16.0).max(80.0);
+                let rows = motif::split_rows(side_rect, &[tech_h, left * 0.45, 0.0], 8.0);
                 (rows[0], rows[1], rows[2])
             } else {
                 // Under the monograph the three share the width, but not

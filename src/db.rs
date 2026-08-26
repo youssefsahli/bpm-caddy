@@ -94,6 +94,19 @@ CREATE TABLE IF NOT EXISTS posologies (
     remarque    TEXT NOT NULL DEFAULT '',
     position    INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS biology (
+    id          INTEGER PRIMARY KEY,
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    -- Code de l'analyte dans `crate::biology`, vide pour une ligne
+    -- écrite à la main.
+    code        TEXT NOT NULL DEFAULT '',
+    label       TEXT NOT NULL,
+    value       REAL NOT NULL DEFAULT 0,
+    unit        TEXT NOT NULL DEFAULT '',
+    -- Date du prélèvement, ISO.
+    taken_on    TEXT NOT NULL DEFAULT '',
+    remark      TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
     name         TEXT NOT NULL,
@@ -169,6 +182,16 @@ CREATE TABLE IF NOT EXISTS patient_travel (
 
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS biology (
+        id          INTEGER PRIMARY KEY,
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        code        TEXT NOT NULL DEFAULT '',
+        label       TEXT NOT NULL,
+        value       REAL NOT NULL DEFAULT 0,
+        unit        TEXT NOT NULL DEFAULT '',
+        taken_on    TEXT NOT NULL DEFAULT '',
+        remark      TEXT NOT NULL DEFAULT ''
+    )",
     "CREATE TABLE IF NOT EXISTS preparations (
         id           INTEGER PRIMARY KEY,
         name         TEXT NOT NULL,
@@ -775,6 +798,24 @@ pub struct Posologie {
     pub indication: String,
     pub posologie: String,
     pub remarque: String,
+}
+
+/// One biology result on a patient's file.
+///
+/// `code` ties the line to the catalogue in [`crate::biology`] when the
+/// analyte was picked from the list — that is what gives it its
+/// reference interval and its reading rules. A line typed by hand keeps
+/// an empty code, reads as written, and answers nothing.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BioResult {
+    pub id: i64,
+    pub code: String,
+    pub label: String,
+    pub value: f64,
+    pub unit: String,
+    /// ISO `YYYY-MM-DD`, possibly empty.
+    pub taken_on: String,
+    pub remark: String,
 }
 
 /// One preparation of the codex: a magistral or officinal formula, as
@@ -22292,6 +22333,8 @@ impl Db {
             .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM patient_drugs WHERE patient_id = ?1", [id])
             .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM biology WHERE patient_id = ?1", [id])
+            .map_err(|e| e.to_string())?;
         tx.execute(
             "DELETE FROM notes WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
             [id],
@@ -22615,6 +22658,7 @@ impl Db {
             "posologies",
             "drug_field_locks",
             "preparations",
+            "biology",
             "interviews",
             "patients",
             "drugs",
@@ -23471,6 +23515,93 @@ impl Db {
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// A patient's biology, most recent first; undated lines last.
+    pub fn bio_results(&self, patient_id: i64) -> Result<Vec<BioResult>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, code, label, value, unit, taken_on, remark
+                 FROM biology WHERE patient_id = ?1
+                 ORDER BY (taken_on = '') ASC, taken_on DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok(BioResult {
+                    id: r.get(0)?,
+                    code: r.get(1)?,
+                    label: r.get(2)?,
+                    value: r.get(3)?,
+                    unit: r.get(4)?,
+                    taken_on: r.get(5)?,
+                    remark: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Record a result. Returns the new line's id.
+    pub fn add_bio_result(&self, patient_id: i64, r: &BioResult) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO biology (patient_id, code, label, value, unit, taken_on, remark)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                (
+                    patient_id,
+                    &r.code,
+                    &r.label,
+                    r.value,
+                    &r.unit,
+                    &r.taken_on,
+                    &r.remark,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Correct a result. Compare-and-set on the value and the date this
+    /// PC displayed. Returns `false` when stale.
+    pub fn update_bio_result(
+        &self,
+        new: &BioResult,
+        expected: (f64, &str),
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE biology SET code = ?1, label = ?2, value = ?3, unit = ?4,
+                                    taken_on = ?5, remark = ?6
+                 WHERE id = ?7 AND value = ?8 AND taken_on = ?9",
+                (
+                    &new.code,
+                    &new.label,
+                    new.value,
+                    &new.unit,
+                    &new.taken_on,
+                    &new.remark,
+                    new.id,
+                    expected.0,
+                    expected.1,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a result. Compare-and-set on the value displayed.
+    pub fn delete_bio_result(&self, id: i64, expected_value: f64) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM biology WHERE id = ?1 AND value = ?2",
+                (id, expected_value),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
     }
 
     /// Record a dose. Returns the new line's id.
@@ -25432,6 +25563,53 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// A biology result is recorded, corrected and removed like every
+    /// other shared row: compare-and-set on what the screen displayed.
+    #[test]
+    fn a_biology_result_is_written_and_corrected() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-bio-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bio.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let row = BioResult {
+            id: 0,
+            code: "K".to_owned(),
+            label: "Kaliémie".to_owned(),
+            value: 5.4,
+            unit: "mmol/L".to_owned(),
+            taken_on: "2026-08-20".to_owned(),
+            remark: String::new(),
+        };
+        let id = db.add_bio_result(pid, &row).unwrap();
+        let older = BioResult {
+            value: 4.6,
+            taken_on: "2026-05-14".to_owned(),
+            ..row.clone()
+        };
+        db.add_bio_result(pid, &older).unwrap();
+        // Most recent first.
+        let all = db.bio_results(pid).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].taken_on, "2026-08-20");
+        // A correction from a stale view is refused.
+        let mut fixed = all[0].clone();
+        fixed.value = 4.9;
+        assert!(!db.update_bio_result(&fixed, (9.9, "2026-08-20")).unwrap());
+        assert!(db.update_bio_result(&fixed, (5.4, "2026-08-20")).unwrap());
+        assert_eq!(db.bio_results(pid).unwrap()[0].value, 4.9);
+        // And a delete from a stale view too.
+        assert!(!db.delete_bio_result(id, 5.4).unwrap());
+        assert!(db.delete_bio_result(id, 4.9).unwrap());
+        assert_eq!(db.bio_results(pid).unwrap().len(), 1);
+        // Deleting the patient takes the biology with it.
+        db.delete_patient(pid).unwrap();
+        assert!(db.bio_results(pid).unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// The codex seeds once and then belongs to the team: a rewritten
     /// formula survives the next launch, and every shipped preparation
     /// carries what the counter needs to make it.
@@ -26285,6 +26463,36 @@ mod tests {
             }
             if minutes > 0 {
                 db.set_duration(iid, minutes, 0).unwrap();
+            }
+            // A little biology on the demo's first patient, enough to
+            // show a trend and to make the reading rules speak.
+            if last == "Dupont" {
+                for (code, label, value, unit, day) in [
+                    ("K", "Kaliémie", 5.4, "mmol/L", "2026-08-20"),
+                    ("K", "Kaliémie", 4.6, "mmol/L", "2026-05-14"),
+                    ("K", "Kaliémie", 4.9, "mmol/L", "2026-02-03"),
+                    (
+                        "DFG",
+                        "Débit de filtration glomérulaire",
+                        52.0,
+                        "mL/min",
+                        "2026-08-20",
+                    ),
+                    ("CREAT", "Créatininémie", 112.0, "µmol/L", "2026-08-20"),
+                    ("HB", "Hémoglobine", 11.4, "g/dL", "2026-08-20"),
+                    ("TSH", "TSH", 2.1, "mUI/L", "2026-08-20"),
+                ] {
+                    let row = BioResult {
+                        id: 0,
+                        code: code.to_owned(),
+                        label: label.to_owned(),
+                        value,
+                        unit: unit.to_owned(),
+                        taken_on: day.to_owned(),
+                        remark: String::new(),
+                    };
+                    db.add_bio_result(pid, &row).unwrap();
+                }
             }
             // Full record and current treatments for the demo's first
             // patient, so the patient view shows everything.

@@ -5,6 +5,36 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.55.0] - 2026-08-26
+
+### Added
+- **The patient's biology, and what it changes.** A third tab on the
+  file: the results as the laboratory gave them, each read against its
+  usual adult interval — normal, bas, élevé, or the critical threshold
+  where it stops being a deviation. Twenty-six analytes to start with,
+  from the DFG to the lithémie, each carrying the sentence that matters
+  at the counter.
+- **The reading against the treatments.** Twenty-one rules tie a value
+  to what the file says the patient takes: a kaliémie above 5 under IEC
+  or spironolactone, a DFG under 30 with an AOD or de la metformine, un
+  INR au-dessus de 5 sous AVK, des CPK à cinq fois la normale sous
+  statine, une thrombopénie sous héparine, une hyponatrémie sous ISRS.
+  A value alone is reported; a value with the treatment behind it is an
+  alert. Only the most recent reading of each analyte is read — a
+  kaliémie corrected since is not an alert today.
+- **A trend per analyte**: click a name and its series is drawn, with
+  the bounds of the reference interval across it. Three kaliémies in a
+  row say something a single one does not.
+- Values are corrected in place (click the value), added with the date
+  the counter types (`200826`, empty meaning today), and every write is
+  compare-and-set like every other shared row.
+
+### Fixed
+- Two side columns asked for two flexible rows, and each flexible row
+  takes the whole height that is left: the second panel was drawn past
+  the bottom of the window. The carnet's « Voyage » panel and the drug
+  card's journal are back on screen.
+
 ## [0.54.0] - 2026-08-26
 
 ### Added

@@ -27,7 +27,7 @@ cargo build || exit 1
 views=(
     search dashboard patient drugs drug_card drug_edit
     agenda agenda_day agenda_month tables calc carnet
-    vaccins vaccine_map ordonnance
+    vaccins bio vaccine_map ordonnance
     protocols protocol_open codex codex_open template options keys act_picker
 )
 
