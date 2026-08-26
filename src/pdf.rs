@@ -712,6 +712,9 @@ pub struct BilanData<'a> {
     pub treatments: Vec<(String, String, String)>,
     /// (A ↔ B, the sentence of A's monograph that names B).
     pub interactions: Vec<(String, String)>,
+    /// (niveau, titre, ce que ça veut dire, les médicaments en cause) —
+    /// what the ordonnance says about itself.
+    pub review: Vec<(String, String, String, String)>,
     /// (date, analyte, valeur, lecture).
     pub biology: Vec<(String, String, String, String)>,
     /// (niveau, ce que ça change).
@@ -795,6 +798,20 @@ fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
                 "#block(below: 2mm)[#text(weight: \"bold\", size: 9.5pt)[#{}] #linebreak() #text(9.5pt)[#{}]]\n",
                 typst_str(pair),
                 typst_str(sentence)
+            ));
+        }
+    }
+
+    // --- What the ordonnance says about itself ----------------------
+    if !data.review.is_empty() {
+        src.push_str("#sec[Revue de l'ordonnance]\n");
+        for (level, title, detail, drugs) in &data.review {
+            src.push_str(&format!(
+                "#block(below: 2.4mm)[#text(8.5pt, weight: \"bold\")[#{}] #text(9.5pt, weight: \"bold\")[ #{}] #linebreak() #text(9.5pt)[#{}] #linebreak() #text(8.5pt, style: \"italic\")[#{}]]\n",
+                typst_str(level),
+                typst_str(title),
+                typst_str(detail),
+                typst_str(drugs)
             ));
         }
     }
@@ -2157,6 +2174,12 @@ mod tests {
                 "Eliquis ↔ Zithromax".to_owned(),
                 "Les macrolides augmentent l'exposition à l'apixaban.".to_owned(),
             )],
+            review: vec![(
+                "ALERTE".to_owned(),
+                "Anticoagulant + AINS".to_owned(),
+                "Le risque hémorragique digestif est multiplié.".to_owned(),
+                "Eliquis · Advil".to_owned(),
+            )],
             biology: vec![(
                 "20/08/2026".to_owned(),
                 "Kaliémie".to_owned(),
@@ -2175,6 +2198,7 @@ mod tests {
         };
         let source = bilan_source(&data, &sample_pharmacy());
         assert!(source.contains("Interactions repérées"));
+        assert!(source.contains("Revue de l'ordonnance"));
         assert!(source.contains("Plan d'action"));
         // Hostile text goes in as a string literal, never as markup.
         assert!(!source.contains("#eval \"x\"]"));
@@ -2200,6 +2224,7 @@ mod tests {
             today: "26/08/2026",
             treatments: Vec::new(),
             interactions: Vec::new(),
+            review: Vec::new(),
             biology: Vec::new(),
             findings: Vec::new(),
             vaccines: Vec::new(),

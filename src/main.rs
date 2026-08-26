@@ -9,6 +9,7 @@ mod db;
 mod fuzzy;
 mod ordonnance;
 mod pdf;
+mod revue;
 mod strings;
 mod tables;
 mod vaccines;

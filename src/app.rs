@@ -1156,6 +1156,9 @@ struct Session {
     /// What the file sees between those treatments: (A ↔ B, the
     /// sentence of A's own monograph that names B).
     patient_interactions: Vec<(String, String)>,
+    /// What the ordonnance says about itself: doublons, associations
+    /// that add up, cascades.
+    patient_review: Vec<crate::revue::Point>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Which half of the patient file is on screen: the acts, or the
@@ -1414,6 +1417,7 @@ impl Session {
             rule_block: None,
             patient_treats: Vec::new(),
             patient_interactions: Vec::new(),
+            patient_review: Vec::new(),
             patient_notes: Vec::new(),
             patient_tab: PatientTab::default(),
             vaccinations: Vec::new(),
@@ -1927,6 +1931,7 @@ impl Session {
     fn reload_treatments(&mut self, patient_id: i64) {
         self.patient_treats = self.db.drugs_for_patient(patient_id).unwrap_or_default();
         self.patient_interactions = interactions_between(&self.patient_treats);
+        self.patient_review = crate::revue::review(&ordonnance_terms(&self.patient_treats));
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -2169,6 +2174,20 @@ fn link_segments(
         out.push(MonoSeg::Text(text[plain_from..].to_owned()));
     }
     out
+}
+
+/// The treatments as the ordonnance rules read them: the words each
+/// card carries, and nothing else.
+fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
+    drugs
+        .iter()
+        .map(|d| crate::revue::Treatment {
+            name: d.name.as_str(),
+            dci: d.dci.as_str(),
+            class: d.class.as_str(),
+            tags: d.tags.as_str(),
+        })
+        .collect()
 }
 
 /// The interactions the file can see by itself: for each treatment, the
@@ -2862,15 +2881,33 @@ impl App {
                         }
                         // Landing on the quick picker needs the patient
                         // under it: same branch, one flag more.
-                        Ok(v @ ("patient" | "act_picker")) => {
+                        Ok(v @ ("patient" | "act_picker" | "revue")) => {
                             session.act_picker = v == "act_picker";
-                            // Prefer the fullest record for screenshots.
-                            let pick = session
-                                .patients
-                                .iter()
-                                .find(|p| !p.email.is_empty())
-                                .or(session.patients.first())
-                                .cloned();
+                            // Prefer the fullest record for screenshots;
+                            // « revue » opens the one whose ordonnance
+                            // has something to say about itself.
+                            let pick = if v == "revue" {
+                                session
+                                    .patients
+                                    .iter()
+                                    .find(|p| {
+                                        !crate::revue::review(&ordonnance_terms(
+                                            &session.db.drugs_for_patient(p.id).unwrap_or_default(),
+                                        ))
+                                        .is_empty()
+                                    })
+                                    .cloned()
+                            } else {
+                                None
+                            };
+                            let pick = pick.or_else(|| {
+                                session
+                                    .patients
+                                    .iter()
+                                    .find(|p| !p.email.is_empty())
+                                    .or(session.patients.first())
+                                    .cloned()
+                            });
                             if let Some(p) = pick {
                                 session.open_patient(p);
                             }
@@ -6266,6 +6303,23 @@ impl App {
             })
             .collect();
         let interactions = session.patient_interactions.clone();
+        let review: Vec<(String, String, String, String)> = session
+            .patient_review
+            .iter()
+            .map(|p| {
+                let level = match p.severity {
+                    crate::biology::Severity::Alert => tr("bio_alert"),
+                    crate::biology::Severity::Warn => tr("bio_warn"),
+                    crate::biology::Severity::Info => tr("bio_info"),
+                };
+                (
+                    level.to_owned(),
+                    p.title.to_owned(),
+                    p.detail.to_owned(),
+                    p.drugs.join(" · "),
+                )
+            })
+            .collect();
         // The biology, most recent first, and what it changes read
         // against these same treatments.
         let biology: Vec<(String, String, String, String)> = session
@@ -6359,6 +6413,7 @@ impl App {
             today: &today,
             treatments,
             interactions,
+            review,
             biology,
             findings,
             vaccines,
@@ -6752,6 +6807,37 @@ impl App {
                 .color(motif::ALERT),
             )
             .on_hover_text(details);
+        }
+        // And what the ordonnance says about itself: one chip per
+        // point, coloured by how loudly it asks, the sentence on hover.
+        if !session.patient_review.is_empty() {
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(tr("revue_label"))
+                        .size(11.5)
+                        .color(motif::TEXT_DIM),
+                );
+                for point in &session.patient_review {
+                    let color = match point.severity {
+                        crate::biology::Severity::Alert => motif::ALERT,
+                        crate::biology::Severity::Warn => egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
+                        crate::biology::Severity::Info => motif::ACCENT,
+                    };
+                    ui.label(
+                        egui::RichText::new(format!("  {}  ", point.title))
+                            .size(11.0)
+                            .strong()
+                            .color(egui::Color32::WHITE)
+                            .background_color(color),
+                    )
+                    .on_hover_text(format!(
+                        "{}\n\n{}",
+                        point.detail,
+                        point.drugs.join(" · ")
+                    ));
+                }
+            });
         }
         ui.add_space(10.0);
 
