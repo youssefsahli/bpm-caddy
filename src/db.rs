@@ -20359,7 +20359,7 @@ pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
 
 /// (brand name, DCI, therapeutic class, textbook antidote or ""). See
 /// [`Db::seed_drugs_if_empty`].
-const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
+pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     // Anticoagulants / antiagrégants
     ("Eliquis", "apixaban", "AOD", "Andexanet alfa"),
     ("Xarelto", "rivaroxaban", "AOD", "Andexanet alfa"),
@@ -26742,6 +26742,58 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A conduite rule that matches no card is content nobody will
+    /// ever read: every key must reach at least one starter fiche.
+    #[test]
+    fn every_conduite_rule_reaches_a_card() {
+        for (key, _, _) in STARTER_CONDUITE {
+            let reached = STARTER_DRUGS.iter().any(|(name, dci, class, _)| {
+                class.contains(key) || dci.contains(key) || name.contains(key)
+            });
+            assert!(reached, "règle de conduite orpheline : {key}");
+        }
+    }
+
+    /// Every shipped formula must be readable by the codex: a line the
+    /// parser cannot scale is a line the counter has to compute by
+    /// hand, which is what the codex exists to avoid.
+    #[test]
+    fn every_shipped_formula_scales() {
+        for p in STARTER_PREPARATIONS {
+            let lines = crate::codex::parse_formula(p.formula);
+            assert!(!lines.is_empty(), "{} : formule vide", p.name);
+            // The yield is what a target quantity is compared against.
+            assert!(
+                crate::codex::parse_amount(p.yield_amount).is_some(),
+                "{} : rendement illisible ({})",
+                p.name,
+                p.yield_amount
+            );
+            // At least one ingredient carries a quantity that scales.
+            // A « formule type » is the exception: its quantities come
+            // from the prescription, and it says so in its name.
+            let template = p.name.contains("formule type");
+            assert!(
+                template || lines.iter().any(|l| l.quantity.is_some()),
+                "{} : aucune quantité chiffrée",
+                p.name
+            );
+            // And the whole thing must scale without losing a line.
+            let factor = crate::codex::scale_factor(p.yield_amount, "60 g")
+                .or_else(|| crate::codex::scale_factor(p.yield_amount, "500 mL"))
+                .or_else(|| crate::codex::scale_factor(p.yield_amount, "10 gélules"))
+                .unwrap_or(1.0);
+            for line in &lines {
+                assert!(
+                    !line.scaled(factor).trim().is_empty(),
+                    "{} : ligne « {} » vide une fois mise à l'échelle",
+                    p.name,
+                    line.name
+                );
+            }
+        }
     }
 
     /// The protocols ship with content: the tool was a beautiful empty

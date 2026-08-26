@@ -109,6 +109,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # vaccins = "Données indicatives — l'autorité reste le calendrier vaccinal en vigueur et le BEH « Recommandations sanitaires pour les voyageurs » de l'année en cours."
 # Ligne sous les calculatrices (Cockcroft, dose/kg, décroissance).
 # calculator = "Modèle à un compartiment : la clinique et le RCP priment."
+# Pied du plan de prise remis au patient.
+# plan = "Ce plan reprend ce que nous avons vu ensemble : il ne remplace pas votre ordonnance."
 
 [ordonnance]
 # Les fiches du référentiel médicaments portant cette étiquette sont
@@ -169,6 +171,8 @@ pub struct DisclaimersConfig {
     pub vaccins: String,
     /// Under the dose calculators.
     pub calculator: String,
+    /// At the foot of the patient's plan de prise.
+    pub plan: String,
 }
 
 /// Convention rules: how many acts of each kind per "année

@@ -884,6 +884,78 @@ fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
     src
 }
 
+/// The patient's own copy: what they take, when, and what to do when a
+/// dose is missed. Written for the person, not for the file — the
+/// bilan stays at the officine, this goes home.
+pub struct PlanData<'a> {
+    pub patient: &'a Patient,
+    pub today: &'a str,
+    /// (médicament, à quoi ça sert, quand le prendre, ce qu'il faut
+    /// savoir) — one line per treatment.
+    pub lines: Vec<(String, String, String, String)>,
+    /// The officine's own mention, empty unless it wrote one.
+    pub mention: &'a str,
+    pub signature: &'a str,
+}
+
+/// The plan de prise on one sheet, in a size that is read without
+/// glasses.
+pub fn open_plan(data: &PlanData, pharmacy: &PharmacyConfig) -> Result<PathBuf, String> {
+    compile_and_open(
+        plan_source(data, pharmacy),
+        &format!("plan_{}", data.patient.id),
+    )
+}
+
+fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.6cm)\n\
+         #set text(size: 11.5pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(17pt, weight: \"bold\")[Mon plan de traitement]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n",
+        typst_str(&data.patient.full_name()),
+        typst_str(data.today)
+    ));
+    src.push_str("#v(4mm)\n");
+    let mut rows = String::new();
+    for (name, what, when, know) in &data.lines {
+        rows.push_str(&format!(
+            "[*#{}*], {}, {}, {},\n",
+            typst_str(name),
+            typst_str(what),
+            typst_str(when),
+            typst_str(know)
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("[], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,\n  [*Médicament*], [*À quoi ça sert*], [*Quand le prendre*], [*Ce qu'il faut savoir*],\n{rows})\n"
+    ));
+    src.push_str("#v(4mm)\n#text(10.5pt, weight: \"bold\")[Mes questions pour la prochaine fois]\n#v(1.5mm)\n#box(width: 100%, height: 3cm, stroke: 0.7pt)\n");
+    src.push_str("#v(4mm)\n");
+    src.push_str(&format!(
+        "#text(10pt)[Votre pharmacie : #{} — #{}]\n",
+        typst_str(&pharmacy.name),
+        typst_str(&pharmacy.phone)
+    ));
+    if !data.signature.trim().is_empty() {
+        src.push_str(&format!(
+            "\\\n#text(10pt)[Préparé avec vous par #{}]\n",
+            typst_str(data.signature.trim())
+        ));
+    }
+    if !data.mention.trim().is_empty() {
+        src.push_str(&format!(
+            "#v(3mm)\n#text(8.5pt, style: \"italic\")[#{}]\n",
+            typst_str(data.mention.trim())
+        ));
+    }
+    src
+}
+
 /// The fiche de fabrication of a preparation: the formula at the
 /// quantity actually being made, then the blanks the bonnes pratiques
 /// ask to fill in — lot numbers, operator, date, control.
@@ -2148,6 +2220,59 @@ mod tests {
                 &pdf,
             );
         }
+    }
+
+    /// The patient's copy: it must carry the missed-dose line, since
+    /// that is the reason it exists, and escape like everything else.
+    #[test]
+    fn the_plan_is_written_for_the_patient() {
+        let patient = sample_patient();
+        let data = PlanData {
+            patient: &patient,
+            today: "27/08/2026",
+            lines: vec![
+                (
+                    "Eliquis #eval \"x\"".to_owned(),
+                    "Fibrillation atriale".to_owned(),
+                    "1 comprimé matin et soir".to_owned(),
+                    "Dans les 6 heures, sinon sauter la prise.".to_owned(),
+                ),
+                (
+                    "Levothyrox".to_owned(),
+                    "Thyroïde".to_owned(),
+                    "1 comprimé le matin à jeun".to_owned(),
+                    String::new(),
+                ),
+            ],
+            mention: "Ce plan ne remplace pas votre ordonnance.",
+            signature: "Claire Leroy",
+        };
+        let source = plan_source(&data, &sample_pharmacy());
+        assert!(source.contains("Mon plan de traitement"));
+        assert!(source.contains("Dans les 6 heures"));
+        assert!(source.contains("Mes questions"));
+        assert!(!source.contains("#eval \"x\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le plan doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("plan_exemple.pdf"), &pdf);
+        }
+        // A file with no treatment still prints the sheet one fills in
+        // by hand.
+        let empty = PlanData {
+            patient: &patient,
+            today: "27/08/2026",
+            lines: Vec::new(),
+            mention: "",
+            signature: "",
+        };
+        let world = PdfWorld::new(plan_source(&empty, &sample_pharmacy()));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
     /// The bilan gathers the whole file on one sheet, and every value

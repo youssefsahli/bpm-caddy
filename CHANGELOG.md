@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.62.0] - 2026-08-27
+
+### Added
+- **« Plan de prise… » — the patient's own copy.** One line per
+  treatment: le médicament, à quoi ça sert, quand le prendre, et ce
+  qu'il faut savoir — la conduite en cas d'oubli en premier, puisque
+  c'est la question qui revient. Underneath, a box for « mes questions
+  pour la prochaine fois », the pharmacy's phone number and who
+  prepared it. The bilan stays at the officine; this one goes home.
+  `[disclaimers] plan` adds the officine's own line at the foot.
+- **Three content invariants, as tests.** Every conduite rule must
+  reach at least one starter card; every biology and ordonnance rule
+  must be able to fire on the base as shipped; every codex formula must
+  parse, carry a readable yield and survive being rescaled without
+  losing a line. Content that can never be reached is content nobody
+  will ever fix.
+
 ## [0.61.0] - 2026-08-27
 
 ### Added

@@ -6312,6 +6312,7 @@ impl App {
         start_edit: &mut bool,
         delete_click: &mut bool,
         bilan: &mut bool,
+        plan: &mut bool,
     ) {
         let del_label = if session.confirm_delete {
             tr("patient_delete_confirm")
@@ -6329,6 +6330,66 @@ impl App {
             .clicked()
         {
             *bilan = true;
+        }
+        if motif::button(ui, tr("plan_print"))
+            .on_hover_text(tr("plan_print_tooltip"))
+            .clicked()
+        {
+            *plan = true;
+        }
+    }
+
+    /// The patient's own copy: one line per treatment — what it is for,
+    /// when to take it, and what to do when a dose is missed. The bilan
+    /// stays at the officine; this one goes home.
+    fn print_plan(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let lines: Vec<(String, String, String, String)> = session
+            .patient_treats
+            .iter()
+            .map(|d| {
+                // The first posology line the team wrote is the one
+                // that answers « à quoi ça sert » and « quand » in the
+                // patient's own words; the card's own fields answer
+                // when there is none.
+                let poso = session.db.posologies(d.id).unwrap_or_default();
+                let first = poso.first();
+                let what = first
+                    .map(|p| p.indication.clone())
+                    .filter(|i| !i.trim().is_empty())
+                    .unwrap_or_else(|| d.class.trim().to_owned());
+                let when = first
+                    .map(|p| p.posologie.clone())
+                    .filter(|p| !p.trim().is_empty())
+                    .unwrap_or_else(|| d.dosage.trim().to_owned());
+                // What matters most to the person holding the sheet is
+                // what to do when a dose is missed.
+                let know = if d.missed_dose.trim().is_empty() {
+                    first
+                        .map(|p| p.remarque.clone())
+                        .filter(|r| !r.trim().is_empty())
+                        .unwrap_or_default()
+                } else {
+                    d.missed_dose.trim().to_owned()
+                };
+                (d.name.trim().to_owned(), what, when, know)
+            })
+            .collect();
+        let signature = config.pharmacy.signature_for(operator);
+        let data = crate::pdf::PlanData {
+            patient,
+            today: &today,
+            lines,
+            mention: &config.disclaimers.plan,
+            signature: &signature,
+        };
+        if let Err(e) = crate::pdf::open_plan(&data, &config.pharmacy) {
+            session.error = Some(e);
+        } else {
+            session.error = None;
         }
     }
 
@@ -6568,6 +6629,7 @@ impl App {
         let mut cancel_edit = false;
         let mut delete_click = false;
         let mut print_bilan = false;
+        let mut print_plan = false;
         let mut back = false;
         let cramped = motif::visible_rect(ui).width() < 620.0;
         ui.add_space(2.0);
@@ -6598,6 +6660,7 @@ impl App {
                         &mut start_edit,
                         &mut delete_click,
                         &mut print_bilan,
+                        &mut print_plan,
                     );
                 });
             }
@@ -6610,6 +6673,7 @@ impl App {
                     &mut start_edit,
                     &mut delete_click,
                     &mut print_bilan,
+                    &mut print_plan,
                 );
             });
         }
@@ -6653,6 +6717,9 @@ impl App {
         }
         if print_bilan {
             Self::print_bilan(session, patient, config, operator);
+        }
+        if print_plan {
+            Self::print_plan(session, patient, config, operator);
         }
         if back {
             return;
@@ -14417,6 +14484,7 @@ impl eframe::App for App {
                                         tr("opts_mention_calc"),
                                         &mut editor.cfg.disclaimers.calculator,
                                     ),
+                                    (tr("opts_mention_plan"), &mut editor.cfg.disclaimers.plan),
                                 ] {
                                     ui.label(dim(label));
                                     ui.add_sized(
