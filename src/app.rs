@@ -5488,8 +5488,13 @@ impl App {
         } else {
             // Under the table, the band needs room for a finding or
             // two: at 42 % of a 500 px work area it showed one and a
-            // half lines of the first.
-            let band = (work.height() * 0.46).clamp(200.0, 360.0);
+            // half lines of the first. But it never takes so much that
+            // the results themselves are reduced to a title — at
+            // 1024x700 with both docks open there are barely 280 px
+            // here, and the panes share what there is.
+            let band = (work.height() * 0.46)
+                .clamp(140.0, 360.0)
+                .min((work.height() - 190.0).max(120.0));
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -6626,6 +6631,15 @@ impl App {
         if !session.treat_query.trim().is_empty() {
             h += row;
         }
+        // The two readings the band carries under the treatments: the
+        // interactions on one line, the revue as chips that wrap.
+        if !session.patient_interactions.is_empty() {
+            h += 20.0;
+        }
+        if !session.patient_review.is_empty() {
+            let titles = session.patient_review.iter().map(|p| p.title);
+            h += 6.0 + 22.0 * Self::wrapped_rows(ui, w - 130.0, titles);
+        }
         // Whatever the band would like, the acts and the journal keep
         // their half of the file: the band scrolls instead.
         let avail = motif::visible_rect(ui).height();
@@ -6940,19 +6954,23 @@ impl App {
                 .collect::<Vec<_>>()
                 .join("\n\n");
             ui.add_space(4.0);
-            ui.label(
-                egui::RichText::new(trf(
-                    "treat_interactions",
-                    session.patient_interactions.len(),
-                ))
-                .size(11.5)
-                .strong()
-                .color(motif::ALERT),
-            )
-            .on_hover_text(details);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(trf(
+                        "treat_interactions",
+                        session.patient_interactions.len(),
+                    ))
+                    .size(11.5)
+                    .strong()
+                    .color(motif::ALERT),
+                )
+                .on_hover_text(details);
+            });
         }
         // And what the ordonnance says about itself: one chip per
         // point, coloured by how loudly it asks, the sentence on hover.
+        // Both rows wrap: the band is the scarcest space of the file,
+        // and it scrolls rather than pushing the acts off the screen.
         if !session.patient_review.is_empty() {
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
