@@ -94,6 +94,22 @@ CREATE TABLE IF NOT EXISTS posologies (
     remarque    TEXT NOT NULL DEFAULT '',
     position    INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS preparations (
+    id           INTEGER PRIMARY KEY,
+    name         TEXT NOT NULL,
+    -- Forme galénique : pommade, gélules, solution…
+    form         TEXT NOT NULL DEFAULT '',
+    indication   TEXT NOT NULL DEFAULT '',
+    -- Une ligne par ingrédient : « nom | quantité unité ».
+    formula      TEXT NOT NULL DEFAULT '',
+    -- Ce que cette formule produit, unité comprise.
+    yield_amount TEXT NOT NULL DEFAULT '',
+    method       TEXT NOT NULL DEFAULT '',
+    conservation TEXT NOT NULL DEFAULT '',
+    caution      TEXT NOT NULL DEFAULT '',
+    tags         TEXT NOT NULL DEFAULT '',
+    sources      TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS class_notes (
     class       TEXT PRIMARY KEY,
     body        TEXT NOT NULL,
@@ -153,6 +169,19 @@ CREATE TABLE IF NOT EXISTS patient_travel (
 
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS preparations (
+        id           INTEGER PRIMARY KEY,
+        name         TEXT NOT NULL,
+        form         TEXT NOT NULL DEFAULT '',
+        indication   TEXT NOT NULL DEFAULT '',
+        formula      TEXT NOT NULL DEFAULT '',
+        yield_amount TEXT NOT NULL DEFAULT '',
+        method       TEXT NOT NULL DEFAULT '',
+        conservation TEXT NOT NULL DEFAULT '',
+        caution      TEXT NOT NULL DEFAULT '',
+        tags         TEXT NOT NULL DEFAULT '',
+        sources      TEXT NOT NULL DEFAULT ''
+    )",
     "ALTER TABLE interviews ADD COLUMN duration_minutes INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE interviews ADD COLUMN scheduled_date TEXT",
     "ALTER TABLE patients ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
@@ -746,6 +775,35 @@ pub struct Posologie {
     pub indication: String,
     pub posologie: String,
     pub remarque: String,
+}
+
+/// One preparation of the codex: a magistral or officinal formula, as
+/// the counter has to make it.
+///
+/// `formula` is one ingredient per line, written « nom | quantité » —
+/// the quantity being a number and a unit ("5 g") or a « qsp 100 g ».
+/// `yield_amount` is what that formula produces, so asking for another
+/// quantity rescales the whole list.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Preparation {
+    pub id: i64,
+    pub name: String,
+    /// Forme galénique: pommade, gélules, solution…
+    pub form: String,
+    pub indication: String,
+    /// One ingredient per line, « nom | quantité unité ».
+    pub formula: String,
+    /// What the formula yields ("100 g", "1000 mL").
+    pub yield_amount: String,
+    pub method: String,
+    pub conservation: String,
+    /// What goes wrong: incompatibilities, ages, maximum strengths.
+    pub caution: String,
+    /// Free tags, comma separated: this is how a drug card finds the
+    /// preparations it belongs to.
+    pub tags: String,
+    /// References, one per line.
+    pub sources: String,
 }
 
 /// One line of a patient's carnet de vaccination.
@@ -19282,6 +19340,174 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     // GENERATED-POSOLOGIES-END
 ];
 
+/// One shipped preparation of the codex, before it reaches the base.
+pub struct StarterPreparation {
+    pub name: &'static str,
+    pub form: &'static str,
+    pub indication: &'static str,
+    pub formula: &'static str,
+    pub yield_amount: &'static str,
+    pub method: &'static str,
+    pub conservation: &'static str,
+    pub caution: &'static str,
+    pub tags: &'static str,
+    pub sources: &'static str,
+}
+
+/// The codex a fresh base starts with: the preparations an officine
+/// actually makes, with the formula as it is written on the fiche de
+/// fabrication, and what goes wrong when it is not.
+///
+/// This is a starting point, not a pharmacopoeia: the team edits every
+/// line, and adds its own. A preparation is only ever made against a
+/// prescription and under the ANSM's bonnes pratiques de préparation.
+pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
+    StarterPreparation {
+        name: "Vaseline salicylée à 5 %",
+        form: "Pommade",
+        indication: "Kératolytique : hyperkératoses, kératodermies palmo-plantaires, plaques épaisses de psoriasis. La concentration usuelle va de 2 à 10 % selon l'épaisseur de la couche cornée à décaper.",
+        formula: "Acide salicylique | 5 g\nVaseline blanche | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Pulvériser finement l'acide salicylique au mortier. L'incorporer à une petite quantité de vaseline ramollie jusqu'à obtenir une pâte homogène, puis diluer par triturations successives avec le reste de la vaseline. Aucun grain ne doit rester perceptible entre deux doigts.",
+        conservation: "Pot opaque à large ouverture, à l'abri de la lumière et de la chaleur. Préparation non stérile : la durée d'utilisation ne dépasse pas trois mois, et la date de fabrication figure sur l'étiquette.",
+        caution: "Le salicylisme est le vrai risque : appliquée sur une grande surface, sous occlusion, ou sur une peau lésée, la molécule passe. Proscrite chez le nourrisson et l'enfant en dehors d'une surface très limitée, et jamais sur une muqueuse. Association déconseillée aux autres kératolytiques sur la même zone.",
+        tags: "dermatologie, kératolytique, acide salicylique, psoriasis",
+        sources: "Formulaire National, Pharmacopée française\nANSM — Bonnes pratiques de préparation",
+    },
+    StarterPreparation {
+        name: "Vaseline salicylée à 10 %",
+        form: "Pommade",
+        indication: "Hyperkératoses très épaisses et verrues, sur une surface limitée et pour une durée courte.",
+        formula: "Acide salicylique | 10 g\nVaseline blanche | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Comme la préparation à 5 % : l'acide salicylique est pulvérisé, empâté avec un peu de vaseline, puis dilué par triturations successives.",
+        caution: "Deux fois la dose, la même limite : surface réduite, jamais d'occlusion étendue, jamais chez le nourrisson. Le décapage attendu s'accompagne d'une irritation du pourtour ; protéger la peau saine à la vaseline simple.",
+        conservation: "Pot opaque, trois mois, date de fabrication sur l'étiquette.",
+        tags: "dermatologie, kératolytique, acide salicylique, verrue",
+        sources: "Formulaire National, Pharmacopée française\nANSM — Bonnes pratiques de préparation",
+    },
+    StarterPreparation {
+        name: "Pâte à l'eau",
+        form: "Pâte",
+        indication: "Protection et assèchement : érythème fessier du nourrisson, plis macérés, dermites de contact suintantes.",
+        formula: "Oxyde de zinc | 25 g\nTalc | 25 g\nGlycérol | 25 g\nEau purifiée | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Mélanger à sec les deux poudres tamisées. Ajouter le glycérol en triturant jusqu'à une pâte lisse, puis l'eau purifiée peu à peu. La pâte se ressuie en séchant : c'est normal, elle se remue avant emploi.",
+        conservation: "Pot large, à température ambiante, un mois : c'est une préparation aqueuse, donc sensible à la contamination.",
+        caution: "Sur peau lésée ou suintante seulement en couche fine ; ne s'applique pas sur une plaie ouverte. Le retrait se fait à l'huile, non par frottement.",
+        tags: "dermatologie, oxyde de zinc, érythème fessier, pédiatrie",
+        sources: "Formulaire National, Pharmacopée française",
+    },
+    StarterPreparation {
+        name: "Vaseline soufrée à 10 %",
+        form: "Pommade",
+        indication: "Dermatoses séborrhéiques, acné rosacée d'appoint, et gale en alternative aux traitements de référence lorsque ceux-ci ne peuvent pas être utilisés.",
+        formula: "Soufre précipité | 10 g\nVaseline blanche | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Le soufre précipité est déjà finement divisé : l'empâter avec un peu de vaseline puis diluer. Ne pas chauffer.",
+        conservation: "Pot opaque, trois mois. Le soufre jaunit lentement : une teinte plus soutenue n'est pas un défaut.",
+        caution: "Chez le nourrisson et la femme enceinte, la concentration retenue dans la gale est de 6 % et non de 10 %. Tache le linge et les bijoux, odeur marquée : le prévenir évite l'arrêt au deuxième jour.",
+        tags: "dermatologie, soufre, gale, séborrhée",
+        sources: "Formulaire National, Pharmacopée française\nHAS — recommandations sur la gale",
+    },
+    StarterPreparation {
+        name: "Crème à l'urée à 10 %",
+        form: "Crème",
+        indication: "Xérose sévère, kératose pilaire, peau du diabétique et du sujet âgé. À 10 % l'urée est hydratante ; au-delà de 20 % elle devient kératolytique.",
+        formula: "Urée | 10 g\nEau purifiée | 10 g\nExcipient type cold cream | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Dissoudre l'urée dans l'eau purifiée (la dissolution est endothermique : le mortier refroidit), puis incorporer la solution à l'excipient par petites fractions, en triturant jusqu'à homogénéité.",
+        conservation: "Pot opaque, un mois : l'urée en milieu aqueux s'hydrolyse lentement en ammoniac, et une odeur ammoniacale signe une préparation à jeter.",
+        caution: "Pique sur une peau fissurée ou eczématisée. Pas sur le visage de l'enfant. Une odeur d'ammoniac signale l'hydrolyse : la préparation n'est plus dosée à ce qu'indique l'étiquette.",
+        tags: "dermatologie, urée, xérose, hydratant",
+        sources: "Formulaire National, Pharmacopée française",
+    },
+    StarterPreparation {
+        name: "Coaltar saponiné à 5 %",
+        form: "Pommade",
+        indication: "Psoriasis en plaques et eczéma lichénifié, en traitement réducteur d'appoint.",
+        formula: "Coaltar saponiné | 5 g\nVaseline blanche | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Incorporer le coaltar saponiné à la vaseline par triturations successives, à froid. La teinte brune doit être uniforme, sans traînée.",
+        conservation: "Pot opaque, trois mois, à l'abri de la lumière.",
+        caution: "Photosensibilisant : application le soir, et pas d'exposition solaire de la zone traitée. Tache les vêtements et la literie. Ne s'applique ni sur le visage, ni sur les plis, ni sur une peau érodée ; à éviter pendant la grossesse.",
+        tags: "dermatologie, coaltar, psoriasis, photosensibilisant",
+        sources: "Formulaire National, Pharmacopée française",
+    },
+    StarterPreparation {
+        name: "Solution aqueuse d'éosine à 2 %",
+        form: "Solution pour application cutanée",
+        indication: "Asséchant et colorant des lésions suintantes et des plis macérés. Sans pouvoir antiseptique propre : elle assèche, elle ne désinfecte pas.",
+        formula: "Éosine disodique | 2 g\nEau purifiée | qsp 100 mL",
+        yield_amount: "100 mL",
+        method: "Dissoudre l'éosine dans l'eau purifiée sous agitation, filtrer, répartir en flacons. Les unidoses stériles du commerce restent préférables pour la peau lésée du nourrisson.",
+        conservation: "Flacon teinté. Une solution aqueuse non conservée se contamine : sept jours après ouverture, et l'unidose pour le nourrisson.",
+        caution: "Colore durablement la peau et le linge, et masque l'inflammation qu'on cherche à surveiller. Pas sur une plaie profonde ni sur une brûlure étendue.",
+        tags: "dermatologie, éosine, antiseptique, pédiatrie",
+        sources: "Formulaire National, Pharmacopée française",
+    },
+    StarterPreparation {
+        name: "Gélules pédiatriques (formule type)",
+        form: "Gélules",
+        indication: "Adapter une dose que la spécialité ne permet pas : fractionner un dosage adulte pour un enfant, ou obtenir une dose intermédiaire lors d'une titration.",
+        formula: "Principe actif | dose unitaire × nombre de gélules\nLactose monohydraté | qsp le volume apparent des gélules",
+        yield_amount: "1 gélule",
+        method: "Peser la quantité totale de principe actif pour le nombre de gélules à faire, en ajoutant la surcharge d'usage pour les pertes. Mélanger par dilutions géométriques avec l'excipient — un tiers, puis un tiers, puis le reste — jusqu'à un mélange de teinte uniforme. Répartir au gélulier, contrôler la masse d'un échantillon de gélules.",
+        conservation: "Pilulier ou boîte opaque, à température ambiante. La durée d'utilisation est fixée par l'officine et ne dépasse pas la durée du traitement prescrit.",
+        caution: "Le lactose est à remplacer en cas d'intolérance documentée (amidon de maïs, cellulose microcristalline). Un principe actif à marge thérapeutique étroite impose un contrôle de masse gélule par gélule. Le volume apparent des gélules vides est d'environ 0,68 mL pour la taille 0, 0,50 mL pour la 1, 0,37 mL pour la 2, 0,30 mL pour la 3 et 0,21 mL pour la 4.",
+        tags: "gélules, pédiatrie, fractionnement, lactose",
+        sources: "ANSM — Bonnes pratiques de préparation\nPharmacopée française, monographie « Préparations pour gélules »",
+    },
+    StarterPreparation {
+        name: "Sirop simple",
+        form: "Sirop",
+        indication: "Véhicule sucré des préparations buvables, et correcteur de goût.",
+        formula: "Saccharose | 65 g\nEau purifiée | 35 g",
+        yield_amount: "100 g",
+        method: "Dissoudre le saccharose dans l'eau purifiée chauffée, sans dépasser l'ébullition prolongée qui caraméliserait le sucre. Filtrer à chaud, compléter au poids avec de l'eau purifiée.",
+        conservation: "Flacon plein et bien bouché, à l'abri de la lumière. Un sirop entamé se contamine : le préparer en petite quantité.",
+        caution: "Sa concentration en sucre est ce qui le conserve : dilué, il fermente. Contre-indiqué chez le patient diabétique et à éviter chez l'enfant traité au long cours, où un véhicule sans sucre est préférable.",
+        tags: "sirop, véhicule, saccharose, buvable",
+        sources: "Pharmacopée française, monographie « Sirop simple »",
+    },
+    StarterPreparation {
+        name: "Solution de bicarbonate de sodium à 1,4 %",
+        form: "Solution pour bain de bouche",
+        indication: "Bains de bouche des mucites, sous chimiothérapie et après radiothérapie de la sphère ORL, et hygiène buccale des bouches sèches.",
+        formula: "Bicarbonate de sodium | 14 g\nEau purifiée | qsp 1000 mL",
+        yield_amount: "1000 mL",
+        method: "Dissoudre le bicarbonate dans l'eau purifiée sous agitation douce, sans chauffer, et répartir en flacons.",
+        conservation: "Flacon fermé, au réfrigérateur, sept jours : c'est une solution aqueuse sans conservateur.",
+        caution: "Bains de bouche à recracher, quatre à six fois par jour, à distance des repas. Ne pas y ajouter d'antiseptique ni d'anesthésique local sans prescription : c'est justement l'irritation qu'on cherche à éviter.",
+        tags: "bain de bouche, mucite, bicarbonate, oncologie",
+        sources: "Formulaire National, Pharmacopée française\nRecommandations de soins de support en oncologie",
+    },
+    StarterPreparation {
+        name: "Solution de chlorure de sodium à 0,9 %",
+        form: "Solution pour lavage",
+        indication: "Lavage de nez, rinçage oculaire externe et nettoyage de plaie : la solution isotonique n'agresse pas les muqueuses.",
+        formula: "Chlorure de sodium | 9 g\nEau purifiée | qsp 1000 mL",
+        yield_amount: "1000 mL",
+        method: "Dissoudre le chlorure de sodium dans l'eau purifiée, filtrer, répartir. Pour l'œil et pour la plaie, seule une solution stérile du commerce convient.",
+        conservation: "Sept jours au réfrigérateur pour un usage nasal. Toute application oculaire ou sur plaie exige une unidose stérile.",
+        caution: "« Isotonique » ne veut pas dire « stérile » : la préparation officinale sert au lavage de nez, pas à l'œil ni à une plaie.",
+        tags: "lavage, sérum physiologique, chlorure de sodium, ORL",
+        sources: "Pharmacopée française\nANSM — Bonnes pratiques de préparation",
+    },
+    StarterPreparation {
+        name: "Glycérolé d'amidon",
+        form: "Excipient",
+        indication: "Excipient adoucissant des pommades et des pâtes dermiques, et base des préparations rectales.",
+        formula: "Amidon de blé | 10 g\nEau purifiée | 15 g\nGlycérol | qsp 100 g",
+        yield_amount: "100 g",
+        method: "Délayer l'amidon dans l'eau purifiée froide, ajouter le glycérol, puis chauffer au bain-marie sous agitation constante jusqu'à empesage — la masse devient translucide. Couler encore chaude.",
+        conservation: "Pot fermé, un mois : le glycérol conserve, l'amidon non.",
+        caution: "L'empesage ne se rattrape pas : trop chauffé, l'amidon se dégrade et la masse retombe. Éviter chez le patient intolérant au gluten pour une application sur muqueuse.",
+        tags: "excipient, amidon, glycérol",
+        sources: "Pharmacopée française, monographie « Glycérolé d'amidon »",
+    },
+];
+
 /// How many drugs a fresh base starts with.
 pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
 
@@ -22290,6 +22516,7 @@ impl Db {
         tx.commit().map_err(|e| e.to_string())?;
         self.fill_starter_details()?;
         self.seed_posologies()?;
+        self.seed_preparations()?;
         Ok(inserted)
     }
 
@@ -22371,6 +22598,7 @@ impl Db {
         tx.commit().map_err(|e| e.to_string())?;
         self.fill_starter_details()?;
         self.seed_posologies()?;
+        self.seed_preparations()?;
         Ok(inserted)
     }
 
@@ -22386,6 +22614,7 @@ impl Db {
             "patient_drugs",
             "posologies",
             "drug_field_locks",
+            "preparations",
             "interviews",
             "patients",
             "drugs",
@@ -23001,6 +23230,143 @@ impl Db {
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
+    }
+
+    /// Seed the codex, once. Like the drug base: a preparation the
+    /// team has renamed or rewritten is never touched, and a name
+    /// already present is skipped rather than duplicated.
+    pub fn seed_preparations(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let mut stmt = tx
+                .prepare("SELECT name FROM preparations")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                present.insert(row.map_err(|e| e.to_string())?);
+            }
+        }
+        let mut added = 0;
+        for p in STARTER_PREPARATIONS {
+            if present.contains(p.name) {
+                continue;
+            }
+            added += tx
+                .execute(
+                    "INSERT INTO preparations
+                        (name, form, indication, formula, yield_amount, method,
+                         conservation, caution, tags, sources)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    (
+                        p.name,
+                        p.form,
+                        p.indication,
+                        p.formula,
+                        p.yield_amount,
+                        p.method,
+                        p.conservation,
+                        p.caution,
+                        p.tags,
+                        p.sources,
+                    ),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// The whole codex, alphabetical.
+    pub fn preparations(&self) -> Result<Vec<Preparation>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, name, form, indication, formula, yield_amount, method,
+                        conservation, caution, tags, sources
+                 FROM preparations ORDER BY name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Preparation {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    form: r.get(2)?,
+                    indication: r.get(3)?,
+                    formula: r.get(4)?,
+                    yield_amount: r.get(5)?,
+                    method: r.get(6)?,
+                    conservation: r.get(7)?,
+                    caution: r.get(8)?,
+                    tags: r.get(9)?,
+                    sources: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Add an empty preparation, ready to be written.
+    pub fn add_preparation(&self, name: &str) -> Result<i64, String> {
+        self.conn
+            .execute("INSERT INTO preparations (name) VALUES (?1)", [name])
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Rewrite a preparation. Compare-and-set on the name and the
+    /// formula this PC displayed, like every other shared row: a
+    /// colleague's correction is never silently overwritten. Returns
+    /// `false` when stale.
+    pub fn update_preparation(
+        &self,
+        new: &Preparation,
+        expected: &Preparation,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE preparations SET
+                    name = ?1, form = ?2, indication = ?3, formula = ?4,
+                    yield_amount = ?5, method = ?6, conservation = ?7,
+                    caution = ?8, tags = ?9, sources = ?10
+                 WHERE id = ?11 AND name = ?12 AND formula = ?13",
+                (
+                    &new.name,
+                    &new.form,
+                    &new.indication,
+                    &new.formula,
+                    &new.yield_amount,
+                    &new.method,
+                    &new.conservation,
+                    &new.caution,
+                    &new.tags,
+                    &new.sources,
+                    new.id,
+                    &expected.name,
+                    &expected.formula,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a preparation. Compare-and-set on the name displayed.
+    pub fn delete_preparation(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM preparations WHERE id = ?1 AND name = ?2",
+                (id, expected_name),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
     }
 
     /// The posologies of one drug, in the order the team arranged them.
@@ -25062,6 +25428,79 @@ mod tests {
             .collect();
         ranks.sort_unstable();
         assert_eq!(ranks, vec![0, 1]);
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The codex seeds once and then belongs to the team: a rewritten
+    /// formula survives the next launch, and every shipped preparation
+    /// carries what the counter needs to make it.
+    #[test]
+    fn the_codex_seeds_once_and_stays_the_team_s() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-codex-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("codex.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let seeded = db.seed_preparations().unwrap();
+        assert_eq!(seeded, STARTER_PREPARATIONS.len());
+        // A second pass adds nothing.
+        assert_eq!(db.seed_preparations().unwrap(), 0);
+        let all = db.preparations().unwrap();
+        assert_eq!(all.len(), STARTER_PREPARATIONS.len());
+        // Every shipped preparation says what it is for, what goes into
+        // it, what it yields, what goes wrong and where it comes from.
+        for p in &all {
+            assert!(
+                !p.indication.trim().is_empty(),
+                "{} sans indication",
+                p.name
+            );
+            assert!(!p.formula.trim().is_empty(), "{} sans formule", p.name);
+            assert!(
+                !p.yield_amount.trim().is_empty(),
+                "{} sans rendement",
+                p.name
+            );
+            assert!(
+                !p.method.trim().is_empty(),
+                "{} sans mode opératoire",
+                p.name
+            );
+            assert!(
+                !p.caution.trim().is_empty(),
+                "{} sans mise en garde",
+                p.name
+            );
+            assert!(
+                !p.conservation.trim().is_empty(),
+                "{} sans conservation",
+                p.name
+            );
+            assert!(!p.sources.trim().is_empty(), "{} sans source", p.name);
+            // A formula line is « nom | quantité ».
+            for line in p.formula.lines().filter(|l| !l.trim().is_empty()) {
+                assert!(
+                    line.contains('|'),
+                    "{} : ligne de formule sans quantité — {line}",
+                    p.name
+                );
+            }
+        }
+        // The team rewrites one, and the next launch leaves it alone.
+        let mut edited = all[0].clone();
+        let base = edited.clone();
+        edited.formula = "Acide salicylique | 3 g\nVaseline blanche | qsp 100 g".to_owned();
+        assert!(db.update_preparation(&edited, &base).unwrap());
+        // A second write from the stale view is refused.
+        assert!(!db.update_preparation(&edited, &base).unwrap());
+        assert_eq!(db.seed_preparations().unwrap(), 0);
+        assert_eq!(db.preparations().unwrap()[0].formula, edited.formula);
+        // And one added by hand behaves like any other.
+        let id = db.add_preparation("Pommade de l'officine").unwrap();
+        assert!(db.preparations().unwrap().iter().any(|p| p.id == id));
+        assert!(!db.delete_preparation(id, "Autre nom").unwrap());
+        assert!(db.delete_preparation(id, "Pommade de l'officine").unwrap());
 
         let _ = std::fs::remove_file(&path);
     }

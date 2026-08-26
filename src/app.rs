@@ -1035,6 +1035,42 @@ struct OrdonnanceBox {
     choice: crate::ordonnance::Choice,
 }
 
+/// The codex's four calculators, as the fields hold them. Strings and
+/// not numbers: half-typed input is a normal state at a counter, and a
+/// field that fights back while you type is worse than one that waits.
+struct CodexCalc {
+    /// Titre : x % de y g.
+    percent: String,
+    percent_total: String,
+    /// Dilution : d'une solution à c1, obtenir v mL à c2.
+    strong: String,
+    wanted: String,
+    volume: String,
+    /// Gélules : dose unitaire, nombre, surcharge.
+    dose: String,
+    count: String,
+    overage: String,
+}
+
+impl Default for CodexCalc {
+    /// They open on a worked example rather than on three empty rows:
+    /// a calculator that shows its own answer says what it is for
+    /// without a paragraph of explanation, and the first keystroke
+    /// replaces it.
+    fn default() -> Self {
+        Self {
+            percent: "5".to_owned(),
+            percent_total: "60".to_owned(),
+            strong: "0,5".to_owned(),
+            wanted: "0,05".to_owned(),
+            volume: "250".to_owned(),
+            dose: "12,5".to_owned(),
+            count: "30".to_owned(),
+            overage: "10".to_owned(),
+        }
+    }
+}
+
 /// What the world map colours its tiles by.
 ///
 /// One map, several readings: the group a country belongs to answers
@@ -1226,6 +1262,23 @@ struct Session {
     drug_patients: Vec<Patient>,
     /// Conversion tables browser (inside the drug view).
     show_tables: bool,
+    /// The codex: the preparations, what is open, and the quantity the
+    /// counter actually has to make.
+    show_codex: bool,
+    preparations: Vec<db::Preparation>,
+    codex_query: String,
+    codex_open: Option<i64>,
+    /// The preparation being rewritten, and the copy it was loaded from
+    /// — the compare-and-set baseline.
+    codex_edit: Option<db::Preparation>,
+    codex_base: Option<db::Preparation>,
+    /// The quantity asked for, as typed ("60 g"); empty means the
+    /// quantity the formula is written for.
+    codex_target: String,
+    codex_confirm_delete: bool,
+    codex_new_name: String,
+    /// The four little calculators under the sheet, as typed.
+    codex_calc: CodexCalc,
     /// The convention's cycle length in months, from the options: it
     /// drives both the quota rule and the fee ranks.
     cycle_months: u32,
@@ -1299,6 +1352,10 @@ impl Session {
         // First unlock of a fresh base: starter drug cards (names, DCI,
         // textbook antidotes). Non-fatal if it fails.
         let _ = db.seed_drugs_if_empty();
+        // The codex seeds on its own account: a base opened before the
+        // preparations existed gets them here, without touching a
+        // formula the team has since rewritten.
+        let _ = db.seed_preparations();
         let drugs = db.drugs().unwrap_or_default();
         let protocols = db.protocols().unwrap_or_default();
         let mut session = Self {
@@ -1385,6 +1442,16 @@ impl Session {
             confirm_delete_drug: false,
             drug_patients: Vec::new(),
             show_tables: false,
+            show_codex: false,
+            preparations: Vec::new(),
+            codex_query: String::new(),
+            codex_open: None,
+            codex_edit: None,
+            codex_base: None,
+            codex_target: String::new(),
+            codex_confirm_delete: false,
+            codex_new_name: String::new(),
+            codex_calc: CodexCalc::default(),
             cycle_months: cycle_months.max(1),
             show_protocols: false,
             protocols,
@@ -1606,6 +1673,16 @@ impl Session {
                 .map(|d| d.name.trim().to_owned())
                 .unwrap_or_else(|| tr("tab_missing").to_owned()),
         }
+    }
+
+    /// Reload the codex from the base.
+    fn reload_codex(&mut self) {
+        self.preparations = self.db.preparations().unwrap_or_default();
+    }
+
+    /// One preparation by id, as it stands in the loaded codex.
+    fn preparation(&self, id: i64) -> Option<db::Preparation> {
+        self.preparations.iter().find(|p| p.id == id).cloned()
     }
 
     /// Open a drug card: load its baseline for CAS and the patients
@@ -2634,6 +2711,17 @@ impl App {
                                         session.db.protocol_nodes(p.id).unwrap_or_default();
                                     session.protocol_open = Some(p);
                                 }
+                            }
+                            session.view = MainView::Drugs;
+                        }
+                        // The codex, and the codex with a preparation
+                        // open: the sheet and its calculators are only
+                        // drawn once one is chosen.
+                        Ok(v @ ("codex" | "codex_open")) => {
+                            session.show_codex = true;
+                            session.reload_codex();
+                            if v == "codex_open" {
+                                session.codex_open = session.preparations.first().map(|p| p.id);
                             }
                             session.view = MainView::Drugs;
                         }
@@ -8818,6 +8906,584 @@ impl App {
         });
     }
 
+    /// The codex: the officine's preparations, the formula at the
+    /// quantity actually being made, and the arithmetic that goes with
+    /// it.
+    ///
+    /// Carved in two: the list on the left, the open preparation on the
+    /// right. The sheet is what gets printed as a fiche de fabrication.
+    fn codex_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
+        let body = motif::visible_rect(ui);
+        let head = motif::split_rows(body, &[64.0, 0.0], 6.0);
+        motif::inside(ui, head[0], |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(tr("codex_title"));
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_codex = false;
+                    session.codex_edit = None;
+                }
+                ui.add_sized(
+                    [220.0, 24.0],
+                    egui::TextEdit::singleline(&mut session.codex_new_name)
+                        .hint_text(tr("codex_new_hint")),
+                );
+                if motif::button(ui, tr("codex_new")).clicked()
+                    && !session.codex_new_name.trim().is_empty()
+                {
+                    let name = session.codex_new_name.trim().to_owned();
+                    match session.db.add_preparation(&name) {
+                        Ok(id) => {
+                            session.codex_new_name.clear();
+                            session.reload_codex();
+                            session.codex_open = Some(id);
+                            // A new preparation is empty: it opens in
+                            // the form, since there is nothing to read.
+                            if let Some(p) = session.preparation(id) {
+                                session.codex_base = Some(p.clone());
+                                session.codex_edit = Some(p);
+                            }
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                }
+            });
+            ui.label(
+                egui::RichText::new(tr("codex_subtitle"))
+                    .size(11.5)
+                    .color(motif::TEXT_DIM),
+            );
+        });
+        let list_w = (head[1].width() * 0.26).clamp(220.0, 340.0);
+        let cols = [
+            egui::Rect::from_min_size(head[1].min, egui::vec2(list_w, head[1].height())),
+            egui::Rect::from_min_max(
+                egui::pos2(head[1].left() + list_w + 8.0, head[1].top()),
+                head[1].max,
+            ),
+        ];
+        let mut open: Option<i64> = None;
+        motif::panel(ui, cols[0], Some(tr("codex_list")), |ui| {
+            ui.add_sized(
+                [ui.available_width(), 24.0],
+                egui::TextEdit::singleline(&mut session.codex_query)
+                    .hint_text(tr("codex_search_hint")),
+            );
+            ui.add_space(4.0);
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 30.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            let query = session.codex_query.clone();
+            let selected = session.codex_open;
+            let rows: Vec<(i64, String, String)> = session
+                .preparations
+                .iter()
+                .filter(|p| {
+                    query.trim().is_empty()
+                        || [
+                            p.name.as_str(),
+                            p.form.as_str(),
+                            p.tags.as_str(),
+                            p.indication.as_str(),
+                        ]
+                        .iter()
+                        .any(|field| fuzzy::score(&query, field).is_some())
+                })
+                .map(|p| (p.id, p.name.clone(), p.form.clone()))
+                .collect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("codex_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for (id, name, form) in rows {
+                            let label = if form.trim().is_empty() {
+                                name
+                            } else {
+                                format!("{name}  ·  {form}")
+                            };
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(label).size(12.0),
+                                selected == Some(id),
+                            )
+                            .clicked()
+                            {
+                                open = Some(id);
+                            }
+                        }
+                    });
+            });
+        });
+        if let Some(id) = open {
+            session.codex_open = Some(id);
+            session.codex_edit = None;
+            session.codex_base = None;
+            session.codex_target.clear();
+            session.codex_confirm_delete = false;
+        }
+        let Some(id) = session.codex_open else {
+            motif::panel(ui, cols[1], Some(tr("codex_sheet")), |ui| {
+                ui.label(
+                    egui::RichText::new(tr("codex_pick"))
+                        .size(12.0)
+                        .color(motif::TEXT_DIM),
+                );
+            });
+            return;
+        };
+        let Some(prep) = session.preparation(id) else {
+            session.codex_open = None;
+            return;
+        };
+        if session.codex_edit.is_some() {
+            Self::codex_form(ui, session, cols[1], &prep);
+        } else {
+            Self::codex_sheet(ui, session, cols[1], &prep, config, operator);
+        }
+    }
+
+    /// The open preparation, read: the formula at the quantity asked
+    /// for, then the mode opératoire, and the calculators under it.
+    fn codex_sheet(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        prep: &db::Preparation,
+        config: &Config,
+        operator: &str,
+    ) {
+        let mut edit = false;
+        let mut delete = false;
+        let mut print = false;
+        motif::panel(ui, rect, Some(tr("codex_sheet")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("codex_sheet")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if motif::button(ui, tr("drug_edit")).clicked() {
+                            edit = true;
+                        }
+                        if motif::button(ui, tr("codex_print"))
+                            .on_hover_text(tr("codex_print_tooltip"))
+                            .clicked()
+                        {
+                            print = true;
+                        }
+                        ui.add_space(10.0);
+                        let label = if session.codex_confirm_delete {
+                            tr("patient_delete_confirm")
+                        } else {
+                            tr("patient_delete")
+                        };
+                        if motif::button(ui, label).clicked() {
+                            if session.codex_confirm_delete {
+                                delete = true;
+                            } else {
+                                session.codex_confirm_delete = true;
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+                    ui.label(egui::RichText::new(&prep.name).size(16.0).strong());
+                    if !prep.form.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(prep.form.trim())
+                                .size(12.0)
+                                .italics()
+                                .color(motif::TEXT_DIM),
+                        );
+                    }
+                    if !prep.indication.trim().is_empty() {
+                        ui.add_space(3.0);
+                        ui.label(egui::RichText::new(prep.indication.trim()).size(12.0));
+                    }
+                    ui.add_space(8.0);
+                    // The quantity actually being made. Empty means the
+                    // quantity the formula is written for.
+                    motif::section(ui, tr("codex_formula"));
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(tr("codex_make"))
+                                .size(11.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                        if session.codex_target.trim().is_empty() {
+                            session.codex_target = prep.yield_amount.clone();
+                        }
+                        ui.add_sized(
+                            [90.0, 22.0],
+                            egui::TextEdit::singleline(&mut session.codex_target)
+                                .hint_text(prep.yield_amount.trim()),
+                        );
+                        if motif::button(ui, tr("tpl_reset"))
+                            .on_hover_text(trf("codex_reset_tooltip", prep.yield_amount.trim()))
+                            .clicked()
+                        {
+                            session.codex_target = prep.yield_amount.clone();
+                        }
+                    });
+                    ui.add_space(4.0);
+                    let lines = crate::codex::parse_formula(&prep.formula);
+                    let factor =
+                        crate::codex::scale_factor(&prep.yield_amount, &session.codex_target);
+                    if factor.is_none() && !session.codex_target.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(trf("codex_no_factor", prep.yield_amount.trim()))
+                                .size(11.0)
+                                .color(motif::ALERT),
+                        );
+                    }
+                    // The strength of each ingredient, read off the
+                    // formula itself: « 5 g pour 100 g » is 5 %, and
+                    // that is the number the prescription argues about.
+                    let base = crate::codex::parse_amount(&prep.yield_amount);
+                    egui::Grid::new(("codex_formula", prep.id))
+                        .num_columns(4)
+                        .spacing([14.0, 5.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for header in [
+                                tr("codex_ingredient"),
+                                tr("codex_written"),
+                                tr("codex_weigh"),
+                                tr("codex_strength"),
+                            ] {
+                                ui.label(
+                                    egui::RichText::new(header)
+                                        .size(10.5)
+                                        .color(motif::TEXT_DIM),
+                                );
+                            }
+                            ui.end_row();
+                            for line in &lines {
+                                ui.label(egui::RichText::new(&line.name).size(12.0));
+                                ui.label(
+                                    egui::RichText::new(&line.written)
+                                        .size(11.5)
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.label(
+                                    egui::RichText::new(line.scaled(factor.unwrap_or(1.0)))
+                                        .size(12.5)
+                                        .strong()
+                                        .color(motif::ACCENT),
+                                );
+                                // Only where it means something: an
+                                // ingredient with a quantity, in the
+                                // formula's own unit, and not the
+                                // excipient that completes it.
+                                let strength = match (line.quantity, base) {
+                                    (Some(q), Some((total, unit)))
+                                        if !line.qsp && line.unit.eq_ignore_ascii_case(unit) =>
+                                    {
+                                        crate::codex::percent_for_mass(q, total)
+                                    }
+                                    _ => None,
+                                };
+                                match strength {
+                                    Some(pct) => ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} %",
+                                            crate::codex::format_quantity(pct)
+                                        ))
+                                        .size(11.5)
+                                        .color(motif::TEXT_DIM),
+                                    ),
+                                    None => ui.label(""),
+                                };
+                                ui.end_row();
+                            }
+                        });
+                    ui.add_space(8.0);
+                    for (title, body, alert) in [
+                        (tr("codex_method"), prep.method.as_str(), false),
+                        (tr("codex_conservation"), prep.conservation.as_str(), false),
+                        (tr("codex_caution"), prep.caution.as_str(), true),
+                    ] {
+                        if body.trim().is_empty() {
+                            continue;
+                        }
+                        motif::section(ui, title);
+                        ui.add_space(2.0);
+                        ui.label(egui::RichText::new(body.trim()).size(12.0).color(if alert {
+                            motif::ALERT
+                        } else {
+                            motif::TEXT
+                        }));
+                        ui.add_space(6.0);
+                    }
+                    let sources: Vec<&str> = prep
+                        .sources
+                        .lines()
+                        .map(str::trim)
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    if !sources.is_empty() {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} : {}",
+                                tr("tables_sources"),
+                                sources.join(" · ")
+                            ))
+                            .size(10.5)
+                            .color(motif::TEXT_DIM),
+                        );
+                        ui.add_space(6.0);
+                    }
+                    Self::codex_calculators(ui, session);
+                });
+        });
+        if edit {
+            session.codex_base = Some(prep.clone());
+            session.codex_edit = Some(prep.clone());
+            session.error = None;
+        }
+        if print {
+            let lines: Vec<(String, String, String)> = crate::codex::parse_formula(&prep.formula)
+                .iter()
+                .map(|l| {
+                    (
+                        l.name.clone(),
+                        l.written.clone(),
+                        l.scaled(
+                            crate::codex::scale_factor(&prep.yield_amount, &session.codex_target)
+                                .unwrap_or(1.0),
+                        ),
+                    )
+                })
+                .collect();
+            let target = if session.codex_target.trim().is_empty() {
+                prep.yield_amount.clone()
+            } else {
+                session.codex_target.clone()
+            };
+            if let Err(e) =
+                crate::pdf::open_preparation(prep, &target, &lines, &config.pharmacy, operator)
+            {
+                session.error = Some(e);
+            }
+        }
+        if delete {
+            session.codex_confirm_delete = false;
+            match session.db.delete_preparation(prep.id, &prep.name) {
+                Ok(true) => {
+                    session.codex_open = None;
+                    session.reload_codex();
+                }
+                Ok(false) => session.error = Some(tr("codex_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(err) = session.error.clone() {
+            motif::inside(ui, rect, |ui| {
+                ui.colored_label(motif::ALERT, err);
+            });
+        }
+    }
+
+    /// The three little calculators the counter reaches for while the
+    /// mortar is out: a titre, a dilution, a batch of capsules.
+    fn codex_calculators(ui: &mut egui::Ui, session: &mut Session) {
+        motif::section(ui, tr("codex_calc"));
+        ui.add_space(4.0);
+        let calc = &mut session.codex_calc;
+        let num = |s: &str| crate::codex::parse_amount(s).map(|(v, _)| v);
+        let field = |ui: &mut egui::Ui, value: &mut String, hint: &str| {
+            ui.add_sized(
+                [66.0, 22.0],
+                egui::TextEdit::singleline(value).hint_text(hint),
+            );
+        };
+        // Titre : x % de y g de préparation.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(tr("codex_calc_titre")).size(11.5));
+            field(ui, &mut calc.percent, "5");
+            ui.label("%");
+            ui.label(tr("codex_calc_of"));
+            field(ui, &mut calc.percent_total, "60");
+            ui.label("g");
+            if let (Some(p), Some(t)) = (num(&calc.percent), num(&calc.percent_total)) {
+                ui.label(
+                    egui::RichText::new(trf(
+                        "codex_calc_mass",
+                        crate::codex::format_quantity(crate::codex::mass_for_percent(p, t)),
+                    ))
+                    .size(12.0)
+                    .strong()
+                    .color(motif::ACCENT),
+                );
+            }
+        });
+        ui.add_space(3.0);
+        // Dilution : C1·V1 = C2·V2.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(tr("codex_calc_dilution")).size(11.5));
+            field(ui, &mut calc.strong, "0,5");
+            ui.label(format!("% {}", tr("codex_calc_to")));
+            field(ui, &mut calc.wanted, "0,05");
+            ui.label("%,");
+            field(ui, &mut calc.volume, "250");
+            ui.label("mL");
+            if let (Some(c1), Some(c2), Some(v)) =
+                (num(&calc.strong), num(&calc.wanted), num(&calc.volume))
+            {
+                match crate::codex::dilution_take(c1, c2, v) {
+                    Some(take) => {
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "codex_calc_take",
+                                &[
+                                    &crate::codex::format_quantity(take),
+                                    &crate::codex::format_quantity(v - take),
+                                ],
+                            ))
+                            .size(12.0)
+                            .strong()
+                            .color(motif::ACCENT),
+                        );
+                    }
+                    None => {
+                        ui.label(
+                            egui::RichText::new(tr("codex_calc_impossible"))
+                                .size(11.0)
+                                .color(motif::ALERT),
+                        );
+                    }
+                }
+            }
+        });
+        ui.add_space(3.0);
+        // Gélules : dose unitaire × nombre, plus la surcharge.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(tr("codex_calc_capsules")).size(11.5));
+            field(ui, &mut calc.dose, "12,5");
+            ui.label("mg ×");
+            field(ui, &mut calc.count, "30");
+            ui.label(tr("codex_calc_plus"));
+            field(ui, &mut calc.overage, "10");
+            ui.label("%");
+            if let (Some(d), Some(n)) = (num(&calc.dose), num(&calc.count)) {
+                let over = num(&calc.overage).unwrap_or(0.0);
+                ui.label(
+                    egui::RichText::new(trf(
+                        "codex_calc_batch",
+                        crate::codex::format_quantity(crate::codex::capsule_batch_mass(d, n, over)),
+                    ))
+                    .size(12.0)
+                    .strong()
+                    .color(motif::ACCENT),
+                );
+            }
+        });
+        ui.add_space(3.0);
+        // The sizes, from the table itself rather than from a
+        // sentence that could drift away from it.
+        let volumes = crate::codex::CAPSULE_VOLUMES
+            .iter()
+            .map(|(size, ml)| format!("n° {size} ≈ {} mL", crate::codex::format_quantity(*ml)))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        ui.label(
+            egui::RichText::new(trf("codex_capsule_volumes", volumes))
+                .size(10.5)
+                .color(motif::TEXT_DIM),
+        );
+    }
+
+    /// The open preparation, written: every field as the team edits it.
+    fn codex_form(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        prep: &db::Preparation,
+    ) {
+        let mut save = false;
+        let mut cancel = false;
+        let Some(form) = session.codex_edit.as_mut() else {
+            return;
+        };
+        motif::panel(ui, rect, Some(tr("codex_sheet")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("codex_form")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if motif::button(ui, tr("form_save")).clicked() {
+                            save = true;
+                        }
+                        if motif::button(ui, tr("tpl_close")).clicked() {
+                            cancel = true;
+                        }
+                    });
+                    ui.add_space(6.0);
+                    let dim = |t: &str| egui::RichText::new(t).size(11.0).color(motif::TEXT_DIM);
+                    let w = ui.available_width().min(680.0);
+                    for (label, value, rows) in [
+                        (tr("codex_name"), &mut form.name, 1),
+                        (tr("codex_form_label"), &mut form.form, 1),
+                        (tr("codex_yield"), &mut form.yield_amount, 1),
+                        (tr("codex_indication"), &mut form.indication, 3),
+                        (tr("codex_formula"), &mut form.formula, 5),
+                        (tr("codex_method"), &mut form.method, 4),
+                        (tr("codex_conservation"), &mut form.conservation, 3),
+                        (tr("codex_caution"), &mut form.caution, 4),
+                        (tr("drug_tags"), &mut form.tags, 1),
+                        (tr("tables_sources"), &mut form.sources, 2),
+                    ] {
+                        ui.label(dim(label));
+                        if rows == 1 {
+                            ui.add_sized([w, 24.0], egui::TextEdit::singleline(value));
+                        } else {
+                            ui.add_sized(
+                                [w, 22.0 * rows as f32],
+                                egui::TextEdit::multiline(value).desired_rows(rows),
+                            );
+                        }
+                        ui.add_space(4.0);
+                    }
+                    ui.label(
+                        egui::RichText::new(tr("codex_formula_hint"))
+                            .size(10.5)
+                            .color(motif::TEXT_DIM),
+                    );
+                    if let Some(err) = &session.error {
+                        ui.add_space(6.0);
+                        ui.colored_label(motif::ALERT, err.as_str());
+                    }
+                });
+        });
+        if save {
+            let edited = session.codex_edit.clone().unwrap_or_default();
+            let base = session.codex_base.clone().unwrap_or_else(|| prep.clone());
+            if edited.name.trim().is_empty() {
+                session.error = Some(tr("codex_needs_name").to_owned());
+                return;
+            }
+            match session.db.update_preparation(&edited, &base) {
+                Ok(true) => {
+                    session.error = None;
+                    session.codex_edit = None;
+                    session.codex_base = None;
+                    session.reload_codex();
+                }
+                Ok(false) => {
+                    session.error = Some(tr("codex_stale").to_owned());
+                    session.reload_codex();
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if cancel {
+            session.codex_edit = None;
+            session.codex_base = None;
+            session.error = None;
+        }
+    }
+
     /// Substitution protocols: the list, the tree editor, and the
     /// walk-through that asks the questions one at a time.
     fn protocols_view(ui: &mut egui::Ui, session: &mut Session) {
@@ -9928,6 +10594,15 @@ impl App {
                 } else {
                     session.show_protocols = false;
                 }
+            } else if session.show_codex {
+                if session.codex_edit.is_some() {
+                    session.codex_edit = None;
+                    session.codex_base = None;
+                } else if session.codex_open.is_some() {
+                    session.codex_open = None;
+                } else {
+                    session.show_codex = false;
+                }
             } else if session.show_tables {
                 session.show_tables = false;
             } else {
@@ -9936,6 +10611,10 @@ impl App {
             }
         }
 
+        if session.show_codex {
+            Self::codex_view(ui, session, config, operator);
+            return;
+        }
         if session.show_tables {
             Self::tables_view(ui, session, config);
             return;
@@ -9965,6 +10644,13 @@ impl App {
                     {
                         session.show_protocols = true;
                         session.protocols = session.db.protocols().unwrap_or_default();
+                    }
+                    if motif::button(ui, tr("codex_button"))
+                        .on_hover_text(tr("codex_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_codex = true;
+                        session.reload_codex();
                     }
                 };
                 ui.horizontal(|ui| {
@@ -10018,6 +10704,8 @@ impl App {
             // A keyword clicked in the technical sheet — a DCI, a class,
             // a tag: the base's search is sent to it.
             let mut search_keyword: Option<String> = None;
+            // The codex, opened from the card and searched on it.
+            let mut open_codex = false;
             // The actions stay above the scroll: a full monograph is
             // several screens tall, and « Modifier » or « Enregistrer »
             // must never be something to go looking for.
@@ -10044,6 +10732,12 @@ impl App {
                                 .clicked()
                         {
                             edit_class = true;
+                        }
+                        if motif::button(ui, tr("codex_from_card"))
+                            .on_hover_text(tr("codex_from_card_tooltip"))
+                            .clicked()
+                        {
+                            open_codex = true;
                         }
                         for (source, label, tooltip) in [
                             (Lookup::Ansm, tr("drug_lookup"), tr("drug_lookup_tooltip")),
@@ -10569,6 +11263,24 @@ impl App {
                     session.view = MainView::Search;
                     session.open_patient(p);
                 }
+            }
+            // From a card, the codex opens already searched on the
+            // molecule: « qu'est-ce qui se prépare avec ça ».
+            if open_codex {
+                let card = session.drug_form.clone();
+                session.show_codex = true;
+                session.reload_codex();
+                session.codex_open = None;
+                session.codex_query = card
+                    .map(|d| {
+                        if d.dci.trim().is_empty() {
+                            d.name.trim().to_owned()
+                        } else {
+                            d.dci.trim().to_owned()
+                        }
+                    })
+                    .unwrap_or_default();
+                return;
             }
             // A keyword closes the card and searches the base for it:
             // « les autres AOD », « les autres probiotiques », asked by

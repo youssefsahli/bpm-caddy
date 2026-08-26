@@ -698,6 +698,110 @@ fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
     src
 }
 
+/// The fiche de fabrication of a preparation: the formula at the
+/// quantity actually being made, then the blanks the bonnes pratiques
+/// ask to fill in — lot numbers, operator, date, control.
+///
+/// `lines` is (ingredient, what the formula says, what to weigh today).
+pub fn open_preparation(
+    prep: &crate::db::Preparation,
+    target: &str,
+    lines: &[(String, String, String)],
+    pharmacy: &PharmacyConfig,
+    operator: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        preparation_source(prep, target, lines, pharmacy, operator),
+        &format!("preparation_{}", prep.id),
+    )
+}
+
+fn preparation_source(
+    prep: &crate::db::Preparation,
+    target: &str,
+    lines: &[(String, String, String)],
+    pharmacy: &PharmacyConfig,
+    operator: &str,
+) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.8cm)\n\
+         #set text(size: 10.5pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#grid(columns: (1fr, auto), [#text(weight: \"bold\")[#{}]], [#align(right)[#text(9pt)[Fiche de fabrication]]])\n",
+        typst_str(&pharmacy.name)
+    ));
+    src.push_str("#v(2mm)\n#line(length: 100%, stroke: 0.8pt)\n#v(3mm)\n");
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[#{}]]\n",
+        typst_str(&prep.name)
+    ));
+    if !prep.form.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(10pt, style: \"italic\")[#{}]]\n",
+            typst_str(prep.form.trim())
+        ));
+    }
+    src.push_str("#v(4mm)\n");
+    src.push_str(&format!(
+        "#text(weight: \"bold\")[Quantité préparée :] #{} #h(1fr) #text(weight: \"bold\")[Date :] #box(width: 3cm, stroke: (bottom: 0.6pt))[] #h(6mm) #text(weight: \"bold\")[Par :] #box(width: 2.5cm, stroke: (bottom: 0.6pt))[#{}]\n",
+        typst_str(target),
+        typst_str(operator)
+    ));
+    src.push_str("#v(4mm)\n");
+    // The formula, with a blank column for the lot of every raw
+    // material: that column is the point of the sheet.
+    let mut rows = String::new();
+    for (name, written, weighed) in lines {
+        rows.push_str(&format!(
+            "{}, {}, {}, [],\n",
+            typst_str(name),
+            typst_str(written),
+            typst_str(weighed)
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("[], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (1fr, auto, auto, 3.4cm), inset: 6pt, stroke: 0.6pt,\n  [*Matière première*], [*Formule*], [*À peser*], [*N° de lot*],\n{rows})\n"
+    ));
+    for (title, body) in [
+        ("Mode opératoire", prep.method.as_str()),
+        ("Conservation", prep.conservation.as_str()),
+        ("Mise en garde", prep.caution.as_str()),
+        ("Indication", prep.indication.as_str()),
+    ] {
+        if body.trim().is_empty() {
+            continue;
+        }
+        src.push_str(&format!(
+            "#v(3mm)\n#text(weight: \"bold\", size: 10pt)[#{}]\n#v(1mm)\n#text(9.5pt)[#{}]\n",
+            typst_str(title),
+            typst_str(body.trim())
+        ));
+    }
+    src.push_str(
+        "#v(5mm)\n#line(length: 100%, stroke: 0.4pt)\n#v(2mm)\n\
+         #grid(columns: (1fr, 1fr), gutter: 8mm,\n\
+           [#text(9.5pt, weight: \"bold\")[Contrôle] #v(1mm) #box(width: 100%, height: 2cm, stroke: 0.6pt)],\n\
+           [#text(9.5pt, weight: \"bold\")[Étiquetage et remise] #v(1mm) #box(width: 100%, height: 2cm, stroke: 0.6pt)])\n",
+    );
+    let sources: Vec<&str> = prep
+        .sources
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if !sources.is_empty() {
+        src.push_str(&format!(
+            "#v(3mm)\n#text(size: 8pt)[Sources : #{}]\n",
+            typst_str(&sources.join(" · "))
+        ));
+    }
+    src
+}
+
 /// One substitution protocol as a printable A4 page: the decision tree
 /// as an indented list, questions in bold, branches labelled.
 pub fn open_protocol(
@@ -1853,6 +1957,63 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(
                 std::path::Path::new(&dir).join("ordonnance_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
+
+    /// The fiche de fabrication is the record the bonnes pratiques ask
+    /// for: it must carry the quantities actually weighed, and the
+    /// blanks that are filled in by hand.
+    #[test]
+    fn the_fabrication_sheet_carries_the_weighed_quantities() {
+        let prep = crate::db::Preparation {
+            id: 1,
+            // Hostile input goes through the same escaping as everywhere
+            // else: a formula is written by the team.
+            name: "Vaseline salicylée #eval \"x\" à 5 %".to_owned(),
+            form: "Pommade".to_owned(),
+            indication: "Kératolytique".to_owned(),
+            formula: "Acide salicylique | 5 g\nVaseline blanche | qsp 100 g".to_owned(),
+            yield_amount: "100 g".to_owned(),
+            method: "Triturations successives.".to_owned(),
+            conservation: "Pot opaque, trois mois.".to_owned(),
+            caution: "Pas chez le nourrisson.".to_owned(),
+            tags: "dermatologie".to_owned(),
+            sources: "Formulaire National".to_owned(),
+        };
+        let lines = vec![
+            (
+                "Acide salicylique".to_owned(),
+                "5 g".to_owned(),
+                "3 g".to_owned(),
+            ),
+            (
+                "Vaseline blanche".to_owned(),
+                "qsp 100 g".to_owned(),
+                "qsp 60 g".to_owned(),
+            ),
+        ];
+        let source = preparation_source(&prep, "60 g", &lines, &sample_pharmacy(), "CL");
+        assert!(
+            source.contains("qsp 60 g"),
+            "la quantité pesée doit figurer"
+        );
+        assert!(
+            source.contains("N° de lot"),
+            "la colonne des lots est le point de la fiche"
+        );
+        assert!(source.contains("Pharmacie du Centre"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la fiche de fabrication doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("fiche_fabrication_exemple.pdf"),
                 &pdf,
             );
         }
