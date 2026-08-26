@@ -1320,6 +1320,87 @@ pub fn open_conversion_tables(edits: &TableEdits) -> Result<PathBuf, String> {
     compile_and_open(conversion_tables_source(edits), "tables")
 }
 
+/// The whole codex as a booklet: one block per preparation, in the
+/// order the list shows them. What goes in the préparatoire's binder.
+pub fn open_codex(preparations: &[crate::db::Preparation]) -> Result<PathBuf, String> {
+    compile_and_open(codex_source(preparations), "codex")
+}
+
+fn codex_source(preparations: &[crate::db::Preparation]) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.6cm)\n\
+         #set text(size: 9.5pt, lang: \"fr\", hyphenate: true)\n\
+         #set par(justify: true)\n\
+         #align(center)[#text(15pt, weight: \"bold\")[Codex des préparations]]\n\
+         #v(1mm)\n\
+         #align(center)[#text(9pt, style: \"italic\")[Une préparation ne se fait que sur ordonnance et selon les bonnes pratiques de préparation.]]\n\
+         #v(4mm)\n",
+    );
+    for prep in preparations {
+        src.push_str(&format!(
+            "#block(breakable: false, below: 5mm)[\n#text(11pt, weight: \"bold\")[#{}]",
+            typst_str(&prep.name)
+        ));
+        if !prep.form.trim().is_empty() {
+            src.push_str(&format!(
+                " #text(9pt, style: \"italic\")[ — #{}]",
+                typst_str(prep.form.trim())
+            ));
+        }
+        src.push_str("\n#v(1mm)\n#line(length: 100%, stroke: 0.5pt)\n#v(1.5mm)\n");
+        // The formula as written, then what it yields: the sheet is
+        // read at the bench, where the quantity is recomputed anyway.
+        let mut rows = String::new();
+        for line in crate::codex::parse_formula(&prep.formula) {
+            rows.push_str(&format!(
+                "{}, {},\n",
+                typst_str(&line.name),
+                typst_str(&line.written)
+            ));
+        }
+        if !rows.is_empty() {
+            src.push_str(&format!(
+                "#table(columns: (1fr, auto), inset: 4pt, stroke: 0.4pt,\n{rows})\n"
+            ));
+        }
+        if !prep.yield_amount.trim().is_empty() {
+            src.push_str(&format!(
+                "#text(8.5pt)[Pour #{}]\n",
+                typst_str(prep.yield_amount.trim())
+            ));
+        }
+        for (title, body) in [
+            ("Indication", prep.indication.as_str()),
+            ("Mode opératoire", prep.method.as_str()),
+            ("Conservation", prep.conservation.as_str()),
+            ("Mise en garde", prep.caution.as_str()),
+        ] {
+            if body.trim().is_empty() {
+                continue;
+            }
+            src.push_str(&format!(
+                "#v(1.2mm)\n#text(8.5pt)[#text(weight: \"bold\")[#{} : ]#{}]\n",
+                typst_str(title),
+                typst_str(body.trim())
+            ));
+        }
+        let sources: Vec<&str> = prep
+            .sources
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        if !sources.is_empty() {
+            src.push_str(&format!(
+                "#v(1.2mm)\n#text(8pt, style: \"italic\")[Sources : #{}]\n",
+                typst_str(&sources.join(" · "))
+            ));
+        }
+        src.push_str("]\n");
+    }
+    src
+}
+
 /// One day of the transmission logbook as a printable A4 page.
 pub fn open_transmission_day(
     day_title: &str,
@@ -2494,6 +2575,46 @@ mod tests {
         assert!(typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
             .expect("l'export PDF doit réussir")
             .starts_with(b"%PDF-"));
+    }
+
+    /// The whole codex as a booklet: it must compile with the shipped
+    /// preparations, and carry each one's formula and mise en garde.
+    #[test]
+    fn the_codex_prints_as_a_booklet() {
+        let preparations: Vec<crate::db::Preparation> = crate::db::STARTER_PREPARATIONS
+            .iter()
+            .enumerate()
+            .map(|(i, p)| crate::db::Preparation {
+                id: i as i64 + 1,
+                name: p.name.to_owned(),
+                form: p.form.to_owned(),
+                indication: p.indication.to_owned(),
+                formula: p.formula.to_owned(),
+                yield_amount: p.yield_amount.to_owned(),
+                method: p.method.to_owned(),
+                conservation: p.conservation.to_owned(),
+                caution: p.caution.to_owned(),
+                tags: p.tags.to_owned(),
+                sources: p.sources.to_owned(),
+            })
+            .collect();
+        let source = codex_source(&preparations);
+        assert!(source.contains("Vaseline salicylée à 5 %"));
+        assert!(source.contains("Mise en garde"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le codex doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("codex_exemple.pdf"), &pdf);
+        }
+        // An empty codex still prints its cover line rather than
+        // failing: a base whose team deleted everything is legitimate.
+        let world = PdfWorld::new(codex_source(&[]));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
     /// The fiche de fabrication is the record the bonnes pratiques ask

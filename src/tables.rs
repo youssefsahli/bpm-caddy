@@ -583,6 +583,54 @@ pub const TABLES: &[ConvTable] = &[
             &["Complément « pour la fatigue » chez un patient polymédiqué", "Interactions ignorées, doublons de vitamines, surcharge en potassium ou en vitamine D", "Reprendre le sommeil, l'alimentation et l'observance avant d'ajouter quoi que ce soit", "Fatigue nouvelle et persistante : bilan médical, pas un complément"],
         ],
     },
+    ConvTable {
+        short: "Antibiotiques",
+        title: "Antibiotiques — durée, prise, et ce qui fait échouer le traitement",
+        reviewed: "Août 2026 — RCP à jour, recommandations SPILF en vigueur",
+        sources: &[
+            "RCP des spécialités (ANSM)",
+            "SPILF — recommandations de bonne pratique en antibiothérapie",
+            "HAS / Assurance Maladie — antibiotiques : les bons réflexes",
+        ],
+        columns: &["Famille (exemples)", "Durée usuelle", "Prise", "Ce qui réduit l'efficacité", "À surveiller"],
+        rows: &[
+            &["Amoxicilline (Clamoxyl)", "5 à 7 jours selon l'indication, 6 jours dans l'angine", "Au moment des repas ou non, en trois prises espacées", "Prises rapprochées la nuit et sautées le jour : c'est la régularité qui maintient la concentration", "Éruption cutanée, diarrhée ; une éruption au 7e jour n'est pas toujours une allergie"],
+            &["Amoxicilline-acide clavulanique (Augmentin)", "5 à 7 jours", "Au début du repas : cela réduit nettement l'intolérance digestive", "Prise à jeun, qui fait arrêter pour diarrhée", "Diarrhée fréquente, cholestase possible — première cause d'hépatite médicamenteuse en ville"],
+            &["Céfpodoxime, céfuroxime (C3G, C2G orales)", "5 à 7 jours", "Au cours d'un repas", "Antiacides et IPP pris en même temps", "Éruption, diarrhée ; allergie croisée rare avec les pénicillines"],
+            &["Azithromycine, clarithromycine (macrolides)", "3 jours pour l'azithromycine, 5 à 10 jours pour les autres", "Indifférente pour l'azithromycine ; au repas pour la clarithromycine", "Interactions : statines, colchicine, AOD, antiarythmiques", "Allongement du QT, diarrhée, hépatotoxicité"],
+            &["Doxycycline (cyclines)", "5 à 21 jours selon l'indication", "Avec un grand verre d'eau, assis ou debout, sans s'allonger dans l'heure qui suit", "Calcium, fer, magnésium et pansements gastriques pris à moins de deux heures", "Œsophagite, photosensibilisation ; contre-indiquée avant 8 ans et pendant la grossesse"],
+            &["Lévofloxacine, ciprofloxacine (fluoroquinolones)", "5 à 14 jours selon l'indication", "À distance de deux heures des cations divalents", "Laitages, fer, antiacides, et le sport pendant le traitement", "Tendinopathie, neuropathie, confusion du sujet âgé, allongement du QT — arrêt à la moindre douleur tendineuse"],
+            &["Cotrimoxazole (Bactrim)", "3 à 21 jours selon l'indication", "Au cours d'un repas, avec une bonne hydratation", "Association au méthotrexate, aux AVK et aux IEC", "Éruption grave, hyperkaliémie, cytopénies, INR qui grimpe sous AVK"],
+            &["Fosfomycine trométamol (Monuril)", "Dose unique", "À jeun, deux heures avant ou après un repas, de préférence au coucher après avoir vidé la vessie", "Prise pendant un repas, qui divise l'absorption", "Diarrhée transitoire ; réservée à la cystite simple de la femme"],
+            &["Nitrofurantoïne (Furadantine)", "5 à 7 jours dans la cystite documentée", "Au cours d'un repas", "Insuffisance rénale : inefficace et plus toxique au-dessous de 45 mL/min", "Jamais en traitement prolongé ni en prophylaxie : toxicité pulmonaire et hépatique"],
+            &["Métronidazole (Flagyl)", "5 à 10 jours, ou dose unique selon l'indication", "Au cours du repas", "Alcool pendant le traitement et les trois jours qui suivent : effet antabuse", "Goût métallique, neuropathie si le traitement se prolonge"],
+            &["La durée est le traitement", "Celle de l'ordonnance, ni plus ni moins", "—", "Arrêter dès que les symptômes cèdent : c'est ce qui sélectionne les résistances et fait rechuter", "Un reste de boîte ne se garde pas pour la prochaine fois, et ne se donne à personne"],
+            &["Diarrhée pendant ou après", "Jusqu'à deux mois après la fin du traitement", "—", "Un ralentisseur du transit, qui garde le germe", "Diarrhée abondante, fièvre, douleurs : suspicion de colite à Clostridioides difficile, avis le jour même"],
+        ],
+    },
+    ConvTable {
+        short: "Arrêts",
+        title: "Arrêts et sevrages — ce qui ne s'arrête jamais d'un coup",
+        reviewed: "Août 2026 — fiches HAS sur l'arrêt des benzodiazépines et des antidépresseurs, RCP à jour",
+        sources: &[
+            "HAS — arrêt des benzodiazépines et médicaments apparentés chez le patient âgé",
+            "HAS — arrêt de la consommation de tabac ; mésusage de l'alcool",
+            "RCP des spécialités (ANSM)",
+        ],
+        columns: &["Traitement", "Pourquoi l'arrêt brutal pose problème", "Comment on décroît", "Ce qu'on surveille", "Ce qui fait appeler"],
+        rows: &[
+            &["Bêtabloquant", "Rebond adrénergique : poussée hypertensive, angor, infarctus", "Sur une à deux semaines au moins, par paliers, sous contrôle du pouls et de la tension", "Pouls, tension, douleur thoracique", "Douleur thoracique, palpitations, tension qui s'emballe"],
+            &["Corticoïde au long cours", "Insuffisance surrénale aiguë après plus de trois semaines de traitement", "Paliers décroissants sur plusieurs semaines, plus lents en dessous de 7,5 mg d'équivalent prednisone", "Fatigue, nausées, hypotension, douleurs articulaires", "Malaise, vomissements, fièvre : l'insuffisance surrénale est une urgence"],
+            &["Benzodiazépine et apparentés", "Anxiété et insomnie de rebond, confusion, et convulsions après un usage prolongé", "Réduction de 10 à 25 % de la dose toutes les une à quatre semaines, plus lentement en fin de décroissance", "Sommeil, anxiété, humeur, chutes", "Convulsion, confusion, hallucinations"],
+            &["Antidépresseur (ISRS, IRSNa)", "Syndrome d'arrêt : décharges électriques, vertiges, irritabilité, insomnie — souvent pris pour une rechute", "Sur quatre semaines au moins, plus lentement pour la paroxétine et la venlafaxine", "Humeur, sommeil, symptômes d'arrêt", "Idées noires, réapparition franche des symptômes dépressifs"],
+            &["Opioïde", "Syndrome de sevrage : sueurs, crampes, diarrhée, agitation, insomnie", "Réduction de 10 % par semaine environ, plus lente au-delà de plusieurs mois de traitement", "Douleur, sommeil, humeur, transit", "Sevrage mal supporté, reprise de la douleur, mésusage"],
+            &["Antiépileptique", "Récidive de crise, y compris chez un patient stabilisé depuis des années", "Jamais sans le neurologue : la décroissance se compte en mois", "Fréquence des crises, conduite automobile", "Toute crise inhabituelle"],
+            &["Clonidine et antihypertenseurs centraux", "Poussée hypertensive de rebond, parfois sévère", "Progressivement, sur plusieurs jours, en remplaçant par une autre classe", "Tension, céphalées", "Tension très élevée, céphalées, sueurs"],
+            &["Inhibiteur de la pompe à protons", "Rebond d'hypersécrétion acide : les brûlures reviennent plus fort, ce qui fait reprendre le traitement", "Demi-dose deux à quatre semaines, puis prise à la demande, puis arrêt", "Brûlures, régurgitations", "Dysphagie, amaigrissement, anémie, selles noires"],
+            &["Tabac", "Le manque n'est pas dangereux, mais il fait rechuter en quelques jours", "Substituts nicotiniques au bon dosage, associés au besoin, sur deux à trois mois avec décroissance", "Envies, irritabilité, prise de poids, sommeil", "Envies irrépressibles malgré les substituts : renforcer le dosage plutôt que reprendre"],
+            &["Alcool", "Le sevrage non accompagné expose au delirium tremens et aux convulsions : c'est le seul sevrage qui tue", "Jamais seul et jamais brutal en cas de dépendance : encadrement médical, hydratation, vitamine B1", "Tremblement, sueurs, anxiété, confusion", "Tremblement majeur, hallucinations, fièvre, confusion : urgence"],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -648,6 +696,8 @@ mod tests {
             "Antidiabétiques",
             "Collyres",
             "Automédication",
+            "Antibiotiques",
+            "Arrêts et sevrages",
         ] {
             assert!(
                 TABLES.iter().any(|t| t.title.starts_with(prefix)),
