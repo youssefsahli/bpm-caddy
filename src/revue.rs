@@ -243,6 +243,60 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Duplicate(
+            &["ISRS", "IRSNa", "sertraline", "paroxétine", "citalopram", "fluoxétine", "venlafaxine", "duloxétine", "tramadol", "triptan", "millepertuis", "linézolide"],
+            2,
+        ),
+        severity: Severity::Alert,
+        title: "Deux sérotoninergiques",
+        detail: "Agitation, sueurs, tremblement, fièvre et diarrhée dans les heures qui suivent une introduction : c'est le syndrome sérotoninergique. Le tramadol et les triptans comptent, le millepertuis aussi.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["bêtabloquant", "bêta-bloquant", "bisoprolol", "métoprolol", "aténolol", "propranolol"],
+            &["vérapamil", "diltiazem"],
+        ]),
+        severity: Severity::Alert,
+        title: "Bêtabloquant + vérapamil",
+        detail: "Bradycardie sévère et bloc auriculo-ventriculaire : l'association d'un bêtabloquant au vérapamil ou au diltiazem est à éviter, et jamais sans surveillance du pouls et un avis cardiologique.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["colchicine"],
+            &["macrolide", "clarithromycine", "érythromycine", "statine", "vérapamil", "antifongique azolé", "ciclosporine"],
+        ]),
+        severity: Severity::Alert,
+        title: "Colchicine exposée",
+        detail: "La colchicine a une marge très étroite et un antidote inexistant : macrolides, azolés, vérapamil et ciclosporine font grimper ses concentrations. Diarrhée précoce sous colchicine : arrêt immédiat, c'est le premier signe de surdosage.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["digoxine", "digitalique"],
+            &["amiodarone", "vérapamil", "propafénone", "quinidine"],
+        ]),
+        severity: Severity::Warn,
+        title: "Digoxine majorée",
+        detail: "Amiodarone, vérapamil et propafénone augmentent la digoxinémie sans que la dose change : elle se réduit souvent de moitié à l'introduction, et la digoxinémie se contrôle.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène", "coxib"],
+            &["corticoïde", "prednisone", "prednisolone", "méthylprednisolone"],
+        ]),
+        severity: Severity::Warn,
+        title: "AINS + corticoïde",
+        detail: "Les deux ensemble multiplient le risque d'ulcère et d'hémorragie digestive, sans gain anti-inflammatoire proportionné. Si l'association est maintenue, un IPP l'accompagne.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["millepertuis"],
+            &["AOD", "AVK", "contraception", "immunosuppresseur", "anticancéreux", "antirétroviral", "statine"],
+        ]),
+        severity: Severity::Alert,
+        title: "Millepertuis inducteur",
+        detail: "Le millepertuis est un inducteur enzymatique puissant : il fait échouer une contraception, un anticoagulant, un immunosuppresseur ou un anticancéreux oral. « Naturel » ne veut pas dire sans interaction.",
+    },
+    Rule {
+        kind: Kind::Duplicate(
             &["macrolide", "fluoroquinolone", "antipsychotique", "citalopram", "escitalopram", "amiodarone", "antifongique azolé", "dompéridone", "hydroxyzine", "méthadone"],
             2,
         ),
