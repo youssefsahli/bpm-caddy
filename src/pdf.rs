@@ -82,7 +82,8 @@ const DEFAULT_TEMPLATE: &str = r#"
 
 #v(1fr)
 #grid(columns: (1fr, 1fr), gutter: 1cm,
-  [#text(weight: "bold")[Signature du pharmacien]
+  [#text(weight: "bold")[Signature du pharmacien] \
+   #text(9pt)[{{PHARMACIST}}]
    #v(2mm)
    #box(width: 100%, height: 2cm, stroke: 0.8pt, radius: 5pt)],
   [#text(weight: "bold")[Prochain rendez-vous]
@@ -151,7 +152,7 @@ const DEFAULT_ORDONNANCE_TEMPLATE: &str = r#"
 )
 #v(6mm)
 #align(center)[#text(15pt, weight: "bold")[Ordonnance]]
-#align(center)[#text(9pt, style: "italic")[Dispensation protocolisée par le pharmacien après test rapide d'orientation diagnostique]]
+{{MENTION_HEADER}}
 #v(4mm)
 #line(length: 100%, stroke: 0.6pt)
 #v(3mm)
@@ -169,8 +170,7 @@ const DEFAULT_ORDONNANCE_TEMPLATE: &str = r#"
 {{PHARMACIST}}
 #v(2mm)
 #box(width: 6.5cm, height: 2.2cm, stroke: 0.8pt)
-#v(2mm)
-#text(8pt, style: "italic")[Reconsulter sans attendre en cas d'aggravation ou de signes nouveaux.]
+{{MENTION_FOOTER}}
 "#;
 
 /// A self-contained Typst world: one in-memory source, embedded fonts.
@@ -249,6 +249,7 @@ pub fn open_interview_sheet(
     today: &str,
     theme: &str,
     template_path: &std::path::Path,
+    signature: &str,
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
@@ -256,7 +257,7 @@ pub fn open_interview_sheet(
     } else {
         DEFAULT_TEMPLATE.to_owned()
     };
-    let filled = fill_interview_template(&template, patient, kind, today, theme);
+    let filled = fill_interview_template(&template, patient, kind, today, theme, signature);
 
     let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
     compile_and_open(filled, &stem)
@@ -287,6 +288,7 @@ pub fn check_template(template: &str) -> Result<(), String> {
         InterviewKind::Bpm,
         "24/08/2026",
         "Observance",
+        "Claire Leroy, Pharmacien titulaire",
     );
     let world = PdfWorld::new(filled);
     typst::compile::<PagedDocument>(&world)
@@ -304,6 +306,7 @@ pub fn preview_template(template: &str) -> Result<PathBuf, String> {
         InterviewKind::Bpm,
         "24/08/2026",
         "Observance",
+        "Claire Leroy, Pharmacien titulaire",
     );
     compile_and_open(filled, "apercu")
 }
@@ -347,6 +350,7 @@ fn fill_cr_template(
     theme: &str,
     treats: &[Drug],
     pharmacy: &PharmacyConfig,
+    signature: &str,
 ) -> String {
     let physician = if patient.physician.trim().is_empty() {
         "Médecin traitant"
@@ -366,10 +370,9 @@ fn fill_cr_template(
             "{{PHARMACY_PHONE}}",
             &format!("#{}", typst_str(&pharmacy.phone)),
         )
-        .replace(
-            "{{PHARMACIST}}",
-            &format!("#{}", typst_str(&pharmacy.pharmacist)),
-        )
+        // Signed by whoever held the entretien, when the team list
+        // knows those initials; by the officine's own line otherwise.
+        .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
         .replace("{{PHYSICIAN}}", &format!("#{}", typst_str(physician)))
         .replace(
             "{{PATIENT_NAME}}",
@@ -403,6 +406,7 @@ pub fn open_cr_letter(
     treats: &[Drug],
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
+    signature: &str,
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
@@ -410,7 +414,9 @@ pub fn open_cr_letter(
     } else {
         DEFAULT_CR_TEMPLATE.to_owned()
     };
-    let filled = fill_cr_template(&template, patient, kind, date, theme, treats, pharmacy);
+    let filled = fill_cr_template(
+        &template, patient, kind, date, theme, treats, pharmacy, signature,
+    );
     compile_and_open(filled, &format!("cr_{}", patient.id))
 }
 
@@ -421,6 +427,7 @@ fn sample_pharmacy() -> PharmacyConfig {
         phone: "04 67 00 00 00".to_owned(),
         pharmacist: "Dr Claire Leroy, pharmacien titulaire".to_owned(),
         am_number: "3400123".to_owned(),
+        operators: Vec::new(),
     }
 }
 
@@ -452,6 +459,7 @@ pub fn check_cr_template(template: &str) -> Result<(), String> {
         "Observance",
         &sample_treatments(),
         &sample_pharmacy(),
+        "Claire Leroy, Pharmacien titulaire",
     );
     let world = PdfWorld::new(filled);
     typst::compile::<PagedDocument>(&world)
@@ -470,6 +478,7 @@ pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
         "Observance",
         &sample_treatments(),
         &sample_pharmacy(),
+        "Claire Leroy, Pharmacien titulaire",
     );
     compile_and_open(filled, "apercu_cr")
 }
@@ -966,6 +975,7 @@ fn fill_interview_template(
     kind: InterviewKind,
     today: &str,
     theme: &str,
+    signature: &str,
 ) -> String {
     template
         .replace(
@@ -985,6 +995,10 @@ fn fill_interview_template(
             "{{THEME}}",
             &format!("#{}", typst_str(theme_or_dash(theme))),
         )
+        // Whoever held the entretien signs the sheet. A template
+        // written before the team list simply has no such marker, and
+        // loses nothing.
+        .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
 }
 
 /// An empty thematic prints as a dash rather than a blank.
@@ -1084,6 +1098,7 @@ fn ordonnance_advice_markup(advice: &[&str]) -> String {
 /// Substitute the ordonnance placeholders. Every value is spliced as a
 /// Typst string literal, so a patient name or a hand-written posology
 /// containing markup can neither break compilation nor restyle the page.
+#[allow(clippy::too_many_arguments)]
 fn fill_ordonnance_template(
     template: &str,
     patient: &Patient,
@@ -1092,7 +1107,31 @@ fn fill_ordonnance_template(
     today: &str,
     lines: &[crate::ordonnance::Line],
     advice: &[&str],
+    signature: &str,
+    mentions: (&str, &str),
 ) -> String {
+    // Both mentions are the officine's own: an empty one leaves no
+    // line, not an empty italic line.
+    let centered = |text: &str, size: &str| {
+        if text.trim().is_empty() {
+            String::new()
+        } else {
+            format!(
+                "#align(center)[#text({size}, style: \"italic\")[#{}]]",
+                typst_str(text.trim())
+            )
+        }
+    };
+    let footer = |text: &str| {
+        if text.trim().is_empty() {
+            String::new()
+        } else {
+            format!(
+                "#v(2mm)\n#text(8pt, style: \"italic\")[#{}]",
+                typst_str(text.trim())
+            )
+        }
+    };
     template
         .replace(
             "{{PHARMACY_NAME}}",
@@ -1110,10 +1149,7 @@ fn fill_ordonnance_template(
             "{{PHARMACY_AM}}",
             &format!("#{}", typst_str(&pharmacy.am_number)),
         )
-        .replace(
-            "{{PHARMACIST}}",
-            &format!("#{}", typst_str(&pharmacy.pharmacist)),
-        )
+        .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
         .replace(
             "{{PATIENT_NAME}}",
             &format!("#{}", typst_str(&patient.full_name())),
@@ -1129,9 +1165,12 @@ fn fill_ordonnance_template(
         .replace("{{DATE}}", &format!("#{}", typst_str(today)))
         .replace("{{LINES}}", &ordonnance_lines_markup(lines))
         .replace("{{ADVICE}}", &ordonnance_advice_markup(advice))
+        .replace("{{MENTION_HEADER}}", &centered(mentions.0, "9pt"))
+        .replace("{{MENTION_FOOTER}}", &footer(mentions.1))
 }
 
 /// Typeset the ordonnance and hand it to the OS viewer.
+#[allow(clippy::too_many_arguments)]
 pub fn open_ordonnance(
     patient: &Patient,
     pharmacy: &PharmacyConfig,
@@ -1140,6 +1179,8 @@ pub fn open_ordonnance(
     lines: &[crate::ordonnance::Line],
     advice: &[&str],
     template_path: &std::path::Path,
+    signature: &str,
+    mentions: (&str, &str),
 ) -> Result<PathBuf, String> {
     if lines.is_empty() {
         return Err("Rien à prescrire : choisissez au moins une ligne.".to_owned());
@@ -1151,7 +1192,7 @@ pub fn open_ordonnance(
         DEFAULT_ORDONNANCE_TEMPLATE.to_owned()
     };
     let filled = fill_ordonnance_template(
-        &template, patient, pharmacy, indication, today, lines, advice,
+        &template, patient, pharmacy, indication, today, lines, advice, signature, mentions,
     );
     compile_and_open(filled, &format!("ordonnance_{}", patient.id))
 }
@@ -1174,6 +1215,9 @@ fn ordonnance_preview_source(template: &str) -> Result<String, String> {
         caution: String::new(),
     }];
     let advice = ["Boire fréquemment, par petites quantités."];
+    // The preview shows the template itself: both mentions are filled
+    // with a sample, so an officine editing the layout can see where
+    // its own would land.
     let filled = fill_ordonnance_template(
         template,
         &sample_patient(),
@@ -1182,6 +1226,11 @@ fn ordonnance_preview_source(template: &str) -> Result<String, String> {
         "26/08/2026",
         &lines,
         &advice,
+        &sample_pharmacy().pharmacist,
+        (
+            "Mention d'en-tête (facultative, [disclaimers] du config.toml)",
+            "Mention de pied (facultative)",
+        ),
     );
     let world = PdfWorld::new(filled.clone());
     let _: PagedDocument = typst::compile(&world)
@@ -1219,14 +1268,19 @@ pub fn open_bulletin(
 pub fn open_vaccination_carnet(
     patient: &Patient,
     lines: &[crate::db::Vaccination],
+    mention: &str,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        vaccination_carnet_source(patient, lines),
+        vaccination_carnet_source(patient, lines, mention),
         "carnet_vaccination",
     )
 }
 
-fn vaccination_carnet_source(patient: &Patient, lines: &[crate::db::Vaccination]) -> String {
+fn vaccination_carnet_source(
+    patient: &Patient,
+    lines: &[crate::db::Vaccination],
+    mention: &str,
+) -> String {
     let mut rows = String::new();
     // Oldest first on paper: a carnet is read forwards, unlike the
     // screen's table, where the dose just given belongs on top.
@@ -1267,6 +1321,16 @@ fn vaccination_carnet_source(patient: &Patient, lines: &[crate::db::Vaccination]
     }
     let head = typst_str(&patient.full_name());
     let born = typst_str(&crate::db::format_french_date(&patient.birth_date));
+    // The foot of the page is the officine's own mention, and there is
+    // no line at all until it writes one.
+    let foot = if mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(4mm)\n#text(8pt, style: \"italic\")[#{}]",
+            typst_str(mention.trim())
+        )
+    };
     format!(
         r#"
 #set page(paper: "a4", flipped: true, margin: 1.4cm)
@@ -1281,8 +1345,7 @@ fn vaccination_carnet_source(patient: &Patient, lines: &[crate::db::Vaccination]
   stroke: 0.6pt,
   [*Date*], [*Vaccin*], [*Dose*], [*Lot*], [*Site*], [*Par*], [*Remarque*],
 {rows})
-#v(4mm)
-#text(8pt, style: "italic")[Document indicatif édité par BPM-Caddy : il ne remplace pas le carnet de vaccination officiel ni le dossier médical partagé.]
+{foot}
 "#
     )
 }
@@ -1632,6 +1695,8 @@ mod tests {
             InterviewKind::Bpm,
             "22/08/2026",
             "Initiation / bon usage",
+            // The signature goes through the same escaping.
+            "Claire #strike[Leroy]",
         );
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
@@ -1692,6 +1757,7 @@ mod tests {
             "Prévention — #eval \"Z\"",
             &sample_treatments(),
             &sample_pharmacy(),
+            "Claire #strike[Leroy]",
         );
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
@@ -1767,8 +1833,15 @@ mod tests {
             "26/08/2026",
             &lines,
             &advice,
+            "Claire Leroy, Pharmacien titulaire",
+            ("Cadre de la dispensation", "Reconsulter si aggravation."),
         );
         assert!(source.contains("3400123"), "le N° AM doit figurer");
+        assert!(
+            source.contains("Claire Leroy, Pharmacien titulaire"),
+            "l'ordonnance est signée par qui l'a faite"
+        );
+        assert!(source.contains("Reconsulter si aggravation."));
         assert!(!source.contains("{{"), "un marqueur n'a pas été remplacé");
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
@@ -1802,7 +1875,12 @@ mod tests {
             "26/08/2026",
             &lines,
             &[],
+            "Claire Leroy",
+            ("", ""),
         );
+        // Nothing configured, nothing printed: no stray italic line
+        // under the title or under the signature.
+        assert!(!source.contains("style: \"italic\""));
         assert!(!source.contains("Conseils"));
         let world = PdfWorld::new(source);
         let _: PagedDocument = typst::compile(&world)
@@ -1843,7 +1921,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let source = vaccination_carnet_source(&patient, &lines);
+        let source = vaccination_carnet_source(&patient, &lines, "Mention de l'officine");
         // Oldest first on paper, whatever order the screen showed.
         let dtp = source.find("Rappel 45 ans").expect("le dTP doit figurer");
         let flu = source.find("FLU25-208").expect("la grippe doit figurer");
@@ -1852,6 +1930,7 @@ mod tests {
             "le carnet imprimé se lit du plus ancien au plus récent"
         );
         assert!(source.contains("Prochaine : 18/11/2026 — Carnet papier"));
+        assert!(source.contains("Mention de l'officine"));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
             .output
@@ -1869,7 +1948,10 @@ mod tests {
 
     #[test]
     fn an_empty_carnet_still_produces_a_sheet() {
-        let source = vaccination_carnet_source(&sample_patient(), &[]);
+        // No mention configured: the page carries none, and still
+        // compiles.
+        let source = vaccination_carnet_source(&sample_patient(), &[], "");
+        assert!(!source.contains("style: \"italic\""));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
             .output

@@ -88,8 +88,8 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
         }
     }
     let mut out = String::from(
-        "\u{feff}Patient;Téléphone;Naissance;Type;Code acte;Année;Étape;Thème;État;Créé le;RDV;\
-         Durée (min);À distance;Changement de traitement;Situation;Honoraires (€);\
+        "\u{feff}Patient;Téléphone;Naissance;Type;Code acte;Année;Étape;Thème;État;Fait le;Par;\
+         RDV;Durée (min);À distance;Changement de traitement;Situation;Honoraires (€);\
          Prise en charge (%);Facturé (€)\r\n",
     );
     for r in rows {
@@ -104,7 +104,7 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
             0.0
         };
         out.push_str(&format!(
-            "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
+            "{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{};{}\r\n",
             field(&r.patient_name),
             field(&r.phone),
             db::format_french_date(&r.birth_date),
@@ -119,6 +119,7 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
             field(&r.theme),
             r.state.label(),
             db::format_french_date(&r.created_date),
+            field(&r.operator),
             r.scheduled_date
                 .as_deref()
                 .map(db::format_french_date)
@@ -1047,6 +1048,8 @@ struct Session {
     agenda_offset: i64,
     /// In-progress text of the per-interview date fields, keyed by id.
     date_edits: std::collections::HashMap<i64, String>,
+    /// The same, for the column holding the day the act was held.
+    made_edits: std::collections::HashMap<i64, String>,
     /// Discreet mode: revenue amounts stay masked until explicitly
     /// revealed, and re-mask when leaving the dashboard.
     show_amounts: bool,
@@ -1215,6 +1218,7 @@ impl Session {
             rdv_move_edit: None,
             agenda_offset: 0,
             date_edits: std::collections::HashMap::new(),
+            made_edits: std::collections::HashMap::new(),
             show_amounts: false,
             dup_check: None,
             drugs,
@@ -1536,28 +1540,39 @@ impl Session {
     fn flush_date_edits(&mut self) {
         let Some(pid) = self.viewing.as_ref().map(|p| p.id) else {
             self.date_edits.clear();
+            self.made_edits.clear();
             return;
         };
-        if self.date_edits.is_empty() {
+        if self.date_edits.is_empty() && self.made_edits.is_empty() {
             return;
         }
         let year = self.db.current_year();
         for itv in self.viewing_interviews.clone() {
-            let Some(text) = self.date_edits.get(&itv.id) else {
-                continue;
-            };
-            let expected = itv.scheduled_date.as_deref();
-            if text.trim().is_empty() {
-                if itv.scheduled_date.is_some() {
-                    let _ = self.db.set_scheduled_date(itv.id, None, expected);
+            if let Some(text) = self.date_edits.get(&itv.id) {
+                let expected = itv.scheduled_date.as_deref();
+                if text.trim().is_empty() {
+                    if itv.scheduled_date.is_some() {
+                        let _ = self.db.set_scheduled_date(itv.id, None, expected);
+                    }
+                } else if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
+                    if expected != Some(iso.as_str()) {
+                        let _ = self.db.set_scheduled_date(itv.id, Some(&iso), expected);
+                    }
                 }
-            } else if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
-                if expected != Some(iso.as_str()) {
-                    let _ = self.db.set_scheduled_date(itv.id, Some(&iso), expected);
+            }
+            // The day the act was held, typed but never tabbed out of.
+            // An unreadable one is dropped: the row keeps its date.
+            if let Some(text) = self.made_edits.get(&itv.id) {
+                let made = &itv.created_at[..10.min(itv.created_at.len())];
+                if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
+                    if iso != made {
+                        let _ = self.db.set_created_date(itv.id, &iso, made);
+                    }
                 }
             }
         }
         self.date_edits.clear();
+        self.made_edits.clear();
         self.reload_interviews(pid);
     }
 
@@ -1797,6 +1812,13 @@ fn parse_hours(text: &str) -> Option<f64> {
         1 => Some(nums[0] * factor),
         _ => Some((nums[0] + nums[1]) / 2.0 * factor),
     }
+}
+
+/// Who these initials belong to, when the officine has written its team
+/// into `[pharmacy] operators`. `None` for a locum the list never heard
+/// of — the field stays free text, so that must not be an error.
+fn config_operator_label(config: &Config, initials: &str) -> Option<String> {
+    config.pharmacy.operator(initials).map(|o| o.label())
 }
 
 /// A stable colour per operator's initials, so a journal can be scanned
@@ -2114,6 +2136,7 @@ pub struct App {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum OptionsPage {
     Pharmacy,
+    Mentions,
     Ui,
     Database,
     Fees,
@@ -2121,8 +2144,9 @@ enum OptionsPage {
 }
 
 impl OptionsPage {
-    const ALL: [OptionsPage; 5] = [
+    const ALL: [OptionsPage; 6] = [
         Self::Pharmacy,
+        Self::Mentions,
         Self::Ui,
         Self::Database,
         Self::Fees,
@@ -2134,6 +2158,7 @@ impl OptionsPage {
     fn label(self) -> &'static str {
         match self {
             Self::Pharmacy => tr("opts_tab_pharmacy"),
+            Self::Mentions => tr("opts_tab_mentions"),
             Self::Ui => tr("opts_tab_ui"),
             Self::Database => tr("opts_tab_db"),
             Self::Fees => tr("opts_tab_fees"),
@@ -3064,8 +3089,34 @@ impl App {
                         },
                     ));
                     ui.add_space(4.0);
+                    // The initials stay typable — a locum has none in
+                    // the list — but when the officine has written its
+                    // team down, the arrow picks from it and the
+                    // tooltip says who is behind the letters.
+                    let known = config_operator_label(&self.config, &self.operator);
                     ui.add_sized([46.0, 22.0], egui::TextEdit::singleline(&mut self.operator))
-                        .on_hover_text(tr("docs_operator"));
+                        .on_hover_text(known.unwrap_or_else(|| tr("docs_operator").to_owned()));
+                    if !self.config.pharmacy.operators.is_empty() {
+                        egui::ComboBox::from_id_salt("operator_pick")
+                            .width(26.0)
+                            .selected_text("")
+                            .show_ui(ui, |ui| {
+                                for op in &self.config.pharmacy.operators {
+                                    let initials = op.initials.trim().to_owned();
+                                    if initials.is_empty() {
+                                        continue;
+                                    }
+                                    if ui
+                                        .selectable_label(self.operator == initials, op.label())
+                                        .clicked()
+                                    {
+                                        self.operator = initials;
+                                    }
+                                }
+                            })
+                            .response
+                            .on_hover_text(tr("docs_operator_pick"));
+                    }
                     if unlocked
                         && motif::button(ui, tr("docs_stamp"))
                             .on_hover_text(tr("docs_stamp_tooltip"))
@@ -3444,7 +3495,7 @@ impl App {
                 return;
             }
             if session.view == MainView::Drugs {
-                Self::drugs_view(ui, ctx, session, doc, &operator);
+                Self::drugs_view(ui, ctx, session, doc, &operator, &config);
                 return;
             }
             if session.view == MainView::Agenda {
@@ -3869,9 +3920,9 @@ impl App {
         });
         let work = strip[1];
         // The ordonnance box floats over whichever half is on screen.
-        Self::ordonnance_box(ctx, session, patient, config);
+        Self::ordonnance_box(ctx, session, patient, config, operator);
         if session.patient_tab == PatientTab::Vaccins {
-            Self::patient_vaccins_pane(ui, session, patient, operator, work);
+            Self::patient_vaccins_pane(ui, session, patient, operator, work, config);
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
@@ -3915,6 +3966,7 @@ impl App {
         session: &mut Session,
         patient: &Patient,
         config: &Config,
+        operator: &str,
     ) {
         let Some(open) = &session.ordonnance else {
             return;
@@ -4129,13 +4181,17 @@ impl App {
                         );
                     });
 
-                ui.add_space(6.0);
-                ui.label(
-                    egui::RichText::new(tr("ord_warning"))
-                        .size(10.5)
-                        .italics()
-                        .color(motif::TEXT_FAINT),
-                );
+                // Same here: no standing warning, only the one the
+                // officine wrote in `[disclaimers]`.
+                if !config.disclaimers.ordonnance_screen.trim().is_empty() {
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(config.disclaimers.ordonnance_screen.trim())
+                            .size(10.5)
+                            .italics()
+                            .color(motif::TEXT_FAINT),
+                    );
+                }
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     if motif::button(ui, tr("ord_print")).clicked() {
@@ -4164,6 +4220,17 @@ impl App {
                     .today_french()
                     .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
                 let advice = choice.advice(protocol);
+                // Signed by whoever did the TROD — the initials on
+                // the act — and by whoever is at the counter when the
+                // act predates the team list.
+                let by = session
+                    .viewing_interviews
+                    .iter()
+                    .find(|i| i.id == interview)
+                    .map(|i| i.operator.clone())
+                    .filter(|o| !o.trim().is_empty())
+                    .unwrap_or_else(|| operator.to_owned());
+                let signature = config.pharmacy.signature_for(&by);
                 match crate::pdf::open_ordonnance(
                     patient,
                     &config.pharmacy,
@@ -4172,6 +4239,11 @@ impl App {
                     &lines,
                     &advice,
                     &config.ordonnance_template_path(),
+                    &signature,
+                    (
+                        &config.disclaimers.ordonnance_header,
+                        &config.disclaimers.ordonnance_footer,
+                    ),
                 ) {
                     Ok(_) => {
                         session.error = None;
@@ -4219,6 +4291,7 @@ impl App {
         patient: &Patient,
         operator: &str,
         work: egui::Rect,
+        config: &Config,
     ) {
         // The carnet is a seven-column table; the two reading panels
         // only get a column of their own once it is satisfied.
@@ -4250,7 +4323,7 @@ impl App {
             let cols = motif::split_columns(side, 2, 8.0);
             (cols[0], cols[1])
         };
-        Self::carnet_pane(ui, session, patient, operator, carnet);
+        Self::carnet_pane(ui, session, patient, operator, carnet, config);
         Self::vacc_due_pane(ui, session, patient, due);
         Self::vacc_travel_pane(ui, session, patient, travel);
     }
@@ -4264,6 +4337,7 @@ impl App {
         patient: &Patient,
         operator: &str,
         rect: egui::Rect,
+        config: &Config,
     ) {
         let lines = session.vaccinations.clone();
         let editing = session.vacc_edit.as_ref().map(|v| v.id);
@@ -4627,7 +4701,9 @@ impl App {
         }
         if print {
             let lines = session.vaccinations.clone();
-            if let Err(e) = crate::pdf::open_vaccination_carnet(patient, &lines) {
+            if let Err(e) =
+                crate::pdf::open_vaccination_carnet(patient, &lines, &config.disclaimers.carnet)
+            {
                 session.error = Some(e);
             }
         }
@@ -4928,7 +5004,6 @@ impl App {
         config: &Config,
         operator: &str,
     ) {
-        let _ = operator;
         let mut start_edit = false;
         let mut save_edit = false;
         let mut cancel_edit = false;
@@ -5267,7 +5342,10 @@ impl App {
                 // declines, with no override button.
                 Some(_) if config.rules.enforcement == RuleEnforcement::Inform => {
                     session.rule_block = None;
-                    match session.db.add_interview_themed(patient.id, kind, &theme) {
+                    match session
+                        .db
+                        .add_interview_by(patient.id, kind, &theme, operator)
+                    {
                         Ok(_) => {
                             session.reload_interviews(patient.id);
                             session.error = Some(trn("rule_informed", &[&kind.label(), &per_year]));
@@ -5287,7 +5365,10 @@ impl App {
                 }
                 None => {
                     session.rule_block = None;
-                    match session.db.add_interview_themed(patient.id, kind, &theme) {
+                    match session
+                        .db
+                        .add_interview_by(patient.id, kind, &theme, operator)
+                    {
                         Ok(_) => session.reload_interviews(patient.id),
                         Err(e) => session.error = Some(e),
                     }
@@ -5305,7 +5386,10 @@ impl App {
                 );
             } else if motif::button(ui, tr("rule_override")).clicked() {
                 session.rule_block = None;
-                match session.db.add_interview_themed(patient.id, kind, &theme) {
+                match session
+                    .db
+                    .add_interview_by(patient.id, kind, &theme, operator)
+                {
                     Ok(_) => session.reload_interviews(patient.id),
                     Err(e) => session.error = Some(e),
                 }
@@ -5436,9 +5520,10 @@ impl App {
         let interviews = session.viewing_interviews.clone();
         let mut advance: Option<(i64, db::InterviewState)> = None;
         let mut regress: Option<(i64, db::InterviewState)> = None;
-        // (kind, planned date, thematic) of the row whose PDF was asked.
-        let mut print_req: Option<(InterviewKind, Option<String>, String)> = None;
-        let mut cr_req: Option<(InterviewKind, Option<String>, String)> = None;
+        // (kind, planned date, thematic, who did it) of the row whose
+        // PDF was asked.
+        let mut print_req: Option<(InterviewKind, Option<String>, String, String)> = None;
+        let mut cr_req: Option<(InterviewKind, Option<String>, String, String)> = None;
         // The act's bulletin d'adhésion, for the themes that have one.
         let mut bulletin_req: Option<InterviewKind> = None;
         // (interview id, what the TROD read, the value this PC saw — CAS).
@@ -5449,6 +5534,10 @@ impl App {
         let mut set_duration: Option<(i64, i64, i64)> = None;
         // (interview id, new date, the date this PC saw — CAS expected).
         let mut set_date: Option<(i64, Option<String>, Option<String>)> = None;
+        // (interview id, the day the act was held, the day this PC saw).
+        let mut set_made: Option<(i64, String, String)> = None;
+        // (interview id, who did it, the initials this PC saw — CAS).
+        let mut set_by: Option<(i64, String, String)> = None;
         let mut delete_itv: Option<(i64, db::InterviewState)> = None;
         // (interview id, new theme, the theme this PC saw — CAS).
         let mut set_theme: Option<(i64, String, String)> = None;
@@ -5577,14 +5666,70 @@ impl App {
                                     }
                                 }
                             });
-                            let mut theme = itv.theme.clone();
-                            if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
-                                set_theme = Some((itv.id, theme, itv.theme.clone()));
+                            // A TROD has a result, not a subject: the
+                            // thematics are the entretiens', and one
+                            // stamped on a test only travelled to the
+                            // CSV to say nothing.
+                            if itv.kind.has_theme() {
+                                let mut theme = itv.theme.clone();
+                                if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
+                                    set_theme = Some((itv.id, theme, itv.theme.clone()));
+                                }
+                            } else {
+                                ui.label(egui::RichText::new("—").color(motif::TEXT_DIM))
+                                    .on_hover_text(tr("itv_no_theme_tooltip"));
                             }
-                            ui.label(db::format_french_date(
-                                &itv.created_at[..10.min(itv.created_at.len())],
-                            ))
-                            .on_hover_text(tr("itv_created_tooltip"));
+                            // The date the act was held, and not the
+                            // date it was typed in: it places the act
+                            // in its cycle, and the cycle picks the fee.
+                            let made = itv.created_at[..10.min(itv.created_at.len())].to_owned();
+                            let mut who = itv.operator.clone();
+                            ui.horizontal(|ui| {
+                                let text = session
+                                    .made_edits
+                                    .entry(itv.id)
+                                    .or_insert_with(|| db::format_french_date(&made));
+                                let field = ui
+                                    .add_sized(
+                                        [92.0, 22.0],
+                                        egui::TextEdit::singleline(text)
+                                            .hint_text(tr("itv_rdv_hint")),
+                                    )
+                                    .on_hover_text(tr("itv_created_tooltip"));
+                                if field.lost_focus() {
+                                    let year = session.db.current_year();
+                                    match db::parse_french_date(text, year, db::YearHint::Future) {
+                                        Ok(iso) if iso != made => {
+                                            set_made = Some((itv.id, iso, made.clone()));
+                                        }
+                                        // An unreadable date is put back
+                                        // as it was rather than left
+                                        // hanging: an act always has a
+                                        // date.
+                                        Err(_) => *text = db::format_french_date(&made),
+                                        _ => {}
+                                    }
+                                }
+                                // Who did it. It signs the fiche and the
+                                // courrier, so it is the act's own,
+                                // recorded at creation and correctable
+                                // after — not whoever happens to be at
+                                // the counter on the day it is printed.
+                                let by = ui
+                                    .add_sized(
+                                        [40.0, 22.0],
+                                        egui::TextEdit::singleline(&mut who)
+                                            .hint_text(tr("itv_by_hint")),
+                                    )
+                                    .on_hover_text(
+                                        config_operator_label(config, &itv.operator)
+                                            .unwrap_or_else(|| tr("itv_by_tooltip").to_owned()),
+                                    );
+                                if by.lost_focus() && who.trim() != itv.operator {
+                                    set_by =
+                                        Some((itv.id, who.trim().to_owned(), itv.operator.clone()));
+                                }
+                            });
                             ui.label(
                                 egui::RichText::new(itv.state.label())
                                     .color(egui::Color32::WHITE)
@@ -5618,6 +5763,7 @@ impl App {
                                         itv.kind,
                                         itv.scheduled_date.clone(),
                                         itv.theme.clone(),
+                                        itv.operator.clone(),
                                     ));
                                 }
                                 if motif::button(ui, tr("itv_cr"))
@@ -5628,6 +5774,7 @@ impl App {
                                         itv.kind,
                                         itv.scheduled_date.clone(),
                                         itv.theme.clone(),
+                                        itv.operator.clone(),
                                     ));
                                 }
                                 // Only the themes under the accompaniment
@@ -5667,14 +5814,22 @@ impl App {
                                     }
                                 }
                             });
-                            let mut minutes = itv.duration_minutes;
-                            let drag = ui.add(
-                                egui::DragValue::new(&mut minutes)
-                                    .range(0..=480)
-                                    .suffix(tr("itv_minutes_suffix")),
-                            );
-                            if drag.changed() {
-                                set_duration = Some((itv.id, minutes, itv.duration_minutes));
+                            // A TROD is timed by the strip, not by the
+                            // entretien: the minutes column asked a
+                            // question it had no answer to.
+                            if itv.kind.has_duration() {
+                                let mut minutes = itv.duration_minutes;
+                                let drag = ui.add(
+                                    egui::DragValue::new(&mut minutes)
+                                        .range(0..=480)
+                                        .suffix(tr("itv_minutes_suffix")),
+                                );
+                                if drag.changed() {
+                                    set_duration = Some((itv.id, minutes, itv.duration_minutes));
+                                }
+                            } else {
+                                ui.label(egui::RichText::new("—").color(motif::TEXT_DIM))
+                                    .on_hover_text(tr("itv_no_duration_tooltip"));
                             }
                             // Planned date: free text, committed when it parses
                             // (or empties) and the field loses focus.
@@ -5790,6 +5945,36 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
+        if let Some((id, who, expected)) = set_by {
+            match session.db.set_interview_operator(id, &who, &expected) {
+                Ok(true) => {
+                    session.error = None;
+                    session.reload_interviews(patient.id);
+                }
+                Ok(false) => {
+                    session.reload_interviews(patient.id);
+                    session.error = Some(stale_msg.to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some((id, made, expected)) = set_made {
+            match session.db.set_created_date(id, &made, &expected) {
+                Ok(true) => {
+                    session.error = None;
+                    // The ranks, the cycles and the sequence panel all
+                    // read this date: reload rather than patch.
+                    session.made_edits.remove(&id);
+                    session.reload_interviews(patient.id);
+                }
+                Ok(false) => {
+                    session.made_edits.remove(&id);
+                    session.reload_interviews(patient.id);
+                    session.error = Some(stale_msg.to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
         if let Some((id, theme, expected)) = set_theme {
             match session.db.set_theme(id, &theme, &expected) {
                 Ok(true) => {
@@ -5845,6 +6030,7 @@ impl App {
                 Ok(true) => {
                     session.error = None;
                     session.date_edits.remove(&id);
+                    session.made_edits.remove(&id);
                     session.reload_interviews(patient.id);
                 }
                 Ok(false) => {
@@ -5873,7 +6059,7 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
-        if let Some((kind, scheduled, theme)) = print_req {
+        if let Some((kind, scheduled, theme, by)) = print_req {
             // The sheet is dated with the planned RDV when one is set,
             // today otherwise (sheets are usually printed just before).
             let date = scheduled
@@ -5885,17 +6071,21 @@ impl App {
                         .today_french()
                         .unwrap_or_else(|_| tr("itv_date_fallback").to_owned())
                 });
+            // The sheet is signed by whoever held the entretien —
+            // the initials on the row — and by the officine's line
+            // when the team list does not know them.
             if let Err(e) = crate::pdf::open_interview_sheet(
                 patient,
                 kind,
                 &date,
                 &theme,
                 &config.template_path(),
+                &config.pharmacy.signature_for(&by),
             ) {
                 session.error = Some(e);
             }
         }
-        if let Some((kind, scheduled, theme)) = cr_req {
+        if let Some((kind, scheduled, theme, by)) = cr_req {
             // The CR letter to the médecin traitant, with the patient's
             // known treatments; dated like the interview sheet.
             let date = scheduled
@@ -5915,6 +6105,7 @@ impl App {
                 &session.patient_treats,
                 &config.pharmacy,
                 &config.cr_template_path(),
+                &config.pharmacy.signature_for(&by),
             ) {
                 session.error = Some(e);
             }
@@ -7999,7 +8190,7 @@ impl App {
     /// numbered sources, and a printable A4 with all of them.
     /// The counter's calculators: clairance de Cockcroft, dose par
     /// kilo, and the decay of a drug once the treatment stops.
-    fn calc_panel(ui: &mut egui::Ui, session: &mut Session) {
+    fn calc_panel(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         ui.add_space(12.0);
         motif::column(ui, 940.0, |ui| {
             motif::section(ui, tr("calc_title"));
@@ -8195,13 +8386,18 @@ impl App {
                     motif::TEXT_FAINT,
                 );
             }
-            ui.add_space(14.0);
-            ui.label(
-                egui::RichText::new(tr("calc_note"))
-                    .size(11.0)
-                    .italics()
-                    .color(motif::TEXT_DIM),
-            );
+            // The mention under the calculators is the officine's own
+            // and empty until it writes one: the application adds no
+            // caveat of its own accord.
+            if !config.disclaimers.calculator.trim().is_empty() {
+                ui.add_space(14.0);
+                ui.label(
+                    egui::RichText::new(config.disclaimers.calculator.trim())
+                        .size(11.0)
+                        .italics()
+                        .color(motif::TEXT_DIM),
+                );
+            }
         });
     }
 
@@ -8637,13 +8833,13 @@ impl App {
         }
     }
 
-    fn tables_view(ui: &mut egui::Ui, session: &mut Session) {
+    fn tables_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            Self::tables_body(ui, session);
+            Self::tables_body(ui, session, config);
         });
     }
 
-    fn tables_body(ui: &mut egui::Ui, session: &mut Session) {
+    fn tables_body(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         if session.table_cells.is_empty() && session.table_edit.is_none() {
             // First paint (or after a view switch): load the team's
             // edits for the selected table.
@@ -8696,7 +8892,7 @@ impl App {
         // button that opens them is up here, and a tool you asked for
         // should not have to be scrolled to.
         if session.calc_open {
-            Self::calc_panel(ui, session);
+            Self::calc_panel(ui, session, config);
         }
         motif::page(ui, 1500.0, |ui| {
             let t =
@@ -9161,6 +9357,7 @@ impl App {
         session: &mut Session,
         doc: (&mut String, &mut bool, &mut Instant),
         operator: &str,
+        config: &Config,
     ) {
         let (doc_text, doc_dirty, doc_last_edit) = doc;
         // Escape closes the card or the tables first, then the view.
@@ -9184,7 +9381,7 @@ impl App {
         }
 
         if session.show_tables {
-            Self::tables_view(ui, session);
+            Self::tables_view(ui, session, config);
             return;
         }
         if session.show_protocols {
@@ -11420,6 +11617,114 @@ impl eframe::App for App {
                                         );
                                         ui.end_row();
                                     });
+                                ui.add_space(10.0);
+                                // The team. The initials stamp the
+                                // notes and the carnet; the name and
+                                // the qualité are what a printed
+                                // document signs, in place of the
+                                // pharmacien signataire above.
+                                motif::section(ui, tr("opts_operators"));
+                                ui.label(
+                                    egui::RichText::new(tr("opts_operators_hint"))
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.add_space(4.0);
+                                let mut drop: Option<usize> = None;
+                                egui::Grid::new("opts_operators")
+                                    .num_columns(4)
+                                    .spacing([8.0, 6.0])
+                                    .show(ui, |ui| {
+                                        for header in [
+                                            tr("opts_op_initials"),
+                                            tr("opts_op_name"),
+                                            tr("opts_op_role"),
+                                            "",
+                                        ] {
+                                            ui.label(
+                                                egui::RichText::new(header)
+                                                    .size(11.0)
+                                                    .color(motif::TEXT_DIM),
+                                            );
+                                        }
+                                        ui.end_row();
+                                        for (i, op) in
+                                            editor.cfg.pharmacy.operators.iter_mut().enumerate()
+                                        {
+                                            ui.add_sized(
+                                                [56.0, 24.0],
+                                                egui::TextEdit::singleline(&mut op.initials),
+                                            );
+                                            ui.add_sized(
+                                                [200.0, 24.0],
+                                                egui::TextEdit::singleline(&mut op.name),
+                                            );
+                                            ui.add_sized(
+                                                [200.0, 24.0],
+                                                egui::TextEdit::singleline(&mut op.role),
+                                            );
+                                            if motif::button(ui, tr("itv_delete"))
+                                                .on_hover_text(tr("opts_op_remove"))
+                                                .clicked()
+                                            {
+                                                drop = Some(i);
+                                            }
+                                            ui.end_row();
+                                        }
+                                    });
+                                if let Some(i) = drop {
+                                    editor.cfg.pharmacy.operators.remove(i);
+                                }
+                                if motif::button(ui, tr("opts_op_add")).clicked() {
+                                    editor
+                                        .cfg
+                                        .pharmacy
+                                        .operators
+                                        .push(crate::config::Operator::default());
+                                }
+                            }
+                            if page == OptionsPage::Mentions {
+                                // Nothing here is filled in by the
+                                // application: an empty field prints no
+                                // line at all. What the officine wants
+                                // said, it writes.
+                                motif::section(ui, tr("opts_mentions"));
+                                ui.label(
+                                    egui::RichText::new(tr("opts_mentions_hint"))
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.add_space(6.0);
+                                for (label, value) in [
+                                    (
+                                        tr("opts_mention_ord_header"),
+                                        &mut editor.cfg.disclaimers.ordonnance_header,
+                                    ),
+                                    (
+                                        tr("opts_mention_ord_footer"),
+                                        &mut editor.cfg.disclaimers.ordonnance_footer,
+                                    ),
+                                    (
+                                        tr("opts_mention_ord_screen"),
+                                        &mut editor.cfg.disclaimers.ordonnance_screen,
+                                    ),
+                                    (
+                                        tr("opts_mention_carnet"),
+                                        &mut editor.cfg.disclaimers.carnet,
+                                    ),
+                                    (
+                                        tr("opts_mention_calc"),
+                                        &mut editor.cfg.disclaimers.calculator,
+                                    ),
+                                ] {
+                                    ui.label(dim(label));
+                                    ui.add_sized(
+                                        [ui.available_width().min(520.0), 44.0],
+                                        egui::TextEdit::multiline(value)
+                                            .hint_text(tr("opts_mention_hint")),
+                                    );
+                                    ui.add_space(6.0);
+                                }
                             }
                             if page == OptionsPage::Ui {
                                 motif::section(ui, tr("opts_ui"));
@@ -11950,6 +12255,7 @@ impl eframe::App for App {
                         session.drug_notes.clear();
                         session.drug_patients.clear();
                         session.date_edits.clear();
+                        session.made_edits.clear();
                         session.drug_form = None;
                         session.drug_base = None;
                         session.drug_selected = 0;
@@ -12151,6 +12457,7 @@ mod tests {
             treatment_change: change,
             theme: String::new(),
             trod_result: String::new(),
+            operator: String::new(),
             created_at: format!("2026-{day:02}-05 10:00:00"),
         };
         // Année 1 : il faut deux entretiens avant le changement et deux
@@ -12215,6 +12522,7 @@ mod tests {
             remote: false,
             situation: "ALD".to_owned(),
             treatment_change: false,
+            operator: "CL".to_owned(),
         }];
         let csv = interviews_csv(&rows, &Config::default());
         // BOM so Excel decodes UTF-8 accents, semicolons, CRLF.
@@ -12228,7 +12536,7 @@ mod tests {
         // Billed row: tariff and billed columns both carry the fee, the
         // situation travels with it, and the coverage rate is the 70 %
         // of the non-anticancéreux themes.
-        assert!(csv.contains("23/08/2026;01/09/2026;45;;;ALD;15,00;70;15,00\r\n"));
+        assert!(csv.contains("23/08/2026;CL;01/09/2026;45;;;ALD;15,00;70;15,00\r\n"));
         // Unbilled row: the "Facturé" column stays at zero.
         let mut pending = rows[0].clone();
         pending.state = InterviewState::Performed;

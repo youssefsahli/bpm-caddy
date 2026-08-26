@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS interviews (
     treatment_change INTEGER NOT NULL DEFAULT 0,
     theme       TEXT NOT NULL DEFAULT '',
     trod_result TEXT NOT NULL DEFAULT '',
+    operator    TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -196,6 +197,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patients ADD COLUMN nir TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN regime TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE interviews ADD COLUMN trod_result TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE interviews ADD COLUMN operator TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS vaccinations (
         id          INTEGER PRIMARY KEY,
         patient_id  INTEGER NOT NULL REFERENCES patients(id),
@@ -348,6 +350,26 @@ impl InterviewKind {
                 | Self::AnticancereuxLc
                 | Self::AnticancereuxAutres
         )
+    }
+
+    /// A test rapide d'orientation diagnostique: read once, at the
+    /// counter, and billed flat. It is not an entretien.
+    pub fn is_trod(self) -> bool {
+        matches!(self, Self::TrodAngine | Self::TrodCystite)
+    }
+
+    /// Whether the act carries one of the entretien thematics. A TROD
+    /// does not: it has a result, not a subject, and a theme stamped on
+    /// one only travelled to the CSV and the fiche to say nothing.
+    pub fn has_theme(self) -> bool {
+        !self.is_trod()
+    }
+
+    /// Whether a duration is worth recording. A TROD is a test, timed
+    /// by the strip and not by the entretien; the minutes column asked
+    /// a question that had no answer.
+    pub fn has_duration(self) -> bool {
+        !self.is_trod()
     }
 
     /// The act code billed for an entretien of this theme, given the
@@ -597,6 +619,8 @@ pub struct ExportRow {
     /// This entretien follows a treatment change: for the anticancéreux
     /// themes, the memo lets it open a new billable sequence.
     pub treatment_change: bool,
+    /// Initials of whoever did the act.
+    pub operator: String,
 }
 
 /// What an agenda entry that is not a billable act represents.
@@ -809,6 +833,9 @@ pub struct Interview {
     /// TROD outcome: `POSITIF`, `NEGATIF`, or empty while the test has
     /// not been read. Only ever set on the two TROD act kinds.
     pub trod_result: String,
+    /// Initials of whoever did the act. What the fiche and the courrier
+    /// sign with, through the team list in the configuration.
+    pub operator: String,
     pub created_at: String,
 }
 
@@ -22054,7 +22081,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, kind, state, duration_minutes, scheduled_date, theme, created_at,
-                        scheduled_time, remote, treatment_change, trod_result
+                        scheduled_time, remote, treatment_change, trod_result, operator
                  FROM interviews WHERE patient_id = ?1 ORDER BY created_at DESC, id DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -22072,6 +22099,7 @@ impl Db {
                     r.get::<_, i64>(8)? != 0,
                     r.get::<_, i64>(9)? != 0,
                     r.get::<_, String>(10)?,
+                    r.get::<_, String>(11)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -22089,6 +22117,7 @@ impl Db {
                 remote,
                 treatment_change,
                 trod_result,
+                operator,
             ) = row.map_err(|e| e.to_string())?;
             out.push(Interview {
                 id,
@@ -22099,6 +22128,7 @@ impl Db {
                 treatment_change,
                 theme,
                 trod_result,
+                operator,
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 state: InterviewState::parse(&state)
@@ -22114,21 +22144,54 @@ impl Db {
         self.add_interview_themed(patient_id, kind, "")
     }
 
-    /// Create an interview with its thematic already chosen (the quick
-    /// picker sets both at once).
+    #[cfg(test)]
     pub fn add_interview_themed(
         &self,
         patient_id: i64,
         kind: InterviewKind,
         theme: &str,
     ) -> Result<i64, String> {
+        self.add_interview_by(patient_id, kind, theme, "")
+    }
+
+    /// Create an interview with its thematic already chosen (the quick
+    /// picker sets both at once) and the initials of whoever is at the
+    /// counter. Those initials are what the fiche and the courrier sign
+    /// with, so they are recorded when the act is created rather than
+    /// read off the screen when it is printed, days later.
+    pub fn add_interview_by(
+        &self,
+        patient_id: i64,
+        kind: InterviewKind,
+        theme: &str,
+        operator: &str,
+    ) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO interviews (patient_id, kind, theme) VALUES (?1, ?2, ?3)",
-                (patient_id, kind.as_str(), theme),
+                "INSERT INTO interviews (patient_id, kind, theme, operator)
+                 VALUES (?1, ?2, ?3, ?4)",
+                (patient_id, kind.as_str(), theme, operator.trim()),
             )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Set who did the act. Compare-and-set on the initials this PC
+    /// displayed. Returns `false` when stale.
+    pub fn set_interview_operator(
+        &self,
+        id: i64,
+        operator: &str,
+        expected: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews SET operator = ?1 WHERE id = ?2 AND operator = ?3",
+                (operator.trim(), id, expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
     }
 
     /// The drug reference base, alphabetical.
@@ -22595,7 +22658,7 @@ impl Db {
                 "SELECT p.first_name || ' ' || p.last_name, p.phone, p.birth_date, i.kind,
                         i.state, substr(i.created_at, 1, 10), i.scheduled_date,
                         i.duration_minutes, i.theme, i.patient_id, i.remote,
-                        p.situation, i.treatment_change
+                        p.situation, i.treatment_change, i.operator
                  FROM interviews i JOIN patients p ON p.id = i.patient_id
                  ORDER BY i.created_at, i.id",
             )
@@ -22616,6 +22679,7 @@ impl Db {
                     r.get::<_, i64>(10)? != 0,
                     r.get::<_, String>(11)?,
                     r.get::<_, i64>(12)? != 0,
+                    r.get::<_, String>(13)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -22636,6 +22700,7 @@ impl Db {
                 remote,
                 situation,
                 treatment_change,
+                operator,
             ) = row.map_err(|e| e.to_string())?;
             let kind = InterviewKind::parse(&kind)
                 .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?;
@@ -22661,6 +22726,7 @@ impl Db {
                 remote,
                 situation,
                 treatment_change,
+                operator,
             });
         }
         for (i, (year, rank)) in fee_ranks(&keys, cycle_months.max(1)) {
@@ -23743,6 +23809,29 @@ impl Db {
             .execute(
                 "UPDATE interviews SET scheduled_date = ?1
                  WHERE id = ?2 AND scheduled_date IS ?3",
+                (date, id, expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Move an act to the day it was actually held (ISO `YYYY-MM-DD`).
+    ///
+    /// An act entered the morning after is dated the morning after, and
+    /// that date is not decoration: it places the act in its cycle, so
+    /// it picks the fee slot, the quota window and the CSV line. Only
+    /// the day part is rewritten — the clock time is left as it was
+    /// written, so the order of two acts of the same day is kept.
+    ///
+    /// Compare-and-set on the day this PC displayed. Returns `false`
+    /// when stale.
+    pub fn set_created_date(&self, id: i64, date: &str, expected: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews
+                 SET created_at = ?1 || substr(created_at, 11)
+                 WHERE id = ?2 AND substr(created_at, 1, 10) = ?3",
                 (date, id, expected),
             )
             .map_err(|e| e.to_string())?;
@@ -24977,6 +25066,64 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// An act carries who did it, so the fiche and the courrier are
+    /// signed by that person and not by whoever prints them.
+    #[test]
+    fn an_act_records_who_did_it() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-actby-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("actby.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let id = db
+            .add_interview_by(pid, InterviewKind::Bpm, "Observance", " CL ")
+            .unwrap();
+        // Trimmed on the way in: " CL " and "CL" are the same person.
+        assert_eq!(db.interviews_for(pid).unwrap()[0].operator, "CL");
+        // A write from a stale view is rejected, not applied.
+        assert!(!db.set_interview_operator(id, "MB", "YS").unwrap());
+        assert!(db.set_interview_operator(id, "YS", "CL").unwrap());
+        assert_eq!(db.interviews_for(pid).unwrap()[0].operator, "YS");
+        // And it reaches the export, where the billing is reconciled.
+        assert_eq!(db.export_rows(12).unwrap()[0].operator, "YS");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The act entered the morning after must be datable to the day it
+    /// was held: that date is what places it in its cycle, and the
+    /// cycle is what picks the fee.
+    #[test]
+    fn an_act_can_be_moved_to_the_day_it_was_held() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-actdate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("actdate.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let id = db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        let today = db.interviews_for(pid).unwrap()[0].created_at[..10].to_owned();
+        let clock = db.interviews_for(pid).unwrap()[0].created_at[10..].to_owned();
+        // A write from a stale view is rejected, not applied.
+        assert!(!db.set_created_date(id, "2026-03-02", "1999-01-01").unwrap());
+        assert_eq!(db.interviews_for(pid).unwrap()[0].created_at[..10], today);
+        assert!(db.set_created_date(id, "2026-03-02", &today).unwrap());
+        let moved = db.interviews_for(pid).unwrap()[0].created_at.clone();
+        assert_eq!(&moved[..10], "2026-03-02");
+        // Only the day moved: the clock time still orders two acts of
+        // the same day.
+        assert_eq!(&moved[10..], clock);
+        // And the act is now read at its new date everywhere.
+        assert_eq!(
+            db.interview_dates_for(pid, InterviewKind::Bpm).unwrap(),
+            vec!["2026-03-02".to_owned()]
+        );
+        assert_eq!(db.export_rows(12).unwrap()[0].created_date, "2026-03-02");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[test]
     fn posologies_seed_once_and_stay_the_team_s() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-poso-{}", std::process::id()));
@@ -25684,9 +25831,14 @@ mod tests {
         // (Eliquis among them), so the demo needs no extra drug text.
         db.seed_drugs_if_empty().unwrap();
 
-        for (last, first, dob, kind, advances, minutes, rdv, theme) in seed {
+        // Two operators, so the demo shows what the initials column and
+        // the signatures are for.
+        for (i, (last, first, dob, kind, advances, minutes, rdv, theme)) in
+            seed.into_iter().enumerate()
+        {
             let pid = db.add_patient(last, first, dob).unwrap();
-            let iid = db.add_interview_themed(pid, kind, theme).unwrap();
+            let by = if i % 2 == 0 { "CL" } else { "YS" };
+            let iid = db.add_interview_by(pid, kind, theme, by).unwrap();
             let mut state = InterviewState::Identified;
             for _ in 0..advances {
                 db.advance_interview(iid, state).unwrap();

@@ -84,6 +84,29 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # N° d'identification Assurance Maladie, imprimé sur le bulletin
 # d'adhésion. Laissé vide, la ligne du bulletin reste à remplir à la main.
 # am_number = "3400123"
+# L'équipe. Les initiales servent à signer les notes et le carnet ; le
+# nom et la qualité sont ce qui s'imprime au bas des documents, à la
+# place de `pharmacist`, quand l'acte porte ces initiales.
+# operators = [
+#   { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
+#   { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint" },
+#   { initials = "MB", name = "Maya Bertrand", role = "Préparatrice" },
+# ]
+
+[disclaimers]
+# Les mentions imprimées ou affichées par l'application. Elles sont
+# vides par défaut : l'application n'ajoute aucun avertissement de son
+# propre chef. Écrivez ici celles que l'officine veut voir apparaître.
+# Ligne d'en-tête de l'ordonnance, sous le titre.
+# ordonnance_header = "Dispensation protocolisée par le pharmacien après test rapide d'orientation diagnostique"
+# Pied de l'ordonnance, sous la signature.
+# ordonnance_footer = "Reconsulter sans attendre en cas d'aggravation ou de signes nouveaux."
+# Encadré affiché à l'écran au-dessus de l'ordonnance en préparation.
+# ordonnance_screen = "Vérifiez la molécule, la posologie et les contre-indications avant d'imprimer."
+# Pied du carnet de vaccination imprimé.
+# carnet = "Document indicatif : il ne remplace pas le carnet de vaccination officiel ni le dossier médical partagé."
+# Ligne sous les calculatrices (Cockcroft, dose/kg, décroissance).
+# calculator = "Modèle à un compartiment : la clinique et le RCP priment."
 
 [ordonnance]
 # Les fiches du référentiel médicaments portant cette étiquette sont
@@ -121,6 +144,27 @@ pub struct Config {
     pub pharmacy: PharmacyConfig,
     pub rules: RulesConfig,
     pub ordonnance: OrdonnanceConfig,
+    pub disclaimers: DisclaimersConfig,
+}
+
+/// Every mention the application prints or shows, and nothing it says
+/// on its own account: each field is empty by default, and an empty
+/// field prints no line at all. The officine writes what it wants to
+/// see — a legal frame on the ordonnance, an advice at the foot of the
+/// carnet — and nothing else appears.
+#[derive(Deserialize, Serialize, Default, Clone)]
+#[serde(default)]
+pub struct DisclaimersConfig {
+    /// Under the ordonnance's title.
+    pub ordonnance_header: String,
+    /// At the foot of the ordonnance, under the signature box.
+    pub ordonnance_footer: String,
+    /// In the ordonnance box on screen, above the lines being prepared.
+    pub ordonnance_screen: String,
+    /// At the foot of the printed carnet de vaccination.
+    pub carnet: String,
+    /// Under the dose calculators.
+    pub calculator: String,
 }
 
 /// Convention rules: how many acts of each kind per "année
@@ -192,6 +236,75 @@ pub struct PharmacyConfig {
     /// the bulletin d'adhésion. Empty leaves that line blank.
     #[serde(default)]
     pub am_number: String,
+    /// The team, by initials. What the counter stamps on a note is the
+    /// initials; what a printed document signs is the name and the
+    /// qualité behind them.
+    #[serde(default)]
+    pub operators: Vec<Operator>,
+}
+
+/// One member of the team: the initials that stamp a note, and the name
+/// that signs a document.
+#[derive(Deserialize, Serialize, Default, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct Operator {
+    /// Two or three letters, as typed at the counter.
+    pub initials: String,
+    /// "Claire Leroy".
+    pub name: String,
+    /// "Pharmacien titulaire", "Préparatrice"…
+    pub role: String,
+}
+
+impl Operator {
+    /// How this operator signs: the name, then the qualité when one is
+    /// given. Falls back to the initials, so a half-filled row still
+    /// signs something rather than nothing.
+    pub fn signature(&self) -> String {
+        let name = self.name.trim();
+        let role = self.role.trim();
+        match (name.is_empty(), role.is_empty()) {
+            (false, false) => format!("{name}, {role}"),
+            (false, true) => name.to_owned(),
+            (true, false) => role.to_owned(),
+            (true, true) => self.initials.trim().to_owned(),
+        }
+    }
+
+    /// What the operator picker shows: "CL — Claire Leroy".
+    pub fn label(&self) -> String {
+        let initials = self.initials.trim();
+        let signature = self.signature();
+        if signature.is_empty() || signature == initials {
+            initials.to_owned()
+        } else {
+            format!("{initials} — {signature}")
+        }
+    }
+}
+
+impl PharmacyConfig {
+    /// The team member behind these initials, case-insensitively.
+    pub fn operator(&self, initials: &str) -> Option<&Operator> {
+        let wanted = initials.trim();
+        if wanted.is_empty() {
+            return None;
+        }
+        self.operators
+            .iter()
+            .find(|o| o.initials.trim().eq_ignore_ascii_case(wanted))
+    }
+
+    /// Who signs a document made by `initials`: that operator's name and
+    /// qualité when the list knows them, the officine's default
+    /// `pharmacist` line otherwise. A document is never left unsigned
+    /// because the initials were unknown.
+    pub fn signature_for(&self, initials: &str) -> String {
+        match self.operator(initials) {
+            Some(op) => op.signature(),
+            None => self.pharmacist.clone(),
+        }
+    }
 }
 
 /// What the ordonnance box offers alongside the antibiotic.
@@ -782,6 +895,67 @@ mod tests {
             ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0])
         );
         assert!(cfg.team_doc_path().ends_with("notes_equipe.md"));
+    }
+
+    #[test]
+    fn the_team_signs_by_its_initials() {
+        let cfg: Config = toml::from_str(
+            r#"
+            [pharmacy]
+            pharmacist = "Dr Claire Leroy, pharmacien titulaire"
+            operators = [
+              { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
+              { initials = "MB", name = "Maya Bertrand" },
+            ]
+            "#,
+        )
+        .unwrap();
+        // The initials are matched as typed at the counter, whatever
+        // the case.
+        assert_eq!(
+            cfg.pharmacy.signature_for("cl"),
+            "Claire Leroy, Pharmacien titulaire"
+        );
+        // A row without a qualité signs its name alone.
+        assert_eq!(cfg.pharmacy.signature_for("MB"), "Maya Bertrand");
+        // Unknown initials, or none at all, fall back to the officine's
+        // own line: a document is never left unsigned.
+        assert_eq!(
+            cfg.pharmacy.signature_for("ZZ"),
+            "Dr Claire Leroy, pharmacien titulaire"
+        );
+        assert_eq!(
+            cfg.pharmacy.signature_for(""),
+            "Dr Claire Leroy, pharmacien titulaire"
+        );
+        assert_eq!(
+            cfg.pharmacy.operators[0].label(),
+            "CL — Claire Leroy, Pharmacien titulaire"
+        );
+    }
+
+    #[test]
+    fn the_application_says_nothing_of_its_own_accord() {
+        // Every mention is empty until the officine writes it: the
+        // defaults print no disclaimer anywhere.
+        let cfg = Config::default();
+        assert_eq!(cfg.disclaimers.ordonnance_header, "");
+        assert_eq!(cfg.disclaimers.ordonnance_footer, "");
+        assert_eq!(cfg.disclaimers.ordonnance_screen, "");
+        assert_eq!(cfg.disclaimers.carnet, "");
+        assert_eq!(cfg.disclaimers.calculator, "");
+        let written: Config = toml::from_str(
+            r#"
+            [disclaimers]
+            ordonnance_footer = "Reconsulter en cas d'aggravation."
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            written.disclaimers.ordonnance_footer,
+            "Reconsulter en cas d'aggravation."
+        );
+        assert_eq!(written.disclaimers.carnet, "");
     }
 
     #[test]

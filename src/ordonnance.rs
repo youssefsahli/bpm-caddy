@@ -148,7 +148,7 @@ pub fn protocol(kind: InterviewKind) -> Option<&'static Protocol> {
 
 /// Does this act read a TROD at all? Only these two carry a result.
 pub fn is_trod(kind: InterviewKind) -> bool {
-    matches!(kind, InterviewKind::TrodAngine | InterviewKind::TrodCystite)
+    kind.is_trod()
 }
 
 /// The recorded outcomes of a TROD.
