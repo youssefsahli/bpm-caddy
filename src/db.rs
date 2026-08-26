@@ -23368,6 +23368,8 @@ impl Db {
             ("tags", &expected.tags, &new.tags),
             ("toxicity", &expected.toxicity, &new.toxicity),
             ("forms", &expected.forms, &new.forms),
+            ("missed_dose", &expected.missed_dose, &new.missed_dose),
+            ("red_flags", &expected.red_flags, &new.red_flags),
         ] {
             if before == after {
                 continue;
@@ -23881,7 +23883,14 @@ impl Db {
                 .execute(
                     "UPDATE drugs SET missed_dose = ?1, red_flags = ?2
                      WHERE missed_dose = '' AND red_flags = ''
-                       AND (class LIKE ?3 OR tags LIKE ?3 OR dci LIKE ?3 OR name LIKE ?3)",
+                       AND (class LIKE ?3 OR tags LIKE ?3 OR dci LIKE ?3 OR name LIKE ?3)
+                       -- A field the team has written to — including one
+                       -- it cleared on purpose — is locked, and stays as
+                       -- they left it.
+                       AND id NOT IN (
+                           SELECT drug_id FROM drug_field_locks
+                           WHERE column_name IN ('missed_dose', 'red_flags')
+                       )",
                     (missed, flags, &like),
                 )
                 .map_err(|e| e.to_string())?;
@@ -26278,6 +26287,20 @@ mod tests {
         let after = db.drugs().unwrap();
         let kept = after.iter().find(|d| d.id == edited.id).unwrap();
         assert_eq!(kept.missed_dose, "La conduite de l'officine.");
+        // A field cleared on purpose stays cleared: the lock is what
+        // says « we have decided about this one », not the emptiness.
+        let base = kept.clone();
+        let mut cleared = kept.clone();
+        cleared.missed_dose = String::new();
+        cleared.red_flags = String::new();
+        assert!(db.update_drug(&cleared, &base).unwrap());
+        db.seed_conduite().unwrap();
+        let after = db.drugs().unwrap();
+        let still = after.iter().find(|d| d.id == cleared.id).unwrap();
+        assert_eq!(
+            still.missed_dose, "",
+            "une fiche vidée exprès a été resemée"
+        );
 
         let _ = std::fs::remove_file(&path);
     }

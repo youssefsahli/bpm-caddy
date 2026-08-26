@@ -5324,21 +5324,36 @@ impl App {
                 egui::Rect::from_min_max(egui::pos2(work.right() - side_w, work.top()), work.max),
             )
         } else {
-            let rows = motif::split_rows(
-                work,
-                &[0.0, (work.height() * 0.42).clamp(160.0, 300.0)],
-                8.0,
-            );
+            // Under the table, the band needs room for a finding or
+            // two: at 42 % of a 500 px work area it showed one and a
+            // half lines of the first.
+            let band = (work.height() * 0.46).clamp(200.0, 360.0);
+            let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
         Self::bio_table_pane(ui, session, patient, table);
-        // The trend takes a fixed band at the foot and the reading
-        // takes what is left: two flexible rows would each claim the
-        // whole height, and the second would land off the screen.
-        let trend_h = (side.height() * 0.34).clamp(120.0, 220.0);
-        let panes = motif::split_rows(side, &[0.0, trend_h], 8.0);
-        Self::bio_reading_pane(ui, session, panes[0]);
-        Self::bio_trend_pane(ui, session, panes[1]);
+        // Beside the table, the reading sits above the trend; under it,
+        // they share the band's width — stacked inside a 250 px band,
+        // the reading would show a finding and a half.
+        let (reading, trend) = if wide {
+            // A stated height for the trend and the flex for the
+            // reading: two flexible rows would each claim the whole
+            // height, and the second would land off the screen.
+            let trend_h = (side.height() * 0.34).clamp(120.0, 220.0);
+            let rows = motif::split_rows(side, &[0.0, trend_h], 8.0);
+            (rows[0], rows[1])
+        } else {
+            let trend_w = (side.width() * 0.34).clamp(220.0, 420.0);
+            (
+                egui::Rect::from_min_size(
+                    side.min,
+                    egui::vec2(side.width() - trend_w - 8.0, side.height()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(side.right() - trend_w, side.top()), side.max),
+            )
+        };
+        Self::bio_reading_pane(ui, session, reading);
+        Self::bio_trend_pane(ui, session, trend);
     }
 
     /// The results themselves: one line per reading, with what it is
@@ -5357,7 +5372,9 @@ impl App {
         let mut pick: Option<&'static crate::biology::Analyte> = None;
         let mut focus: Option<String> = None;
         motif::panel(ui, rect, Some(tr("bio_section")), |ui| {
-            let foot = 78.0;
+            // The add row, and the line of suggestions that appears
+            // under it while an analyte is being typed.
+            let foot = 58.0;
             let body = ui.available_rect_before_wrap();
             if body.height() < foot + 40.0 {
                 return;

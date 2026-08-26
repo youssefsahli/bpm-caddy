@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.56.1] - 2026-08-26
+
+### Fixed
+- « En cas d'oubli » and « Ce qui doit faire consulter » now respect the
+  same field locks as the rest of a card: a field the team cleared on
+  purpose stays cleared instead of being refilled at the next launch.
+
+### Changed
+- The biology tab under a narrow work area puts « Ce que ça change »
+  and the trend side by side instead of stacking them, and gives the
+  band the height a finding actually takes: it used to show one and a
+  half lines of the first one. The results table gains a row.
+- The README says what the app now does — the biology, the bilan, the
+  codex, the clickable molecules and the technical sheet, the team by
+  name, the mentions the officine writes itself — and the screenshots
+  are regenerated, with the biology tab and the codex among them.
+
 ## [0.56.0] - 2026-08-26
 
 ### Added
