@@ -19476,6 +19476,155 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     // GENERATED-POSOLOGIES-END
 ];
 
+/// One shipped protocol, before it reaches the base.
+pub struct StarterProtocol {
+    pub title: &'static str,
+    pub subject: &'static str,
+    /// The steps at the root of the tree, in order.
+    pub steps: &'static [StarterNode],
+}
+
+/// One step of a shipped protocol, with the two branches under it.
+pub struct StarterNode {
+    pub kind: NodeKind,
+    pub text: &'static str,
+    /// What follows when the answer is yes; empty on an action.
+    pub yes: &'static [StarterNode],
+    pub no: &'static [StarterNode],
+}
+
+/// A question, with what follows on each answer.
+const fn q(
+    text: &'static str,
+    yes: &'static [StarterNode],
+    no: &'static [StarterNode],
+) -> StarterNode {
+    StarterNode {
+        kind: NodeKind::Question,
+        text,
+        yes,
+        no,
+    }
+}
+
+/// A conduite: what to do, with nothing under it.
+const fn act(text: &'static str) -> StarterNode {
+    StarterNode {
+        kind: NodeKind::Action,
+        text,
+        yes: &[],
+        no: &[],
+    }
+}
+
+/// The protocols a fresh base starts with: the questions the counter
+/// actually asks itself when an ordonnance cannot be honoured as
+/// written. They are a starting point — every node is editable, and the
+/// team writes its own.
+pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
+    StarterProtocol {
+        title: "Rupture de stock — conduite générale",
+        subject: "Toute spécialité manquante",
+        steps: &[q(
+            "Le patient a-t-il de quoi tenir 72 heures ?",
+            &[act(
+                "Commander la spécialité, noter le rappel dans l'agenda et donner au patient la date à laquelle il repasse.",
+            )],
+            &[q(
+                "Un générique ou une autre présentation de la même DCI est-il disponible ?",
+                &[act(
+                    "Délivrer dans le cadre du droit de substitution, expliquer le changement de boîte et de couleur, et le noter sur la fiche patient.",
+                )],
+                &[q(
+                    "Le traitement peut-il attendre sans risque — antalgique de palier 1, veinotonique, complément ?",
+                    &[act(
+                        "Différer, expliquer le délai, proposer une conduite d'attente et fixer un rappel.",
+                    )],
+                    &[act(
+                        "Appeler le prescripteur pour une alternative, tracer l'appel et la décision sur la fiche patient, et délivrer ce qui a été convenu.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Anticoagulant oral direct indisponible",
+        subject: "AOD — apixaban, rivaroxaban, dabigatran, édoxaban",
+        steps: &[q(
+            "Le patient a-t-il encore des comprimés pour au moins 48 heures ?",
+            &[act(
+                "Commander la spécialité prescrite et rappeler le patient dès réception : un anticoagulant ne s'interrompt pas, même un jour.",
+            )],
+            &[q(
+                "Une autre présentation de la même DCI est-elle disponible ?",
+                &[act(
+                    "Délivrer la même molécule ; si le dosage disponible impose une adaptation de présentation, l'accord du prescripteur se demande d'abord.",
+                )],
+                &[act(
+                    "Ne jamais remplacer un AOD par un autre de sa propre initiative : appeler le prescripteur. Le relais, par un autre AOD ou par une héparine, se décide par lui, et l'interruption pure et simple est le seul choix à écarter.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Écrasement d'un comprimé demandé",
+        subject: "Troubles de la déglutition, sonde entérale",
+        steps: &[q(
+            "Une forme orodispersible, buvable ou en gouttes existe-t-elle pour cette molécule ?",
+            &[act(
+                "Proposer cette forme au prescripteur : c'est la solution la plus sûre, et elle évite toute question de dose.",
+            )],
+            &[q(
+                "La forme est-elle à libération prolongée ou gastro-résistante — LP, LM, EC, comprimé pelliculé gastro-résistant, gélule à microgranules ?",
+                &[act(
+                    "Ne pas écraser : la dose entière passerait d'un coup, ou serait détruite par l'acidité. Voir la table « Écraser ou ouvrir », et appeler le prescripteur pour une alternative.",
+                )],
+                &[act(
+                    "Écrasement possible : vérifier la ligne de la table « Écraser ou ouvrir », écraser extemporanément, administrer aussitôt dans un véhicule adapté, et ne jamais mélanger deux médicaments dans le même véhicule.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Allergie à la pénicilline annoncée au comptoir",
+        subject: "Antibiothérapie — bêta-lactamines",
+        steps: &[q(
+            "Le patient décrit-il une réaction immédiate — urticaire, œdème du visage, gêne respiratoire, malaise ?",
+            &[act(
+                "Ne pas délivrer. Appeler le prescripteur pour une alternative, et inscrire l'allergie sur la fiche patient de façon visible.",
+            )],
+            &[q(
+                "La réaction décrite est-elle digestive — nausées, diarrhée — ou une éruption tardive sans gravité ?",
+                &[act(
+                    "Ce n'est le plus souvent pas une allergie mais une intolérance. Préciser la réaction et sa date, transmettre au prescripteur, et ne pas rayer la pénicilline du dossier sur ce seul motif : neuf « allergiques » sur dix ne le sont pas.",
+                )],
+                &[act(
+                    "Réaction non caractérisée : demander au prescripteur avant de délivrer, et proposer au patient de faire préciser le diagnostic — un bilan allergologique évite des années d'antibiotiques de seconde ligne.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Fièvre chez un patient à risque",
+        subject: "Anticancéreux, immunosuppresseur, clozapine, antithyroïdien",
+        steps: &[q(
+            "Le patient prend-il un anticancéreux, un immunosuppresseur, la clozapine ou un antithyroïdien de synthèse ?",
+            &[act(
+                "Toute fièvre est une urgence : orienter le jour même vers le médecin ou le service qui suit le patient, avec une numération. Ne pas se contenter d'un antipyrétique, qui masquerait le signe.",
+            )],
+            &[q(
+                "Fièvre depuis plus de trois jours, ou signes de gravité — confusion, essoufflement, raideur de nuque, éruption qui ne s'efface pas à la pression ?",
+                &[act(
+                    "Orientation médicale sans attendre ; en cas de purpura fébrile, c'est le 15.",
+                )],
+                &[act(
+                    "Conseil et surveillance : paracétamol à la dose adaptée au poids, hydratation, et consultation si la fièvre dépasse trois jours ou si l'état se dégrade.",
+                )],
+            )],
+        )],
+    },
+];
+
 /// One shipped preparation of the codex, before it reaches the base.
 pub struct StarterPreparation {
     pub name: &'static str,
@@ -23222,6 +23371,7 @@ impl Db {
         self.seed_posologies()?;
         self.seed_preparations()?;
         self.seed_conduite()?;
+        self.seed_protocols()?;
         Ok(inserted)
     }
 
@@ -23305,6 +23455,7 @@ impl Db {
         self.seed_posologies()?;
         self.seed_preparations()?;
         self.seed_conduite()?;
+        self.seed_protocols()?;
         Ok(inserted)
     }
 
@@ -23981,6 +24132,44 @@ impl Db {
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(filled)
+    }
+
+    /// Seed the protocols, once. A title already in the base is left
+    /// alone: the tool is the team's, and a tree they have rewritten
+    /// never comes back to what it shipped as.
+    pub fn seed_protocols(&self) -> Result<usize, String> {
+        let existing: std::collections::HashSet<String> =
+            self.protocols()?.into_iter().map(|p| p.title).collect();
+        let mut added = 0;
+        for proto in STARTER_PROTOCOLS {
+            if existing.contains(proto.title) {
+                continue;
+            }
+            let id = self.add_protocol(proto.title, proto.subject)?;
+            for step in proto.steps {
+                self.insert_starter_node(id, None, Branch::Root, step)?;
+            }
+            added += 1;
+        }
+        Ok(added)
+    }
+
+    /// One node of a shipped protocol and everything under it.
+    fn insert_starter_node(
+        &self,
+        protocol_id: i64,
+        parent: Option<i64>,
+        branch: Branch,
+        node: &StarterNode,
+    ) -> Result<(), String> {
+        let id = self.add_protocol_node(protocol_id, parent, branch, node.kind, node.text)?;
+        for child in node.yes {
+            self.insert_starter_node(protocol_id, Some(id), Branch::Yes, child)?;
+        }
+        for child in node.no {
+            self.insert_starter_node(protocol_id, Some(id), Branch::No, child)?;
+        }
+        Ok(())
     }
 
     /// Seed the codex, once. Like the drug base: a preparation the
@@ -26550,6 +26739,81 @@ mod tests {
         assert_eq!(
             still.missed_dose, "",
             "une fiche vidée exprès a été resemée"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The protocols ship with content: the tool was a beautiful empty
+    /// tree until it did.
+    #[test]
+    fn the_protocols_seed_once_and_keep_their_shape() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-proto-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("proto.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        assert_eq!(db.seed_protocols().unwrap(), STARTER_PROTOCOLS.len());
+        assert_eq!(db.seed_protocols().unwrap(), 0);
+        let protocols = db.protocols().unwrap();
+        assert_eq!(protocols.len(), STARTER_PROTOCOLS.len());
+        for p in &protocols {
+            let nodes = db.protocol_nodes(p.id).unwrap();
+            assert!(nodes.len() >= 3, "{} : arbre trop court", p.title);
+            // Exactly one root, and every other node hangs from a
+            // question by one of its two branches.
+            let roots: Vec<&ProtocolNode> =
+                nodes.iter().filter(|n| n.parent_id.is_none()).collect();
+            assert_eq!(roots.len(), 1, "{} : plusieurs racines", p.title);
+            for node in nodes.iter().filter(|n| n.parent_id.is_some()) {
+                assert_ne!(
+                    node.branch,
+                    Branch::Root,
+                    "{} : branche sans réponse",
+                    p.title
+                );
+                let parent = nodes
+                    .iter()
+                    .find(|n| Some(n.id) == node.parent_id)
+                    .expect("le parent existe");
+                assert_eq!(
+                    parent.kind,
+                    NodeKind::Question,
+                    "{} : une conduite ne se ramifie pas",
+                    p.title
+                );
+            }
+            // Every question has both of its answers: a walk-through
+            // that dead-ends on « non » is worse than no protocol.
+            for question in nodes.iter().filter(|n| n.kind == NodeKind::Question) {
+                for branch in [Branch::Yes, Branch::No] {
+                    assert!(
+                        nodes
+                            .iter()
+                            .any(|n| n.parent_id == Some(question.id) && n.branch == branch),
+                        "{} : « {} » sans branche {:?}",
+                        p.title,
+                        question.text,
+                        branch
+                    );
+                }
+            }
+        }
+        // A tree the team rewrote is never replaced.
+        let first = protocols[0].id;
+        let nodes = db.protocol_nodes(first).unwrap();
+        assert!(db
+            .update_protocol_node(
+                nodes[0].id,
+                nodes[0].kind,
+                "La question de l'officine.",
+                &nodes[0].text,
+            )
+            .unwrap());
+        db.seed_protocols().unwrap();
+        assert_eq!(
+            db.protocol_nodes(first).unwrap()[0].text,
+            "La question de l'officine."
         );
 
         let _ = std::fs::remove_file(&path);

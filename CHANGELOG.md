@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.61.0] - 2026-08-27
+
+### Added
+- **Five protocols to start from.** « Protocoles… » was a decision-tree
+  editor with nothing in it. A fresh base — and any base opened after
+  this version — now carries the trees the counter actually walks: la
+  rupture de stock (conduite générale), l'anticoagulant oral direct
+  indisponible (où la seule chose à ne pas faire est d'interrompre),
+  l'écrasement d'un comprimé demandé (qui renvoie à la table « Écraser
+  ou ouvrir »), l'allergie à la pénicilline annoncée au comptoir (neuf
+  « allergiques » sur dix ne le sont pas), et la fièvre chez un patient
+  sous anticancéreux, immunosuppresseur, clozapine ou antithyroïdien.
+  They seed once by title: a tree the team has rewritten is never
+  replaced, and a title they deleted never comes back.
+- A test now holds their shape: one root, every branch hanging from a
+  question, and every question carrying both of its answers — a
+  walk-through that dead-ends on « non » is worse than no protocol.
+
+### Fixed
+- A protocol step is a sentence, not a caption: long conduites wrap to
+  the room left beside the buttons instead of running off the right
+  edge of the panel.
+
 ## [0.60.0] - 2026-08-27
 
 ### Added
