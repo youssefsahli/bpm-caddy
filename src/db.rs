@@ -126,6 +126,25 @@ CREATE TABLE IF NOT EXISTS notes (
     body         TEXT NOT NULL,
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+CREATE TABLE IF NOT EXISTS vaccinations (
+    id          INTEGER PRIMARY KEY,
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    code        TEXT NOT NULL DEFAULT '',
+    label       TEXT NOT NULL,
+    dose        TEXT NOT NULL DEFAULT '',
+    given_on    TEXT NOT NULL DEFAULT '',
+    lot         TEXT NOT NULL DEFAULT '',
+    site        TEXT NOT NULL DEFAULT '',
+    operator    TEXT NOT NULL DEFAULT '',
+    next_due    TEXT NOT NULL DEFAULT '',
+    remark      TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS patient_travel (
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    country     TEXT NOT NULL,
+    depart_on   TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (patient_id, country)
+);
 ";
 
 /// Idempotent migrations for databases created by older versions.
@@ -171,6 +190,25 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (drug_id, column_name)
     )",
     "ALTER TABLE patients ADD COLUMN situation TEXT NOT NULL DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS vaccinations (
+        id          INTEGER PRIMARY KEY,
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        code        TEXT NOT NULL DEFAULT '',
+        label       TEXT NOT NULL,
+        dose        TEXT NOT NULL DEFAULT '',
+        given_on    TEXT NOT NULL DEFAULT '',
+        lot         TEXT NOT NULL DEFAULT '',
+        site        TEXT NOT NULL DEFAULT '',
+        operator    TEXT NOT NULL DEFAULT '',
+        next_due    TEXT NOT NULL DEFAULT '',
+        remark      TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS patient_travel (
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        country     TEXT NOT NULL,
+        depart_on   TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (patient_id, country)
+    )",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -678,6 +716,39 @@ pub struct Posologie {
     pub indication: String,
     pub posologie: String,
     pub remarque: String,
+}
+
+/// One line of a patient's carnet de vaccination.
+///
+/// `code` ties the line to the catalogue in `crate::vaccines` when the
+/// vaccine was picked from the list — that is what lets the calendar
+/// and the travel panel tick it off. A line typed by hand keeps an
+/// empty code and still reads correctly; it simply answers nothing.
+#[derive(Clone, Debug, Default)]
+pub struct Vaccination {
+    pub id: i64,
+    pub code: String,
+    pub label: String,
+    /// "1re dose", "rappel"… free text.
+    pub dose: String,
+    /// ISO `YYYY-MM-DD`, possibly empty.
+    pub given_on: String,
+    pub lot: String,
+    /// Injection site: "deltoïde G".
+    pub site: String,
+    pub operator: String,
+    /// ISO `YYYY-MM-DD` of the next dose, possibly empty.
+    pub next_due: String,
+    pub remark: String,
+}
+
+/// A destination recorded on a patient's file, for the travel panel.
+#[derive(Clone, Debug)]
+pub struct Travel {
+    /// ISO 3166-1 alpha-2.
+    pub country: String,
+    /// ISO `YYYY-MM-DD`, possibly empty.
+    pub depart_on: String,
 }
 
 /// One agenda entry that is not tied to a patient.
@@ -22748,6 +22819,159 @@ impl Db {
         Ok(changed == 1)
     }
 
+    // --- Carnet de vaccination ------------------------------------
+
+    /// A patient's carnet, most recent dose first; undated lines last.
+    pub fn vaccinations(&self, patient_id: i64) -> Result<Vec<Vaccination>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, code, label, dose, given_on, lot, site, operator, next_due, remark
+                 FROM vaccinations WHERE patient_id = ?1
+                 ORDER BY (given_on = '') ASC, given_on DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok(Vaccination {
+                    id: r.get(0)?,
+                    code: r.get(1)?,
+                    label: r.get(2)?,
+                    dose: r.get(3)?,
+                    given_on: r.get(4)?,
+                    lot: r.get(5)?,
+                    site: r.get(6)?,
+                    operator: r.get(7)?,
+                    next_due: r.get(8)?,
+                    remark: r.get(9)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Record a dose. Returns the new line's id.
+    pub fn add_vaccination(&self, patient_id: i64, v: &Vaccination) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO vaccinations
+                     (patient_id, code, label, dose, given_on, lot, site, operator, next_due, remark)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                (
+                    patient_id,
+                    &v.code,
+                    &v.label,
+                    &v.dose,
+                    &v.given_on,
+                    &v.lot,
+                    &v.site,
+                    &v.operator,
+                    &v.next_due,
+                    &v.remark,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Correct a recorded dose. Compare-and-set on the label and the
+    /// date this PC displayed: a colleague who corrected the same line
+    /// meanwhile is never overwritten. `false` → reload and warn.
+    pub fn update_vaccination(
+        &self,
+        id: i64,
+        v: &Vaccination,
+        expected_label: &str,
+        expected_given_on: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE vaccinations SET code = ?1, label = ?2, dose = ?3, given_on = ?4,
+                     lot = ?5, site = ?6, operator = ?7, next_due = ?8, remark = ?9
+                 WHERE id = ?10 AND label = ?11 AND given_on = ?12",
+                (
+                    &v.code,
+                    &v.label,
+                    &v.dose,
+                    &v.given_on,
+                    &v.lot,
+                    &v.site,
+                    &v.operator,
+                    &v.next_due,
+                    &v.remark,
+                    id,
+                    expected_label,
+                    expected_given_on,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a dose, compare-and-set on the label the UI showed.
+    pub fn delete_vaccination(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM vaccinations WHERE id = ?1 AND label = ?2",
+                (id, expected_label),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// The destinations recorded on a patient's file, soonest first.
+    pub fn travels(&self, patient_id: i64) -> Result<Vec<Travel>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT country, depart_on FROM patient_travel WHERE patient_id = ?1
+                 ORDER BY (depart_on = '') ASC, depart_on ASC, country ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok(Travel {
+                    country: r.get(0)?,
+                    depart_on: r.get(1)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Add a destination, or move its departure date. Idempotent: the
+    /// same country twice is one line, which is what a second PC adding
+    /// it at the same moment should produce.
+    pub fn add_travel(
+        &self,
+        patient_id: i64,
+        country: &str,
+        depart_on: &str,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO patient_travel (patient_id, country, depart_on) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (patient_id, country) DO UPDATE SET depart_on = excluded.depart_on",
+                (patient_id, country, depart_on),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Drop a destination. `false` when another PC already removed it.
+    pub fn remove_travel(&self, patient_id: i64, country: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM patient_travel WHERE patient_id = ?1 AND country = ?2",
+                (patient_id, country),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// Remove a posology line, compare-and-set on its indication.
     pub fn delete_posologie(&self, id: i64, expected_indication: &str) -> Result<bool, String> {
         let changed = self
@@ -23806,6 +24030,26 @@ pub fn weekday_fr(iso: &str) -> Option<&'static str> {
     )
 }
 
+/// Age in completed years on `today`, both ISO `YYYY-MM-DD`.
+///
+/// String comparison does the birthday arithmetic: `MM-DD` orders the
+/// same way the calendar does, so no date library is needed and the
+/// function stays pure.
+pub fn age_on(birth_iso: &str, today_iso: &str) -> Option<u32> {
+    let (by, bmd) = (birth_iso.get(..4)?, birth_iso.get(5..10)?);
+    let (ty, tmd) = (today_iso.get(..4)?, today_iso.get(5..10)?);
+    let (by, ty): (u32, u32) = (by.parse().ok()?, ty.parse().ok()?);
+    if ty < by {
+        return None;
+    }
+    let years = ty - by;
+    Some(if tmd < bmd {
+        years.saturating_sub(1)
+    } else {
+        years
+    })
+}
+
 /// Format an ISO date back to `JJ/MM/AAAA` for display.
 pub fn format_french_date(iso: &str) -> String {
     let parts: Vec<&str> = iso.split('-').collect();
@@ -23882,6 +24126,90 @@ mod tests {
         assert_eq!(weekday_fr("2000-01-01"), Some("samedi"));
         assert_eq!(weekday_fr("1958-07-03"), Some("jeudi"));
         assert_eq!(weekday_fr("pas-une-date"), None);
+    }
+
+    #[test]
+    fn age_counts_completed_years_around_the_birthday() {
+        // The day before, the day of, and the day after a birthday.
+        assert_eq!(age_on("1958-07-03", "2026-07-02"), Some(67));
+        assert_eq!(age_on("1958-07-03", "2026-07-03"), Some(68));
+        assert_eq!(age_on("1958-07-03", "2026-07-04"), Some(68));
+        // 29 February: the age ticks over on 1 March in a common year.
+        assert_eq!(age_on("2000-02-29", "2026-02-28"), Some(25));
+        assert_eq!(age_on("2000-02-29", "2026-03-01"), Some(26));
+        assert_eq!(age_on("2026-01-01", "2026-08-26"), Some(0));
+        // A birth date after today, or a malformed one, has no age.
+        assert_eq!(age_on("2030-01-01", "2026-08-26"), None);
+        assert_eq!(age_on("", "2026-08-26"), None);
+    }
+
+    #[test]
+    fn the_carnet_de_vaccination_round_trips_and_is_compare_and_set() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-vacc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("vacc.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+
+        let dose = Vaccination {
+            code: "DTP".to_owned(),
+            label: "dTP — diphtérie, tétanos, poliomyélite".to_owned(),
+            dose: "Rappel".to_owned(),
+            given_on: "2026-08-26".to_owned(),
+            lot: "K1234".to_owned(),
+            site: "deltoïde G".to_owned(),
+            operator: "CL".to_owned(),
+            ..Default::default()
+        };
+        let id = db.add_vaccination(pid, &dose).unwrap();
+        // A second, older line: the carnet reads newest first.
+        db.add_vaccination(
+            pid,
+            &Vaccination {
+                code: "GRIPPE".to_owned(),
+                label: "Grippe saisonnière".to_owned(),
+                given_on: "2025-10-04".to_owned(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let lines = db.vaccinations(pid).unwrap();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].code, "DTP");
+        assert_eq!(lines[0].lot, "K1234");
+        assert_eq!(lines[1].code, "GRIPPE");
+
+        // Correcting the lot succeeds against the values displayed…
+        let mut fixed = lines[0].clone();
+        fixed.lot = "K9999".to_owned();
+        assert!(db
+            .update_vaccination(id, &fixed, &lines[0].label, &lines[0].given_on)
+            .unwrap());
+        // …and fails against a date another PC has already changed.
+        assert!(!db
+            .update_vaccination(id, &fixed, &lines[0].label, "1999-01-01")
+            .unwrap());
+
+        assert!(!db.delete_vaccination(id, "un autre libellé").unwrap());
+        assert!(db.delete_vaccination(id, &lines[0].label).unwrap());
+        assert_eq!(db.vaccinations(pid).unwrap().len(), 1);
+
+        // Destinations: adding the same country twice moves the date
+        // instead of duplicating the line.
+        db.add_travel(pid, "ML", "2026-11-02").unwrap();
+        db.add_travel(pid, "TH", "").unwrap();
+        db.add_travel(pid, "ML", "2026-12-01").unwrap();
+        let travels = db.travels(pid).unwrap();
+        assert_eq!(travels.len(), 2);
+        assert_eq!(travels[0].country, "ML");
+        assert_eq!(travels[0].depart_on, "2026-12-01");
+        // The undated destination sorts last.
+        assert_eq!(travels[1].country, "TH");
+        assert!(db.remove_travel(pid, "ML").unwrap());
+        assert!(!db.remove_travel(pid, "ML").unwrap());
+
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
@@ -25033,6 +25361,51 @@ mod tests {
                     "Rappeler le grossiste lundi.",
                 )
                 .unwrap();
+                // A carnet de vaccination with some history and a trip
+                // planned, so the demo shows the calendar and travel
+                // panels doing their work rather than three empty wells.
+                for (code, label, dose, given, lot, site) in [
+                    (
+                        "DTP",
+                        "dTP — diphtérie, tétanos, poliomyélite",
+                        "Rappel 45 ans",
+                        "2003-11-18",
+                        "",
+                        "",
+                    ),
+                    (
+                        "GRIPPE",
+                        "Grippe saisonnière",
+                        "",
+                        "2025-10-14",
+                        "FLU25-208",
+                        "Deltoïde G",
+                    ),
+                    (
+                        "HEPA",
+                        "Hépatite A",
+                        "1re dose",
+                        "2019-06-05",
+                        "",
+                        "Deltoïde D",
+                    ),
+                ] {
+                    db.add_vaccination(
+                        pid,
+                        &Vaccination {
+                            code: code.to_owned(),
+                            label: label.to_owned(),
+                            dose: dose.to_owned(),
+                            given_on: given.to_owned(),
+                            lot: lot.to_owned(),
+                            site: site.to_owned(),
+                            operator: "CL".to_owned(),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+                }
+                db.add_travel(pid, "ML", "").unwrap();
                 // A substitution protocol, as the team would write it.
                 let proto = db
                     .add_protocol("AOD indisponible", "Anticoagulants oraux directs")

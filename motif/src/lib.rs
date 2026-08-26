@@ -519,8 +519,11 @@ pub fn section(ui: &mut egui::Ui, label: &str) {
     ui.horizontal(|ui| {
         ui.add_space(4.0);
         ui.label(egui::RichText::new(label).strong().size(13.0));
+        // A heading long enough to fill the row leaves nothing for the
+        // rule — and egui panics on a negative allocation. The rule is
+        // the decoration here, so it is what gives way.
         let (rect, _) = ui.allocate_exact_size(
-            Vec2::new(ui.available_width() - 8.0, 2.0),
+            Vec2::new((ui.available_width() - 8.0).max(0.0), 2.0),
             egui::Sense::hover(),
         );
         let y = rect.center().y;

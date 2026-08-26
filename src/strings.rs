@@ -62,7 +62,11 @@ mod tests {
         // The embedded file must parse: every key resolves to a value,
         // not to itself.
         assert_eq!(tr("form_last_name"), "Nom");
-        assert!(tr("lock_subtitle").contains("mot de passe"));
+        // Wording is the pharmacy's to change — assert that the key
+        // resolves, not what it says. Asserting the copy made an
+        // ordinary edit to the lock screen look like a broken build.
+        assert_ne!(tr("lock_subtitle"), "lock_subtitle");
+        assert!(!tr("lock_subtitle").trim().is_empty());
         assert_eq!(trf("patient_born", "03/07/1958"), "Né(e) le 03/07/1958");
         assert_eq!(
             trn("status_summary", &[&5, &4, &58]),

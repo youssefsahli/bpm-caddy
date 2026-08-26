@@ -988,6 +988,80 @@ fn appointment_list_source(rdvs: &[Appointment], today_french: &str) -> String {
     )
 }
 
+/// The patient's carnet de vaccination on one sheet: the doses in the
+/// order they were given, with the lot and the site, so it can be
+/// filed, handed over or sent to the médecin traitant.
+pub fn open_vaccination_carnet(
+    patient: &Patient,
+    lines: &[crate::db::Vaccination],
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        vaccination_carnet_source(patient, lines),
+        "carnet_vaccination",
+    )
+}
+
+fn vaccination_carnet_source(patient: &Patient, lines: &[crate::db::Vaccination]) -> String {
+    let mut rows = String::new();
+    // Oldest first on paper: a carnet is read forwards, unlike the
+    // screen's table, where the dose just given belongs on top.
+    let mut ordered: Vec<&crate::db::Vaccination> = lines.iter().collect();
+    ordered.sort_by(|a, b| a.given_on.cmp(&b.given_on));
+    for line in ordered {
+        let remark = if line.next_due.is_empty() {
+            line.remark.clone()
+        } else if line.remark.is_empty() {
+            format!(
+                "Prochaine : {}",
+                crate::db::format_french_date(&line.next_due)
+            )
+        } else {
+            format!(
+                "Prochaine : {} — {}",
+                crate::db::format_french_date(&line.next_due),
+                line.remark
+            )
+        };
+        rows.push_str(&format!(
+            "{}, {}, {}, {}, {}, {}, {},\n",
+            typst_str(&if line.given_on.is_empty() {
+                "—".to_owned()
+            } else {
+                crate::db::format_french_date(&line.given_on)
+            }),
+            typst_str(&line.label),
+            typst_str(&line.dose),
+            typst_str(&line.lot),
+            typst_str(&line.site),
+            typst_str(&line.operator),
+            typst_str(&remark),
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("[], [], [], [], [], [], [],\n");
+    }
+    let head = typst_str(&patient.full_name());
+    let born = typst_str(&crate::db::format_french_date(&patient.birth_date));
+    format!(
+        r#"
+#set page(paper: "a4", flipped: true, margin: 1.4cm)
+#set text(size: 10pt, lang: "fr")
+#align(center)[#text(16pt, weight: "bold")[Carnet de vaccination]]
+#v(1mm)
+#align(center)[#text(12pt)[#{head}] — né(e) le #{born}]
+#v(5mm)
+#table(
+  columns: (auto, 1fr, auto, auto, auto, auto, 1fr),
+  inset: 6pt,
+  stroke: 0.6pt,
+  [*Date*], [*Vaccin*], [*Dose*], [*Lot*], [*Site*], [*Par*], [*Remarque*],
+{rows})
+#v(4mm)
+#text(8pt, style: "italic")[Document indicatif édité par BPM-Caddy : il ne remplace pas le carnet de vaccination officiel ni le dossier médical partagé.]
+"#
+    )
+}
+
 /// One line of the printable billing recap: what the memo asks the
 /// pharmacy to send — the act code, the step it pays, the situation to
 /// declare and the amount, patient by patient.
@@ -1441,5 +1515,68 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("rdv_exemple.pdf"), &pdf);
         }
+    }
+
+    #[test]
+    fn the_vaccination_carnet_compiles_and_reads_oldest_first() {
+        let patient = sample_patient();
+        let lines = vec![
+            crate::db::Vaccination {
+                id: 1,
+                code: "GRIPPE".to_owned(),
+                label: "Grippe saisonnière".to_owned(),
+                given_on: "2025-10-14".to_owned(),
+                lot: "FLU25-208".to_owned(),
+                site: "Deltoïde G".to_owned(),
+                operator: "CL".to_owned(),
+                ..Default::default()
+            },
+            crate::db::Vaccination {
+                id: 2,
+                code: "DTP".to_owned(),
+                // Markup in a hand-typed label must not restyle the
+                // sheet: every value goes in as a string literal.
+                label: "dTP #box[*injection*]".to_owned(),
+                dose: "Rappel 45 ans".to_owned(),
+                given_on: "2003-11-18".to_owned(),
+                next_due: "2026-11-18".to_owned(),
+                remark: "Carnet papier".to_owned(),
+                ..Default::default()
+            },
+        ];
+        let source = vaccination_carnet_source(&patient, &lines);
+        // Oldest first on paper, whatever order the screen showed.
+        let dtp = source.find("Rappel 45 ans").expect("le dTP doit figurer");
+        let flu = source.find("FLU25-208").expect("la grippe doit figurer");
+        assert!(
+            dtp < flu,
+            "le carnet imprimé se lit du plus ancien au plus récent"
+        );
+        assert!(source.contains("Prochaine : 18/11/2026 — Carnet papier"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le carnet de vaccination doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("carnet_vaccination_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_carnet_still_produces_a_sheet() {
+        let source = vaccination_carnet_source(&sample_patient(), &[]);
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("un carnet vide doit compiler");
+        assert!(typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir")
+            .starts_with(b"%PDF-"));
     }
 }

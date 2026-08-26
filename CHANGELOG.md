@@ -5,6 +5,47 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.48.0] - 2026-08-26
+
+### Added
+- **Carnet de vaccination, per patient.** The patient file is now a
+  notebook: « Entretiens » as before, and « Vaccinations » beside it.
+  The carnet records a dose the way it is written on paper — vaccine,
+  dose, date, lot, site, operator — correctable line by line, and
+  prints as an A4 carnet. Dates take the same shorthand as the rest of
+  the app; a dose read into the future is re-read as a past one, so
+  `230850` is 1950.
+- **« À faire » reads the carnet against the calendrier vaccinal.** dTP
+  by milestone (25, 45, 65, then every ten years — a booster at 25 is
+  not overdue at 36), the flu and COVID campaigns counted from the 1st
+  of September, zona from 65, VRS from 75, pneumocoque, ROR for the
+  1980 cohort and HPV in its window. Clicking a line loads that vaccine
+  into the form at the foot of the carnet.
+- **« Voyage » ticks the destinations off.** Countries recorded on the
+  file list what a traveller owes for them, each marked *au carnet* or
+  *manquant* against the doses already recorded.
+- **A vaccination map (`F7`).** The world as a cartogram — one square
+  per country, regions laid out roughly where they belong. Hover gives
+  the group, the yellow-fever status, the malaria risk and the vaccines
+  recommended; click pins the country, and one button records it as a
+  destination on the open patient's file. Seven lenses recolour the
+  map. Around 200 countries, with the year's BEH named as the
+  authority on every panel that shows the data.
+
+### Fixed
+- The drug monograph drew its scrollbar down the middle of the sheet.
+  The card's scroll area shrank to the reading measure of the document
+  inside it instead of keeping the card's width, so the bar landed
+  against the text rather than against the panel edge.
+- `motif::section` allocated `available_width - 8` for its rule, which
+  goes negative when a heading long enough fills the row — egui panics
+  on a negative allocation. The rule gives way instead. Found by
+  `scripts/smoke.sh` on the map's navigator.
+
+### Changed
+- `BPM_CADDY_START_VIEW` reaches `vaccins` and `vaccine_map`, and
+  `scripts/smoke.sh` covers both.
+
 ## [0.47.0] - 2026-08-26
 
 ### Added

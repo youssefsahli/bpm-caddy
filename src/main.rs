@@ -7,6 +7,7 @@ mod fuzzy;
 mod pdf;
 mod strings;
 mod tables;
+mod vaccines;
 
 use eframe::egui;
 
