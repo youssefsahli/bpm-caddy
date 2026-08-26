@@ -5,6 +5,40 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.53.0] - 2026-08-26
+
+### Added
+- **The molecules in a monograph are clickable.** Every name of another
+  card, wherever it appears in the prose — the ketoconazole that
+  contraindicates, the phenytoine that lowers the exposure, the
+  antidote — is a link to that card. Matching is accent- and
+  case-insensitive, takes a two-word DCI whole (« acide
+  acétylsalicylique »), ignores the card being read and words too short
+  to be a molecule. The links are cut once, when the card is opened,
+  not sixty times a second.
+- **A technical sheet beside the monograph**, collapsible. The DCI, the
+  class and the tags as chips that search the base for them; what is
+  left of the drug 24 h after the last dose, as a meter and a decay
+  curve; the narrow therapeutic margin first, in red; then status,
+  formes, demi-vie, AUC, élimination, rein, grossesse, IUP, antidote
+  and SMR as property and value. Folded, it gives its height back to
+  the recall list and the journal.
+- **PubChem and PubMed**, beside the ANSM lookup. PubChem answers what
+  the molecule is, PubMed what has been published on it — sorted newest
+  first, since that is the reason to ask. The query is the DCI when the
+  card has one. The application stays offline: it hands a URL to the
+  browser and nothing else.
+- **« Compléter le carnet… »** writes the whole vaccine schedule into
+  the carnet in one click — every dose the calendar says is owed, as
+  undated lines the counter then fills in, corrects or deletes. Nothing
+  is recorded as given, and a dose already planned is not planned
+  twice.
+
+### Changed
+- The last two standing mentions — under the carnet on screen and under
+  the vaccine map — join `[disclaimers]` as `vaccins`, empty by
+  default like the rest.
+
 ## [0.52.0] - 2026-08-26
 
 ### Added

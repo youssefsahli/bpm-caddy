@@ -105,6 +105,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # ordonnance_screen = "Vérifiez la molécule, la posologie et les contre-indications avant d'imprimer."
 # Pied du carnet de vaccination imprimé.
 # carnet = "Document indicatif : il ne remplace pas le carnet de vaccination officiel ni le dossier médical partagé."
+# Sous le carnet à l'écran et sous la carte vaccinale.
+# vaccins = "Données indicatives — l'autorité reste le calendrier vaccinal en vigueur et le BEH « Recommandations sanitaires pour les voyageurs » de l'année en cours."
 # Ligne sous les calculatrices (Cockcroft, dose/kg, décroissance).
 # calculator = "Modèle à un compartiment : la clinique et le RCP priment."
 
@@ -163,6 +165,8 @@ pub struct DisclaimersConfig {
     pub ordonnance_screen: String,
     /// At the foot of the printed carnet de vaccination.
     pub carnet: String,
+    /// Under the carnet on screen, and under the vaccine map.
+    pub vaccins: String,
     /// Under the dose calculators.
     pub calculator: String,
 }
