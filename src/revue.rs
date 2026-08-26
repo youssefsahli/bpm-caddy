@@ -417,6 +417,42 @@ mod tests {
         assert!(review(&quiet).is_empty());
     }
 
+    /// Same discipline as the biology rules: a rule whose every term
+    /// names a card the base does not carry can never fire.
+    #[test]
+    fn every_rule_can_fire_on_the_base_as_shipped() {
+        let matches = |words: &[&str]| {
+            words.iter().any(|needle| {
+                let needle = crate::fuzzy::sort_key(needle);
+                crate::db::STARTER_DRUGS
+                    .iter()
+                    .any(|(name, dci, class, _)| {
+                        crate::fuzzy::sort_key(&format!("{name} {dci} {class}")).contains(&needle)
+                    })
+            })
+        };
+        for rule in RULES {
+            match &rule.kind {
+                Kind::Combination(groups) => {
+                    for group in groups.iter() {
+                        assert!(
+                            matches(group),
+                            "règle « {} » : aucun médicament de la base ne correspond à {:?}",
+                            rule.title,
+                            group
+                        );
+                    }
+                }
+                Kind::Duplicate(words, _) => assert!(
+                    matches(words),
+                    "règle « {} » : aucun médicament de la base ne correspond à {:?}",
+                    rule.title,
+                    words
+                ),
+            }
+        }
+    }
+
     #[test]
     fn every_rule_says_what_to_do_about_it() {
         for rule in RULES {

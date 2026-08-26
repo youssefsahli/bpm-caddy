@@ -792,6 +792,31 @@ mod tests {
         }
     }
 
+    /// A rule that names a treatment no card carries can never fire.
+    /// The shipped base is what these rules were written against, so
+    /// each of them must match something in it.
+    #[test]
+    fn every_rule_can_fire_on_the_base_as_shipped() {
+        for rule in RULES {
+            if rule.needs.is_empty() {
+                continue;
+            }
+            let reachable = rule.needs.iter().any(|needle| {
+                let needle = crate::fuzzy::sort_key(needle);
+                crate::db::STARTER_DRUGS
+                    .iter()
+                    .any(|(name, dci, class, _)| {
+                        crate::fuzzy::sort_key(&format!("{name} {dci} {class}")).contains(&needle)
+                    })
+            });
+            assert!(
+                reachable,
+                "règle sur {} : aucun médicament de la base de départ ne correspond à {:?}",
+                rule.code, rule.needs
+            );
+        }
+    }
+
     #[test]
     fn the_search_finds_an_analyte_by_code_or_by_name() {
         assert_eq!(search("kalie")[0].code, "K");
