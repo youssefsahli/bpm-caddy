@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.60.0] - 2026-08-27
+
+### Added
+- **One search across the twenty-five reference tables.** At the counter
+  the question is « où est-ce que j'ai lu ça », and it was answered by
+  clicking through twenty-five tabs. Typing in the new field shows every
+  row that matches, wherever it lives, with the table it comes from —
+  and the team's own corrections are what is searched and shown, so
+  paper, screen and search never disagree. Clicking a table's name
+  opens it. Escape clears the search before closing the tables.
+- A test now refuses a UI string key that exists in the code and not in
+  `assets/strings.fr.toml` — a typo used to reach the counter as a raw
+  key on screen, visible only to whoever opened that view.
+
+### Fixed
+- The biology trend panel followed the analyte clicked on the *previous*
+  patient; it now resets with the file.
+- Typing over an analyte picked from the catalogue unpicks it: a result
+  could be stored with one analyte's name and another's code and unit.
+
 ## [0.59.0] - 2026-08-27
 
 ### Changed

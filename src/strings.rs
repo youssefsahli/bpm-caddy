@@ -57,6 +57,61 @@ pub fn trf(key: &'static str, value: impl std::fmt::Display) -> String {
 mod tests {
     use super::*;
 
+    /// Every key written as a literal in the sources must exist in the
+    /// embedded file. A typo used to reach the counter as a raw key on
+    /// screen — visible, but only to whoever happened to open that view.
+    #[test]
+    fn every_key_used_in_the_code_exists() {
+        // The sources are embedded rather than read from disk: the test
+        // must pass wherever the binary is run from.
+        const SOURCES: &[(&str, &str)] = &[
+            ("app.rs", include_str!("app.rs")),
+            ("pdf.rs", include_str!("pdf.rs")),
+            ("config.rs", include_str!("config.rs")),
+        ];
+        let mut missing: Vec<String> = Vec::new();
+        for (file, source) in SOURCES {
+            for call in ["tr(\"", "trf(\"", "trn(\""] {
+                let mut rest = *source;
+                while let Some(at) = rest.find(call) {
+                    // A call is only one when what precedes it is not a
+                    // letter: `str(\"` and `substr(\"` are not ours.
+                    let before = rest[..at].chars().next_back().unwrap_or(' ');
+                    rest = &rest[at + call.len()..];
+                    if before.is_alphanumeric() || before == '_' {
+                        continue;
+                    }
+                    let Some(end) = rest.find('"') else { break };
+                    let key = &rest[..end];
+                    // Keys are plain identifiers; anything else is an
+                    // interpolation or a false positive.
+                    if key.is_empty()
+                        || !key
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                    {
+                        continue;
+                    }
+                    if tr_lookup(key).is_none() {
+                        missing.push(format!("{file} : {key}"));
+                    }
+                }
+            }
+        }
+        missing.sort();
+        missing.dedup();
+        assert!(
+            missing.is_empty(),
+            "clés absentes de assets/strings.fr.toml :\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Look a key up without the `'static` requirement of [`tr`].
+    fn tr_lookup(key: &str) -> Option<&'static str> {
+        table().get(key).map(|s| s.as_str())
+    }
+
     #[test]
     fn embedded_strings_parse_and_resolve() {
         // The embedded file must parse: every key resolves to a value,
