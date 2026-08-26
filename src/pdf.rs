@@ -884,6 +884,107 @@ fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
     src
 }
 
+/// The team's handout: what the application is for, view by view, with
+/// the shortcuts at the foot. Printed rather than shown — it lives
+/// beside the counter PC, not behind a menu.
+pub fn open_guide(pharmacy: &PharmacyConfig) -> Result<PathBuf, String> {
+    compile_and_open(guide_source(pharmacy), "mode_emploi")
+}
+
+fn guide_source(pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm, columns: 2)\n\
+         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n\
+         #set par(justify: true)\n\
+         #let sec(t) = [#v(2.4mm) #text(10pt, weight: \"bold\")[#t] #v(0.8mm) #line(length: 100%, stroke: 0.5pt) #v(1mm)]\n\
+         #place(top + center, scope: \"parent\", float: true)[\n\
+           #text(15pt, weight: \"bold\")[BPM-Caddy — mode d'emploi]\n\
+           #v(1mm)\n",
+    );
+    src.push_str(&format!(
+        "  #text(9pt)[#{}]\n  #v(2mm)\n]\n",
+        typst_str(if pharmacy.name.trim().is_empty() {
+            "Un exemplaire près du poste, un dans le classeur."
+        } else {
+            pharmacy.name.trim()
+        })
+    ));
+    for (title, body) in GUIDE_SECTIONS {
+        src.push_str(&format!(
+            "#sec[#{}]\n#text(9pt)[#{}]\n",
+            typst_str(title),
+            typst_str(body)
+        ));
+    }
+    src
+}
+
+/// The guide itself: one paragraph per thing the counter does. Written
+/// for someone who has never opened the application, and short enough
+/// to be read standing up.
+const GUIDE_SECTIONS: &[(&str, &str)] = &[
+    (
+        "Ouvrir la base",
+        "L'application demande le mot de passe de la base au démarrage : la base est chiffrée, et rien n'en sort. « Verrouiller » (en haut à droite) ferme l'écran sans quitter, et l'inactivité le fait toute seule au bout du délai réglé dans les Options. Une sauvegarde du jour est écrite à chaque déverrouillage, dans le dossier « backups » à côté de la base.",
+    ),
+    (
+        "Trouver ou créer un patient",
+        "L'application s'ouvre sur la recherche. Tapez ce que vous avez : « jndp » trouve Jean Dupont, les accents et la casse n'ont pas d'importance. Aucun résultat ? Le même champ devient le formulaire de création. Entrée ouvre le résultat choisi, Échap referme.",
+    ),
+    (
+        "Le dossier patient",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et ce que le dossier voit tout seul : les interactions repérées entre ces traitements, et la revue d'ordonnance. En dessous, trois onglets : les entretiens, le carnet de vaccination, la biologie.",
+    ),
+    (
+        "Créer et suivre un entretien",
+        "Ctrl+N ouvre le choix rapide : un chiffre par acte, le thème si vous en voulez un. La ligne créée se lit de gauche à droite — le code de l'acte et son rang dans la séquence, le thème, le jour où il a été fait (modifiable) et les initiales de qui l'a fait, l'état, puis « » » pour avancer d'un état. Un acte avance jusqu'à « Facturé » ; « « » revient en arrière si vous avez cliqué trop vite.",
+    ),
+    (
+        "Ce que l'acte imprime",
+        "Sur chaque ligne : « PDF » sort la fiche d'entretien à remplir, « CR » le courrier au médecin traitant avec les traitements connus, « Adhésion » le bulletin officiel de l'Assurance Maladie pré-rempli — les cases, la date et les signatures restent à faire devant le patient. Un TROD positif ouvre en plus l'ordonnance protocolisée.",
+    ),
+    (
+        "Le bilan et le plan de prise",
+        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication avec ce que le dossier sait : traitements, interactions, revue d'ordonnance, biologie, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : à quoi sert chaque médicament, quand le prendre, et quoi faire en cas d'oubli.",
+    ),
+    (
+        "La biologie",
+        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Ce que ça change » la relit contre les traitements du dossier — une kaliémie à 5,4 n'a pas le même sens sous IEC. Cliquez le nom d'un analyte pour voir sa courbe.",
+    ),
+    (
+        "Le carnet de vaccination",
+        "Les doses reçues, avec le lot et le site. À côté, « À faire » compare le carnet au calendrier vaccinal et dit ce qui manque ; « Compléter le carnet… » inscrit d'un coup les doses dues, sans date, à corriger ligne par ligne. « Voyage » coche les vaccins recommandés pour les destinations notées au dossier.",
+    ),
+    (
+        "Le référentiel médicaments (F3)",
+        "812 fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et ce que l'équipe écrit n'est jamais réécrit par une mise à jour.",
+    ),
+    (
+        "Les tables, le codex, les protocoles",
+        "Depuis les médicaments : « Tables de conversion » (vingt-cinq références, une recherche unique les traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
+    ),
+    (
+        "L'agenda et le carnet de transmissions",
+        "F4 ouvre la semaine : un bloc par rendez-vous, la couleur dit l'acte, un clic ouvre le dossier. Le panneau du jour détaille les rendez-vous, les entrées qui ne sont pas des actes (formation, réunion, livraison, congé) et les notes du jour. F5 ouvre le carnet de transmissions : une page par jour, imprimable pour le classeur.",
+    ),
+    (
+        "Le tableau de bord",
+        "Ce qui a été facturé, ce qui attend, le taux horaire, la charge des 28 jours. « À revoir » est la liste d'appel : les dossiers dont la biologie ou l'ordonnance a quelque chose à dire. « Récapitulatif de facturation… » imprime les actes à facturer ; « Exporter CSV » écrit tout dans un fichier que le tableur ouvre sans rien demander.",
+    ),
+    (
+        "Régler l'application",
+        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées — vides par défaut, l'application n'ajoute aucun avertissement de son propre chef —, les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des documents imprimés, modifiables avec aperçu.",
+    ),
+    (
+        "Raccourcis",
+        "Ctrl+F chercher · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme ce qui est ouvert. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08 de l'année utile.",
+    ),
+    (
+        "En cas de doute",
+        "Rien n'est décidé par l'application : elle propose, elle rappelle, elle calcule. Les intervalles de biologie sont ceux de l'adulte et celui du laboratoire prime ; les tables portent leur date de relecture et leurs sources ; les préparations ne se font que sur ordonnance et selon les bonnes pratiques. La base est partagée entre les postes : si un message dit qu'une ligne a changé ailleurs, relisez-la avant de réécrire.",
+    ),
+];
+
 /// The patient's own copy: what they take, when, and what to do when a
 /// dose is missed. Written for the person, not for the file — the
 /// bilan stays at the officine, this goes home.
@@ -2219,6 +2320,36 @@ mod tests {
                 std::path::Path::new(&dir).join("ordonnance_exemple.pdf"),
                 &pdf,
             );
+        }
+    }
+
+    /// The handout must compile and say what it is about — an empty
+    /// section would be a paragraph nobody wrote.
+    #[test]
+    fn the_guide_prints_on_one_sheet() {
+        for (title, body) in GUIDE_SECTIONS {
+            assert!(!title.trim().is_empty());
+            assert!(
+                body.trim().len() > 80,
+                "section « {title} » trop courte pour dire quoi que ce soit"
+            );
+        }
+        let source = guide_source(&sample_pharmacy());
+        assert!(source.contains("mode d'emploi"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le mode d'emploi doit compiler");
+        // Two columns on A4: it is a handout, not a manual.
+        assert!(
+            document.pages.len() <= 2,
+            "le mode d'emploi tient sur une feuille recto-verso au plus, ici {} pages",
+            document.pages.len()
+        );
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("mode_emploi.pdf"), &pdf);
         }
     }
 

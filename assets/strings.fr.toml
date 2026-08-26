@@ -33,6 +33,8 @@ toolbar_keys_tooltip = "Raccourcis clavier (F12)"
 
 # --- Aide-mémoire des raccourcis ---
 keys_title = "Raccourcis clavier"
+keys_guide = "Mode d'emploi (PDF)…"
+keys_guide_tooltip = "Imprimer le mode d'emploi de l'application : ce que fait chaque vue, en deux colonnes sur une page — un exemplaire près du poste, un dans le classeur"
 keys_group_workspace = "Espace de travail"
 keys_group_views = "Vues"
 keys_group_work = "Travail courant"
