@@ -823,6 +823,16 @@ pub struct BioResult {
     pub remark: String,
 }
 
+/// One patient's biology and treatments, as the dashboard reads them.
+pub struct BioWatchRow {
+    pub patient_id: i64,
+    pub patient_name: String,
+    /// (code, value, ISO date) — every reading, oldest first.
+    pub readings: Vec<(String, f64, String)>,
+    /// Brand, DCI, class and tags of every treatment on the file.
+    pub treatments: Vec<String>,
+}
+
 /// One preparation of the codex: a magistral or officinal formula, as
 /// the counter has to make it.
 ///
@@ -19389,6 +19399,76 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Bexsero", "Vaccination contre le méningocoque B", "Schéma du calendrier vaccinal en vigueur, variable selon l'âge à la première dose", "Fièvre fréquente chez le nourrisson : le paracétamol donné à titre préventif au moment de la vaccination puis dans les heures qui suivent est recommandé pour ce vaccin."),
     ("Comirnaty", "Vaccination contre la Covid-19", "Dose de la campagne en cours, par voie intramusculaire dans le deltoïde", "Coadministration possible avec le vaccin grippal, sur deux sites d'injection distincts."),
     ("Comirnaty", "Après l'injection", "Surveillance de 15 minutes sur place", "Comme pour toute vaccination à l'officine : garder la personne assise et surveillée, et disposer du nécessaire de prise en charge d'une réaction anaphylactique."),
+    // --- Antibiotiques : la durée est le traitement, pas la dose ---
+    ("Zeclar", "Infections ORL et bronchiques de l'adulte", "500 mg deux fois par jour pendant 5 à 10 jours selon l'indication", "Inhibiteur puissant du CYP3A4 : vérifier statine, colchicine, AOD et antiarythmiques avant de délivrer."),
+    ("Zeclar", "Éradication d'Helicobacter pylori", "500 mg deux fois par jour pendant 10 à 14 jours, avec l'IPP et l'autre antibiotique du schéma", "La trithérapie se prend en entier : un antibiotique arrêté seul fait échouer l'éradication et sélectionne la résistance."),
+    ("Rulid", "Infections ORL, bronchiques et cutanées", "150 mg deux fois par jour, 15 minutes avant les repas, pendant 5 à 10 jours", "À prendre à jeun : un repas réduit nettement l'absorption. Moins d'interactions que la clarithromycine, mais le QT reste à surveiller."),
+    ("Mynocine", "Acné inflammatoire", "100 mg par jour en une prise, pour 3 mois au maximum", "Ne pas s'allonger dans l'heure qui suit. Photosensibilisation, et pigmentation cutanée possible en traitement prolongé ; jamais avant 8 ans."),
+    ("Tétralysal", "Acné inflammatoire moyenne à sévère", "300 mg par jour en une prise, pendant 3 mois", "À distance de deux heures du calcium, du fer et des pansements gastriques. Les cyclines ne diminuent pas l'efficacité d'un estroprogestatif, contrairement à une idée reçue."),
+    ("Tavanic", "Pneumonie communautaire, sinusite, pyélonéphrite", "500 mg par jour, en une ou deux prises selon la sévérité", "Toute douleur tendineuse, au talon en particulier, impose l'arrêt : le risque est majoré après 60 ans et sous corticoïde."),
+    ("Izilox", "Infections respiratoires basses sans alternative", "400 mg par jour en une prise, pendant 5 à 10 jours", "Réservée aux situations sans alternative : allongement du QT et hépatotoxicité. À distance des cations divalents."),
+    ("Noroxine", "Infections urinaires de l'adulte", "400 mg deux fois par jour pendant 3 à 10 jours selon l'indication", "À distance des laitages, du fer et des antiacides ; boire abondamment pendant tout le traitement."),
+    ("Tibéral", "Trichomonase, giardiase, amibiase", "2 g en dose unique dans la trichomonase ; 1,5 g par jour le soir pendant 3 jours dans l'amibiase intestinale", "Traiter le partenaire dans la trichomonase, et pas d'alcool pendant le traitement ni les jours qui suivent."),
+    ("Dexambutol", "Tuberculose, phase initiale", "20 mg/kg par jour en une prise à jeun, pendant 2 mois", "Acuité visuelle et vision des couleurs contrôlées avant puis pendant : toute baisse impose l'arrêt immédiat."),
+    ("Pirilène", "Tuberculose, phase initiale", "25 mg/kg par jour en une prise à jeun, pendant 2 mois", "Hyperuricémie quasi constante et sans gravité ; c'est l'antituberculeux le plus hépatotoxique, transaminases à surveiller."),
+    // --- Antifongique et antiviraux : l'absorption fait le traitement ---
+    ("Sporanox", "Onychomycose", "200 mg deux fois par jour, une semaine par mois : deux mois pour les ongles des mains, trois pour ceux des pieds", "Juste après un repas complet : l'absorption dépend de l'acidité gastrique, un IPP l'annule. Inhibiteur puissant du CYP3A4."),
+    ("Tamiflu", "Grippe, traitement curatif", "75 mg deux fois par jour pendant 5 jours, débutés dans les 48 heures suivant les premiers signes", "Passé 48 heures, le bénéfice s'efface : c'est la précocité qui fait tout, pas la dose."),
+    ("Tamiflu", "Grippe, prophylaxie après contact", "75 mg par jour pendant 10 jours", "Réservée aux sujets à risque et à leur entourage exposé, dans les 48 heures suivant le contact."),
+    // --- Corticoïdes : l'équivalence se lit avant de délivrer ---
+    ("Célestène", "Poussée inflammatoire ou allergique sévère", "0,05 à 0,1 mg/kg par jour en une prise le matin, en cure courte", "1 mg de bétaméthasone vaut 6,5 mg de prednisone : c'est le corticoïde le plus puissant du comptoir, et les gouttes se comptent."),
+    ("Médrol", "Poussée inflammatoire ou maladie auto-immune", "4 à 48 mg par jour en une prise le matin selon l'indication", "4 mg de méthylprednisolone valent 5 mg de prednisone. Après quelques semaines, l'arrêt se fait par décroissance, jamais d'un coup."),
+    ("Dermoval", "Psoriasis, lichen, eczéma très inflammatoire des zones épaisses", "Une application par jour, deux à quatre semaines au maximum, sur une surface limitée", "Classe très forte : jamais sur le visage, les plis ni le siège du nourrisson. La quantité se mesure en unités phalangettes."),
+    ("Locapred", "Eczéma et dermatoses du visage et des plis", "Une application par jour jusqu'à amélioration, sur une durée courte", "Activité modérée : c'est le dermocorticoïde du visage et de l'enfant. Au-delà de deux semaines, un avis s'impose."),
+    ("Qvar", "Asthme persistant, traitement de fond", "100 à 400 µg par jour en deux prises selon le palier", "Particules extrafines : la dose n'est pas comparable à celle de la béclométasone classique. Rincer la bouche et cracher après chaque prise."),
+    ("Maxidex", "Inflammation oculaire, sur prescription ophtalmologique", "1 goutte 4 à 6 fois par jour, puis décroissance progressive", "Jamais sans avis : un herpès cornéen s'aggrave sous corticoïde, et l'usage prolongé fait monter la tension oculaire."),
+    // --- IPP : la différence est dans l'interaction, pas dans l'effet ---
+    ("Pariet", "Reflux gastro-œsophagien et œsophagite", "20 mg par jour le matin pendant 4 à 8 semaines, puis 10 mg en entretien", "Prise indifférente par rapport au repas, et métabolisme peu dépendant du CYP2C19 : c'est l'IPP le plus simple sous clopidogrel."),
+    ("Ogast", "Reflux, ulcère, prévention des lésions sous AINS", "15 à 30 mg par jour le matin, avant le petit-déjeuner", "La forme orodispersible se délite sans eau : utile en cas de troubles de la déglutition, sans jamais être croquée."),
+    ("Eupantol", "Reflux, ulcère, prévention des lésions sous AINS", "20 à 40 mg par jour le matin, environ une heure avant le repas", "Interaction la plus faible avec le clopidogrel : à préférer chez le patient coronarien."),
+    ("Famotidine", "Reflux et ulcère, alternative aux IPP", "20 à 40 mg par jour, de préférence le soir", "Moins puissante qu'un IPP mais presque sans interaction : une option chez le patient déjà très polymédiqué."),
+    // --- Cardiologie ---
+    ("Efient", "Syndrome coronarien aigu traité par angioplastie", "Dose de charge de 60 mg, puis 10 mg par jour — 5 mg si le poids est inférieur à 60 kg ou l'âge supérieur à 75 ans", "Contre-indiqué après un AVC ou un AIT. Ne jamais interrompre avant un geste sans avis cardiologique : le risque de thrombose de stent est majeur."),
+    ("Aspégic", "Prévention cardiovasculaire secondaire", "75 à 100 mg par jour en une prise", "À dose antiagrégante, l'effet dure toute la vie de la plaquette : l'arrêt avant un geste se décide avec le prescripteur, jamais au comptoir."),
+    ("Atacand", "Hypertension artérielle et insuffisance cardiaque", "8 mg par jour en une prise, jusqu'à 32 mg selon la réponse ; 4 mg à l'instauration chez le sujet âgé", "Créatinine et kaliémie contrôlées une à deux semaines après chaque augmentation."),
+    ("Micardis", "Hypertension artérielle de l'adulte", "40 mg par jour en une prise, portés à 80 mg si nécessaire", "Demi-vie longue : l'heure de prise importe peu, la régularité beaucoup."),
+    ("Tareg", "Hypertension, post-infarctus, insuffisance cardiaque", "80 à 320 mg par jour en une prise, selon l'indication", "Comme tous les sartans : contre-indiqué dès le début de la grossesse, à dire à toute femme en âge de procréer."),
+    ("Trinitrine", "Crise d'angor", "1 pulvérisation ou 1 comprimé sous la langue, assis, renouvelable une fois après 5 minutes", "Deux prises sans effet : appeler le 15. Se relever brutalement après la prise expose au malaise."),
+    ("Risordan", "Prophylaxie de l'angor", "5 à 20 mg deux à trois fois par jour selon la forme", "Association aux inhibiteurs de la PDE5 formellement contre-indiquée : la chute tensionnelle peut être fatale."),
+    ("Monicor", "Prophylaxie de l'angor", "20 à 60 mg par jour en une prise le matin, forme à libération prolongée", "Une fenêtre sans nitré dans les 24 heures est indispensable, sinon l'effet s'épuise."),
+    ("Catapressan", "Hypertension artérielle", "0,15 mg deux à trois fois par jour", "L'arrêt brutal donne une poussée hypertensive de rebond : la décroissance se décide avec le prescripteur."),
+    ("Physiotens", "Hypertension artérielle", "0,2 mg par jour le matin, jusqu'à 0,6 mg en deux prises", "Sécheresse buccale et somnolence à l'instauration ; dose à revoir si le DFG passe sous 60 mL/min."),
+    ("Alpress", "Hypertension artérielle", "1 mg deux à trois fois par jour à l'instauration, augmenté progressivement", "Effet de première dose : la première prise se fait le soir au coucher, à cause de l'hypotension."),
+    ("Urorec", "Hypertrophie bénigne de la prostate", "8 mg par jour au cours du même repas ; 4 mg si le DFG est entre 30 et 50 mL/min", "Éjaculation rétrograde très fréquente et sans gravité : le dire évite l'arrêt. Prévenir l'ophtalmologiste avant une chirurgie de la cataracte."),
+    // --- Diabète, thyroïde, os ---
+    ("Galvus", "Diabète de type 2", "50 mg deux fois par jour, ou une fois par jour en association à un sulfamide", "Transaminases contrôlées avant le traitement, puis régulièrement la première année."),
+    ("Onglyza", "Diabète de type 2", "5 mg par jour en une prise ; 2,5 mg si le DFG est inférieur à 45 mL/min", "Pas d'hypoglycémie en monothérapie : quand elle survient, c'est le sulfamide associé qu'il faut réduire."),
+    ("Humalog", "Diabète, bolus du repas", "Injection dans les 15 minutes qui précèdent le repas, dose selon le schéma", "Action en 15 minutes : injecter puis attendre une demi-heure est la cause classique d'hypoglycémie."),
+    ("Apidra", "Diabète, bolus du repas", "Injection juste avant le repas, ou immédiatement après si la prise alimentaire est incertaine", "Chez la personne âgée qui ne finit pas son assiette, l'injection après le repas est plus sûre."),
+    ("Euthyrox", "Hypothyroïdie", "1,6 µg/kg par jour chez l'adulte, moins chez le sujet âgé ou coronarien où l'on titre lentement", "Le matin à jeun, 30 minutes avant le petit-déjeuner ; TSH contrôlée 6 à 8 semaines après tout changement, y compris de marque."),
+    ("Cynomel", "Hypothyroïdie, situations particulières", "25 µg par jour, fractionnés", "T3 d'action rapide et brève, réservée à des indications précises : ce n'est pas un substitut de routine de la lévothyroxine."),
+    ("Actonel", "Ostéoporose post-ménopausique", "35 mg une fois par semaine, ou 5 mg par jour selon la forme", "À jeun, avec un grand verre d'eau du robinet, en restant debout ou assis droit 30 minutes sans rien prendre d'autre."),
+    ("Bonviva", "Ostéoporose post-ménopausique", "150 mg une fois par mois, le même jour chaque mois", "Même règle, une heure debout pour la forme mensuelle. Un oubli se rattrape le lendemain matin, jamais deux comprimés le même jour."),
+    // --- Digestif ---
+    ("Débridat", "Troubles fonctionnels intestinaux", "100 à 200 mg trois fois par jour, avant les repas", "Traitement symptomatique : il ne dispense pas de chercher la cause quand les troubles durent ou changent."),
+    ("Buscopan", "Douleurs spasmodiques digestives et urinaires", "10 à 20 mg jusqu'à trois fois par jour", "Anticholinergique : contre-indiqué en cas de glaucome à angle fermé et d'adénome prostatique avec rétention."),
+    ("Dulcolax", "Constipation occasionnelle", "5 à 10 mg le soir, effet en 6 à 12 heures", "Laxatif stimulant, pour un usage court : ni écrasé, ni pris avec du lait ou un antiacide, qui dissolvent l'enrobage trop tôt."),
+    ("Normacol", "Constipation chronique", "1 sachet une à deux fois par jour, avec un grand verre d'eau", "Sans eau suffisante, le lest aggrave la constipation ; à prendre à distance de deux heures des autres médicaments."),
+    ("Spagulax", "Constipation chronique et régulation du transit", "1 sachet une à deux fois par jour, délayé et bu immédiatement", "Se prend en dehors du coucher et jamais à sec : le mucilage gonfle."),
+    ("Lansoyl", "Constipation occasionnelle", "1 cuillère à soupe par jour", "Jamais chez la personne alitée ou qui avale mal — risque de pneumopathie d'inhalation — et à distance des vitamines liposolubles."),
+    // --- Neurologie et psychiatrie ---
+    ("Exelon", "Maladie d'Alzheimer légère à modérée", "Patch 4,6 mg/24 h pendant 4 semaines, puis 9,5 mg/24 h", "Un seul patch à la fois : retirer l'ancien avant d'en poser un nouveau, et changer de site chaque jour."),
+    ("Reminyl", "Maladie d'Alzheimer légère à modérée", "8 mg par jour pendant 4 semaines, puis 16 mg, éventuellement 24 mg", "Au cours d'un repas ; les troubles digestifs de l'instauration s'atténuent, ils ne justifient pas d'arrêter."),
+    ("Trivastal", "Maladie de Parkinson", "150 à 250 mg par jour en trois prises, au cours des repas", "Endormissement brutal et troubles du contrôle des impulsions : à redemander à chaque renouvellement, le patient n'en parle pas spontanément."),
+    ("Parlodel", "Hyperprolactinémie", "1,25 mg le soir au coucher, augmentés progressivement", "N'est plus utilisé pour inhiber la lactation : le rapport bénéfice/risque y est défavorable."),
+    ("Séropram", "Épisode dépressif et troubles anxieux", "20 mg par jour en une prise, sans dépasser 20 mg après 65 ans", "Dose plafonnée pour l'allongement du QT : c'est l'ISRS où la dose maximale compte le plus."),
+    ("Floxyfral", "Trouble obsessionnel compulsif et épisode dépressif", "50 à 100 mg le soir, augmentés progressivement", "Inhibiteur puissant du CYP1A2 : théophylline, tizanidine et caféine voient leurs concentrations grimper."),
+    ("Tofranil", "Dépression, énurésie de l'enfant", "25 mg par jour, augmentés progressivement selon la tolérance", "Effets anticholinergiques marqués et surdosage dangereux : ne pas délivrer de grande quantité à un patient à risque suicidaire."),
+    ("Quitaxon", "Dépression avec anxiété ou insomnie", "25 à 100 mg par jour, principalement le soir", "Sédatif : la prise du soir est ce qui le rend supportable, et ce qui fait tolérer la titration."),
+    // --- Toux : cinq jours, pas davantage ---
+    ("Toplexil", "Toux sèche de l'adulte", "1 cuillère-mesure 2 à 3 fois par jour, de préférence le soir", "Antihistaminique sédatif : somnolence, contre-indiqué avant 2 ans et chez l'insuffisant respiratoire."),
+    ("Néo-Codion", "Toux sèche de l'adulte", "1 comprimé jusqu'à 4 fois par jour, sans dépasser 5 jours", "Interdit avant 12 ans. Constipation et somnolence ; une toux grasse ne se bloque pas."),
+    ("Tussidane", "Toux sèche de l'adulte", "1 dose 3 à 4 fois par jour, sans dépasser 5 jours", "À éviter avec un ISRS ou un IMAO (syndrome sérotoninergique) ; mésusage connu chez l'adolescent."),
     // GENERATED-POSOLOGIES-END
 ];
 
@@ -24140,6 +24220,84 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Every patient who has biology on file, with their readings and
+    /// the words that describe their treatments — the input the reading
+    /// rules need to answer the morning question: who do I call back?
+    ///
+    /// Two queries and a group-by rather than one per patient: a
+    /// dashboard that opens in a tenth of a second is the whole point
+    /// of it being on the dashboard.
+    pub fn bio_watchlist(&self) -> Result<Vec<BioWatchRow>, String> {
+        let mut rows: std::collections::HashMap<i64, BioWatchRow> =
+            std::collections::HashMap::new();
+        {
+            let mut stmt = self
+                .conn
+                .prepare(
+                    "SELECT b.patient_id, p.first_name || ' ' || p.last_name,
+                            b.code, b.value, b.taken_on
+                     FROM biology b JOIN patients p ON p.id = b.patient_id
+                     WHERE b.code <> ''
+                     ORDER BY b.taken_on",
+                )
+                .map_err(|e| e.to_string())?;
+            let found = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, f64>(3)?,
+                        r.get::<_, String>(4)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in found {
+                let (id, name, code, value, date) = row.map_err(|e| e.to_string())?;
+                let entry = rows.entry(id).or_insert_with(|| BioWatchRow {
+                    patient_id: id,
+                    patient_name: name,
+                    readings: Vec::new(),
+                    treatments: Vec::new(),
+                });
+                entry.readings.push((code, value, date));
+            }
+        }
+        {
+            let mut stmt = self
+                .conn
+                .prepare(
+                    "SELECT pd.patient_id, d.name, d.dci, d.class, d.tags
+                     FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id",
+                )
+                .map_err(|e| e.to_string())?;
+            let found = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, String>(4)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in found {
+                let (id, name, dci, class, tags) = row.map_err(|e| e.to_string())?;
+                if let Some(entry) = rows.get_mut(&id) {
+                    entry.treatments.extend(
+                        [name, dci, class, tags]
+                            .into_iter()
+                            .filter(|t| !t.trim().is_empty()),
+                    );
+                }
+            }
+        }
+        let mut out: Vec<BioWatchRow> = rows.into_values().collect();
+        out.sort_by(|a, b| a.patient_name.cmp(&b.patient_name));
+        Ok(out)
+    }
+
     /// A patient's biology, most recent first; undated lines last.
     pub fn bio_results(&self, patient_id: i64) -> Result<Vec<BioResult>, String> {
         let mut stmt = self
@@ -26233,6 +26391,70 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The dashboard's call list reads the whole base in two queries,
+    /// and only ever speaks about files that have biology on them.
+    #[test]
+    fn the_watchlist_carries_each_patient_s_readings_and_treatments() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("watch.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        // An empty base has nothing to say.
+        assert!(db.bio_watchlist().unwrap().is_empty());
+        db.seed_drugs_if_empty().unwrap();
+        let watched = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let quiet = db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
+        let coversyl = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == "Coversyl")
+            .expect("le Coversyl est dans la base de départ");
+        db.add_patient_drug(watched, coversyl.id).unwrap();
+        db.add_patient_drug(quiet, coversyl.id).unwrap();
+        for (value, day) in [(4.6, "2026-05-14"), (5.4, "2026-08-20")] {
+            db.add_bio_result(
+                watched,
+                &BioResult {
+                    id: 0,
+                    code: "K".to_owned(),
+                    label: "Kaliémie".to_owned(),
+                    value,
+                    unit: "mmol/L".to_owned(),
+                    taken_on: day.to_owned(),
+                    remark: String::new(),
+                },
+            )
+            .unwrap();
+        }
+        // A line written by hand carries no code and answers nothing:
+        // it must not create a row of its own.
+        db.add_bio_result(
+            watched,
+            &BioResult {
+                id: 0,
+                label: "Sérologie".to_owned(),
+                value: 1.0,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let rows = db.bio_watchlist().unwrap();
+        // Only the patient who has biology; the other one is not
+        // mentioned at all.
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].patient_id, watched);
+        assert_eq!(rows[0].readings.len(), 2);
+        // Oldest first, so the reading rules keep the latest.
+        assert_eq!(rows[0].readings[0].2, "2026-05-14");
+        // The treatments come as words: brand, DCI, class and tags.
+        assert!(rows[0].treatments.iter().any(|t| t == "Coversyl"));
+        assert!(rows[0].treatments.iter().any(|t| t.contains("IEC")));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// The two counter answers a monograph was missing: what to do
     /// when a dose is missed, and what makes the patient consult.
     #[test]
@@ -27207,7 +27429,10 @@ mod tests {
                     ..seen.clone()
                 };
                 db.update_patient(&full, &seen).unwrap();
-                for name in ["Eliquis", "Tahor"] {
+                // Four treatments, and among them an IEC: the demo's
+                // kaliémie at 5,4 then reads as what it is — a call to
+                // make, not a number in a table.
+                for name in ["Eliquis", "Tahor", "Coversyl", "Lasilix"] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();
                         if name == "Eliquis" {
