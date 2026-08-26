@@ -5,6 +5,15 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.59.0] - 2026-08-27
+
+### Changed
+- **The dashboard's call list reads both** — the biology against each
+  patient's treatments *and* each ordonnance against itself. « À
+  revoir » now surfaces a file whose ordonnance carries a triade
+  néfaste even when no biology has ever been recorded on it, and the
+  line on hover is whichever of the two speaks loudest.
+
 ## [0.58.0] - 2026-08-27
 
 ### Added

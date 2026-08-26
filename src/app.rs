@@ -2398,23 +2398,25 @@ fn config_operator_label(config: &Config, initials: &str) -> Option<String> {
     config.pharmacy.operator(initials).map(|o| o.label())
 }
 
-/// One line of the dashboard's biology watchlist: a patient, and what
-/// their latest results say about their own treatments.
+/// One line of the dashboard's call list: a patient, and what their
+/// biology and their ordonnance say about their own treatments.
 struct BioWatch {
     patient_id: i64,
     name: String,
     alerts: usize,
     warns: usize,
-    /// The loudest finding, in one line — the reason to call.
+    /// The loudest of the two readings, in one line — the reason to
+    /// open the file.
     first: String,
 }
 
-/// Read the whole base's biology against each patient's treatments, and
-/// keep the files that have something to say. Sorted loudest first: the
-/// panel is a call list, not a table.
+/// Read the whole base — the biology against each patient's treatments,
+/// and each ordonnance against itself — and keep the files that have
+/// something to say. Sorted loudest first: the panel is a call list,
+/// not a table.
 fn bio_watch(db: &Db) -> Vec<BioWatch> {
     let mut out: Vec<BioWatch> = Vec::new();
-    for row in db.bio_watchlist().unwrap_or_default() {
+    for row in db.watchlist().unwrap_or_default() {
         let readings: Vec<crate::biology::Reading> = row
             .readings
             .iter()
@@ -2425,23 +2427,51 @@ fn bio_watch(db: &Db) -> Vec<BioWatch> {
             })
             .collect();
         let findings = crate::biology::read(&readings, &row.treatments);
-        let alerts = findings
+        let terms: Vec<crate::revue::Treatment> = row
+            .drugs
             .iter()
-            .filter(|f| f.severity == crate::biology::Severity::Alert)
-            .count();
-        let warns = findings
-            .iter()
-            .filter(|f| f.severity == crate::biology::Severity::Warn)
-            .count();
+            .map(|(name, dci, class, tags)| crate::revue::Treatment {
+                name,
+                dci,
+                class,
+                tags,
+            })
+            .collect();
+        let points = crate::revue::review(&terms);
+        let count = |severity: crate::biology::Severity| {
+            findings.iter().filter(|f| f.severity == severity).count()
+                + points.iter().filter(|p| p.severity == severity).count()
+        };
+        let alerts = count(crate::biology::Severity::Alert);
+        let warns = count(crate::biology::Severity::Warn);
         if alerts == 0 && warns == 0 {
             continue;
         }
+        // Whichever of the two speaks loudest is the reason to open the
+        // file: an alert on the ordonnance outranks a warning on the
+        // biology, and the other way round.
+        let point = points
+            .iter()
+            .find(|p| p.severity == crate::biology::Severity::Alert)
+            .or_else(|| points.first());
+        let finding = findings
+            .iter()
+            .find(|f| f.severity == crate::biology::Severity::Alert)
+            .or_else(|| findings.first());
+        let first = match (finding, point) {
+            (Some(f), Some(p)) if p.severity >= f.severity => {
+                format!("{} — {}", p.title, p.detail)
+            }
+            (Some(f), _) => f.text.clone(),
+            (None, Some(p)) => format!("{} — {}", p.title, p.detail),
+            (None, None) => String::new(),
+        };
         out.push(BioWatch {
             patient_id: row.patient_id,
             name: row.patient_name,
             alerts,
             warns,
-            first: findings.first().map(|f| f.text.clone()).unwrap_or_default(),
+            first,
         });
     }
     out.sort_by(|a, b| {

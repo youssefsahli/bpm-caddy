@@ -824,13 +824,17 @@ pub struct BioResult {
 }
 
 /// One patient's biology and treatments, as the dashboard reads them.
-pub struct BioWatchRow {
+pub struct WatchRow {
     pub patient_id: i64,
     pub patient_name: String,
     /// (code, value, ISO date) — every reading, oldest first.
     pub readings: Vec<(String, f64, String)>,
-    /// Brand, DCI, class and tags of every treatment on the file.
+    /// Brand, DCI, class and tags of every treatment, as loose words
+    /// for the biology rules.
     pub treatments: Vec<String>,
+    /// The same treatments kept whole, for the ordonnance rules:
+    /// (nom, DCI, classe, étiquettes).
+    pub drugs: Vec<(String, String, String, String)>,
 }
 
 /// One preparation of the codex: a magistral or officinal formula, as
@@ -24227,9 +24231,8 @@ impl Db {
     /// Two queries and a group-by rather than one per patient: a
     /// dashboard that opens in a tenth of a second is the whole point
     /// of it being on the dashboard.
-    pub fn bio_watchlist(&self) -> Result<Vec<BioWatchRow>, String> {
-        let mut rows: std::collections::HashMap<i64, BioWatchRow> =
-            std::collections::HashMap::new();
+    pub fn watchlist(&self) -> Result<Vec<WatchRow>, String> {
+        let mut rows: std::collections::HashMap<i64, WatchRow> = std::collections::HashMap::new();
         {
             let mut stmt = self
                 .conn
@@ -24254,11 +24257,12 @@ impl Db {
                 .map_err(|e| e.to_string())?;
             for row in found {
                 let (id, name, code, value, date) = row.map_err(|e| e.to_string())?;
-                let entry = rows.entry(id).or_insert_with(|| BioWatchRow {
+                let entry = rows.entry(id).or_insert_with(|| WatchRow {
                     patient_id: id,
                     patient_name: name,
                     readings: Vec::new(),
                     treatments: Vec::new(),
+                    drugs: Vec::new(),
                 });
                 entry.readings.push((code, value, date));
             }
@@ -24267,8 +24271,11 @@ impl Db {
             let mut stmt = self
                 .conn
                 .prepare(
-                    "SELECT pd.patient_id, d.name, d.dci, d.class, d.tags
-                     FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id",
+                    "SELECT pd.patient_id, p.first_name || ' ' || p.last_name,
+                            d.name, d.dci, d.class, d.tags
+                     FROM patient_drugs pd
+                     JOIN drugs d ON d.id = pd.drug_id
+                     JOIN patients p ON p.id = pd.patient_id",
                 )
                 .map_err(|e| e.to_string())?;
             let found = stmt
@@ -24279,21 +24286,32 @@ impl Db {
                         r.get::<_, String>(2)?,
                         r.get::<_, String>(3)?,
                         r.get::<_, String>(4)?,
+                        r.get::<_, String>(5)?,
                     ))
                 })
                 .map_err(|e| e.to_string())?;
             for row in found {
-                let (id, name, dci, class, tags) = row.map_err(|e| e.to_string())?;
-                if let Some(entry) = rows.get_mut(&id) {
-                    entry.treatments.extend(
-                        [name, dci, class, tags]
-                            .into_iter()
-                            .filter(|t| !t.trim().is_empty()),
-                    );
-                }
+                let (id, patient, name, dci, class, tags) = row.map_err(|e| e.to_string())?;
+                // A file with treatments and no biology still has an
+                // ordonnance to read: it belongs on the list too.
+                let entry = rows.entry(id).or_insert_with(|| WatchRow {
+                    patient_id: id,
+                    patient_name: patient,
+                    readings: Vec::new(),
+                    treatments: Vec::new(),
+                    drugs: Vec::new(),
+                });
+                entry
+                    .drugs
+                    .push((name.clone(), dci.clone(), class.clone(), tags.clone()));
+                entry.treatments.extend(
+                    [name, dci, class, tags]
+                        .into_iter()
+                        .filter(|t| !t.trim().is_empty()),
+                );
             }
         }
-        let mut out: Vec<BioWatchRow> = rows.into_values().collect();
+        let mut out: Vec<WatchRow> = rows.into_values().collect();
         out.sort_by(|a, b| a.patient_name.cmp(&b.patient_name));
         Ok(out)
     }
@@ -26401,7 +26419,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
         // An empty base has nothing to say.
-        assert!(db.bio_watchlist().unwrap().is_empty());
+        assert!(db.watchlist().unwrap().is_empty());
         db.seed_drugs_if_empty().unwrap();
         let watched = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         let quiet = db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
@@ -26440,11 +26458,21 @@ mod tests {
             },
         )
         .unwrap();
-        let rows = db.bio_watchlist().unwrap();
-        // Only the patient who has biology; the other one is not
-        // mentioned at all.
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].patient_id, watched);
+        let rows = db.watchlist().unwrap();
+        // Both patients have a treatment, so both are on the list; only
+        // one of them has biology.
+        assert_eq!(rows.len(), 2);
+        let row = rows
+            .iter()
+            .find(|r| r.patient_id == watched)
+            .expect("le patient suivi est sur la liste");
+        assert_eq!(
+            rows.iter()
+                .find(|r| r.patient_id == quiet)
+                .map(|r| r.readings.len()),
+            Some(0)
+        );
+        let rows = vec![row];
         assert_eq!(rows[0].readings.len(), 2);
         // Oldest first, so the reading rules keep the latest.
         assert_eq!(rows[0].readings[0].2, "2026-05-14");
