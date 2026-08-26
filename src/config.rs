@@ -942,6 +942,43 @@ mod tests {
         );
     }
 
+    /// The Options dialog writes the whole configuration back with
+    /// `toml::to_string_pretty`. An array of tables in the middle of a
+    /// struct is exactly what that serializer refuses when the order is
+    /// wrong — so the round trip is tested, not assumed.
+    #[test]
+    fn the_options_dialog_can_write_the_whole_configuration_back() {
+        let mut cfg = Config::default();
+        cfg.pharmacy.name = "Pharmacie du Centre".to_owned();
+        cfg.pharmacy.am_number = "3400123".to_owned();
+        cfg.pharmacy.operators = vec![
+            Operator {
+                initials: "CL".to_owned(),
+                name: "Claire Leroy".to_owned(),
+                role: "Pharmacien titulaire".to_owned(),
+            },
+            Operator {
+                initials: "YS".to_owned(),
+                name: "Yanis Saïd".to_owned(),
+                role: String::new(),
+            },
+        ];
+        cfg.disclaimers.ordonnance_footer = "Reconsulter si aggravation.".to_owned();
+        cfg.disclaimers.plan = "Ce plan ne remplace pas votre ordonnance.".to_owned();
+        cfg.ordonnance.adjuvant_tag = "probiotique".to_owned();
+        let text = toml::to_string_pretty(&cfg).expect("la configuration doit se sérialiser");
+        let back: Config = toml::from_str(&text).expect("et se relire");
+        assert_eq!(back.pharmacy.operators, cfg.pharmacy.operators);
+        assert_eq!(back.pharmacy.am_number, "3400123");
+        assert_eq!(
+            back.disclaimers.ordonnance_footer,
+            "Reconsulter si aggravation."
+        );
+        assert_eq!(back.disclaimers.plan, cfg.disclaimers.plan);
+        assert_eq!(back.billing.bpm, cfg.billing.bpm);
+        assert_eq!(back.rules.cycle_months, cfg.rules.cycle_months);
+    }
+
     #[test]
     fn the_application_says_nothing_of_its_own_accord() {
         // Every mention is empty until the officine writes it: the

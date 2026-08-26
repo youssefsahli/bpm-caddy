@@ -185,6 +185,14 @@ CREATE TABLE IF NOT EXISTS patient_travel (
 
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
+    // The five columns of the very first version are listed here too:
+    // they cost nothing when they already exist, and they turn a « no
+    // such column » on a hand-made base into a no-op.
+    "ALTER TABLE drugs ADD COLUMN dosage TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN ddi TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN iup TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN antidote TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE drugs ADD COLUMN notes TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN missed_dose TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE drugs ADD COLUMN red_flags TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS biology (
@@ -26922,6 +26930,77 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A base written by an older version must open, and come back with
+    /// every column the current code selects. The migrations are what
+    /// make that true, and they are only true if they are run.
+    #[test]
+    fn a_base_from_an_older_version_still_opens() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-old-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("old.db");
+        let _ = std::fs::remove_file(&path);
+        // The schema as it was several versions ago: no operator on an
+        // act, no missed_dose on a card, no biology, no codex.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.pragma_update(None, "key", "secret").unwrap();
+            conn.execute_batch(
+                "CREATE TABLE patients (
+                     id INTEGER PRIMARY KEY, last_name TEXT NOT NULL,
+                     first_name TEXT NOT NULL, birth_date TEXT NOT NULL
+                 );
+                 CREATE TABLE interviews (
+                     id INTEGER PRIMARY KEY,
+                     patient_id INTEGER NOT NULL REFERENCES patients(id),
+                     kind TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'IDENTIFIED',
+                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                 );
+                 -- The drug card as the first version wrote it: no
+                 -- DCI, no class, no monograph.
+                 CREATE TABLE drugs (
+                     id INTEGER PRIMARY KEY, name TEXT NOT NULL,
+                     dosage TEXT NOT NULL DEFAULT '', ddi TEXT NOT NULL DEFAULT '',
+                     iup TEXT NOT NULL DEFAULT '', antidote TEXT NOT NULL DEFAULT '',
+                     notes TEXT NOT NULL DEFAULT ''
+                 );
+                 INSERT INTO patients (last_name, first_name, birth_date)
+                 VALUES ('Dupont', 'Jean', '1958-07-03');
+                 INSERT INTO interviews (patient_id, kind) VALUES (1, 'BPM');
+                 INSERT INTO drugs (name, dosage) VALUES ('Eliquis', '5 mg x2/j');",
+            )
+            .unwrap();
+        }
+        // Opening it runs the migrations; everything the code reads must
+        // now be there.
+        let db = Db::open(&path, "secret").unwrap();
+        let patients = db.patients().unwrap();
+        assert_eq!(patients.len(), 1);
+        let acts = db.interviews_for(patients[0].id).unwrap();
+        assert_eq!(acts.len(), 1);
+        assert_eq!(acts[0].operator, "");
+        let drugs = db.drugs().unwrap();
+        assert_eq!(drugs.len(), 1);
+        // The columns of the first version are still there…
+        assert_eq!(drugs[0].dosage, "5 mg x2/j");
+        // …and every one added since has been migrated in.
+        assert_eq!(drugs[0].missed_dose, "");
+        assert_eq!(drugs[0].class, "");
+        assert_eq!(drugs[0].indications, "");
+        // The tables that did not exist at all are created, and usable.
+        assert!(db.bio_results(patients[0].id).unwrap().is_empty());
+        assert!(db.preparations().unwrap().is_empty());
+        assert!(db.watchlist().unwrap().is_empty());
+        // And the content that seeds onto an existing base does seed.
+        assert!(db.seed_preparations().unwrap() > 0);
+        assert!(db.seed_protocols().unwrap() > 0);
+        // The conduite rules match on the class, which this old card
+        // does not have: nothing to fill, and nothing broken either.
+        assert_eq!(db.seed_conduite().unwrap(), 0);
+
+        let _ = std::fs::remove_file(&path);
     }
 
     /// The protocols ship with content: the tool was a beautiful empty
