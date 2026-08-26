@@ -13637,6 +13637,27 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         forms: "",
     },
     StarterDetail {
+        name: "Millepertuis",
+        indications: "Traitement symptomatique des manifestations dépressives légères et transitoires chez l'adulte, en automédication ou sur conseil. Il n'a pas sa place dans un épisode dépressif caractérisé, où il retarde une prise en charge efficace.",
+        mechanism: "Extrait normalisé d'Hypericum perforatum. Son activité antidépressive est attribuée à l'hyperforine et à l'hypericine, avec une inhibition faible et non sélective de la recapture de la sérotonine, de la noradrénaline et de la dopamine. L'hyperforine est surtout un activateur du récepteur nucléaire PXR, ce qui induit fortement le CYP3A4 et la glycoprotéine P : c'est de là que viennent presque toutes ses interactions.",
+        dosage: "Extrait sec titré, 300 mg deux à trois fois par jour selon la présentation, pendant au moins deux à quatre semaines avant d'en juger l'effet. La délivrance impose de relire l'ordonnance complète du patient : c'est le premier réflexe, avant même le conseil.",
+        contraindications: "Association contre-indiquée aux immunosuppresseurs (ciclosporine, tacrolimus), aux antirétroviraux, aux anticancéreux oraux, aux anticoagulants oraux directs et aux antivitamines K, aux contraceptifs hormonaux, à l'ivabradine et à plusieurs antiarythmiques. Association déconseillée aux antidépresseurs sérotoninergiques. Grossesse et allaitement en l'absence de données suffisantes. Antécédent de trouble bipolaire, en raison du risque de virage maniaque.",
+        ddi: "Inducteur enzymatique puissant du CYP3A4 et de la P-gp : il abaisse les concentrations des contraceptifs oraux — grossesses non désirées rapportées —, des immunosuppresseurs — rejets de greffe rapportés —, des antirétroviraux, des anticancéreux oraux, des AOD, des statines, de la digoxine, du vérapamil et de la théophylline. Avec les AVK, l'INR chute puis remonte brutalement à l'arrêt. Avec les ISRS, les IRSNa, les triptans et le tramadol, le risque est inverse : syndrome sérotoninergique. L'induction s'installe en une à deux semaines et met autant de temps à disparaître après l'arrêt, ce qui expose à un surdosage différé des traitements réajustés pendant la prise.",
+        adverse: "Troubles digestifs, sécheresse buccale, fatigue ou au contraire agitation, céphalées. Photosensibilisation, surtout chez les peaux claires et aux doses élevées. Virage maniaque chez le patient bipolaire. Syndrome sérotoninergique en association.",
+        monitoring: "Aucun contrôle biologique du millepertuis lui-même : la surveillance porte sur les traitements associés. INR rapproché sous AVK à l'introduction comme à l'arrêt, contrôle des concentrations d'immunosuppresseur, efficacité contraceptive à sécuriser par une méthode non hormonale pendant la prise et les deux semaines qui suivent. Réévaluation de l'humeur à quatre semaines : l'absence d'amélioration impose un avis médical.",
+        iup: "Ce n'est pas parce qu'il est en vente libre qu'il est sans conséquence : le millepertuis est le produit de phytothérapie qui interagit avec le plus de médicaments. Il faut donner à la pharmacie la liste complète des traitements en cours avant d'en prendre, y compris la pilule. Une contraception hormonale n'est plus fiable sous millepertuis : une méthode complémentaire est nécessaire pendant toute la prise et les deux semaines suivantes. Il ne s'arrête pas non plus n'importe comment : l'arrêt fait remonter les concentrations des médicaments dont il abaissait l'effet, ce qui peut provoquer un surdosage — l'arrêt se signale au médecin. Enfin, il expose au coup de soleil : éviter l'exposition prolongée et les UV. Si la tristesse dure, s'accompagne d'insomnie, de perte d'appétit ou d'idées noires, c'est une consultation qu'il faut, pas une plante.",
+        half_life: "Hyperforine environ 9 heures, hypericine 24 à 48 heures ; l'induction enzymatique, elle, met une à deux semaines à s'installer et autant à se dissiper",
+        elimination: "Métabolisme hépatique et élimination biliaire et rénale des métabolites ; l'induction concerne le CYP3A4, le CYP2C9, le CYP1A2 et la glycoprotéine P.",
+        renal: "Pas d'adaptation documentée ; la prudence tient aux traitements associés, non au produit lui-même.",
+        pregnancy: "Déconseillé pendant la grossesse et l'allaitement faute de données suffisantes, et parce que l'induction enzymatique modifie l'exposition aux traitements associés.",
+        sources: "ANSM — thésaurus des interactions médicamenteuses\nEMA/HMPC — monographie Hypericum perforatum L., herba\nCentre de référence sur les agents tératogènes (CRAT)",
+        status: "",
+        smr: "",
+        tags: "phytothérapie, inducteur enzymatique, interactions",
+        toxicity: "Marge de sécurité large pour le produit lui-même ; le danger est l'interaction, avec des échecs thérapeutiques rapportés (grossesses sous contraceptif oral, rejets de greffe, thromboses sous anticoagulant).",
+        forms: "",
+    },
+    StarterDetail {
         name: "Nicorette",
         indications: "Traitement de la dépendance tabagique, pour soulager les symptômes de sevrage et réduire l'envie de fumer, chez le fumeur motivé à l'arrêt ; également utilisable dans une stratégie de réduction de la consommation avant arrêt et dans les situations d'abstinence temporaire imposée.",
         mechanism: "Substitut nicotinique agissant comme agoniste des récepteurs nicotiniques de l'acétylcholine, notamment alpha-4-bêta-2 cérébraux. L'apport de nicotine sans les produits de combustion supprime les symptômes de manque et réduit le craving, avec une cinétique d'absorption beaucoup plus lente et un pic moins marqué que la cigarette, ce qui explique l'absence d'effet de renforcement comparable et le faible potentiel de dépendance des formes orales.",
@@ -19378,6 +19399,9 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Lipanthyl", "Association à une statine", "Sans modification de la posologie, mais sous surveillance", "Le risque musculaire est majoré : toute douleur musculaire diffuse, inexpliquée ou accompagnée d'urines foncées impose un arrêt et un dosage des CPK le jour même."),
     ("Lipur", "Hypertriglycéridémie sévère", "600 mg deux fois par jour, 30 minutes avant le repas du matin et celui du soir", "Association aux statines déconseillée, contrairement aux autres fibrates : le gemfibrozil est celui qui expose le plus à la rhabdomyolyse."),
     ("Béfizal", "Hypertriglycéridémie et dyslipidémie mixte", "400 mg par jour en une prise pour la forme à libération prolongée, au cours d'un repas", "Potentialise les antivitamines K : contrôle rapproché de l'INR à l'instauration et à l'arrêt."),
+    // --- La plante qui interagit le plus au comptoir ---
+    ("Millepertuis", "Manifestations dépressives légères et transitoires", "Extrait sec titré, 300 mg deux à trois fois par jour, à juger après deux à quatre semaines", "Avant de délivrer, relire l'ordonnance entière : contraception, anticoagulant, immunosuppresseur, anticancéreux et antirétroviral perdent leur efficacité sous millepertuis."),
+    ("Millepertuis", "Arrêt du traitement", "Décroissance ou arrêt, en le signalant au médecin", "L'induction met une à deux semaines à disparaître : les traitements réajustés pendant la prise se retrouvent surdosés après l'arrêt."),
     // --- Substituts nicotiniques : le sous-dosage fait échouer le sevrage ---
     ("Nicorette", "Sevrage tabagique, forme orale", "1 gomme ou pastille dès l'envie de fumer, environ toutes les 1 à 2 heures, sans dépasser le nombre d'unités indiqué pour le dosage utilisé", "Technique du mâcher-parquer pour les gommes : mâcher lentement jusqu'au picotement, puis parquer la gomme contre la joue et reprendre. Mâchée en continu, la nicotine est avalée et donne des nausées."),
     ("Nicorette", "Association patch et forme orale", "Le patch couvre le besoin de fond, la forme orale couvre les envies ponctuelles", "L'association des deux formes est recommandée et double les chances de succès : ce n'est pas un surdosage."),
@@ -22740,6 +22764,14 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "Zometa",
         "acide zolédronique",
         "biphosphonate injectable",
+        "",
+    ),
+    // Phytothérapie du comptoir : la fiche existe parce que
+    // l'interaction existe.
+    (
+        "Millepertuis",
+        "hypericum perforatum",
+        "phytothérapie — inducteur enzymatique",
         "",
     ),
     ("Nicopatch", "nicotine", "substitut nicotinique — patch", ""),

@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.64.0] - 2026-08-27
+
+### Added
+- **Eight analytes more** — ASAT, phosphatases alcalines, bilirubine
+  totale, VGM, vitamine B12, folates, lipasémie, phosphorémie — and
+  **six reading rules** with them: la macrocytose sous metformine, la
+  B12 basse sous metformine ou IPP au long cours, la cholestase sous
+  amoxicilline-acide clavulanique, la lipase à trois fois la normale
+  sous incrétinomimétique, le chélateur du phosphore qui ne sert à rien
+  pris à distance du repas, les folates bas sous méthotrexate.
+  Thirty-four analytes, twenty-seven rules.
+- **Six ordonnance rules more**: deux sérotoninergiques (le tramadol et
+  les triptans comptent), bêtabloquant avec vérapamil ou diltiazem, la
+  colchicine exposée aux macrolides et aux azolés, la digoxine majorée
+  par l'amiodarone, AINS avec corticoïde, et le millepertuis inducteur.
+  Twenty-eight rules.
+- **Une fiche Millepertuis**, monographie complète et deux posologies :
+  la plante qui interagit le plus au comptoir méritait une fiche, ne
+  serait-ce que pour que la revue d'ordonnance puisse la voir. 813
+  fiches.
+
 ## [0.63.0] - 2026-08-27
 
 ### Added
