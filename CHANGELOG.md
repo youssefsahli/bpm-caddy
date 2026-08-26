@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.65.0] - 2026-08-27
+
+### Added
+- **Eight preparations more in the codex** — l'alcool à 70 % dilué de
+  l'alcool à 90 % (où le « qsp » absorbe la contraction de volume), la
+  chlorhexidine aqueuse à 0,05 %, la pommade à l'oxyde de zinc, le talc
+  mentholé (contre-indiqué avant 30 mois), la crème à l'urée à 30 %,
+  la pommade de Whitfield, le gel hydroalcoolique de la formule OMS
+  n° 1 (et les 72 heures d'attente avant usage), et le lavage nasal
+  hypertonique à 3 %. Vingt préparations.
+
+### Fixed
+- At 1024x700 with both docks open, the biology tab gave the whole
+  work area to « Ce que ça change » and left the results panel showing
+  its title: the band is capped like the carnet's, and the two share
+  what there is.
+- The patient band did not count the interactions line and the revue
+  chips in its height, so the eligibility note dropped off the bottom
+  on a small screen. Both are measured now, and both wrap.
+
 ## [0.64.0] - 2026-08-27
 
 ### Added
