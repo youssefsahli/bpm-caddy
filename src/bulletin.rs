@@ -395,6 +395,7 @@ mod tests {
             phone: "04 67 00 00 00".to_owned(),
             pharmacist: "Dr Claire Leroy".to_owned(),
             am_number: "3400123".to_owned(),
+            operators: Vec::new(),
         }
     }
 

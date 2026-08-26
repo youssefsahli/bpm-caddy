@@ -97,7 +97,10 @@ ordonnance offers are the ones the « Angine » and « Cystite » reference
 tables list, and `every_molecule_appears_in_its_reference_table` fails
 if they drift. Change a protocol in one place and change it in the
 other. Nothing there is auto-selected and every posology is editable —
-the app proposes, the pharmacist decides, and the box says so.
+the app proposes, the pharmacist decides. It says so only if the
+officine asks it to: every printed or displayed mention lives in
+`[disclaimers]` (config.toml, Options › Mentions) and is empty by
+default. Never hardcode a new caveat — add a key there.
 
 The ordonnance's adjuvants are **not** a list in the code: they are the
 drug cards tagged `[ordonnance] adjuvant_tag` (default `probiotique`),

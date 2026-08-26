@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.52.0] - 2026-08-26
+
+### Added
+- **The team, by name.** `[pharmacy] operators` lists who works at the
+  counter — initials, nom, qualité — and the Options › Officine page
+  edits that list. The initials field beside the notes picks from it,
+  and shows who is behind the letters.
+- **An act records who did it.** A new « par » field beside the date,
+  filled at creation with the initials at the counter and correctable
+  after. That person signs the fiche, the courrier au médecin traitant
+  and the ordonnance — not whoever happens to print them, three days
+  later. The initials travel to the CSV export as their own column.
+- **The date of an act is the day it was held.** The « Créé le » column
+  was the day it was typed in; it is now « Fait le », editable, in the
+  same compact form as every other date field (`230826`, `2308`). It is
+  what places an act in its cycle, and the cycle picks the fee — an
+  entretien entered the morning after was billing on the wrong day.
+
+### Changed
+- **No disclaimer is written by the application any more.** The five
+  mentions it used to print or show — the ordonnance's header and
+  footer, the box above the ordonnance on screen, the foot of the
+  printed carnet de vaccination, the line under the calculators — are
+  now `[disclaimers]` in `config.toml`, empty by default, editable in
+  Options › Mentions. An empty one prints no line at all; the previous
+  wording is in the config template, commented out, for an officine
+  that wants it back.
+- **A TROD has no theme and no duration.** It has a result. Both
+  columns show a dash on the two TROD acts, and the CSV no longer
+  carries a thematic that meant nothing on a test.
+
 ## [0.51.0] - 2026-08-26
 
 ### Added
