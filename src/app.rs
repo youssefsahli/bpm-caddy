@@ -10248,9 +10248,13 @@ impl App {
     /// right. The sheet is what gets printed as a fiche de fabrication.
     fn codex_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
         let body = motif::visible_rect(ui);
-        let head = motif::split_rows(body, &[64.0, 0.0], 6.0);
+        // At a counter width, with both docks out, the title and the
+        // four controls do not fit on one line: they wrap, and the band
+        // is given the room for the second row.
+        let narrow = body.width() < 940.0;
+        let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
         motif::inside(ui, head[0], |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("codex_title"));
                 if motif::button(ui, tr("patient_back")).clicked() {
                     session.show_codex = false;
@@ -10290,10 +10294,13 @@ impl App {
                     }
                 }
             });
-            ui.label(
-                egui::RichText::new(tr("codex_subtitle"))
-                    .size(11.5)
-                    .color(motif::TEXT_DIM),
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("codex_subtitle"))
+                        .size(11.5)
+                        .color(motif::TEXT_DIM),
+                )
+                .wrap(),
             );
         });
         let list_w = (head[1].width() * 0.26).clamp(220.0, 340.0);
