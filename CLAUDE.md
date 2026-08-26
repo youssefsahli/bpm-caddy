@@ -7,7 +7,8 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
 
 - root `bpm-caddy` — the app: `src/app.rs` (UI/state), `src/db.rs`
   (SQLCipher storage), `src/fuzzy.rs` (search), `src/pdf.rs` (Typst),
-  `src/config.rs` (config.toml)
+  `src/config.rs` (config.toml), `src/vaccines.rs` (calendrier vaccinal
+  rules and the traveller's country table — static, pure, tested)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -59,7 +60,7 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|calc|
-  carnet|keys|act_picker`
+  carnet|vaccins|vaccine_map|keys|act_picker`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the

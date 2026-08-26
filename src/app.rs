@@ -9,6 +9,7 @@ use crate::db::{
 };
 use crate::fuzzy;
 use crate::strings::{tr, trf, trn};
+use crate::vaccines;
 
 enum State {
     Locked {
@@ -838,6 +839,8 @@ enum MainView {
     Agenda,
     /// The end-of-day transmission logbook (F5).
     Transmissions,
+    /// The vaccination world map and its country groups (F7).
+    VaccineMap,
 }
 
 /// One item open in the workspace notebook.
@@ -853,6 +856,8 @@ enum WorkTab {
     Search,
     Agenda,
     Carnet,
+    /// The vaccination map.
+    Map,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -864,6 +869,58 @@ impl WorkTab {
     /// fixtures of the workspace; only opened files can be dismissed.
     fn closable(&self) -> bool {
         matches!(self, WorkTab::Patient(_) | WorkTab::Drug(_))
+    }
+}
+
+/// Which half of an open patient file is on screen.
+///
+/// The acts and the carnet both want the whole work area — ten columns
+/// of buttons on one side, a dose table on the other — so they take
+/// turns behind a notebook strip rather than share a split.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum PatientTab {
+    #[default]
+    Acts,
+    Vaccins,
+}
+
+/// What the world map colours its tiles by.
+///
+/// One map, several readings: the group a country belongs to answers
+/// "where am I", and each risk answers one counter question outright.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+enum MapLens {
+    #[default]
+    Group,
+    YellowFever,
+    Malaria,
+    Meningo,
+    HepatitisA,
+    Rabies,
+    JapaneseEnceph,
+}
+
+impl MapLens {
+    const ALL: [MapLens; 7] = [
+        Self::Group,
+        Self::YellowFever,
+        Self::Malaria,
+        Self::Meningo,
+        Self::HepatitisA,
+        Self::Rabies,
+        Self::JapaneseEnceph,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Group => tr("map_lens_group"),
+            Self::YellowFever => tr("map_lens_yf"),
+            Self::Malaria => tr("map_lens_palu"),
+            Self::Meningo => tr("map_lens_meningo"),
+            Self::HepatitisA => tr("map_lens_hepa"),
+            Self::Rabies => tr("map_lens_rage"),
+            Self::JapaneseEnceph => tr("map_lens_ej"),
+        }
     }
 }
 
@@ -900,6 +957,28 @@ struct Session {
     patient_treats: Vec<Drug>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
+    /// Which half of the patient file is on screen: the acts, or the
+    /// carnet de vaccination.
+    patient_tab: PatientTab,
+    /// The viewed patient's carnet, newest dose first, and the
+    /// destinations recorded on the file.
+    vaccinations: Vec<db::Vaccination>,
+    travels: Vec<db::Travel>,
+    /// The line being written at the foot of the carnet: the dose, plus
+    /// the date typed in French (parsed on save, like every other date
+    /// field) and the catalogue entry it was picked from.
+    vacc_new: db::Vaccination,
+    vacc_new_date: String,
+    vacc_new_pick: usize,
+    /// The line being corrected, with the label and date the row was
+    /// displayed with — the compare-and-set baseline.
+    vacc_edit: Option<db::Vaccination>,
+    vacc_edit_date: String,
+    vacc_edit_base: (String, String),
+    /// Two-step delete confirmation for one carnet line.
+    vacc_confirm: Option<i64>,
+    /// In-progress country search of the travel panel.
+    travel_query: String,
     /// The open drug card's dated notes, newest first.
     drug_notes: Vec<Note>,
     /// Transmission logbook: the shown day, its entries, and the days
@@ -1015,6 +1094,11 @@ struct Session {
     calc_half_life: f64,
     calc_interval: f64,
     table_selected: usize,
+    /// The vaccination map: what colours the tiles, the country the
+    /// detail panel is showing, and the search box above it.
+    map_lens: MapLens,
+    map_country: Option<&'static str>,
+    map_query: String,
     /// The workspace notebook: what the operator has opened, in the
     /// order they opened it. The *active* tab is never stored — it is
     /// derived from the live view each frame (see [`Session::current_tab`]),
@@ -1069,6 +1153,17 @@ impl Session {
             rule_block: None,
             patient_treats: Vec::new(),
             patient_notes: Vec::new(),
+            patient_tab: PatientTab::default(),
+            vaccinations: Vec::new(),
+            travels: Vec::new(),
+            vacc_new: db::Vaccination::default(),
+            vacc_new_date: String::new(),
+            vacc_new_pick: 0,
+            vacc_edit: None,
+            vacc_edit_date: String::new(),
+            vacc_edit_base: (String::new(), String::new()),
+            vacc_confirm: None,
+            travel_query: String::new(),
             drug_notes: Vec::new(),
             trans_day: String::new(),
             trans_notes: Vec::new(),
@@ -1141,6 +1236,9 @@ impl Session {
             calc_half_life: 12.0,
             calc_interval: 12.0,
             table_selected: 0,
+            map_lens: MapLens::default(),
+            map_country: None,
+            map_query: String::new(),
             // The five standing views are always in the strip, in a
             // fixed order, so their position never moves under the
             // pointer; opened files are appended after them.
@@ -1150,6 +1248,7 @@ impl Session {
                 WorkTab::Drugs,
                 WorkTab::Agenda,
                 WorkTab::Carnet,
+                WorkTab::Map,
             ],
             error: None,
         };
@@ -1166,6 +1265,7 @@ impl Session {
             MainView::Dashboard => WorkTab::Dashboard,
             MainView::Agenda => WorkTab::Agenda,
             MainView::Transmissions => WorkTab::Carnet,
+            MainView::VaccineMap => WorkTab::Map,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -1212,6 +1312,9 @@ impl Session {
                 self.view = MainView::Transmissions;
                 self.trans_day = String::new();
                 self.load_transmissions();
+            }
+            WorkTab::Map => {
+                self.view = MainView::VaccineMap;
             }
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
@@ -1317,6 +1420,7 @@ impl Session {
             WorkTab::Search => tr("tab_search").to_owned(),
             WorkTab::Agenda => tr("tab_agenda").to_owned(),
             WorkTab::Carnet => tr("tab_carnet").to_owned(),
+            WorkTab::Map => tr("tab_map").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -1498,7 +1602,19 @@ impl Session {
         self.confirm_delete = false;
         self.confirm_delete_itv = None;
         self.rule_block = None;
+        self.load_carnet(patient.id);
         self.viewing = Some(patient);
+    }
+
+    /// (Re)read the patient's carnet and destinations. Called on open
+    /// and after every write, so a compare-and-set refusal can put the
+    /// colleague's version back on screen.
+    fn load_carnet(&mut self, patient_id: i64) {
+        self.vaccinations = self.db.vaccinations(patient_id).unwrap_or_default();
+        self.travels = self.db.travels(patient_id).unwrap_or_default();
+        self.vacc_edit = None;
+        self.vacc_edit_date.clear();
+        self.vacc_confirm = None;
     }
 
     fn reload_interviews(&mut self, patient_id: i64) {
@@ -2141,6 +2257,25 @@ impl App {
                             session.load_transmissions();
                             session.view = MainView::Transmissions;
                         }
+                        Ok("vaccine_map") => {
+                            session.map_country = Some("ML");
+                            session.view = MainView::VaccineMap;
+                        }
+                        // The carnet de vaccination is the patient
+                        // file's second tab: open a patient, then turn
+                        // to it.
+                        Ok("vaccins") => {
+                            let pick = session
+                                .patients
+                                .iter()
+                                .find(|p| !p.email.is_empty())
+                                .or(session.patients.first())
+                                .cloned();
+                            if let Some(p) = pick {
+                                session.open_patient(p);
+                            }
+                            session.patient_tab = PatientTab::Vaccins;
+                        }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
                                 session.drugs = list;
@@ -2393,6 +2528,7 @@ impl App {
                         MainView::Drugs => Self::nav_drugs(ui, session, focus),
                         MainView::Agenda => Self::nav_agenda(ui, session),
                         MainView::Transmissions => Self::nav_carnet(ui, session),
+                        MainView::VaccineMap => Self::nav_map(ui, session),
                         MainView::Dashboard | MainView::Search => {
                             Self::nav_patients(ui, session, focus)
                         }
@@ -2748,6 +2884,59 @@ impl App {
         }
     }
 
+    /// Map: the country list, grouped, with the search box above it.
+    /// Picking a name here and clicking a tile do the same thing.
+    fn nav_map(ui: &mut egui::Ui, session: &mut Session) {
+        let resp = Self::nav_search(ui, tr("map_search_hint"), &mut session.map_query);
+        let _ = resp;
+        let query = session.map_query.clone();
+        let selected = session.map_country;
+        let mut pick: Option<&'static str> = None;
+        let matches = vaccines::search(&query);
+        if !query.trim().is_empty() {
+            ui.label(
+                egui::RichText::new(trf("nav_count", matches.len()))
+                    .size(11.0)
+                    .color(motif::TEXT_DIM),
+            );
+            ui.add_space(4.0);
+        }
+        Self::nav_list(ui, |ui| {
+            if !query.trim().is_empty() {
+                for country in matches {
+                    if motif::list_row(
+                        ui,
+                        egui::RichText::new(country.name),
+                        selected == Some(country.code),
+                    )
+                    .clicked()
+                    {
+                        pick = Some(country.code);
+                    }
+                }
+                return;
+            }
+            for region in vaccines::Region::ALL {
+                motif::section(ui, region.label());
+                for country in vaccines::COUNTRIES.iter().filter(|c| c.region == region) {
+                    if motif::list_row(
+                        ui,
+                        egui::RichText::new(country.name).size(12.0),
+                        selected == Some(country.code),
+                    )
+                    .clicked()
+                    {
+                        pick = Some(country.code);
+                    }
+                }
+                ui.add_space(4.0);
+            }
+        });
+        if let Some(code) = pick {
+            session.map_country = Some(code);
+        }
+    }
+
     fn docs_pane(&mut self, ctx: &egui::Context) {
         let screen = ctx.screen_rect().width();
         let default_w = if self.layout.docs_width >= 200.0 {
@@ -2940,7 +3129,7 @@ impl App {
     /// it acts on.
     fn keys_window(&mut self, ctx: &egui::Context) {
         // (key, what it does). An empty key starts a new group.
-        let rows: [(&str, &str); 22] = [
+        let rows: [(&str, &str); 23] = [
             ("", tr("keys_group_workspace")),
             ("F1", tr("toolbar_docs_tooltip")),
             ("F6", tr("toolbar_nav_tooltip")),
@@ -2953,6 +3142,7 @@ impl App {
             ("F3", tr("tab_drugs")),
             ("F4", tr("tab_agenda")),
             ("F5", tr("tab_carnet")),
+            ("F7", tr("tab_map")),
             ("Ctrl+F", tr("keys_search")),
             ("Échap", tr("keys_back")),
             ("", tr("keys_group_work")),
@@ -3069,7 +3259,7 @@ impl App {
                     ui.add_space(14.0);
 
                     let field = ui.add_sized(
-                        [(ui.available_width() - 20.0).min(320.0), 30.0],
+                        [(ui.available_width() - 20.0).clamp(60.0, 320.0), 30.0],
                         egui::TextEdit::singleline(password)
                             .password(true)
                             .hint_text(tr("lock_password_hint")),
@@ -3208,6 +3398,10 @@ impl App {
             }
             if session.view == MainView::Transmissions {
                 Self::transmissions_view(ui, ctx, session, &operator, &config);
+                return;
+            }
+            if session.view == MainView::VaccineMap {
+                Self::vaccine_map_view(ui, session);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -3593,7 +3787,32 @@ impl App {
         if session.viewing.as_ref().map(|p| p.id) != Some(patient.id) {
             return;
         }
-        let work = rows[1];
+        // The file has two halves — the acts and the carnet de
+        // vaccination — and each wants the whole work area. They take
+        // turns behind a notebook strip instead of sharing a split.
+        let strip = motif::split_rows(rows[1], &[28.0, 0.0], 4.0);
+        let active = match session.patient_tab {
+            PatientTab::Acts => 0,
+            PatientTab::Vaccins => 1,
+        };
+        motif::inside(ui, strip[0], |ui| {
+            let tabs = [
+                motif::Tab::new(tr("patient_tab_acts")),
+                motif::Tab::new(tr("patient_tab_vaccins")),
+            ];
+            if let Some(motif::TabAction::Select(i)) = motif::tab_strip(ui, &tabs, active) {
+                session.patient_tab = if i == 0 {
+                    PatientTab::Acts
+                } else {
+                    PatientTab::Vaccins
+                };
+            }
+        });
+        let work = strip[1];
+        if session.patient_tab == PatientTab::Vaccins {
+            Self::patient_vaccins_pane(ui, session, patient, operator, work);
+            return;
+        }
         // The acts table has ten columns, most of them buttons: it wants
         // about a thousand pixels. The journal only gets a column of its
         // own once that is satisfied — below that it goes underneath,
@@ -3625,6 +3844,650 @@ impl App {
         }
     }
 
+    /// A date typed into the carnet, read the way the counter types it.
+    ///
+    /// The `Future` hint is the right one for the common case — a dose
+    /// given today or this year, typed `2308` or `230826`. But a dose
+    /// can never be *in* the future, so a reading that lands there is
+    /// retried as a past date ("230850" is 1950, not 2050) and only
+    /// kept when the past reading makes no sense either.
+    fn parse_carnet_date(text: &str, year: u32, today: &str) -> Result<String, String> {
+        let iso = db::parse_french_date(text, year, db::YearHint::Future)?;
+        if iso.as_str() <= today {
+            return Ok(iso);
+        }
+        Ok(db::parse_french_date(text, year, db::YearHint::Past).unwrap_or(iso))
+    }
+
+    /// Widths of the boxes on the "new dose" line. They are named
+    /// because the band's height is measured from them: a field and its
+    /// measurement drifting apart is how a row gets clipped.
+    const FORM_PICK_W: f32 = 232.0;
+    const FORM_LABEL_W: f32 = 160.0;
+    const FORM_DOSE_W: f32 = 116.0;
+    const FORM_DATE_W: f32 = 96.0;
+    const FORM_LOT_W: f32 = 90.0;
+    const FORM_SITE_W: f32 = 96.0;
+
+    /// The patient file's second half: the carnet de vaccination, what
+    /// the calendar still owes, and the destinations on the file.
+    fn patient_vaccins_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        operator: &str,
+        work: egui::Rect,
+    ) {
+        // The carnet is a seven-column table; the two reading panels
+        // only get a column of their own once it is satisfied.
+        let wide = work.width() >= 1240.0;
+        let (carnet, side) = if wide {
+            let side_w = (work.width() * 0.32).clamp(300.0, 440.0);
+            (
+                egui::Rect::from_min_max(
+                    work.min,
+                    egui::pos2(work.right() - side_w - 8.0, work.bottom()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(work.right() - side_w, work.top()), work.max),
+            )
+        } else {
+            // The carnet keeps a floor: at 1024x700 with both docks out
+            // there is barely 300 px here, and a band taking its share
+            // of that left the table showing its header and nothing
+            // else. The band scrolls inside whatever is left instead.
+            let band = (work.height() * 0.40)
+                .clamp(150.0, 320.0)
+                .min((work.height() - 200.0).max(110.0));
+            let stack = motif::split_rows(work, &[0.0, band], 8.0);
+            (stack[0], stack[1])
+        };
+        let (due, travel) = if wide {
+            let rows = motif::split_rows(side, &[0.0, 0.0], 8.0);
+            (rows[0], rows[1])
+        } else {
+            let cols = motif::split_columns(side, 2, 8.0);
+            (cols[0], cols[1])
+        };
+        Self::carnet_pane(ui, session, patient, operator, carnet);
+        Self::vacc_due_pane(ui, session, patient, due);
+        Self::vacc_travel_pane(ui, session, patient, travel);
+    }
+
+    /// The carnet itself: one line per dose, correctable in place, with
+    /// the line being written kept out of the scroll so it is always
+    /// under the hand.
+    fn carnet_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        operator: &str,
+        rect: egui::Rect,
+    ) {
+        let lines = session.vaccinations.clone();
+        let editing = session.vacc_edit.as_ref().map(|v| v.id);
+        let confirm = session.vacc_confirm;
+        let today = session.today.clone();
+        let year = session.db.current_year();
+        let mut start_edit: Option<db::Vaccination> = None;
+        let mut save_edit = false;
+        let mut cancel_edit = false;
+        let mut delete: Option<(i64, String)> = None;
+        let mut add = false;
+        let mut print = false;
+
+        motif::panel(ui, rect, Some(tr("vacc_section")), |ui| {
+            let inner = ui.max_rect();
+            // The line being written wraps onto two rows on a narrow
+            // file. Its fields are fixed-width boxes, not buttons, so
+            // the band is measured from those widths — measuring the
+            // hint text instead read one row where two are drawn, and
+            // clipped the source note away.
+            let free_label = if session.vacc_new_pick == 0 {
+                Self::FORM_LABEL_W
+            } else {
+                0.0
+            };
+            let widths = [
+                Self::FORM_PICK_W,
+                free_label,
+                Self::FORM_DOSE_W,
+                Self::FORM_DATE_W,
+                Self::FORM_LOT_W,
+                Self::FORM_SITE_W,
+                Self::button_width(ui, tr("vacc_add")),
+                Self::button_width(ui, tr("vacc_print")),
+            ];
+            let form_rows = Self::wrapped_rows_of(
+                ui,
+                inner.width() - 16.0,
+                widths.into_iter().filter(|w| *w > 0.0),
+            );
+            // Plus the source line under it, which is part of the claim
+            // the panel makes and must not be clipped away.
+            let form_h = ((ui.spacing().interact_size.y + ui.spacing().item_spacing.y) * form_rows
+                + 34.0)
+                .min(inner.height() * 0.42);
+            let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
+            let table = motif::well(ui, parts[0]);
+            motif::inside(ui, table, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("carnet_rows")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if lines.is_empty() {
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new(tr("vacc_empty"))
+                                    .size(11.5)
+                                    .color(motif::TEXT_DIM),
+                            );
+                            return;
+                        }
+                        let dim =
+                            |t: &str| egui::RichText::new(t).size(11.0).color(motif::TEXT_DIM);
+                        // The text columns share what the two buttons
+                        // leave: fixed widths pushed « Par » off the
+                        // table as soon as a dock was open.
+                        let w = (ui.available_width() - 175.0).max(300.0);
+                        egui::Grid::new("carnet_grid")
+                            .num_columns(7)
+                            .spacing([6.0, 5.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                ui.label(dim(tr("vacc_col_vaccine")));
+                                ui.label(dim(tr("vacc_col_dose")));
+                                ui.label(dim(tr("vacc_col_date")));
+                                ui.label(dim(tr("vacc_col_lot")));
+                                ui.label(dim(tr("vacc_col_site")));
+                                ui.label(dim(tr("vacc_col_operator")));
+                                ui.label("");
+                                ui.end_row();
+                                for line in &lines {
+                                    if editing == Some(line.id) {
+                                        let e = session.vacc_edit.as_mut().unwrap();
+                                        ui.add_sized(
+                                            [w * 0.32, 22.0],
+                                            egui::TextEdit::singleline(&mut e.label),
+                                        );
+                                        ui.add_sized(
+                                            [w * 0.14, 22.0],
+                                            egui::TextEdit::singleline(&mut e.dose),
+                                        );
+                                        ui.add_sized(
+                                            [w * 0.14, 22.0],
+                                            egui::TextEdit::singleline(&mut session.vacc_edit_date),
+                                        );
+                                        ui.add_sized(
+                                            [w * 0.14, 22.0],
+                                            egui::TextEdit::singleline(&mut e.lot),
+                                        );
+                                        ui.add_sized(
+                                            [w * 0.16, 22.0],
+                                            egui::TextEdit::singleline(&mut e.site),
+                                        );
+                                        ui.add_sized(
+                                            [w * 0.10, 22.0],
+                                            egui::TextEdit::singleline(&mut e.operator),
+                                        );
+                                        ui.horizontal(|ui| {
+                                            if motif::button(ui, tr("form_save")).clicked() {
+                                                save_edit = true;
+                                            }
+                                            if motif::button(ui, tr("form_cancel")).clicked() {
+                                                cancel_edit = true;
+                                            }
+                                        });
+                                        ui.end_row();
+                                        continue;
+                                    }
+                                    ui.label(egui::RichText::new(&line.label).size(12.0));
+                                    ui.label(egui::RichText::new(&line.dose).size(12.0));
+                                    ui.label(
+                                        egui::RichText::new(if line.given_on.is_empty() {
+                                            tr("vacc_no_date").to_owned()
+                                        } else {
+                                            db::format_french_date(&line.given_on)
+                                        })
+                                        .size(12.0),
+                                    );
+                                    ui.label(egui::RichText::new(&line.lot).size(11.5));
+                                    ui.label(egui::RichText::new(&line.site).size(11.5));
+                                    ui.label(
+                                        egui::RichText::new(&line.operator)
+                                            .size(11.5)
+                                            .color(operator_color(&line.operator)),
+                                    );
+                                    ui.horizontal(|ui| {
+                                        if motif::button(ui, tr("drug_edit")).clicked() {
+                                            start_edit = Some(line.clone());
+                                        }
+                                        let label = if confirm == Some(line.id) {
+                                            tr("itv_delete_confirm")
+                                        } else {
+                                            tr("itv_delete")
+                                        };
+                                        if motif::button(ui, label).clicked() {
+                                            if confirm == Some(line.id) {
+                                                delete = Some((line.id, line.label.clone()));
+                                            } else {
+                                                session.vacc_confirm = Some(line.id);
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+                                    // A next dose owed, or a remark,
+                                    // shows under the line rather than
+                                    // in columns of their own: both are
+                                    // filled on one line in ten.
+                                    if !line.next_due.is_empty() || !line.remark.is_empty() {
+                                        let mut foot = String::new();
+                                        if !line.next_due.is_empty() {
+                                            foot.push_str(&trf(
+                                                "vacc_next_prefix",
+                                                db::format_french_date(&line.next_due),
+                                            ));
+                                        }
+                                        if !line.remark.is_empty() {
+                                            if !foot.is_empty() {
+                                                foot.push_str(" — ");
+                                            }
+                                            foot.push_str(&line.remark);
+                                        }
+                                        ui.label("");
+                                        ui.label(
+                                            egui::RichText::new(foot)
+                                                .size(10.5)
+                                                .italics()
+                                                .color(motif::TEXT_FAINT),
+                                        );
+                                        ui.end_row();
+                                    }
+                                }
+                            });
+                    });
+            });
+            // --- The line being written ---
+            motif::inside(ui, parts[1], |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("carnet_form")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            let picked = session.vacc_new_pick;
+                            let shown = if picked == 0 {
+                                tr("vacc_free_label").to_owned()
+                            } else {
+                                vaccines::CATALOGUE[picked - 1].label.to_owned()
+                            };
+                            egui::ComboBox::from_id_salt("vacc_pick")
+                                .selected_text(egui::RichText::new(shown).size(11.5))
+                                .width(Self::FORM_PICK_W - 16.0)
+                                .show_ui(ui, |ui| {
+                                    if ui
+                                        .selectable_label(picked == 0, tr("vacc_free_label"))
+                                        .clicked()
+                                    {
+                                        session.vacc_new_pick = 0;
+                                    }
+                                    for (i, v) in vaccines::CATALOGUE.iter().enumerate() {
+                                        if ui
+                                            .selectable_label(picked == i + 1, v.label)
+                                            .on_hover_text(v.schedule)
+                                            .clicked()
+                                        {
+                                            session.vacc_new_pick = i + 1;
+                                        }
+                                    }
+                                });
+                            if session.vacc_new_pick == 0 {
+                                ui.add_sized(
+                                    [Self::FORM_LABEL_W, 22.0],
+                                    egui::TextEdit::singleline(&mut session.vacc_new.label)
+                                        .hint_text(tr("vacc_label_hint")),
+                                );
+                            }
+                            ui.add_sized(
+                                [Self::FORM_DOSE_W, 22.0],
+                                egui::TextEdit::singleline(&mut session.vacc_new.dose)
+                                    .hint_text(tr("vacc_dose_hint")),
+                            );
+                            ui.add_sized(
+                                [Self::FORM_DATE_W, 22.0],
+                                egui::TextEdit::singleline(&mut session.vacc_new_date)
+                                    .hint_text(tr("vacc_date_hint")),
+                            );
+                            ui.add_sized(
+                                [Self::FORM_LOT_W, 22.0],
+                                egui::TextEdit::singleline(&mut session.vacc_new.lot)
+                                    .hint_text(tr("vacc_lot_hint")),
+                            );
+                            ui.add_sized(
+                                [Self::FORM_SITE_W, 22.0],
+                                egui::TextEdit::singleline(&mut session.vacc_new.site)
+                                    .hint_text(tr("vacc_site_hint")),
+                            );
+                            if motif::button(ui, tr("vacc_add")).clicked() {
+                                add = true;
+                            }
+                            if motif::button(ui, tr("vacc_print"))
+                                .on_hover_text(tr("vacc_print_tooltip"))
+                                .clicked()
+                            {
+                                print = true;
+                            }
+                        });
+                        ui.label(
+                            egui::RichText::new(tr("vacc_source"))
+                                .size(10.0)
+                                .italics()
+                                .color(motif::TEXT_FAINT),
+                        );
+                    });
+            });
+        });
+
+        // --- What the buttons asked for -------------------------------
+        if let Some(line) = start_edit {
+            session.vacc_edit_base = (line.label.clone(), line.given_on.clone());
+            session.vacc_edit_date = if line.given_on.is_empty() {
+                String::new()
+            } else {
+                db::format_french_date(&line.given_on)
+            };
+            session.vacc_edit = Some(line);
+            session.vacc_confirm = None;
+        }
+        if cancel_edit {
+            session.vacc_edit = None;
+            session.vacc_edit_date.clear();
+        }
+        if save_edit {
+            if let Some(mut line) = session.vacc_edit.clone() {
+                let parsed = if session.vacc_edit_date.trim().is_empty() {
+                    Ok(String::new())
+                } else {
+                    Self::parse_carnet_date(&session.vacc_edit_date, year, &today)
+                };
+                match parsed {
+                    Ok(iso) => {
+                        line.given_on = iso;
+                        let (label, date) = session.vacc_edit_base.clone();
+                        match session.db.update_vaccination(line.id, &line, &label, &date) {
+                            Ok(true) => {
+                                session.error = None;
+                                session.load_carnet(patient.id);
+                            }
+                            Ok(false) => {
+                                session.error = Some(tr("vacc_stale").to_owned());
+                                session.load_carnet(patient.id);
+                            }
+                            Err(e) => session.error = Some(e),
+                        }
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if let Some((id, label)) = delete {
+            match session.db.delete_vaccination(id, &label) {
+                Ok(true) => {
+                    session.error = None;
+                    session.load_carnet(patient.id);
+                }
+                Ok(false) => {
+                    session.error = Some(tr("vacc_stale").to_owned());
+                    session.load_carnet(patient.id);
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if add {
+            let mut line = session.vacc_new.clone();
+            if session.vacc_new_pick > 0 {
+                let v = &vaccines::CATALOGUE[session.vacc_new_pick - 1];
+                line.code = v.code.to_owned();
+                line.label = v.label.to_owned();
+            } else {
+                line.code.clear();
+                line.label = line.label.trim().to_owned();
+            }
+            // An empty date means "today": recording the dose you have
+            // just given is the common case, and typing the date again
+            // is the step an operator skips.
+            let parsed = if session.vacc_new_date.trim().is_empty() {
+                Ok(today.clone())
+            } else {
+                Self::parse_carnet_date(&session.vacc_new_date, year, &today)
+            };
+            if line.label.is_empty() {
+                session.error = Some(tr("vacc_needs_label").to_owned());
+            } else {
+                match parsed {
+                    Ok(iso) => {
+                        line.given_on = iso;
+                        if line.operator.trim().is_empty() {
+                            line.operator = operator.to_owned();
+                        }
+                        match session.db.add_vaccination(patient.id, &line) {
+                            Ok(_) => {
+                                session.error = None;
+                                session.vacc_new = db::Vaccination::default();
+                                session.vacc_new_date.clear();
+                                session.vacc_new_pick = 0;
+                                session.load_carnet(patient.id);
+                            }
+                            Err(e) => session.error = Some(e),
+                        }
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if print {
+            let lines = session.vaccinations.clone();
+            if let Err(e) = crate::pdf::open_vaccination_carnet(patient, &lines) {
+                session.error = Some(e);
+            }
+        }
+    }
+
+    /// What the calendrier vaccinal still owes this patient, read
+    /// against the doses in the carnet.
+    fn vacc_due_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+    ) {
+        let age = db::age_on(&patient.birth_date, &session.today);
+        let birth_year = patient.birth_date.get(..4).and_then(|y| y.parse().ok());
+        let doses: Vec<vaccines::Dose> = session
+            .vaccinations
+            .iter()
+            .map(|v| vaccines::Dose {
+                code: v.code.as_str(),
+                date: v.given_on.as_str(),
+            })
+            .collect();
+        let lines = vaccines::due_lines(age, birth_year, &session.today, &doses);
+        // Clicking a line owed loads that vaccine into the form at the
+        // foot of the carnet: the panel says what to do, and the click
+        // is the doing.
+        let mut pick: Option<&'static str> = None;
+        motif::panel(ui, rect, Some(tr("vacc_due_section")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("vacc_due")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if lines.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("vacc_due_empty"))
+                                .size(11.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                        return;
+                    }
+                    for line in &lines {
+                        let (tag, color) = match line.level {
+                            vaccines::DueLevel::Ok => (tr("vacc_due_ok"), motif::TEXT_FAINT),
+                            vaccines::DueLevel::Due => (tr("vacc_due_todo"), motif::ALERT),
+                            vaccines::DueLevel::Ask => (
+                                tr("vacc_due_ask"),
+                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
+                            ),
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("  {tag}  "))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(color),
+                            );
+                            if ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(line.label).strong().size(12.0),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(tr("vacc_due_click"))
+                                .clicked()
+                            {
+                                pick = Some(line.code);
+                            }
+                        });
+                        ui.label(
+                            egui::RichText::new(&line.detail)
+                                .size(11.0)
+                                .color(motif::TEXT_DIM),
+                        );
+                        ui.add_space(5.0);
+                    }
+                });
+        });
+        if let Some(code) = pick {
+            session.vacc_new_pick = vaccines::CATALOGUE
+                .iter()
+                .position(|v| v.code == code)
+                .map(|i| i + 1)
+                .unwrap_or(0);
+        }
+    }
+
+    /// Destinations on the file, and what each one adds to the carnet.
+    ///
+    /// A recommendation is ticked off against the doses already
+    /// recorded: what stays « manquant » is the conversation to have.
+    fn vacc_travel_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+    ) {
+        let travels = session.travels.clone();
+        let held: std::collections::HashSet<String> = session
+            .vaccinations
+            .iter()
+            .filter(|v| !v.code.is_empty())
+            .map(|v| v.code.clone())
+            .collect();
+        let mut remove: Option<String> = None;
+        let mut add: Option<&'static str> = None;
+        motif::panel(ui, rect, Some(tr("vacc_travel_section")), |ui| {
+            ui.add_sized(
+                [ui.available_width().min(260.0), 22.0],
+                egui::TextEdit::singleline(&mut session.travel_query)
+                    .hint_text(tr("vacc_travel_add_hint")),
+            );
+            let query = session.travel_query.clone();
+            if !query.trim().is_empty() {
+                for country in vaccines::search(&query).into_iter().take(6) {
+                    if motif::list_row(ui, egui::RichText::new(country.name).size(12.0), false)
+                        .clicked()
+                    {
+                        add = Some(country.code);
+                    }
+                }
+                ui.add_space(4.0);
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("vacc_travel")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if travels.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("vacc_travel_empty"))
+                                .size(11.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                        return;
+                    }
+                    for travel in &travels {
+                        let Some(country) = vaccines::country(&travel.country) else {
+                            continue;
+                        };
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(country.name).strong().size(12.0));
+                            if motif::button(ui, tr("vacc_travel_remove")).clicked() {
+                                remove = Some(travel.country.clone());
+                            }
+                        });
+                        if !travel.depart_on.is_empty() {
+                            ui.label(
+                                egui::RichText::new(trf(
+                                    "vacc_travel_depart",
+                                    db::format_french_date(&travel.depart_on),
+                                ))
+                                .size(10.5)
+                                .color(motif::TEXT_FAINT),
+                            );
+                        }
+                        let row = |ui: &mut egui::Ui, label: &str, done: bool| {
+                            let (tag, color) = if done {
+                                (tr("vacc_travel_done"), motif::TEXT_FAINT)
+                            } else {
+                                (tr("vacc_travel_missing"), motif::ALERT)
+                            };
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("  {tag}  "))
+                                        .size(10.0)
+                                        .strong()
+                                        .color(egui::Color32::WHITE)
+                                        .background_color(color),
+                                );
+                                ui.label(egui::RichText::new(label).size(11.5));
+                            });
+                        };
+                        // Yellow fever first: it is the one that has to
+                        // be done in an approved centre, and the one a
+                        // border can turn a traveller back for.
+                        if country.yf.needed() {
+                            row(ui, tr("map_reco_yf"), held.contains("FJ"));
+                        }
+                        for reco in country.recos() {
+                            row(ui, reco.label, held.contains(reco.code));
+                        }
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+        if let Some(code) = add {
+            session.travel_query.clear();
+            match session.db.add_travel(patient.id, code, "") {
+                Ok(()) => session.load_carnet(patient.id),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(code) = remove {
+            match session.db.remove_travel(patient.id, &code) {
+                Ok(_) => session.load_carnet(patient.id),
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
     /// « Modifier » and « Supprimer… », with the two-step confirmation.
     fn patient_actions(
         ui: &mut egui::Ui,
@@ -3645,21 +4508,25 @@ impl App {
         }
     }
 
-    /// How many lines a wrapped row of buttons with these labels takes
-    /// at `width`. Bands are carved rectangles, so their height has to
-    /// be known before the buttons are drawn — measured, not guessed.
-    fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
+    /// The width a Motif button with this label occupies.
+    fn button_width(ui: &egui::Ui, label: &str) -> f32 {
         let font = egui::TextStyle::Button.resolve(ui.style());
-        let pad = ui.spacing().button_padding.x * 2.0 + 8.0;
+        ui.fonts(|f| {
+            f.layout_no_wrap(label.to_owned(), font.clone(), motif::TEXT)
+                .size()
+                .x
+        }) + ui.spacing().button_padding.x * 2.0
+            + 8.0
+    }
+
+    /// How many lines a wrapped row of items of these widths takes at
+    /// `width`. Bands are carved rectangles, so their height has to be
+    /// known before the content is drawn — measured, not guessed.
+    fn wrapped_rows_of(ui: &egui::Ui, width: f32, widths: impl Iterator<Item = f32>) -> f32 {
         let gap = ui.spacing().item_spacing.x;
         let mut x = 0.0_f32;
         let mut lines = 1.0_f32;
-        for label in labels {
-            let w = ui.fonts(|f| {
-                f.layout_no_wrap(label.to_owned(), font.clone(), motif::TEXT)
-                    .size()
-                    .x
-            }) + pad;
+        for w in widths {
             if x + w > width && x > 0.0 {
                 lines += 1.0;
                 x = 0.0;
@@ -3667,6 +4534,11 @@ impl App {
             x += w + gap;
         }
         lines
+    }
+
+    /// [`wrapped_rows_of`] for a row that is all buttons.
+    fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
+        Self::wrapped_rows_of(ui, width, labels.map(|l| Self::button_width(ui, l)))
     }
 
     /// How tall the identity band needs to be: a header and one or two
@@ -4829,6 +5701,370 @@ impl App {
                     .db
                     .notes_for(NoteSubject::Patient, patient.id)
                     .unwrap_or_default();
+            }
+        }
+    }
+
+    /// A distinct colour per region.
+    ///
+    /// There are seventeen groups and eight chart series, so the series
+    /// are walked three times, lighter then darker: two regions never
+    /// share a swatch, which is the whole point of the group lens.
+    fn region_color(i: usize) -> egui::Color32 {
+        let base = motif::chart::SERIES[i % motif::chart::SERIES.len()];
+        match i / motif::chart::SERIES.len() {
+            0 => base,
+            1 => base.gamma_multiply(1.6),
+            _ => base.gamma_multiply(0.55),
+        }
+    }
+
+    /// The colour a country's tile takes under the current lens, and
+    /// the legend entry that explains it.
+    ///
+    /// Every lens is ordinal — "nothing to do" reads pale, "act on
+    /// this" reads dark — so the map can be read at a glance without
+    /// consulting the legend twice.
+    fn map_tint(lens: MapLens, c: &vaccines::Country) -> egui::Color32 {
+        use vaccines::{Palu, Yf};
+        let step = |level: u8| match level {
+            0 => motif::TROUGH,
+            1 => egui::Color32::from_rgb(0x7a, 0x8c, 0x6e),
+            2 => egui::Color32::from_rgb(0x9a, 0x7e, 0x33),
+            _ => motif::ALERT,
+        };
+        match lens {
+            MapLens::Group => {
+                let i = vaccines::Region::ALL
+                    .iter()
+                    .position(|r| *r == c.region)
+                    .unwrap_or(0);
+                Self::region_color(i)
+            }
+            MapLens::YellowFever => step(match c.yf {
+                Yf::No => 0,
+                Yf::RequiredFromEndemic => 1,
+                Yf::Recommended => 2,
+                Yf::Required => 3,
+            }),
+            MapLens::Malaria => step(match c.palu {
+                Palu::No => 0,
+                Palu::Limited => 1,
+                Palu::Present => 2,
+                Palu::High => 3,
+            }),
+            MapLens::Meningo => step(if c.reco & vaccines::reco::MENINGO != 0 {
+                3
+            } else {
+                0
+            }),
+            MapLens::HepatitisA => step(if c.reco & vaccines::reco::HEP_A != 0 {
+                2
+            } else {
+                0
+            }),
+            MapLens::Rabies => step(if c.reco & vaccines::reco::RAGE != 0 {
+                2
+            } else {
+                0
+            }),
+            MapLens::JapaneseEnceph => step(if c.reco & vaccines::reco::ENCEPH_JAP != 0 {
+                2
+            } else {
+                0
+            }),
+        }
+    }
+
+    /// What the legend under the map says for the current lens.
+    fn map_legend(lens: MapLens) -> Vec<(&'static str, egui::Color32)> {
+        let shade = |l: u8| match l {
+            0 => motif::TROUGH,
+            1 => egui::Color32::from_rgb(0x7a, 0x8c, 0x6e),
+            2 => egui::Color32::from_rgb(0x9a, 0x7e, 0x33),
+            _ => motif::ALERT,
+        };
+        match lens {
+            MapLens::Group => vaccines::Region::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, r)| (r.label(), Self::region_color(i)))
+                .collect(),
+            MapLens::YellowFever => vec![
+                (tr("map_yf_no"), shade(0)),
+                (tr("map_yf_from"), shade(1)),
+                (tr("map_yf_reco"), shade(2)),
+                (tr("map_yf_req"), shade(3)),
+            ],
+            MapLens::Malaria => vec![
+                (tr("map_palu_no"), shade(0)),
+                (tr("map_palu_limited"), shade(1)),
+                (tr("map_palu_present"), shade(2)),
+                (tr("map_palu_high"), shade(3)),
+            ],
+            _ => vec![
+                (tr("map_flag_no"), shade(0)),
+                (tr("map_flag_yes"), shade(2)),
+            ],
+        }
+    }
+
+    /// The world as a cartogram: one square per country, grouped into
+    /// blocks laid out roughly where they belong. Hovering a square
+    /// gives the country's group and what a traveller owes for it;
+    /// clicking pins it in the detail panel.
+    fn vaccine_map_view(ui: &mut egui::Ui, session: &mut Session) {
+        let body = motif::visible_rect(ui).shrink(6.0);
+        // The lens buttons wrap: measure the band before carving it.
+        let lens_h = {
+            let lines = Self::wrapped_rows(
+                ui,
+                body.width() - 40.0,
+                MapLens::ALL.iter().map(|l| l.label()),
+            );
+            let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+            // 44 px of panel chrome: the inset title, its rule, and the
+            // padding above and below. Leaving it out cost the band a
+            // row, and the last lens with it.
+            (44.0 + row * lines).min(body.height() * 0.35)
+        };
+        let rows = motif::split_rows(body, &[lens_h, 0.0], 8.0);
+        motif::panel(ui, rows[0], Some(tr("map_lens_title")), |ui| {
+            // Capped: on a short window the band scrolls past its share
+            // rather than hiding a lens behind its own bottom edge.
+            egui::ScrollArea::vertical()
+                .id_salt("map_lenses")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for lens in MapLens::ALL {
+                            if motif::toggle(ui, lens.label(), session.map_lens == lens).clicked() {
+                                session.map_lens = lens;
+                            }
+                        }
+                    });
+                });
+        });
+        // Wide enough for a column beside the map, or a band under it.
+        let work = rows[1];
+        let wide = work.width() >= 1080.0;
+        let (map_rect, detail_rect) = if wide {
+            let side = (work.width() * 0.30).clamp(300.0, 420.0);
+            (
+                egui::Rect::from_min_max(
+                    work.min,
+                    egui::pos2(work.right() - side - 8.0, work.bottom()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(work.right() - side, work.top()), work.max),
+            )
+        } else {
+            let band = (work.height() * 0.38).clamp(160.0, 300.0);
+            let stack = motif::split_rows(work, &[0.0, band], 8.0);
+            (stack[0], stack[1])
+        };
+
+        let mut pick: Option<&'static str> = None;
+        motif::panel(ui, map_rect, Some(tr("map_title")), |ui| {
+            let inner = ui.max_rect();
+            // The legend takes the foot of the panel; the grid gets the
+            // rest, and its tiles are sized so the whole world fits.
+            let legend = Self::map_legend(session.map_lens);
+            let legend_h = if session.map_lens == MapLens::Group {
+                (inner.height() * 0.24).clamp(52.0, 96.0)
+            } else {
+                26.0
+            };
+            let parts = motif::split_rows(inner, &[0.0, legend_h], 6.0);
+            let grid = motif::well(ui, parts[0]);
+            let (cols, grid_rows) = vaccines::COUNTRIES.iter().fold((1, 1), |(w, h), c| {
+                let (x, y) = c.tile();
+                (w.max(x + 1), h.max(y + 1))
+            });
+            let tile = (grid.width() / cols as f32)
+                .min(grid.height() / grid_rows as f32)
+                .max(6.0);
+            let origin = egui::pos2(
+                grid.center().x - tile * cols as f32 / 2.0,
+                grid.center().y - tile * grid_rows as f32 / 2.0,
+            );
+            let font = egui::FontId::proportional((tile * 0.42).clamp(6.0, 11.0));
+            for country in vaccines::COUNTRIES {
+                let (x, y) = country.tile();
+                let rect = egui::Rect::from_min_size(
+                    egui::pos2(origin.x + x as f32 * tile, origin.y + y as f32 * tile),
+                    egui::vec2(tile - 1.0, tile - 1.0),
+                );
+                if !ui.is_rect_visible(rect) {
+                    continue;
+                }
+                let resp = ui.interact(
+                    rect,
+                    ui.id().with(("map_tile", country.code)),
+                    egui::Sense::click(),
+                );
+                let mut fill = Self::map_tint(session.map_lens, country);
+                if resp.hovered() {
+                    fill = fill.gamma_multiply(1.35);
+                }
+                ui.painter().rect_filled(rect, 0.0, fill);
+                if session.map_country == Some(country.code) {
+                    ui.painter().rect_stroke(
+                        rect,
+                        0.0,
+                        egui::Stroke::new(2.0_f32, motif::BG_LIGHT),
+                    );
+                } else {
+                    ui.painter()
+                        .rect_stroke(rect, 0.0, egui::Stroke::new(0.5_f32, motif::BG_DARK));
+                }
+                if tile >= 15.0 {
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        country.code,
+                        font.clone(),
+                        egui::Color32::WHITE,
+                    );
+                }
+                if resp.clicked() {
+                    pick = Some(country.code);
+                }
+                resp.on_hover_ui(|ui| {
+                    ui.set_max_width(320.0);
+                    ui.label(egui::RichText::new(country.name).strong());
+                    ui.label(
+                        egui::RichText::new(country.region.label())
+                            .size(11.0)
+                            .color(motif::TEXT_DIM),
+                    );
+                    ui.label(
+                        egui::RichText::new(trf("map_yf_line", country.yf.label())).size(11.5),
+                    );
+                    ui.label(
+                        egui::RichText::new(trf("map_palu_line", country.palu.label())).size(11.5),
+                    );
+                    let recos: Vec<&str> = country.recos().map(|r| r.label).collect();
+                    ui.label(
+                        egui::RichText::new(if recos.is_empty() {
+                            tr("map_reco_none").to_owned()
+                        } else {
+                            trf("map_reco_line", recos.join(", "))
+                        })
+                        .size(11.5),
+                    );
+                });
+            }
+            motif::inside(ui, parts[1], |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("map_legend")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for (label, color) in &legend {
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(11.0, 11.0),
+                                    egui::Sense::hover(),
+                                );
+                                ui.painter().rect_filled(rect, 0.0, *color);
+                                ui.label(
+                                    egui::RichText::new(*label)
+                                        .size(10.5)
+                                        .color(motif::TEXT_DIM),
+                                );
+                                ui.add_space(6.0);
+                            }
+                        });
+                    });
+            });
+        });
+        if let Some(code) = pick {
+            session.map_country = Some(code);
+        }
+        Self::map_detail_pane(ui, session, detail_rect);
+    }
+
+    /// The pinned country: its group, what it asks of a traveller, and
+    /// — when a patient file is open — the button that records it as a
+    /// destination on that file.
+    fn map_detail_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let country = session.map_country.and_then(vaccines::country);
+        let title = country.map(|c| c.name).unwrap_or(tr("map_detail_title"));
+        let open_patient = session.viewing.as_ref().map(|p| (p.id, p.full_name()));
+        let mut add_travel: Option<(i64, &'static str)> = None;
+        motif::panel(ui, rect, Some(title), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("map_detail")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let Some(c) = country else {
+                        ui.label(
+                            egui::RichText::new(tr("map_detail_empty"))
+                                .size(11.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                        return;
+                    };
+                    ui.label(egui::RichText::new(trf("map_group_line", c.region.label())).strong());
+                    ui.add_space(4.0);
+                    ui.label(trf("map_yf_line", c.yf.label()));
+                    ui.label(trf("map_palu_line", c.palu.label()));
+                    ui.add_space(8.0);
+                    motif::section(ui, tr("map_reco_section"));
+                    ui.add_space(4.0);
+                    let mut any = false;
+                    for reco in c.recos() {
+                        any = true;
+                        ui.label(egui::RichText::new(reco.label).strong().size(12.0));
+                        ui.label(
+                            egui::RichText::new(reco.detail)
+                                .size(11.0)
+                                .color(motif::TEXT_DIM),
+                        );
+                        ui.add_space(4.0);
+                    }
+                    if c.yf.needed() {
+                        any = true;
+                        ui.label(
+                            egui::RichText::new(tr("map_reco_yf"))
+                                .strong()
+                                .size(12.0)
+                                .color(motif::ALERT),
+                        );
+                        ui.label(
+                            egui::RichText::new(tr("map_reco_yf_detail"))
+                                .size(11.0)
+                                .color(motif::TEXT_DIM),
+                        );
+                        ui.add_space(4.0);
+                    }
+                    if !any {
+                        ui.label(
+                            egui::RichText::new(tr("map_reco_calendar_only"))
+                                .size(11.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                    }
+                    ui.add_space(8.0);
+                    if let Some((id, name)) = &open_patient {
+                        if motif::button(ui, &trf("map_add_travel", name))
+                            .on_hover_text(tr("map_add_travel_tooltip"))
+                            .clicked()
+                        {
+                            add_travel = Some((*id, c.code));
+                        }
+                        ui.add_space(6.0);
+                    }
+                    ui.label(
+                        egui::RichText::new(tr("vacc_source"))
+                            .size(10.5)
+                            .italics()
+                            .color(motif::TEXT_FAINT),
+                    );
+                });
+        });
+        if let Some((pid, code)) = add_travel {
+            match session.db.add_travel(pid, code, "") {
+                Ok(()) => session.load_carnet(pid),
+                Err(e) => session.error = Some(e),
             }
         }
     }
@@ -7693,6 +8929,12 @@ impl App {
             motif::inside(ui, main, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("drug_card")
+                    // The monograph keeps a reading measure, so its
+                    // content is narrower than the card. Left to shrink,
+                    // the scroll area takes the content's width and puts
+                    // its scrollbar down the middle of the sheet instead
+                    // of against the card's edge.
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                         motif::page(ui, 900.0, |ui| {
                             ui.add_space(18.0);
@@ -9062,6 +10304,7 @@ impl eframe::App for App {
         let toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
         let toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
         let toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
+        let toggle_map = ctx.input(|i| i.key_pressed(egui::Key::F7));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -9365,7 +10608,8 @@ impl eframe::App for App {
                     MainView::Search
                     | MainView::Drugs
                     | MainView::Agenda
-                    | MainView::Transmissions => {
+                    | MainView::Transmissions
+                    | MainView::VaccineMap => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
@@ -9400,6 +10644,18 @@ impl eframe::App for App {
                         session.trans_day = String::new();
                         session.load_transmissions();
                         MainView::Transmissions
+                    }
+                };
+            }
+        }
+        if toggle_map {
+            if let State::Unlocked(session) = &mut self.state {
+                session.view = match session.view {
+                    MainView::VaccineMap => MainView::Search,
+                    _ => {
+                        session.flush_date_edits();
+                        session.show_amounts = false;
+                        MainView::VaccineMap
                     }
                 };
             }
