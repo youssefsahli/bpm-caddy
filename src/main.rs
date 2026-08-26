@@ -6,6 +6,7 @@ mod bulletin;
 mod codex;
 mod config;
 mod db;
+mod entretien;
 mod fuzzy;
 mod ordonnance;
 mod pdf;

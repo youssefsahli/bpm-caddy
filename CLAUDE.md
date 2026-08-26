@@ -14,6 +14,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   positive TROD allows, and the choices behind the ordonnance),
   `src/codex.rs` (reading a preparation's formula and rescaling it —
   pure and tested; the preparations themselves live in the base),
+  `src/entretien.rs` (what each thematic covers, printed on the fiche),
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
   tested), `src/revue.rs` (what a set of treatments says about itself:

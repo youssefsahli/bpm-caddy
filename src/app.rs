@@ -7911,6 +7911,8 @@ impl App {
                 &theme,
                 &config.template_path(),
                 &config.pharmacy.signature_for(&by),
+                &session.patient_treats,
+                crate::entretien::checklist(&theme),
             ) {
                 session.error = Some(e);
             }

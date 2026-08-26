@@ -75,20 +75,29 @@ const DEFAULT_TEMPLATE: &str = r#"
   #text(weight: "bold")[Thème :] {{THEME}}
 ]
 
-#note-box("Traitements en cours", 3.2cm)
-#note-box("Observance et difficultés rencontrées", 3.2cm)
-#note-box("Points d'attention / interactions", 3.2cm)
-#note-box("Conclusion et plan d'action", 3.4cm)
+#v(3mm)
+#text(weight: "bold")[Traitements connus à l'officine]
+#v(1.5mm)
+{{TREATMENTS}}
 
-#v(1fr)
+#v(3mm)
+#text(weight: "bold")[À couvrir pendant l'entretien]
+#v(1.5mm)
+{{CHECKLIST}}
+
+#note-box("Ce que le patient dit", 2.2cm)
+#note-box("Points d'attention / interactions", 2cm)
+#note-box("Conclusion et plan d'action", 2.2cm)
+
+#v(3mm)
 #grid(columns: (1fr, 1fr), gutter: 1cm,
   [#text(weight: "bold")[Signature du pharmacien] \
    #text(9pt)[{{PHARMACIST}}]
-   #v(2mm)
-   #box(width: 100%, height: 2cm, stroke: 0.8pt, radius: 5pt)],
+   #v(1.5mm)
+   #box(width: 100%, height: 1.6cm, stroke: 0.8pt, radius: 5pt)],
   [#text(weight: "bold")[Prochain rendez-vous]
-   #v(2mm)
-   #box(width: 100%, height: 2cm, stroke: 0.8pt, radius: 5pt)],
+   #v(1.5mm)
+   #box(width: 100%, height: 1.6cm, stroke: 0.8pt, radius: 5pt)],
 )
 "#;
 
@@ -243,6 +252,7 @@ impl World for PdfWorld {
 /// Compile the interview sheet for a patient and hand it to the OS PDF
 /// viewer. `template_path` is [`crate::config::Config::template_path`]:
 /// when the file does not exist, the embedded template is used.
+#[allow(clippy::too_many_arguments)]
 pub fn open_interview_sheet(
     patient: &Patient,
     kind: InterviewKind,
@@ -250,6 +260,8 @@ pub fn open_interview_sheet(
     theme: &str,
     template_path: &std::path::Path,
     signature: &str,
+    treats: &[Drug],
+    checklist: &[&str],
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
@@ -257,7 +269,9 @@ pub fn open_interview_sheet(
     } else {
         DEFAULT_TEMPLATE.to_owned()
     };
-    let filled = fill_interview_template(&template, patient, kind, today, theme, signature);
+    let filled = fill_interview_template(
+        &template, patient, kind, today, theme, signature, treats, checklist,
+    );
 
     let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
     compile_and_open(filled, &stem)
@@ -289,6 +303,8 @@ pub fn check_template(template: &str) -> Result<(), String> {
         "24/08/2026",
         "Observance",
         "Claire Leroy, Pharmacien titulaire",
+        &sample_treatments(),
+        crate::entretien::checklist("Observance"),
     );
     let world = PdfWorld::new(filled);
     typst::compile::<PagedDocument>(&world)
@@ -307,6 +323,8 @@ pub fn preview_template(template: &str) -> Result<PathBuf, String> {
         "24/08/2026",
         "Observance",
         "Claire Leroy, Pharmacien titulaire",
+        &sample_treatments(),
+        crate::entretien::checklist("Observance"),
     );
     compile_and_open(filled, "apercu")
 }
@@ -1513,6 +1531,7 @@ fn typst_str(s: &str) -> String {
 /// Typst string literals (`#"…"`), so a patient name containing markup
 /// ('#', '*', brackets…) can neither break compilation nor restyle the
 /// sheet.
+#[allow(clippy::too_many_arguments)]
 fn fill_interview_template(
     template: &str,
     patient: &Patient,
@@ -1520,7 +1539,25 @@ fn fill_interview_template(
     today: &str,
     theme: &str,
     signature: &str,
+    treats: &[Drug],
+    checklist: &[&str],
 ) -> String {
+    // The points of this theme, as tick-boxes: the sheet in the
+    // pharmacist's hand carries what the entretien is for.
+    let ticks = if checklist.is_empty() {
+        String::new()
+    } else {
+        checklist
+            .iter()
+            .map(|point| {
+                format!(
+                    "#block(below: 2mm)[#box(width: 3.4mm, height: 3.4mm, stroke: 0.7pt) #h(2mm) #{}]",
+                    typst_str(point)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
     template
         .replace(
             "{{PATIENT_NAME}}",
@@ -1543,6 +1580,8 @@ fn fill_interview_template(
         // written before the team list simply has no such marker, and
         // loses nothing.
         .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
+        .replace("{{TREATMENTS}}", &treatments_markup(treats))
+        .replace("{{CHECKLIST}}", &ticks)
 }
 
 /// An empty thematic prints as a dash rather than a blank.
@@ -2243,11 +2282,20 @@ mod tests {
             "Initiation / bon usage",
             // The signature goes through the same escaping.
             "Claire #strike[Leroy]",
+            &sample_treatments(),
+            crate::entretien::checklist("Initiation / bon usage"),
         );
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
             .output
             .expect("le modèle par défaut doit compiler");
+        // The fiche is handed over as one sheet: the boxes are sized so
+        // that the treatments and the checklist fit above them.
+        assert_eq!(
+            document.pages.len(),
+            1,
+            "la fiche d'entretien tient sur une page"
+        );
         let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
             .expect("l'export PDF doit réussir");
         assert!(pdf.starts_with(b"%PDF-"));

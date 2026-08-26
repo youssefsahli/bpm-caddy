@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.68.0] - 2026-08-27
+
+### Added
+- **La fiche d'entretien porte ce qu'il faut couvrir.** The sheet was a
+  title and four empty boxes; it now carries the treatments the file
+  knows and the checklist of the act's own theme, as tick-boxes: sept
+  points pour l'initiation, l'observance chiffrée sans jugement, le
+  contrôle et sa cible pour la biologie, la démonstration du dispositif
+  pour la technique d'inhalation, l'automédication et les plantes pour
+  les interactions… A theme the officine wrote itself gets the common
+  ground, which is never wrong. `src/entretien.rs` holds the lists —
+  static, pure, tested, and short on purpose: a checklist of twenty
+  lines is a checklist nobody ticks.
+- The two placeholders are `{{TREATMENTS}}` and `{{CHECKLIST}}` : a
+  template written before this version simply ignores them. A test
+  holds the sheet to one page.
+
 ## [0.67.0] - 2026-08-27
 
 ### Added
