@@ -8,7 +8,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
 - root `bpm-caddy` — the app: `src/app.rs` (UI/state), `src/db.rs`
   (SQLCipher storage), `src/fuzzy.rs` (search), `src/pdf.rs` (Typst),
   `src/config.rs` (config.toml), `src/vaccines.rs` (calendrier vaccinal
-  rules and the traveller's country table — static, pure, tested)
+  rules and the traveller's country table — static, pure, tested),
+  `src/bulletin.rs` (fills the official Assurance Maladie bulletins
+  d'adhésion in `assets/bulletins/`), `src/ordonnance.rs` (what a
+  positive TROD allows, and the choices behind the ordonnance)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -60,7 +63,7 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|calc|
-  carnet|vaccins|vaccine_map|keys|act_picker`
+  carnet|vaccins|vaccine_map|ordonnance|keys|act_picker`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
@@ -75,6 +78,26 @@ digit keys for ten acts) was found. Both shoot against a throwaway
 `XDG_CONFIG_HOME`, never the operator's own config. For manual runs:
 `xvfb-run` + ImageMagick `import`, and **`unset WAYLAND_DISPLAY` inside
 the xvfb shell** or the window opens on the real desktop instead.
+
+## The official bulletins d'adhésion
+
+`assets/bulletins/*.pdf` are the Assurance Maladie's own forms, byte for
+byte as ameli.fr serves them — never regenerate, recompress or redraw
+them. `src/bulletin.rs` writes their AcroForm fields and nothing else.
+The five forms disagree about their field names (and `Adresse 1` means
+the patient on three of them and the pharmacy on the other two), so the
+mapping is an explicit table read off the rendered pages; the tests in
+that module are what keep it honest. Consent boxes, the date and the
+signatures are never pre-filled.
+
+## Clinical content
+
+`src/ordonnance.rs` and `src/tables.rs` must agree: the antibiotics the
+ordonnance offers are the ones the « Angine » and « Cystite » reference
+tables list, and `every_molecule_appears_in_its_reference_table` fails
+if they drift. Change a protocol in one place and change it in the
+other. Nothing there is auto-selected and every posology is editable —
+the app proposes, the pharmacist decides, and the box says so.
 
 ## Releases
 

@@ -11,6 +11,10 @@ config.toml
 
 # Generated documents
 *.pdf
+# …except the official Assurance Maladie bulletins d'adhésion, which are
+# source assets: `include_bytes!` compiles them into the binary, so the
+# build fails without them.
+!assets/bulletins/*.pdf
 
 # Editors / OS
 .idea/

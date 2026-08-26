@@ -1,9 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod bulletin;
 mod config;
 mod db;
 mod fuzzy;
+mod ordonnance;
 mod pdf;
 mod strings;
 mod tables;

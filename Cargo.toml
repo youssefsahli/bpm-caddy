@@ -3,7 +3,7 @@ members = ["motif", "launcher"]
 
 [package]
 name = "bpm-caddy"
-version = "0.48.0"
+version = "0.49.0"
 edition = "2021"
 description = "Clinical pharmacy workflow & analytics — fast, local, encrypted."
 license-file = "LICENSE"
@@ -25,6 +25,7 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 rfd = "0.15"
 # Validates a chosen font file before egui is asked to parse it.
 ab_glyph = "0.2"
+lopdf = { version = "0.44.0", default-features = false }
 
 [profile.release]
 lto = true

@@ -884,6 +884,17 @@ enum PatientTab {
     Vaccins,
 }
 
+/// The ordonnance being composed after a positive TROD.
+///
+/// It is keyed by the interview so that closing the patient file — or
+/// another post correcting the act — cannot leave a prescription open
+/// against the wrong record.
+struct OrdonnanceBox {
+    interview: i64,
+    kind: InterviewKind,
+    choice: crate::ordonnance::Choice,
+}
+
 /// What the world map colours its tiles by.
 ///
 /// One map, several readings: the group a country belongs to answers
@@ -979,6 +990,8 @@ struct Session {
     vacc_confirm: Option<i64>,
     /// In-progress country search of the travel panel.
     travel_query: String,
+    /// The open ordonnance box, after a positive TROD.
+    ordonnance: Option<OrdonnanceBox>,
     /// The open drug card's dated notes, newest first.
     drug_notes: Vec<Note>,
     /// Transmission logbook: the shown day, its entries, and the days
@@ -1123,6 +1136,9 @@ struct PatientForm {
     address: String,
     /// ALD, AT/MP, maternité — what the billing must take into account.
     situation: String,
+    /// Numéro d'immatriculation and régime, for the bulletin d'adhésion.
+    nir: String,
+    regime: String,
     error: Option<String>,
 }
 
@@ -1164,6 +1180,7 @@ impl Session {
             vacc_edit_base: (String::new(), String::new()),
             vacc_confirm: None,
             travel_query: String::new(),
+            ordonnance: None,
             drug_notes: Vec::new(),
             trans_day: String::new(),
             trans_notes: Vec::new(),
@@ -2152,6 +2169,8 @@ enum TplTarget {
     Courrier,
     /// The carnet de transmissions page.
     Carnet,
+    /// The ordonnance printed after a positive TROD.
+    Ordonnance,
 }
 
 #[derive(Default)]
@@ -2264,6 +2283,42 @@ impl App {
                         // The carnet de vaccination is the patient
                         // file's second tab: open a patient, then turn
                         // to it.
+                        // Land on a positive TROD with its ordonnance
+                        // box open (screenshots, smoke).
+                        Ok("ordonnance") => {
+                            // The demo's TROD sits on one patient in
+                            // particular: open files until one has it.
+                            for candidate in session.patients.clone() {
+                                session.open_patient(candidate);
+                                if session
+                                    .viewing_interviews
+                                    .iter()
+                                    .any(|i| crate::ordonnance::is_trod(i.kind))
+                                {
+                                    break;
+                                }
+                            }
+                            if let Some(itv) = session
+                                .viewing_interviews
+                                .iter()
+                                .find(|i| crate::ordonnance::is_trod(i.kind))
+                                .cloned()
+                            {
+                                let _ = session.db.set_trod_result(
+                                    itv.id,
+                                    crate::ordonnance::POSITIF,
+                                    &itv.trod_result,
+                                );
+                                if let Some(pid) = session.viewing.as_ref().map(|p| p.id) {
+                                    session.reload_interviews(pid);
+                                }
+                                session.ordonnance = Some(OrdonnanceBox {
+                                    interview: itv.id,
+                                    kind: itv.kind,
+                                    choice: crate::ordonnance::Choice::default(),
+                                });
+                            }
+                        }
                         Ok("vaccins") => {
                             let pick = session
                                 .patients
@@ -3752,11 +3807,15 @@ impl App {
         // focus it only drops that focus (egui's own behavior); acting on
         // both at once would throw away an in-progress date edit.
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !ctx.wants_keyboard_input() {
-            // The quick picker is on top: Escape dismisses it first,
-            // and leaves the patient view where it was.
+            // The quick picker and the ordonnance box sit on top:
+            // Escape dismisses whichever is open first, and leaves the
+            // patient view where it was. Closing both at once would
+            // throw away a prescription being composed.
             if session.act_picker {
                 session.act_picker = false;
                 session.act_theme.clear();
+            } else if session.ordonnance.is_some() {
+                session.ordonnance = None;
             } else {
                 session.flush_date_edits();
                 session.viewing = None;
@@ -3809,6 +3868,8 @@ impl App {
             }
         });
         let work = strip[1];
+        // The ordonnance box floats over whichever half is on screen.
+        Self::ordonnance_box(ctx, session, patient, config);
         if session.patient_tab == PatientTab::Vaccins {
             Self::patient_vaccins_pane(ui, session, patient, operator, work);
             return;
@@ -3841,6 +3902,254 @@ impl App {
             motif::panel(ui, stack[1], Some(tr("notes_section")), |ui| {
                 Self::patient_notes_pane(ui, session, patient, operator);
             });
+        }
+    }
+
+    /// The ordonnance box: what a positive TROD allows, chosen line by
+    /// line and printed.
+    ///
+    /// Every posology arrives pre-filled from the molecule and stays a
+    /// plain text field — the protocol proposes, the pharmacist writes.
+    fn ordonnance_box(
+        ctx: &egui::Context,
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+    ) {
+        let Some(open) = &session.ordonnance else {
+            return;
+        };
+        let kind = open.kind;
+        let interview = open.interview;
+        // The act may have been deleted, or its result corrected on
+        // another post, since the box was opened.
+        let still_positive = session
+            .viewing_interviews
+            .iter()
+            .any(|i| i.id == interview && i.trod_result == crate::ordonnance::POSITIF);
+        let Some(protocol) = crate::ordonnance::protocol(kind) else {
+            session.ordonnance = None;
+            return;
+        };
+        if !still_positive {
+            session.ordonnance = None;
+            return;
+        }
+        let mut close = false;
+        let mut print = false;
+        egui::Window::new(trf("ord_title", protocol.indication))
+            .collapsible(false)
+            .resizable(true)
+            .default_size([680.0, 640.0])
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                let Some(open) = &mut session.ordonnance else {
+                    return;
+                };
+                let choice = &mut open.choice;
+                // The body takes whatever the window leaves after the
+                // warning and the two buttons: a fixed height scrolled
+                // the toggles out of sight on the default window.
+                let body_h = (ui.available_height() - 84.0).max(160.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("ord_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        motif::section(ui, tr("ord_atb_section"));
+                        ui.add_space(4.0);
+                        for (i, atb) in protocol.antibiotics.iter().enumerate() {
+                            let picked = choice.antibiotic == Some(i);
+                            let row = ui.horizontal_wrapped(|ui| {
+                                if motif::toggle(ui, atb.name, picked).clicked() {
+                                    if picked {
+                                        choice.antibiotic = None;
+                                    } else {
+                                        choice.antibiotic = Some(i);
+                                        // Pre-fill the usual posology;
+                                        // it stays editable.
+                                        choice.posology = atb
+                                            .posologies
+                                            .first()
+                                            .map(|p| (*p).to_owned())
+                                            .unwrap_or_default();
+                                    }
+                                }
+                                ui.label(
+                                    egui::RichText::new(atb.situation)
+                                        .size(11.0)
+                                        .color(motif::TEXT_DIM),
+                                );
+                            });
+                            let _ = row;
+                            if picked {
+                                // The alternatives, when the molecule
+                                // has more than one usual schema.
+                                if atb.posologies.len() > 1 {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.add_space(12.0);
+                                        for p in atb.posologies {
+                                            if motif::toggle(ui, p, choice.posology == *p).clicked()
+                                            {
+                                                choice.posology = (*p).to_owned();
+                                            }
+                                        }
+                                    });
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.add_space(12.0);
+                                    ui.label(
+                                        egui::RichText::new(tr("ord_posology"))
+                                            .size(11.0)
+                                            .color(motif::TEXT_DIM),
+                                    );
+                                    ui.add_sized(
+                                        [ui.available_width().max(120.0), 24.0],
+                                        egui::TextEdit::singleline(&mut choice.posology)
+                                            .hint_text(tr("ord_posology_hint")),
+                                    );
+                                });
+                                if !atb.caution.is_empty() {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.add_space(12.0);
+                                        ui.label(
+                                            egui::RichText::new(atb.caution)
+                                                .size(11.0)
+                                                .italics()
+                                                .color(motif::ALERT),
+                                        );
+                                    });
+                                }
+                            }
+                            ui.add_space(3.0);
+                        }
+
+                        ui.add_space(8.0);
+                        motif::section(ui, tr("ord_probio_section"));
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::toggle(ui, tr("ord_probio_none"), choice.probiotic.is_none())
+                                .clicked()
+                            {
+                                choice.probiotic = None;
+                            }
+                            for (i, p) in crate::ordonnance::PROBIOTICS.iter().enumerate() {
+                                if motif::toggle(ui, p.name, choice.probiotic == Some(i)).clicked()
+                                {
+                                    choice.probiotic = Some(i);
+                                    choice.probiotic_posology = p
+                                        .posologies
+                                        .first()
+                                        .map(|s| (*s).to_owned())
+                                        .unwrap_or_default();
+                                }
+                            }
+                        });
+                        if let Some(p) = choice
+                            .probiotic
+                            .and_then(|i| crate::ordonnance::PROBIOTICS.get(i))
+                        {
+                            if p.posologies.len() > 1 {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.add_space(12.0);
+                                    for schema in p.posologies {
+                                        if motif::toggle(
+                                            ui,
+                                            schema,
+                                            choice.probiotic_posology == *schema,
+                                        )
+                                        .clicked()
+                                        {
+                                            choice.probiotic_posology = (*schema).to_owned();
+                                        }
+                                    }
+                                });
+                            }
+                            ui.horizontal(|ui| {
+                                ui.add_space(12.0);
+                                ui.add_sized(
+                                    [ui.available_width().max(120.0), 24.0],
+                                    egui::TextEdit::singleline(&mut choice.probiotic_posology)
+                                        .hint_text(tr("ord_posology_hint")),
+                                );
+                            });
+                        }
+
+                        ui.add_space(8.0);
+                        motif::section(ui, tr("ord_advice_section"));
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::toggle(ui, tr("ord_conseils"), choice.conseils).clicked() {
+                                choice.conseils = !choice.conseils;
+                            }
+                            if motif::toggle(ui, tr("ord_temps"), choice.temps_de_prise).clicked() {
+                                choice.temps_de_prise = !choice.temps_de_prise;
+                            }
+                        });
+
+                        ui.add_space(8.0);
+                        motif::section(ui, tr("ord_extra_section"));
+                        ui.add_space(4.0);
+                        ui.add_sized(
+                            [ui.available_width(), 60.0],
+                            egui::TextEdit::multiline(&mut choice.extra)
+                                .hint_text(tr("ord_extra_hint")),
+                        );
+                    });
+
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(tr("ord_warning"))
+                        .size(10.5)
+                        .italics()
+                        .color(motif::TEXT_FAINT),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("ord_print")).clicked() {
+                        print = true;
+                    }
+                    if motif::button(ui, tr("ord_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+
+        // Escape is handled by `patient_view`, which owns the key for
+        // the whole file and dismisses this box before the file itself.
+        if print {
+            let choice = session
+                .ordonnance
+                .as_ref()
+                .map(|o| o.choice.clone())
+                .unwrap_or_default();
+            let lines = choice.lines(protocol);
+            if lines.is_empty() {
+                session.error = Some(tr("ord_empty").to_owned());
+            } else {
+                let today = session
+                    .db
+                    .today_french()
+                    .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+                let advice = choice.advice(protocol);
+                match crate::pdf::open_ordonnance(
+                    patient,
+                    &config.pharmacy,
+                    protocol.indication,
+                    &today,
+                    &lines,
+                    &advice,
+                    &config.ordonnance_template_path(),
+                ) {
+                    Ok(_) => {
+                        session.error = None;
+                        close = true;
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if close {
+            session.ordonnance = None;
         }
     }
 
@@ -4722,6 +5031,24 @@ impl App {
                     ui.label(dim(tr("form_address")));
                     ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.address));
                     ui.end_row();
+                    // Both are for the bulletin d'adhésion, and both are
+                    // optional: left empty, the printed form keeps its
+                    // dotted rule for the patient's carte Vitale.
+                    ui.label(dim(tr("form_nir")));
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [200.0, 26.0],
+                            egui::TextEdit::singleline(&mut form.nir)
+                                .hint_text(tr("form_nir_hint")),
+                        );
+                        ui.label(dim(tr("form_regime")));
+                        ui.add_sized(
+                            [56.0, 26.0],
+                            egui::TextEdit::singleline(&mut form.regime)
+                                .hint_text(tr("form_regime_hint")),
+                        );
+                    });
+                    ui.end_row();
                     ui.label(dim(tr("form_situation")));
                     ui.horizontal(|ui| {
                         for (code, key) in db::SITUATIONS {
@@ -4980,6 +5307,8 @@ impl App {
                 email: patient.email.clone(),
                 address: patient.address.clone(),
                 situation: patient.situation.clone(),
+                nir: patient.nir.clone(),
+                regime: patient.regime.clone(),
                 error: None,
             });
         }
@@ -5005,6 +5334,8 @@ impl App {
                             email: form.email.trim().to_owned(),
                             address: form.address.trim().to_owned(),
                             situation: form.situation.trim().to_owned(),
+                            nir: form.nir.trim().to_owned(),
+                            regime: form.regime.trim().to_owned(),
                         };
                         // CAS against the row as displayed: a colleague's
                         // concurrent correction is never wiped.
@@ -5075,6 +5406,12 @@ impl App {
         // (kind, planned date, thematic) of the row whose PDF was asked.
         let mut print_req: Option<(InterviewKind, Option<String>, String)> = None;
         let mut cr_req: Option<(InterviewKind, Option<String>, String)> = None;
+        // The act's bulletin d'adhésion, for the themes that have one.
+        let mut bulletin_req: Option<InterviewKind> = None;
+        // (interview id, what the TROD read, the value this PC saw — CAS).
+        let mut set_trod: Option<(i64, String, String)> = None;
+        // The act whose ordonnance box is being opened.
+        let mut open_ordonnance: Option<(i64, InterviewKind)> = None;
         // (interview id, new minutes, the minutes this PC saw — CAS).
         let mut set_duration: Option<(i64, i64, i64)> = None;
         // (interview id, new date, the date this PC saw — CAS expected).
@@ -5259,6 +5596,42 @@ impl App {
                                         itv.scheduled_date.clone(),
                                         itv.theme.clone(),
                                     ));
+                                }
+                                // Only the themes under the accompaniment
+                                // convention have an adhésion to sign.
+                                if crate::bulletin::has_bulletin(itv.kind)
+                                    && motif::button(ui, tr("itv_bulletin"))
+                                        .on_hover_text(tr("itv_bulletin_tooltip"))
+                                        .clicked()
+                                {
+                                    bulletin_req = Some(itv.kind);
+                                }
+                                // A TROD is read once, and what it read
+                                // decides whether there is anything to
+                                // dispense at all.
+                                if crate::ordonnance::is_trod(itv.kind) {
+                                    let result = itv.trod_result.clone();
+                                    for (value, label) in [
+                                        (crate::ordonnance::POSITIF, tr("trod_positive")),
+                                        (crate::ordonnance::NEGATIF, tr("trod_negative")),
+                                    ] {
+                                        let on = result == value;
+                                        if motif::toggle(ui, label, on).clicked() {
+                                            // Clicking the current answer
+                                            // clears it: a test read by
+                                            // mistake can be un-read.
+                                            let next = if on { "" } else { value };
+                                            set_trod =
+                                                Some((itv.id, next.to_owned(), result.clone()));
+                                        }
+                                    }
+                                    if result == crate::ordonnance::POSITIF
+                                        && motif::button(ui, tr("trod_ordonnance"))
+                                            .on_hover_text(tr("trod_ordonnance_tooltip"))
+                                            .clicked()
+                                    {
+                                        open_ordonnance = Some((itv.id, itv.kind));
+                                    }
                                 }
                             });
                             let mut minutes = itv.duration_minutes;
@@ -5512,6 +5885,28 @@ impl App {
             ) {
                 session.error = Some(e);
             }
+        }
+        if let Some(kind) = bulletin_req {
+            if let Err(e) = crate::pdf::open_bulletin(kind, patient, &config.pharmacy) {
+                session.error = Some(e);
+            }
+        }
+        if let Some((id, result, expected)) = set_trod {
+            match session.db.set_trod_result(id, &result, &expected) {
+                Ok(true) => session.reload_interviews(patient.id),
+                Ok(false) => {
+                    session.error = Some(tr("trod_stale").to_owned());
+                    session.reload_interviews(patient.id);
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some((id, kind)) = open_ordonnance {
+            session.ordonnance = Some(OrdonnanceBox {
+                interview: id,
+                kind,
+                choice: crate::ordonnance::Choice::default(),
+            });
         }
         if session.viewing_interviews.is_empty() {
             ui.label(tr("patient_no_interviews"));
@@ -10762,6 +11157,7 @@ impl eframe::App for App {
                 TplTarget::Fiche => self.config.template_path(),
                 TplTarget::Courrier => self.config.cr_template_path(),
                 TplTarget::Carnet => self.config.carnet_template_path(),
+                TplTarget::Ordonnance => self.config.ordonnance_template_path(),
             };
             // A Typst source is code: give it the screen. A fixed
             // 680x540 box meant scrolling a page-long template through
@@ -10783,6 +11179,7 @@ impl eframe::App for App {
                             (TplTarget::Fiche, tr("tpl_target_fiche")),
                             (TplTarget::Courrier, tr("tpl_target_cr")),
                             (TplTarget::Carnet, tr("tpl_target_carnet")),
+                            (TplTarget::Ordonnance, tr("tpl_target_ordonnance")),
                         ] {
                             // Sunken marks the active template.
                             let btn = motif::toggle(ui, label, *target == t);
@@ -10814,6 +11211,9 @@ impl eframe::App for App {
                                 TplTarget::Fiche => crate::pdf::check_template(text),
                                 TplTarget::Courrier => crate::pdf::check_cr_template(text),
                                 TplTarget::Carnet => crate::pdf::check_trans_template(text),
+                                TplTarget::Ordonnance => {
+                                    crate::pdf::check_ordonnance_template(text)
+                                }
                             };
                             match check {
                                 Ok(()) => {
@@ -10838,6 +11238,9 @@ impl eframe::App for App {
                                 TplTarget::Fiche => crate::pdf::preview_template(text),
                                 TplTarget::Courrier => crate::pdf::preview_cr_template(text),
                                 TplTarget::Carnet => crate::pdf::preview_trans_template(text),
+                                TplTarget::Ordonnance => {
+                                    crate::pdf::preview_ordonnance_template(text)
+                                }
                             };
                             if let Err(e) = preview {
                                 *message = Some((true, e));
@@ -10852,6 +11255,9 @@ impl eframe::App for App {
                                 TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
                                 TplTarget::Carnet => {
                                     crate::pdf::default_trans_template().to_owned()
+                                }
+                                TplTarget::Ordonnance => {
+                                    crate::pdf::default_ordonnance_template().to_owned()
                                 }
                             };
                             *message = None;
@@ -10880,11 +11286,13 @@ impl eframe::App for App {
                 TplTarget::Fiche => self.config.template_path(),
                 TplTarget::Courrier => self.config.cr_template_path(),
                 TplTarget::Carnet => self.config.carnet_template_path(),
+                TplTarget::Ordonnance => self.config.ordonnance_template_path(),
             };
             let text = std::fs::read_to_string(&path).unwrap_or_else(|_| match t {
                 TplTarget::Fiche => crate::pdf::default_template().to_owned(),
                 TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
                 TplTarget::Carnet => crate::pdf::default_trans_template().to_owned(),
+                TplTarget::Ordonnance => crate::pdf::default_ordonnance_template().to_owned(),
             });
             self.tpl_editor = Some(TplEditor {
                 target: t,
@@ -10967,6 +11375,15 @@ impl eframe::App for App {
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.pharmacist,
                                             ),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("opts_am_number")));
+                                        ui.add_sized(
+                                            [300.0, 24.0],
+                                            egui::TextEdit::singleline(
+                                                &mut editor.cfg.pharmacy.am_number,
+                                            )
+                                            .hint_text(tr("opts_am_number_hint")),
                                         );
                                         ui.end_row();
                                     });
@@ -11700,6 +12117,7 @@ mod tests {
             remote: false,
             treatment_change: change,
             theme: String::new(),
+            trod_result: String::new(),
             created_at: format!("2026-{day:02}-05 10:00:00"),
         };
         // Année 1 : il faut deux entretiens avant le changement et deux

@@ -73,6 +73,7 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # bpm_template_path = "templates/bpm_layout.typ"
 # cr_template_path = "templates/cr_layout.typ"
 # carnet_template_path = "templates/carnet_layout.typ"
+# ordonnance_template_path = "templates/ordonnance_layout.typ"
 
 [pharmacy]
 # Identité de l'officine, pour l'en-tête du courrier au médecin.
@@ -80,6 +81,9 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # address = "1 place de la Mairie, 34000 Montpellier"
 # phone = "04 67 00 00 00"
 # pharmacist = "Dr Claire Leroy, pharmacien titulaire"
+# N° d'identification Assurance Maladie, imprimé sur le bulletin
+# d'adhésion. Laissé vide, la ligne du bulletin reste à remplir à la main.
+# am_number = "3400123"
 
 [rules]
 # Nombre maximal d'actes par année d'accompagnement (cycle glissant à
@@ -176,6 +180,10 @@ pub struct PharmacyConfig {
     pub phone: String,
     /// Signing pharmacist ("Dr Claire Leroy, pharmacien titulaire").
     pub pharmacist: String,
+    /// N° d'identification Assurance Maladie of the officine, printed on
+    /// the bulletin d'adhésion. Empty leaves that line blank.
+    #[serde(default)]
+    pub am_number: String,
 }
 
 /// Custom Typst templates; the embedded default is used when unset.
@@ -185,6 +193,7 @@ pub struct TemplatesConfig {
     pub bpm_template_path: Option<PathBuf>,
     pub cr_template_path: Option<PathBuf>,
     pub carnet_template_path: Option<PathBuf>,
+    pub ordonnance_template_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -562,6 +571,14 @@ impl Config {
             .carnet_template_path
             .clone()
             .unwrap_or_else(|| Self::path().with_file_name("carnet_layout.typ"))
+    }
+
+    /// Where the ordonnance template lives (dispensation after a TROD).
+    pub fn ordonnance_template_path(&self) -> PathBuf {
+        self.templates
+            .ordonnance_template_path
+            .clone()
+            .unwrap_or_else(|| Self::path().with_file_name("ordonnance_layout.typ"))
     }
 
     /// The yearly quota for an act kind (0 = no rule).

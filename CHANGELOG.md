@@ -5,6 +5,53 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.49.0] - 2026-08-26
+
+### Added
+- **The bulletin d'adhésion, pre-filled on the official form.** Each act
+  under the accompaniment convention gets an « Adhésion » button beside
+  its PDF and CR. It opens the Assurance Maladie's own bulletin — the
+  five PDFs from ameli.fr, one per theme, embedded as downloaded — with
+  the identity blocks typed into their AcroForm fields. The app fills
+  the official form; it does not redraw it.
+- `patients.nir` and `patients.regime`, entered on the patient's
+  correction form, and `[pharmacy] am_number` in the options. Any of
+  them left empty leaves that line of the printed bulletin blank, with
+  its dotted rule intact.
+
+- **Ordonnance after a positive TROD.** The two TROD acts carry what
+  the test read (« TROD + » / « TROD − », compare-and-set like every
+  other shared value). A positive result opens a box offering the
+  antibiotics that indication allows, each with the situation it is for
+  and its usual posology pre-filled — pick one, or write the posology by
+  hand. A probiotic can be added, two toggles switch on the conseils
+  hygiéno-diététiques and the temps de prise, and free lines take
+  anything else. It prints as an A4 ordonnance carrying the officine's
+  N° AM, editable in « Modèles PDF… » like the fiche and the CR.
+- The molecules, doses and durations come from the app's own « Angine »
+  and « Cystite » reference tables — a test fails if the two ever drift
+  apart, so what the pharmacist reads at the counter and what the
+  patient is handed can never disagree.
+
+### Notes
+- The app proposes and the pharmacist decides: every posology is a plain
+  text field, nothing is pre-selected, and the box says so above the
+  print button.
+- Every checkbox is left unticked and the date and signatures left
+  blank: OUI/NON on the adhésion, OUI/NON on informing the médecin
+  traitant and « à l'initiative du pharmacien » are the patient's
+  decisions, taken in front of the form.
+- The five forms disagree about their own field names — the pharmacy's
+  Assurance Maladie number is `N AM`, `Num identification` or `fill_11`
+  depending on the form, and `Adresse 1`/`Adresse 2` is the patient's
+  address on three of them and the pharmacy's on the other two. The
+  names were read off the rendered forms by position; a test checks
+  every one still exists, and another that the two address blocks never
+  collapse into one.
+- Filled text is drawn through the form's `/Helv` (Latin-1) rather than
+  the `/DA` default of Arial/MacRoman, which turned « Hélène » into
+  « HÈlËne » on three of the five bulletins.
+
 ## [0.48.0] - 2026-08-26
 
 ### Added
