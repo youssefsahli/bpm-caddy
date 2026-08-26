@@ -2,6 +2,7 @@
 
 mod app;
 mod bulletin;
+mod codex;
 mod config;
 mod db;
 mod fuzzy;

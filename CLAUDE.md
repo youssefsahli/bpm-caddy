@@ -11,7 +11,9 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   rules and the traveller's country table — static, pure, tested),
   `src/bulletin.rs` (fills the official Assurance Maladie bulletins
   d'adhésion in `assets/bulletins/`), `src/ordonnance.rs` (what a
-  positive TROD allows, and the choices behind the ordonnance)
+  positive TROD allows, and the choices behind the ordonnance),
+  `src/codex.rs` (reading a preparation's formula and rescaling it —
+  pure and tested; the preparations themselves live in the base)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -63,7 +65,7 @@ root package. CI enforces `cargo fmt --all --check`,
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|calc|
-  carnet|vaccins|vaccine_map|ordonnance|keys|act_picker`
+  carnet|vaccins|vaccine_map|ordonnance|codex|codex_open|keys|act_picker`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
@@ -101,6 +103,11 @@ the app proposes, the pharmacist decides. It says so only if the
 officine asks it to: every printed or displayed mention lives in
 `[disclaimers]` (config.toml, Options › Mentions) and is empty by
 default. Never hardcode a new caveat — add a key there.
+
+The codex works the same way: `src/db.rs` ships `STARTER_PREPARATIONS`
+into the `preparations` table once, and everything after that is the
+team's — a formula rewritten in the app is never re-seeded over. Adding
+a preparation is adding a fiche, never a second table in the code.
 
 The ordonnance's adjuvants are **not** a list in the code: they are the
 drug cards tagged `[ordonnance] adjuvant_tag` (default `probiotique`),

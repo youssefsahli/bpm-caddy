@@ -5,6 +5,34 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.54.0] - 2026-08-26
+
+### Added
+- **A codex of preparations**, reached from the drugs view or from a
+  card (« Codex… », which opens it already searched on that molecule).
+  Twelve officinal formulas to start with — vaseline salicylée à 5 et
+  10 %, pâte à l'eau, vaseline soufrée, crème à l'urée, coaltar
+  saponiné, éosine aqueuse, gélules pédiatriques, sirop simple,
+  bicarbonate à 1,4 %, chlorure de sodium à 0,9 %, glycérolé d'amidon —
+  each with its formula, its mode opératoire, its conservation, what
+  goes wrong, and its sources. They seed once and then belong to the
+  team: a rewritten formula survives every launch, and adding a
+  preparation is adding a fiche.
+- **The formula at the quantity actually being made.** Type « 60 g »
+  and every line is rescaled — the excipient's « qsp 100 g » becomes
+  « qsp 60 g » — with each ingredient's strength read off the formula
+  beside it. A quantity in another unit than the formula's is refused
+  rather than guessed.
+- **A printable fiche de fabrication**: the formula at the quantity
+  prepared, a blank column for the lot of every raw material, the
+  operator and the date, and the boxes for the control and the
+  labelling — the record the bonnes pratiques de préparation ask for.
+- **Three calculators under the sheet**, opening on a worked example:
+  the titre (x % of y g), the dilution (C1·V1 = C2·V2, with what to
+  take and what to make up with), and a batch of capsules (unit dose ×
+  count, plus the overage), with the apparent volumes of the empty
+  capsule sizes.
+
 ## [0.53.0] - 2026-08-26
 
 ### Added
