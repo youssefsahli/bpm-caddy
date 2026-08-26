@@ -1,9 +1,11 @@
 //! Conversion / equivalence and reference tables for the counter: dose
 //! equivalences (IPP, statines, corticoïdes, opioïdes,
 //! benzodiazépines), dosing references (HBPM, AOD, corticoïdes
-//! inhalés, insulines, antalgiques), and the decision aids the acts
-//! need (fonction rénale, angine, cystite, contraception, vaccins,
-//! doses pédiatriques, écrasement des formes orales).
+//! inhalés, insulines, antalgiques), the decision aids the acts need
+//! (fonction rénale, angine, cystite, contraception, vaccins, doses
+//! pédiatriques, écrasement des formes orales), and the three that
+//! answer a question asked without an ordonnance in hand
+//! (interactions, urgence au comptoir, grossesse et allaitement).
 //!
 //! The values are the classic published reference equivalences taught
 //! in French pharmacy practice. They are deliberately static reference
@@ -378,6 +380,69 @@ pub const TABLES: &[ConvTable] = &[
             &["En pratique", "Chercher d'abord une alternative", "Un écrasement non documenté modifie le médicament et engage la responsabilité", "Forme buvable, orodispersible, patch, suppositoire ou autre dosage", "Écraser juste avant l'administration, un médicament à la fois, matériel nettoyé entre chaque"],
         ],
     },
+    ConvTable {
+        short: "Interactions",
+        title: "Interactions à repérer à la délivrance — aliments, plantes et inducteurs",
+        sources: &[
+            "ANSM — Thésaurus des interactions médicamenteuses",
+            "RCP des spécialités concernées, base de données publique des médicaments",
+            "ANSM — millepertuis et interactions médicamenteuses, mise au point",
+        ],
+        columns: &["Ce qui interagit", "Mécanisme", "Médicaments concernés", "Conséquence attendue", "Conduite au comptoir"],
+        rows: &[
+            &["Pamplemousse (fruit et jus)", "Inhibition du CYP3A4 intestinal, durable après une seule prise", "Simvastatine et atorvastatine, inhibiteurs calciques dihydropyridines, ciclosporine, tacrolimus, colchicine", "Concentrations augmentées, parfois d'un facteur trois : myalgies, œdèmes, toxicité", "Suppression du pamplemousse, pas un simple espacement : l'inhibition dure plus de 24 heures. Les autres agrumes ne posent pas le même problème."],
+            &["Millepertuis", "Induction du CYP3A4 et de la P-glycoprotéine", "Contraceptifs oraux, anticoagulants oraux directs, antivitamines K, immunosuppresseurs, antirétroviraux, antidépresseurs sérotoninergiques", "Perte d'efficacité pouvant aller jusqu'à l'échec de la contraception ou du greffon ; syndrome sérotoninergique avec les antidépresseurs", "Contre-indication ou association déconseillée selon le médicament. À rechercher activement : le patient ne le déclare pas, parce que c'est « une plante »."],
+            &["Rifampicine et antiépileptiques inducteurs", "Induction enzymatique puissante, installée en quelques jours et persistante après l'arrêt", "Contraceptifs hormonaux, antivitamines K, corticoïdes, anticoagulants oraux directs", "Baisse marquée des concentrations, y compris pendant deux semaines après l'arrêt de l'inducteur", "Contraception : passage à un dispositif intra-utérin ou méthode mécanique. Contraception d'urgence : lévonorgestrel inefficace, préférer le dispositif intra-utérin."],
+            &["Macrolides, sauf spiramycine", "Inhibition du CYP3A4", "Colchicine, statines, anticoagulants oraux directs, immunosuppresseurs", "Surdosage : diarrhée puis toxicité médullaire avec la colchicine, rhabdomyolyse avec les statines", "Colchicine et clarithromycine : association contre-indiquée. Préférer la spiramycine ou l'azithromycine quand le choix est possible."],
+            &["Calcium, fer, magnésium, zinc", "Chélation dans le tube digestif", "Cyclines, fluoroquinolones, lévothyroxine, biphosphonates", "Absorption effondrée, échec du traitement sans autre signe", "Espacer d'au moins 2 heures, et de 4 heures pour la lévothyroxine et les biphosphonates. Vérifier aussi les eaux minérales riches en calcium."],
+            &["Inhibiteurs de la pompe à protons", "Élévation du pH gastrique et inhibition du CYP2C19", "Clopidogrel, antifongiques azolés, fer, vitamine B12, atazanavir", "Activation réduite du clopidogrel ; absorption réduite des autres", "Sous clopidogrel, préférer le pantoprazole à l'oméprazole et à l'ésoméprazole. Réévaluer tout traitement prolongé par inhibiteur de la pompe à protons."],
+            &["Anti-inflammatoires non stéroïdiens", "Inhibition des prostaglandines rénales", "Inhibiteurs de l'enzyme de conversion, sartans, diurétiques", "Insuffisance rénale aiguë fonctionnelle, la « triade néfaste », majorée par la déshydratation", "Refuser l'automédication par anti-inflammatoire sous ce type de traitement, en particulier par forte chaleur, en cas de fièvre ou de gastro-entérite."],
+            &["Alcool", "Effets additifs et interférences métaboliques", "Métronidazole, paracétamol, benzodiazépines, opioïdes, sulfamides hypoglycémiants", "Effet antabuse, majoration de l'hépatotoxicité, dépression respiratoire", "Le rappeler explicitement à la délivrance du métronidazole, y compris pour les 48 heures suivant la fin du traitement."],
+            &["Jus de canneberge et compléments", "Interférence avec le métabolisme des antivitamines K", "Antivitamines K", "INR déséquilibré à la hausse", "Ni suppression ni interdiction des légumes verts : c'est la régularité des apports qui compte, avec un contrôle d'INR après tout changement d'habitude."],
+        ],
+    },
+    ConvTable {
+        short: "Urgence",
+        title: "Urgence au comptoir — reconnaître, agir, orienter",
+        sources: &[
+            "Recommandations de la Société française de médecine d'urgence",
+            "HAS — prise en charge de l'anaphylaxie ; conduite à tenir devant une hypoglycémie",
+            "Guide des gestes d'urgence à l'officine, Ordre national des pharmaciens",
+        ],
+        columns: &["Situation", "Ce que l'on voit", "Geste immédiat", "Ce qu'il ne faut pas faire", "Orientation"],
+        rows: &[
+            &["Anaphylaxie", "Urticaire étendue avec gêne respiratoire, gonflement de la gorge, malaise ou chute de tension, souvent en quelques minutes", "Adrénaline intramusculaire dans la face externe de la cuisse, sans attendre ; allonger jambes surélevées", "Ne pas faire asseoir ni lever la personne, ne pas se contenter d'un antihistaminique ou d'un corticoïde", "Appel du 15 dans tous les cas, même si les signes cèdent : une deuxième vague est possible dans les heures qui suivent."],
+            &["Hypoglycémie consciente", "Sueurs, tremblements, faim, pâleur, troubles du comportement chez un patient diabétique", "15 g de sucre rapide : 3 morceaux de sucre, un verre de jus de fruit ou de soda non light, puis un sucre lent une fois les signes passés", "Ne pas donner de chocolat ni de produit gras, dont le sucre passe trop lentement", "Recontrôler la glycémie à 15 minutes et resucrer si nécessaire ; rechercher la cause avant de laisser repartir."],
+            &["Hypoglycémie avec trouble de conscience", "Somnolence, confusion, impossibilité d'avaler en sécurité, convulsions", "Position latérale de sécurité ; glucagon si disponible et si l'entourage sait l'utiliser", "Ne rien faire avaler, en aucun cas : risque d'inhalation", "Appel du 15 immédiat."],
+            &["Suspicion d'accident vasculaire cérébral", "Bouche déformée, faiblesse d'un bras, parole troublée, installation brutale", "Noter l'heure exacte de début, allonger, surveiller", "Ne rien donner à boire ni à avaler, ne pas donner d'aspirine", "Appel du 15 sans délai : l'heure de début conditionne la thrombolyse."],
+            &["Douleur thoracique", "Douleur en étau, irradiant au bras ou à la mâchoire, sueurs, essoufflement", "Mettre au repos assis ou demi-assis, rassurer", "Ne pas faire marcher jusqu'au cabinet médical, ne pas laisser repartir en voiture au volant", "Appel du 15."],
+            &["Crise d'asthme sévère", "Difficulté à parler en phrases entières, tirage, agitation, bronchodilatateur habituel inefficace", "Bronchodilatateur de courte durée d'action à répéter, position assise penchée en avant", "Ne pas allonger, ne pas laisser seul", "Appel du 15 devant toute crise qui ne cède pas ou qui empêche de parler."],
+            &["Intoxication médicamenteuse", "Prise volontaire ou accidentelle, notamment paracétamol chez l'adolescent, chloroquine ou antidépresseur chez l'adulte", "Recueillir l'heure, la nature et la quantité, garder les boîtes", "Ne pas faire vomir, ne pas donner de lait ni de charbon sans avis", "Centre antipoison ou 15 ; le paracétamol est traitable si l'antidote est donné à temps, y compris chez un patient sans aucun symptôme."],
+            &["Brûlure thermique limitée", "Rougeur douloureuse, phlyctène de petite taille, hors visage, mains et zones génitales", "Refroidir à l'eau tempérée 15 minutes, protéger par un pansement gras", "Ne pas percer la phlyctène, ne pas appliquer de corps gras alimentaire ni de glace", "Avis médical si la surface dépasse la paume de la main, si la zone est fonctionnelle, ou chez le nourrisson et la personne âgée."],
+            &["Malaise vagal", "Pâleur, sueurs, nausée, vue qui se brouille, après une émotion, une injection ou une station debout prolongée", "Allonger, jambes surélevées, desserrer les vêtements", "Ne pas asseoir ni relever trop vite, ne pas donner à boire tant que la conscience n'est pas claire", "Surveiller la reprise ; avis médical si la perte de connaissance a été complète ou si le patient est âgé ou anticoagulé."],
+        ],
+    },
+    ConvTable {
+        short: "Grossesse",
+        title: "Grossesse et allaitement — ce qui se délivre au comptoir",
+        sources: &[
+            "CRAT — Centre de référence sur les agents tératogènes",
+            "ANSM — anti-inflammatoires non stéroïdiens et grossesse, point d'information",
+            "RCP des spécialités concernées, base de données publique des médicaments",
+        ],
+        columns: &["Situation", "Possible sans avis", "À éviter ou à encadrer", "Contre-indiqué", "Repère"],
+        rows: &[
+            &["Douleur et fièvre", "Paracétamol, à la dose efficace la plus faible et sur la durée la plus courte", "Codéine et tramadol en fin de grossesse : dépression respiratoire du nouveau-né", "Tous les anti-inflammatoires non stéroïdiens, y compris l'aspirine à dose antalgique et les formes locales", "L'interdiction des anti-inflammatoires est absolue à partir de 24 semaines d'aménorrhée, soit 6 mois révolus, et vaut aussi pour l'automédication."],
+            &["Nausées et vomissements", "Mesures diététiques, gingembre, vitamine B6", "Doxylamine, métoclopramide et ondansétron selon prescription", "—", "Des vomissements incoercibles avec perte de poids relèvent d'un avis le jour même : ce n'est plus le domaine du conseil."],
+            &["Reflux et brûlures", "Pansements gastriques, alginates", "Inhibiteurs de la pompe à protons sur prescription, l'oméprazole étant le mieux documenté", "—", "Mesures posturales d'abord : repas fractionnés, délai avant le coucher, surélévation de la tête du lit."],
+            &["Constipation", "Laxatifs de lest et osmotiques, macrogol", "Laxatifs stimulants sur de courtes durées seulement", "Huile de ricin, anthracéniques à forte dose", "Fibres et hydratation d'abord ; la constipation est quasi constante et n'est pas une raison de laisser sans solution."],
+            &["Rhume et toux", "Lavage de nez au sérum physiologique, miel après le premier trimestre", "Antitussifs et mucolytiques : intérêt faible, à éviter", "Vasoconstricteurs par voie orale ou nasale, à tout terme", "Les vasoconstricteurs sont contre-indiqués chez la femme enceinte comme chez l'enfant de moins de 15 ans : c'est un refus de délivrance fréquent."],
+            &["Allergie", "Cétirizine et loratadine, les mieux documentées", "Antihistaminiques sédatifs de première génération en fin de grossesse", "—", "Un antihistaminique n'est pas une raison de suspendre un traitement de fond de l'asthme, qui doit être poursuivi."],
+            &["Carences et supplémentation", "Acide folique avant la conception et jusqu'à 12 semaines, vitamine D", "Fer selon la ferritine, iode selon le contexte", "Vitamine A à forte dose et rétinoïdes", "L'acide folique se prescrit idéalement deux mois avant la conception : la question se pose à toute femme qui évoque un projet de grossesse."],
+            &["Allaitement, antalgiques", "Paracétamol, ibuprofène", "Anti-inflammatoires à demi-vie longue", "Codéine et tramadol, aspirine à dose antalgique", "La codéine est contre-indiquée pendant l'allaitement : métaboliseurs rapides et dépression respiratoire du nourrisson."],
+            &["Allaitement, situations courantes", "La plupart des antibiotiques usuels, dont l'amoxicilline", "Fluconazole en dose unique, antihistaminiques peu sédatifs", "Codéine, dérivés de l'ergot de seigle, iode à forte dose", "Interrompre l'allaitement est rarement la bonne réponse : vérifier la molécule au CRAT avant de le proposer."],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -387,10 +452,24 @@ mod tests {
     #[test]
     fn tables_are_well_formed() {
         assert!(TABLES.len() >= 6);
+        let mut shorts = std::collections::HashSet::new();
         for t in TABLES {
             assert!(!t.title.is_empty());
             assert!(!t.sources.is_empty());
             assert!(!t.rows.is_empty());
+            assert!(!t.columns.is_empty());
+            // The selector shows `short`: two tables sharing one would
+            // put two identical buttons side by side.
+            assert!(
+                shorts.insert(t.short),
+                "nom de table en double : {}",
+                t.short
+            );
+            for row in t.rows {
+                for cell in row.iter() {
+                    assert!(!cell.trim().is_empty(), "cellule vide dans « {} »", t.title);
+                }
+            }
             for row in t.rows {
                 assert_eq!(
                     row.len(),
@@ -412,6 +491,9 @@ mod tests {
             "Contraception",
             "Vaccination",
             "Fonction rénale",
+            "Interactions",
+            "Urgence",
+            "Grossesse",
             "Pédiatrie",
             "Écraser",
         ] {

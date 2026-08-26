@@ -5,6 +5,39 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.51.0] - 2026-08-26
+
+### Added
+- **Posologies for nine more classes.** 52 lines across the IEC, the
+  bêtabloquants, les statines, les inhibiteurs calciques, les fibrates,
+  les substituts nicotiniques, les mucolytiques, les insulines basales
+  et les vaccins — with the counter point that goes with each: le
+  captopril à distance des repas quand les autres IEC s'en moquent, le
+  céliprolol à jeun, le comprimé d'Adalate qu'on retrouve intact dans
+  les selles, l'œdème des chevilles des dihydropyridines que ni le
+  régime sans sel ni un diurétique ne corrigent, le gemfibrozil qu'on
+  n'associe pas à une statine, le mâcher-parquer des gommes à la
+  nicotine, la glargine 300 qu'on ne transvase jamais.
+- The seeding spot-check now covers ten cards across both passes rather
+  than five.
+- **Three reference tables**, answering the questions asked without an
+  ordonnance in hand — the ones the other seventeen never covered.
+  « Interactions » (pamplemousse, millepertuis, inducteurs, chélation,
+  la triade néfaste), « Urgence » (anaphylaxie, hypoglycémie avec et
+  sans trouble de conscience, AVC, douleur thoracique, intoxication),
+  et « Grossesse » (ce qui se délivre, ce qui s'encadre, ce qui se
+  refuse, à la grossesse comme à l'allaitement). Twenty tables now,
+  each with its numbered sources on screen and on the printout.
+- The table test now refuses a duplicate selector name and an empty
+  cell, on top of the row-width check.
+
+### Notes
+- The specialist-titrated classes are deliberately still empty:
+  antiépileptiques, antipsychotiques, immunosuppresseurs, inhibiteurs
+  JAK et immunomodulateurs de la sclérose en plaques. Their doses are
+  set by titration and by indication, and a plausible-looking line
+  there would be worse than a blank one.
+
 ## [0.50.0] - 2026-08-26
 
 ### Added
