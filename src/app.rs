@@ -10158,6 +10158,15 @@ impl App {
                     egui::TextEdit::singleline(&mut session.codex_new_name)
                         .hint_text(tr("codex_new_hint")),
                 );
+                if motif::button(ui, tr("dash_print"))
+                    .on_hover_text(tr("codex_print_all_tooltip"))
+                    .clicked()
+                {
+                    let all = session.preparations.clone();
+                    if let Err(e) = crate::pdf::open_codex(&all) {
+                        session.error = Some(e);
+                    }
+                }
                 if motif::button(ui, tr("codex_new")).clicked()
                     && !session.codex_new_name.trim().is_empty()
                 {

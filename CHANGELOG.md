@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.66.0] - 2026-08-27
+
+### Added
+- **Le codex s'imprime en entier** — une fiche par préparation, formule,
+  mode opératoire, conservation, mise en garde et sources : ce qui va
+  dans le classeur du préparatoire. Le bouton est à côté de « + Nouvelle ».
+- **Deux tables de référence de plus.** « Antibiotiques » — durée
+  usuelle, moment de prise, ce qui réduit l'efficacité et ce qu'on
+  surveille, famille par famille, avec les deux lignes qui comptent : la
+  durée est le traitement, et la diarrhée qui suit peut venir deux mois
+  après. « Arrêts et sevrages » — ce qui ne s'arrête jamais d'un coup :
+  bêtabloquant, corticoïde au long cours, benzodiazépine, antidépresseur,
+  opioïde, antiépileptique, clonidine, IPP, tabac et alcool, avec la
+  façon de décroître et ce qui fait appeler. Vingt-sept tables,
+  259 lignes.
+
 ## [0.65.1] - 2026-08-27
 
 ### Fixed
