@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS patients (
     email       TEXT NOT NULL DEFAULT '',
     address     TEXT NOT NULL DEFAULT '',
     situation   TEXT NOT NULL DEFAULT '',
+    nir         TEXT NOT NULL DEFAULT '',
+    regime      TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS interviews (
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS interviews (
     remote      INTEGER NOT NULL DEFAULT 0,
     treatment_change INTEGER NOT NULL DEFAULT 0,
     theme       TEXT NOT NULL DEFAULT '',
+    trod_result TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -190,6 +193,9 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (drug_id, column_name)
     )",
     "ALTER TABLE patients ADD COLUMN situation TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN nir TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN regime TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE interviews ADD COLUMN trod_result TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS vaccinations (
         id          INTEGER PRIMARY KEY,
         patient_id  INTEGER NOT NULL REFERENCES patients(id),
@@ -800,6 +806,9 @@ pub struct Interview {
     /// Follows a treatment change (anticancéreux derogation).
     pub treatment_change: bool,
     pub theme: String,
+    /// TROD outcome: `POSITIF`, `NEGATIF`, or empty while the test has
+    /// not been read. Only ever set on the two TROD act kinds.
+    pub trod_result: String,
     pub created_at: String,
 }
 
@@ -919,6 +928,14 @@ pub struct Patient {
     /// Billing situation: ALD, AT/MP, maternité — the convention asks
     /// that it be taken into account. Free text, empty when standard.
     pub situation: String,
+    /// Numéro d'immatriculation (NIR), for the bulletin d'adhésion.
+    /// Empty unless the operator has entered it; the bulletin then
+    /// prints the line blank, to be completed by hand.
+    pub nir: String,
+    /// Régime d'affiliation, the code on the carte Vitale. Two of the
+    /// five bulletins have a field for it; the others print the line
+    /// without one.
+    pub regime: String,
 }
 
 impl Patient {
@@ -21533,7 +21550,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, last_name, first_name, birth_date, phone, notes,
-                        physician, email, address, situation
+                        physician, email, address, situation, nir, regime
                  FROM patients",
             )
             .map_err(|e| e.to_string())?;
@@ -21550,6 +21567,8 @@ impl Db {
                     email: r.get(7)?,
                     address: r.get(8)?,
                     situation: r.get(9)?,
+                    nir: r.get(10)?,
+                    regime: r.get(11)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -21606,11 +21625,11 @@ impl Db {
             .execute(
                 "UPDATE patients SET last_name = ?1, first_name = ?2, birth_date = ?3,
                         phone = ?4, notes = ?5, physician = ?6, email = ?7, address = ?8,
-                        situation = ?9
-                 WHERE id = ?10 AND last_name = ?11 AND first_name = ?12
-                   AND birth_date = ?13 AND phone = ?14 AND notes = ?15
-                   AND physician = ?16 AND email = ?17 AND address = ?18
-                   AND situation = ?19",
+                        situation = ?9, nir = ?10, regime = ?11
+                 WHERE id = ?12 AND last_name = ?13 AND first_name = ?14
+                   AND birth_date = ?15 AND phone = ?16 AND notes = ?17
+                   AND physician = ?18 AND email = ?19 AND address = ?20
+                   AND situation = ?21 AND nir = ?22 AND regime = ?23",
                 rusqlite::params![
                     new.last_name,
                     new.first_name,
@@ -21621,6 +21640,8 @@ impl Db {
                     new.email,
                     new.address,
                     new.situation,
+                    new.nir,
+                    new.regime,
                     expected.id,
                     expected.last_name,
                     expected.first_name,
@@ -21631,6 +21652,8 @@ impl Db {
                     expected.email,
                     expected.address,
                     expected.situation,
+                    expected.nir,
+                    expected.regime,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -21711,6 +21734,8 @@ impl Db {
                     email: r.get(7)?,
                     address: r.get(8)?,
                     situation: String::new(),
+                    nir: String::new(),
+                    regime: String::new(),
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -21885,7 +21910,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, kind, state, duration_minutes, scheduled_date, theme, created_at,
-                        scheduled_time, remote, treatment_change
+                        scheduled_time, remote, treatment_change, trod_result
                  FROM interviews WHERE patient_id = ?1 ORDER BY created_at DESC, id DESC",
             )
             .map_err(|e| e.to_string())?;
@@ -21902,6 +21927,7 @@ impl Db {
                     r.get::<_, String>(7)?,
                     r.get::<_, i64>(8)? != 0,
                     r.get::<_, i64>(9)? != 0,
+                    r.get::<_, String>(10)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -21918,6 +21944,7 @@ impl Db {
                 scheduled_time,
                 remote,
                 treatment_change,
+                trod_result,
             ) = row.map_err(|e| e.to_string())?;
             out.push(Interview {
                 id,
@@ -21927,6 +21954,7 @@ impl Db {
                 remote,
                 treatment_change,
                 theme,
+                trod_result,
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 state: InterviewState::parse(&state)
@@ -23308,6 +23336,8 @@ impl Db {
                         email: r.get(7)?,
                         address: r.get(8)?,
                         situation: String::new(),
+                        nir: String::new(),
+                        regime: String::new(),
                     },
                     r.get::<_, String>(9)?,
                 ))
@@ -23449,6 +23479,20 @@ impl Db {
             .execute(
                 "UPDATE interviews SET remote = ?1 WHERE id = ?2 AND remote = ?3",
                 (i64::from(remote), id, i64::from(expected)),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Record what the TROD read. Compare-and-set on the result this PC
+    /// displayed: the test is read once, and a second post correcting it
+    /// must not be silently overwritten.
+    pub fn set_trod_result(&self, id: i64, result: &str, expected: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE interviews SET trod_result = ?1 WHERE id = ?2 AND trod_result = ?3",
+                (result, id, expected),
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -25074,6 +25118,8 @@ mod tests {
             email: "jean.dupont@example.org".to_owned(),
             address: "12 rue des Lilas".to_owned(),
             situation: "ALD".to_owned(),
+            nir: "1 58 07 34 172 042 11".to_owned(),
+            regime: "01".to_owned(),
         };
         assert!(db.update_patient(&corrected, &seen).unwrap());
         let p = db.patients().unwrap();

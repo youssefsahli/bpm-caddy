@@ -135,6 +135,44 @@ l'expression de nos salutations confraternelles.
 #box(width: 6.5cm, height: 2.2cm, stroke: 0.8pt, radius: 5pt)]
 "#;
 
+/// Default A4 ordonnance for a dispensation after a positive TROD.
+/// `{{LINES}}` receives the prescribed lines and `{{ADVICE}}` the advice
+/// paragraphs the toggles switch on; either may be empty.
+const DEFAULT_ORDONNANCE_TEMPLATE: &str = r#"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt, lang: "fr")
+
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold", size: 13pt)[{{PHARMACY_NAME}}] \
+   {{PHARMACY_ADDRESS}} \
+   {{PHARMACY_PHONE}} \
+   #text(size: 9pt)[N° AM : {{PHARMACY_AM}}]],
+  [#align(right)[Le {{DATE}}]],
+)
+#v(6mm)
+#align(center)[#text(15pt, weight: "bold")[Ordonnance]]
+#align(center)[#text(9pt, style: "italic")[Dispensation protocolisée par le pharmacien après test rapide d'orientation diagnostique]]
+#v(4mm)
+#line(length: 100%, stroke: 0.6pt)
+#v(3mm)
+
+#text(weight: "bold")[Patient :] {{PATIENT_NAME}} — né(e) le {{BIRTH_DATE}} \
+#text(weight: "bold")[Indication :] {{INDICATION}}
+#v(5mm)
+
+{{LINES}}
+
+{{ADVICE}}
+#v(1fr)
+#line(length: 100%, stroke: 0.6pt)
+#v(2mm)
+{{PHARMACIST}}
+#v(2mm)
+#box(width: 6.5cm, height: 2.2cm, stroke: 0.8pt)
+#v(2mm)
+#text(8pt, style: "italic")[Reconsulter sans attendre en cas d'aggravation ou de signes nouveaux.]
+"#;
+
 /// A self-contained Typst world: one in-memory source, embedded fonts.
 struct PdfWorld {
     library: LazyHash<Library>,
@@ -382,6 +420,7 @@ fn sample_pharmacy() -> PharmacyConfig {
         address: "1 place de la Mairie, 34000 Montpellier".to_owned(),
         phone: "04 67 00 00 00".to_owned(),
         pharmacist: "Dr Claire Leroy, pharmacien titulaire".to_owned(),
+        am_number: "3400123".to_owned(),
     }
 }
 
@@ -988,6 +1027,192 @@ fn appointment_list_source(rdvs: &[Appointment], today_french: &str) -> String {
     )
 }
 
+/// The embedded ordonnance template, for the in-app editor.
+pub fn default_ordonnance_template() -> &'static str {
+    DEFAULT_ORDONNANCE_TEMPLATE
+}
+
+/// Render the prescribed lines as a numbered block.
+fn ordonnance_lines_markup(lines: &[crate::ordonnance::Line]) -> String {
+    if lines.is_empty() {
+        return String::new();
+    }
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        // A one-column grid with an explicit row gutter, not paragraph
+        // linebreaks: `\` and `#linebreak()` both left the molecule and
+        // its own posology a full paragraph apart, and `#pad` for the
+        // indent did the same. A grid row is the only spacing here that
+        // is stated rather than inherited.
+        out.push_str("#block(above: 0mm, below: 3.5mm)[#grid(columns: (1fr), row-gutter: 1.4mm,\n");
+        out.push_str(&format!(
+            "  [#text(weight: \"bold\")[{}. #{}]],\n",
+            i + 1,
+            typst_str(&line.name)
+        ));
+        if !line.posology.is_empty() {
+            out.push_str(&format!("  [#h(5mm)#{}],\n", typst_str(&line.posology)));
+        }
+        if !line.caution.is_empty() {
+            out.push_str(&format!(
+                "  [#h(5mm)#text(9pt, style: \"italic\")[#{}]],\n",
+                typst_str(&line.caution)
+            ));
+        }
+        out.push_str(")]\n");
+    }
+    out
+}
+
+/// Render the advice paragraphs, if any toggle is on.
+fn ordonnance_advice_markup(advice: &[&str]) -> String {
+    if advice.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "#v(3mm)\n#line(length: 100%, stroke: 0.4pt)\n#v(2mm)\n         #text(weight: \"bold\", size: 10pt)[Conseils]\n#v(1.5mm)\n",
+    );
+    for item in advice {
+        out.push_str(&format!(
+            "#block(above: 0mm, below: 1.8mm)[#text(9.5pt)[— #{}]]\n",
+            typst_str(item)
+        ));
+    }
+    out
+}
+
+/// Substitute the ordonnance placeholders. Every value is spliced as a
+/// Typst string literal, so a patient name or a hand-written posology
+/// containing markup can neither break compilation nor restyle the page.
+fn fill_ordonnance_template(
+    template: &str,
+    patient: &Patient,
+    pharmacy: &PharmacyConfig,
+    indication: &str,
+    today: &str,
+    lines: &[crate::ordonnance::Line],
+    advice: &[&str],
+) -> String {
+    template
+        .replace(
+            "{{PHARMACY_NAME}}",
+            &format!("#{}", typst_str(&pharmacy.name)),
+        )
+        .replace(
+            "{{PHARMACY_ADDRESS}}",
+            &format!("#{}", typst_str(&pharmacy.address)),
+        )
+        .replace(
+            "{{PHARMACY_PHONE}}",
+            &format!("#{}", typst_str(&pharmacy.phone)),
+        )
+        .replace(
+            "{{PHARMACY_AM}}",
+            &format!("#{}", typst_str(&pharmacy.am_number)),
+        )
+        .replace(
+            "{{PHARMACIST}}",
+            &format!("#{}", typst_str(&pharmacy.pharmacist)),
+        )
+        .replace(
+            "{{PATIENT_NAME}}",
+            &format!("#{}", typst_str(&patient.full_name())),
+        )
+        .replace(
+            "{{BIRTH_DATE}}",
+            &format!(
+                "#{}",
+                typst_str(&crate::db::format_french_date(&patient.birth_date))
+            ),
+        )
+        .replace("{{INDICATION}}", &format!("#{}", typst_str(indication)))
+        .replace("{{DATE}}", &format!("#{}", typst_str(today)))
+        .replace("{{LINES}}", &ordonnance_lines_markup(lines))
+        .replace("{{ADVICE}}", &ordonnance_advice_markup(advice))
+}
+
+/// Typeset the ordonnance and hand it to the OS viewer.
+pub fn open_ordonnance(
+    patient: &Patient,
+    pharmacy: &PharmacyConfig,
+    indication: &str,
+    today: &str,
+    lines: &[crate::ordonnance::Line],
+    advice: &[&str],
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    if lines.is_empty() {
+        return Err("Rien à prescrire : choisissez au moins une ligne.".to_owned());
+    }
+    let template = if template_path.exists() {
+        std::fs::read_to_string(template_path)
+            .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
+    } else {
+        DEFAULT_ORDONNANCE_TEMPLATE.to_owned()
+    };
+    let filled = fill_ordonnance_template(
+        &template, patient, pharmacy, indication, today, lines, advice,
+    );
+    compile_and_open(filled, &format!("ordonnance_{}", patient.id))
+}
+
+/// Validation and preview for the ordonnance template editor.
+pub fn check_ordonnance_template(template: &str) -> Result<(), String> {
+    let _ = ordonnance_preview_source(template)?;
+    Ok(())
+}
+
+pub fn preview_ordonnance_template(template: &str) -> Result<PathBuf, String> {
+    let filled = ordonnance_preview_source(template)?;
+    compile_and_open(filled, "apercu_ordonnance")
+}
+
+fn ordonnance_preview_source(template: &str) -> Result<String, String> {
+    let lines = [crate::ordonnance::Line {
+        name: "Amoxicilline 1 g".to_owned(),
+        posology: "1 g deux fois par jour pendant 6 jours".to_owned(),
+        caution: String::new(),
+    }];
+    let advice = ["Boire fréquemment, par petites quantités."];
+    let filled = fill_ordonnance_template(
+        template,
+        &sample_patient(),
+        &sample_pharmacy(),
+        "Angine à streptocoque du groupe A — TROD positif",
+        "26/08/2026",
+        &lines,
+        &advice,
+    );
+    let world = PdfWorld::new(filled.clone());
+    let _: PagedDocument = typst::compile(&world)
+        .output
+        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))?;
+    Ok(filled)
+}
+
+/// Fill the official bulletin d'adhésion for this act's theme and hand
+/// it to the OS viewer. The PDF is the Assurance Maladie's own; only
+/// its form fields are written (see [`crate::bulletin`]).
+pub fn open_bulletin(
+    kind: InterviewKind,
+    patient: &Patient,
+    pharmacy: &PharmacyConfig,
+) -> Result<PathBuf, String> {
+    let bytes = crate::bulletin::fill(kind, patient, pharmacy)?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let out = std::env::temp_dir().join(format!(
+        "bpm_caddy_bulletin_{}_{}_{stamp}.pdf",
+        patient.id,
+        kind.as_str().to_lowercase()
+    ));
+    std::fs::write(&out, bytes).map_err(|e| format!("écriture du bulletin impossible : {e}"))?;
+    open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
+    Ok(out)
+}
+
 /// The patient's carnet de vaccination on one sheet: the doses in the
 /// order they were given, with the lot and the site, so it can be
 /// filed, handed over or sent to the médecin traitant.
@@ -1515,6 +1740,80 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("rdv_exemple.pdf"), &pdf);
         }
+    }
+
+    #[test]
+    fn the_ordonnance_compiles_with_every_block_and_escapes_hostile_text() {
+        let lines = [
+            crate::ordonnance::Line {
+                name: "Amoxicilline 1 g".to_owned(),
+                // Markup typed into the free posology must not restyle
+                // the page or break the compile.
+                posology: "1 g x2/j #box[*6 jours*]".to_owned(),
+                caution: "Vérifier l'absence d'allergie.".to_owned(),
+            },
+            crate::ordonnance::Line {
+                name: "Saccharomyces boulardii 200 mg".to_owned(),
+                posology: "1 gélule deux fois par jour".to_owned(),
+                caution: String::new(),
+            },
+        ];
+        let advice = ["Boire fréquemment.", "Aller au bout du traitement."];
+        let source = fill_ordonnance_template(
+            DEFAULT_ORDONNANCE_TEMPLATE,
+            &sample_patient(),
+            &sample_pharmacy(),
+            "Angine à streptocoque du groupe A — TROD positif",
+            "26/08/2026",
+            &lines,
+            &advice,
+        );
+        assert!(source.contains("3400123"), "le N° AM doit figurer");
+        assert!(!source.contains("{{"), "un marqueur n'a pas été remplacé");
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("l'ordonnance doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("ordonnance_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
+
+    /// With both toggles off there is no advice block at all — the
+    /// ordonnance is the lines and nothing else.
+    #[test]
+    fn the_ordonnance_omits_the_advice_block_when_both_toggles_are_off() {
+        let lines = [crate::ordonnance::Line {
+            name: "Fosfomycine trométamol 3 g".to_owned(),
+            posology: "3 g en dose unique".to_owned(),
+            caution: String::new(),
+        }];
+        let source = fill_ordonnance_template(
+            DEFAULT_ORDONNANCE_TEMPLATE,
+            &sample_patient(),
+            &sample_pharmacy(),
+            "Cystite aiguë simple — test positif",
+            "26/08/2026",
+            &lines,
+            &[],
+        );
+        assert!(!source.contains("Conseils"));
+        let world = PdfWorld::new(source);
+        let _: PagedDocument = typst::compile(&world)
+            .output
+            .expect("l'ordonnance doit compiler sans conseils");
+    }
+
+    #[test]
+    fn the_default_ordonnance_template_passes_its_own_validation() {
+        check_ordonnance_template(DEFAULT_ORDONNANCE_TEMPLATE)
+            .expect("le modèle par défaut doit compiler");
     }
 
     #[test]
