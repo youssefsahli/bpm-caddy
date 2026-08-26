@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.69.0] - 2026-08-27
+
+### Added
+- **The vaccination act and the carnet line stop being written twice.**
+  From a « Vaccination » act, « Carnet » jumps to the carnet with the
+  day and the initials already filled. And when a dose has been
+  recorded today with no act created for it, the carnet says so and
+  offers to create it in one click — a dose given without its acte is
+  work the officine has already done and does not bill.
+
 ## [0.68.1] - 2026-08-27
 
 ### Fixed
