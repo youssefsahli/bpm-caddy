@@ -5,6 +5,15 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.0] - 2026-08-27
+
+### Changed
+- **Le mot cherché est surligné dans la phrase qui le porte.** Cent
+  vingt-trois passages de « pamplemousse » se lisaient jusqu'ici comme
+  cent vingt-trois paragraphes ; l'œil tombe maintenant dessus. Encre
+  sombre sur fond clair, comme les widgets Motif marquent une sélection,
+  faute de graisse dans la famille embarquée.
+
 ## [0.78.0] - 2026-08-27
 
 ### Added
