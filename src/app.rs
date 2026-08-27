@@ -5739,7 +5739,15 @@ impl App {
             });
         } else {
             // Narrow: the journal goes under the table, still in view.
-            let notes_h = (work.height() * 0.34).clamp(170.0, 280.0);
+            //
+            // But the acts keep 150 px before it serves itself. Its
+            // floor of 170 was taking more than half of the 290 px this
+            // tab has at 1024x700 with both docks open, and the table
+            // the file exists for showed its summary line and not one
+            // act. The journal scrolls; the table is what is read.
+            let notes_h = (work.height() * 0.34)
+                .clamp(170.0, 280.0)
+                .min((work.height() - 150.0).max(120.0));
             let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
             motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
                 Self::patient_acts_pane(ui, session, patient, config);
@@ -6178,9 +6186,14 @@ impl App {
             );
             // Plus the source line under it, which is part of the claim
             // the panel makes and must not be clipped away.
+            // The cap protects the table, not the form: a table that
+            // is one row short still reads, a form whose second row of
+            // fields is cut in half cannot be typed into. So the form
+            // keeps what it measured and the table gives way, down to a
+            // floor of a header and a line.
             let form_h = ((ui.spacing().interact_size.y + ui.spacing().item_spacing.y) * form_rows
                 + 34.0)
-                .min(inner.height() * 0.42);
+                .min((inner.height() - 46.0).max(60.0));
             let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
             let table = motif::well(ui, parts[0]);
             motif::inside(ui, table, |ui| {
@@ -8051,6 +8064,45 @@ impl App {
     }
 
     /// The width a Motif button with this label occupies.
+    /// Whether the file's own actions still fit on the header line
+    /// beside the patient's name, or have to drop underneath.
+    ///
+    /// Measured, never a pixel threshold. It used to be « narrower than
+    /// 620 px », and at 1024x700 with the docks open the centre came out
+    /// at 645 — just over the line — so the four buttons were laid out
+    /// right-to-left straight across « Jean Dupont ». A long name or a
+    /// wider dock reopened it every time.
+    fn patient_header_fits(ui: &egui::Ui, session: &Session, patient: &Patient) -> bool {
+        let gap = ui.spacing().item_spacing.x;
+        let delete = if session.confirm_delete {
+            tr("patient_delete_confirm")
+        } else {
+            tr("patient_delete")
+        };
+        let mut needed: f32 = [
+            tr("patient_back"),
+            tr("plan_print"),
+            tr("bilan_print"),
+            tr("patient_edit"),
+            delete,
+        ]
+        .into_iter()
+        .map(|l| Self::button_width(ui, l) + gap)
+        .sum();
+        // The name is a heading and the birth date follows it.
+        let heading = egui::TextStyle::Heading.resolve(ui.style());
+        let body = egui::TextStyle::Body.resolve(ui.style());
+        let born = trf("patient_born", db::format_french_date(&patient.birth_date));
+        needed += ui.fonts(|f| {
+            f.layout_no_wrap(patient.full_name(), heading, motif::TEXT)
+                .size()
+                .x
+                + f.layout_no_wrap(born, body, motif::TEXT_DIM).size().x
+        }) + 6.0
+            + gap * 2.0;
+        needed <= motif::visible_rect(ui).width() - 16.0
+    }
+
     fn button_width(ui: &egui::Ui, label: &str) -> f32 {
         let font = egui::TextStyle::Button.resolve(ui.style());
         ui.fonts(|f| {
@@ -8144,7 +8196,7 @@ impl App {
         let mut print_bilan = false;
         let mut print_plan = false;
         let mut back = false;
-        let cramped = motif::visible_rect(ui).width() < 620.0;
+        let cramped = !Self::patient_header_fits(ui, session, patient);
         ui.add_space(2.0);
         ui.horizontal(|ui| {
             if motif::button(ui, tr("patient_back")).clicked() {
