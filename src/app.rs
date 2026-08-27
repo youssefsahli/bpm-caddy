@@ -1336,6 +1336,9 @@ struct Session {
     show_mono: bool,
     mono_query: String,
     mono_hits: Vec<MonoHit>,
+    /// Every posology line of the base, read once when the search is
+    /// opened: the prose search covers them too.
+    mono_posologies: Vec<(i64, db::Posologie)>,
     /// The codex: the preparations, what is open, and the quantity the
     /// counter actually has to make.
     show_codex: bool,
@@ -1584,6 +1587,7 @@ impl Session {
             show_mono: false,
             mono_query: String::new(),
             mono_hits: Vec::new(),
+            mono_posologies: Vec::new(),
             goto_open: false,
             goto_query: String::new(),
             goto_selected: 0,
@@ -1886,9 +1890,10 @@ impl Session {
             }
             Goto::Text(word) => {
                 self.enter_drug_panel();
-                self.show_mono = true;
+                self.open_mono_search();
                 self.mono_query = word;
-                self.mono_hits = mono_search(&self.drugs, &self.mono_query, 200);
+                self.mono_hits =
+                    mono_search(&self.drugs, &self.mono_posologies, &self.mono_query, 200);
             }
             Goto::Protocol(id) => {
                 self.enter_drug_panel();
@@ -1902,6 +1907,14 @@ impl Session {
                 }
             }
         }
+    }
+
+    /// Open the full-text search, reading the base's posology lines with
+    /// it: they are prose too, and the search would silently miss a
+    /// third of what the fiches say without them.
+    fn open_mono_search(&mut self) {
+        self.show_mono = true;
+        self.mono_posologies = self.db.all_posologies().unwrap_or_default();
     }
 
     /// Land in the drug view with none of its three panels open: the
@@ -2529,6 +2542,9 @@ pub struct MonoHit {
     pub dci: String,
     /// The `strings.fr.toml` key of the section it was found in.
     pub field: &'static str,
+    /// What narrows the section down when it has parts — the indication
+    /// a posology line is written for. Empty for the card's own prose.
+    pub detail: String,
     /// The sentence it sits in, quoted as the card has it.
     pub sentence: String,
 }
@@ -2565,7 +2581,12 @@ fn folded_find(text: &str, needle: &[char]) -> Option<(usize, usize)> {
 /// subsequence match returns the whole base and answers nothing; here
 /// the question is « which fiches say *pamplemousse* », and it has an
 /// exact answer.
-pub fn mono_search(drugs: &[Drug], query: &str, limit: usize) -> Vec<MonoHit> {
+pub fn mono_search(
+    drugs: &[Drug],
+    posologies: &[(i64, db::Posologie)],
+    query: &str,
+    limit: usize,
+) -> Vec<MonoHit> {
     let needle: Vec<char> = fuzzy::sort_key(query.trim()).chars().collect();
     // Two letters match half the base; the search waits for a word.
     if needle.len() < 3 {
@@ -2573,24 +2594,44 @@ pub fn mono_search(drugs: &[Drug], query: &str, limit: usize) -> Vec<MonoHit> {
     }
     let mut hits = Vec::new();
     for d in drugs {
+        let push = |field, detail: String, text: &str| {
+            let (at, end) = folded_find(text, &needle)?;
+            Some(MonoHit {
+                drug: d.id,
+                name: d.name.clone(),
+                dci: d.dci.clone(),
+                field,
+                detail,
+                sentence: sentence_around(text, at, end - at),
+            })
+        };
         for (field, get) in MONO_FIELDS {
             let text = get(d);
             if text.is_empty() {
                 continue;
             }
-            let Some((at, end)) = folded_find(text, &needle) else {
-                continue;
-            };
-            hits.push(MonoHit {
-                drug: d.id,
-                name: d.name.clone(),
-                dci: d.dci.clone(),
-                field,
-                sentence: sentence_around(text, at, end - at),
-            });
-            if hits.len() >= limit {
-                return hits;
+            if let Some(hit) = push(field, String::new(), text) {
+                hits.push(hit);
             }
+        }
+        // The posology lines are prose too, and the most searched of
+        // all of it: « à jeun », « à distance du fer », « pamplemousse »
+        // are written in the remark beside the dose, not in the
+        // monograph above it.
+        for (_, p) in posologies.iter().filter(|(id, _)| *id == d.id) {
+            for text in [p.posologie.as_str(), p.remarque.as_str()] {
+                if text.is_empty() {
+                    continue;
+                }
+                if let Some(hit) = push("drug_sec_poso", p.indication.clone(), text) {
+                    hits.push(hit);
+                    break;
+                }
+            }
+        }
+        if hits.len() >= limit {
+            hits.truncate(limit);
+            return hits;
         }
     }
     hits
@@ -3592,10 +3633,14 @@ impl App {
                         // The full-text search of the monographs, with
                         // a word in it: the hit list is its own path.
                         Ok("mono_search") => {
-                            session.show_mono = true;
+                            session.open_mono_search();
                             session.mono_query = "pamplemousse".to_owned();
-                            session.mono_hits =
-                                mono_search(&session.drugs, &session.mono_query, 200);
+                            session.mono_hits = mono_search(
+                                &session.drugs,
+                                &session.mono_posologies,
+                                &session.mono_query,
+                                200,
+                            );
                             session.view = MainView::Drugs;
                         }
                         // The jump box, with something typed in it: the
@@ -12613,7 +12658,7 @@ impl App {
                         .on_hover_text(tr("mono_button_tooltip"))
                         .clicked()
                     {
-                        session.show_mono = true;
+                        session.open_mono_search();
                     }
                     if motif::button(ui, tr("proto_button"))
                         .on_hover_text(tr("proto_button_tooltip"))
@@ -13932,7 +13977,12 @@ impl App {
             // frame: eight hundred cards times thirteen fields is a
             // second of work at sixty frames a second.
             if search.changed() {
-                session.mono_hits = mono_search(&session.drugs, &session.mono_query, 200);
+                session.mono_hits = mono_search(
+                    &session.drugs,
+                    &session.mono_posologies,
+                    &session.mono_query,
+                    200,
+                );
             }
             ui.add_space(10.0);
             let typed = session.mono_query.trim().chars().count();
@@ -13973,6 +14023,9 @@ impl App {
                                         session.drugs.iter().find(|d| d.id == hit.drug).cloned();
                                 }
                                 let mut head = tr(hit.field).to_owned();
+                                if !hit.detail.is_empty() {
+                                    head = format!("{head} — {}", hit.detail);
+                                }
                                 if !hit.dci.is_empty() {
                                     head = format!("{}   ·   {}", hit.dci, head);
                                 }
@@ -16119,12 +16172,32 @@ mod tests {
             .to_owned();
         d.adverse = "Myalgies. Rhabdomyolyse rare.".to_owned();
         let base = [d];
+        // …and one posology line on the same card, whose remark is
+        // where the counter's answer usually is.
+        let lines = [(
+            4,
+            crate::db::Posologie {
+                id: 1,
+                indication: "Hypercholestérolémie".to_owned(),
+                posologie: "20 mg le soir".to_owned(),
+                remarque: "Éviter le pamplemousse tout au long du traitement.".to_owned(),
+            },
+        )];
         // Accents and case are folded on both sides, and the answer is
         // the sentence, not the whole field.
-        let hits = mono_search(&base, "PAMPLEMOUSSE", 20);
-        assert_eq!(hits.len(), 1);
+        let hits = mono_search(&base, &lines, "PAMPLEMOUSSE", 20);
+        assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].drug, 4);
         assert_eq!(hits[0].field, "mono_f_ddi");
+        assert!(hits[0].detail.is_empty());
+        // The posology line comes back under its own indication: two
+        // lines of the same card must not read alike.
+        assert_eq!(hits[1].field, "drug_sec_poso");
+        assert_eq!(hits[1].detail, "Hypercholestérolémie");
+        assert_eq!(
+            hits[1].sentence,
+            "Éviter le pamplemousse tout au long du traitement."
+        );
         // Up to the first full stop or semicolon, which is where the
         // useful clause ends — not the whole paragraph.
         assert_eq!(
@@ -16133,8 +16206,8 @@ mod tests {
         );
         // A word that is nowhere finds nothing, and two letters are not
         // a word: they would return half the base.
-        assert!(mono_search(&base, "amiodarone", 20).is_empty());
-        assert!(mono_search(&base, "my", 20).is_empty());
+        assert!(mono_search(&base, &lines, "amiodarone", 20).is_empty());
+        assert!(mono_search(&base, &lines, "my", 20).is_empty());
         // Every section the search reads has a label to show it under.
         for (key, _) in MONO_FIELDS {
             assert_ne!(crate::strings::tr(key), key, "libellé manquant : {key}");
@@ -16153,7 +16226,7 @@ mod tests {
             adverse: "Réaction cutanée sévère à surveiller ; arrêt immédiat.".to_owned(),
             ..Drug::default()
         };
-        let hits = mono_search(&[d], "severe", 5);
+        let hits = mono_search(&[d], &[], "severe", 5);
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].sentence, "Réaction cutanée sévère à surveiller ;");
     }
