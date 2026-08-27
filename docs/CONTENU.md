@@ -136,6 +136,16 @@ Deux règles valent partout :
 - Pur et testé, sans horloge interne : la date du jour est passée en
   paramètre.
 
+## Retrouver le contenu : « Dans le texte… »
+
+La recherche plein texte (`mono_search`, `src/app.rs`) lit treize
+sections de chaque fiche **et** les lignes de posologie, et rend la
+phrase qui porte le mot. Un champ de prose ajouté à une fiche n'est
+cherchable qu'une fois inscrit dans `MONO_FIELDS`, avec sa clé de
+libellé : un champ absent de cette table est un champ que personne ne
+retrouvera par ses mots. C'est le pendant de la règle du haut — tout
+contenu a son test, et tout contenu a un chemin qui y mène.
+
 ## Les mentions imprimées
 
 Elles ne sont **pas** du contenu livré : `[disclaimers]` dans
