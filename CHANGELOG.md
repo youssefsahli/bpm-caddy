@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.71.0] - 2026-08-27
+
+### Added
+- **Forty posology lines more, on thirty-nine cards that had none** —
+  les biothérapies délivrées à l'officine, où le rythme est le
+  traitement (Humira toutes les deux semaines, Enbrel le même jour
+  chaque semaine, l'induction de Cosentyx, le passage de Taltz à quatre
+  semaines à la douzième, la semaine 3 sans injection de Kesimpta), les
+  trois anti-CGRP et leurs deux rythmes, les anti-PCSK9 qui ne
+  remplacent pas la statine, les HBPM au poids, les antiparasitaires et
+  leur seconde prise quinze jours après, les antiseptiques qui
+  s'inactivent l'un l'autre, les acides biliaires, les aminosalicylés
+  dont l'entretien se poursuit en période calme, l'entacapone qui ne se
+  prend jamais seule, l'opicapone à distance de la lévodopa, les fonds
+  de migraine, deux benzodiazépines, l'oxycodone-naloxone et son
+  laxatif dès le premier jour, l'hydromorphone et son équivalence, les
+  anticholinergiques vésicaux et deux progestatifs. 1 246 lignes sur
+  336 fiches.
+- Les classes titrées par le spécialiste — antiépileptiques,
+  antipsychotiques, immunosuppresseurs, inhibiteurs JAK,
+  immunomodulateurs de la sclérose en plaques — restent délibérément
+  vides, comme depuis la v0.51.0 : une ligne plausible y serait pire
+  qu'une ligne absente.
+
 ## [0.70.1] - 2026-08-27
 
 ### Changed
