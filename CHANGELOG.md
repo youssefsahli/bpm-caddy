@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.102.0] - 2026-08-28
+
+### Fixed
+- **Un plantage à une retouche de distance.** Le partage entre le
+  tableau des actes et le journal se termine par un `clamp`, et
+  `f32::clamp` ne borne pas : il panique quand le minimum dépasse le
+  maximum. Sur un volet court, le plancher du journal passe bel et bien
+  au-dessus des deux cinquièmes qui lui servent de plafond. Les chiffres
+  livrés jusqu'ici passaient à côté par chance ; en essayant de relever
+  ce plancher, toute l'application est tombée — `min = 128,6,
+  max = 111,7`. Le plafond est désormais remonté au plancher plutôt que
+  supposé au-dessus.
+- Les deux autres `clamp` à bornes calculées ont été relus :
+  `column_count` a un minimum littéral, et l'heure de fin de journée
+  d'agenda est déjà protégée par un `min(23)` sur l'heure de début — un
+  `day_start_hour = 24` dans config.toml ne fait rien tomber.
+
+### Checked
+- **Densité compacte** balayée à 1024x700 : rien à signaler, c'est le
+  réglage qui fait tenir davantage. Les quatre axes de la passe — 1024,
+  1280, échelle du texte 1,25 et panneaux tirés au large — sont couverts.
+
 ## [0.101.0] - 2026-08-28
 
 ### Fixed
