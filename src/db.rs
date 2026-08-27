@@ -19616,6 +19616,43 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Timoptol", "Glaucome à angle ouvert et hypertonie oculaire", "Une goutte dans l'œil atteint, deux fois par jour", "Comprimer l'angle interne de l'œil une à deux minutes après l'instillation : le passage systémique donne bradycardie et bronchospasme. À signaler au médecin traitant, surtout chez l'asthmatique."),
     ("Vfend", "Aspergillose et candidoses invasives", "Dose de charge puis 200 mg deux fois par jour, à jeun, une heure avant ou après le repas", "Inhibiteur puissant du CYP3A4 et photosensibilisant marqué : protection solaire stricte, et relecture de toute l'ordonnance avant délivrance."),
     ("Noxafil", "Prophylaxie et traitement des infections fongiques invasives", "Comprimés à libération modifiée, 300 mg deux fois le premier jour puis 300 mg par jour, au cours d'un repas", "Les comprimés et la suspension ne s'équivalent pas dose pour dose : vérifier la forme prescrite avant de délivrer."),
+    // --- Dermatologie et topiques : la durée et la technique font tout ---
+    ("Kétoderm", "Dermite séborrhéique et pityriasis versicolor", "Une à deux applications par semaine, laissées en place cinq minutes avant rinçage, pendant deux à quatre semaines", "Le temps de pose fait le traitement : rincé aussitôt, le gel ne sert à rien."),
+    ("Daktarin", "Candidose buccale et digestive", "Deux cuillères-mesure quatre fois par jour, gardées en bouche le plus longtemps possible avant d'avaler", "Contre-indiqué avec les AVK et plusieurs autres traitements : même en gel buccal, le miconazole passe et fait grimper l'INR. Relire l'ordonnance avant de délivrer."),
+    ("Ascabiol", "Gale", "Une application sur tout le corps sauf le visage, laissée 24 heures chez l'adulte, renouvelée au 8e jour", "Traiter l'entourage le même jour, laver le linge à 60 °C ou l'isoler trois jours. La démangeaison peut durer deux semaines après un traitement réussi."),
+    ("Topiscab", "Gale", "Une application sur tout le corps sauf le visage, laissée 8 à 12 heures, renouvelée au 8e jour", "Utilisable à partir de deux mois et pendant la grossesse. Réappliquer sur les mains après chaque lavage pendant le temps de pose."),
+    ("Prioderm", "Pédiculose du cuir chevelu", "Application sur cheveux secs, laissée 8 à 12 heures, puis lavage ; renouveler entre le 8e et le 10e jour", "La seconde application couvre les lentes écloses depuis : sans elle, l'échec est la règle. Peigne fin après chaque lavage."),
+    ("Mupiderm", "Impétigo et infections cutanées superficielles", "Deux à trois applications par jour, pour sept à dix jours au maximum", "Traitement court, sur une surface limitée : au-delà, la résistance s'installe. Éviction scolaire jusqu'à 72 heures après le début si les lésions ne sont pas couvertes."),
+    ("Ialuset", "Plaies et brûlures superficielles en phase de bourgeonnement", "Une application par jour sur une plaie propre, sous pansement", "Nettoyer au sérum physiologique avant : un cicatrisant sur une plaie souillée ne cicatrise rien."),
+    ("Clarelux", "Psoriasis du cuir chevelu", "Une application par jour, deux à quatre semaines au maximum", "Dermocorticoïde de classe très forte : jamais sur le visage, et l'arrêt se fait en espaçant les applications, non d'un coup."),
+    ("Daivonex", "Psoriasis en plaques", "Deux applications par jour, sans dépasser 100 g par semaine", "Ni sur le visage ni sur les plis. Se lave les mains après application, sous peine de porter le produit aux yeux."),
+    ("Differine", "Acné rétentionnelle", "Une application le soir sur peau sèche et propre, sur toute la zone et non sur chaque bouton", "Irritation et poussée apparentes les deux premières semaines : c'est attendu, et c'est le moment où les gens arrêtent. Photosensibilisant : protection solaire."),
+    ("Cutacnyl", "Acné inflammatoire", "Une application le soir, un jour sur deux au début, puis quotidienne selon la tolérance", "Décolore les textiles et les cheveux : serviette blanche et taie d'oreiller claire. Ne pas associer à un autre irritant le même soir."),
+    ("Rubozinc", "Acné inflammatoire, en alternative aux cyclines", "2 gélules par jour à jeun pendant trois mois, puis 1 gélule par jour", "À jeun, deux heures avant le petit-déjeuner, et à distance du fer, du calcium et des cyclines."),
+    ("Aldara", "Condylomes externes et kératoses actiniques", "Application le soir trois fois par semaine, laissée 6 à 10 heures, puis lavage", "La réaction locale — rougeur, érosion — est attendue et signe l'effet ; une réaction trop forte fait espacer, non arrêter définitivement."),
+    // --- Ophtalmologie : une goutte, et cinq minutes entre deux collyres ---
+    ("Alphagan", "Glaucome à angle ouvert et hypertonie oculaire", "Une goutte dans l'œil atteint, deux fois par jour", "Somnolence et sécheresse buccale possibles ; contre-indiqué chez le nourrisson et le jeune enfant, chez qui il a donné des apnées."),
+    ("Indocollyre", "Inflammation oculaire postopératoire et douleur", "Une goutte quatre fois par jour", "AINS local : il masque une infection débutante. Toute douleur qui s'aggrave impose un avis, pas une goutte de plus."),
+    ("Opatanol", "Conjonctivite allergique saisonnière", "Une goutte matin et soir", "Retirer les lentilles avant l'instillation et les remettre 15 minutes après."),
+    ("Exocine", "Infection bactérienne de la surface oculaire", "Une à deux gouttes quatre fois par jour, pour sept jours au maximum", "Un flacon par patient et par œil en cas d'atteinte unilatérale ; jeté à la fin du traitement."),
+    ("Vitabact", "Antisepsie oculaire et prévention des surinfections", "Une goutte deux à six fois par jour, pour sept jours", "Unidose sans conservateur : elle s'utilise dans la journée et ne se garde pas d'un jour à l'autre."),
+    ("Mydriaticum", "Dilatation pupillaire pour un examen du fond d'œil", "Une goutte 15 à 30 minutes avant l'examen", "Vision floue et éblouissement pendant quelques heures : ne pas conduire en repartant, et prévoir des lunettes de soleil."),
+    // --- Digestif et ORL de comptoir ---
+    ("Ulcar", "Ulcère gastroduodénal et œsophagite", "1 g quatre fois par jour, une heure avant les repas et au coucher", "Pansement gastrique : il fixe les autres médicaments. Deux heures d'écart avec tout le reste de l'ordonnance."),
+    ("Polysilane", "Ballonnements et gaz", "Une cuillère à café après les repas et au coucher", "Traitement symptomatique ; à distance des autres médicaments, qu'il peut piéger."),
+    ("Hexaspray", "Douleur pharyngée de l'adulte et de l'enfant de plus de six ans", "Trois pulvérisations trois fois par jour, pour cinq jours au maximum", "Cinq jours suffisent : une gorge qui fait mal au-delà se regarde, elle ne se pulvérise pas."),
+    ("Betaserc", "Vertiges de la maladie de Ménière", "24 mg deux fois par jour, ou 16 mg trois fois par jour, au cours des repas", "Prise pendant le repas pour la tolérance digestive ; l'effet s'apprécie sur plusieurs semaines."),
+    ("Donormyl", "Insomnie occasionnelle de l'adulte", "Un demi à un comprimé, 15 à 30 minutes avant le coucher, pour cinq jours au maximum", "Antihistaminique sédatif : somnolence résiduelle au réveil, pas de conduite au petit matin, et effets anticholinergiques à éviter après 65 ans."),
+    ("Arcoxia", "Arthrose, polyarthrite et goutte", "60 à 90 mg par jour selon l'indication, en une prise", "Coxib : contre-indiqué en cas d'hypertension non contrôlée, de cardiopathie ischémique ou d'AVC. Tension contrôlée dans les deux semaines qui suivent l'instauration."),
+    // --- Vitamines, fer et sevrage ---
+    ("Fumafer", "Anémie par carence martiale", "Une à deux prises par jour, à jeun, avec un jus riche en vitamine C", "À distance du thé, du café, du calcium et des IPP. Selles noires attendues ; le traitement dure au moins trois mois après la correction de l'hémoglobine, pour refaire les réserves."),
+    ("Venofer", "Carence martiale quand la voie orale est impossible ou insuffisante", "Perfusion en établissement, dose calculée sur le déficit", "Réaction d'hypersensibilité possible : surveillance pendant et après la perfusion, en milieu équipé."),
+    ("Ferinject", "Carence martiale, correction rapide", "Perfusion en établissement, dose selon le poids et l'hémoglobine", "Hypophosphatémie possible après les fortes doses : phosphorémie contrôlée en cas de perfusions répétées."),
+    ("Cyanocobalamine", "Carence en vitamine B12", "1000 µg par jour par voie orale, ou schéma injectable selon l'indication", "La voie orale suffit même en cas de malabsorption si la dose est élevée ; la voie injectable reste la règle dans la maladie de Biermer symptomatique."),
+    ("Bévitine", "Carence en vitamine B1, sevrage alcoolique", "250 à 500 mg par jour selon l'indication", "Dans le sevrage alcoolique, la thiamine se donne avant tout apport glucosé : l'inverse précipite l'encéphalopathie."),
+    ("Laroscorbine", "Carence en vitamine C et fatigue passagère", "500 à 1000 mg par jour, le matin", "Jamais le soir : elle réveille. Traitement court, et une fatigue qui dure se cherche ailleurs."),
+    ("ZymaD", "Carence en vitamine D et prévention du rachitisme", "Dose quotidienne chez le nourrisson ; ampoule trimestrielle ou schéma équivalent chez l'adulte", "Les gouttes se comptent : une dose de charge répétée par erreur expose à l'hypercalcémie. Noter la date de l'ampoule sur le carnet."),
+    ("Nicopatch", "Sevrage tabagique, dispositif transdermique", "Un patch par jour, dosage choisi selon la consommation, sur environ trois mois avec décroissance", "Sur peau saine, sèche et sans poils, en changeant de site chaque jour ; associer une forme orale pour les envies ponctuelles n'est pas un surdosage."),
     // GENERATED-POSOLOGIES-END
 ];
 
@@ -26307,7 +26344,8 @@ mod tests {
         // `status`, `smr` and `forms` are deliberately not in this list:
         // they are the officine's to fill, and empty ones simply do not
         // render.
-        let required: [(&str, fn(&StarterDetail) -> &str); 13] = [
+        type Field = (&'static str, fn(&StarterDetail) -> &'static str);
+        let required: [Field; 13] = [
             ("indications", |d| d.indications),
             ("mechanism", |d| d.mechanism),
             ("dosage", |d| d.dosage),
@@ -26951,7 +26989,7 @@ mod tests {
                 .map(|r| r.readings.len()),
             Some(0)
         );
-        let rows = vec![row];
+        let rows = [row];
         assert_eq!(rows[0].readings.len(), 2);
         // Oldest first, so the reading rules keep the latest.
         assert_eq!(rows[0].readings[0].2, "2026-05-14");

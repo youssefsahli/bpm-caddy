@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.73.0] - 2026-08-27
+
+### Added
+- **Trente-trois fiches de comptoir reçoivent leur posologie** : la
+  dermatologie et les topiques (gale, poux, impétigo, psoriasis, acné),
+  les collyres, le digestif et l'ORL de premier recours, les vitamines,
+  le fer et le substitut nicotinique. Ce sont les produits qu'on tend
+  sans ordonnance ou presque, et dont tout se joue dans la technique :
+  le temps de pose, la seconde application au 8e jour, l'heure de la
+  prise. 1 319 lignes sur 408 fiches.
+
+### Changed
+- `cargo clippy` tourne maintenant avec `--all-targets` : le code des
+  tests est relu comme le reste. Trois avertissements qui dormaient là
+  sont corrigés.
+
 ## [0.72.1] - 2026-08-27
 
 ### Changed

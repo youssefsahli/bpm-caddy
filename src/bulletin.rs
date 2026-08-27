@@ -506,7 +506,7 @@ mod tests {
         assert_eq!(value(BPM.pharmacie_am).as_deref(), Some("3400123"));
         assert_eq!(value(BPM.medecin).as_deref(), Some("Dr Morel"));
         // Consent is never pre-ticked: no checkbox carries a value.
-        for (_, object) in doc.objects.iter() {
+        for object in doc.objects.values() {
             let Ok(dict) = object.as_dict() else { continue };
             if dict.get(b"FT").ok().and_then(|f| f.as_name().ok()) == Some(b"Btn") {
                 assert!(

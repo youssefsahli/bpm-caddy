@@ -24,7 +24,8 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
 
 Always build/lint with `--workspace`: plain `cargo build` only builds the
 root package. CI enforces `cargo fmt --all --check`,
-`cargo clippy --workspace -- -D warnings`, `cargo test --workspace`.
+`cargo clippy --workspace --all-targets -- -D warnings` (the tests are
+linted too), `cargo test --workspace`.
 
 ## Conventions
 
