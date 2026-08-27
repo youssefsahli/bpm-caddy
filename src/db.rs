@@ -31328,4 +31328,162 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
+
+    /// The ordinary day of the base, in one pass: an agenda entry, a
+    /// carnet de vaccination, a destination, a note, a corrected
+    /// reference cell, a posology line, and a card edited then removed.
+    ///
+    /// None of these are clever. They are the writes the counter makes
+    /// every hour, and they were the least covered part of the module —
+    /// which is the wrong way round for the code that holds the file.
+    #[test]
+    fn the_base_does_its_ordinary_work() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-day-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("day.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Moreau", "Lucie", "1971-04-02").unwrap();
+
+        // --- The clock the counter works by ---
+        let today = db.today_iso().unwrap();
+        assert_eq!(today.len(), 10);
+        assert_eq!(db.today_french().unwrap().len(), 10);
+        assert!(db.tomorrow_iso().unwrap() > today);
+        assert!(db.current_year() >= 2024);
+        assert_eq!(db.date_offset("2026-02-28", 1).unwrap(), "2026-03-01");
+        assert_eq!(db.date_offset("2026-03-01", -1).unwrap(), "2026-02-28");
+        // A week is seven days, Monday first, and the offsets walk it.
+        let week = db.week_dates(0).unwrap();
+        assert_eq!(week.len(), 7);
+        assert!(week.windows(2).all(|w| w[0] < w[1]));
+        let next = db.week_dates(1).unwrap();
+        assert_eq!(db.date_offset(&week[0], 7).unwrap(), next[0]);
+        // A month grid is whole weeks covering the month.
+        let grid = db.month_grid(0).unwrap();
+        assert!(
+            grid.len().is_multiple_of(7) && grid.len() >= 28,
+            "{}",
+            grid.len()
+        );
+        assert!(grid.windows(2).all(|w| w[0] < w[1]));
+
+        // --- An agenda entry that is not an act ---
+        let ev = db
+            .add_event(
+                &today,
+                "14:00",
+                "Formation vaccination",
+                EventCategory::Formation,
+                0,
+                "",
+            )
+            .unwrap();
+        assert!(db
+            .events_between(&today, &today)
+            .unwrap()
+            .iter()
+            .any(|e| e.id == ev));
+        // Compare-and-set on the title displayed, here as everywhere.
+        assert!(!db.delete_event(ev, "Un autre titre").unwrap());
+        assert!(db.delete_event(ev, "Formation vaccination").unwrap());
+        assert!(db.events_between(&today, &today).unwrap().is_empty());
+
+        // --- The carnet de vaccination and a trip ---
+        let v = Vaccination {
+            id: 0,
+            code: "DTP".to_owned(),
+            label: "dTP".to_owned(),
+            dose: "Rappel 45 ans".to_owned(),
+            given_on: "2026-05-12".to_owned(),
+            lot: "L-2026-11".to_owned(),
+            site: "Deltoïde G".to_owned(),
+            operator: "CL".to_owned(),
+            next_due: String::new(),
+            remark: String::new(),
+        };
+        db.add_vaccination(pid, &v).unwrap();
+        let carnet = db.vaccinations(pid).unwrap();
+        assert_eq!(carnet.len(), 1);
+        assert_eq!(carnet[0].lot, "L-2026-11");
+        db.add_travel(pid, "SN", "2026-11-02").unwrap();
+        assert_eq!(db.travels(pid).unwrap()[0].country, "SN");
+        // The same destination twice moves the date, it does not double.
+        db.add_travel(pid, "SN", "2026-12-01").unwrap();
+        let trips = db.travels(pid).unwrap();
+        assert_eq!(trips.len(), 1);
+        assert_eq!(trips[0].depart_on, "2026-12-01");
+        assert!(db.remove_travel(pid, "SN").unwrap());
+        assert!(!db.remove_travel(pid, "SN").unwrap());
+
+        // --- A note, then its removal ---
+        let note = db
+            .add_note(NoteSubject::Patient, pid, "CL", "Rappeler la fille.")
+            .unwrap();
+        assert_eq!(db.notes_for(NoteSubject::Patient, pid).unwrap().len(), 1);
+        db.delete_note(note).unwrap();
+        assert!(db.notes_for(NoteSubject::Patient, pid).unwrap().is_empty());
+
+        // --- A reference cell corrected, then put back ---
+        let key = crate::tables::TABLES[0].short;
+        let shipped = crate::tables::TABLES[0].rows[0][0];
+        assert!(db.table_cells(key).unwrap().is_empty());
+        assert!(db
+            .set_table_cell(key, 0, 0, "Corrigé par l'équipe", shipped, shipped)
+            .unwrap());
+        assert_eq!(
+            db.table_cells(key)
+                .unwrap()
+                .get(&(0, 0))
+                .map(String::as_str),
+            Some("Corrigé par l'équipe")
+        );
+        // A second post still showing the shipped text is refused.
+        assert!(!db
+            .set_table_cell(key, 0, 0, "Autre chose", shipped, shipped)
+            .unwrap());
+        assert_eq!(db.reset_table(key).unwrap(), 1);
+        assert!(db.table_cells(key).unwrap().is_empty());
+
+        // --- A card: a posology line, an edit, a deletion ---
+        let did = db.add_drug("Fiche d'essai").unwrap();
+        let mut card = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == did)
+            .unwrap();
+        let seen = card.clone();
+        card.dci = "molécule d'essai".to_owned();
+        card.class = "essai".to_owned();
+        assert!(db.update_drug(&card, &seen).unwrap());
+        // The stale write is refused, and the card keeps the first edit.
+        assert!(!db.update_drug(&card, &seen).unwrap());
+        let pos = db
+            .add_posologie(did, "Indication d'essai", "1 comprimé par jour", "Remarque")
+            .unwrap();
+        assert_eq!(db.posologies(did).unwrap().len(), 1);
+        assert!(db
+            .all_posologies()
+            .unwrap()
+            .iter()
+            .any(|(drug, p)| *drug == did && p.id == pos));
+        assert!(!db.delete_posologie(pos, "Mauvaise indication").unwrap());
+        assert!(db.delete_posologie(pos, "Indication d'essai").unwrap());
+        assert!(!db.delete_drug(did, "Un autre nom").unwrap());
+        assert!(db.delete_drug(did, "Fiche d'essai").unwrap());
+        assert!(db.drugs().unwrap().iter().all(|d| d.id != did));
+
+        // --- An act's duration and its remote flag ---
+        let itv = db.add_interview(pid, InterviewKind::Bpm).unwrap();
+        assert!(db.set_duration(itv, 45, 0).unwrap());
+        assert!(!db.set_duration(itv, 60, 0).unwrap(), "vue périmée refusée");
+        assert!(db.set_remote(itv, true, false).unwrap());
+        assert!(!db.set_remote(itv, false, false).unwrap());
+        let act = db.interviews_for(pid).unwrap().remove(0);
+        assert_eq!(act.duration_minutes, 45);
+        assert!(act.remote);
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
