@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.87.0] - 2026-08-27
+
+### Added
+- **Trente-quatre posologies pour le fond de rayon**, et le cliquet
+  descend de 250 à 200 classes découvertes. Ce sont les gestes qu'on
+  explique dix fois par jour : le corticoïde inhalé qu'on prend même
+  quand tout va bien et après lequel on se rince la bouche, le Movicol
+  qui met un à deux jours et n'est donc pas un laxatif de secours, la
+  trinitrine qu'on pulvérise assis parce que la chute de tension fait
+  tomber, les insulines — l'ultra-rapide qui colle au repas, la NPH
+  qu'on roule jusqu'à ce qu'elle soit uniformément blanche —, le Zinnat
+  qui s'absorbe mieux au cours du repas là où la plupart des
+  antibiotiques veulent l'inverse, l'Oracilline dont les dix jours
+  préviennent le rhumatisme articulaire aigu même quand la gorge ne fait
+  plus mal, le Dicetel qu'on ne prend jamais couché, l'Ultra-Levure
+  qu'on n'ouvre pas près d'un cathéter, et EllaOne dont le délai va
+  jusqu'à cinq jours mais dont le plus tôt reste le mieux. 1 414 lignes
+  sur 503 fiches.
+
 ## [0.86.1] - 2026-08-27
 
 ### Added
