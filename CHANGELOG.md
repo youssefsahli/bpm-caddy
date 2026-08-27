@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.98.0] - 2026-08-28
+
+### Fixed
+La même passe à **1280x800**, la taille d'un portable de comptoir, et
+celle qui tombe juste sous le seuil de 1320 px où le tableau des actes
+et le journal se mettent côte à côte. Trois vues y coupaient une ligne
+en deux — ce qui se lit comme une panne, alors qu'une ligne manquante ne
+se lit que comme une liste à faire défiler.
+
+- **Le tableau des entretiens montrait une demi-ligne**, boutons et
+  listes déroulantes tranchés par le bord du panneau. La réserve qu'il
+  garde avant que le journal ne se serve se mesure maintenant sur la
+  hauteur réelle d'une ligne, qui est plus haute qu'une ligne de texte
+  puisqu'elle est pleine de contrôles.
+- **Le bouton « Ajouter » de la journée d'agenda sortait du panneau.**
+  La réserve laissée au champ de titre était un nombre rond qui avait
+  oublié la largeur du bouton lui-même. Elle est la somme des contrôles
+  fixes.
+- **Le carnet de vaccination** : le formulaire garde ce qu'il a mesuré,
+  le tableau prend le reste, et « À faire » et « Voyage » lui laissent
+  240 px avant de se servir — leur propre plancher est à 96, de quoi
+  tenir leur bouton et une ligne. Résultat aux deux tailles : le
+  formulaire entier, l'en-tête du tableau entier, et une ligne de
+  vaccination à 1280.
+
 ## [0.97.0] - 2026-08-28
 
 ### Fixed
