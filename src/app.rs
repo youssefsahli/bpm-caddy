@@ -936,7 +936,18 @@ fn notes_box(
     ui.add_space(6.0);
     if with_add {
         ui.horizontal(|ui| {
-            let field_w = (ui.available_width() - 100.0).max(120.0);
+            // The button is measured, and the field never floored above
+            // what is left for it: a fixed « available - 100, at least
+            // 120 » pushed « Ajouter » off the side of the narrow notes
+            // panel on a drug card, where the whole box is 180 px.
+            let font = egui::TextStyle::Button.resolve(ui.style());
+            let button_w = ui.fonts(|f| {
+                f.layout_no_wrap(tr("notes_add").to_owned(), font, motif::TEXT)
+                    .size()
+                    .x
+            }) + ui.spacing().button_padding.x * 2.0
+                + 10.0;
+            let field_w = (ui.available_width() - button_w - ui.spacing().item_spacing.x).max(60.0);
             ui.add_sized(
                 [field_w, 24.0],
                 egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
@@ -12067,18 +12078,23 @@ impl App {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
                         for (id, name, form) in rows {
-                            let label = if form.trim().is_empty() {
-                                name
-                            } else {
-                                format!("{name}  ·  {form}")
-                            };
-                            if motif::list_row(
+                            // The name takes the row and the form goes
+                            // to the hover: appended, it pushed « Bain
+                            // de bouche à la bétaméthasone » out to
+                            // « Bain de bouche à la … » in a 200 px
+                            // column, which hides the one thing the row
+                            // is there to say.
+                            let row = motif::list_row(
                                 ui,
-                                egui::RichText::new(label).size(12.0),
+                                egui::RichText::new(name).size(12.0),
                                 selected == Some(id),
-                            )
-                            .clicked()
-                            {
+                            );
+                            let row = if form.trim().is_empty() {
+                                row
+                            } else {
+                                row.on_hover_text(form.trim())
+                            };
+                            if row.clicked() {
                                 open = Some(id);
                             }
                         }
@@ -13560,18 +13576,41 @@ impl App {
             );
             ui.add_space(8.0);
             // Selector: one button per table, the active one sunken.
-            // There are more tables than fit on one line — let it wrap.
-            ui.horizontal_wrapped(|ui| {
-                for (i, t) in crate::tables::TABLES.iter().enumerate() {
-                    let btn = motif::toggle(ui, t.short, i == session.table_selected);
-                    if btn.clicked() {
-                        session.table_selected = i;
-                        session.table_edit = None;
-                        session.table_undo = None;
-                        session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
+            // There are more tables than fit on one line — let it wrap,
+            // but not down the whole screen. Twenty-seven of them take
+            // six rows at a counter width, which left one row of the
+            // table itself above the fold; past three rows the selector
+            // scrolls in its own box and the table stays in view. The
+            // band is measured, never guessed, like the others.
+            let rows = Self::wrapped_rows(
+                ui,
+                ui.available_width(),
+                crate::tables::TABLES.iter().map(|t| t.short),
+            );
+            let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+            let selector = |ui: &mut egui::Ui, session: &mut Session| {
+                ui.horizontal_wrapped(|ui| {
+                    for (i, t) in crate::tables::TABLES.iter().enumerate() {
+                        let btn = motif::toggle(ui, t.short, i == session.table_selected);
+                        if btn.clicked() {
+                            session.table_selected = i;
+                            session.table_edit = None;
+                            session.table_undo = None;
+                            session.table_cells =
+                                session.db.table_cells(t.short).unwrap_or_default();
+                        }
                     }
-                }
-            });
+                });
+            };
+            if rows > 3.0 {
+                egui::ScrollArea::vertical()
+                    .id_salt("tables_selector")
+                    .max_height(row_h * 3.0 + 6.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| selector(ui, session));
+            } else {
+                selector(ui, session);
+            }
             ui.add_space(12.0);
         });
         // While something is being looked for, the rows that answer it
