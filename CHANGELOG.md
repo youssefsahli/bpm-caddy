@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.88.0] - 2026-08-27
+
+### Added
+- **Trente-trois posologies de plus**, et le cliquet retombe de 200 à
+  170. Ce lot va chercher les associations fixes et ce qu'elles
+  cachent : le diurétique dans le Bipréterax et le ionogramme qu'il
+  impose, les œdèmes de chevilles de l'amlodipine qu'on prend pour une
+  insuffisance cardiaque, les trente-six heures obligatoires entre un
+  IEC et l'Entresto sous peine d'angio-œdème, la kaliémie qui pilote le
+  Kerendia. Puis les inhalés, où le geste vaut la molécule — la gélule
+  du Breezhaler qui ne s'avale jamais et qu'on vérifie vide, les deux
+  bouffées du Respimat qui comptent pour une dose. Et le reste du
+  comptoir : le Maalox à deux heures de tout, le patch de rotigotine
+  qu'on retire avant d'en poser un autre, l'Apokinon dont l'antiémétique
+  ne doit jamais être un neuroleptique, le Colchimax dont l'opium masque
+  justement la diarrhée qui signale l'intoxication, l'EPO qui ne fait
+  rien sans fer. 1 447 lignes sur 536 fiches.
+
 ## [0.87.0] - 2026-08-27
 
 ### Added
