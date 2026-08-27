@@ -1410,6 +1410,11 @@ struct Session {
     dispo_base: Option<db::Dispositif>,
     dispo_confirm_delete: bool,
     dispo_new_name: String,
+    /// Where Enter would go in each carved list, while its own search
+    /// field has focus.
+    dispo_cursor: usize,
+    codex_cursor: usize,
+    protocol_cursor: usize,
     /// The rentals on the open file, the forfait being handed out, and
     /// the row whose return date is being typed.
     locations: Vec<db::Location>,
@@ -1649,6 +1654,9 @@ impl Session {
             dispo_base: None,
             dispo_confirm_delete: false,
             dispo_new_name: String::new(),
+            dispo_cursor: 0,
+            codex_cursor: 0,
+            protocol_cursor: 0,
             locations: Vec::new(),
             loc_pick: 0,
             loc_start: String::new(),
@@ -2993,6 +3001,27 @@ fn insulin_span(minutes: u32) -> String {
 }
 
 /// "5 à 13 h"): the first number, or the middle of a range.
+/// Where a list cursor lands after an arrow key.
+///
+/// Pure, because this is the arithmetic that decides which fiche Enter
+/// opens: a cursor left past the end after the filter narrowed the list
+/// opens the wrong one, and that is not something a screenshot shows.
+/// It is clamped to the list *before* the key is applied, for exactly
+/// that case.
+fn list_step(cursor: usize, len: usize, up: bool, down: bool) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    let cursor = cursor.min(len - 1);
+    if down {
+        return (cursor + 1).min(len - 1);
+    }
+    if up {
+        return cursor.saturating_sub(1);
+    }
+    cursor
+}
+
 fn parse_hours(text: &str) -> Option<f64> {
     let cleaned = text.replace(',', ".");
     let mut nums = Vec::new();
@@ -8173,6 +8202,33 @@ impl App {
         needed <= motif::visible_rect(ui).width() - 16.0
     }
 
+    /// Arrows and Enter over a filtered list, while the list's own
+    /// search field has focus — the same three keys the patient dock
+    /// has always answered to.
+    ///
+    /// Only while the field has focus, so the arrows still drive the
+    /// agenda and the act table everywhere else. Returns the row Enter
+    /// chose.
+    fn list_keys(
+        ui: &egui::Ui,
+        field: &egui::Response,
+        cursor: &mut usize,
+        len: usize,
+    ) -> Option<usize> {
+        if !field.has_focus() || len == 0 {
+            return None;
+        }
+        let (up, down, enter) = ui.input(|i| {
+            (
+                i.key_pressed(egui::Key::ArrowUp),
+                i.key_pressed(egui::Key::ArrowDown),
+                i.key_pressed(egui::Key::Enter),
+            )
+        });
+        *cursor = list_step(*cursor, len, up, down);
+        enter.then_some(*cursor)
+    }
+
     fn button_width(ui: &egui::Ui, label: &str) -> f32 {
         let font = egui::TextStyle::Button.resolve(ui.style());
         ui.fonts(|f| {
@@ -12111,7 +12167,7 @@ impl App {
         ];
         let mut open: Option<i64> = None;
         motif::panel(ui, cols[0], Some(tr("codex_list")), |ui| {
-            ui.add_sized(
+            let field = ui.add_sized(
                 [ui.available_width(), 24.0],
                 egui::TextEdit::singleline(&mut session.codex_query)
                     .hint_text(tr("codex_search_hint")),
@@ -12140,29 +12196,36 @@ impl App {
                 })
                 .map(|p| (p.id, p.name.clone(), p.form.clone()))
                 .collect();
+            // Type, arrow down, Enter — without reaching for the mouse.
+            let mut cursor = session.codex_cursor;
+            if let Some(i) = Self::list_keys(ui, &field, &mut cursor, rows.len()) {
+                open = Some(rows[i].0);
+            }
+            session.codex_cursor = cursor;
+            let keyed = field.has_focus().then_some(cursor);
             motif::inside(ui, inner, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("codex_list")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
-                        for (id, name, form) in rows {
+                        for (i, (id, name, form)) in rows.into_iter().enumerate() {
                             // The name takes the row and the form goes
                             // to the hover: appended, it pushed « Bain
                             // de bouche à la bétaméthasone » out to
                             // « Bain de bouche à la … » in a 200 px
                             // column, which hides the one thing the row
                             // is there to say.
-                            let row = motif::list_row(
-                                ui,
-                                egui::RichText::new(name).size(12.0),
-                                selected == Some(id),
-                            );
+                            let on = keyed == Some(i) || (keyed.is_none() && selected == Some(id));
+                            let row = motif::list_row(ui, egui::RichText::new(name).size(12.0), on);
                             let row = if form.trim().is_empty() {
                                 row
                             } else {
                                 row.on_hover_text(form.trim())
                             };
+                            if keyed == Some(i) {
+                                row.scroll_to_me(None);
+                            }
                             if row.clicked() {
                                 open = Some(id);
                             }
@@ -12710,7 +12773,7 @@ impl App {
         ];
         let mut open: Option<i64> = None;
         motif::panel(ui, cols[0], Some(tr("dispo_list")), |ui| {
-            ui.add_sized(
+            let field = ui.add_sized(
                 [ui.available_width(), 24.0],
                 egui::TextEdit::singleline(&mut session.dispo_query)
                     .hint_text(tr("dispo_search_hint")),
@@ -12739,6 +12802,13 @@ impl App {
                 })
                 .map(|d| (d.id, d.name.clone(), d.family.clone()))
                 .collect();
+            // Type, arrow down, Enter — without reaching for the mouse.
+            let mut cursor = session.dispo_cursor;
+            if let Some(i) = Self::list_keys(ui, &field, &mut cursor, rows.len()) {
+                open = Some(rows[i].0);
+            }
+            session.dispo_cursor = cursor;
+            let keyed = field.has_focus().then_some(cursor);
             motif::inside(ui, inner, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("dispo_list")
@@ -12749,7 +12819,7 @@ impl App {
                         // name: a heading whenever the family changes
                         // turns a long alphabet into a drawer.
                         let mut family = String::new();
-                        for (id, name, fam) in rows {
+                        for (i, (id, name, fam)) in rows.into_iter().enumerate() {
                             if fam != family {
                                 family = fam.clone();
                                 if !family.trim().is_empty() {
@@ -12761,13 +12831,15 @@ impl App {
                                     );
                                 }
                             }
-                            if motif::list_row(
-                                ui,
-                                egui::RichText::new(name).size(12.0),
-                                selected == Some(id),
-                            )
-                            .clicked()
-                            {
+                            // The open fiche stays marked; the keyboard
+                            // cursor marks where Enter would go, which
+                            // is not always the same row.
+                            let on = keyed == Some(i) || (keyed.is_none() && selected == Some(id));
+                            let row = motif::list_row(ui, egui::RichText::new(name).size(12.0), on);
+                            if keyed == Some(i) {
+                                row.scroll_to_me(None);
+                            }
+                            if row.clicked() {
                                 open = Some(id);
                             }
                         }
@@ -13137,7 +13209,7 @@ impl App {
         let mut delete: Option<(i64, String)> = None;
         let selected = session.protocol_open.as_ref().map(|p| p.id);
         motif::panel(ui, rect, Some(tr("proto_list")), |ui| {
-            ui.add_sized(
+            let field = ui.add_sized(
                 [ui.available_width(), 24.0],
                 egui::TextEdit::singleline(&mut session.protocol_query)
                     .hint_text(tr("proto_search_hint")),
@@ -13170,19 +13242,32 @@ impl App {
                 return;
             }
             let inner = motif::well(ui, rect);
+            // Type, arrow down, Enter — without reaching for the mouse.
+            let mut cursor = session.protocol_cursor;
+            if let Some(i) = Self::list_keys(ui, &field, &mut cursor, rows.len()) {
+                open = Some(rows[i].clone());
+            }
+            session.protocol_cursor = cursor;
+            let keyed = field.has_focus().then_some(cursor);
             motif::inside(ui, inner, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("protocols")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
-                        for p in rows {
+                        for (i, p) in rows.into_iter().enumerate() {
                             let row_h = (ui.spacing().interact_size.y + 2.0).max(18.0);
                             let (rect, resp) = ui.allocate_exact_size(
                                 egui::vec2(ui.available_width(), row_h),
                                 egui::Sense::click(),
                             );
-                            let on = selected == Some(p.id);
+                            // The open tree stays marked; the keyboard
+                            // cursor marks where Enter would go.
+                            let on =
+                                keyed == Some(i) || (keyed.is_none() && selected == Some(p.id));
+                            if keyed == Some(i) {
+                                resp.clone().scroll_to_me(None);
+                            }
                             if on {
                                 ui.painter().rect_filled(rect, 0.0, motif::ACCENT);
                             } else if resp.hovered() {
@@ -19084,5 +19169,39 @@ mod tests {
         assert_eq!(insulin_span(90), "1 h 30");
         assert_eq!(insulin_span(1440), "24 h");
         assert_eq!(insulin_span(0), "0 min");
+    }
+
+    /// The arithmetic behind « tapez, flèche bas, Entrée » in the
+    /// carved lists. The case that matters is the one a screenshot
+    /// cannot show: the cursor sitting past the end after the search
+    /// narrowed the list, which would open the wrong fiche.
+    #[test]
+    fn a_list_cursor_stays_inside_its_list() {
+        use super::list_step;
+        // Down walks to the end and stops there; up walks back to the
+        // top and stops there. No wrapping: a list that loops round
+        // makes the operator lose their place.
+        assert_eq!(list_step(0, 5, false, true), 1);
+        assert_eq!(list_step(4, 5, false, true), 4);
+        assert_eq!(list_step(4, 5, true, false), 3);
+        assert_eq!(list_step(0, 5, true, false), 0);
+        // No key: the cursor stays where it is.
+        assert_eq!(list_step(2, 5, false, false), 2);
+        // An empty list has nowhere to go and must not underflow on
+        // `len - 1`.
+        assert_eq!(list_step(0, 0, false, true), 0);
+        assert_eq!(list_step(7, 0, true, false), 0);
+        // The search narrowed twenty protocols to three while the
+        // cursor was on the twelfth: it comes back inside the list
+        // first, so Enter opens the last row and not a panic or a
+        // stale fiche.
+        assert_eq!(list_step(11, 3, false, false), 2);
+        assert_eq!(list_step(11, 3, false, true), 2);
+        assert_eq!(list_step(11, 3, true, false), 1);
+        // A one-row list: every key leaves it on that row.
+        for (up, down) in [(false, false), (true, false), (false, true)] {
+            assert_eq!(list_step(0, 1, up, down), 0);
+            assert_eq!(list_step(9, 1, up, down), 0);
+        }
     }
 }
