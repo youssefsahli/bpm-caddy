@@ -100,6 +100,11 @@ signatures are never pre-filled.
 
 ## Clinical content
 
+`docs/CONTENU.md` is the map: where each kind of content lives, what
+seeds it, what test holds it, and how to add to it. Read it before
+adding a card, a posology, a table, a preparation, a protocol, an
+analyte or a rule.
+
 `src/ordonnance.rs` and `src/tables.rs` must agree: the antibiotics the
 ordonnance offers are the ones the « Angine » and « Cystite » reference
 tables list, and `every_molecule_appears_in_its_reference_table` fails

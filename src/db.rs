@@ -28330,9 +28330,11 @@ mod tests {
                     .unwrap();
                 }
                 db.add_travel(pid, "ML", "").unwrap();
-                // A substitution protocol, as the team would write it.
+                // A substitution protocol, as the team would write it —
+                // beside the shipped ones, and on the question they
+                // meet most: what the clairance allows.
                 let proto = db
-                    .add_protocol("AOD indisponible", "Anticoagulants oraux directs")
+                    .add_protocol("AOD et fonction rénale", "Anticoagulants oraux directs")
                     .unwrap();
                 let q1 = db
                     .add_protocol_node(
