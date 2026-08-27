@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.85.0] - 2026-08-27
+
+### Added
+- **« Toxicité / marge thérapeutique » sur ce que le comptoir vend le
+  plus.** La section n'existait que sur les molécules à marge étroite ;
+  elle porte maintenant les surdosages qu'une officine rencontre pour de
+  vrai (40 fiches). Le paracétamol d'abord : 150 mg par kilo, quatre
+  grammes seulement entre la dose maximale et celle qui détruit le foie,
+  et surtout vingt-quatre heures sans le moindre symptôme — la fiche dit
+  d'appeler le jour même, sans attendre un signe qui ne viendra pas. Le
+  fer ensuite, première cause d'intoxication mortelle du petit enfant,
+  avec son accalmie trompeuse. Puis les AINS, dont le danger n'est pas
+  la dose massive mais la dose ordinaire chez un patient déshydraté sous
+  IEC et diurétique ; l'aspirine et le syndrome de Reye ; les opioïdes
+  et leurs trois signes qui vont ensemble ; les benzodiazépines, larges
+  seules et étroites en association ; la metformine dont l'acidose
+  lactique vient du rein et non de la dose ; la colchicine dont la
+  diarrhée est déjà l'intoxication ; la vitamine D dont la parade est
+  d'écrire la date de l'ampoule.
+
+### Changed
+- `Db::refresh_toxicity` devient une passe versionnée : elle remplit
+  aussi les sections restées vides, et son marqueur passe à « 2 » pour
+  que les bases qui avaient déjà reçu la correction de la v0.81.0
+  reçoivent celles écrites depuis. Une cellule que l'équipe a écrite ou
+  verrouillée n'est jamais touchée.
+
 ## [0.84.0] - 2026-08-27
 
 ### Added

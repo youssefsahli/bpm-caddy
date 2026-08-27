@@ -1415,7 +1415,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "À 75 ou 160 mg, il n'y a pas de surdosage au sens habituel : le risque est hémorragique et il est permanent. Il se cumule avec tout AINS, tout anticoagulant, tout ISRS, et avec l'âge. Saignement digestif indolore révélé par une anémie, hématome intracrânien après une chute apparemment bénigne : ce sont les deux formes qui tuent.",
         forms: "",
     },
     StarterDetail {
@@ -1478,7 +1478,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique, surveillance biologique",
-        toxicity: "",
+        toxicity: "La dose toxique est de 150 mg par kilo en une prise, soit environ 8 g chez l'adulte — quatre grammes seulement séparent la dose maximale de la dose qui détruit le foie, et le seuil descend chez le sujet dénutri, alcoolique ou de faible poids. Le piège est l'absence de symptôme : les premières vingt-quatre heures sont muettes ou se résument à des nausées, et l'hépatite fulminante n'apparaît qu'au deuxième ou troisième jour. L'antidote, la N-acétylcystéine, est d'autant plus efficace qu'il est donné tôt : devant un surdosage, même supposé, même sans le moindre signe, on appelle le 15 ou le centre antipoison le jour même. Compter aussi le paracétamol caché dans les associations antalgiques et les traitements du rhume.",
         forms: "",
     },
     StarterDetail {
@@ -1499,7 +1499,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique",
-        toxicity: "",
+        toxicity: "La dose toxique est de 150 mg par kilo en une prise, soit environ 8 g chez l'adulte — quatre grammes seulement séparent la dose maximale de la dose qui détruit le foie, et le seuil descend chez le sujet dénutri, alcoolique ou de faible poids. Le piège est l'absence de symptôme : les premières vingt-quatre heures sont muettes ou se résument à des nausées, et l'hépatite fulminante n'apparaît qu'au deuxième ou troisième jour. L'antidote, la N-acétylcystéine, est d'autant plus efficace qu'il est donné tôt : devant un surdosage, même supposé, même sans le moindre signe, on appelle le 15 ou le centre antipoison le jour même. Compter aussi le paracétamol caché dans les associations antalgiques et les traitements du rhume.",
         forms: "",
     },
     StarterDetail {
@@ -1541,7 +1541,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde",
-        toxicity: "",
+        toxicity: "Il n'y a pas de dose maximale au sens strict — la dose juste est celle qui soulage —, mais toute augmentation trop rapide ou toute association à un autre dépresseur expose à la dépression respiratoire. Les trois signes qui vont ensemble : somnolence qu'on ne peut pas interrompre, pupilles en tête d'épingle, respiration lente. L'antidote est la naloxone, et l'entourage doit savoir qu'elle existe et appeler le 15. Un patient naïf, âgé, insuffisant rénal ou sous benzodiazépine part d'un seuil beaucoup plus bas.",
         forms: "",
     },
     StarterDetail {
@@ -1604,7 +1604,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
-        toxicity: "",
+        toxicity: "Seul, un surdosage de benzodiazépine donne une somnolence profonde dont on peut réveiller le patient, et il tue rarement. Associé à l'alcool, à un opioïde ou à un autre sédatif, il tue par dépression respiratoire — c'est l'association qui est dangereuse, pas la molécule. Chez la personne âgée, la dose habituelle suffit à provoquer chute, confusion et fracture. L'arrêt brutal après plusieurs semaines expose au syndrome de sevrage, jusqu'à la convulsion.",
         forms: "",
     },
     StarterDetail {
@@ -1625,7 +1625,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine",
-        toxicity: "",
+        toxicity: "Même marge que les autres benzodiazépines : large seule, étroite en association. Alcool, opioïde ou autre sédatif : la dépression respiratoire devient possible. Le quart de comprimé n'est pas un détail de présentation, c'est l'unité de prescription chez la personne âgée, chez qui la dose adulte fait chuter. Arrêt toujours progressif, sur des semaines.",
         forms: "",
     },
     StarterDetail {
@@ -1646,7 +1646,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine",
-        toxicity: "",
+        toxicity: "Benzodiazépine à demi-vie intermédiaire, sans métabolite actif, ce qui la rend un peu plus maniable chez la personne âgée et l'insuffisant hépatique — sans supprimer le risque de chute ni de confusion. Danger réel en association à l'alcool ou aux opioïdes. Arrêt progressif, jamais brutal après plusieurs semaines.",
         forms: "",
     },
     StarterDetail {
@@ -1709,7 +1709,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "Ordonnance sécurisée, 28 jours, sans chevauchement",
         smr: "",
         tags: "hypnotique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Ordonnance sécurisée et vingt-huit jours de délivrance : ces règles sont la marge de sécurité de cette molécule. Le surdosage donne une somnolence profonde, aggravée par l'alcool jusqu'à la dépression respiratoire. Les comportements automatiques pendant le sommeil — manger, téléphoner, conduire sans aucun souvenir — surviennent à dose normale et imposent l'arrêt.",
         forms: "",
     },
     StarterDetail {
@@ -1730,7 +1730,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypnotique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Même profil que les apparentés : peu dangereux seul, dangereux avec l'alcool ou un opioïde. Le goût métallique dans la bouche est banal et sans gravité. Somnolence résiduelle au réveil, chutes chez la personne âgée, comportements automatiques nocturnes : ce sont ces effets, et non une dose seuil, qui font arrêter.",
         forms: "",
     },
     StarterDetail {
@@ -2045,7 +2045,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "biguanide",
-        toxicity: "",
+        toxicity: "La metformine ne fait pas d'hypoglycémie et n'a pas de zone thérapeutique à surveiller : son risque est unique et rare, l'acidose lactique. Elle survient quand le rein décroche — déshydratation, gastro-entérite, canicule, produit de contraste iodé, sepsis — et non parce que la dose est trop forte. Crampes, douleurs abdominales, nausées, respiration rapide et profonde, malaise : c'est une urgence. La règle qui l'évite tient en une phrase : par temps de fièvre, de diarrhée ou de vomissements, on arrête et on appelle.",
         forms: "",
     },
     StarterDetail {
@@ -2780,7 +2780,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique opioïde faible, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux toxicités dans le même comprimé. Le paracétamol d'abord : 150 mg par kilo, environ 8 g chez l'adulte, sans aucun symptôme les premières vingt-quatre heures, et c'est en additionnant les boîtes — l'antalgique, le traitement du rhume, celui du dos — qu'on y arrive sans le vouloir. La codéine ensuite : somnolence, myosis, respiration lente, et une sensibilité très variable d'une personne à l'autre selon son métabolisme du CYP2D6. Contre-indiquée avant douze ans et après une amygdalectomie.",
         forms: "",
     },
     StarterDetail {
@@ -2801,7 +2801,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique opioïde faible, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Paracétamol et tramadol : le premier plafonne la dose quotidienne, le second abaisse le seuil épileptogène et expose au syndrome sérotoninergique dès qu'un antidépresseur est associé. Convulsion, agitation avec fièvre et sueurs, ou somnolence avec respiration lente : ce sont les trois façons dont cette association déraille.",
         forms: "",
     },
     StarterDetail {
@@ -2822,7 +2822,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Il n'y a pas de dosage plasmatique : la marge se lit en durée et en terrain. Cinq jours en automédication, trois jours sur une fièvre, et pas au-delà sans avis. Un surdosage donne nausées, douleurs abdominales, somnolence et acouphènes ; le vrai danger est ailleurs — l'hémorragie digestive sans douleur préalable et l'insuffisance rénale aiguë, l'une et l'autre déclenchées par une dose ordinaire chez un patient déshydraté, âgé, ou déjà sous IEC et diurétique.",
         forms: "",
     },
     StarterDetail {
@@ -2843,7 +2843,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Cinq jours au maximum en automédication, trois sur une fièvre. Un surdosage donne nausées, douleurs abdominales, somnolence, acouphènes et vision trouble. Le risque qui compte n'est pourtant pas la dose massive mais la dose ordinaire au mauvais moment : déshydratation, canicule, gastro-entérite, ou association à un IEC et un diurétique — la triade qui fait l'insuffisance rénale aiguë.",
         forms: "",
     },
     StarterDetail {
@@ -3872,7 +3872,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-goutteux",
-        toxicity: "",
+        toxicity: "La marge est l'une des plus étroites de la pharmacopée courante : la dose maximale du premier jour de crise ne se dépasse jamais, et les doses d'autrefois sont dangereuses. Les troubles digestifs — diarrhée, nausées, vomissements — ne sont pas un effet indésirable banal, ce sont les premiers signes de l'intoxication et ils imposent l'arrêt immédiat. Au-delà : cytopénies, atteinte musculaire et rénale. Insuffisance rénale, sujet âgé, macrolides, pamplemousse et statines abaissent tous le seuil, et il n'existe pas d'antidote.",
         forms: "",
     },
     StarterDetail {
@@ -3914,7 +3914,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "vitamine d",
-        toxicity: "",
+        toxicity: "Forte dose trimestrielle : le risque n'est pas la dose elle-même mais sa répétition non tracée. Soif, urines abondantes, nausées, constipation, fatigue et confusion signent l'hypercalcémie. La date de chaque ampoule se note, et un dosage de calcémie se discute avant toute reprise chez un patient dont on ne connaît pas l'historique.",
         forms: "",
     },
     StarterDetail {
@@ -3935,7 +3935,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fer",
-        toxicity: "",
+        toxicity: "Chez l'adulte, le surdosage est rare. Chez l'enfant, il est mortel : une poignée de comprimés adultes suffit, et c'est l'une des premières causes d'intoxication médicamenteuse létale du petit enfant. Vomissements, parfois sanglants, puis une accalmie trompeuse de quelques heures avant l'atteinte hépatique. Toute ingestion accidentelle se signale au centre antipoison sans attendre le moindre symptôme, et la boîte se range hors de portée comme un produit dangereux.",
         forms: "",
     },
     StarterDetail {
@@ -5300,7 +5300,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique opiacé, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association paracétamol, opium et caféine : la dose maximale se compte en gélules par jour et le paracétamol qu'elle contient s'additionne à tout autre antalgique pris à côté. Somnolence, constipation et myosis signent l'excès d'opium ; l'antidote d'un surdosage opioïde est la naloxone, celui du paracétamol la N-acétylcystéine, et les deux se donnent en urgence.",
         forms: "",
     },
     StarterDetail {
@@ -7967,7 +7967,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "À dose antalgique, un surdosage se reconnaît aux acouphènes et à la baisse de l'audition, puis à l'hyperventilation, aux vomissements et à la confusion. Chez l'enfant et l'adolescent, l'aspirine donnée pendant une varicelle ou une grippe expose au syndrome de Reye, dont la mortalité tient à ce qu'on n'y pense pas : vomissements répétés et somnolence après une virose imposent l'avis en urgence.",
         forms: "",
     },
     StarterDetail {
@@ -13763,7 +13763,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique",
-        toxicity: "",
+        toxicity: "La dose toxique est de 150 mg par kilo en une prise, soit environ 8 g chez l'adulte — quatre grammes seulement séparent la dose maximale de la dose qui détruit le foie, et le seuil descend chez le sujet dénutri, alcoolique ou de faible poids. Le piège est l'absence de symptôme : les premières vingt-quatre heures sont muettes ou se résument à des nausées, et l'hépatite fulminante n'apparaît qu'au deuxième ou troisième jour. L'antidote, la N-acétylcystéine, est d'autant plus efficace qu'il est donné tôt : devant un surdosage, même supposé, même sans le moindre signe, on appelle le 15 ou le centre antipoison le jour même. Compter aussi le paracétamol caché dans les associations antalgiques et les traitements du rhume.",
         forms: "",
     },
     StarterDetail {
@@ -13784,7 +13784,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde à libération immédiate",
-        toxicity: "",
+        toxicity: "Forme à libération immédiate : le pic arrive en une heure, et c'est là que le surdosage se joue. Somnolence qu'on ne peut pas interrompre, myosis serré, respiration lente : appeler le 15, la naloxone est l'antidote. Les interdoses se comptent — au-delà de quatre par jour, c'est le traitement de fond qu'il faut revoir, pas les interdoses qu'il faut multiplier.",
         forms: "",
     },
     StarterDetail {
@@ -17690,7 +17690,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "vitamine d",
-        toxicity: "",
+        toxicity: "La vitamine D ne s'accumule dangereusement qu'après des doses de charge répétées par erreur — l'ampoule reprise parce qu'on ne savait pas qu'elle avait déjà été donnée. L'hypercalcémie qui en résulte est insidieuse : soif, urines abondantes, nausées, constipation, confusion, puis calculs et atteinte rénale. La parade est administrative, pas clinique : noter la date de chaque ampoule sur le carnet.",
         forms: "",
     },
     StarterDetail {
@@ -25114,7 +25114,11 @@ impl Db {
     /// run once.
     pub fn refresh_toxicity(&self) -> Result<usize, String> {
         const OLD: &str = "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.";
-        if self.seed_mark("toxicity")?.as_deref() == Some("1") {
+        // The mark is a version: bumping it re-runs the pass once, which
+        // is how a base that already took the v0.81.0 replacement also
+        // receives the sections written since.
+        const PASS: &str = "2";
+        if self.seed_mark("toxicity")?.as_deref() == Some(PASS) {
             return Ok(0);
         }
         let tx = self
@@ -25126,15 +25130,21 @@ impl Db {
             if d.toxicity.is_empty() {
                 continue;
             }
+            // Either the cell still holds the old boilerplate word for
+            // word, or it is empty and was never written to. Anything
+            // else is the team's and is left alone.
             changed += tx
                 .execute(
-                    "UPDATE drugs SET toxicity = ?1 WHERE name = ?2 AND toxicity = ?3",
+                    "UPDATE drugs SET toxicity = ?1
+                     WHERE name = ?2 AND (toxicity = ?3 OR toxicity = '')
+                       AND id NOT IN (SELECT drug_id FROM drug_field_locks
+                                      WHERE column_name = 'toxicity')",
                     (d.toxicity, d.name, OLD),
                 )
                 .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
-        self.set_seed_mark("toxicity", "1")?;
+        self.set_seed_mark("toxicity", PASS)?;
         Ok(changed)
     }
 
@@ -28355,7 +28365,10 @@ mod tests {
                 .toxicity
         };
 
-        assert_eq!(db.refresh_toxicity().unwrap(), 2);
+        // Two boilerplate cells replaced, plus every card whose section
+        // was empty and unlocked — the pass carries the whole set.
+        let changed = db.refresh_toxicity().unwrap();
+        assert!(changed >= 2, "la passe n'a rien porté : {changed}");
         assert!(read("Digoxine").contains("0,5 à 0,9 ng/mL"));
         assert!(read("Levothyrox").contains("TSH"));
         // What the team wrote is theirs, boilerplate or not.
