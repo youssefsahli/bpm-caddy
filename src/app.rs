@@ -1031,6 +1031,10 @@ enum Goto {
     Table(usize),
     Preparation(i64),
     Protocol(i64),
+    /// Not a destination but a question: search this word in the prose
+    /// of every fiche. Always the last row, so a name search that found
+    /// nothing has somewhere to go.
+    Text(String),
 }
 
 /// One line of the jump box: where it goes, what it reads, and which
@@ -1839,7 +1843,13 @@ impl Session {
                 );
             }
         }
-        goto_rank(out, limit)
+        // The last row is the way out of a name search: what the box
+        // could not match by name may still be written inside a fiche.
+        // It costs one row and it is the answer often enough — « QT »,
+        // « allaitement », « pamplemousse » are not names of anything.
+        let mut hits = goto_rank(out, limit.saturating_sub(1));
+        hits.extend(goto_text_row(q));
+        hits
     }
 
     /// Go where a jump-box result points, loading whatever that
@@ -1873,6 +1883,12 @@ impl Session {
                 self.codex_edit = None;
                 self.codex_base = None;
                 self.codex_target.clear();
+            }
+            Goto::Text(word) => {
+                self.enter_drug_panel();
+                self.show_mono = true;
+                self.mono_query = word;
+                self.mono_hits = mono_search(&self.drugs, &self.mono_query, 200);
             }
             Goto::Protocol(id) => {
                 self.enter_drug_panel();
@@ -3061,6 +3077,22 @@ fn treatment_change_shortfall(
 /// How many results one kind may take before the others get a turn.
 const GOTO_PER_KIND: usize = 4;
 
+/// The jump box's last row: search `q` in the prose of every fiche.
+///
+/// It is the way out of a name search. « QT », « allaitement »,
+/// « pamplemousse » are not the name of anything and match nothing in
+/// the box — but they are written inside the monographs, and that is
+/// where the counter's question actually lives. Below three characters
+/// the row is not offered: the prose search would refuse it anyway.
+fn goto_text_row(q: &str) -> Option<GotoHit> {
+    let q = q.trim();
+    (q.chars().count() >= 3).then(|| GotoHit {
+        dest: Goto::Text(q.to_owned()),
+        label: trf("goto_text", q),
+        kind: tr("goto_kind_text"),
+    })
+}
+
 /// Rank the jump box's candidates, best first, capped at `limit`.
 ///
 /// Sorted on the score alone, and stably: two things that read as well
@@ -3572,7 +3604,10 @@ impl App {
                             session.refresh_dashboard();
                             session.view = MainView::Dashboard;
                             session.goto_open = true;
-                            session.goto_query = "co".to_owned();
+                            // A query that reaches several kinds at
+                            // once: the screenshot has to show the box
+                            // doing what it is for, not one row.
+                            session.goto_query = "col".to_owned();
                         }
                         // …and the jump itself: type a préparation's
                         // name and land on its sheet, which is the path
@@ -16156,6 +16191,20 @@ mod tests {
         assert_eq!(out[2].dest, Goto::Drug(3));
         // And the cap is a cap: the table falls off.
         assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn the_jump_box_always_offers_the_text_of_the_fiches() {
+        use super::{goto_text_row, Goto};
+        // Two letters: the prose search would refuse them, so the row
+        // is not offered either.
+        assert!(goto_text_row("qt").is_none());
+        assert!(goto_text_row("  ").is_none());
+        // Three and up: the row carries the word, trimmed, and the
+        // label shows it back.
+        let row = goto_text_row("  pamplemousse ").expect("la ligne manque");
+        assert_eq!(row.dest, Goto::Text("pamplemousse".to_owned()));
+        assert!(row.label.contains("pamplemousse"));
     }
 
     #[test]

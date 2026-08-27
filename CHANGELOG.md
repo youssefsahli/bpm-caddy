@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.76.0] - 2026-08-27
+
+### Added
+- **« Aller à… » ouvre sur le texte des fiches.** Sa dernière ligne est
+  toujours « Chercher « … » dans le texte des fiches » : ce que la
+  recherche par nom n'a pas trouvé est souvent écrit *dans* une
+  monographie. « QT », « allaitement », « pamplemousse » ne sont le nom
+  de rien — trois lettres suffisent, Entrée mène à la recherche plein
+  texte et à ses phrases. Les deux recherches ne font plus qu'un geste.
+
 ## [0.75.0] - 2026-08-27
 
 ### Added

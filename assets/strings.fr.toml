@@ -60,6 +60,8 @@ goto_kind_drug = "fiche"
 goto_kind_table = "table"
 goto_kind_prep = "préparation"
 goto_kind_protocol = "protocole"
+goto_kind_text = "texte"
+goto_text = "Chercher « {} » dans le texte des fiches"
 
 # --- Onglets de l'espace de travail ---
 tab_dashboard = "Tableau"
