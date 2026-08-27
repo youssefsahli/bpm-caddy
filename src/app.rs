@@ -1339,6 +1339,9 @@ struct Session {
     /// Every posology line of the base, read once when the search is
     /// opened: the prose search covers them too.
     mono_posologies: Vec<(i64, db::Posologie)>,
+    /// Narrow the prose search to the open file's own treatments: « which
+    /// of *these* say pamplemousse » is the question that gets asked.
+    mono_only_patient: bool,
     /// The codex: the preparations, what is open, and the quantity the
     /// counter actually has to make.
     show_codex: bool,
@@ -1588,6 +1591,7 @@ impl Session {
             mono_query: String::new(),
             mono_hits: Vec::new(),
             mono_posologies: Vec::new(),
+            mono_only_patient: false,
             goto_open: false,
             goto_query: String::new(),
             goto_selected: 0,
@@ -1903,12 +1907,7 @@ impl Session {
                 self.enter_drug_panel();
                 self.open_mono_search();
                 self.mono_query = word;
-                self.mono_hits = mono_search(
-                    &self.drugs,
-                    &self.mono_posologies,
-                    &self.mono_query,
-                    MONO_LIMIT,
-                );
+                self.run_mono_search();
             }
             Goto::Protocol(id) => {
                 self.enter_drug_panel();
@@ -1922,6 +1921,17 @@ impl Session {
                 }
             }
         }
+    }
+
+    /// Run the prose search over whichever base is selected — the whole
+    /// drug index, or only the open file's treatments.
+    fn run_mono_search(&mut self) {
+        let base: &[Drug] = if self.mono_only_patient {
+            &self.patient_treats
+        } else {
+            &self.drugs
+        };
+        self.mono_hits = mono_search(base, &self.mono_posologies, &self.mono_query, MONO_LIMIT);
     }
 
     /// Open the full-text search, reading the base's posology lines with
@@ -3687,15 +3697,29 @@ impl App {
                         }
                         // The full-text search of the monographs, with
                         // a word in it: the hit list is its own path.
-                        Ok("mono_search") => {
+                        Ok(v @ ("mono_search" | "mono_patient")) => {
+                            // « mono_patient » opens a file first: the
+                            // narrowing toggle only exists when one is.
+                            if v == "mono_patient" {
+                                let pick = session
+                                    .patients
+                                    .iter()
+                                    .max_by_key(|p| {
+                                        session
+                                            .db
+                                            .drugs_for_patient(p.id)
+                                            .map(|t| t.len())
+                                            .unwrap_or(0)
+                                    })
+                                    .cloned();
+                                if let Some(p) = pick {
+                                    session.open_patient(p);
+                                }
+                                session.mono_only_patient = true;
+                            }
                             session.open_mono_search();
                             session.mono_query = "pamplemousse".to_owned();
-                            session.mono_hits = mono_search(
-                                &session.drugs,
-                                &session.mono_posologies,
-                                &session.mono_query,
-                                MONO_LIMIT,
-                            );
+                            session.run_mono_search();
                             session.view = MainView::Drugs;
                         }
                         // The jump box, with something typed in it: the
@@ -14032,12 +14056,26 @@ impl App {
             // frame: eight hundred cards times thirteen fields is a
             // second of work at sixty frames a second.
             if search.changed() {
-                session.mono_hits = mono_search(
-                    &session.drugs,
-                    &session.mono_posologies,
-                    &session.mono_query,
-                    MONO_LIMIT,
-                );
+                session.run_mono_search();
+            }
+            // The open file narrows the question: « which of *these*
+            // say pamplemousse » is what is actually being asked when a
+            // patient is on screen.
+            if let Some(name) = session.viewing.as_ref().map(|p| p.last_name.clone()) {
+                ui.add_space(6.0);
+                if motif::toggle(
+                    ui,
+                    &trn("mono_only_patient", &[&name, &session.patient_treats.len()]),
+                    session.mono_only_patient,
+                )
+                .on_hover_text(tr("mono_only_patient_tooltip"))
+                .clicked()
+                {
+                    session.mono_only_patient = !session.mono_only_patient;
+                    session.run_mono_search();
+                }
+            } else {
+                session.mono_only_patient = false;
             }
             ui.add_space(10.0);
             let typed = session.mono_query.trim().chars().count();
@@ -14053,16 +14091,31 @@ impl App {
                 return;
             }
             // A cap that says nothing reads as « that is all of them ».
-            let count = if session.mono_hits.len() >= MONO_LIMIT {
-                trn("mono_count_capped", &[&MONO_LIMIT, &session.drugs.len()])
+            let read = if session.mono_only_patient {
+                session.patient_treats.len()
             } else {
-                trn(
-                    "mono_count",
-                    &[&session.mono_hits.len(), &session.drugs.len()],
-                )
+                session.drugs.len()
+            };
+            let count = if session.mono_hits.len() >= MONO_LIMIT {
+                trn("mono_count_capped", &[&MONO_LIMIT, &read])
+            } else {
+                trn("mono_count", &[&session.mono_hits.len(), &read])
             };
             ui.label(egui::RichText::new(count).size(11.5).color(motif::TEXT_DIM));
             ui.add_space(6.0);
+            // An empty well reads as « still loading »; say it found
+            // nothing, and say where it looked.
+            if session.mono_hits.is_empty() {
+                ui.label(
+                    egui::RichText::new(if session.mono_only_patient {
+                        tr("mono_no_hit_patient")
+                    } else {
+                        tr("mono_no_hit")
+                    })
+                    .size(12.0),
+                );
+                return;
+            }
             let rect = ui.available_rect_before_wrap();
             if rect.height() < 40.0 {
                 return;
@@ -14079,8 +14132,12 @@ impl App {
                         for hit in &session.mono_hits {
                             ui.horizontal(|ui| {
                                 if motif::button(ui, &hit.name).clicked() {
-                                    open_drug =
-                                        session.drugs.iter().find(|d| d.id == hit.drug).cloned();
+                                    open_drug = session
+                                        .drugs
+                                        .iter()
+                                        .chain(session.patient_treats.iter())
+                                        .find(|d| d.id == hit.drug)
+                                        .cloned();
                                 }
                                 let mut head = tr(hit.field).to_owned();
                                 if !hit.detail.is_empty() {
