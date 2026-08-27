@@ -669,7 +669,15 @@ fn drug_monograph(
                 // question behind "puis-je opérer / relayer / arrêter",
                 // and reading it off "≈ 12 heures" is arithmetic the
                 // counter should not have to do.
-                if let Some(hl) = parse_hours(&d.half_life) {
+                // An insulin's half-life says nothing useful: what is
+                // injected is a subcutaneous depot, and the question is
+                // when it works, not what is left in the plasma. Its own
+                // action profile takes the place of the decay curve.
+                let profile = crate::insulin::for_card(&d.name, &d.dci);
+                if let Some(p) = profile {
+                    insulin_strip(ui, width.min(320.0), p);
+                }
+                if let Some(hl) = parse_hours(&d.half_life).filter(|_| profile.is_none()) {
                     if hl > 0.0 {
                         let span = (hl * 5.0).clamp(6.0, 240.0);
                         let steps = 60;
@@ -1367,6 +1375,14 @@ struct Session {
     codex_new_name: String,
     /// The four little calculators under the sheet, as typed.
     codex_calc: CodexCalc,
+    /// The insulin panel: which curves are drawn, and the three numbers
+    /// the dose rules are computed from.
+    insulin_shown: Vec<&'static str>,
+    insulin_daily: f64,
+    insulin_human: bool,
+    insulin_carbs: f64,
+    insulin_measured: f64,
+    insulin_target: f64,
     /// The dispositifs: the fiches, what is open, and what is being
     /// rewritten. Same shape as the codex, because it is the same kind
     /// of content — the team's, not the update's.
@@ -1597,6 +1613,15 @@ impl Session {
             codex_confirm_delete: false,
             codex_new_name: String::new(),
             codex_calc: CodexCalc::default(),
+            // Two curves to begin with, and they are the pair the panel
+            // exists for: a basale sans pic beside the NPH whose peak
+            // makes the late-afternoon hypo.
+            insulin_shown: vec!["Lantus", "Insulatard"],
+            insulin_daily: 40.0,
+            insulin_human: false,
+            insulin_carbs: 60.0,
+            insulin_measured: 2.0,
+            insulin_target: 1.2,
             show_dispositifs: false,
             dispositifs: Vec::new(),
             dispo_query: String::new(),
@@ -2895,6 +2920,58 @@ fn urlencode(text: &str) -> String {
 }
 
 /// Read a number of hours out of a free-text half-life ("≈ 12 heures",
+/// One insulin's action profile, drawn small: the shape over 24
+/// hours, with where it starts, where it peaks and how long it
+/// lasts written under it.
+///
+/// This is what stands in place of the decay curve on an insulin
+/// card. A half-life computed from a subcutaneous depot answers a
+/// question nobody asks; « quand est-ce que ça tape » is the one
+/// that gets asked at the counter every day.
+fn insulin_strip(ui: &mut egui::Ui, width: f32, p: &crate::insulin::Profile) {
+    let span = (p.duration_min as f64).max(1440.0);
+    let curve: Vec<f64> = (0..=60)
+        .map(|i| crate::insulin::activity(p, span * i as f64 / 60.0) * 100.0)
+        .collect();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 44.0), egui::Sense::hover());
+    motif::chart::sparkline(ui, rect.shrink(2.0), &curve, motif::ACCENT);
+    ui.painter()
+        .rect_stroke(rect, 0.0, egui::Stroke::new(0.8_f32, motif::INK_LIGHT));
+    let peak = match p.peak_min {
+        Some((a, b)) => trn("insulin_peak", &[&insulin_span(a), &insulin_span(b)]),
+        None => tr("insulin_no_peak").to_owned(),
+    };
+    ui.label(
+        egui::RichText::new(trn(
+            "insulin_legend",
+            &[
+                &p.family,
+                &insulin_span(p.onset_min),
+                &peak,
+                &insulin_span(p.duration_min),
+            ],
+        ))
+        .size(10.0)
+        .color(motif::INK_LIGHT),
+    );
+    resp.on_hover_text(p.note);
+    ui.add_space(4.0);
+}
+
+/// Minutes as the counter says them: « 15 min », « 2 h », « 1 h 30 ».
+fn insulin_span(minutes: u32) -> String {
+    if minutes < 60 {
+        return trf("insulin_minutes", minutes.to_string());
+    }
+    let h = minutes / 60;
+    let m = minutes % 60;
+    if m == 0 {
+        trf("insulin_hours", h.to_string())
+    } else {
+        trn("insulin_hours_minutes", &[&h.to_string(), &m.to_string()])
+    }
+}
+
 /// "5 à 13 h"): the first number, or the middle of a range.
 fn parse_hours(text: &str) -> Option<f64> {
     let cleaned = text.replace(',', ".");
@@ -4031,10 +4108,15 @@ impl App {
                             if let Ok(list) = session.db.drugs() {
                                 session.drugs = list;
                             }
+                            // BPM_CADDY_DRUG names the card to open, so
+                            // a screenshot or a check can land on the
+                            // one it is about; Eliquis by default.
+                            let want = std::env::var("BPM_CADDY_DRUG")
+                                .unwrap_or_else(|_| "Eliquis".into());
                             let card = session
                                 .drugs
                                 .iter()
-                                .find(|d| d.name == "Eliquis")
+                                .find(|d| d.name.eq_ignore_ascii_case(want.trim()))
                                 .or(session.drugs.first())
                                 .cloned();
                             if let Some(d) = card {
@@ -11537,6 +11619,10 @@ impl App {
                     motif::TEXT_FAINT,
                 );
             }
+            // --- Insulines : le profil d'action, et les trois règles ---
+            ui.add_space(14.0);
+            Self::insulin_panel(ui, session);
+
             // The mention under the calculators is the officine's own
             // and empty until it writes one: the application adds no
             // caveat of its own accord.
@@ -11550,6 +11636,249 @@ impl App {
                 );
             }
         });
+    }
+
+    /// The insulins: what each one does over the day, drawn one on top
+    /// of another, and the three numbers a functional schema runs on.
+    ///
+    /// The drawing is the point. « Lente » on a box covers both a
+    /// glargine with no peak and an NPH that peaks at six hours, and it
+    /// is that peak which makes the five-o'clock hypoglycaemia. A
+    /// sentence saying so is read once; two curves on the same axis are
+    /// understood at a glance, and can be shown to the patient.
+    fn insulin_panel(ui: &mut egui::Ui, session: &mut Session) {
+        ui.label(egui::RichText::new(tr("insulin_title")).strong().size(13.0));
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("insulin_subtitle"))
+                    .size(11.0)
+                    .color(motif::TEXT_DIM),
+            )
+            .wrap(),
+        );
+        ui.add_space(4.0);
+        // Which curves are on the axis. Toggling rather than a single
+        // choice: the comparison is the whole value of the panel.
+        ui.horizontal_wrapped(|ui| {
+            for p in crate::insulin::PROFILES {
+                let on = session.insulin_shown.contains(&p.name);
+                if ui
+                    .selectable_label(on, p.name)
+                    .on_hover_text(format!("{} — {}", p.family, p.dci))
+                    .clicked()
+                {
+                    if on {
+                        session.insulin_shown.retain(|n| *n != p.name);
+                    } else {
+                        session.insulin_shown.push(p.name);
+                    }
+                }
+            }
+        });
+        ui.add_space(4.0);
+        let shown: Vec<&'static crate::insulin::Profile> = session
+            .insulin_shown
+            .iter()
+            .filter_map(|n| crate::insulin::find(n))
+            .collect();
+        // The axis runs to the longest curve on it, rounded up to a
+        // whole hour, with a floor of 24 h so a rapid insulin is not
+        // drawn across the whole width as if it lasted all day.
+        let span_min = shown
+            .iter()
+            .map(|p| p.duration_min)
+            .max()
+            .unwrap_or(1440)
+            .max(1440) as f64;
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width().min(880.0), 150.0),
+            egui::Sense::hover(),
+        );
+        ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
+        motif::bevel(ui.painter(), rect, false);
+        let plot = rect.shrink(12.0);
+        let painter = ui.painter();
+        // An hour grid every six hours: the day's own divisions.
+        let hours = (span_min / 60.0).ceil();
+        let step_h = if hours > 30.0 { 12.0 } else { 6.0 };
+        let mut h = 0.0;
+        while h <= hours {
+            let x = plot.left() + plot.width() * (h * 60.0 / span_min) as f32;
+            painter.line_segment(
+                [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+                egui::Stroke::new(0.5_f32, motif::BG_DARK),
+            );
+            painter.text(
+                egui::pos2(x, plot.bottom() + 1.0),
+                egui::Align2::CENTER_TOP,
+                format!("{h:.0} h"),
+                egui::FontId::proportional(9.0),
+                motif::TEXT_FAINT,
+            );
+            h += step_h;
+        }
+        // Each curve in its own colour, from the same palette the rest
+        // of the application uses for a series.
+        for (i, p) in shown.iter().enumerate() {
+            let colour = motif::chart::SERIES[i % motif::chart::SERIES.len()];
+            let mut points = Vec::with_capacity(121);
+            for k in 0..=120 {
+                let t = span_min * k as f64 / 120.0;
+                let a = crate::insulin::activity(p, t);
+                points.push(egui::pos2(
+                    plot.left() + plot.width() * (t / span_min) as f32,
+                    plot.bottom() - plot.height() * a as f32,
+                ));
+            }
+            painter.add(egui::Shape::line(
+                points,
+                egui::Stroke::new(1.6_f32, colour),
+            ));
+            // A tick at the peak, where there is one: that is the hour
+            // the panel exists to point at.
+            if p.peak_min.is_some() {
+                let x =
+                    plot.left() + plot.width() * (crate::insulin::peak_centre(p) / span_min) as f32;
+                painter.line_segment(
+                    [
+                        egui::pos2(x, plot.bottom()),
+                        egui::pos2(x, plot.bottom() - 6.0),
+                    ],
+                    egui::Stroke::new(1.5_f32, colour),
+                );
+            }
+        }
+        // The legend, and under it what each curve is worth in words.
+        ui.add_space(3.0);
+        ui.horizontal_wrapped(|ui| {
+            for (i, p) in shown.iter().enumerate() {
+                ui.label(
+                    egui::RichText::new(format!("— {}", p.name))
+                        .size(11.0)
+                        .strong()
+                        .color(motif::chart::SERIES[i % motif::chart::SERIES.len()]),
+                );
+                ui.label(
+                    egui::RichText::new(trn(
+                        "insulin_legend",
+                        &[
+                            &p.family,
+                            &insulin_span(p.onset_min),
+                            &match p.peak_min {
+                                Some((a, b)) => {
+                                    trn("insulin_peak", &[&insulin_span(a), &insulin_span(b)])
+                                }
+                                None => tr("insulin_no_peak").to_owned(),
+                            },
+                            &insulin_span(p.duration_min),
+                        ],
+                    ))
+                    .size(10.5)
+                    .color(motif::TEXT_DIM),
+                );
+            }
+        });
+        if shown.len() == 1 {
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(shown[0].note)
+                        .size(11.0)
+                        .color(motif::TEXT_DIM),
+                )
+                .wrap(),
+            );
+        }
+
+        // --- The three rules ---
+        ui.add_space(8.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr("insulin_daily"));
+            ui.add(
+                egui::DragValue::new(&mut session.insulin_daily)
+                    .range(1.0..=200.0)
+                    .suffix(" UI"),
+            );
+            ui.checkbox(&mut session.insulin_human, tr("insulin_human"));
+        });
+        let Some(rules) = crate::insulin::rules(session.insulin_daily, session.insulin_human)
+        else {
+            return;
+        };
+        ui.label(
+            egui::RichText::new(trn(
+                "insulin_rules_result",
+                &[
+                    &crate::codex::format_quantity((rules.carb_ratio * 10.0).round() / 10.0),
+                    &crate::codex::format_quantity(
+                        (rules.sensitivity_gl * 1000.0).round() / 1000.0,
+                    ),
+                    &crate::codex::format_quantity((rules.sensitivity_mmol * 10.0).round() / 10.0),
+                ],
+            ))
+            .strong()
+            .color(motif::ACCENT),
+        );
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(tr("insulin_carbs"));
+            ui.add(
+                egui::DragValue::new(&mut session.insulin_carbs)
+                    .range(0.0..=400.0)
+                    .suffix(" g"),
+            );
+            ui.label(tr("insulin_measured"));
+            ui.add(
+                egui::DragValue::new(&mut session.insulin_measured)
+                    .range(0.3..=6.0)
+                    .speed(0.05)
+                    .suffix(" g/L"),
+            );
+            ui.label(tr("insulin_target"));
+            ui.add(
+                egui::DragValue::new(&mut session.insulin_target)
+                    .range(0.7..=2.5)
+                    .speed(0.05)
+                    .suffix(" g/L"),
+            );
+        });
+        let meal = crate::insulin::meal_units(session.insulin_carbs, rules.carb_ratio);
+        let correction = crate::insulin::correction_units(
+            session.insulin_measured,
+            session.insulin_target,
+            rules.sensitivity_gl,
+        );
+        if let (Some(meal), Some(correction)) = (meal, correction) {
+            let round = |u: f64| crate::codex::format_quantity((u * 10.0).round() / 10.0);
+            ui.label(
+                egui::RichText::new(trn(
+                    "insulin_bolus_result",
+                    &[
+                        &round(meal),
+                        &round(correction.max(0.0)),
+                        &round(meal + correction.max(0.0)),
+                    ],
+                ))
+                .strong()
+                .color(motif::ACCENT),
+            );
+            // Under target there is nothing to add, and the panel says
+            // so rather than offering a negative dose to subtract.
+            if correction < 0.0 {
+                ui.label(
+                    egui::RichText::new(tr("insulin_under_target"))
+                        .size(11.0)
+                        .color(motif::TEXT_DIM),
+                );
+            }
+        }
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("insulin_titration"))
+                    .size(11.0)
+                    .color(motif::TEXT_DIM),
+            )
+            .wrap(),
+        );
     }
 
     /// The codex: the officine's preparations, the formula at the
@@ -13505,9 +13834,15 @@ impl App {
                         }
                     });
                     ui.add_space(6.0);
+                    // Same rule as the monograph: an insulin gets its
+                    // action profile, everything else gets its decay.
+                    let profile = crate::insulin::for_card(&d.name, &d.dci);
+                    if let Some(p) = profile {
+                        insulin_strip(ui, ui.available_width().min(280.0), p);
+                    }
                     // The half-life as a shape: what is left a day after
                     // the last dose, and how long until it is gone.
-                    if let Some(hl) = parse_hours(&d.half_life) {
+                    if let Some(hl) = parse_hours(&d.half_life).filter(|_| profile.is_none()) {
                         if hl > 0.0 {
                             let left = 100.0 * 0.5_f64.powf(24.0 / hl);
                             ui.label(

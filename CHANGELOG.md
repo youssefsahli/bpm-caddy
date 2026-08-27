@@ -5,6 +5,50 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.92.0] - 2026-08-27
+
+### Added
+- **Les insulines ont enfin une forme.** « Lente » sur une boîte
+  recouvre une glargine sans pic et une NPH qui culmine à six heures —
+  et c'est ce pic qui fait l'hypoglycémie de fin d'après-midi. Douze
+  insulines du marché français portent maintenant leur profil d'action :
+  début, pic, durée, et la courbe qui va avec.
+- **Sur une fiche d'insuline, ce profil remplace la courbe de
+  décroissance.** La demi-vie d'un dépôt sous-cutané répond à une
+  question que personne ne pose ; « quand est-ce que ça tape » est celle
+  qu'on entend tous les jours.
+- **Dans Calculs, les courbes se superposent** : on clique les insulines
+  à comparer et elles se dessinent sur le même axe, avec un repère sous
+  le pic de chacune. La glargine à côté de la NPH, c'est une explication
+  qu'on peut montrer au patient.
+- **Les trois règles**, sous le dessin : règle des 500 (grammes de
+  glucides couverts par une unité, 450 pour l'insuline humaine), règle
+  des 1800 (facteur de sensibilité), bolus repas, dose de correction, et
+  la titration de la basale. Une glycémie sous la cible affiche « rien à
+  corriger » plutôt qu'une dose négative à retrancher.
+- `BPM_CADDY_DRUG=<nom>` ouvre une fiche donnée avec
+  `START_VIEW=drug_card` — pour vérifier une courbe sur la bonne fiche.
+- **Douze préparations de plus au codex**, qui passe de 20 à 32. Les
+  excipients qu'on refait sans arrêt (cold cream, cérat de Galien), les
+  antiseptiques et leurs pièges (Dakin, qui meurt à la lumière et dégage
+  du chlore avec un acide ; Milian, qui tache tout ce qu'elle touche et
+  qu'il faut annoncer avant de délivrer), la solution alcoolique
+  salicylée du cuir chevelu, la vaseline boriquée du nez, et six
+  formules types dont les quantités viennent de l'ordonnance : nystatine
+  buvable, gel de kétoprofène — avec la photosensibilisation qui dure
+  deux semaines après l'arrêt —, morphine buvable avec sa double
+  vérification de concentration, bain de bouche corticoïde qui ne
+  s'avale pas, macrogol, et le lavage oculaire qui commence par « si
+  vous ne pouvez pas stériliser, n'en faites pas ».
+
+### Fixed
+- **Le facteur de sensibilité était dix fois trop petit.** 1800/DTQ est
+  en mg/dL, et 100 mg/dL font 1 g/L : le chiffre en g/L est 18/DTQ et
+  non 1,8/DTQ. Trouvé en regardant le panneau afficher 0,045 g/L et une
+  correction de 17,8 UI là où il fallait lire 0,45 g/L et 1,8 UI. Un
+  test tient désormais les deux unités ensemble à toutes les doses —
+  1 mmol/L de glucose vaut 0,18 g/L, et l'écart ne peut plus s'installer.
+
 ## [0.91.0] - 2026-08-27
 
 ### Added

@@ -8,6 +8,7 @@ mod config;
 mod db;
 mod entretien;
 mod fuzzy;
+mod insulin;
 mod location;
 mod ordonnance;
 mod pdf;
