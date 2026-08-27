@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.0] - 2026-08-27
+
+### Changed
+- **La section « Toxicité / marge thérapeutique » dit enfin quelque
+  chose.** Treize fiches portaient la même phrase — « marge
+  thérapeutique étroite… voir les sections Interactions et
+  Surveillance » —, c'est-à-dire un champ qui renvoie à un autre champ.
+  Chacune porte maintenant ce qu'on cherche quand on ouvre cette
+  section : la cible (INR 2-3, lithémie 0,5-0,8, digoxinémie 0,5-0,9,
+  carbamazépine 4-12), le seuil où la toxicité commence, ce à quoi elle
+  ressemble, et le piège propre à la molécule — la prise quotidienne de
+  méthotrexate au lieu d'hebdomadaire, la vitesse de titration de la
+  lamotrigine, l'hypersensibilité de la fluindione, l'uracilémie avant
+  la première capécitabine, la NFS qui conditionne la clozapine.
+
+### Added
+- **Les quatre AOD reçoivent la leur**, qu'ils n'avaient pas : leur
+  marge n'est pas une concentration mais un jeu de critères — les deux
+  sur trois de l'apixaban, le repas obligatoire du rivaroxaban, les
+  80 % rénaux du dabigatran et ses gélules qu'on n'ouvre jamais, la
+  limite haute de l'édoxaban au-dessus de 95 mL/min — et l'antidote
+  disponible pour chacun.
+- `Db::refresh_toxicity` porte le nouveau texte aux bases existantes,
+  une seule fois, et **uniquement** là où l'ancienne phrase est encore
+  présente mot pour mot : une fiche sur laquelle l'équipe a écrit ne
+  correspond plus, et rien ne lui arrive.
+
 ## [0.80.1] - 2026-08-27
 
 ### Changed
