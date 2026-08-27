@@ -5,6 +5,38 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.96.0] - 2026-08-28
+
+### Fixed
+- **Les boutons de la fiche s'imprimaient par-dessus le nom du
+  patient.** Ils passaient sous le nom « si la vue fait moins de
+  620 px » — et à 1024x700 les deux panneaux ouverts en laissent 645,
+  juste au-dessus du seuil : les quatre boutons se posaient alors en
+  travers de « Jean Dupont ». Un nom long ou un panneau plus large
+  rouvrait le défaut à chaque fois. La place nécessaire se mesure
+  maintenant — nom, date de naissance et boutons — au lieu d'être
+  devinée.
+- **L'onglet Entretiens n'affichait pas un seul acte.** Le journal des
+  notes sous le tableau avait un plancher de 170 px et prenait plus de
+  la moitié des 290 px de cet onglet : le tableau pour lequel la fiche
+  existe montrait sa ligne de récapitulation et rien d'autre. Les actes
+  gardent 150 px avant que le journal ne se serve — c'est le journal
+  qui défile.
+- **La ligne de saisie du carnet de vaccination était coupée en deux.**
+  Le plafond qui protégeait le tableau rognait le formulaire, dont la
+  seconde rangée de champs — date, n° de lot, site — disparaissait sous
+  le bord du panneau. C'est le tableau qui cède désormais : une liste à
+  laquelle il manque une ligne se fait défiler, un champ coupé en deux
+  ne se remplit pas.
+
+### Known
+- À 1024x700 avec les deux panneaux ouverts, la fiche patient laisse
+  environ 290 px sous les onglets. Les tableaux y montrent leurs
+  en-têtes et une ligne ou deux, le reste se fait défiler : c'est un
+  arbitrage, pas un oubli. Deux tentatives de reprendre la place
+  ailleurs ont été annulées — l'une coupait le tableau des actes,
+  l'autre les boutons de « À faire » et « Voyage ».
+
 ## [0.95.0] - 2026-08-27
 
 ### Fixed
