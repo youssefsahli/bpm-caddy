@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.81.1] - 2026-08-27
+
+### Changed
+- **Les quatre fiches AOD étaient les plus minces de la base** — celle
+  de l'édoxaban en tête, à moitié moins fournie que la moyenne, alors
+  que l'AOD est l'un des quatre thèmes d'entretien de l'application.
+  Mécanisme, effets indésirables et surveillance sont mis au niveau du
+  reste : la biodisponibilité du rivaroxaban qui tombe d'un tiers à jeun
+  aux dosages de 15 et 20 mg — première cause de sous-anticoagulation
+  réelle, et à revérifier à chaque renouvellement —, la dyspepsie du
+  dabigatran et ce qui la rend supportable, l'anémie qui se manifeste
+  d'abord par une fatigue ou un malaise, et le réflexe qui va avec :
+  devant une fatigue inexpliquée sous AOD, l'hémogramme avant tout
+  autre examen.
+
 ## [0.81.0] - 2026-08-27
 
 ### Changed
