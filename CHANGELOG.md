@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.80.0] - 2026-08-27
+
+### Added
+- **La recherche plein texte se restreint au dossier ouvert.** Avec une
+  fiche patient ouverte, un bouton « Seulement chez X (n traitements) »
+  limite la recherche à son ordonnance : « lesquels de *ceux-là* parlent
+  de pamplemousse », « lesquels disent insuffisance rénale ». C'est la
+  question du comptoir, et elle n'avait pas de réponse en un geste —
+  vingt passages sur cinq fiches au lieu de deux cents sur huit cents.
+
+### Changed
+- Une recherche sans résultat le dit, au lieu de laisser un cadre vide
+  qui se lit « ça charge » : le message diffère selon qu'elle a lu toute
+  la base ou seulement les traitements de la fiche, et propose la sortie.
+
 ## [0.79.1] - 2026-08-27
 
 ### Fixed
