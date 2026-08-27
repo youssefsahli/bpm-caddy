@@ -1471,6 +1471,133 @@ fn codex_source(preparations: &[crate::db::Preparation]) -> String {
     src
 }
 
+/// One dispositif as a printable A4 sheet — the one that goes in the
+/// drawer beside the box, or in the patient's hand at the counter.
+pub fn open_dispositif(
+    dispo: &crate::db::Dispositif,
+    pharmacy: &PharmacyConfig,
+) -> Result<PathBuf, String> {
+    compile_and_open(dispositif_source(dispo, pharmacy), "dispositif")
+}
+
+fn dispositif_source(dispo: &crate::db::Dispositif, pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.8cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n\
+         #set par(justify: true)\n\
+         #let sec(t) = [#v(3mm) #text(10.5pt, weight: \"bold\")[#t] #v(1mm) #line(length: 100%, stroke: 0.5pt) #v(1.5mm)]\n",
+    );
+    if !pharmacy.name.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
+            typst_str(pharmacy.name.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#text(16pt, weight: \"bold\")[#{}]\n",
+        typst_str(&dispo.name)
+    ));
+    if !dispo.family.trim().is_empty() {
+        src.push_str(&format!(
+            "#v(1mm)\n#text(10pt, style: \"italic\")[#{}]\n",
+            typst_str(dispo.family.trim())
+        ));
+    }
+    for (title, body) in dispositif_sections(dispo) {
+        src.push_str(&format!(
+            "#sec[#{}]\n#text(10pt)[#{}]\n",
+            typst_str(title),
+            typst_str(body.trim())
+        ));
+    }
+    let sources: Vec<&str> = dispo
+        .sources
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if !sources.is_empty() {
+        src.push_str(&format!(
+            "#v(3mm)\n#text(8.5pt, style: \"italic\")[Sources : #{}]\n",
+            typst_str(&sources.join(" · "))
+        ));
+    }
+    src.push_str(
+        "#v(2mm)\n#text(8pt, style: \"italic\")[La ligne LPP et son tarif se vérifient au moment de la délivrance : cette fiche en donne la règle, pas le prix.]\n",
+    );
+    src
+}
+
+/// The sections of a dispositif fiche, in the order of the gesture —
+/// shared by the single sheet and the whole booklet so the two can
+/// never drift apart.
+fn dispositif_sections(dispo: &crate::db::Dispositif) -> Vec<(&'static str, &str)> {
+    [
+        ("Indication", dispo.indication.as_str()),
+        ("Formes et tailles", dispo.sizes.as_str()),
+        ("Pose", dispo.application.as_str()),
+        ("Renouvellement", dispo.renewal.as_str()),
+        ("Prise en charge (LPP)", dispo.lpp.as_str()),
+        ("Ce qui va de travers", dispo.caution.as_str()),
+    ]
+    .into_iter()
+    .filter(|(_, body)| !body.trim().is_empty())
+    .collect()
+}
+
+/// The whole set of dispositifs as one booklet, in two columns, grouped
+/// by family: what the team pins near the stock.
+pub fn open_dispositifs(
+    dispositifs: &[crate::db::Dispositif],
+    pharmacy: &PharmacyConfig,
+) -> Result<PathBuf, String> {
+    compile_and_open(dispositifs_source(dispositifs, pharmacy), "dispositifs")
+}
+
+fn dispositifs_source(dispositifs: &[crate::db::Dispositif], pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm, columns: 2)\n\
+         #set text(size: 8.5pt, lang: \"fr\", hyphenate: true)\n\
+         #set par(justify: true)\n\
+         #place(top + center, scope: \"parent\", float: true)[\n\
+           #text(15pt, weight: \"bold\")[Dispositifs médicaux]\n\
+           #v(1mm)\n",
+    );
+    src.push_str(&format!(
+        "  #text(8.5pt, style: \"italic\")[#{}]\n  #v(3mm)\n]\n",
+        typst_str(if pharmacy.name.trim().is_empty() {
+            "La ligne LPP et son tarif se vérifient au moment de la délivrance."
+        } else {
+            pharmacy.name.trim()
+        })
+    ));
+    let mut family = String::new();
+    for dispo in dispositifs {
+        if dispo.family != family {
+            family = dispo.family.clone();
+            if !family.trim().is_empty() {
+                src.push_str(&format!(
+                    "#v(2mm)\n#text(11pt, weight: \"bold\")[#{}]\n#v(1mm)\n",
+                    typst_str(family.trim().to_uppercase().as_str())
+                ));
+            }
+        }
+        src.push_str(&format!(
+            "#block(breakable: false, below: 3.5mm)[\n#text(9.5pt, weight: \"bold\")[#{}]\n",
+            typst_str(&dispo.name)
+        ));
+        for (title, body) in dispositif_sections(dispo) {
+            src.push_str(&format!(
+                "#v(0.8mm)\n#text(8pt)[#text(weight: \"bold\")[#{} : ]#{}]\n",
+                typst_str(title),
+                typst_str(body.trim())
+            ));
+        }
+        src.push_str("]\n");
+    }
+    src
+}
+
 /// One day of the transmission logbook as a printable A4 page.
 pub fn open_transmission_day(
     day_title: &str,
@@ -2749,6 +2876,67 @@ mod tests {
         // An empty codex still prints its cover line rather than
         // failing: a base whose team deleted everything is legitimate.
         let world = PdfWorld::new(codex_source(&[]));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// The dispositifs print twice: one fiche for the drawer, and the
+    /// whole set as a booklet grouped by family.
+    #[test]
+    fn the_dispositifs_print_as_a_sheet_and_as_a_booklet() {
+        let all: Vec<crate::db::Dispositif> = crate::db::STARTER_DISPOSITIFS
+            .iter()
+            .enumerate()
+            .map(|(i, d)| crate::db::Dispositif {
+                id: i as i64 + 1,
+                name: d.name.to_owned(),
+                family: d.family.to_owned(),
+                indication: d.indication.to_owned(),
+                sizes: d.sizes.to_owned(),
+                application: d.application.to_owned(),
+                renewal: d.renewal.to_owned(),
+                lpp: d.lpp.to_owned(),
+                caution: d.caution.to_owned(),
+                tags: d.tags.to_owned(),
+                sources: d.sources.to_owned(),
+            })
+            .collect();
+        let booklet = dispositifs_source(&all, &sample_pharmacy());
+        assert!(booklet.contains("Hydrocolloïde"));
+        assert!(booklet.contains("PANSEMENT"));
+        assert!(booklet.contains("Renouvellement"));
+        let world = PdfWorld::new(booklet);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le livret des dispositifs doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("dispositifs_exemple.pdf"),
+                &pdf,
+            );
+        }
+        // One fiche, with hostile input: everything the team types goes
+        // through the same escaping as the rest.
+        let one = crate::db::Dispositif {
+            id: 1,
+            name: "Pansement #[test] \"maison\"".to_owned(),
+            family: "Pansement".to_owned(),
+            indication: "Plaie propre.".to_owned(),
+            sizes: "10 x 10 cm".to_owned(),
+            application: "Sur peau sèche.".to_owned(),
+            renewal: "Tous les deux jours.".to_owned(),
+            lpp: "Titre I.".to_owned(),
+            caution: "Pas sur plaie infectée.".to_owned(),
+            tags: "pansement".to_owned(),
+            sources: "Fiche de l'officine".to_owned(),
+        };
+        let sheet = dispositif_source(&one, &sample_pharmacy());
+        let world = PdfWorld::new(sheet);
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+        // An empty list still prints its cover rather than failing.
+        let world = PdfWorld::new(dispositifs_source(&[], &sample_pharmacy()));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 

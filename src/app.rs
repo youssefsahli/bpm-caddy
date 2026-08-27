@@ -1030,6 +1030,7 @@ enum Goto {
     /// A reference table, by its index in `tables::TABLES`.
     Table(usize),
     Preparation(i64),
+    Dispositif(i64),
     Protocol(i64),
     /// Not a destination but a question: search this word in the prose
     /// of every fiche. Always the last row, so a name search that found
@@ -1359,6 +1360,17 @@ struct Session {
     codex_new_name: String,
     /// The four little calculators under the sheet, as typed.
     codex_calc: CodexCalc,
+    /// The dispositifs: the fiches, what is open, and what is being
+    /// rewritten. Same shape as the codex, because it is the same kind
+    /// of content — the team's, not the update's.
+    show_dispositifs: bool,
+    dispositifs: Vec<db::Dispositif>,
+    dispo_query: String,
+    dispo_open: Option<i64>,
+    dispo_edit: Option<db::Dispositif>,
+    dispo_base: Option<db::Dispositif>,
+    dispo_confirm_delete: bool,
+    dispo_new_name: String,
     /// The convention's cycle length in months, from the options: it
     /// drives both the quota rule and the fee ranks.
     cycle_months: u32,
@@ -1449,6 +1461,9 @@ impl Session {
         // The protocols too: a base opened before they existed gets
         // them, and a tree the team rewrote is never replaced.
         let _ = db.seed_protocols();
+        // And the dispositifs, by the same rule: seeded once, and a
+        // fiche the team emptied never comes back to argue.
+        let _ = db.seed_dispositifs();
         // And the thirteen « toxicité » sections that used to say the
         // same nothing: replaced once, only where the old sentence is
         // still there word for word.
@@ -1566,6 +1581,14 @@ impl Session {
             codex_confirm_delete: false,
             codex_new_name: String::new(),
             codex_calc: CodexCalc::default(),
+            show_dispositifs: false,
+            dispositifs: Vec::new(),
+            dispo_query: String::new(),
+            dispo_open: None,
+            dispo_edit: None,
+            dispo_base: None,
+            dispo_confirm_delete: false,
+            dispo_new_name: String::new(),
             cycle_months: cycle_months.max(1),
             show_protocols: false,
             protocols,
@@ -1613,9 +1636,11 @@ impl Session {
             error: None,
         };
         session.set_patients(patients);
-        // The jump box searches the codex too, so it has to be loaded
-        // before the first Ctrl+K, not only when the codex is opened.
+        // The jump box searches the codex and the dispositifs too, so
+        // both have to be loaded before the first Ctrl+K, not only when
+        // their view is opened.
         session.reload_codex();
+        session.reload_dispositifs();
         // The search view opens on the day's own panels, so the figures
         // they show have to be loaded before the first frame.
         session.refresh_dashboard();
@@ -1840,6 +1865,21 @@ impl Session {
                 );
             }
         }
+        for dispo in &self.dispositifs {
+            let sc = fuzzy::score(q, &dispo.name).max(if dispo.family.is_empty() {
+                None
+            } else {
+                fuzzy::score(q, &dispo.family)
+            });
+            if let Some(sc) = sc {
+                push(
+                    sc,
+                    Goto::Dispositif(dispo.id),
+                    dispo.name.clone(),
+                    tr("goto_kind_dispositif"),
+                );
+            }
+        }
         for proto in &self.protocols {
             let sc = fuzzy::score(q, &proto.title).max(if proto.subject.is_empty() {
                 None
@@ -1907,6 +1947,14 @@ impl Session {
                 self.codex_base = None;
                 self.codex_target.clear();
             }
+            Goto::Dispositif(id) => {
+                self.enter_drug_panel();
+                self.show_dispositifs = true;
+                self.reload_dispositifs();
+                self.dispo_open = Some(id);
+                self.dispo_edit = None;
+                self.dispo_base = None;
+            }
             Goto::Text(word) => {
                 self.enter_drug_panel();
                 self.open_mono_search();
@@ -1955,7 +2003,9 @@ impl Session {
         self.show_tables = false;
         self.show_codex = false;
         self.show_protocols = false;
+        self.show_dispositifs = false;
         self.codex_open = None;
+        self.dispo_open = None;
         self.protocol_open = None;
         self.calc_open = false;
     }
@@ -2025,6 +2075,16 @@ impl Session {
     /// One preparation by id, as it stands in the loaded codex.
     fn preparation(&self, id: i64) -> Option<db::Preparation> {
         self.preparations.iter().find(|p| p.id == id).cloned()
+    }
+
+    /// Reload the dispositifs from the base.
+    fn reload_dispositifs(&mut self) {
+        self.dispositifs = self.db.dispositifs().unwrap_or_default();
+    }
+
+    /// One dispositif by id, as it stands in the loaded list.
+    fn dispositif(&self, id: i64) -> Option<db::Dispositif> {
+        self.dispositifs.iter().find(|d| d.id == id).cloned()
     }
 
     /// Open a drug card: load its baseline for CAS and the patients
@@ -3687,6 +3747,16 @@ impl App {
                             session.reload_codex();
                             if v == "codex_open" {
                                 session.codex_open = session.preparations.first().map(|p| p.id);
+                            }
+                            session.view = MainView::Drugs;
+                        }
+                        // The dispositifs, and one fiche open: the sheet
+                        // is only drawn once a fiche is chosen.
+                        Ok(v @ ("dispositifs" | "dispositif_open")) => {
+                            session.show_dispositifs = true;
+                            session.reload_dispositifs();
+                            if v == "dispositif_open" {
+                                session.dispo_open = session.dispositifs.first().map(|d| d.id);
                             }
                             session.view = MainView::Drugs;
                         }
@@ -11531,6 +11601,417 @@ impl App {
         }
     }
 
+    /// The dispositifs médicaux: pansements, compression, stomie,
+    /// sondage, sets de soins, and the material the officine rents out.
+    ///
+    /// Carved like the codex — the list on the left, the open fiche on
+    /// the right. The list is grouped under family headings rather than
+    /// run as one alphabet of thirty-five names: « quel pansement » and
+    /// « quelle poche » are the questions, and they are answered by the
+    /// family before they are answered by the name. The families
+    /// themselves are alphabetical, since the team invents its own.
+    fn dispositifs_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let body = motif::visible_rect(ui);
+        let narrow = body.width() < 940.0;
+        let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
+        motif::inside(ui, head[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("dispo_title"));
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_dispositifs = false;
+                    session.dispo_edit = None;
+                }
+                ui.add_sized(
+                    [220.0, 24.0],
+                    egui::TextEdit::singleline(&mut session.dispo_new_name)
+                        .hint_text(tr("dispo_new_hint")),
+                );
+                if motif::button(ui, tr("dash_print"))
+                    .on_hover_text(tr("dispo_print_all_tooltip"))
+                    .clicked()
+                {
+                    let all = session.dispositifs.clone();
+                    if let Err(e) = crate::pdf::open_dispositifs(&all, &config.pharmacy) {
+                        session.error = Some(e);
+                    }
+                }
+                if motif::button(ui, tr("dispo_new")).clicked()
+                    && !session.dispo_new_name.trim().is_empty()
+                {
+                    let name = session.dispo_new_name.trim().to_owned();
+                    match session.db.add_dispositif(&name) {
+                        Ok(id) => {
+                            session.dispo_new_name.clear();
+                            session.reload_dispositifs();
+                            session.dispo_open = Some(id);
+                            // A new fiche is empty: it opens in the
+                            // form, since there is nothing to read.
+                            if let Some(d) = session.dispositif(id) {
+                                session.dispo_base = Some(d.clone());
+                                session.dispo_edit = Some(d);
+                            }
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("dispo_subtitle"))
+                        .size(11.5)
+                        .color(motif::TEXT_DIM),
+                )
+                .wrap(),
+            );
+        });
+        let list_w = (head[1].width() * 0.26).clamp(220.0, 340.0);
+        let cols = [
+            egui::Rect::from_min_size(head[1].min, egui::vec2(list_w, head[1].height())),
+            egui::Rect::from_min_max(
+                egui::pos2(head[1].left() + list_w + 8.0, head[1].top()),
+                head[1].max,
+            ),
+        ];
+        let mut open: Option<i64> = None;
+        motif::panel(ui, cols[0], Some(tr("dispo_list")), |ui| {
+            ui.add_sized(
+                [ui.available_width(), 24.0],
+                egui::TextEdit::singleline(&mut session.dispo_query)
+                    .hint_text(tr("dispo_search_hint")),
+            );
+            ui.add_space(4.0);
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 30.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            let query = session.dispo_query.clone();
+            let selected = session.dispo_open;
+            let rows: Vec<(i64, String, String)> = session
+                .dispositifs
+                .iter()
+                .filter(|d| {
+                    query.trim().is_empty()
+                        || [
+                            d.name.as_str(),
+                            d.family.as_str(),
+                            d.tags.as_str(),
+                            d.indication.as_str(),
+                        ]
+                        .iter()
+                        .any(|field| fuzzy::score(&query, field).is_some())
+                })
+                .map(|d| (d.id, d.name.clone(), d.family.clone()))
+                .collect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("dispo_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        // The rows arrive sorted by family, then by
+                        // name: a heading whenever the family changes
+                        // turns a long alphabet into a drawer.
+                        let mut family = String::new();
+                        for (id, name, fam) in rows {
+                            if fam != family {
+                                family = fam.clone();
+                                if !family.trim().is_empty() {
+                                    ui.add_space(3.0);
+                                    ui.label(
+                                        egui::RichText::new(family.to_uppercase())
+                                            .size(10.0)
+                                            .color(motif::TEXT_DIM),
+                                    );
+                                }
+                            }
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(name).size(12.0),
+                                selected == Some(id),
+                            )
+                            .clicked()
+                            {
+                                open = Some(id);
+                            }
+                        }
+                    });
+            });
+        });
+        if let Some(id) = open {
+            session.dispo_open = Some(id);
+            session.dispo_edit = None;
+            session.dispo_base = None;
+            session.dispo_confirm_delete = false;
+        }
+        let Some(id) = session.dispo_open else {
+            motif::panel(ui, cols[1], Some(tr("dispo_sheet")), |ui| {
+                ui.label(
+                    egui::RichText::new(tr("dispo_pick"))
+                        .size(12.0)
+                        .color(motif::TEXT_DIM),
+                );
+            });
+            return;
+        };
+        let Some(dispo) = session.dispositif(id) else {
+            session.dispo_open = None;
+            return;
+        };
+        if session.dispo_edit.is_some() {
+            Self::dispositif_form(ui, session, cols[1], &dispo);
+        } else {
+            Self::dispositif_sheet(ui, session, cols[1], &dispo, config);
+        }
+    }
+
+    /// The open dispositif, read. The order is the order of the gesture:
+    /// what it is for, what sizes exist, how it goes on, when it is
+    /// changed, what the LPP line says — and last what goes wrong.
+    fn dispositif_sheet(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        dispo: &db::Dispositif,
+        config: &Config,
+    ) {
+        let mut edit = false;
+        let mut delete = false;
+        let mut print = false;
+        motif::panel(ui, rect, Some(tr("dispo_sheet")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dispo_sheet")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        if motif::button(ui, tr("drug_edit")).clicked() {
+                            edit = true;
+                        }
+                        if motif::button(ui, tr("dispo_print"))
+                            .on_hover_text(tr("dispo_print_tooltip"))
+                            .clicked()
+                        {
+                            print = true;
+                        }
+                        ui.add_space(10.0);
+                        let label = if session.dispo_confirm_delete {
+                            tr("patient_delete_confirm")
+                        } else {
+                            tr("patient_delete")
+                        };
+                        if motif::button(ui, label).clicked() {
+                            if session.dispo_confirm_delete {
+                                delete = true;
+                            } else {
+                                session.dispo_confirm_delete = true;
+                            }
+                        }
+                    });
+                    ui.add_space(6.0);
+                    ui.label(egui::RichText::new(&dispo.name).size(16.0).strong());
+                    if !dispo.family.trim().is_empty() {
+                        ui.label(
+                            egui::RichText::new(dispo.family.trim())
+                                .size(12.0)
+                                .italics()
+                                .color(motif::TEXT_DIM),
+                        );
+                    }
+                    ui.add_space(8.0);
+                    for (title, body, alert) in [
+                        (tr("dispo_indication"), dispo.indication.as_str(), false),
+                        (tr("dispo_sizes"), dispo.sizes.as_str(), false),
+                        (tr("dispo_application"), dispo.application.as_str(), false),
+                        (tr("dispo_renewal"), dispo.renewal.as_str(), false),
+                        (tr("dispo_lpp"), dispo.lpp.as_str(), false),
+                        (tr("dispo_caution"), dispo.caution.as_str(), true),
+                    ] {
+                        if body.trim().is_empty() {
+                            continue;
+                        }
+                        motif::section(ui, title);
+                        ui.add_space(2.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(body.trim()).size(12.0).color(if alert {
+                                    motif::ALERT
+                                } else {
+                                    motif::TEXT
+                                }),
+                            )
+                            .wrap(),
+                        );
+                        ui.add_space(6.0);
+                    }
+                    let tags: Vec<&str> = dispo
+                        .tags
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    if !tags.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tags.join(" · "))
+                                .size(10.5)
+                                .color(motif::TEXT_DIM),
+                        );
+                        ui.add_space(4.0);
+                    }
+                    let sources: Vec<&str> = dispo
+                        .sources
+                        .lines()
+                        .map(str::trim)
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    if !sources.is_empty() {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(format!(
+                                    "{} : {}",
+                                    tr("tables_sources"),
+                                    sources.join(" · ")
+                                ))
+                                .size(10.5)
+                                .color(motif::TEXT_DIM),
+                            )
+                            .wrap(),
+                        );
+                        ui.add_space(6.0);
+                    }
+                    // The LPP moves and the fiche does not: say so once,
+                    // here, rather than pretend the tarif is shipped.
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("dispo_lpp_notice"))
+                                .size(10.5)
+                                .italics()
+                                .color(motif::TEXT_DIM),
+                        )
+                        .wrap(),
+                    );
+                });
+        });
+        if edit {
+            session.dispo_base = Some(dispo.clone());
+            session.dispo_edit = Some(dispo.clone());
+            session.error = None;
+        }
+        if print {
+            if let Err(e) = crate::pdf::open_dispositif(dispo, &config.pharmacy) {
+                session.error = Some(e);
+            }
+        }
+        if delete {
+            session.dispo_confirm_delete = false;
+            match session.db.delete_dispositif(dispo.id, &dispo.name) {
+                Ok(true) => {
+                    session.dispo_open = None;
+                    session.reload_dispositifs();
+                }
+                Ok(false) => session.error = Some(tr("dispo_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(err) = session.error.clone() {
+            motif::inside(ui, rect, |ui| {
+                ui.colored_label(motif::ALERT, err);
+            });
+        }
+    }
+
+    /// The open dispositif, written: every field as the team edits it.
+    fn dispositif_form(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        dispo: &db::Dispositif,
+    ) {
+        let mut save = false;
+        let mut cancel = false;
+        let Some(form) = session.dispo_edit.as_mut() else {
+            return;
+        };
+        motif::panel(ui, rect, Some(tr("dispo_sheet")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dispo_form")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if motif::button(ui, tr("form_save")).clicked() {
+                            save = true;
+                        }
+                        if motif::button(ui, tr("tpl_close")).clicked() {
+                            cancel = true;
+                        }
+                    });
+                    ui.add_space(6.0);
+                    let dim = |t: &str| egui::RichText::new(t).size(11.0).color(motif::TEXT_DIM);
+                    let w = ui.available_width().min(680.0);
+                    for (label, value, rows) in [
+                        (tr("dispo_name"), &mut form.name, 1),
+                        (tr("dispo_family"), &mut form.family, 1),
+                        (tr("dispo_indication"), &mut form.indication, 3),
+                        (tr("dispo_sizes"), &mut form.sizes, 3),
+                        (tr("dispo_application"), &mut form.application, 4),
+                        (tr("dispo_renewal"), &mut form.renewal, 3),
+                        (tr("dispo_lpp"), &mut form.lpp, 3),
+                        (tr("dispo_caution"), &mut form.caution, 4),
+                        (tr("drug_tags"), &mut form.tags, 1),
+                        (tr("tables_sources"), &mut form.sources, 2),
+                    ] {
+                        ui.label(dim(label));
+                        if rows == 1 {
+                            ui.add_sized([w, 24.0], egui::TextEdit::singleline(value));
+                        } else {
+                            ui.add_sized(
+                                [w, 22.0 * rows as f32],
+                                egui::TextEdit::multiline(value).desired_rows(rows),
+                            );
+                        }
+                        ui.add_space(4.0);
+                    }
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("dispo_family_hint"))
+                                .size(10.5)
+                                .color(motif::TEXT_DIM),
+                        )
+                        .wrap(),
+                    );
+                    if let Some(err) = &session.error {
+                        ui.add_space(6.0);
+                        ui.colored_label(motif::ALERT, err.as_str());
+                    }
+                });
+        });
+        if save {
+            let edited = session.dispo_edit.clone().unwrap_or_default();
+            let base = session.dispo_base.clone().unwrap_or_else(|| dispo.clone());
+            if edited.name.trim().is_empty() {
+                session.error = Some(tr("dispo_needs_name").to_owned());
+                return;
+            }
+            match session.db.update_dispositif(&edited, &base) {
+                Ok(true) => {
+                    session.error = None;
+                    session.dispo_edit = None;
+                    session.dispo_base = None;
+                    session.reload_dispositifs();
+                }
+                Ok(false) => {
+                    session.error = Some(tr("dispo_stale").to_owned());
+                    session.reload_dispositifs();
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if cancel {
+            session.dispo_edit = None;
+            session.dispo_base = None;
+            session.error = None;
+        }
+    }
+
     /// Substitution protocols: the list, the tree editor, and the
     /// walk-through that asks the questions one at a time.
     fn protocols_view(ui: &mut egui::Ui, session: &mut Session) {
@@ -12676,6 +13157,15 @@ impl App {
                 } else {
                     session.show_protocols = false;
                 }
+            } else if session.show_dispositifs {
+                if session.dispo_edit.is_some() {
+                    session.dispo_edit = None;
+                    session.dispo_base = None;
+                } else if session.dispo_open.is_some() {
+                    session.dispo_open = None;
+                } else {
+                    session.show_dispositifs = false;
+                }
             } else if session.show_codex {
                 if session.codex_edit.is_some() {
                     session.codex_edit = None;
@@ -12708,6 +13198,10 @@ impl App {
 
         if session.show_codex {
             Self::codex_view(ui, session, config, operator);
+            return;
+        }
+        if session.show_dispositifs {
+            Self::dispositifs_view(ui, session, config);
             return;
         }
         if session.show_tables {
@@ -12756,6 +13250,13 @@ impl App {
                     {
                         session.show_codex = true;
                         session.reload_codex();
+                    }
+                    if motif::button(ui, tr("dispo_button"))
+                        .on_hover_text(tr("dispo_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_dispositifs = true;
+                        session.reload_dispositifs();
                     }
                 };
                 ui.horizontal(|ui| {

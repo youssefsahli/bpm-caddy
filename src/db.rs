@@ -136,6 +136,24 @@ CREATE TABLE IF NOT EXISTS preparations (
     tags         TEXT NOT NULL DEFAULT '',
     sources      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS dispositifs (
+    id           INTEGER PRIMARY KEY,
+    name         TEXT NOT NULL,
+    -- Famille : pansement, compression, stomie, sondage, location…
+    family       TEXT NOT NULL DEFAULT '',
+    indication   TEXT NOT NULL DEFAULT '',
+    -- Formes, tailles, présentations.
+    sizes        TEXT NOT NULL DEFAULT '',
+    -- La pose : ce qui va dessous, la découpe, le geste.
+    application  TEXT NOT NULL DEFAULT '',
+    -- Rythme de renouvellement, durée de port, quantité par mois.
+    renewal      TEXT NOT NULL DEFAULT '',
+    -- Ligne LPP et prise en charge, telles que l'équipe les vérifie.
+    lpp          TEXT NOT NULL DEFAULT '',
+    caution      TEXT NOT NULL DEFAULT '',
+    tags         TEXT NOT NULL DEFAULT '',
+    sources      TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS class_notes (
     class       TEXT PRIMARY KEY,
     body        TEXT NOT NULL,
@@ -228,6 +246,19 @@ const MIGRATIONS: &[&str] = &[
         yield_amount TEXT NOT NULL DEFAULT '',
         method       TEXT NOT NULL DEFAULT '',
         conservation TEXT NOT NULL DEFAULT '',
+        caution      TEXT NOT NULL DEFAULT '',
+        tags         TEXT NOT NULL DEFAULT '',
+        sources      TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS dispositifs (
+        id           INTEGER PRIMARY KEY,
+        name         TEXT NOT NULL,
+        family       TEXT NOT NULL DEFAULT '',
+        indication   TEXT NOT NULL DEFAULT '',
+        sizes        TEXT NOT NULL DEFAULT '',
+        application  TEXT NOT NULL DEFAULT '',
+        renewal      TEXT NOT NULL DEFAULT '',
+        lpp          TEXT NOT NULL DEFAULT '',
         caution      TEXT NOT NULL DEFAULT '',
         tags         TEXT NOT NULL DEFAULT '',
         sources      TEXT NOT NULL DEFAULT ''
@@ -886,6 +917,37 @@ pub struct Preparation {
     pub caution: String,
     /// Free tags, comma separated: this is how a drug card finds the
     /// preparations it belongs to.
+    pub tags: String,
+    /// References, one per line.
+    pub sources: String,
+}
+
+/// One fiche of the dispositifs médicaux: what it is for, how it is
+/// applied, how often it is renewed, and what its LPP line says.
+///
+/// The officine dispenses at least as many dispositifs as medicines and
+/// has nowhere to write what it knows about them. This is that place —
+/// and like every other content in the base, what the team writes here
+/// is never overwritten by an update.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Dispositif {
+    pub id: i64,
+    pub name: String,
+    /// Pansement, compression, stomie, sondage urinaire, location…
+    pub family: String,
+    pub indication: String,
+    /// Formes, tailles, présentations.
+    pub sizes: String,
+    /// The gesture: what goes underneath, how it is cut, how it is held.
+    pub application: String,
+    /// How often it is changed, how long it is worn, how many a month.
+    pub renewal: String,
+    /// The LPP line and what it covers — a starting point the team
+    /// checks against the current tarif, never a quotation.
+    pub lpp: String,
+    /// What goes wrong: maceration, allergy, the wound it must not touch.
+    pub caution: String,
+    /// Free tags, comma separated.
     pub tags: String,
     /// References, one per line.
     pub sources: String,
@@ -20589,6 +20651,465 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
     },
 ];
 
+/// One shipped dispositif, before it reaches the base.
+pub struct StarterDispositif {
+    pub name: &'static str,
+    pub family: &'static str,
+    pub indication: &'static str,
+    pub sizes: &'static str,
+    pub application: &'static str,
+    pub renewal: &'static str,
+    pub lpp: &'static str,
+    pub caution: &'static str,
+    pub tags: &'static str,
+    pub sources: &'static str,
+}
+
+/// The dispositifs a fresh base starts with.
+///
+/// An officine dispenses at least as many dispositifs as medicines and
+/// has nowhere to write what it knows about them: which dressing goes
+/// on which wound, what goes underneath, how often it is changed, how
+/// many the prescription may carry. These fiches are that place.
+///
+/// **On the `lpp` field.** It says which LPP line the dispositif is
+/// dispensed on and what the prescription must carry for it to be paid
+/// — the rules, which are stable. It does not carry tarifs or the
+/// seven-digit codes, which change and would be read as a quotation:
+/// those are looked up on ameli.fr at the moment of the delivery, and
+/// the team writes into the fiche what it found. Like the rest of the
+/// content, a fiche rewritten in the app is never re-seeded over.
+pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
+    // --- Pansements ---
+    StarterDispositif {
+        name: "Hydrocolloïde",
+        family: "Pansement",
+        indication: "Plaie propre peu à moyennement exsudative, en phase de bourgeonnement ou d'épidermisation : escarre au stade de la rougeur ou de la désépidermisation, brûlure superficielle, plaie de greffe, dermabrasion. C'est le pansement d'entretien d'une plaie qui va bien.",
+        sizes: "Plaques de 10 x 10 cm à 20 x 20 cm, formes anatomiques sacrum et talon, versions fines pour l'épidermisation, pâte et poudre pour combler.",
+        application: "Sur peau périlésionnelle sèche et propre. Choisir une plaque qui déborde la plaie d'au moins deux centimètres, la réchauffer entre les mains avant la pose pour qu'elle adhère, et lisser du centre vers les bords sans étirer.",
+        renewal: "Tous les deux à sept jours, et dès que la cloque de gel atteint le bord de la plaque. Un hydrocolloïde qu'on change tous les jours n'est pas le bon pansement.",
+        lpp: "Pansement primaire remboursé sur prescription, ligne « pansement hydrocolloïde » du titre I ; la prescription doit porter la nature du pansement, la taille et le rythme de renouvellement. L'infirmier peut la renouveler et l'adapter dans les conditions prévues.",
+        caution: "Le gel jaune qui se forme sous la plaque et son odeur ne sont pas du pus : ne pas les prendre pour une infection, c'est l'erreur classique et elle fait arrêter un pansement qui fonctionne. À éviter sur plaie infectée, sur plaie très exsudative et sur peau fragile de la personne âgée, dont il arrache l'épiderme au retrait.",
+        tags: "pansement, plaie, escarre, hydrocolloïde",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Hydrocellulaire (mousse)",
+        family: "Pansement",
+        indication: "Plaie exsudative, du bourgeonnement à l'épidermisation, et prévention de l'escarre sur les points d'appui. C'est le pansement le plus polyvalent du chariot, et celui qu'on prend quand on hésite.",
+        sizes: "Plaques adhésives ou non, de 5 x 5 cm à 20 x 20 cm, formes sacrum, talon et trachéotomie, versions siliconées pour peau fragile, versions à bordure adhésive fine.",
+        application: "Face absorbante sur la plaie, avec deux à trois centimètres de débord. Sur une plaie cavitaire, mèche ou compresse dessous. Le modèle non adhésif se tient par une bande ou un filet, pas par du sparadrap sur la plaie.",
+        renewal: "Tous les deux à quatre jours selon l'exsudat, jusqu'à sept jours en prévention d'escarre. Changer dès que la tache d'exsudat approche le bord.",
+        lpp: "Ligne « pansement hydrocellulaire » du titre I, remboursée sur prescription précisant nature, taille et rythme. La version siliconée et la version à bordure ont leurs propres lignes : ce sont des présentations différentes, pas des variantes commerciales.",
+        caution: "Sur une plaie sèche, il ne fait rien : il absorbe, il n'humidifie pas. La version siliconée est ce qu'on prend chez la personne âgée et sur la peau abîmée par les adhésifs successifs — le décollement, répété tous les deux jours, finit par faire la plaie.",
+        tags: "pansement, plaie, escarre, hydrocellulaire, mousse",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Alginate de calcium",
+        family: "Pansement",
+        indication: "Plaie très exsudative, plaie hémorragique ou qui saigne au moindre contact, plaie cavitaire à combler, et plaie infectée en association au traitement. C'est le pansement du début, quand ça coule et que ça saigne.",
+        sizes: "Compresses de 5 x 5 cm à 15 x 15 cm et mèches pour les cavités et les fistules.",
+        application: "Poser à sec dans la plaie, sans le mouiller, et le recouvrir d'un pansement secondaire absorbant. Combler une cavité sans tasser, en laissant un bout accessible pour le retrait. Sur plaie sèche, humidifier au sérum physiologique avant la pose.",
+        renewal: "Tous les jours à tous les deux jours au début, puis on espace à mesure que l'exsudat baisse. L'alginate se transforme en gel : il se retire au sérum physiologique, jamais à sec.",
+        lpp: "Ligne « pansement à base d'alginate » du titre I. Compresse et mèche sont deux présentations distinctes et se prescrivent comme telles.",
+        caution: "Toujours un pansement secondaire au-dessus : seul, il sèche et adhère. Le retirer sec arrache le bourgeon qu'on vient de gagner. Ce n'est pas un pansement d'entretien — quand la plaie ne coule plus, il faut changer de famille.",
+        tags: "pansement, plaie, exsudat, hémostatique, alginate",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Hydrofibre",
+        family: "Pansement",
+        indication: "Plaie très exsudative et plaie cavitaire, quand l'alginate ne suffit plus ou quand on veut piéger l'exsudat plutôt que le laisser diffuser sur la peau saine — macération périlésionnelle, plaie du pied diabétique.",
+        sizes: "Compresses de 5 x 5 cm à 15 x 15 cm et mèches ; versions imprégnées d'argent pour la plaie critiquement colonisée.",
+        application: "À sec dans la plaie, recouverte d'un pansement secondaire. La fibre gélifie verticalement : elle retient l'exsudat au-dessus de la plaie au lieu de l'étaler, ce qui protège la peau autour.",
+        renewal: "Tous les un à trois jours selon l'exsudat, jusqu'à sept jours quand elle se sature lentement. Elle se retire d'un bloc en gel, sans effriter.",
+        lpp: "Ligne « pansement hydrofibre » ou « pansement absorbant » du titre I selon la présentation ; les versions à l'argent relèvent des lignes correspondantes et d'une durée de traitement limitée.",
+        caution: "Ne jamais la découper : les fibres coupées se dispersent dans la plaie. Comme l'alginate, elle a besoin d'un pansement secondaire, et elle n'a rien à faire sur une plaie sèche.",
+        tags: "pansement, plaie, exsudat, hydrofibre",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Hydrogel",
+        family: "Pansement",
+        indication: "Plaie sèche, nécrose noire ou fibrine adhérente à détacher : l'hydrogel apporte l'eau qui permet la détersion. C'est le seul pansement qui humidifie au lieu d'absorber.",
+        sizes: "Tubes et seringues de 15 à 25 g, plaques de gel pour les plaies planes.",
+        application: "Une couche de trois à cinq millimètres sur la nécrose, sans déborder sur la peau saine, recouverte d'un pansement secondaire occlusif ou semi-occlusif qui garde l'humidité — film ou hydrocolloïde.",
+        renewal: "Tous les un à trois jours pendant la détersion, jusqu'à ce que la plaie soit propre. Passé ce stade, il n'a plus d'indication.",
+        lpp: "Ligne « pansement hydrogel » du titre I, prescription précisant le conditionnement et le rythme.",
+        caution: "Il macère la peau autour s'il déborde : protéger les berges par un film ou une pâte à l'oxyde de zinc. Sur une plaie exsudative, il aggrave tout. Une nécrose sèche du talon en dehors d'un avis vasculaire ne se ramollit pas de sa propre initiative — sur un membre mal vascularisé, elle protège.",
+        tags: "pansement, plaie, nécrose, détersion, hydrogel",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Interface et tulle gras",
+        family: "Pansement",
+        indication: "Plaie superficielle en cours d'épidermisation, greffe, brûlure du deuxième degré, site donneur : une trame qui empêche le pansement secondaire d'adhérer au néo-épiderme.",
+        sizes: "Compresses de 5 x 5 cm à 20 x 30 cm. L'interface est siliconée ou lipidocolloïde ; le tulle gras est imprégné de vaseline.",
+        application: "Une seule épaisseur sur la plaie, en débordant légèrement, recouverte de compresses et d'une fixation. Découpable, contrairement à l'hydrofibre.",
+        renewal: "Tous les deux à quatre jours pour l'interface, tous les jours à deux jours pour le tulle gras, qui sèche plus vite et finit par coller — ce qui est précisément ce qu'on voulait éviter.",
+        lpp: "Lignes « pansement interface » et « tulle » du titre I, distinctes ; le lipidocolloïde a la sienne. L'écart de prix est réel et l'indication ne se vaut pas.",
+        caution: "L'interface siliconée est ce qu'on choisit quand le retrait fait mal ou saigne à chaque fois : sur un enfant, une brûlure ou une peau fine, elle change le vécu du pansement. Vérifier l'absence de baume du Pérou dans les tulles anciens, allergisant.",
+        tags: "pansement, plaie, épidermisation, interface, tulle",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Pansement à l'argent",
+        family: "Pansement",
+        indication: "Plaie critiquement colonisée ou localement infectée, en complément et jamais à la place d'un traitement général quand il est indiqué : ulcère qui stagne, plaie malodorante, plaie du pied diabétique surveillée.",
+        sizes: "Toutes les familles en existent : interface, hydrofibre, hydrocellulaire, alginate, charbon.",
+        application: "Comme la famille dont il relève. Le support choisi doit correspondre à l'exsudat, l'argent ne dispensant pas de choisir juste.",
+        renewal: "Selon le support, en réévaluant à quinze jours au plus tard : si la plaie n'a pas changé, l'argent n'apporte rien de plus et le traitement s'arrête.",
+        lpp: "Lignes dédiées du titre I, avec une durée de prise en charge limitée dans le temps. Un renouvellement prolongé sans réévaluation sort du cadre.",
+        caution: "Deux à quatre semaines maximum : au-delà, il n'y a plus de bénéfice démontré et il y a une pression de sélection. Contre-indiqué avec la sulfadiazine argentique en même temps, et à retirer avant une IRM.",
+        tags: "pansement, plaie, infection, argent",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Pansement au charbon actif",
+        family: "Pansement",
+        indication: "Plaie malodorante : ulcère surinfecté, plaie tumorale, escarre nécrosée. L'odeur est ce qui isole le patient de sa famille, et c'est une indication à part entière.",
+        sizes: "Compresses de 10 x 10 cm à 15 x 20 cm, avec ou sans argent associé.",
+        application: "Sur la plaie ou en pansement secondaire selon le modèle, recouvert d'un absorbant. Ne pas le découper : le charbon se répand dans la plaie.",
+        renewal: "Tous les jours à tous les trois jours, dès que l'odeur revient — c'est elle qui donne le rythme, pas le calendrier.",
+        lpp: "Ligne « pansement au charbon » du titre I.",
+        caution: "Il ne traite pas l'infection, il en masque le signe : l'odeur qui revient vite doit faire réévaluer la plaie et non augmenter le nombre de pansements.",
+        tags: "pansement, plaie, odeur, charbon",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Film adhésif semi-perméable",
+        family: "Pansement",
+        indication: "Protection d'une plaie superficielle sèche, maintien d'un cathéter ou d'un pansement primaire, protection d'une zone de frottement. Transparent : on surveille sans décoller.",
+        sizes: "Rouleaux et plaques de 6 x 7 cm à 15 x 20 cm, avec cadre de pose.",
+        application: "Sur peau propre et parfaitement sèche, sans étirer — un film posé sous tension fait une phlyctène de traction. Retirer en étirant le film parallèlement à la peau, ce qui rompt l'adhésif sans arracher.",
+        renewal: "Jusqu'à sept jours s'il reste étanche et propre. Il se décolle dès qu'un exsudat s'accumule dessous.",
+        lpp: "Ligne « pansement film » du titre I ; le film de protection de cathéter relève du matériel de perfusion et non du pansement.",
+        caution: "Il n'absorbe rien : sur une plaie qui coule, il macère en quelques heures. Sur peau fragile, préférer un film siliconé ou un hydrocolloïde fin.",
+        tags: "pansement, film, cathéter, protection",
+        sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Compresses stériles et non stériles",
+        family: "Pansement",
+        indication: "Nettoyage, détersion mécanique, tamponnement, pansement secondaire. La compresse de gaze absorbe et laisse passer l'air ; la compresse non tissée peluche moins et glisse mieux sur une plaie.",
+        sizes: "5 x 5, 7,5 x 7,5 et 10 x 10 cm, en sachets de deux à cinq unités stériles ou en boîtes non stériles.",
+        application: "Le stérile pour tout contact avec la plaie, le non stérile pour ce qui ne la touche pas — la peau autour, le séchage, l'absorption sous une bande. Un sachet ouvert n'est plus stérile : il se jette à la fin du soin.",
+        renewal: "À chaque soin. Compter généreusement pour la prescription : un pansement d'ulcère en consomme cinq à dix.",
+        lpp: "Prise en charge des compresses stériles sur la ligne du titre I ; les compresses non stériles ne sont pas remboursées et se vendent au comptoir. Le dire au patient avant, pas à la caisse.",
+        caution: "La gaze qui sèche sur une plaie devient un pansement adhérent : c'est le « pansement sec » qu'on ne pose plus sur une plaie qu'on veut voir cicatriser.",
+        tags: "compresse, gaze, stérile, pansement",
+        sources: "LPP — titre I, chapitre 3",
+    },
+    // --- Fixation ---
+    StarterDispositif {
+        name: "Bande de maintien et bande de crêpe",
+        family: "Fixation",
+        indication: "Tenir un pansement, protéger, exercer un maintien souple sur un membre. À distinguer de la bande de compression, qui soigne au lieu de tenir.",
+        sizes: "Largeurs 5, 7, 10 et 15 cm, longueurs 3 à 4 mètres étirées ; bandes cohésives qui ne tiennent qu'à elles-mêmes.",
+        application: "En spirale, du bas vers le haut, chaque tour recouvrant la moitié du précédent, sans serrer. Vérifier après la pose que le doigt passe et que l'extrémité reste chaude et de couleur normale.",
+        renewal: "À chaque pansement ; la bande de crêpe se lave et se réutilise, la bande cohésive non.",
+        lpp: "Les bandes de maintien sont prises en charge sur prescription, dans les limites de la ligne LPP correspondante ; la bande cohésive et la bande adhésive ont des lignes distinctes.",
+        caution: "Une bande posée trop serrée sur une jambe œdémateuse fait la marque, puis la plaie. Chez le diabétique et l'artéritique, le maintien ne se serre jamais « pour que ça tienne mieux ».",
+        tags: "bande, fixation, maintien",
+        sources: "LPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Filet tubulaire de maintien",
+        family: "Fixation",
+        indication: "Tenir un pansement sans adhésif : peau fragile, pansement étendu, zone où la bande glisse — tête, tronc, moignon, membre de l'enfant.",
+        sizes: "Numéros de taille par segment corporel, du doigt au tronc, vendus au mètre ou en boîtes.",
+        application: "Couper la longueur voulue, l'enfiler avec l'applicateur ou à la main, pratiquer des ouvertures pour les membres si besoin. Aucun adhésif sur la peau.",
+        renewal: "Se lave et se réutilise plusieurs jours ; se remplace dès qu'il est détendu.",
+        lpp: "Ligne « filet de maintien » du titre I ; la prescription précise la taille et la longueur.",
+        caution: "C'est la réponse quand la peau ne supporte plus le sparadrap — chez la personne âgée sous corticoïdes ou anticoagulant, chaque décollement d'adhésif est un hématome ou une déchirure.",
+        tags: "filet, maintien, fixation, peau fragile",
+        sources: "LPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Sparadrap et adhésif hypoallergénique",
+        family: "Fixation",
+        indication: "Fixation d'un pansement, d'une sonde, d'une tubulure. Le tissé tient fort, le non-tissé respecte la peau, le silicone se retire sans arracher.",
+        sizes: "Rouleaux de 1,25 à 5 cm de large, 5 à 10 mètres ; adhésifs siliconés en rouleau ou en bandelettes.",
+        application: "Sur peau sèche, sans tension, en arrondissant les angles du morceau posé — un angle vif se décolle et emporte l'épiderme. Alterner les points de fixation d'un soin à l'autre.",
+        renewal: "À chaque pansement.",
+        lpp: "Prise en charge sur la ligne « sparadrap » du titre I selon la nature ; l'adhésif siliconé relève d'une ligne distincte.",
+        caution: "L'irritation sous adhésif est presque toujours mécanique et non allergique : c'est le retrait répété au même endroit, pas la colle. Changer de place avant de changer de marque.",
+        tags: "sparadrap, adhésif, fixation, silicone",
+        sources: "LPP — titre I, chapitre 3",
+    },
+    // --- Compression ---
+    StarterDispositif {
+        name: "Bas et chaussettes de compression",
+        family: "Compression",
+        indication: "Insuffisance veineuse chronique, œdème, prévention et suites de thrombose veineuse, grossesse, station debout prolongée. La classe se choisit sur l'indication, pas sur le confort.",
+        sizes: "Classes I à IV par pression à la cheville ; chaussette, bas-cuisse ou collant ; tailles sur mesures prises le matin, mollet et cheville, jambe fine ou large.",
+        application: "Enfiler le matin au lever, jambe encore désœdématiée, en retournant le bas jusqu'au talon puis en le déroulant sans tirer sur le bord. Un enfile-bas change tout chez la personne âgée ou arthrosique, et se propose systématiquement.",
+        renewal: "Une paire dure trois à six mois de port quotidien : la maille se détend et la pression avec elle. Deux paires en alternance, lavées à la main ou en filet à 30 °C, sans sèche-linge.",
+        lpp: "Prise en charge sur prescription mentionnant la classe et le type ; la mesure est prise à l'officine et notée. Le nombre de paires par an est encadré — le vérifier avant de promettre.",
+        caution: "Contre-indiquée en cas d'artériopathie évoluée : mesurer ou faire mesurer l'index de pression systolique avant une compression forte chez l'artéritique et le diabétique. Un bas qui roule au bord ou marque la peau est mal dimensionné, et il faut le reprendre.",
+        tags: "compression, veineux, bas, contention",
+        sources: "HAS — compression médicale en pathologie vasculaire\nLPP — titre II",
+    },
+    StarterDispositif {
+        name: "Bande de compression à allongement court",
+        family: "Compression",
+        indication: "Ulcère veineux de jambe et œdème important, en compression multitype posée par l'infirmier. Elle exerce une forte pression de travail à la marche et une faible pression au repos.",
+        sizes: "Largeurs 8 et 10 cm, longueurs 5 à 7 mètres ; systèmes multicouches prêts à l'emploi.",
+        application: "Posée le matin, du pied à sous le genou, en englobant le talon, sur une protection sous-jacente. La pose est un geste technique : c'est l'infirmier qui la fait et le patient qui apprend à repérer ce qui va mal.",
+        renewal: "Selon le protocole de l'ulcère, généralement à chaque réfection du pansement ; les bandes se relavent et se remplacent quand elles ne serrent plus.",
+        lpp: "Ligne « bandes de compression » du titre I ; le nombre et la longueur se prescrivent explicitement, les systèmes multicouches ayant leur propre ligne.",
+        caution: "Douleur qui apparaît sous la bande, orteils froids, bleus ou insensibles : la bande se retire, on ne « laisse pas s'habituer ». Comme pour les bas, l'artériopathie doit être écartée avant.",
+        tags: "compression, ulcère, bande, veineux",
+        sources: "HAS — compression médicale en pathologie vasculaire\nLPP — titre I",
+    },
+    // --- Stomie ---
+    StarterDispositif {
+        name: "Poche de colostomie",
+        family: "Stomie",
+        indication: "Colostomie à selles moulées, le plus souvent gauche : poche fermée, changée à chaque selle. Le patient colostomisé vit avec deux à trois poches par jour, parfois avec une irrigation qui l'en dispense.",
+        sizes: "Systèmes une pièce ou deux pièces, diamètres découpables ou prédécoupés de 10 à 70 mm, poches transparentes ou opaques, avec filtre.",
+        application: "Mesurer la stomie au gabarit à chaque changement les premières semaines — elle se rétracte —, découper à un ou deux millimètres du bord, dégraisser la peau à l'eau et au savon doux, sécher en tamponnant, chauffer le protecteur entre les mains et appliquer en partant du bas.",
+        renewal: "Poche fermée : à chaque selle, deux à trois fois par jour. Support deux pièces : tous les deux à quatre jours, et dès qu'il décolle.",
+        lpp: "Titre I, chapitre appareillage des stomies : forfait mensuel selon le type de stomie et le système, une pièce ou deux pièces. La prescription porte le type de stomie, le système et le diamètre ; c'est le forfait qui plafonne, pas la marque.",
+        caution: "Ni éther, ni alcool, ni antiseptique, ni crème grasse sur la peau péristomiale : ils empêchent l'adhésion et c'est le décollement qui fait la fuite. Une peau rouge autour de la stomie est presque toujours une découpe trop large, jamais une allergie au support.",
+        tags: "stomie, colostomie, poche, appareillage",
+        sources: "LPP — titre I, appareils pour stomisés\nRecommandations des associations de stomisés",
+    },
+    StarterDispositif {
+        name: "Poche d'iléostomie",
+        family: "Stomie",
+        indication: "Iléostomie à effluent liquide et abondant : poche vidable, à robinet ou à clamp, vidée cinq à huit fois par jour et changée toutes les 24 à 72 heures.",
+        sizes: "Une pièce ou deux pièces, découpable ou prédécoupée, poche à vidange par robinet, par manchon ou à clamp, avec filtre.",
+        application: "Comme la colostomie, mais la peau est plus agressée : l'effluent est digestif. Vider la poche au tiers, jamais pleine — au-delà, le poids décolle le support. Anneau ou pâte de protection au ras de la stomie si la peau est déjà rouge.",
+        renewal: "Poche vidable : toutes les 24 à 72 heures. Support deux pièces : tous les deux à trois jours.",
+        lpp: "Forfait mensuel du titre I propre à l'iléostomie, distinct de celui de la colostomie. Les accessoires — pâte, anneau, poudre, spray protecteur, dissolvant — entrent dans le forfait accessoires et se prescrivent.",
+        caution: "Le risque est la déshydratation et l'hypokaliémie : un débit qui augmente brutalement, une soif intense ou des crampes se signalent. Attention aussi aux formes à libération prolongée, mal absorbées sur un grêle court — c'est un point à relire sur toute nouvelle ordonnance.",
+        tags: "stomie, iléostomie, poche, déshydratation",
+        sources: "LPP — titre I, appareils pour stomisés",
+    },
+    StarterDispositif {
+        name: "Poche d'urostomie",
+        family: "Stomie",
+        indication: "Dérivation urinaire : poche à robinet anti-reflux, raccordable à une poche de nuit pour éviter le lever nocturne.",
+        sizes: "Une pièce ou deux pièces, découpable ou prédécoupée, robinet de vidange, valve anti-reflux, raccord pour poche de nuit.",
+        application: "Pose sur peau parfaitement sèche — l'urine coule en permanence, une compresse roulée posée sur la stomie pendant la pose donne les quelques secondes nécessaires. Raccorder la poche de nuit à un tiers plein et la placer plus bas que le patient.",
+        renewal: "Poche : toutes les 24 à 48 heures. Support deux pièces : tous les deux à trois jours. Poche de nuit : selon le modèle, à usage unique ou nettoyable, une par semaine au plus.",
+        lpp: "Forfait mensuel du titre I propre à l'urostomie, poche de nuit incluse dans la ligne dédiée.",
+        caution: "Une urine trouble et malodorante fait chercher l'infection, mais chez l'urostomisé la bactériurie est constante et ne se traite pas seule : ce sont la fièvre et la douleur lombaire qui comptent. Boire abondamment reste la première mesure.",
+        tags: "stomie, urostomie, poche, urinaire",
+        sources: "LPP — titre I, appareils pour stomisés",
+    },
+    StarterDispositif {
+        name: "Accessoires de stomie",
+        family: "Stomie",
+        indication: "Ce qui fait tenir l'appareillage et sauve la peau : pâte et anneau de protection, poudre absorbante, spray protecteur cutané, dissolvant, ceinture, filtre, obturateur.",
+        sizes: "Pâte en tube, anneaux de diamètres et d'épaisseurs variables, poudre en flacon, spray et lingettes, ceintures par tour de taille.",
+        application: "Poudre sur une peau suintante, puis spray protecteur, puis l'anneau ou la pâte pour combler un pli ou une cicatrice, puis le support. La ceinture se clipse au support et se règle à deux doigts de jeu — plus serrée, elle creuse.",
+        renewal: "Selon la consommation ; l'anneau à chaque changement de support, la ceinture tous les trois à six mois.",
+        lpp: "Ligne « accessoires pour appareillage de stomie » du titre I, avec un forfait mensuel propre. Ils se prescrivent nommément : un patient qui décolle deux fois par jour a besoin de la pâte, pas d'une poche de plus.",
+        caution: "L'accessoire répare rarement une erreur de découpe ou un support mal choisi : quand la fuite se répète, reprendre la mesure de la stomie avant d'empiler les produits. Un avis stomathérapeute vaut mieux qu'un troisième accessoire.",
+        tags: "stomie, accessoire, protecteur cutané, ceinture",
+        sources: "LPP — titre I, appareils pour stomisés",
+    },
+    // --- Sondage et incontinence ---
+    StarterDispositif {
+        name: "Sonde d'autosondage",
+        family: "Sondage urinaire",
+        indication: "Rétention chronique et vessie neurologique : le patient se sonde lui-même quatre à six fois par jour, ce qui protège le haut appareil bien mieux qu'une sonde à demeure.",
+        sizes: "Charrières 8 à 18, longueurs homme, femme et enfant ; sondes prélubrifiées, hydrophiles à activer par l'eau, ou avec poche intégrée pour l'extérieur.",
+        application: "Mains lavées, sonde sortie sans toucher la partie qui entre, introduite doucement jusqu'à l'écoulement, puis retirée par étapes en laissant la vessie se vider complètement. L'apprentissage se fait avec l'infirmier ; l'officine vérifie surtout que le patient a le bon calibre et de quoi tenir.",
+        renewal: "Usage unique, sans exception : quatre à six sondes par jour, soit 120 à 180 par mois. Compter la boîte à l'ordonnance, c'est là que la rupture se prépare.",
+        lpp: "Titre I, ligne « sondes pour autosondage » ; la prescription porte la charrière, la longueur et le nombre par jour. Prise en charge à 100 % dans les indications d'ALD concernées.",
+        caution: "Une sonde ne se relave pas et ne se réutilise pas. Une résistance qui n'était pas là, du sang, ou une fièvre avec douleur lombaire imposent un avis : ce n'est plus un sondage difficile, c'est une complication.",
+        tags: "sondage, urinaire, autosondage, vessie",
+        sources: "LPP — titre I, dispositifs pour incontinence et sondage\nHAS — autosondage intermittent",
+    },
+    StarterDispositif {
+        name: "Étui pénien et poche de jambe",
+        family: "Sondage urinaire",
+        indication: "Incontinence urinaire de l'homme sans rétention : recueil externe, sans effraction et sans le risque infectieux d'une sonde à demeure. C'est ce qu'on propose avant d'envisager une sonde.",
+        sizes: "Étuis de diamètres 21 à 40 mm, autoadhésifs ou avec bande, en silicone ou latex ; poches de jambe de 350 à 750 mL, poches de nuit de 1,5 à 2 L.",
+        application: "Mesurer le diamètre au gabarit fourni, raser ou couper les poils à la base, poser sur peau sèche sans dérouler complètement — laisser deux centimètres de jeu au bout. Fixer la poche de jambe par deux sangles, poche toujours plus bas que la vessie.",
+        renewal: "Étui : un par jour, changé au moment de la toilette. Poche de jambe : tous les sept jours si elle est vidangeable. Poche de nuit : selon le modèle.",
+        lpp: "Titre I : lignes distinctes pour l'étui, la poche de jambe et la poche de nuit ; la prescription précise le diamètre de l'étui et le volume des poches.",
+        caution: "Un étui trop petit garrotte et un étui trop grand fuit : le gabarit n'est pas un détail. Vérifier la verge à chaque changement — rougeur, macération ou érosion imposent d'arrêter quelques jours, et le latex n'a rien à faire chez un patient allergique.",
+        tags: "incontinence, étui pénien, poche, urinaire",
+        sources: "LPP — titre I, dispositifs pour incontinence",
+    },
+    StarterDispositif {
+        name: "Sonde urinaire à demeure",
+        family: "Sondage urinaire",
+        indication: "Rétention aiguë, surveillance de diurèse, situation palliative : sonde à ballonnet reliée à un système clos, posée et changée par un professionnel.",
+        sizes: "Charrières 12 à 20, ballonnets 5 à 30 mL, sondes en latex siliconé pour le court terme et en silicone pour le long terme.",
+        application: "Pose stérile par l'infirmier ou le médecin. L'officine délivre la sonde, le système de recueil, les compresses, l'antiseptique et le lubrifiant, et vérifie que la charrière prescrite est bien celle de la boîte.",
+        renewal: "Sonde en silicone : jusqu'à quatre à six semaines. Sac de recueil : sept jours en système clos, sans jamais le déconnecter.",
+        lpp: "Titre I, lignes sonde vésicale et système de recueil ; le changement est un acte infirmier coté à part.",
+        caution: "Le système clos est la mesure qui prévient l'infection : chaque déconnexion en ouvre la porte. Sac toujours plus bas que la vessie et jamais posé au sol. Une urine trouble sans fièvre ne se traite pas ; une fièvre avec frissons chez un patient sondé s'oriente le jour même.",
+        tags: "sondage, sonde à demeure, urinaire, infection",
+        sources: "LPP — titre I, dispositifs pour incontinence et sondage",
+    },
+    StarterDispositif {
+        name: "Protections d'incontinence",
+        family: "Incontinence",
+        indication: "Incontinence urinaire ou fécale, du léger au sévère : protections anatomiques, changes complets, sous-couches de lit.",
+        sizes: "Absorptions graduées par gouttes ou par niveau, tailles par tour de taille, formes anatomiques pour le patient mobile et changes complets pour l'alité.",
+        application: "Une protection s'ajuste : trop grande, elle fuit par les côtés. Changer dès la saturation et non à heure fixe, laver et sécher la peau à chaque change, et appliquer un protecteur cutané sur les zones rouges.",
+        renewal: "Trois à six par jour selon le niveau ; le sur-change coûte plus cher que la bonne taille.",
+        lpp: "Les protections d'incontinence ne sont pas prises en charge par l'assurance maladie : le dire d'emblée. Un financement peut venir de l'APA, de la PCH ou d'une complémentaire, et l'orientation vaut mieux qu'un devis.",
+        caution: "La dermite du siège vient de l'humidité prolongée et non du produit : c'est le rythme de change qui la traite. Chez la personne âgée, l'incontinence qui apparaît brutalement est un symptôme — infection urinaire, fécalome, médicament nouveau — et non une fatalité à équiper.",
+        tags: "incontinence, protection, change, peau",
+        sources: "LPP — titre I (exclusion des protections)\nHAS — incontinence urinaire de la personne âgée",
+    },
+    // --- Sets de soins ---
+    StarterDispositif {
+        name: "Set de pansement stérile",
+        family: "Set de soins",
+        indication: "Réfection d'un pansement à domicile : le plateau, les compresses, les pinces et le champ, stériles et prêts, dans un seul emballage.",
+        sizes: "Sets de base — champ, cupule, compresses, pince — et sets complets avec ciseaux, bistouri ou sonde selon le soin.",
+        application: "Ouvrir l'emballage en champ stérile sur un plan propre, verser l'antiseptique dans la cupule sans toucher le bord, et travailler du propre vers le sale. Le champ sert de zone stérile : ce qui en sort n'y revient pas.",
+        renewal: "Un set par soin, à usage unique.",
+        lpp: "Titre I, ligne « nécessaire pour pansement » ; le contenu du set détermine la ligne. Une prescription de pansements sans set oblige l'infirmier à tout composer, ce qui coûte plus cher au total.",
+        caution: "Le set ne dispense pas de l'hygiène des mains, qui reste le geste qui compte. Un set dont l'emballage est ouvert, humide ou percé se jette, quelle que soit la date de péremption.",
+        tags: "set, pansement, stérile, soin infirmier",
+        sources: "LPP — titre I, chapitre 3",
+    },
+    StarterDispositif {
+        name: "Set d'ablation de fils ou d'agrafes",
+        family: "Set de soins",
+        indication: "Retrait de sutures ou d'agrafes à domicile, sur prescription et à la date fixée par l'opérateur.",
+        sizes: "Set fils — pince, lame ou ciseaux, compresses, champ — et set agrafes avec ôte-agrafes.",
+        application: "Vérifier la cicatrice avant : une plaie encore inflammatoire ou qui suinte fait reporter et appeler. Retirer un fil sur deux d'abord si la cicatrice paraît fragile.",
+        renewal: "Un set par ablation.",
+        lpp: "Titre I, ligne « nécessaire pour ablation de fils ou d'agrafes » ; l'acte infirmier est coté séparément.",
+        caution: "La date d'ablation n'est pas la même partout : sept jours au visage, dix à douze au tronc, quinze en zone de tension et sur un membre inférieur. Retiré trop tôt, cela lâche ; trop tard, cela marque.",
+        tags: "set, ablation, fils, agrafes, cicatrice",
+        sources: "LPP — titre I, chapitre 3",
+    },
+    // --- Injection, perfusion, diabète ---
+    StarterDispositif {
+        name: "Aiguilles pour stylo à insuline",
+        family: "Injection",
+        indication: "Injection d'insuline ou d'analogue du GLP-1 au stylo. La longueur d'aiguille est ce qui décide si le produit va dans le tissu sous-cutané ou dans le muscle.",
+        sizes: "4, 5, 6 et 8 mm, diamètres 31 à 34 G. Le 4 mm convient à tout le monde, quel que soit le poids.",
+        application: "Aiguille neuve à chaque injection, purge de deux unités pointe en l'air avant chaque geste, injection perpendiculaire à la peau sans pli avec une 4 mm, dix secondes de comptage avant de retirer.",
+        renewal: "Une aiguille par injection : quatre par jour pour un schéma basal-bolus, soit 120 par mois.",
+        lpp: "Titre I, ligne « aiguilles pour stylo injecteur », prise en charge sur prescription, à 100 % dans le cadre de l'ALD diabète.",
+        caution: "La réutilisation est la cause première des lipodystrophies, et une insuline injectée dans une lipodystrophie est une insuline dont on ne sait plus ce qu'elle fait : c'est un point à revoir à chaque entretien. Faire tourner les sites, en changeant de zone chaque semaine et d'un centimètre à chaque injection.",
+        tags: "diabète, insuline, aiguille, stylo, injection",
+        sources: "LPP — titre I\nRecommandations pour les techniques d'injection dans le diabète",
+    },
+    StarterDispositif {
+        name: "Autopiqueur et lancettes",
+        family: "Diabète",
+        indication: "Prélèvement capillaire pour l'autosurveillance glycémique.",
+        sizes: "Lancettes de 28 à 33 G, autopiqueurs à profondeur réglable, lancettes de sécurité à usage unique pour le soignant.",
+        application: "Piquer sur le côté de la pulpe du doigt et non au centre, où les terminaisons nerveuses sont plus denses ; changer de doigt à chaque fois ; se laver les mains à l'eau tiède plutôt que de désinfecter à l'alcool, qui fausse la mesure et dessèche.",
+        renewal: "Une lancette par prélèvement ; l'autopiqueur se remplace environ une fois par an.",
+        lpp: "Titre I, lignes « lancettes » et « autopiqueur », le nombre de bandelettes et de lancettes prises en charge par an étant encadré selon le type de diabète et le traitement.",
+        caution: "Une lancette réutilisée s'émousse et fait plus mal, ce qui est la vraie raison pour laquelle un patient finit par ne plus se surveiller. Un doigt douloureux ou corné se met au repos, et l'ordonnance se compte pour l'année.",
+        tags: "diabète, glycémie, lancette, autopiqueur",
+        sources: "LPP — titre I\nHAS — autosurveillance glycémique dans le diabète",
+    },
+    StarterDispositif {
+        name: "Collecteur DASRI",
+        family: "Injection",
+        indication: "Recueil des aiguilles, lancettes, seringues et cathéters utilisés à domicile. Chaque patient en autotraitement doit en avoir un, et l'officine le remet gratuitement.",
+        sizes: "0,5 L pour l'usage nomade, 1,5 L et 3 L pour la maison, 7 L pour les gros consommateurs.",
+        application: "Poser le collecteur avant l'injection, y jeter l'aiguille immédiatement après, sans la recapuchonner. Fermer définitivement à la ligne de remplissage, jamais au-delà.",
+        renewal: "Selon la consommation ; la remise du collecteur et sa reprise sont gratuites, dans le cadre de la filière dédiée.",
+        lpp: "Hors LPP : le collecteur est fourni gratuitement par le pharmacien au patient en autotraitement, sur présentation de l'ordonnance du traitement concerné. Il est repris par les points de collecte de la filière, pas dans les ordures ménagères.",
+        caution: "Un collecteur trop plein est plus dangereux que pas de collecteur. Le recapuchonnage est la cause classique de piqûre accidentelle — c'est le geste à défaire à l'entretien, pas le principe à rappeler.",
+        tags: "DASRI, déchet, aiguille, sécurité",
+        sources: "Filière DASTRI — déchets d'activités de soins à risques infectieux des patients en autotraitement",
+    },
+    StarterDispositif {
+        name: "Chambre d'inhalation",
+        family: "Respiratoire",
+        indication: "Aérosol-doseur pressurisé chez l'enfant, la personne âgée et toute personne dont la coordination main-poumon n'est pas acquise — c'est-à-dire, à l'usage, la majorité des patients.",
+        sizes: "Avec masque avant trois à quatre ans, avec embout au-delà ; volumes petits et grands selon l'âge ; modèles antistatiques.",
+        application: "Agiter l'aérosol, l'emboîter, appliquer le masque sur le nez et la bouche ou serrer l'embout entre les lèvres, actionner **une seule** bouffée, puis respirer calmement cinq à dix fois. Une bouffée à la fois, jamais deux d'affilée dans la chambre.",
+        renewal: "Une chambre dure six à douze mois. Laver une fois par semaine à l'eau tiède savonneuse et **laisser sécher à l'air libre sans essuyer** : le frottement crée l'électricité statique qui colle le produit aux parois.",
+        lpp: "Titre I, ligne « chambre d'inhalation », prise en charge sur prescription ; le masque se prescrit avec la taille et l'âge.",
+        caution: "C'est le dispositif dont la mauvaise utilisation fait le plus d'échecs d'asthme : la démonstration au comptoir, chambre en main, vaut n'importe quelle notice. Rincer la bouche après un corticoïde inhalé, et se laver le visage après un masque.",
+        tags: "asthme, inhalation, chambre, aérosol-doseur",
+        sources: "GINA — prise en charge de l'asthme\nLPP — titre I",
+    },
+    // --- Location et maintien à domicile ---
+    StarterDispositif {
+        name: "Nébuliseur (location)",
+        family: "Location",
+        indication: "Aérosolthérapie à domicile : mucoviscidose, bronchectasies, asthme sévère, laryngite de l'enfant sur prescription. Le compresseur pneumatique convient aux bronchodilatateurs et aux antibiotiques inhalés ; l'ultrasonique ne convient pas aux suspensions.",
+        sizes: "Compresseur pneumatique, à tamis ou ultrasonique ; nébuliseur avec masque adulte ou enfant, ou embout buccal ; tubulure.",
+        application: "Nébuliser assis, dos droit, en respirant calmement par la bouche, la séance durant dix à quinze minutes. Embout buccal chaque fois que le patient peut le tenir : le masque dépose une part du produit sur le visage et les yeux.",
+        renewal: "Location renouvelable par périodes, sur prescription mentionnant la durée. Le nébuliseur et la tubulure sont à usage personnel et se changent selon le fabricant ; le compresseur revient à l'officine pour entretien.",
+        lpp: "Titre I, forfait hebdomadaire de location du matériel d'aérosolthérapie, la prescription portant la durée et le type d'appareil ; le consommable — nébuliseur, masque, tubulure — se facture à part. Vérifier le tarif en vigueur avant tout engagement auprès du patient.",
+        caution: "Laver le nébuliseur après chaque séance et le laisser sécher à l'air : c'est un réservoir microbien tiède et humide. Ne jamais nébuliser une spécialité qui n'a pas d'AMM par cette voie, et ne jamais mélanger deux produits sans que le prescripteur l'ait écrit.",
+        tags: "location, aérosol, nébuliseur, respiratoire",
+        sources: "LPP — titre I, appareils d'aérosolthérapie",
+    },
+    StarterDispositif {
+        name: "Neurostimulateur transcutané (TENS)",
+        family: "Location",
+        indication: "Douleur chronique rebelle, surtout neuropathique : lombalgie, douleur post-zostérienne, neuropathie diabétique. La primo-prescription se fait en structure de prise en charge de la douleur.",
+        sizes: "Appareil à deux ou quatre canaux, électrodes autocollantes de tailles variées, batteries.",
+        application: "Électrodes de part et d'autre de la zone douloureuse ou sur le trajet nerveux, sur peau propre, sèche et intacte. Séances de vingt à soixante minutes, plusieurs fois par jour ; l'intensité se monte jusqu'à un fourmillement net mais non douloureux.",
+        renewal: "Location par périodes sur prescription, avec un essai avant achat ou location longue ; électrodes renouvelées toutes les deux à quatre semaines selon l'usage.",
+        lpp: "Titre I : location du neurostimulateur, primo-prescription réservée aux structures douleur, renouvellement possible par le médecin traitant dans les conditions de la ligne. Les électrodes ont leur propre ligne. Le forfait et sa durée se vérifient avant d'engager le patient.",
+        caution: "Contre-indiqué chez le porteur de stimulateur cardiaque ; à ne pas poser sur la région antérieure du cou, sur les yeux, sur le trajet du sinus carotidien, sur l'abdomen d'une femme enceinte ni sur une peau lésée. Déplacer légèrement les électrodes à chaque pose pour éviter l'irritation.",
+        tags: "location, TENS, douleur, neurostimulation",
+        sources: "LPP — titre I, neurostimulateurs transcutanés\nHAS — évaluation des neurostimulateurs électriques transcutanés",
+    },
+    StarterDispositif {
+        name: "Lit médicalisé (location)",
+        family: "Location",
+        indication: "Perte d'autonomie durable avec maintien à domicile : patient alité une grande partie de la journée, soins au lit, risque d'escarre, retour d'hospitalisation.",
+        sizes: "Lit à hauteur variable, à deux ou trois fonctions, avec barrières, potence et matelas ; largeurs 90 et 120 cm ; modèles bariatriques.",
+        application: "Livraison, montage et démontage par l'officine ou son prestataire, avec vérification de l'accès, de l'espace autour du lit et d'une prise électrique. Expliquer les commandes à l'entourage, barrières comprises.",
+        renewal: "Location par périodes renouvelables sur prescription mentionnant la durée et les accessoires.",
+        lpp: "Titre I, forfait hebdomadaire de location incluant lit, matelas et accessoires selon la ligne ; le matelas anti-escarre relève d'une ligne propre selon le niveau de risque. Prescription portant la durée, et vérification du tarif en vigueur avant l'engagement.",
+        caution: "Les barrières ne sont pas une contention et ne se posent pas chez un patient confus qui les enjambe : la chute par-dessus une barrière est plus grave que la chute du lit. Reprendre le matériel dès que l'indication cesse — le forfait continue de courir tant que rien n'est déclaré.",
+        tags: "location, lit médicalisé, maintien à domicile, escarre",
+        sources: "LPP — titre I, matériels de maintien à domicile",
+    },
+    StarterDispositif {
+        name: "Matelas anti-escarre",
+        family: "Location",
+        indication: "Prévention et traitement de l'escarre chez le patient alité, le niveau du support étant choisi sur le risque évalué et non sur la disponibilité.",
+        sizes: "Mousse structurée pour le risque faible à moyen, air statique pour le risque moyen, air dynamique à pression alternée pour le risque élevé ou l'escarre constituée.",
+        application: "Poser à même le sommier, drap tendu sans surépaisseur — une alèse épaisse ou deux draps annulent l'effet du support. Régler la pression sur le poids du patient et la contrôler après chaque changement de position.",
+        renewal: "Achat pour la mousse, location par périodes pour le dynamique, sur prescription mentionnant la durée.",
+        lpp: "Titre I, lignes distinctes selon le type de support ; le dynamique relève de la location et suppose un niveau de risque documenté.",
+        caution: "Aucun support ne remplace les changements de position : c'est la mobilisation qui prévient l'escarre, le matelas ne fait que gagner du temps. Vérifier que le moteur fonctionne et que le patient ne « touche pas le fond » en position assise.",
+        tags: "location, escarre, matelas, prévention",
+        sources: "LPP — titre I, supports d'aide à la prévention des escarres\nHAS — prévention et traitement des escarres",
+    },
+    StarterDispositif {
+        name: "Fauteuil roulant (location)",
+        family: "Location",
+        indication: "Incapacité de marche temporaire ou durable : suites de fracture, décompensation, fin de vie. La location couvre le temporaire, l'achat le durable.",
+        sizes: "Fauteuil manuel pliant standard, largeurs d'assise de 38 à 50 cm, repose-jambes réglables, coussin d'assise adapté au risque d'escarre.",
+        application: "Largeur d'assise mesurée aux hanches plus deux à quatre centimètres, hauteur de dossier et longueur de jambe réglées à la livraison. Vérifier l'accès au domicile — largeur de porte, seuil, ascenseur — avant de livrer.",
+        renewal: "Location par périodes renouvelables sur prescription ; l'achat s'envisage au-delà de quelques mois et relève d'un choix personnalisé.",
+        lpp: "Titre IV, forfait de location du fauteuil roulant manuel ; l'achat relève d'une autre ligne et de conditions distinctes. Le coussin de prévention d'escarre est une ligne à part et se prescrit explicitement.",
+        caution: "Un fauteuil trop large fatigue et déforme la posture, un fauteuil trop étroit blesse aux hanches : la mesure se prend, elle ne s'estime pas. Freins vérifiés à chaque livraison, et transfert expliqué à l'aidant.",
+        tags: "location, fauteuil roulant, mobilité, maintien à domicile",
+        sources: "LPP — titre IV, véhicules pour handicapés physiques",
+    },
+    StarterDispositif {
+        name: "Tire-lait (location)",
+        family: "Location",
+        indication: "Difficultés de mise au sein, prématurité, séparation mère-enfant, entretien de la lactation, engorgement. La location électrique double pompage est ce qui maintient une lactation ; le manuel dépanne.",
+        sizes: "Tire-lait électrique de location, avec set de recueil personnel : téterelles de 21 à 30 mm de diamètre, tubulures, biberons.",
+        application: "Choisir la taille de téterelle sur le diamètre du mamelon — trop petite, elle blesse ; trop grande, elle n'exprime rien. Double pompage huit à dix fois par 24 heures pour installer une lactation, y compris la nuit.",
+        renewal: "Location à la semaine ou au mois sur prescription ; le set de recueil est personnel, vendu à part, et ne se prête jamais.",
+        lpp: "Titre I, forfait de location du tire-lait sur prescription, avec une durée initiale et des renouvellements encadrés ; le set d'accessoires relève d'une ligne distincte et reste à la patiente.",
+        caution: "Une douleur pendant l'expression signe une téterelle mal dimensionnée ou une dépression trop forte, jamais une fatalité. Nettoyer le set après chaque usage et le stériliser une fois par jour ; l'appareil de location, lui, est nettoyé et contrôlé par l'officine entre deux patientes.",
+        tags: "location, tire-lait, allaitement, lactation",
+        sources: "LPP — titre I, tire-lait\nRecommandations sur le soutien de l'allaitement maternel",
+    },
+];
+
 /// What to do when a dose has been missed, and what must send the
 /// patient to a doctor — written per class, because that is the level
 /// at which these two answers are true.
@@ -24774,6 +25295,7 @@ impl Db {
         self.fill_starter_details()?;
         self.seed_posologies()?;
         self.seed_preparations()?;
+        self.seed_dispositifs()?;
         self.seed_conduite()?;
         self.seed_protocols()?;
         Ok(inserted)
@@ -24858,6 +25380,7 @@ impl Db {
         self.fill_starter_details()?;
         self.seed_posologies()?;
         self.seed_preparations()?;
+        self.seed_dispositifs()?;
         self.seed_conduite()?;
         self.seed_protocols()?;
         Ok(inserted)
@@ -24876,6 +25399,7 @@ impl Db {
             "posologies",
             "drug_field_locks",
             "preparations",
+            "dispositifs",
             "biology",
             "interviews",
             "patients",
@@ -24884,6 +25408,12 @@ impl Db {
             tx.execute(&format!("DELETE FROM {table}"), [])
                 .map_err(|e| e.to_string())?;
         }
+        // The seed marks say « this pass has run here ». A reset is
+        // meant to bring the shipped content back, so they go too —
+        // otherwise the dispositifs, which will not re-seed into a base
+        // that emptied them on purpose, would stay gone.
+        tx.execute("DELETE FROM seed_state", [])
+            .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         self.seed_drugs_if_empty()?;
         Ok(())
@@ -25794,6 +26324,166 @@ impl Db {
             .conn
             .execute(
                 "DELETE FROM preparations WHERE id = ?1 AND name = ?2",
+                (id, expected_name),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Seed the dispositifs, once, by name. Same discipline as the
+    /// codex: a fiche the team rewrote or renamed is never touched, and
+    /// one it deleted does not come back.
+    pub fn seed_dispositifs(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let mut stmt = tx
+                .prepare("SELECT name FROM dispositifs")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                present.insert(row.map_err(|e| e.to_string())?);
+            }
+        }
+        // A base that once carried the shipped fiches and had them all
+        // deleted is not an empty base: the marker says the pass ran.
+        let seeded_before = self.seed_mark("dispositifs")?;
+        if present.is_empty() && seeded_before.is_some() {
+            tx.commit().map_err(|e| e.to_string())?;
+            return Ok(0);
+        }
+        let mut added = 0;
+        for d in STARTER_DISPOSITIFS {
+            if present.contains(d.name) {
+                continue;
+            }
+            added += tx
+                .execute(
+                    "INSERT INTO dispositifs
+                        (name, family, indication, sizes, application, renewal,
+                         lpp, caution, tags, sources)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    (
+                        d.name,
+                        d.family,
+                        d.indication,
+                        d.sizes,
+                        d.application,
+                        d.renewal,
+                        d.lpp,
+                        d.caution,
+                        d.tags,
+                        d.sources,
+                    ),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        self.set_seed_mark("dispositifs", &STARTER_DISPOSITIFS.len().to_string())?;
+        Ok(added)
+    }
+
+    /// Every dispositif, family first then name: the list is read by
+    /// family — « quel pansement », « quelle poche » — before it is read
+    /// by name.
+    pub fn dispositifs(&self) -> Result<Vec<Dispositif>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, name, family, indication, sizes, application, renewal,
+                        lpp, caution, tags, sources
+                 FROM dispositifs ORDER BY family, name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Dispositif {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    family: r.get(2)?,
+                    indication: r.get(3)?,
+                    sizes: r.get(4)?,
+                    application: r.get(5)?,
+                    renewal: r.get(6)?,
+                    lpp: r.get(7)?,
+                    caution: r.get(8)?,
+                    tags: r.get(9)?,
+                    sources: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Add an empty dispositif, ready to be written.
+    pub fn add_dispositif(&self, name: &str) -> Result<i64, String> {
+        self.conn
+            .execute("INSERT INTO dispositifs (name) VALUES (?1)", [name])
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Rewrite a dispositif, compare-and-set on **every** column this PC
+    /// displayed. A fiche has no one field that carries all its weight —
+    /// the rhythm of renewal and the LPP line are edited far more often
+    /// than the name — so guarding a chosen pair would let a colleague's
+    /// correction be overwritten in silence. Returns `false` when stale.
+    pub fn update_dispositif(
+        &self,
+        new: &Dispositif,
+        expected: &Dispositif,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE dispositifs SET
+                    name = ?1, family = ?2, indication = ?3, sizes = ?4,
+                    application = ?5, renewal = ?6, lpp = ?7, caution = ?8,
+                    tags = ?9, sources = ?10
+                 WHERE id = ?11
+                   AND name = ?12 AND family = ?13 AND indication = ?14
+                   AND sizes = ?15 AND application = ?16 AND renewal = ?17
+                   AND lpp = ?18 AND caution = ?19 AND tags = ?20
+                   AND sources = ?21",
+                rusqlite::params![
+                    &new.name,
+                    &new.family,
+                    &new.indication,
+                    &new.sizes,
+                    &new.application,
+                    &new.renewal,
+                    &new.lpp,
+                    &new.caution,
+                    &new.tags,
+                    &new.sources,
+                    new.id,
+                    &expected.name,
+                    &expected.family,
+                    &expected.indication,
+                    &expected.sizes,
+                    &expected.application,
+                    &expected.renewal,
+                    &expected.lpp,
+                    &expected.caution,
+                    &expected.tags,
+                    &expected.sources,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a dispositif. Compare-and-set on the name displayed.
+    pub fn delete_dispositif(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM dispositifs WHERE id = ?1 AND name = ?2",
                 (id, expected_name),
             )
             .map_err(|e| e.to_string())?;
@@ -28779,6 +29469,116 @@ mod tests {
         assert!(db.preparations().unwrap().iter().any(|p| p.id == id));
         assert!(!db.delete_preparation(id, "Autre nom").unwrap());
         assert!(db.delete_preparation(id, "Pommade de l'officine").unwrap());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The dispositifs follow the codex's discipline: seeded once, the
+    /// team's afterwards. And every shipped fiche must answer the six
+    /// questions the counter actually asks — a fiche that only names
+    /// the box is a fiche nobody opens twice.
+    #[test]
+    fn the_dispositifs_seed_once_and_answer_the_counter() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-dispo-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dispo.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        assert_eq!(
+            db.seed_dispositifs().unwrap(),
+            STARTER_DISPOSITIFS.len(),
+            "le premier semis pose toutes les fiches"
+        );
+        assert_eq!(db.seed_dispositifs().unwrap(), 0, "le second n'ajoute rien");
+        let all = db.dispositifs().unwrap();
+        assert_eq!(all.len(), STARTER_DISPOSITIFS.len());
+        // Names are unique, or the seed would skip one silently.
+        let mut names: Vec<&str> = all.iter().map(|d| d.name.as_str()).collect();
+        names.sort_unstable();
+        let seen = names.len();
+        names.dedup();
+        assert_eq!(seen, names.len(), "deux dispositifs portent le même nom");
+        for d in &all {
+            for (label, body) in [
+                ("famille", &d.family),
+                ("indication", &d.indication),
+                ("formes et tailles", &d.sizes),
+                ("pose", &d.application),
+                ("renouvellement", &d.renewal),
+                ("prise en charge", &d.lpp),
+                ("mise en garde", &d.caution),
+                ("étiquettes", &d.tags),
+                ("sources", &d.sources),
+            ] {
+                assert!(!body.trim().is_empty(), "{} : sans {label}", d.name);
+            }
+            // The LPP field carries the rule, never a price: a tarif
+            // shipped in a fiche is a tarif wrong within the year.
+            assert!(
+                !d.lpp.contains('€'),
+                "{} : un tarif dans la ligne LPP — la fiche donne la règle, pas le prix",
+                d.name
+            );
+        }
+        // The families are a short, shared vocabulary: the list groups
+        // on them, so a family invented once sits alone forever.
+        const FAMILIES: &[&str] = &[
+            "Pansement",
+            "Fixation",
+            "Compression",
+            "Stomie",
+            "Sondage urinaire",
+            "Incontinence",
+            "Set de soins",
+            "Injection",
+            "Diabète",
+            "Respiratoire",
+            "Location",
+        ];
+        for d in &all {
+            assert!(
+                FAMILIES.contains(&d.family.as_str()),
+                "{} : famille « {} » hors du vocabulaire",
+                d.name,
+                d.family
+            );
+        }
+        // Every family is actually used: a name in that list with no
+        // fiche behind it is a heading that never prints.
+        for family in FAMILIES {
+            assert!(
+                all.iter().any(|d| d.family == *family),
+                "famille sans fiche : {family}"
+            );
+        }
+        // The rented material is what the roadmap asked for by name.
+        for machine in ["Nébuliseur", "Neurostimulateur", "Lit médicalisé"] {
+            assert!(
+                all.iter().any(|d| d.name.contains(machine)),
+                "aucune fiche pour {machine}"
+            );
+        }
+        // The team rewrites one, and the next launch leaves it alone.
+        let mut edited = all[0].clone();
+        let base = edited.clone();
+        edited.renewal = "Tous les jours, ici.".to_owned();
+        assert!(db.update_dispositif(&edited, &base).unwrap());
+        // A second write from the stale view is refused.
+        assert!(!db.update_dispositif(&edited, &base).unwrap());
+        assert_eq!(db.seed_dispositifs().unwrap(), 0);
+        assert_eq!(db.dispositifs().unwrap()[0].renewal, edited.renewal);
+        // One added by hand behaves like any other, deletion included.
+        let id = db.add_dispositif("Attelle de l'officine").unwrap();
+        assert!(db.dispositifs().unwrap().iter().any(|d| d.id == id));
+        assert!(!db.delete_dispositif(id, "Autre nom").unwrap());
+        assert!(db.delete_dispositif(id, "Attelle de l'officine").unwrap());
+        // A base emptied on purpose stays empty: the seed mark says the
+        // pass has run here, so the fiches do not come back to argue.
+        for d in db.dispositifs().unwrap() {
+            assert!(db.delete_dispositif(d.id, &d.name).unwrap());
+        }
+        assert_eq!(db.seed_dispositifs().unwrap(), 0);
+        assert!(db.dispositifs().unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
     }

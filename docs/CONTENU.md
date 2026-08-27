@@ -87,6 +87,33 @@ Deux règles valent partout :
   type » (dont les quantités viennent de l'ordonnance) est la seule
   exception et le dit dans son nom.
 
+## Les dispositifs médicaux
+
+- **Où** : `src/db.rs`, `STARTER_DISPOSITIFS` : nom, famille, indication,
+  formes et tailles, pose, renouvellement, ligne LPP, ce qui va de
+  travers, étiquettes, sources.
+- **Semé par** : `Db::seed_dispositifs`, une fois, par nom, avec une
+  marque dans `seed_state` : une base que l'équipe a vidée exprès reste
+  vide — les fiches ne reviennent pas discuter. Seul
+  « Réinitialiser la base… » les ramène, en effaçant les marques.
+- **La famille est un vocabulaire, pas un texte libre** : la liste et
+  l'impression groupent dessus, donc une famille inventée une fois reste
+  seule pour toujours. Les onze familles sont dans le test.
+- **La ligne LPP porte la règle, jamais le prix** : ce que la
+  prescription doit mentionner, ce qui entre dans un forfait, ce qui se
+  facture à part. Le tarif se vérifie sur ameli.fr au moment de la
+  délivrance, et le test refuse un « € » dans ce champ — un tarif livré
+  est un tarif faux dans l'année.
+- **Test** : `the_dispositifs_seed_once_and_answer_the_counter` — noms
+  uniques, neuf champs remplis sur chaque fiche, famille dans le
+  vocabulaire, chaque famille utilisée, le matériel de location présent,
+  écriture compare-and-set sur **toutes** les colonnes (une fiche n'a
+  pas un champ qui porte tout son poids), et une base vidée qui le
+  reste.
+- **Ajouter une fiche** : une entrée `StarterDispositif`, une famille
+  déjà utilisée, et les neuf champs. Ou, ce qui est mieux, directement
+  dans l'application — c'est le contenu de l'équipe.
+
 ## Les protocoles
 
 - **Où** : `src/db.rs`, `STARTER_PROTOCOLS` : un arbre de questions

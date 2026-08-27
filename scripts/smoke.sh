@@ -28,7 +28,8 @@ views=(
     search dashboard patient drugs drug_card drug_edit
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio revue vaccine_map ordonnance
-    protocols protocol_open codex codex_open template options keys act_picker
+    protocols protocol_open codex codex_open dispositifs dispositif_open
+    template options keys act_picker
     goto goto_jump mono_search mono_patient
 )
 
