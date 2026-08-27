@@ -88,7 +88,7 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 | Database | SQLite + SQLCipher via `rusqlite` |
 | Charts | hand-painted with egui primitives (no plotting library) |
 
-The full requirements document lives in [`docs/SPECIFICATIONS.txt`](docs/SPECIFICATIONS.txt).
+The full requirements document lives in [`docs/SPECIFICATIONS.txt`](docs/SPECIFICATIONS.txt), and [`docs/CONTENU.md`](docs/CONTENU.md) maps the clinical content: where each kind of it lives, what seeds it, what test holds it, and how to add to it.
 
 The repository is a Cargo workspace:
 

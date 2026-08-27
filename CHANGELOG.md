@@ -5,6 +5,20 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.72.1] - 2026-08-27
+
+### Changed
+- `docs/CONTENU.md` maps the clinical content: where each kind of it
+  lives, what seeds it, what test holds it, and how to add to it — the
+  drug cards, the posologies, the two counter answers, the reference
+  tables, the codex, the protocols, the biology, the ordonnance rules,
+  the entretien checklists and the vaccine calendar. Two rules run
+  through all of them: what the team writes is never overwritten, and
+  every content has a test that can reach it.
+- The demo's own substitution protocol is renamed « AOD et fonction
+  rénale » : it sat next to the shipped « Anticoagulant oral direct
+  indisponible » under a name close enough to look like a duplicate.
+
 ## [0.72.0] - 2026-08-27
 
 ### Added
