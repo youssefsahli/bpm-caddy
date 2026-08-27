@@ -5759,13 +5759,22 @@ impl App {
             // The acts keep enough for a whole row before the journal
             // serves itself. Half a row of combo boxes cut off at the
             // panel edge reads as a broken table, which is worse than a
-            // table one line short — and the row here is taller than a
-            // line of text, so the reserve is measured off the widget
-            // height rather than guessed at a round number.
-            let acts_min = 130.0 + ui.spacing().interact_size.y * 3.0;
-            let notes_h = (work.height() * 0.34)
-                .clamp(170.0, 280.0)
-                .min((work.height() - acts_min).max(120.0));
+            // table one line short.
+            //
+            // Both floors are in *lines*, not pixels. At « échelle du
+            // texte » 1,25 — the setting an officine turns on when the
+            // counter screen is read standing up — a fixed 170 px floor
+            // under the journal is barely three of its own lines while
+            // the table above needs a quarter more room than before,
+            // and the table was the one that lost. Measured in lines,
+            // the arbitration is the same at every scale.
+            let line = ui.text_style_height(&egui::TextStyle::Body);
+            // A heading, a note and the add row — the journal's floor.
+            let notes_min = line * 5.5;
+            // The table's own head (summary, fees, column titles) plus
+            // a row of controls, which is taller than a line of text.
+            let acts_min = line * 8.0 + ui.spacing().interact_size.y * 3.0;
+            let notes_h = (work.height() - acts_min).clamp(notes_min, work.height() * 0.42);
             let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
             motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
                 Self::patient_acts_pane(ui, session, patient, config);
@@ -6137,9 +6146,13 @@ impl App {
             // it keeps 240 px before the band serves itself, and the
             // band's own floor is 96 — enough for its button and one
             // line. (84 was too mean: it cut the buttons off.)
+            // In lines again, not pixels: at « échelle du texte » 1,25
+            // a 96 px floor is barely five of the band's own lines and
+            // « Voyage » lost its button off the bottom.
+            let line = ui.text_style_height(&egui::TextStyle::Body);
             let band = (work.height() * 0.40)
                 .clamp(150.0, 320.0)
-                .min((work.height() - 240.0).max(96.0));
+                .min((work.height() - line * 16.0).max(line * 6.5));
             let stack = motif::split_rows(work, &[0.0, band], 8.0);
             (stack[0], stack[1])
         };
