@@ -826,6 +826,178 @@ const RULES: &[Rule] = &[
         severity: Severity::Alert,
         text: "Anémie sous antithrombotique : chercher un saignement, digestif en premier lieu, avant de conclure à une carence.",
     },
+    Rule {
+        code: "MG",
+        side: Side::Below,
+        threshold: 0.7,
+        needs: &["IPP", "oméprazole", "ésoméprazole", "pantoprazole"],
+        severity: Severity::Warn,
+        text: "Hypomagnésémie sous IPP : effet de classe des traitements prolongés, souvent découvert sur des crampes, une fatigue ou une hypokaliémie qui ne se corrige pas. Doser la magnésémie, supplémenter, et surtout réévaluer l'indication de l'IPP — la magnésémie ne remonte durablement qu'à son arrêt.",
+    },
+    Rule {
+        code: "MG",
+        side: Side::Below,
+        threshold: 0.7,
+        needs: &["digoxine", "amiodarone", "sotalol", "citalopram", "hydroxyzine"],
+        severity: Severity::Alert,
+        text: "Hypomagnésémie sous une molécule qui allonge le QT ou sous digoxine : c'est le terrain de la torsade de pointes. Corriger le magnésium et le potassium ensemble, avant toute discussion de dose.",
+    },
+    Rule {
+        code: "CREAT",
+        side: Side::Above,
+        threshold: 110.0,
+        needs: &["diurétique", "furosémide", "IEC", "sartan", "AINS"],
+        severity: Severity::Warn,
+        text: "Créatinine élevée sous diurétique, IEC, sartan ou AINS : demander le DFG, qui est le chiffre qui commande. Chercher ce qui a déshydraté — canicule, gastro-entérite, diurétique majoré : c'est la triade qui fait l'insuffisance rénale aiguë, et elle se prévient en suspendant quelques jours.",
+    },
+    Rule {
+        code: "GLY",
+        side: Side::Below,
+        threshold: 0.7,
+        needs: &["insuline", "sulfamide", "glimépiride", "gliclazide", "répaglinide"],
+        severity: Severity::Alert,
+        text: "Glycémie basse sous insuline, sulfamide ou glinide : chercher le repas sauté, l'effort, l'alcool ou l'erreur de dose, et prévenir le prescripteur. Chez la personne âgée, l'hypoglycémie se manifeste par une chute ou une confusion, pas par des sueurs.",
+    },
+    Rule {
+        code: "GLY",
+        side: Side::Above,
+        threshold: 1.26,
+        needs: &["corticoïde", "prednisone", "prednisolone", "antipsychotique"],
+        severity: Severity::Warn,
+        text: "Hyperglycémie sous corticoïde ou antipsychotique : le diabète cortico-induit monte surtout l'après-midi et le soir, et se dépiste sur une glycémie post-prandiale plutôt qu'à jeun. Surveiller pendant toute la corticothérapie, et prévenir le patient déjà diabétique que ses doses vont bouger.",
+    },
+    Rule {
+        code: "LDL",
+        side: Side::Above,
+        threshold: 1.0,
+        needs: &["statine", "ézétimibe", "atorvastatine", "rosuvastatine"],
+        severity: Severity::Warn,
+        text: "LDL au-dessus de 1 g/L sous statine : la cible dépend du risque — 0,55 g/L après un infarctus, 0,70 en haut risque. Avant de parler d'intensification, vérifier l'observance réelle, l'horaire de prise et ce qui a été arrêté sur une douleur musculaire jamais reparlée.",
+    },
+    Rule {
+        code: "TG",
+        side: Side::Above,
+        threshold: 5.0,
+        needs: &[],
+        severity: Severity::Alert,
+        text: "Triglycérides au-delà de 5 g/L : risque de pancréatite aiguë, qui devient net au-delà de 10. Vérifier d'abord que le prélèvement était à jeun, puis avis pour un fibrate, un sevrage de l'alcool et une prise en charge diététique.",
+    },
+    Rule {
+        code: "TG",
+        side: Side::Above,
+        threshold: 2.0,
+        needs: &["isotrétinoïne", "antipsychotique", "corticoïde", "œstrogène"],
+        severity: Severity::Warn,
+        text: "Triglycérides élevés sous isotrétinoïne, antipsychotique, corticoïde ou œstrogène : la molécule y contribue et le bilan lipidique fait partie de sa surveillance. Sous isotrétinoïne, un contrôle s'impose avant de renouveler.",
+    },
+    Rule {
+        code: "CRP",
+        side: Side::Above,
+        threshold: 100.0,
+        needs: &[
+            "immunosuppresseur",
+            "anti-TNF",
+            "corticoïde",
+            "méthotrexate",
+            "azathioprine",
+        ],
+        severity: Severity::Alert,
+        text: "CRP franchement élevée sous immunosuppresseur, biothérapie ou corticoïde : une infection se cherche le jour même, et le traitement de fond se suspend le temps de la trancher. Le corticoïde masque la fièvre — l'absence de température ne rassure pas.",
+    },
+    Rule {
+        code: "CA",
+        side: Side::Above,
+        threshold: 2.6,
+        needs: &["vitamine D", "cholécalciférol", "calcium", "hydrochlorothiazide"],
+        severity: Severity::Warn,
+        text: "Hypercalcémie sous vitamine D, calcium ou thiazidique : suspendre la supplémentation, faire boire, et contrôler. Nausées, constipation, soif et confusion sont les signes que le chiffre est déjà haut.",
+    },
+    Rule {
+        code: "CA",
+        side: Side::Below,
+        threshold: 2.2,
+        needs: &["bisphosphonate", "alendronate", "dénosumab", "acide zolédronique"],
+        severity: Severity::Alert,
+        text: "Hypocalcémie sous bisphosphonate ou dénosumab : la calcémie et la vitamine D se corrigent avant l'injection, jamais après. Sous dénosumab l'hypocalcémie peut être sévère, surtout si le DFG est bas.",
+    },
+    Rule {
+        code: "VITD",
+        side: Side::Below,
+        threshold: 20.0,
+        needs: &["bisphosphonate", "dénosumab", "alendronate", "calcium"],
+        severity: Severity::Warn,
+        text: "Vitamine D effondrée sous traitement de l'ostéoporose : le traitement perd son efficacité et expose à l'hypocalcémie. Charge de correction puis entretien, et contrôle avant la prochaine injection.",
+    },
+    Rule {
+        code: "FERR",
+        side: Side::Below,
+        threshold: 15.0,
+        needs: &["AOD", "AVK", "antiagrégant", "aspirine", "AINS"],
+        severity: Severity::Alert,
+        text: "Carence martiale sous antithrombotique ou AINS : c'est un saignement digestif occulte jusqu'à preuve du contraire. La supplémentation ne dispense pas de chercher la cause, et l'exploration se demande avant de renouveler.",
+    },
+    Rule {
+        code: "FERR",
+        side: Side::Below,
+        threshold: 15.0,
+        needs: &["Tardyferon", "ferreux", "fumarate"],
+        severity: Severity::Warn,
+        text: "Ferritine toujours basse sous fer oral : reprendre la prise avant tout. Le fer s'absorbe à jeun, jamais avec le thé, le café, le calcium ou un IPP, et un comprimé un jour sur deux est mieux absorbé que deux le même jour.",
+    },
+    Rule {
+        code: "ALB",
+        side: Side::Below,
+        threshold: 30.0,
+        needs: &["AVK", "warfarine", "fluindione", "acénocoumarol"],
+        severity: Severity::Warn,
+        text: "Hypoalbuminémie sous AVK : la fraction libre augmente et l'INR devient instable à dose inchangée. Contrôles rapprochés, et se méfier de tout ajout qui déplace la liaison protéique.",
+    },
+    Rule {
+        code: "ASAT",
+        side: Side::Above,
+        threshold: 120.0,
+        needs: &["statine", "fibrate", "atorvastatine", "simvastatine"],
+        severity: Severity::Warn,
+        text: "ASAT élevées sous statine ou fibrate : si elles dépassent les ALAT, penser au muscle avant le foie et demander les CPK. Une douleur musculaire diffuse avec des urines foncées ne s'explore pas au comptoir.",
+    },
+    Rule {
+        code: "BILI",
+        side: Side::Above,
+        threshold: 50.0,
+        needs: &[
+            "amiodarone",
+            "antifongique",
+            "statine",
+            "azathioprine",
+            "amoxicilline",
+        ],
+        severity: Severity::Alert,
+        text: "Hyperbilirubinémie sous un traitement hépatotoxique : suspendre et avis le jour même. Un ictère, des urines foncées ou des selles décolorées ne s'attendent pas — l'association amoxicilline-acide clavulanique est une cause classique et retardée.",
+    },
+    Rule {
+        code: "RAC",
+        side: Side::Above,
+        threshold: 3.0,
+        needs: &["IEC", "sartan", "gliflozine", "dapagliflozine", "empagliflozine"],
+        severity: Severity::Warn,
+        text: "Albuminurie sous IEC, sartan ou gliflozine : ces molécules sont le traitement, pas la cause. Une créatinine qui monte de moins de 30 % à l'instauration est attendue et ne fait pas arrêter ; c'est au-delà qu'on rappelle le prescripteur.",
+    },
+    Rule {
+        code: "RAC",
+        side: Side::Above,
+        threshold: 30.0,
+        needs: &[],
+        severity: Severity::Warn,
+        text: "Albuminurie franche : la néphroprotection se discute même sans diabète — bloqueur du système rénine-angiotensine, gliflozine, tension à la cible. Et l'ordonnance se relit du point de vue du rein, AINS en tête.",
+    },
+    Rule {
+        code: "GGT",
+        side: Side::Above,
+        threshold: 110.0,
+        needs: &["carbamazépine", "phénytoïne", "corticoïde", "AVK"],
+        severity: Severity::Info,
+        text: "GGT isolément élevée sous inducteur enzymatique : c'est attendu et ce n'est pas une hépatite. Ce qui compte, c'est ce que l'induction fait au reste de l'ordonnance — AVK, contraception, immunosuppresseur.",
+    },
 ];
 
 #[cfg(test)]
@@ -941,6 +1113,24 @@ mod tests {
                 reachable,
                 "règle sur {} : aucun médicament de la base de départ ne correspond à {:?}",
                 rule.code, rule.needs
+            );
+        }
+    }
+
+    /// An analyte with no rule is a number the application displays and
+    /// says nothing about — the laboratory already does that, and does
+    /// it better. What an officine adds is what the value changes for
+    /// the treatments in front of it, so every analyte carries at least
+    /// one rule. Adding an analyte means writing that rule too.
+    #[test]
+    fn every_analyte_says_something_about_a_treatment() {
+        for a in CATALOGUE {
+            assert!(
+                RULES.iter().any(|r| r.code == a.code),
+                "{} ({}) : aucun règle ne lit cette valeur — un analyte sans règle n'est qu'un \
+                 chiffre recopié",
+                a.code,
+                a.label
             );
         }
     }

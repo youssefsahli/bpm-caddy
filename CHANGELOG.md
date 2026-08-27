@@ -5,6 +5,43 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.89.0] - 2026-08-27
+
+### Added
+- **Quinze protocoles de plus, et l'outil sort de la rupture de
+  stock.** Il n'en avait que cinq, tous sur ce qui manque en tiroir :
+  un bel arbre de décision qui ne répondait qu'à la moitié des
+  questions qu'on se pose au comptoir. Les nouveaux sont ce qui entre
+  sans ordonnance — l'oubli de pilule et les trois cas qui n'ont pas la
+  même conduite selon la semaine de plaquette, la contraception
+  d'urgence et le poids qui fait choisir l'ulipristal, la gastro du
+  nourrisson et le pli cutané qui décide, la tique qu'on retire en
+  tournant et sans éther, la brûlure indolore qui est la plus grave,
+  l'hypoglycémie du sulfamide qui récidive après le resucrage, la
+  double dose de méthotrexate qui est une urgence sans aucun symptôme,
+  la demande d'opioïde qui revient trop tôt. Et celui qu'on espère ne
+  jamais dérouler : les signes d'AVC, l'heure de début qu'on note parce
+  que c'est elle qui décide de la thrombolyse.
+- **Dix-neuf règles de biologie**, et plus un seul analyte muet. Le
+  catalogue en comptait trente-quatre, quatorze ne déclenchaient rien :
+  l'application recopiait un chiffre que le laboratoire imprimait déjà
+  mieux. Ils parlent maintenant — l'hypomagnésémie de l'IPP au long
+  cours qui explique la kaliémie qui ne se corrige pas, la ferritine
+  basse sous anticoagulant qui est un saignement digestif jusqu'à
+  preuve du contraire, la calcémie qu'on corrige *avant* l'injection de
+  dénosumab et jamais après, les ASAT plus hautes que les ALAT sous
+  statine qui parlent du muscle et non du foie, la créatinine qui monte
+  chez qui a la triade et une gastro, l'albuminurie sous IEC où la
+  molécule est le traitement et pas la cause.
+
+### Changed
+- Les protocoles ne s'appellent plus « de substitution » : ils couvrent
+  le comptoir.
+- Deux tests de plus tiennent ce contenu : un protocole doit poser au
+  moins deux questions et finir sur des conduites assez précises pour
+  être suivies, et **chaque analyte du catalogue doit porter au moins
+  une règle** — en ajouter un sans elle échoue désormais.
+
 ## [0.88.1] - 2026-08-27
 
 ### Fixed

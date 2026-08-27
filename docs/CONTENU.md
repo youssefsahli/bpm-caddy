@@ -94,9 +94,18 @@ Deux règles valent partout :
 - **Semé par** : `Db::seed_protocols`, une fois, par titre. Un arbre
   réécrit par l'équipe n'est jamais remplacé ; un titre supprimé ne
   revient pas.
-- **Test** : une seule racine, chaque branche pend d'une question, et
+- **Ce que c'est** : pas seulement les ruptures. Un protocole vaut aussi
+  pour ce qui entre sans ordonnance — un oubli de pilule, une piqûre de
+  tique, une brûlure, une douleur thoracique — c'est-à-dire pour les
+  situations où la bonne conduite est une suite de questions, pas une
+  ligne de posologie.
+- **Tests** : une seule racine, chaque branche pend d'une question, et
   chaque question porte ses deux réponses — un déroulé qui s'arrête sur
-  « non » est pire que pas de protocole.
+  « non » est pire que pas de protocole. Et
+  `every_protocol_asks_before_it_answers` : au moins deux questions et
+  trois conduites par arbre, des titres distincts, des questions qui se
+  terminent par un point d'interrogation, et aucune conduite trop courte
+  pour être suivie. Le nombre de protocoles livrés ne baisse jamais.
 
 ## La biologie
 
@@ -107,8 +116,11 @@ Deux règles valent partout :
   au-dessous d'un seuil), et des mots cherchés dans les traitements du
   dossier (nom, DCI, classe, étiquettes). `needs` vide = la règle vaut
   pour tout le monde.
-- **Tests** : chaque règle nomme un analyte du catalogue, et chaque
-  règle doit pouvoir se déclencher sur la base livrée.
+- **Tests** : chaque règle nomme un analyte du catalogue, chaque règle
+  doit pouvoir se déclencher sur la base livrée, et **chaque analyte du
+  catalogue porte au moins une règle** — un analyte sans règle n'est
+  qu'un chiffre recopié du laboratoire, qui le fait déjà mieux. Ajouter
+  un analyte, c'est écrire sa règle dans le même mouvement.
 - Les intervalles sont ceux de l'adulte, et l'application le dit :
   celui du laboratoire prime toujours.
 
