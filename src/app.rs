@@ -6577,7 +6577,11 @@ impl App {
             // here, and the panes share what there is.
             let band = (work.height() * 0.46)
                 .clamp(140.0, 360.0)
-                .min((work.height() - 190.0).max(120.0));
+                // The results keep 240 px before the band takes any,
+                // and the band's own floor is 90: a table showing its
+                // column headings and a sliver of one row is worse than
+                // a reading the operator has to scroll a line for.
+                .min((work.height() - 240.0).max(90.0));
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -8342,7 +8346,10 @@ impl App {
             let mut add_treat: Option<i64> = None;
             let mut open_card: Option<Drug> = None;
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            // Wrapped: a file with five treatments ran the picker off
+            // the right of the band at a counter width, and the field
+            // that adds the sixth was the part that disappeared.
+            ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(tr("treat_label")).color(motif::TEXT_DIM));
                 for t in &session.patient_treats {
                     let chip = ui.add(
@@ -10263,9 +10270,16 @@ impl App {
         let rows = days.len().div_ceil(7).max(1);
         // Six weeks fill the pane: a fixed 62 px cell left a third of
         // the panel grey under the last row.
+        //
+        // And the floor goes down to 30 px, not 44: at a counter width
+        // the filter band takes three rows and the month was left with
+        // room for three weeks of six, scrolling for the rest. A month
+        // view you have to scroll is not a month view — the cells get
+        // shorter and the chips move up beside the day number instead.
         let avail = motif::visible_rect(ui);
         let grid_w = (avail.width() - 16.0).max(360.0);
-        let cell_h = ((avail.height() - 30.0) / rows as f32).clamp(44.0, 96.0);
+        let cell_h = ((avail.height() - 30.0) / rows as f32).clamp(30.0, 96.0);
+        let compact = cell_h < 42.0;
         let (alloc, _) = ui.allocate_exact_size(
             egui::vec2(grid_w, rows as f32 * cell_h + 22.0),
             egui::Sense::hover(),
@@ -10329,9 +10343,11 @@ impl App {
                     motif::TEXT_FAINT
                 },
             );
-            // One chip per act, then the other entries, clipped to the cell.
-            let mut x = cell.left() + 5.0;
-            let mut y = cell.top() + 22.0;
+            // One chip per act, then the other entries, clipped to the
+            // cell. On a short cell they sit beside the day number
+            // rather than under it, where there is no room left.
+            let mut x = cell.left() + if compact { 24.0 } else { 5.0 };
+            let mut y = cell.top() + if compact { 6.0 } else { 22.0 };
             let mut chip = |color: egui::Color32, painter: &egui::Painter| {
                 if x + 12.0 > cell.right() - 4.0 {
                     x = cell.left() + 5.0;
@@ -10787,7 +10803,12 @@ impl App {
             row * (control_lines + filter_lines) + if overdue.is_empty() { 6.0 } else { row + 6.0 };
         // However much the band would like, the calendar keeps most of
         // the screen: past the cap the band scrolls instead.
-        let band_h = want.min((body.height() * 0.4).max(120.0));
+        //
+        // Two fifths was too generous. At 1024x700 the filters wrap onto
+        // three rows, the band took its whole allowance, and the month
+        // grid below was left with room for three weeks out of six —
+        // the pane that names the view. A third, and it scrolls.
+        let band_h = want.min((body.height() * 0.32).max(120.0));
         let rows = motif::split_rows(body, &[band_h, 0.0], 6.0);
         // Set inside the band's closure, applied after it: the closure
         // already holds `session` uniquely.

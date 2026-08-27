@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.95.0] - 2026-08-27
+
+### Fixed
+Une passe sur les vues à 1024x700, les deux panneaux latéraux ouverts —
+la taille que la règle du projet impose et que `smoke.sh` ne vérifie
+pas : il attrape les plantages, pas ce qui sort de son cadre.
+
+- **Le champ « + médicament… » disparaissait** sur une fiche à cinq
+  traitements : la rangée des puces ne se repliait pas et poussait hors
+  du panneau précisément ce qui sert à ajouter le sixième. Elle se
+  replie.
+- **La vue Mois montrait trois semaines sur six.** La bande de filtres
+  se réservait deux cinquièmes de la hauteur et la grille du mois — la
+  vue dont c'est le nom — devait se faire défiler. La bande passe à un
+  tiers et défile à sa place ; les cases du mois se resserrent jusqu'à
+  30 px au lieu de 44, et sur une case courte les pastilles d'activité
+  passent à côté du numéro du jour plutôt qu'en dessous, où il n'y avait
+  plus de place.
+- **L'onglet Biologie n'affichait que ses en-têtes de colonnes.** Le
+  bandeau « ce que ça change » prenait sa part d'une zone qui n'en avait
+  pas : les résultats gardent 240 px avant qu'il ne se serve, et son
+  propre plancher descend à 90.
+
 ## [0.94.0] - 2026-08-27
 
 ### Changed
