@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.74.0] - 2026-08-27
+
+### Added
+- **« Aller à… » (`Ctrl+K`) : une boîte au-dessus de tout.** Une ligne
+  de texte, et dessous tout ce que la base contient — les patients, les
+  fiches et leur DCI, les tables de référence, les préparations du
+  codex, les protocoles de substitution et les six vues permanentes.
+  Les flèches parcourent la liste, `Entrée` ouvre, `Échap` referme et
+  laisse la vue exactement où elle était. Chaque genre prend au plus
+  quatre des douze lignes avant que les autres aient leur tour : avec
+  huit cents fiches dans la base, un classement brut n'aurait montré
+  que des fiches, et « co » enterrait la patiente et la table de
+  Cockcroft sous Codoliprane, Colchicine et Coltramyl. Ce qui reste de
+  place se remplit ensuite dans l'ordre du score, pour qu'une recherche
+  qui ne trouve que des fiches remplisse quand même la boîte. Un bouton
+  dans la barre l'ouvre aussi : un raccourci que personne n'annonce est
+  un raccourci que personne n'utilise.
+
 ## [0.73.0] - 2026-08-27
 
 ### Added

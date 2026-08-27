@@ -8,6 +8,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![BPM-Caddy — l'espace de travail : onglets, panneau de navigation, tableau du jour](docs/screenshot.png)
 
+![« Aller à… » (Ctrl+K) — une recherche sur tout : patients, fiches, tables, préparations, protocoles](docs/screenshot_goto.png)
+
 ![Tableau de bord — indicateurs, entonnoir du pipeline, CA mensuel, charge des 28 jours](docs/screenshot_dashboard.png)
 
 ![Fiche patient — bandeau d'identité, table des entretiens, journal de suivi](docs/screenshot_patient.png)
@@ -26,6 +28,7 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ## Key features
 
+- **One box over everything (`Ctrl+K`)** — « Aller à… » searches the whole base at once and goes there: a patient, a fiche and its DCI, a reference table, a préparation of the codex, a substitution protocol, or one of the standing views. The arrows walk the list, `Entrée` opens, `Échap` leaves the view exactly where it was. Each kind takes at most four of the twelve rows before the others get a turn — with eight hundred fiches in the base, a plain ranking would be eight hundred fiches — and the rest of the box fills from what is left over, so a query that only matches fiches still fills it.
 - **A dockable workspace** — the screen is a notebook between three docks, not one view at a time. Open patients and drug cards become tabs (`Ctrl+Tab` cycles, `Ctrl+W` closes), so two records stay one click apart; a left navigator (`F6`) holds the list the active view is browsing — patients, the drug index, the month — and a right pane (`F1`) holds the team's notes. Both docks resize, remember their state, and take a share of the window rather than a fixed slab. Every view is a grid of Motif panels that reflows with the window instead of a fixed column centred in it.
 - **Instant fuzzy search** — the app launches straight into a global search bar; typing `jndp` finds *Jean Dupont*. No result? The search seamlessly becomes a patient-creation form.
 - **Keyboard-driven workflow** — `Ctrl+F` search, `Enter` select, `Ctrl+N` new interview. Zero loading screens.

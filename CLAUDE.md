@@ -72,7 +72,7 @@ linted too), `cargo test --workspace`.
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|tables_search|calc|
   carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|codex_open|keys|
-  act_picker`
+  act_picker|goto|goto_jump`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the

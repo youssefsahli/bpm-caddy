@@ -30,9 +30,23 @@ toolbar_nav_tooltip = "Afficher ou masquer la liste de gauche (F6)"
 toolbar_docs_tooltip = "Afficher ou masquer le panneau de droite (F1)"
 toolbar_keys = "?"
 toolbar_keys_tooltip = "Raccourcis clavier (F12)"
+toolbar_goto = "Aller à…"
+toolbar_goto_tooltip = "Chercher dans tout ce que la base contient — un patient, une fiche, une table, une préparation, un protocole (Ctrl+K)"
 
 # --- Aide-mémoire des raccourcis ---
 keys_title = "Raccourcis clavier"
+keys_goto = "Aller à… : une recherche sur tout ce que la base contient"
+
+# The jump box (Ctrl+K).
+goto_title = "Aller à…"
+goto_hint = "Un patient, une fiche, une table, une préparation, un protocole…"
+goto_none = "Rien de ce nom dans la base."
+goto_kind_view = "vue"
+goto_kind_patient = "patient"
+goto_kind_drug = "fiche"
+goto_kind_table = "table"
+goto_kind_prep = "préparation"
+goto_kind_protocol = "protocole"
 keys_guide = "Mode d'emploi (PDF)…"
 keys_guide_tooltip = "Imprimer le mode d'emploi de l'application : ce que fait chaque vue, en deux colonnes sur une page — un exemplaire près du poste, un dans le classeur"
 keys_group_workspace = "Espace de travail"
