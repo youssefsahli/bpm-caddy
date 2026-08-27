@@ -19758,6 +19758,46 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Biseptine", "Antisepsie de la peau saine et des plaies superficielles", "Application locale, en laissant sécher", "Ne pas associer aux dérivés iodés ni au savon, qui l'inactivent. Rincer avant tout contact avec l'œil ou l'oreille."),
     ("Cerazette", "Contraception progestative seule", "Un comprimé par jour, sans interruption entre les plaquettes", "La fenêtre d'oubli est de douze heures : au-delà, préservatif pendant sept jours. Saignements irréguliers fréquents, sans que l'efficacité soit en cause."),
     ("EllaOne", "Contraception d'urgence", "Un comprimé le plus tôt possible, jusqu'à cinq jours après le rapport", "Le plus tôt est le mieux, même si le délai va jusqu'à cinq jours. Une contraception hormonale reprise ensuite demande un préservatif pendant sept jours, et un vomissement dans les trois heures impose une nouvelle prise."),
+    // --- Les associations fixes et ce qu'elles cachent ---
+    ("Bipréterax", "Hypertension artérielle", "Un comprimé par jour le matin", "L'indapamide caché dedans est un diurétique : kaliémie, natrémie et créatinine dans les deux semaines qui suivent l'instauration, puis au moins une fois par an. Toux sèche persistante : c'est l'IEC, et cela se signale."),
+    ("Coveram", "Hypertension artérielle", "Un comprimé par jour le matin", "Œdèmes des chevilles sous amlodipine : fréquents, sans gravité, mais souvent pris pour une insuffisance cardiaque. La toux, elle, vient de l'IEC."),
+    ("Triplixam", "Hypertension artérielle non contrôlée par une bithérapie", "Un comprimé par jour le matin", "Trois molécules dans un comprimé, dont un diurétique : ionogramme et créatinine à l'instauration puis régulièrement, et réévaluation par forte chaleur ou en cas de gastro-entérite."),
+    ("Exforge", "Hypertension artérielle", "Un comprimé par jour", "Association sartan et inhibiteur calcique : pas de toux, mais des œdèmes des chevilles possibles. Créatinine et kaliémie au moins une fois par an."),
+    ("Entresto", "Insuffisance cardiaque à fraction d'éjection réduite", "49/51 mg deux fois par jour, doublés après deux à quatre semaines si la tension le permet", "Ne se prend jamais avec un IEC : trente-six heures d'arrêt sont obligatoires entre les deux, sous peine d'angio-œdème. Kaliémie et créatinine à chaque palier."),
+    ("Kerendia", "Maladie rénale chronique du diabète de type 2", "10 à 20 mg par jour selon le débit de filtration et la kaliémie", "Kaliémie avant l'instauration, quatre semaines après, puis régulièrement : une kaliémie au-dessus de 5 fait attendre, au-dessus de 5,5 fait suspendre."),
+    ("Combodart", "Hypertrophie bénigne de la prostate", "Une gélule par jour, environ trente minutes après le même repas", "Malaise en se levant les premiers jours, à cause de la tamsulosine : la première prise se fait le soir. Signaler l'association avant toute chirurgie de la cataracte."),
+    ("Eupressyl", "Hypertension artérielle", "30 à 180 mg par jour selon la forme, en une à deux prises", "Alpha-bloquant : hypotension en se levant, surtout à l'instauration et chez la personne âgée."),
+    // --- Inhalés : le geste compte autant que la molécule ---
+    ("Anoro Ellipta", "BPCO, traitement de fond", "Une inhalation par jour, à la même heure", "Une seule par jour : l'oubli ne se rattrape pas en en prenant deux. Œil rouge et douloureux avec halos : la poudre projetée dans l'œil peut déclencher un glaucome aigu."),
+    ("Spiolto Respimat", "BPCO, traitement de fond", "Deux bouffées une fois par jour, à la même heure", "Les deux bouffées comptent pour une dose. Amorcer le dispositif avant la première utilisation, et le rincer de la bouche ne dispense pas de se rincer la bouche."),
+    ("Ultibro Breezhaler", "BPCO, traitement de fond", "Une gélule à inhaler par jour", "La gélule se perce dans l'inhalateur et ne s'avale jamais. Vérifier qu'elle est vide après l'inhalation, et recommencer sinon."),
+    ("Relvar Ellipta", "Asthme et BPCO, traitement de fond", "Une inhalation par jour, à la même heure", "Contient un corticoïde : se rincer la bouche après. Un bêta-2 de longue durée ne remplace jamais le bronchodilatateur de secours."),
+    // --- Digestif de comptoir ---
+    ("Maalox", "Brûlures et remontées acides", "Un à deux sachets ou comprimés après les repas et au coucher, à la demande", "À distance de deux heures de tout autre médicament, qu'il empêche d'être absorbé. Au-delà de dix jours de gêne quotidienne, la cause se cherche."),
+    ("Rennie", "Brûlures et remontées acides occasionnelles", "Un à deux comprimés à sucer au moment de la gêne, sans dépasser la dose quotidienne indiquée", "Apporte du calcium et du magnésium : à distance des cyclines, des fluoroquinolones et de la lévothyroxine."),
+    ("Relistor", "Constipation induite par les opioïdes, après échec des laxatifs", "Une injection sous-cutanée un jour sur deux, adaptée au poids", "N'agit que sur la constipation d'origine opioïde et ne coupe pas l'antalgie. Douleur abdominale intense ou vomissements : arrêter et appeler, la perforation est le risque redouté."),
+    // --- Rhumatologie et douleur ---
+    ("Chondrosulf", "Arthrose du genou et de la hanche", "800 mg à 1,2 g par jour, en une à deux prises", "Traitement symptomatique d'action lente : l'effet se juge après deux à trois mois, et il ne remplace pas l'activité physique."),
+    ("Piasclédine", "Arthrose du genou et de la hanche", "300 mg par jour, au cours d'un repas", "Même logique : plusieurs mois avant d'en juger, en complément et non à la place du reste."),
+    ("Colchimax", "Crise de goutte", "Selon le schéma du premier jour, sans jamais dépasser la dose maximale quotidienne", "Contient de la colchicine : la diarrhée est le premier signe d'intoxication et impose l'arrêt. Contient aussi de l'opium et un anticholinergique, qui masquent cette diarrhée — raison de plus pour s'arrêter au moindre trouble digestif."),
+    ("Asasantine", "Prévention secondaire après accident ischémique cérébral", "Une gélule matin et soir", "Céphalées les premiers jours, très fréquentes, qui s'estompent : c'est la première cause d'arrêt et cela se prévient en le disant. Contient de l'aspirine : risque hémorragique cumulatif."),
+    // --- Neurologie ---
+    ("Neupro", "Maladie de Parkinson et syndrome des jambes sans repos", "Un patch par jour, changé à la même heure, sur une peau saine et sans poils", "Changer de site chaque jour et retirer l'ancien patch avant d'en poser un nouveau — les patchs oubliés en place sont une cause classique de surdosage. Retirer avant une IRM."),
+    ("Dostinex", "Hyperprolactinémie", "0,5 mg par semaine, en une ou deux prises, au cours d'un repas", "Prise hebdomadaire : elle se note dans le téléphone, sinon elle s'oublie. Échocardiographie de surveillance en traitement prolongé."),
+    ("Apokinon", "Maladie de Parkinson, blocages moteurs", "Injection sous-cutanée à la demande lors des blocages, dose déterminée en milieu spécialisé", "Nausées les premiers jours : un antiémétique adapté est prescrit avec, et ce ne doit jamais être le métoclopramide ni un neuroleptique, qui annulent l'effet."),
+    // --- Peau et muqueuses ---
+    ("Flammazine", "Brûlures et plaies à risque d'infection", "Une application par jour en couche épaisse, sous pansement", "Contient un sulfamide : allergie à rechercher. Coloration grise de la plaie possible, sans gravité, mais toute extension ou fièvre se montre."),
+    ("Auréomycine Evans", "Infections cutanées superficielles et oculaires selon la forme", "Une à deux applications par jour, pour quelques jours", "Traitement court sur une surface limitée. La forme ophtalmique et la forme cutanée ne se confondent pas."),
+    ("Colposeptine", "Infections et irritations vaginales", "Un comprimé gynécologique par jour, au coucher, pendant dix-huit jours au maximum", "Humidifier le comprimé avant l'insertion. Fièvre, douleur du bas-ventre ou pertes malodorantes : l'avis prime sur le traitement local."),
+    // --- Endocrinologie et hormones ---
+    ("Climaston", "Traitement hormonal de la ménopause", "Un comprimé par jour, sans interruption, selon le schéma de la plaquette", "La dose la plus faible et la durée la plus courte qui soulagent, réévaluées chaque année. Jambe gonflée, essoufflement brutal, maux de tête inhabituels : arrêt et avis."),
+    ("Forsteo", "Ostéoporose sévère", "20 µg par voie sous-cutanée une fois par jour, pour vingt-quatre mois au maximum", "Le stylo se garde au réfrigérateur et ne se congèle pas. Malaise possible après les premières injections : s'asseoir ou s'allonger. La durée maximale est une limite de vie entière, pas de cure."),
+    ("Minirin", "Diabète insipide et énurésie", "Selon la forme et l'indication, en une à trois prises", "La restriction de boisson qui accompagne le traitement compte autant que la dose : maux de tête, nausées, confusion ou prise de poids rapide imposent d'arrêter de boire et d'appeler."),
+    ("Eprex", "Anémie de l'insuffisance rénale chronique et de la chimiothérapie", "Injections une à trois fois par semaine, ajustées sur l'hémoglobine", "L'objectif n'est pas de normaliser l'hémoglobine : au-dessus de la cible, le risque thrombotique augmente. Tension surveillée, et fer contrôlé — sans fer, l'EPO ne fait rien."),
+    ("Aranesp", "Anémie de l'insuffisance rénale chronique", "Une injection par semaine ou toutes les deux semaines, ajustée sur l'hémoglobine", "Même règle : la cible est une fourchette, pas un maximum. Maux de tête inhabituels ou tension qui monte se signalent."),
+    ("Tracleer", "Hypertension artérielle pulmonaire", "62,5 mg deux fois par jour pendant quatre semaines, puis 125 mg deux fois par jour", "Transaminases tous les mois, sans exception. Tératogène et inducteur enzymatique : la contraception doit être non hormonale, car la molécule rend la pilule inefficace."),
+    ("Jinarc", "Polykystose rénale autosomique dominante", "Deux prises par jour selon le schéma, la première au lever", "Boire suffisamment n'est pas un conseil mais la condition du traitement : la soif est le garde-fou. Transaminases mensuelles la première année."),
+    ("Bicarbonate de sodium", "Acidose métabolique de l'insuffisance rénale", "Selon la prescription, réparti dans la journée", "Apporte du sodium : gonflement des chevilles, essoufflement et tension qui monte se signalent. À distance des autres médicaments."),
     // GENERATED-POSOLOGIES-END
 ];
 
@@ -28003,7 +28043,7 @@ mod tests {
             "vaccin",
         ];
         // Lower this as batches are written. It may never rise.
-        const CEILING: usize = 200;
+        const CEILING: usize = 170;
 
         let with: std::collections::HashSet<&str> = STARTER_POSOLOGIES
             .iter()
