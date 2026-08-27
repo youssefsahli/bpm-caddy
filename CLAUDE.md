@@ -23,7 +23,9 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   (`STARTER_DISPOSITIFS` in `src/db.rs`), like the codex.
   `src/location.rs` (what a rental of material owes and when its
   ordonnance runs out — pure, tested, no internal clock; the forfaits
-  live in `[locations]` of config.toml and ship empty)
+  live in `[locations]` of config.toml and ship empty),
+  `src/insulin.rs` (each insulin's action profile as a curve, and the
+  500 / 1800 / titration rules — static, pure, tested)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -83,6 +85,8 @@ linted too), `cargo test --workspace`.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
+- `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card
+  rather than Eliquis (checking an insulin's action profile, say)
 - `BPM_CADDY_SEED_DB=<path> cargo test seed_demo` — create a demo database
 - `BPM_CADDY_TEST_PDF_OUT=<dir> cargo test pdf` — write the sample PDF
 
