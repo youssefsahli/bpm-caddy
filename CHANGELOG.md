@@ -5,6 +5,41 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.90.0] - 2026-08-27
+
+### Added
+- **Les dispositifs médicaux ont enfin leurs fiches.** L'officine en
+  délivre autant que de médicaments et n'avait nulle part où écrire ce
+  qu'elle en sait. « Dispositifs… », depuis la vue Médicaments ou
+  Ctrl+K : 35 fiches en onze familles — les pansements dans l'ordre où
+  on les choisit (hydrocolloïde, hydrocellulaire, alginate, hydrofibre,
+  hydrogel, interface, argent, charbon, film, compresses), la fixation,
+  la compression, la stomie (colostomie, iléostomie, urostomie et les
+  accessoires qui sauvent la peau), le sondage et l'incontinence, les
+  sets de soins, l'injection et le diabète, le respiratoire, et le
+  matériel qu'on loue.
+- Chaque fiche répond aux six questions du comptoir : pour quelle
+  situation, quelles tailles existent, comment ça se pose, à quel rythme
+  ça se renouvelle, ce que dit la ligne LPP, et ce qui va de travers.
+  C'est là que sont le gel jaune de l'hydrocolloïde qu'on prend pour du
+  pus, l'alginate qu'on ne retire jamais à sec, la découpe trop large
+  qui fait la peau rouge autour d'une stomie, l'étui pénien qu'on mesure
+  au gabarit, la chambre d'inhalation qu'on laisse sécher sans
+  l'essuyer, et les barrières de lit qui ne sont pas une contention.
+- **La ligne LPP porte la règle, jamais le tarif** : ce que la
+  prescription doit mentionner, ce qui entre dans un forfait, ce qui se
+  facture à part. Un prix livré dans une fiche est un prix faux dans
+  l'année — un test refuse le « € » dans ce champ.
+- La fiche s'imprime seule en A4, ou toutes ensemble en livret deux
+  colonnes groupé par famille, à afficher près du stock.
+
+### Changed
+- Comme le codex : semé une fois, et à l'équipe ensuite. Une fiche
+  réécrite n'est jamais remplacée, et une base vidée exprès reste vide.
+  L'écriture est en compare-and-set sur **toutes** les colonnes — une
+  fiche de dispositif n'a pas un champ qui porte tout son poids, et le
+  rythme de renouvellement se corrige bien plus souvent que le nom.
+
 ## [0.89.0] - 2026-08-27
 
 ### Added
