@@ -5,6 +5,41 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.91.0] - 2026-08-27
+
+### Added
+- **Les locations de matériel se comptent toutes seules.** Un forfait
+  court : personne ne relit un nébuliseur toutes les semaines, et
+  l'ordonnance qui a expiré en mars avec la machine encore chez le
+  patient en juin est exactement la paire que personne ne remarque.
+  Un onglet « Locations » sur la fiche patient pose le matériel, le
+  reprend, enregistre un renouvellement — et compte les périodes
+  entamées contre le forfait **tel qu'il était le jour de la pose**,
+  jamais tel qu'il est aujourd'hui : un tarif qui bouge en juin ne doit
+  pas réécrire ce qui a été délivré en mars.
+- **Le tableau de bord appelle.** Un panneau apparaît — et seulement
+  s'il a quelque chose à dire — avec les ordonnances de location
+  dépassées en rouge et celles qui arrivent à échéance dans le délai de
+  prévenance. Un clic ouvre la fiche directement sur son onglet.
+- **Le récapitulatif de facturation** imprime les locations dans leur
+  propre tableau, avec leur propre total : ce ne sont pas des actes,
+  elles n'ont ni code acte ni étape, et les mêler à la grille des actes
+  reviendrait à les inviter dans le total des actes.
+- `src/location.rs` porte le calcul : périodes entamées, plafond de la
+  ligne LPP, date du prochain renouvellement. Pur, testé, sans horloge
+  interne — le jour est passé en paramètre, comme dans `vaccines.rs`.
+
+### Changed
+- **Les forfaits sont vides par défaut, et c'est délibéré.**
+  `[locations]` dans config.toml, éditable dans Options › Locations :
+  libellé, ligne LPP, période (jour, semaine, mois), forfait, délai de
+  renouvellement, plafond de périodes payées. La LPP bouge, et un tarif
+  livré serait faux dans l'année — c'est la même règle que le champ LPP
+  d'une fiche de dispositif.
+- Le plafond est dans l'arithmétique et non dans une remarque que
+  personne ne lit : facturer au-delà de ce que la ligne paie, c'est ce
+  qui vaut un indu.
+
 ## [0.90.0] - 2026-08-27
 
 ### Added

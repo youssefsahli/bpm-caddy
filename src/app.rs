@@ -1060,6 +1060,9 @@ enum PatientTab {
     /// The biology: what the laboratory said, and what it changes for
     /// the treatments on the file.
     Bio,
+    /// The material lent out: what is still at the patient's home, what
+    /// it has earned, and when its ordonnance has to be renewed.
+    Locations,
 }
 
 /// The ordonnance being composed after a positive TROD.
@@ -1215,6 +1218,10 @@ struct Session {
     /// each patient's own treatments. Computed when the dashboard is
     /// refreshed, not per frame.
     bio_watch: Vec<BioWatch>,
+    /// Rentals whose ordonnance has lapsed or is about to, and how many
+    /// days' notice the officine asked for (`[locations] notice_days`).
+    loc_watch: Vec<LocWatch>,
+    loc_notice_days: u32,
     /// The accompaniments whose next entretien is not in the agenda.
     to_schedule: Vec<ToSchedule>,
     /// The patient's biology, and the line being added to it.
@@ -1371,6 +1378,13 @@ struct Session {
     dispo_base: Option<db::Dispositif>,
     dispo_confirm_delete: bool,
     dispo_new_name: String,
+    /// The rentals on the open file, the forfait being handed out, and
+    /// the row whose return date is being typed.
+    locations: Vec<db::Location>,
+    loc_pick: usize,
+    loc_start: String,
+    loc_return: Option<(i64, String)>,
+    loc_confirm_delete: Option<i64>,
     /// The convention's cycle length in months, from the options: it
     /// drives both the quota rule and the fee ranks.
     cycle_months: u32,
@@ -1502,6 +1516,8 @@ impl Session {
             vacc_confirm: None,
             vacc_fill_confirm: false,
             bio_watch: Vec::new(),
+            loc_watch: Vec::new(),
+            loc_notice_days: 7,
             to_schedule: Vec::new(),
             bio_results: Vec::new(),
             bio_query: String::new(),
@@ -1589,6 +1605,11 @@ impl Session {
             dispo_base: None,
             dispo_confirm_delete: false,
             dispo_new_name: String::new(),
+            locations: Vec::new(),
+            loc_pick: 0,
+            loc_start: String::new(),
+            loc_return: None,
+            loc_confirm_delete: None,
             cycle_months: cycle_months.max(1),
             show_protocols: false,
             protocols,
@@ -2286,6 +2307,7 @@ impl Session {
     fn load_carnet(&mut self, patient_id: i64) {
         self.vaccinations = self.db.vaccinations(patient_id).unwrap_or_default();
         self.load_biology(patient_id);
+        self.load_locations(patient_id);
         self.travels = self.db.travels(patient_id).unwrap_or_default();
         self.vacc_edit = None;
         self.vacc_edit_date.clear();
@@ -2302,6 +2324,14 @@ impl Session {
         // The trend panel follows the file it is on: the analyte
         // clicked on the previous patient means nothing here.
         self.bio_focus = None;
+    }
+
+    /// (Re)read the patient's rentals, and forget whatever row was
+    /// half-closed on the file before.
+    fn load_locations(&mut self, patient_id: i64) {
+        self.locations = self.db.locations_for(patient_id).unwrap_or_default();
+        self.loc_return = None;
+        self.loc_confirm_delete = None;
     }
 
     fn reload_interviews(&mut self, patient_id: i64) {
@@ -2335,6 +2365,7 @@ impl Session {
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
         self.bio_watch = bio_watch(&self.db);
+        self.loc_watch = loc_watch(&self.db, &self.today, self.loc_notice_days);
         // The sequences waiting for their next rendez-vous, read from
         // the same export the CSV is made of.
         self.to_schedule = to_schedule(
@@ -3019,6 +3050,84 @@ struct BioWatch {
     first: String,
 }
 
+/// Every rental still out, priced as of `today`, for the printed recap.
+/// Rentals whose dates do not read are left out rather than billed at
+/// zero: a line that says nothing is worse than a line that is missing.
+fn billing_rentals(db: &Db, today: &str) -> Vec<crate::pdf::BillingRental> {
+    db.running_locations()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(l, patient)| {
+            let period_word = l.period().label().to_owned();
+            let (periods, amount) = crate::location::amount_due(
+                &l.started_on,
+                &l.ended_on,
+                today,
+                l.period(),
+                l.fee,
+                l.max_periods,
+            )?;
+            Some(crate::pdf::BillingRental {
+                patient,
+                label: l.label,
+                started: l.started_on,
+                ended: l.ended_on,
+                periods,
+                period_word,
+                amount,
+            })
+        })
+        .collect()
+}
+
+/// One rental whose ordonnance is running out, as the dashboard's call
+/// list shows it.
+struct LocWatch {
+    patient_id: i64,
+    name: String,
+    label: String,
+    /// The renewal day, ISO.
+    renewal: String,
+    overdue: bool,
+}
+
+/// Every rental still out whose renewal has passed or is within the
+/// notice. A forfait runs on by itself and nobody re-reads it, so the
+/// dashboard is where it has to surface — an ordonnance that lapsed in
+/// March and a machine still at the patient's home in June is exactly
+/// the pair nobody notices.
+///
+/// Rentals with no renewal rule are left out: they have nothing to say
+/// here, and a call list of everything is a call list nobody reads.
+fn loc_watch(db: &Db, today: &str, notice_days: u32) -> Vec<LocWatch> {
+    let mut out: Vec<LocWatch> = Vec::new();
+    for (l, name) in db.running_locations().unwrap_or_default() {
+        let Some(renewal) = crate::location::next_renewal(l.renewal_base(), l.renewal_days) else {
+            continue;
+        };
+        let standing = crate::location::standing(&renewal, today, notice_days);
+        let overdue = match standing {
+            Some(crate::location::Standing::Overdue) => true,
+            Some(crate::location::Standing::Soon) => false,
+            _ => continue,
+        };
+        out.push(LocWatch {
+            patient_id: l.patient_id,
+            name,
+            label: l.label,
+            renewal,
+            overdue,
+        });
+    }
+    // The ones already past first, then by the day they fall due.
+    out.sort_by(|a, b| {
+        b.overdue
+            .cmp(&a.overdue)
+            .then_with(|| a.renewal.cmp(&b.renewal))
+    });
+    out
+}
+
 /// Read the whole base — the biology against each patient's treatments,
 /// and each ordonnance against itself — and keep the files that have
 /// something to say. Sorted loudest first: the panel is a call list,
@@ -3574,16 +3683,20 @@ enum OptionsPage {
     Database,
     Fees,
     Rules,
+    /// The rental forfaits: what the officine's own LPP line pays for a
+    /// nébuliseur, a TENS, a lit médicalisé.
+    Locations,
 }
 
 impl OptionsPage {
-    const ALL: [OptionsPage; 6] = [
+    const ALL: [OptionsPage; 7] = [
         Self::Pharmacy,
         Self::Mentions,
         Self::Ui,
         Self::Database,
         Self::Fees,
         Self::Rules,
+        Self::Locations,
     ];
     /// The tab's own short label: the section headings inside run to a
     /// full sentence ("Règles (actes / année d'accompagnement…)"), which
@@ -3596,6 +3709,7 @@ impl OptionsPage {
             Self::Database => tr("opts_tab_db"),
             Self::Fees => tr("opts_tab_fees"),
             Self::Rules => tr("opts_tab_rules"),
+            Self::Locations => tr("opts_tab_locations"),
         }
     }
 }
@@ -3659,7 +3773,11 @@ impl App {
         if let Some(pw) = stored_pw {
             match Db::open(&config.db_path(), &pw)
                 .and_then(|db| Session::new(db, config.rules.cycle_months))
-            {
+                .map(|mut s| {
+                    s.loc_notice_days = config.locations.notice_days;
+                    s.refresh_dashboard();
+                    s
+                }) {
                 Ok(mut session) => {
                     spawn_daily_backup(config.db_path(), pw.clone(), config.database.backups_keep);
                     // Demo hook: land on a specific view (screenshots, e2e).
@@ -3759,6 +3877,28 @@ impl App {
                                 session.dispo_open = session.dispositifs.first().map(|d| d.id);
                             }
                             session.view = MainView::Drugs;
+                        }
+                        // The rentals on the open file — on a file that
+                        // actually has one, so the screenshot and the
+                        // smoke run exercise the table and not only the
+                        // empty state.
+                        Ok("locations") => {
+                            let with_rental = session
+                                .db
+                                .running_locations()
+                                .unwrap_or_default()
+                                .first()
+                                .map(|(l, _)| l.patient_id);
+                            let pick = with_rental
+                                .and_then(|id| {
+                                    session.patients.iter().find(|p| p.id == id).cloned()
+                                })
+                                .or_else(|| session.patients.first().cloned());
+                            if let Some(p) = pick {
+                                session.open_patient(p);
+                            }
+                            session.patient_tab = PatientTab::Locations;
+                            session.view = MainView::Search;
                         }
                         Ok("calc") => {
                             session.show_tables = true;
@@ -4975,7 +5115,11 @@ impl App {
         if let Some(pw) = attempt {
             match Db::open(&self.config.db_path(), &pw)
                 .and_then(|db| Session::new(db, self.config.rules.cycle_months))
-            {
+                .map(|mut s| {
+                    s.loc_notice_days = self.config.locations.notice_days;
+                    s.refresh_dashboard();
+                    s
+                }) {
                 Ok(session) => {
                     spawn_daily_backup(
                         self.config.db_path(),
@@ -5456,18 +5600,21 @@ impl App {
             PatientTab::Acts => 0,
             PatientTab::Vaccins => 1,
             PatientTab::Bio => 2,
+            PatientTab::Locations => 3,
         };
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
                 motif::Tab::new(tr("patient_tab_acts")),
                 motif::Tab::new(tr("patient_tab_vaccins")),
                 motif::Tab::new(tr("patient_tab_bio")),
+                motif::Tab::new(tr("patient_tab_locations")),
             ];
             if let Some(motif::TabAction::Select(i)) = motif::tab_strip(ui, &tabs, active) {
                 session.patient_tab = match i {
                     0 => PatientTab::Acts,
                     1 => PatientTab::Vaccins,
-                    _ => PatientTab::Bio,
+                    2 => PatientTab::Bio,
+                    _ => PatientTab::Locations,
                 };
             }
         });
@@ -5480,6 +5627,10 @@ impl App {
         }
         if session.patient_tab == PatientTab::Bio {
             Self::patient_bio_pane(ui, session, patient, work);
+            return;
+        }
+        if session.patient_tab == PatientTab::Locations {
+            Self::patient_locations_pane(ui, session, patient, work, config);
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
@@ -6367,6 +6518,400 @@ impl App {
         };
         Self::bio_reading_pane(ui, session, reading);
         Self::bio_trend_pane(ui, session, trend);
+    }
+
+    /// The material lent out: what is still at the patient's home, what
+    /// each rental has earned so far, and when its ordonnance has to be
+    /// renewed.
+    ///
+    /// A forfait runs by itself — nobody re-reads a rental every week —
+    /// so the arithmetic is done here on every frame from the dates and
+    /// the forfait copied in at the counter, and the renewal that has
+    /// gone past is red before anyone has to look for it.
+    fn patient_locations_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+        config: &Config,
+    ) {
+        let today = session.today.clone();
+        let notice = config.locations.notice_days;
+        let rows = session.locations.clone();
+        let mut close: Option<(i64, String)> = None;
+        let mut renew: Option<i64> = None;
+        let mut delete: Option<(i64, String)> = None;
+        let mut add = false;
+        motif::panel(ui, rect, Some(tr("loc_section")), |ui| {
+            // Handing a machine out: the forfait comes from the options,
+            // never from a number typed here — a tarif invented at the
+            // counter is a tarif nobody can audit.
+            let forfaits: Vec<&crate::config::LocationForfait> = config
+                .locations
+                .forfaits
+                .iter()
+                .filter(|f| f.is_named())
+                .collect();
+            if forfaits.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("loc_no_forfait"))
+                            .size(11.5)
+                            .color(motif::TEXT_DIM),
+                    )
+                    .wrap(),
+                );
+            } else {
+                ui.horizontal_wrapped(|ui| {
+                    session.loc_pick = session.loc_pick.min(forfaits.len() - 1);
+                    egui::ComboBox::from_id_salt("loc_pick")
+                        .selected_text(forfaits[session.loc_pick].label.clone())
+                        .show_ui(ui, |ui| {
+                            for (i, f) in forfaits.iter().enumerate() {
+                                ui.selectable_value(&mut session.loc_pick, i, &f.label);
+                            }
+                        });
+                    ui.label(
+                        egui::RichText::new(tr("loc_started_on"))
+                            .size(11.0)
+                            .color(motif::TEXT_DIM),
+                    );
+                    ui.add_sized(
+                        [92.0, 22.0],
+                        egui::TextEdit::singleline(&mut session.loc_start)
+                            .hint_text(db::format_french_date(&today)),
+                    );
+                    if motif::button(ui, tr("loc_add")).clicked() {
+                        add = true;
+                    }
+                    let f = forfaits[session.loc_pick];
+                    ui.label(
+                        egui::RichText::new(trn(
+                            "loc_forfait_line",
+                            &[
+                                &crate::codex::format_quantity(f.fee),
+                                &f.period.label(),
+                                &if f.max_periods == 0 {
+                                    tr("loc_no_cap").to_owned()
+                                } else {
+                                    trf("loc_cap", f.max_periods.to_string())
+                                },
+                            ],
+                        ))
+                        .size(11.0)
+                        .color(motif::TEXT_DIM),
+                    );
+                });
+            }
+            ui.add_space(6.0);
+            if rows.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr("loc_empty"))
+                        .size(12.0)
+                        .color(motif::TEXT_DIM),
+                );
+                return;
+            }
+            let body = ui.available_rect_before_wrap();
+            if body.height() < 40.0 {
+                return;
+            }
+            let inner = motif::well(ui, body);
+            let mut running_total = 0.0;
+            motif::inside(ui, inner, |ui| {
+                // Horizontal too: the row ends in buttons, and a button
+                // that has fallen off the panel is a button nobody can
+                // press. Below about 1100 px the last one needs it.
+                egui::ScrollArea::both()
+                    .id_salt("locations")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        egui::Grid::new("loc_grid")
+                            .num_columns(6)
+                            .spacing([10.0, 6.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for header in [
+                                    tr("loc_col_label"),
+                                    tr("loc_col_started"),
+                                    tr("loc_col_ended"),
+                                    tr("loc_col_due"),
+                                    tr("loc_col_renewal"),
+                                    "",
+                                ] {
+                                    ui.label(
+                                        egui::RichText::new(header)
+                                            .size(10.5)
+                                            .color(motif::TEXT_DIM),
+                                    );
+                                }
+                                ui.end_row();
+                                for l in &rows {
+                                    ui.label(egui::RichText::new(&l.label).size(12.0));
+                                    ui.label(
+                                        egui::RichText::new(db::format_french_date(&l.started_on))
+                                            .size(11.5),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(if l.running() {
+                                            tr("loc_running").to_owned()
+                                        } else {
+                                            db::format_french_date(&l.ended_on)
+                                        })
+                                        .size(11.5)
+                                        .color(
+                                            if l.running() {
+                                                motif::ACCENT
+                                            } else {
+                                                motif::TEXT
+                                            },
+                                        ),
+                                    );
+                                    let due = crate::location::amount_due(
+                                        &l.started_on,
+                                        &l.ended_on,
+                                        &today,
+                                        l.period(),
+                                        l.fee,
+                                        l.max_periods,
+                                    );
+                                    // The count and the money share one
+                                    // cell: with seven columns and three
+                                    // buttons, the row ran off the right
+                                    // of the panel at a counter width.
+                                    match due {
+                                        Some((periods, amount)) => {
+                                            if l.running() {
+                                                running_total += amount;
+                                            }
+                                            ui.label(
+                                                egui::RichText::new(trn(
+                                                    "loc_periods",
+                                                    &[
+                                                        &periods.to_string(),
+                                                        &l.period().agreed(periods),
+                                                        &crate::codex::format_quantity(amount),
+                                                    ],
+                                                ))
+                                                .size(12.0),
+                                            );
+                                        }
+                                        None => {
+                                            // A backwards or unreadable
+                                            // date bills nothing and says
+                                            // so, rather than showing 0 €
+                                            // as if it were a decision.
+                                            ui.label(
+                                                egui::RichText::new(tr("loc_bad_dates"))
+                                                    .size(11.0)
+                                                    .color(motif::ALERT),
+                                            );
+                                        }
+                                    }
+                                    // The renewal, coloured by how it
+                                    // stands rather than merely printed.
+                                    match crate::location::next_renewal(
+                                        l.renewal_base(),
+                                        l.renewal_days,
+                                    ) {
+                                        Some(day) if l.running() => {
+                                            let colour = match crate::location::standing(
+                                                &day, &today, notice,
+                                            ) {
+                                                Some(crate::location::Standing::Overdue) => {
+                                                    motif::ALERT
+                                                }
+                                                Some(crate::location::Standing::Soon) => {
+                                                    motif::ACCENT
+                                                }
+                                                _ => motif::TEXT,
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(db::format_french_date(&day))
+                                                    .size(11.5)
+                                                    .color(colour),
+                                            );
+                                        }
+                                        _ => {
+                                            ui.label(
+                                                egui::RichText::new("—")
+                                                    .size(11.5)
+                                                    .color(motif::TEXT_DIM),
+                                            );
+                                        }
+                                    }
+                                    ui.horizontal(|ui| {
+                                        if l.running() {
+                                            match &mut session.loc_return {
+                                                Some((id, date)) if *id == l.id => {
+                                                    ui.add_sized(
+                                                        [86.0, 20.0],
+                                                        egui::TextEdit::singleline(date).hint_text(
+                                                            db::format_french_date(&today),
+                                                        ),
+                                                    );
+                                                    if motif::button(ui, tr("form_save")).clicked()
+                                                    {
+                                                        close = Some((l.id, date.clone()));
+                                                    }
+                                                }
+                                                _ => {
+                                                    if motif::button(ui, tr("loc_return"))
+                                                        .on_hover_text(tr("loc_return_tooltip"))
+                                                        .clicked()
+                                                    {
+                                                        session.loc_return =
+                                                            Some((l.id, String::new()));
+                                                    }
+                                                }
+                                            }
+                                            if l.renewal_days > 0
+                                                && motif::button(ui, tr("loc_renew"))
+                                                    .on_hover_text(tr("loc_renew_tooltip"))
+                                                    .clicked()
+                                            {
+                                                renew = Some(l.id);
+                                            }
+                                        }
+                                        let confirming = session.loc_confirm_delete == Some(l.id);
+                                        let label = if confirming {
+                                            tr("patient_delete_confirm")
+                                        } else {
+                                            tr("patient_delete")
+                                        };
+                                        if motif::button(ui, label)
+                                            .on_hover_text(tr("loc_delete_tooltip"))
+                                            .clicked()
+                                        {
+                                            if confirming {
+                                                delete = Some((l.id, l.label.clone()));
+                                            } else {
+                                                session.loc_confirm_delete = Some(l.id);
+                                            }
+                                        }
+                                    });
+                                    ui.end_row();
+                                }
+                            });
+                    });
+            });
+            if running_total > 0.0 {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(trf(
+                        "loc_running_total",
+                        crate::codex::format_quantity(running_total),
+                    ))
+                    .size(11.5)
+                    .color(motif::TEXT_DIM),
+                );
+            }
+        });
+        if add {
+            Self::add_location(session, patient, config);
+        }
+        if let Some((id, typed)) = close {
+            let day = Self::read_loc_date(&typed, &today);
+            match day {
+                Some(day) => {
+                    if let Some(l) = session.locations.iter().find(|l| l.id == id).cloned() {
+                        match session.db.update_location_dates(
+                            id,
+                            &l.started_on,
+                            &day,
+                            &l.renewed_on,
+                            (&l.started_on, &l.ended_on, &l.renewed_on),
+                        ) {
+                            Ok(true) => session.load_locations(patient.id),
+                            Ok(false) => {
+                                session.error = Some(tr("loc_stale").to_owned());
+                                session.load_locations(patient.id);
+                            }
+                            Err(e) => session.error = Some(e),
+                        }
+                    }
+                }
+                None => session.error = Some(tr("loc_bad_date").to_owned()),
+            }
+        }
+        if let Some(id) = renew {
+            if let Some(l) = session.locations.iter().find(|l| l.id == id).cloned() {
+                match session.db.update_location_dates(
+                    id,
+                    &l.started_on,
+                    &l.ended_on,
+                    &today,
+                    (&l.started_on, &l.ended_on, &l.renewed_on),
+                ) {
+                    Ok(true) => session.load_locations(patient.id),
+                    Ok(false) => {
+                        session.error = Some(tr("loc_stale").to_owned());
+                        session.load_locations(patient.id);
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if let Some((id, label)) = delete {
+            match session.db.delete_location(id, &label) {
+                Ok(true) => session.load_locations(patient.id),
+                Ok(false) => {
+                    session.error = Some(tr("loc_stale").to_owned());
+                    session.load_locations(patient.id);
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
+    /// A date typed in the pane: French, compact shorthand accepted, and
+    /// empty means today — the case that happens at the counter.
+    fn read_loc_date(typed: &str, today: &str) -> Option<String> {
+        if typed.trim().is_empty() {
+            return Some(today.to_owned());
+        }
+        let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+        db::parse_french_date(typed, year, db::YearHint::Future).ok()
+    }
+
+    /// Hand a machine out, copying the forfait as it stands today.
+    fn add_location(session: &mut Session, patient: &Patient, config: &Config) {
+        let forfaits: Vec<&crate::config::LocationForfait> = config
+            .locations
+            .forfaits
+            .iter()
+            .filter(|f| f.is_named())
+            .collect();
+        let Some(f) = forfaits.get(session.loc_pick) else {
+            return;
+        };
+        let today = session.today.clone();
+        let Some(start) = Self::read_loc_date(&session.loc_start, &today) else {
+            session.error = Some(tr("loc_bad_date").to_owned());
+            return;
+        };
+        let row = db::Location {
+            id: 0,
+            patient_id: patient.id,
+            label: f.label.trim().to_owned(),
+            lpp: f.lpp.trim().to_owned(),
+            period: f.period.label().to_owned(),
+            fee: f.fee,
+            renewal_days: f.renewal_days,
+            max_periods: f.max_periods,
+            started_on: start,
+            ended_on: String::new(),
+            renewed_on: String::new(),
+            remark: String::new(),
+        };
+        match session.db.add_location(&row) {
+            Ok(_) => {
+                session.loc_start.clear();
+                session.error = None;
+                session.load_locations(patient.id);
+            }
+            Err(e) => session.error = Some(e),
+        }
     }
 
     /// The results themselves: one line per reading, with what it is
@@ -14182,10 +14727,15 @@ impl App {
                             session.today.clone()
                         };
                         let lines = billing_lines(&rows, config);
-                        if lines.is_empty() {
+                        // The rentals still out belong on the same
+                        // sheet: they are billed in the same envelope,
+                        // and a forfait forgotten is a forfait lost.
+                        let rentals = billing_rentals(&session.db, &today);
+                        if lines.is_empty() && rentals.is_empty() {
                             session.export_notice = Some(tr("dash_billing_none").to_owned());
                         } else if let Err(e) = crate::pdf::open_billing_recap(
                             &lines,
+                            &rentals,
                             tr("dash_billing_period"),
                             &db::format_french_date(&today),
                         ) {
@@ -14385,6 +14935,7 @@ impl App {
                 let mut open_patient: Option<i64> = None;
                 let mut open_recent: Option<Patient> = None;
                 let mut open_bio: Option<i64> = None;
+                let mut open_locations: Option<i64> = None;
 
                 // Each entry is (title, height, painter). They are dealt
                 // into the columns in order, so a one-column window
@@ -14407,6 +14958,12 @@ impl App {
                 // the panel appears when there is one, and not before.
                 if !session.to_schedule.is_empty() {
                     panels.insert(4, (tr("dash_schedule"), 190.0));
+                }
+                // And for the rentals whose ordonnance has lapsed: a
+                // forfait runs on by itself, and this is the only place
+                // it comes back into view before an indu does.
+                if !session.loc_watch.is_empty() {
+                    panels.insert(4, (tr("loc_due_title"), 190.0));
                 }
                 // On a tall screen the natural grid stopped short and
                 // left a band of grey under it; stretch the panels to
@@ -14466,6 +15023,11 @@ impl App {
                                         open_patient = Some(id);
                                     }
                                 }
+                                t if t == tr("loc_due_title") => {
+                                    if let Some(id) = Self::dash_locations(ui, session, body) {
+                                        open_locations = Some(id);
+                                    }
+                                }
                                 t if t == tr("dash_recent") => {
                                     open_recent = Self::dash_recent(ui, session, body)
                                 }
@@ -14487,6 +15049,13 @@ impl App {
                         // Straight to the tab the panel was talking
                         // about: the reason to open this file is on it.
                         session.patient_tab = PatientTab::Bio;
+                    }
+                } else if let Some(id) = open_locations {
+                    if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                        session.view = MainView::Search;
+                        session.show_amounts = false;
+                        session.open_patient(p);
+                        session.patient_tab = PatientTab::Locations;
                     }
                 } else if let Some(p) = open_recent {
                     session.view = MainView::Search;
@@ -14536,6 +15105,53 @@ impl App {
                             if motif::list_row(ui, egui::RichText::new(&w.name).size(12.5), false)
                                 .on_hover_text(&w.first)
                                 .clicked()
+                            {
+                                open = Some(w.patient_id);
+                            }
+                        });
+                    }
+                });
+        });
+        ui.allocate_space(rect.size());
+        open
+    }
+
+    /// The rentals whose ordonnance has lapsed or is about to: what is
+    /// still at a patient's home on a prescription that has run out.
+    /// Clicking a row opens the file straight on its Locations tab.
+    fn dash_locations(ui: &mut egui::Ui, session: &Session, rect: egui::Rect) -> Option<i64> {
+        let mut open = None;
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_locations")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    for w in &session.loc_watch {
+                        ui.horizontal(|ui| {
+                            let (word, colour) = if w.overdue {
+                                (tr("loc_overdue"), motif::ALERT)
+                            } else {
+                                (tr("loc_soon"), egui::Color32::from_rgb(0x7a, 0x5c, 0x1f))
+                            };
+                            ui.label(
+                                egui::RichText::new(format!("  {word}  "))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(colour),
+                            );
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(trn(
+                                    "loc_due_line",
+                                    &[&w.name, &w.label, &db::format_french_date(&w.renewal)],
+                                ))
+                                .size(12.0),
+                                false,
+                            )
+                            .clicked()
                             {
                                 open = Some(w.patient_id);
                             }
@@ -16099,6 +16715,137 @@ impl eframe::App for App {
                                         .push(crate::config::Operator::default());
                                 }
                             }
+                            if page == OptionsPage::Locations {
+                                // Empty by default and empty on purpose:
+                                // the LPP moves, and a tarif shipped in
+                                // the application would be a tarif wrong
+                                // within the year. The officine writes
+                                // what its own line pays.
+                                motif::section(ui, tr("loc_options_title"));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("loc_options_hint"))
+                                            .size(11.0)
+                                            .color(motif::TEXT_DIM),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("loc_opt_notice"))
+                                            .size(11.0)
+                                            .color(motif::TEXT_DIM),
+                                    );
+                                    let mut notice = editor.cfg.locations.notice_days.to_string();
+                                    if ui
+                                        .add_sized(
+                                            [56.0, 24.0],
+                                            egui::TextEdit::singleline(&mut notice),
+                                        )
+                                        .changed()
+                                    {
+                                        editor.cfg.locations.notice_days =
+                                            notice.trim().parse().unwrap_or(0);
+                                    }
+                                });
+                                ui.add_space(6.0);
+                                let mut drop: Option<usize> = None;
+                                egui::Grid::new("opts_locations")
+                                    .num_columns(7)
+                                    .spacing([8.0, 6.0])
+                                    .show(ui, |ui| {
+                                        for header in [
+                                            tr("loc_opt_label"),
+                                            tr("loc_opt_lpp"),
+                                            tr("loc_opt_period"),
+                                            tr("loc_opt_fee"),
+                                            tr("loc_opt_renewal"),
+                                            tr("loc_opt_max"),
+                                            "",
+                                        ] {
+                                            ui.label(
+                                                egui::RichText::new(header)
+                                                    .size(11.0)
+                                                    .color(motif::TEXT_DIM),
+                                            );
+                                        }
+                                        ui.end_row();
+                                        for (i, f) in
+                                            editor.cfg.locations.forfaits.iter_mut().enumerate()
+                                        {
+                                            ui.add_sized(
+                                                [170.0, 24.0],
+                                                egui::TextEdit::singleline(&mut f.label),
+                                            );
+                                            ui.add_sized(
+                                                [200.0, 24.0],
+                                                egui::TextEdit::singleline(&mut f.lpp),
+                                            );
+                                            egui::ComboBox::from_id_salt(("loc_period", i))
+                                                .selected_text(f.period.label())
+                                                .width(88.0)
+                                                .show_ui(ui, |ui| {
+                                                    for p in crate::config::Period::ALL {
+                                                        ui.selectable_value(
+                                                            &mut f.period,
+                                                            p,
+                                                            p.label(),
+                                                        );
+                                                    }
+                                                });
+                                            let mut fee = crate::codex::format_quantity(f.fee);
+                                            if ui
+                                                .add_sized(
+                                                    [70.0, 24.0],
+                                                    egui::TextEdit::singleline(&mut fee),
+                                                )
+                                                .changed()
+                                            {
+                                                f.fee = crate::codex::parse_amount(&fee)
+                                                    .map(|(v, _)| v)
+                                                    .unwrap_or(0.0);
+                                            }
+                                            let mut days = f.renewal_days.to_string();
+                                            if ui
+                                                .add_sized(
+                                                    [56.0, 24.0],
+                                                    egui::TextEdit::singleline(&mut days),
+                                                )
+                                                .changed()
+                                            {
+                                                f.renewal_days = days.trim().parse().unwrap_or(0);
+                                            }
+                                            let mut max = f.max_periods.to_string();
+                                            if ui
+                                                .add_sized(
+                                                    [56.0, 24.0],
+                                                    egui::TextEdit::singleline(&mut max),
+                                                )
+                                                .changed()
+                                            {
+                                                f.max_periods = max.trim().parse().unwrap_or(0);
+                                            }
+                                            if motif::button(ui, tr("itv_delete"))
+                                                .on_hover_text(tr("loc_opt_remove"))
+                                                .clicked()
+                                            {
+                                                drop = Some(i);
+                                            }
+                                            ui.end_row();
+                                        }
+                                    });
+                                if let Some(i) = drop {
+                                    editor.cfg.locations.forfaits.remove(i);
+                                }
+                                if motif::button(ui, tr("loc_opt_add")).clicked() {
+                                    editor
+                                        .cfg
+                                        .locations
+                                        .forfaits
+                                        .push(crate::config::LocationForfait::default());
+                                }
+                            }
                             if page == OptionsPage::Mentions {
                                 // Nothing here is filled in by the
                                 // application: an empty field prints no
@@ -16740,6 +17487,7 @@ impl eframe::App for App {
             self.config = cfg;
             if let State::Unlocked(session) = &mut self.state {
                 session.cycle_months = self.config.rules.cycle_months.max(1);
+                session.loc_notice_days = self.config.locations.notice_days;
                 session.refresh_dashboard();
             }
         }
