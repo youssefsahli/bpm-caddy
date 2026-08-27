@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.78.0] - 2026-08-27
+
+### Added
+- **Trente-cinq fiches de plus reçoivent leur posologie** : ce qui se
+  délivre en ville et qu'aucune ligne ne couvrait encore — le
+  Parkinson en complément de la lévodopa, la narcolepsie et le TDAH
+  (avec leurs règles de prescription et de délivrance), les IMAO et
+  leurs associations interdites, l'addictologie entière (Aotal, Revia,
+  Baclocur, Zyban), le patch de capsaïcine, la gynécologie de ville, la
+  contraception par implant, et les quelques anticancéreux oraux qui
+  passent au comptoir. 1 354 lignes sur 443 fiches.
+
 ## [0.77.0] - 2026-08-27
 
 ### Changed
