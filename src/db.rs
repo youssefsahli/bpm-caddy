@@ -20671,6 +20671,285 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
         "Le comprimé se prend au moment du repas : oublié, il ne sert plus à rien après.",
         "Crampes, fourmillements, douleur osseuse, démangeaisons.",
     ),
+    // --- Ce que le comptoir délivre et qui n'avait pas encore ses deux
+    // réponses. Les classes purement hospitalières restent volontairement
+    // sans règle : « en cas d'oubli » ne veut rien dire pour une
+    // perfusion posée par une équipe.
+    (
+        "antitussif opiacé",
+        "Sirop pris à la demande : il n'y a pas de dose à rattraper. Ne jamais rapprocher les prises pour compenser, et ne pas dépasser le nombre de prises par jour indiqué sur la boîte.",
+        "Toux qui dure au-delà de cinq jours, fièvre, essoufflement, crachats colorés ou sanglants, somnolence inhabituelle chez la personne qui le prend ou chez l'enfant de l'entourage.",
+    ),
+    (
+        "antitussif",
+        "Pris à la demande sur une toux sèche : un oubli n'a pas de conséquence, et on ne rattrape pas.",
+        "Toux qui dure plus de cinq jours, qui devient grasse, fièvre, essoufflement, douleur à respirer, ou toux qui empêche de dormir malgré le traitement.",
+    ),
+    (
+        "BDLA inhalé",
+        "Traitement de fond : prendre l'inhalation dès qu'on y pense, sauf si la suivante est proche. Jamais deux inhalations pour rattraper.",
+        "Essoufflement qui résiste au bronchodilatateur de secours, besoin croissant de celui-ci, réveils nocturnes répétés, difficulté à finir une phrase.",
+    ),
+    (
+        "tiotropium",
+        "Une inhalation par jour : prendre l'oubli dès qu'on y pense, sauf si la prise du lendemain est proche. Jamais deux dans la même journée.",
+        "Essoufflement qui s'aggrave, expectoration qui change de couleur ou de volume, fièvre. Œil rouge et douloureux, vision trouble avec halos : la poudre projetée dans l'œil peut déclencher un glaucome aigu.",
+    ),
+    (
+        "anti-goutteux",
+        "En crise, reprendre le schéma prescrit sans rattraper la dose oubliée : la dose maximale du premier jour ne se dépasse jamais. En traitement de fond, prendre l'oubli le jour même.",
+        "Diarrhée, nausées ou vomissements : ce sont les premiers signes de surdosage, ils imposent d'arrêter et d'appeler. Faiblesse musculaire, fourmillements, fièvre, saignements ou bleus inhabituels.",
+    ),
+    (
+        "anti-H2",
+        "Prendre dès que possible ; si la prise suivante est proche, sauter simplement l'oubli.",
+        "Selles noires ou vomissements de sang, douleur qui s'aggrave ou irradie, difficulté à avaler, amaigrissement.",
+    ),
+    (
+        "antiacide",
+        "Traitement à la demande : il n'y a pas d'oubli, on le prend quand la gêne est là.",
+        "Brûlures quotidiennes depuis plus de trois semaines, douleur ou difficulté à avaler, vomissements de sang, selles noires, amaigrissement.",
+    ),
+    (
+        "pansement gastrique",
+        "Prendre l'oubli s'il reste au moins deux heures avant la prise suivante et avant tout autre médicament ; sinon sauter.",
+        "Selles noires, vomissements de sang, douleur qui s'aggrave, constipation qui s'installe.",
+    ),
+    (
+        "antiflatulent",
+        "Traitement de confort pris quand la gêne est là : un oubli n'a pas de conséquence.",
+        "Ballonnement avec arrêt des gaz et des selles, ventre dur, douleur intense, vomissements.",
+    ),
+    (
+        "antisécrétoire intestinal",
+        "Prendre l'oubli à la prise suivante sans doubler ; le traitement s'arrête dès que les selles redeviennent normales.",
+        "Diarrhée avec fièvre, sang ou glaires, soif intense, bouche sèche, urines rares ou foncées, somnolence — surtout chez l'enfant et la personne âgée.",
+    ),
+    (
+        "antibiotique non absorbé",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche ; la régularité fait l'efficacité.",
+        "Confusion, somnolence, tremblement des mains, inversion du jour et de la nuit : ce sont les signes que l'encéphalopathie revient.",
+    ),
+    (
+        "sulfamide antibactérien",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche, et terminer la boîte même si tout va mieux.",
+        "Éruption cutanée, même discrète, surtout avec fièvre ou atteinte des muqueuses : arrêter et appeler le jour même. Maux de gorge, fièvre, bleus inhabituels, urines rares.",
+    ),
+    (
+        "streptogramine",
+        "Prendre l'oubli au cours du repas suivant, sans doubler, et terminer le traitement.",
+        "Éruption cutanée étendue avec fièvre, diarrhée abondante ou sanglante pendant ou après le traitement, jaunisse.",
+    ),
+    (
+        "lincosamide",
+        "Prendre l'oubli avec un grand verre d'eau, sauf si la prise suivante est proche, et aller au bout de la prescription.",
+        "Diarrhée abondante ou glaireuse pendant ou dans les deux mois qui suivent le traitement : elle se signale sans attendre et ne se traite jamais par un antidiarrhéique seul.",
+    ),
+    (
+        "antibiotique local",
+        "Appliquer dès qu'on y pense et reprendre le rythme habituel : ce qui compte est de terminer les quelques jours prescrits.",
+        "Lésion qui s'étend, devient douloureuse ou suinte davantage, fièvre, traînée rouge remontant le long du membre.",
+    ),
+    (
+        "antibiotique topique",
+        "Appliquer dès qu'on y pense et reprendre le rythme habituel ; le traitement reste court, sans le prolonger de soi-même.",
+        "Lésion qui s'étend ou s'aggrave, fièvre, ganglions douloureux, traînée rouge le long du membre.",
+    ),
+    (
+        "cicatrisant topique",
+        "Appliquer à la place prévue le lendemain ; un pansement sauté ne compromet rien.",
+        "Plaie qui rougit sur son pourtour, devient douloureuse, dégage une odeur, ou ne réduit pas après quinze jours ; fièvre.",
+    ),
+    (
+        "antipsoriasique topique",
+        "Appliquer dès qu'on y pense et reprendre le rythme, sans doubler la quantité.",
+        "Irritation vive ou brûlure persistante, extension des plaques, articulations douloureuses et raides le matin.",
+    ),
+    (
+        "topique — acné",
+        "Appliquer le soir suivant sans compenser : l'effet se construit sur des semaines, pas sur une application.",
+        "Rougeur, brûlure ou desquamation qui ne s'atténuent pas après deux semaines, lésions douloureuses et profondes, cicatrices qui apparaissent.",
+    ),
+    (
+        "zinc oral",
+        "Prendre l'oubli à jeun dans la journée si possible, sinon passer : l'effet se juge sur trois mois.",
+        "Nausées ou douleurs d'estomac persistantes, lésions qui s'aggravent malgré trois mois de traitement.",
+    ),
+    (
+        "immunomodulateur topique",
+        "Appliquer au soir prévu suivant ; ne jamais rattraper deux applications de suite.",
+        "Réaction locale qui empêche de dormir ou de marcher, plaie qui ne se referme pas, fièvre et ganglions.",
+    ),
+    (
+        "antipoux local",
+        "Il n'y a pas d'oubli : le traitement est une application, puis une seconde huit à dix jours après. C'est cette seconde qui compte, et c'est elle qu'on oublie.",
+        "Cuir chevelu qui s'infecte, lésions suintantes, ganglions du cou ; poux encore vivants après la seconde application.",
+    ),
+    (
+        "veinotonique",
+        "Prendre l'oubli le jour même, sans doubler ; l'effet est symptomatique.",
+        "Jambe brutalement gonflée, chaude et douloureuse, surtout d'un seul côté ; plaie qui ne guérit pas à la cheville ; saignement hémorroïdaire abondant ou répété.",
+    ),
+    (
+        "inhibiteur du courant If",
+        "Prendre l'oubli au cours du repas si la prise suivante n'est pas trop proche, sinon sauter.",
+        "Pouls au repos en dessous de 50, malaise, essoufflement inhabituel, palpitations irrégulières. Les phosphènes lumineux, eux, sont attendus et sans gravité.",
+    ),
+    (
+        "antiangineux métabolique",
+        "Prendre l'oubli au cours du repas suivant, sans doubler.",
+        "Tremblement, mouvements anormaux, marche instable ou chutes : signalés sous cette molécule, ils imposent de la revoir. Douleur thoracique plus fréquente ou survenant au repos.",
+    ),
+    (
+        "hypolipémiant",
+        "Prendre l'oubli le jour même ; si l'on s'en aperçoit le lendemain, passer la dose.",
+        "Douleurs musculaires diffuses avec urines foncées, fatigue inhabituelle, jaunisse.",
+    ),
+    (
+        "inhibiteur 5-alpha-réductase",
+        "Prendre l'oubli le jour même, sinon passer : l'effet se construit sur des mois.",
+        "Impossibilité d'uriner, sang dans les urines, douleur du bas-ventre, boule ou douleur d'un sein.",
+    ),
+    (
+        "antifibrinolytique",
+        "Prendre l'oubli dès qu'on y pense pendant les jours de traitement ; ne pas prolonger au-delà de la durée prescrite pour compenser.",
+        "Jambe gonflée et douloureuse, douleur thoracique, essoufflement brutal, troubles de la vision.",
+    ),
+    (
+        "sétron",
+        "Prendre l'oubli dès qu'on y pense ; l'objectif est de rester en avance sur la nausée, pas de la rattraper.",
+        "Vomissements qui empêchent de boire, urines rares, constipation de plus de trois jours, palpitations ou malaise.",
+    ),
+    (
+        "antagoniste NK1",
+        "Le schéma est lié aux jours de la cure : une prise oubliée se signale à l'équipe plutôt que rattrapée au hasard.",
+        "Vomissements incoercibles, impossibilité de boire, fièvre, éruption cutanée.",
+    ),
+    (
+        "mélatonine",
+        "Prise du soir : si l'on s'en aperçoit une fois couché, on ne la prend pas — une mélatonine prise au milieu de la nuit décale le réveil.",
+        "Somnolence dans la journée, cauchemars ou agitation nocturne, insomnie qui persiste au-delà d'un mois malgré le traitement.",
+    ),
+    (
+        "anti-vertigineux",
+        "Prendre l'oubli si la journée n'est pas trop avancée ; ne pas doubler la prise suivante.",
+        "Vertige brutal accompagné de maux de tête, de troubles de la parole, d'une vision double, d'une faiblesse d'un côté du corps ou d'une surdité soudaine : ce n'est plus un vertige à traiter, c'est une urgence.",
+    ),
+    (
+        "antivertigineux",
+        "Prendre l'oubli au cours du repas suivant, sans doubler ; l'effet s'apprécie sur plusieurs semaines.",
+        "Vertige brutal avec maux de tête, troubles de la parole, vision double, faiblesse d'un côté du corps, ou surdité d'apparition soudaine.",
+    ),
+    (
+        "mémantine",
+        "Prendre l'oubli le jour même ; s'il est constaté le lendemain, passer la dose. Après plusieurs jours d'arrêt, la titration recommence depuis le début.",
+        "Confusion ou agitation nouvelles, chutes répétées, convulsions, refus de s'alimenter ou de boire.",
+    ),
+    (
+        "calcium",
+        "Prendre l'oubli dans la journée, à distance des autres médicaments ; ne pas doubler.",
+        "Constipation qui s'installe, nausées, soif intense, urines abondantes, douleur du flanc pouvant évoquer un calcul.",
+    ),
+    (
+        "magnésium",
+        "Prendre l'oubli au cours d'un repas ; ne pas doubler.",
+        "Diarrhée persistante — c'est le signe que la dose est trop forte —, faiblesse musculaire, malaise chez un patient dont les reins fonctionnent mal.",
+    ),
+    (
+        "thiamine",
+        "Prendre l'oubli dans la journée ; ne pas doubler.",
+        "Confusion, troubles de l'équilibre, vision double : chez un patient en sevrage alcoolique, ce sont des signes qui s'évaluent en urgence.",
+    ),
+    (
+        "cyanocobalamine",
+        "Prendre l'oubli dans la journée ; pour la forme injectable, c'est la date du prochain rendez-vous qui compte, et elle se note.",
+        "Fourmillements ou perte de sensibilité des pieds et des mains, troubles de l'équilibre, langue lisse et douloureuse, essoufflement à l'effort.",
+    ),
+    (
+        "acide folique",
+        "Prendre l'oubli dans la journée ; ne pas doubler.",
+        "Fatigue et pâleur qui s'installent, essoufflement à l'effort, aphtes à répétition.",
+    ),
+    (
+        "acide ascorbique",
+        "Prendre l'oubli le matin même ; passé la mi-journée, mieux vaut sauter que risquer une nuit blanche.",
+        "Fatigue qui dure malgré le traitement, saignements des gencives, douleur du flanc évoquant un calcul urinaire.",
+    ),
+    (
+        "sevrage alcoolique",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche : la régularité est ce qui soutient l'abstinence.",
+        "Reprise de la consommation, tremblements, sueurs, angoisse ou insomnie majeures, idées noires.",
+    ),
+    (
+        "alcoolodépendance",
+        "Prendre l'oubli dès qu'on y pense, sans doubler ; ne jamais interrompre brutalement un traitement en cours de titration.",
+        "Somnolence importante, confusion, difficulté à marcher, humeur qui s'effondre ou idées noires.",
+    ),
+    (
+        "sevrage tabagique",
+        "Prendre l'oubli dès qu'on y pense en respectant au moins huit heures entre deux prises ; ne jamais doubler.",
+        "Agitation, humeur qui change, idées noires, convulsion, éruption cutanée étendue.",
+    ),
+    (
+        "TDAH",
+        "Prise du matin ou du midi oubliée : la prendre si la matinée n'est pas finie, sinon passer — une prise tardive coûte une nuit de sommeil.",
+        "Perte d'appétit et de poids, ralentissement de la croissance chez l'enfant, palpitations, tension qui monte, humeur qui change ou idées noires en début de traitement.",
+    ),
+    (
+        "narcolepsie",
+        "Prise du matin oubliée : la prendre si la matinée n'est pas finie, sinon passer.",
+        "Palpitations, tension qui monte, éruption cutanée, humeur qui change ou idées noires.",
+    ),
+    (
+        "SERM",
+        "Prendre l'oubli dès qu'on y pense ; s'il est constaté le lendemain, passer la dose.",
+        "Jambe gonflée, chaude et douloureuse, douleur thoracique, essoufflement brutal, troubles de la vision : le risque thromboembolique est celui de cette classe.",
+    ),
+    (
+        "anti-RANKL",
+        "Il n'y a pas de dose quotidienne : l'oubli qui compte est celui de l'injection semestrielle, et un retard expose à des fractures vertébrales de rebond. La date se note le jour de l'injection précédente.",
+        "Douleur dorsale d'apparition brutale, douleur de la mâchoire ou dent qui bouge, crampes, fourmillements autour de la bouche.",
+    ),
+    (
+        "DMARD",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche ; l'effet se juge sur des mois et un oubli isolé ne le compromet pas.",
+        "Fièvre, maux de gorge, aphtes, bleus inhabituels, essoufflement ou toux sèche qui s'installe, jaunisse.",
+    ),
+    (
+        "IMAO-A",
+        "Prendre l'oubli au cours du repas suivant, sans doubler.",
+        "Maux de tête violents et brutaux, tension qui monte, agitation, fièvre avec sueurs et tremblements — surtout si un autre médicament a été ajouté récemment.",
+    ),
+    (
+        "agoniste GIP/GLP-1",
+        "Injection hebdomadaire : la faire dans les quatre jours qui suivent l'oubli, puis reprendre le jour habituel. Au-delà, passer la semaine — on ne rattrape jamais deux injections rapprochées.",
+        "Douleur abdominale intense irradiant dans le dos avec vomissements, vomissements qui empêchent de boire, déshydratation, troubles de la vision chez un patient diabétique.",
+    ),
+    (
+        "anti-androgène",
+        "Prendre l'oubli le jour même ; s'il est constaté le lendemain, passer la dose.",
+        "Jaunisse, urines foncées, douleur ou grosseur d'un sein, essoufflement inhabituel.",
+    ),
+    (
+        "antiarthrosique d'action lente",
+        "Prendre l'oubli à la fin du repas suivant ; l'effet se juge sur des semaines, un oubli isolé ne change rien.",
+        "Diarrhée qui persiste, urines foncées, jaunisse, fatigue inhabituelle.",
+    ),
+    (
+        "antiglutamate — SLA",
+        "Prendre l'oubli s'il reste plusieurs heures avant la prise suivante, sinon passer ; ne jamais doubler.",
+        "Fièvre inexpliquée — elle fait contrôler la numération —, jaunisse, urines foncées, toux ou essoufflement qui s'installent.",
+    ),
+    (
+        "antipsoriasique oral",
+        "Prendre l'oubli au cours du repas suivant, sans doubler.",
+        "Diarrhée qui persiste au-delà de quelques semaines, fièvre, maux de gorge, troubles de la parole ou de la marche, faiblesse d'un côté du corps.",
+    ),
+    (
+        "oxazolidinone",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche ; la durée prescrite ne se dépasse pas de soi-même.",
+        "Baisse de la vision ou des couleurs, fourmillements des pieds et des mains, agitation avec fièvre et sueurs si un antidépresseur est associé, bleus inhabituels.",
+    ),
 ];
 
 /// How many drugs a fresh base starts with.
