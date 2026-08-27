@@ -27922,6 +27922,82 @@ mod tests {
         );
     }
 
+    /// The posology coverage only ever improves.
+    ///
+    /// Some classes will never carry a counter posology: the dose of an
+    /// antiepileptic, an antipsychotic or an oral anticancer is titrated
+    /// by the specialist against the patient, and a plausible-looking
+    /// line there would be worse than a blank one. A vaccine's schedule
+    /// lives in [`crate::vaccines`]. Those are named below and stay
+    /// named.
+    ///
+    /// The rest is honest debt: 813 cards, and a good third still
+    /// without their line — collyres, laxatifs, insulines, pénicillines,
+    /// contraceptions. Rather than invent an exception list that would
+    /// launder that debt into a decision, this test is a ratchet: it
+    /// records how many classes are still uncovered and fails if the
+    /// number grows. Adding a card without a posology in a new class is
+    /// caught; every batch written lowers the figure, and lowering it is
+    /// the point.
+    #[test]
+    fn the_posology_coverage_only_improves() {
+        // Titrated by the specialist, or scheduled elsewhere: no
+        // counter posology exists to write.
+        const NO_POSOLOGY: &[&str] = &[
+            "antiépileptique",
+            "antipsychotique",
+            "immunosuppresseur",
+            "inhibiteur JAK",
+            "immunomodulateur — SEP",
+            "anticorps monoclonal — SEP",
+            "modulateur S1P — SEP",
+            "anti-CD20",
+            "anticancéreux oral",
+            "alkylant",
+            "anti-HER2",
+            "anti-VEGF",
+            "anti-estrogène",
+            "hormonothérapie — anti-aromatase",
+            "analogue de la GnRH",
+            "antagoniste de la GnRH",
+            "inhibiteur CDK4/6",
+            "inhibiteur du protéasome",
+            "inhibiteur de tyrosine kinase",
+            "immunothérapie anti-PD-1",
+            "alcaloïde de la pervenche",
+            "vaccin",
+        ];
+        // Lower this as batches are written. It may never rise.
+        const CEILING: usize = 250;
+
+        let with: std::collections::HashSet<&str> = STARTER_POSOLOGIES
+            .iter()
+            .map(|(brand, ..)| *brand)
+            .collect();
+        let mut classes: Vec<&str> = STARTER_DRUGS
+            .iter()
+            .filter(|(name, ..)| !with.contains(name))
+            .filter(|(_, _, class, _)| !NO_POSOLOGY.iter().any(|c| class.contains(c)))
+            .map(|(_, _, class, _)| *class)
+            .collect();
+        classes.sort_unstable();
+        classes.dedup();
+        assert!(
+            classes.len() <= CEILING,
+            "{} classes sans posologie, le plafond est {CEILING} : \
+             une fiche a été ajoutée sans sa ligne, ou une classe a été \
+             retirée de la liste des exemptions",
+            classes.len()
+        );
+        // The ceiling is not allowed to drift far above reality either:
+        // a plafond that nobody lowers stops being a ratchet.
+        assert!(
+            classes.len() + 25 >= CEILING,
+            "le plafond {CEILING} est loin devant les {} classes restantes — abaissez-le",
+            classes.len()
+        );
+    }
+
     #[test]
     fn every_conduite_rule_reaches_a_card() {
         for (key, _, _) in STARTER_CONDUITE {

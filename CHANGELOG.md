@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.86.1] - 2026-08-27
+
+### Added
+- **Un cliquet sur la couverture des posologies.** La liste des classes
+  qui n'en auront jamais est explicite — celles que le spécialiste titre
+  contre son patient, et les vaccins dont les schémas vivent dans
+  `vaccines.rs`. Pour le reste, la mesure est franche : il manque encore
+  une ligne à un bon tiers des fiches, et inventer une liste
+  d'exemptions aurait transformé cette dette en décision. Le test
+  enregistre donc le nombre de classes encore découvertes et échoue s'il
+  augmente : une fiche ajoutée sans sa posologie est attrapée, et chaque
+  lot écrit fait baisser le chiffre. Il refuse aussi qu'on laisse le
+  plafond dériver loin devant la réalité — un plafond que personne
+  n'abaisse cesse d'être un cliquet.
+
 ## [0.86.0] - 2026-08-27
 
 ### Added
