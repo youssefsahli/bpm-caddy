@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.100.0] - 2026-08-28
+
+### Fixed
+Une passe sur l'axe qu'on n'avait jamais essayé : **« échelle du
+texte » à 1,25**, ce que l'officine met quand l'écran du comptoir se lit
+debout. Les hauteurs réservées étaient en pixels alors que le texte, lui,
+grandissait — donc plus le réglage sert, moins les vues tiennent.
+
+- **Le tableau des entretiens reperdait sa ligne** à 1,25 : le journal
+  gardait son plancher de 170 px, à peine trois de ses propres lignes à
+  cette échelle, pendant que le tableau au-dessus en demandait un quart
+  de plus. Les deux planchers se comptent maintenant **en lignes** — la
+  répartition est la même à toutes les échelles.
+- **« Voyage » perdait son bouton « Retirer »** sous le bord du panneau,
+  pour la même raison : son plancher de 96 px valait cinq lignes à
+  l'échelle normale et quatre à 1,25.
+- Vérifié aux deux échelles et aux deux tailles : rien n'a régressé à
+  1,0.
+
+Les correctifs des versions précédentes tiennent d'eux-mêmes à 1,25,
+parce qu'ils mesurent (`button_width`, `wrapped_rows`) au lieu de
+supposer — ce qui est l'argument pour mesurer.
+
 ## [0.99.0] - 2026-08-28
 
 ### Changed
