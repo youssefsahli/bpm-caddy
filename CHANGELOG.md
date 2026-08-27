@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.75.0] - 2026-08-27
+
+### Added
+- **« Dans le texte… » : une recherche plein texte des monographies.**
+  La recherche par nom répond à « où est l'Eliquis » ; celle-ci répond à
+  l'autre moitié des questions du comptoir — « lesquelles de ces fiches
+  parlent de pamplemousse », « lesquelles allongent le QT », « lesquelles
+  sont photosensibilisantes ». Chaque passage revient avec la phrase
+  telle que la fiche l'écrit, sous le nom de la section d'où elle vient,
+  et le nom de la spécialité ouvre la fiche. Treize sections sont lues —
+  indications, mécanisme, posologie, contre-indications, interactions,
+  effets indésirables, toxicité, surveillance, IUP, « en cas d'oubli »,
+  « ce qui doit faire consulter », formes et dosages, notes de l'équipe.
+  Recherche exacte et non floue, insensible aux accents et à la casse :
+  sur huit cents monographies, une sous-séquence approximative trouve
+  tout et ne répond à rien. La base n'est relue que lorsque le texte
+  change, jamais à chaque image.
+
+### Changed
+- Vingt-sept clés de `assets/strings.fr.toml` avaient survécu aux vues
+  qui les affichaient — trois barres d'outils, un en-tête d'agenda, un
+  tableau d'honoraires. Elles sont retirées, et un test tient l'inverse
+  de celui qui existait : une clé que plus personne n'affiche fait
+  échouer la construction. Le fichier est celui que l'officine surcharge,
+  et chaque ligne est une promesse que la modifier change quelque chose.
+
 ## [0.74.0] - 2026-08-27
 
 ### Added

@@ -1326,6 +1326,12 @@ struct Session {
     show_tables: bool,
     /// One search across every reference table at once.
     table_query: String,
+    /// The full-text search of the monographs: whether it is open, what
+    /// is typed, and what it found (computed when the text changes, not
+    /// per frame — eight hundred cards is not work for a frame).
+    show_mono: bool,
+    mono_query: String,
+    mono_hits: Vec<MonoHit>,
     /// The codex: the preparations, what is open, and the quantity the
     /// counter actually has to make.
     show_codex: bool,
@@ -1571,6 +1577,9 @@ impl Session {
             map_lens: MapLens::default(),
             map_country: None,
             map_query: String::new(),
+            show_mono: false,
+            mono_query: String::new(),
+            mono_hits: Vec::new(),
             goto_open: false,
             goto_query: String::new(),
             goto_selected: 0,
@@ -2475,6 +2484,100 @@ fn sentence_around(text: &str, from: usize, len: usize) -> String {
         .map(|i| tail + i + 1)
         .unwrap_or(text.len());
     text[start..end].trim().to_owned()
+}
+
+/// The prose of a card, field by field, as the full-text search reads
+/// it: the label the section carries on screen, and how to get at it.
+type MonoField = (&'static str, fn(&Drug) -> &str);
+
+const MONO_FIELDS: [MonoField; 13] = [
+    ("drug_sec_indications", |d| d.indications.as_str()),
+    ("drug_sec_mechanism", |d| d.mechanism.as_str()),
+    ("mono_f_dosage", |d| d.dosage.as_str()),
+    ("drug_sec_ci", |d| d.contraindications.as_str()),
+    ("mono_f_ddi", |d| d.ddi.as_str()),
+    ("drug_sec_adverse", |d| d.adverse.as_str()),
+    ("drug_sec_toxicity", |d| d.toxicity.as_str()),
+    ("drug_sec_monitoring", |d| d.monitoring.as_str()),
+    ("mono_f_iup", |d| d.iup.as_str()),
+    ("mono_f_missed", |d| d.missed_dose.as_str()),
+    ("mono_f_flags", |d| d.red_flags.as_str()),
+    ("mono_f_forms", |d| d.forms.as_str()),
+    ("mono_f_notes", |d| d.notes.as_str()),
+];
+
+/// One place a searched word was found in the prose of the base.
+pub struct MonoHit {
+    pub drug: i64,
+    pub name: String,
+    pub dci: String,
+    /// The `strings.fr.toml` key of the section it was found in.
+    pub field: &'static str,
+    /// The sentence it sits in, quoted as the card has it.
+    pub sentence: String,
+}
+
+/// Where `needle` — already folded — occurs in `text`, as a byte range.
+///
+/// Folding is one character in, one character out, but not one *byte*:
+/// « é » is two bytes and « e » is one, so the position has to be
+/// counted in characters and converted back at the end. Searching the
+/// folded copy directly and reusing its byte offsets would cut the
+/// sentence mid-character.
+fn folded_find(text: &str, needle: &[char]) -> Option<(usize, usize)> {
+    if needle.is_empty() {
+        return None;
+    }
+    let folded: Vec<char> = fuzzy::sort_key(text).chars().collect();
+    // One entry per character, plus the end of the string, so the
+    // match's last character has somewhere to point past.
+    let mut offsets: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
+    offsets.push(text.len());
+    if folded.len() + 1 != offsets.len() || needle.len() > folded.len() {
+        return None;
+    }
+    (0..=folded.len() - needle.len())
+        .find(|&i| folded[i..i + needle.len()] == *needle)
+        .map(|i| (offsets[i], offsets[i + needle.len()]))
+}
+
+/// Every place `query` appears in the prose of the base, in the order
+/// the cards are held, capped at `limit`.
+///
+/// Plain containment, accent- and case-insensitive — not the fuzzy
+/// subsequence the name search uses. Over eight hundred monographs a
+/// subsequence match returns the whole base and answers nothing; here
+/// the question is « which fiches say *pamplemousse* », and it has an
+/// exact answer.
+pub fn mono_search(drugs: &[Drug], query: &str, limit: usize) -> Vec<MonoHit> {
+    let needle: Vec<char> = fuzzy::sort_key(query.trim()).chars().collect();
+    // Two letters match half the base; the search waits for a word.
+    if needle.len() < 3 {
+        return Vec::new();
+    }
+    let mut hits = Vec::new();
+    for d in drugs {
+        for (field, get) in MONO_FIELDS {
+            let text = get(d);
+            if text.is_empty() {
+                continue;
+            }
+            let Some((at, end)) = folded_find(text, &needle) else {
+                continue;
+            };
+            hits.push(MonoHit {
+                drug: d.id,
+                name: d.name.clone(),
+                dci: d.dci.clone(),
+                field,
+                sentence: sentence_around(text, at, end - at),
+            });
+            if hits.len() >= limit {
+                return hits;
+            }
+        }
+    }
+    hits
 }
 
 /// Link every prose field of one card against the rest of the base.
@@ -3452,6 +3555,15 @@ impl App {
                         }
                         Ok("tables") => {
                             session.show_tables = true;
+                            session.view = MainView::Drugs;
+                        }
+                        // The full-text search of the monographs, with
+                        // a word in it: the hit list is its own path.
+                        Ok("mono_search") => {
+                            session.show_mono = true;
+                            session.mono_query = "pamplemousse".to_owned();
+                            session.mono_hits =
+                                mono_search(&session.drugs, &session.mono_query, 200);
                             session.view = MainView::Drugs;
                         }
                         // The jump box, with something typed in it: the
@@ -12418,6 +12530,13 @@ impl App {
                 } else {
                     session.table_query.clear();
                 }
+            } else if session.show_mono {
+                if session.mono_query.trim().is_empty() {
+                    session.show_mono = false;
+                } else {
+                    session.mono_query.clear();
+                    session.mono_hits.clear();
+                }
             } else {
                 session.view = MainView::Search;
                 return;
@@ -12436,6 +12555,10 @@ impl App {
             Self::protocols_view(ui, session);
             return;
         }
+        if session.show_mono {
+            Self::mono_view(ui, ctx, session);
+            return;
+        }
 
         // The title block belongs to the base's index, not to an open
         // card: the tab already says which drug is on screen, and the
@@ -12450,6 +12573,12 @@ impl App {
                 let doors = |ui: &mut egui::Ui, session: &mut Session| {
                     if motif::button(ui, tr("tables_button")).clicked() {
                         session.show_tables = true;
+                    }
+                    if motif::button(ui, tr("mono_button"))
+                        .on_hover_text(tr("mono_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_mono = true;
                     }
                     if motif::button(ui, tr("proto_button"))
                         .on_hover_text(tr("proto_button_tooltip"))
@@ -13731,6 +13860,109 @@ impl App {
     /// The rows of every table that answer what is being typed, with
     /// the table they come from. The team's own corrections are what is
     /// searched and shown: paper and screen never disagree.
+    /// The full-text search of the monographs.
+    ///
+    /// The name search answers « where is Eliquis » ; this one answers
+    /// the other half of the counter's questions — « which of these
+    /// fiches say pamplemousse », « which ones mention le QT », « which
+    /// ones are photosensibilisants ». Each hit is the sentence as the
+    /// card has it, and the card's name opens it.
+    fn mono_view(ui: &mut egui::Ui, ctx: &egui::Context, session: &mut Session) {
+        let mut open_drug: Option<Drug> = None;
+        motif::page(ui, 900.0, |ui| {
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                ui.heading(tr("mono_title"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if motif::button(ui, tr("patient_back")).clicked() {
+                        session.show_mono = false;
+                    }
+                });
+            });
+            ui.label(
+                egui::RichText::new(tr("mono_subtitle"))
+                    .size(11.5)
+                    .color(motif::TEXT_DIM),
+            );
+            ui.add_space(10.0);
+            let search = ui.add_sized(
+                [ui.available_width(), 32.0],
+                egui::TextEdit::singleline(&mut session.mono_query).hint_text(tr("mono_hint")),
+            );
+            motif::bevel(ui.painter(), search.rect.expand(2.0), false);
+            if !ctx.wants_keyboard_input() {
+                search.request_focus();
+            }
+            // The base is searched when the text changes, never per
+            // frame: eight hundred cards times thirteen fields is a
+            // second of work at sixty frames a second.
+            if search.changed() {
+                session.mono_hits = mono_search(&session.drugs, &session.mono_query, 200);
+            }
+            ui.add_space(10.0);
+            let typed = session.mono_query.trim().chars().count();
+            if typed == 0 {
+                return;
+            }
+            if typed < 3 {
+                ui.label(
+                    egui::RichText::new(tr("mono_short"))
+                        .size(11.5)
+                        .color(motif::TEXT_DIM),
+                );
+                return;
+            }
+            ui.label(
+                egui::RichText::new(trn(
+                    "mono_count",
+                    &[&session.mono_hits.len(), &session.drugs.len()],
+                ))
+                .size(11.5)
+                .color(motif::TEXT_DIM),
+            );
+            ui.add_space(6.0);
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 40.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("mono_search")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for hit in &session.mono_hits {
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, &hit.name).clicked() {
+                                    open_drug =
+                                        session.drugs.iter().find(|d| d.id == hit.drug).cloned();
+                                }
+                                let mut head = tr(hit.field).to_owned();
+                                if !hit.dci.is_empty() {
+                                    head = format!("{}   ·   {}", hit.dci, head);
+                                }
+                                ui.label(
+                                    egui::RichText::new(head).size(11.0).color(motif::TEXT_DIM),
+                                );
+                            });
+                            ui.scope(|ui| {
+                                ui.set_max_width(ui.available_width());
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(&hit.sentence).size(12.0))
+                                        .wrap(),
+                                );
+                            });
+                            ui.add_space(8.0);
+                        }
+                    });
+            });
+        });
+        if let Some(d) = open_drug {
+            session.show_mono = false;
+            session.open_drug_card(d);
+        }
+    }
+
     fn tables_search_results(ui: &mut egui::Ui, session: &mut Session) {
         let query = session.table_query.trim().to_owned();
         let edits = session.db.all_table_cells().unwrap_or_default();
@@ -15836,6 +16068,60 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    #[test]
+    fn the_prose_search_quotes_the_sentence_it_found() {
+        use super::{mono_search, MONO_FIELDS};
+        use crate::db::Drug;
+        let mut d = Drug {
+            id: 4,
+            name: "Simvastatine".to_owned(),
+            dci: "simvastatine".to_owned(),
+            ..Drug::default()
+        };
+        d.ddi = "Le jus de pamplemousse multiplie l'exposition ; il est \
+                 contre-indiqué. Association aux macrolides à éviter."
+            .to_owned();
+        d.adverse = "Myalgies. Rhabdomyolyse rare.".to_owned();
+        let base = [d];
+        // Accents and case are folded on both sides, and the answer is
+        // the sentence, not the whole field.
+        let hits = mono_search(&base, "PAMPLEMOUSSE", 20);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].drug, 4);
+        assert_eq!(hits[0].field, "mono_f_ddi");
+        // Up to the first full stop or semicolon, which is where the
+        // useful clause ends — not the whole paragraph.
+        assert_eq!(
+            hits[0].sentence,
+            "Le jus de pamplemousse multiplie l'exposition ;"
+        );
+        // A word that is nowhere finds nothing, and two letters are not
+        // a word: they would return half the base.
+        assert!(mono_search(&base, "amiodarone", 20).is_empty());
+        assert!(mono_search(&base, "my", 20).is_empty());
+        // Every section the search reads has a label to show it under.
+        for (key, _) in MONO_FIELDS {
+            assert_ne!(crate::strings::tr(key), key, "libellé manquant : {key}");
+        }
+    }
+
+    #[test]
+    fn a_folded_match_cuts_the_sentence_on_a_character() {
+        use super::mono_search;
+        use crate::db::Drug;
+        // « é » is two bytes and « e » is one: a search that reused the
+        // folded copy's byte offset would slice mid-character and panic.
+        let d = Drug {
+            id: 1,
+            name: "Test".to_owned(),
+            adverse: "Réaction cutanée sévère à surveiller ; arrêt immédiat.".to_owned(),
+            ..Drug::default()
+        };
+        let hits = mono_search(&[d], "severe", 5);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].sentence, "Réaction cutanée sévère à surveiller ;");
+    }
 
     #[test]
     fn the_jump_box_ranks_by_score_then_by_kind() {

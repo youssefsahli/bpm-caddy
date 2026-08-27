@@ -107,6 +107,46 @@ mod tests {
         );
     }
 
+    /// …and the other way round: a key nobody uses is dead weight.
+    ///
+    /// The file is the officine's to override, so every line in it is a
+    /// promise that changing that line changes something on screen.
+    /// Twenty-seven keys had outlived the views that showed them —
+    /// three toolbars, an agenda header, a fee table — and an operator
+    /// editing one of them would have been editing nothing.
+    #[test]
+    fn every_key_in_the_file_is_used_somewhere() {
+        // Any string literal in the sources counts, not only the ones
+        // inside `tr(`: some keys are held in tables and looked up
+        // through a variable (`MONO_FIELDS`, the section labels).
+        const SOURCES: &[&str] = &[
+            include_str!("app.rs"),
+            include_str!("pdf.rs"),
+            include_str!("config.rs"),
+            include_str!("db.rs"),
+            include_str!("bulletin.rs"),
+        ];
+        let literal = |key: &str| {
+            let quoted = format!("\"{key}\"");
+            SOURCES.iter().any(|s| s.contains(&quoted))
+        };
+        let dead: Vec<&str> = EMBEDDED
+            .lines()
+            .filter_map(|l| l.split_once('=').map(|(k, _)| k.trim()))
+            .filter(|k| {
+                !k.is_empty()
+                    && k.chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            })
+            .filter(|k| !literal(k))
+            .collect();
+        assert!(
+            dead.is_empty(),
+            "clés de assets/strings.fr.toml que plus personne n'affiche :\n{}",
+            dead.join("\n")
+        );
+    }
+
     /// Look a key up without the `'static` requirement of [`tr`].
     fn tr_lookup(key: &str) -> Option<&'static str> {
         table().get(key).map(|s| s.as_str())

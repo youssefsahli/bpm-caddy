@@ -49,6 +49,7 @@ shot() { # $1 = view, $2 = output file, $3.. = extra VAR=value env
 
 shot search docs/screenshot.png
 shot goto docs/screenshot_goto.png
+shot mono_search docs/screenshot_mono.png
 shot dashboard docs/screenshot_dashboard.png
 shot patient docs/screenshot_patient.png
 shot drug_card docs/screenshot_drugs.png
