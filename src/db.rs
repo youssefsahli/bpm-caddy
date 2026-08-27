@@ -20950,6 +20950,206 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
         "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche ; la durée prescrite ne se dépasse pas de soi-même.",
         "Baisse de la vision ou des couleurs, fourmillements des pieds et des mains, agitation avec fièvre et sueurs si un antidépresseur est associé, bleus inhabituels.",
     ),
+    (
+        "antibiotique urinaire",
+        "Traitement court, souvent une dose unique : il n'y a rien à rattraper, mais la prise se fait bien au moment prévu, vessie vidée juste avant pour la dose unique du soir.",
+        "Fièvre, frissons, douleur du dos ou du flanc, vomissements, sang dans les urines, ou symptômes qui persistent après 48 heures : la cystite est devenue autre chose.",
+    ),
+    (
+        "supplément potassique",
+        "Prendre l'oubli au cours du repas suivant avec un grand verre d'eau ; ne jamais doubler.",
+        "Faiblesse musculaire, fourmillements, palpitations ou pouls irrégulier, malaise. Douleur ou blocage à l'avaler pour les formes à libération prolongée.",
+    ),
+    (
+        "supplémentation potassique",
+        "Prendre l'oubli au cours du repas suivant avec un grand verre d'eau, assis ; ne jamais doubler.",
+        "Faiblesse musculaire, fourmillements, palpitations, malaise ; douleur en avalant le comprimé.",
+    ),
+    (
+        "antipaludéen de synthèse",
+        "Prendre l'oubli au cours du repas suivant ; l'effet de fond se construit sur des mois, un oubli isolé ne le compromet pas.",
+        "Baisse de la vision, gêne à la lumière ou halos colorés : l'atteinte rétinienne est ce que la surveillance ophtalmologique cherche. Éruption cutanée étendue, faiblesse musculaire, malaise.",
+    ),
+    (
+        "antithyroïdien de synthèse",
+        "Prendre l'oubli le jour même ; s'il est constaté le lendemain, passer la dose et ne pas doubler.",
+        "Fièvre, mal de gorge ou aphtes : arrêter et faire une numération le jour même, c'est ainsi que l'agranulocytose se révèle. Jaunisse, urines foncées, douleur du côté droit.",
+    ),
+    (
+        "activateur des canaux potassiques",
+        "Prendre l'oubli si la prise suivante n'est pas proche, sinon sauter ; ne pas doubler.",
+        "Ulcérations de la bouche, de l'anus ou de la peau, parfois tardives et douloureuses : elles imposent de revoir le traitement et ne cicatrisent pas tant qu'il continue. Douleur thoracique plus fréquente.",
+    ),
+    (
+        "trithérapie inhalée",
+        "Une inhalation par jour : prendre l'oubli dès qu'on y pense, sauf si celle du lendemain est proche. Jamais deux dans la même journée, et se rincer la bouche après.",
+        "Essoufflement qui s'aggrave, besoin croissant du bronchodilatateur de secours, réveils nocturnes, fièvre ou expectoration qui change. Voix enrouée ou taches blanches dans la bouche : le rinçage n'est pas fait.",
+    ),
+    (
+        "BDLA + AMLA inhalés",
+        "Une inhalation par jour : prendre l'oubli dès qu'on y pense, sauf si celle du lendemain est proche.",
+        "Essoufflement qui s'aggrave, expectoration qui change de couleur, fièvre. Œil rouge et douloureux avec halos : la poudre projetée dans l'œil peut déclencher un glaucome aigu.",
+    ),
+    (
+        "antigrippal inhalé",
+        "Traitement de cinq jours : prendre l'oubli dès qu'on y pense, sauf si la prise suivante est dans moins de deux heures.",
+        "Essoufflement ou sifflement pendant l'inhalation, surtout chez l'asthmatique ; fièvre qui remonte après amélioration, douleur thoracique, confusion.",
+    ),
+    (
+        "bronchodilatateur xanthique",
+        "Prendre l'oubli s'il reste plusieurs heures avant la prise suivante, sinon passer : la marge est étroite et deux doses rapprochées suffisent à intoxiquer.",
+        "Nausées, vomissements, agitation, tremblement, palpitations ou pouls rapide : ce sont les premiers signes de surdosage. Convulsion.",
+    ),
+    (
+        "anxiolytique non benzodiazépinique",
+        "Prendre l'oubli si la journée n'est pas trop avancée ; ne pas doubler.",
+        "Éruption cutanée, jaunisse ou urines foncées, aggravation de l'anxiété, idées noires.",
+    ),
+    (
+        "chélateur des acides biliaires",
+        "Prendre l'oubli au repas suivant, en respectant deux heures avec tout autre médicament ; ne pas doubler.",
+        "Constipation qui s'installe, ballonnement douloureux, saignements ou bleus inhabituels lors d'un traitement prolongé.",
+    ),
+    (
+        "décongestionnant local",
+        "Traitement à la demande et court : pas de dose à rattraper, et cinq jours au maximum.",
+        "Nez qui se rebouche dès que le traitement s'arrête, palpitations, maux de tête, tension qui monte, insomnie.",
+    ),
+    (
+        "vasoconstricteur nasal",
+        "Traitement court à la demande : on ne rattrape pas, et on ne dépasse pas cinq jours.",
+        "Congestion qui revient plus fort à l'arrêt, palpitations, maux de tête, tension qui monte ; chez l'enfant, somnolence ou pâleur.",
+    ),
+    (
+        "inhibiteur de l'anhydrase carbonique",
+        "Prendre l'oubli si la journée n'est pas trop avancée ; ne pas doubler.",
+        "Fourmillements des mains et du visage, faiblesse, crampes, urines très abondantes, éruption cutanée, douleur du flanc évoquant un calcul.",
+    ),
+    (
+        "vasodilatateur donneur de NO",
+        "Prendre l'oubli si la prise suivante n'est pas proche, sinon sauter.",
+        "Maux de tête violents et persistants, malaise en se levant, douleur thoracique plus fréquente ou survenant au repos.",
+    ),
+    (
+        "inhibiteur des alpha-glucosidases",
+        "Ce comprimé se prend avec la première bouchée du repas : l'oubli constaté après le repas ne se rattrape pas.",
+        "Ballonnements et flatulences qui ne s'atténuent pas après quelques semaines, douleur abdominale intense, jaunisse. Une hypoglycémie sous cette classe se resucre au glucose pur, jamais au sucre de table.",
+    ),
+    (
+        "gouttes auriculaires",
+        "Instiller l'oubli dès qu'on y pense et reprendre le rythme ; le flacon se réchauffe quelques instants dans la main avant l'instillation.",
+        "Douleur qui s'aggrave, écoulement purulent ou sanglant, fièvre, baisse de l'audition, vertige.",
+    ),
+    (
+        "larmes artificielles",
+        "Produit de confort instillé à la demande : il n'y a pas d'oubli.",
+        "Douleur oculaire, baisse de la vision, œil rouge et photophobe, sensation de corps étranger qui persiste.",
+    ),
+    (
+        "correcteur anticholinergique",
+        "Prendre l'oubli si la prise suivante n'est pas proche ; ne jamais arrêter brutalement.",
+        "Bouche très sèche, constipation, rétention d'urine, confusion, vision trouble, œil rouge et douloureux.",
+    ),
+    (
+        "antimigraineux de crise",
+        "Traitement de crise : pas de dose à rattraper. Ne pas dépasser le nombre de prises quotidiennes ni plus de deux jours par semaine au long cours.",
+        "Céphalée différente des migraines habituelles, brutale et intense, avec fièvre, raideur de la nuque, troubles de la parole ou de la vision.",
+    ),
+    (
+        "traitement de substitution aux opiacés",
+        "Prise quotidienne à heure fixe : un oubli se signale au centre ou au prescripteur plutôt que rattrapé de soi-même, et jamais deux doses ensemble.",
+        "Somnolence importante, respiration lente, confusion — surtout si de l'alcool ou un calmant a été pris. Jaunisse, urines foncées. Reprise de consommation, idées noires.",
+    ),
+    (
+        "réduction de la consommation d'alcool",
+        "Comprimé pris à la demande, une à deux heures avant le moment à risque : il n'y a pas d'oubli à rattraper. Pris trop tard, il se prend quand même.",
+        "Nausées, vertiges ou confusion qui empêchent la journée, insomnie qui s'installe, idées noires.",
+    ),
+    (
+        "emplâtre — douleur neuropathique",
+        "Poser l'emplâtre dès qu'on y pense, en respectant douze heures de pose et douze heures sans : ne jamais rattraper en le laissant plus longtemps.",
+        "Rougeur ou cloques sous l'emplâtre, douleur qui change de nature, faiblesse d'un membre.",
+    ),
+    (
+        "anesthésique local — crème/patch",
+        "La crème s'applique une heure à une heure et demie avant le geste : appliquée trop tard, on décale le geste plutôt que d'écourter le temps de pose.",
+        "Pâleur grise des lèvres ou des ongles, essoufflement, somnolence chez le nourrisson : la méthémoglobinémie est rare et doit être vue en urgence.",
+    ),
+    (
+        "anticholinergique — mal des transports",
+        "Le patch se pose derrière l'oreille quelques heures avant le départ : oublié, il se pose dès qu'on y pense, un seul à la fois.",
+        "Vision trouble persistante, œil rouge et douloureux, confusion, difficulté à uriner. Se laver les mains après la pose : le produit porté à l'œil dilate la pupille.",
+    ),
+    (
+        "antibactérien topique — brûlures",
+        "Appliquer dès qu'on y pense et reprendre le rythme quotidien.",
+        "Brûlure qui s'étend, devient plus douloureuse ou malodorante, fièvre, cloques qui se multiplient, brûlure du visage, des mains ou des articulations.",
+    ),
+    (
+        "émulsion — brûlures",
+        "Application de confort : pas de dose à rattraper. Jamais sur une plaie ouverte ni sur une brûlure suintante.",
+        "Brûlure qui blanchit ou noircit, cloques étendues, douleur qui augmente, fièvre.",
+    ),
+    (
+        "topique — dermite séborrhéique",
+        "Appliquer dès qu'on y pense et reprendre le rythme habituel.",
+        "Lésions qui s'étendent au-delà des zones habituelles, suintement, croûtes jaunes, fièvre.",
+    ),
+    (
+        "antimitotique topique",
+        "Reprendre au jour prévu suivant : ce traitement suit des cycles d'application et de repos qui ne se rattrapent pas.",
+        "Douleur, érosion ou saignement importants, lésions qui s'étendent, fièvre.",
+    ),
+    (
+        "traitement de l'alopécie",
+        "Appliquer dès qu'on y pense ; deux applications le même jour ne rattrapent rien.",
+        "Palpitations, malaise, prise de poids rapide ou gonflement des chevilles, pilosité qui apparaît ailleurs que sur le cuir chevelu.",
+    ),
+    (
+        "5-alpha-réductase — alopécie",
+        "Prendre l'oubli le jour même, sinon passer : l'effet se juge sur des mois.",
+        "Douleur ou grosseur d'un sein, humeur qui s'effondre, idées noires, troubles sexuels persistants.",
+    ),
+    (
+        "estrogénothérapie de la ménopause",
+        "Prendre l'oubli le jour même ; s'il est constaté le lendemain, passer la dose sans doubler.",
+        "Jambe gonflée et douloureuse, douleur thoracique, essoufflement brutal, maux de tête inhabituels, saignement génital en dehors des règles.",
+    ),
+    (
+        "anti-infectieux vaginal",
+        "Reprendre le soir suivant ; un ovule oublié ne se rattrape pas en en mettant deux.",
+        "Fièvre, douleur du bas-ventre, pertes malodorantes, saignement, symptômes qui persistent après le traitement.",
+    ),
+    (
+        "probiotique vaginal",
+        "Reprendre au jour prévu suivant ; il n'y a rien à rattraper.",
+        "Fièvre, douleur du bas-ventre, pertes malodorantes ou colorées, démangeaison qui persiste.",
+    ),
+    (
+        "bouffées de chaleur",
+        "Prendre l'oubli si la journée n'est pas trop avancée ; ne pas doubler.",
+        "Fourmillements passagers après la prise — ils sont attendus et brefs ; bouffées qui s'aggravent, saignement génital, douleur ou boule d'un sein.",
+    ),
+    (
+        "phytothérapie — HBP",
+        "Prendre l'oubli au cours du repas suivant ; l'effet est symptomatique et se juge sur des semaines.",
+        "Impossibilité d'uriner, sang dans les urines, fièvre avec brûlures, douleur du bas-ventre.",
+    ),
+    (
+        "préparation colique",
+        "Le schéma est lié à l'heure de l'examen : une dose non prise se signale au service plutôt que rattrapée, sous peine d'examen ininterprétable.",
+        "Vomissements qui empêchent de boire, douleur abdominale intense, ventre dur, malaise, absence totale de selles après la préparation complète.",
+    ),
+    (
+        "auto-injecteur — choc anaphylactique",
+        "Ce n'est pas un traitement quotidien : rien à rattraper. Ce qui s'oublie, c'est la date de péremption et le fait d'avoir toujours deux stylos sur soi.",
+        "Après toute injection, appeler le 15 et s'allonger jambes surélevées : la réaction peut repartir une à huit heures plus tard, même si tout va mieux.",
+    ),
+    (
+        "phytothérapie — inducteur enzymatique",
+        "Prendre l'oubli le jour même ; mais l'essentiel est ailleurs : ce produit ne s'ajoute ni ne s'arrête sans revoir toute l'ordonnance.",
+        "Contraception qui échoue, greffe ou traitement du VIH, du cœur ou du cancer qui perd son efficacité : les interactions de cette plante sont son principal danger. Agitation et sueurs si un antidépresseur est associé.",
+    ),
 ];
 
 /// How many drugs a fresh base starts with.
@@ -27472,6 +27672,128 @@ mod tests {
 
     /// A conduite rule that matches no card is content nobody will
     /// ever read: every key must reach at least one starter fiche.
+    /// Every shipped card either gets the two counter answers, or is on
+    /// the short list of products a professional administers.
+    ///
+    /// « En cas d'oubli » means nothing for a perfusion, an intravitreal
+    /// injection or an oxytocic, so those are deliberately left blank —
+    /// the same discipline as the specialist-titrated classes that ship
+    /// without a posology. What this test forbids is the third case: a
+    /// card that falls through the rules by accident and nobody notices,
+    /// because a blank section looks exactly like a deliberate one.
+    #[test]
+    fn every_card_has_the_two_answers_or_is_a_named_exception() {
+        // Given by someone else — a perfusion, an injection in a care
+        // setting, an emergency kit a bystander uses. There is no dose
+        // to forget, and inventing one would be worse than the blank.
+        const ADMINISTERED: &[&str] = &[
+            "Arixtra",
+            "Arganova",
+            "Meronem",
+            "Vancomycine",
+            "Xolair",
+            "Eylea",
+            "Lucentis",
+            "Avastin",
+            "Herceptin",
+            "Navelbine",
+            "Velcade",
+            "Kisqali",
+            "Votrient",
+            "Orencia",
+            "Entyvio",
+            "MisoOne",
+            "Gonal-f",
+            "Syntocinon",
+            "Tractocile",
+            "Cyanokit",
+            "Qutenza",
+            "Xylocaïne",
+            "Naropéine",
+            "Marcaïne",
+            "Chirocaïne",
+            "Scandicaïne",
+            "Nalador",
+            "Méthergin",
+            "Rhophylac",
+            "Beyfortus",
+            "GlucaGen",
+            "Prenoxad",
+        ];
+        // Taken by the patient, and still without the two answers. This
+        // list is the remaining work, named rather than hidden: a blank
+        // section is indistinguishable from a deliberate one, so the gap
+        // is written down and shrinks release after release.
+        const PENDING: &[&str] = &[
+            "Verquvo",
+            "Orgaran",
+            "Praxilène",
+            "Gutron",
+            "Tracleer",
+            "Kayexalate",
+            "Lokelma",
+            "Mimpara",
+            "Eprex",
+            "Aranesp",
+            "Jinarc",
+            "Bicarbonate de sodium",
+            "Descovy",
+            "Ofev",
+            "Esbriet",
+            "Kaftrio",
+            "Forsteo",
+            "Otézla",
+            "Efudix",
+            "Clomid",
+            "Ovitrelle",
+            "Chibro-Proscar",
+            "Minirin",
+            "Neupogen",
+            "Iressa",
+        ];
+        // The same match the seeding pass uses: class, tags, DCI, name.
+        let tags = |name: &str| {
+            STARTER_DETAILS
+                .iter()
+                .find(|d| d.name == name)
+                .map(|d| d.tags)
+                .unwrap_or("")
+        };
+        let uncovered: Vec<&str> = STARTER_DRUGS
+            .iter()
+            .filter(|(name, dci, class, _)| {
+                !STARTER_CONDUITE.iter().any(|(key, _, _)| {
+                    class.contains(key)
+                        || tags(name).contains(key)
+                        || dci.contains(key)
+                        || name.contains(key)
+                })
+            })
+            .map(|(name, ..)| *name)
+            .collect();
+        let unexpected: Vec<&&str> = uncovered
+            .iter()
+            .filter(|n| !ADMINISTERED.contains(n) && !PENDING.contains(n))
+            .collect();
+        assert!(
+            unexpected.is_empty(),
+            "fiches sans « en cas d'oubli » ni « ce qui doit faire consulter », \
+             et qui ne sont pas administrées par un professionnel :\n{unexpected:#?}"
+        );
+        // …and the exception list stays honest: an entry that a rule has
+        // since caught is an entry to delete, not to keep as an alibi.
+        let stale: Vec<&&str> = ADMINISTERED
+            .iter()
+            .chain(PENDING.iter())
+            .filter(|n| !uncovered.contains(n))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "exceptions devenues inutiles — une règle les atteint, \
+             il faut les retirer de la liste : {stale:?}"
+        );
+    }
+
     #[test]
     fn every_conduite_rule_reaches_a_card() {
         for (key, _, _) in STARTER_CONDUITE {

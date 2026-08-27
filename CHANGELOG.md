@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.83.0] - 2026-08-27
+
+### Added
+- **Quarante règles de conduite de plus** (205 au total) : les fiches
+  que la mesure précédente n'avait pas vues — l'antibiotique urinaire en
+  dose unique, le potassium qu'on avale assis avec un grand verre d'eau,
+  l'antithyroïdien dont la fièvre et le mal de gorge imposent une
+  numération le jour même, le nicorandil et ses ulcérations tardives,
+  la théophylline dont deux doses rapprochées suffisent à intoxiquer,
+  l'acarbose qui se resucre au glucose pur et jamais au sucre de table,
+  les traitements de substitution aux opiacés, la crème anesthésiante
+  posée trop tard qui décale le geste plutôt que d'écourter la pose,
+  l'auto-injecteur d'adrénaline dont ce qui s'oublie n'est pas une dose
+  mais la péremption et le second stylo, et le millepertuis dont le
+  danger n'est pas lui mais tout ce qu'il annule.
+- **Un test nomme la part qui manque.** Chaque fiche doit désormais
+  porter les deux réponses, ou figurer sur l'une de deux listes
+  explicites : celle des produits qu'un professionnel administre — une
+  perfusion n'a pas de dose oubliée — et celle du travail qui reste,
+  vingt-cinq fiches nommées une par une. Une section vide ressemble
+  exactement à une section volontairement vide : la seule façon de ne
+  pas confondre les deux est de les écrire.
+
 ## [0.82.0] - 2026-08-27
 
 ### Added
