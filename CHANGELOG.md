@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.80.1] - 2026-08-27
+
+### Changed
+- Le mode d'emploi imprimable (F12 › « Mode d'emploi ») rattrape
+  l'application : une section pour les deux recherches — « Aller à… »
+  et « Dans le texte… » —, Ctrl+K dans la ligne des raccourcis, et les
+  deux chiffres qui avaient vieilli (les fiches, les tables). Un
+  exemplaire près du poste qui décrit une version d'avant ne sert à
+  personne.
+
 ## [0.80.0] - 2026-08-27
 
 ### Added

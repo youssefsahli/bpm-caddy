@@ -1023,11 +1023,15 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le référentiel médicaments (F3)",
-        "812 fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et ce que l'équipe écrit n'est jamais réécrit par une mise à jour.",
+        "Plus de huit cents fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et ce que l'équipe écrit n'est jamais réécrit par une mise à jour.",
     ),
     (
         "Les tables, le codex, les protocoles",
-        "Depuis les médicaments : « Tables de conversion » (vingt-cinq références, une recherche unique les traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
+        "Depuis les médicaments : « Tables de conversion » (vingt-sept références datées, une recherche unique les traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
+    ),
+    (
+        "Chercher partout : « Aller à… » et « Dans le texte… »",
+        "Ctrl+K ouvre une boîte au-dessus de tout : tapez trois lettres et elle rend les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches — c'est là que vivent les vraies questions du comptoir. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », et chaque fiche qui le dit revient avec la phrase qui le porte, mot surligné, la posologie et sa remarque comprises. Une fiche patient ouverte ? Un bouton limite la recherche à ses seuls traitements.",
     ),
     (
         "L'agenda et le carnet de transmissions",
@@ -1043,7 +1047,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Raccourcis",
-        "Ctrl+F chercher · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme ce qui est ouvert. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08 de l'année utile.",
+        "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme ce qui est ouvert. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08 de l'année utile.",
     ),
     (
         "En cas de doute",
