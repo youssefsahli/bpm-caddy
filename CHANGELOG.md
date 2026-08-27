@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.86.0] - 2026-08-27
+
+### Added
+- **Vingt-six posologies pour ce qui se renouvelle tous les mois** et
+  n'avait pas sa ligne : les dermocorticoïdes forts et le schéma
+  d'entretien deux jours par semaine qui espace les poussées — celui
+  qu'on ne fait pas si personne ne l'a dit —, les hypnotiques et leur
+  durée qui est réglementaire autant que clinique, les antithyroïdiens
+  dont la fièvre impose une numération avant même de savoir pourquoi,
+  les associations fixes antihypertensives et le ionogramme qui va avec,
+  les sulfamides hypoglycémiants et la règle « pas de repas, pas de
+  comprimé », les résines échangeuses qu'on ne délaye jamais dans un jus
+  de fruit, les dérivés actifs de la vitamine D qui n'ont pas besoin du
+  rein pour agir — et c'est ce qui les rend rapidement hypercalcémiants
+  —, et les estroprogestatifs avec la règle des douze heures. 1 380
+  lignes sur 469 fiches.
+
 ## [0.85.0] - 2026-08-27
 
 ### Added
