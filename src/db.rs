@@ -21150,6 +21150,121 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
         "Prendre l'oubli le jour même ; mais l'essentiel est ailleurs : ce produit ne s'ajoute ni ne s'arrête sans revoir toute l'ordonnance.",
         "Contraception qui échoue, greffe ou traitement du VIH, du cœur ou du cancer qui perd son efficacité : les interactions de cette plante sont son principal danger. Agitation et sueurs si un antidépresseur est associé.",
     ),
+    (
+        "stimulateur de la guanylate cyclase",
+        "Prendre l'oubli au cours du repas si la prise suivante n'est pas proche, sinon sauter. Après plusieurs jours d'arrêt, la titration reprend depuis la dose de départ.",
+        "Malaise ou vertige en se levant, tension basse, essoufflement qui s'aggrave, prise de poids rapide avec gonflement des jambes.",
+    ),
+    (
+        "alternative en TIH",
+        "Injection sous-cutanée à heure fixe : un oubli se signale au prescripteur plutôt que rattrapé, et jamais deux injections rapprochées.",
+        "Saignement qui ne s'arrête pas, selles noires, bleus étendus, jambe gonflée et douloureuse, essoufflement brutal.",
+    ),
+    (
+        "artériopathie",
+        "Prendre l'oubli au cours du repas suivant avec un grand verre d'eau, sans doubler ; l'effet est symptomatique.",
+        "Douleur de jambe au repos ou la nuit, orteil froid, pâle ou noir, plaie du pied qui ne guérit pas : c'est une urgence vasculaire.",
+    ),
+    (
+        "hypotension orthostatique",
+        "Prendre l'oubli dans la journée si la prise suivante n'est pas proche ; jamais dans les quatre heures qui précèdent le coucher.",
+        "Maux de tête en position allongée, tension qui monte, pouls lent, envie d'uriner impérieuse ou impossible.",
+    ),
+    (
+        "antagoniste de l'endothéline",
+        "Prendre l'oubli si la prise suivante n'est pas proche, sinon sauter ; ne jamais arrêter de soi-même.",
+        "Fatigue, nausées, urines foncées ou jaunisse — le contrôle mensuel des transaminases est là pour cela. Gonflement des jambes, essoufflement qui s'aggrave. Contraception non hormonale obligatoire : la molécule est tératogène et rend la pilule inefficace.",
+    ),
+    (
+        "résine échangeuse de cations",
+        "Prendre l'oubli à distance des autres médicaments, sans doubler ; la poudre se délaye dans de l'eau, jamais dans un jus de fruit riche en potassium.",
+        "Constipation qui s'installe, ventre douloureux et dur, faiblesse musculaire, palpitations : l'excès comme le manque de potassium se voient sur le cœur.",
+    ),
+    (
+        "chélateur du potassium",
+        "Prendre l'oubli à distance d'au moins deux heures des autres médicaments ; ne pas doubler.",
+        "Gonflement des jambes, faiblesse musculaire, palpitations ou pouls irrégulier, malaise.",
+    ),
+    (
+        "calcimimétique",
+        "Prendre l'oubli au cours du repas suivant, sans doubler ; les comprimés s'avalent entiers.",
+        "Fourmillements autour de la bouche ou des doigts, crampes, contractures, convulsion : ce sont les signes d'une calcémie trop basse. Nausées et vomissements persistants.",
+    ),
+    (
+        "stimulant l'érythropoïèse",
+        "Injection à jour fixe : la faire dès qu'on s'en aperçoit, puis reprendre le rythme habituel sans rapprocher la suivante.",
+        "Maux de tête inhabituels, tension qui monte, convulsion, jambe gonflée et douloureuse, essoufflement brutal. Fatigue qui revient malgré les injections.",
+    ),
+    (
+        "antagoniste des récepteurs V2",
+        "Prendre l'oubli si la journée n'est pas trop avancée, sinon sauter ; boire suffisamment reste la règle absolue, la soif étant le garde-fou.",
+        "Soif inhabituelle, bouche sèche, urines très abondantes, prise ou perte de poids rapide, nausées, urines foncées ou jaunisse.",
+    ),
+    (
+        "alcalinisant",
+        "Prendre l'oubli à distance des autres médicaments ; ne pas doubler.",
+        "Gonflement des chevilles, essoufflement, crampes, faiblesse musculaire, tension qui monte.",
+    ),
+    (
+        "antirétroviraux INTI",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est dans moins de douze heures : la régularité est ce qui empêche les résistances. Un oubli répété se dit, il ne se cache pas.",
+        "Fièvre avec éruption cutanée, essoufflement, douleur abdominale intense, urines foncées, fatigue et douleurs musculaires inexpliquées.",
+    ),
+    (
+        "antifibrosant",
+        "Prendre l'oubli au cours du repas suivant, sans doubler ; après plusieurs jours d'arrêt, la reprise se fait par paliers.",
+        "Diarrhée, nausées ou perte de poids qui s'installent, urines foncées ou jaunisse, toux ou essoufflement qui s'aggravent brutalement. Photosensibilité marquée pour la pirfénidone : protection solaire stricte.",
+    ),
+    (
+        "modulateur CFTR",
+        "Prendre l'oubli dans les six heures pour la prise du matin, dans les six heures pour celle du soir ; au-delà, passer. Toujours avec un aliment gras, sinon la moitié de la dose est perdue.",
+        "Urines foncées, jaunisse, douleur du côté droit ; baisse de la vision chez l'enfant ; essoufflement ou fièvre qui s'installent.",
+    ),
+    (
+        "analogue de la PTH",
+        "Injection quotidienne : la faire dès qu'on y pense dans la journée, jamais deux le même jour. Le stylo se garde au réfrigérateur et ne se congèle pas.",
+        "Malaise ou vertige après l'injection — s'asseoir ou s'allonger —, nausées, crampes, douleur osseuse nouvelle et localisée.",
+    ),
+    (
+        "inhibiteur PDE4",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche ; ne pas doubler.",
+        "Diarrhée ou nausées qui empêchent de s'alimenter, perte de poids, humeur qui s'effondre ou idées noires.",
+    ),
+    (
+        "antinéoplasique topique",
+        "Appliquer dès qu'on y pense et reprendre le rythme ; ne jamais prolonger le traitement de soi-même pour compenser.",
+        "Érosion, douleur ou suintement qui empêchent de continuer, extension au-delà de la zone traitée, fièvre. Ne jamais appliquer sur les muqueuses ni près des yeux.",
+    ),
+    (
+        "inducteur de l'ovulation",
+        "Le traitement suit les jours du cycle : une prise oubliée se signale au prescripteur, elle ne se rattrape pas au hasard.",
+        "Douleur abdominale intense, ventre gonflé, prise de poids rapide, essoufflement, nausées et vomissements : le syndrome d'hyperstimulation se voit en urgence. Bouffées de chaleur et troubles de la vision.",
+    ),
+    (
+        "déclenchement de l'ovulation",
+        "L'heure de cette injection est fixée par le centre et commande le geste qui suit : elle ne se décale ni ne se rattrape, et un retard se signale immédiatement.",
+        "Douleur abdominale intense, ventre gonflé et dur, prise de poids rapide, essoufflement, urines rares.",
+    ),
+    (
+        "5-alpha-réductase",
+        "Prendre l'oubli le jour même, sinon passer : l'effet se juge sur des mois.",
+        "Impossibilité d'uriner, sang dans les urines, douleur ou grosseur d'un sein, humeur qui s'effondre.",
+    ),
+    (
+        "analogue de la vasopressine",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche. La restriction de boisson qui accompagne le traitement compte autant que la dose.",
+        "Maux de tête, nausées, confusion, prise de poids rapide ou convulsion : ce sont les signes d'une hyponatrémie, et elles imposent d'arrêter de boire et d'appeler.",
+    ),
+    (
+        "facteur de croissance granulocytaire",
+        "Injection quotidienne aux jours prescrits : la faire dès qu'on s'en aperçoit, puis reprendre le rythme, sans jamais en faire deux le même jour.",
+        "Fièvre au-dessus de 38 °C — c'est l'urgence de la période —, frissons, douleur du côté gauche sous les côtes ou de l'épaule gauche, essoufflement.",
+    ),
+    (
+        "tyrosine kinase EGFR",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est dans moins de douze heures.",
+        "Essoufflement ou toux sèche qui apparaissent ou s'aggravent — la pneumopathie interstitielle est l'effet grave de cette classe —, diarrhée abondante, éruption cutanée étendue, œil rouge et douloureux.",
+    ),
 ];
 
 /// How many drugs a fresh base starts with.
@@ -27720,37 +27835,13 @@ mod tests {
             "GlucaGen",
             "Prenoxad",
         ];
-        // Taken by the patient, and still without the two answers. This
-        // list is the remaining work, named rather than hidden: a blank
-        // section is indistinguishable from a deliberate one, so the gap
-        // is written down and shrinks release after release.
-        const PENDING: &[&str] = &[
-            "Verquvo",
-            "Orgaran",
-            "Praxilène",
-            "Gutron",
-            "Tracleer",
-            "Kayexalate",
-            "Lokelma",
-            "Mimpara",
-            "Eprex",
-            "Aranesp",
-            "Jinarc",
-            "Bicarbonate de sodium",
-            "Descovy",
-            "Ofev",
-            "Esbriet",
-            "Kaftrio",
-            "Forsteo",
-            "Otézla",
-            "Efudix",
-            "Clomid",
-            "Ovitrelle",
-            "Chibro-Proscar",
-            "Minirin",
-            "Neupogen",
-            "Iressa",
-        ];
+        // Taken by the patient and still without the two answers. The
+        // list is empty as of v0.84.0, and the assertion below keeps it
+        // that way: a card added tomorrow without its two sections
+        // fails here rather than reaching a counter with a blank that
+        // looks deliberate. Anything parked here is a debt, not a
+        // decision — unlike ADMINISTERED above, which is a decision.
+        const PENDING: &[&str] = &[];
         // The same match the seeding pass uses: class, tags, DCI, name.
         let tags = |name: &str| {
             STARTER_DETAILS

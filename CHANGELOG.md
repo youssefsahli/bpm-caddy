@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.84.0] - 2026-08-27
+
+### Added
+- **La liste du travail qui restait est vide.** Vingt-trois règles de
+  plus (228 au total) : les vingt-cinq fiches nommées une par une hier
+  ont leurs deux réponses. Ce sont des traitements de spécialité, et
+  c'est justement au comptoir qu'on n'a pas la réponse sous la main — le
+  bosentan et sa contraception qui doit être non hormonale parce que la
+  molécule rend la pilule inefficace, le tolvaptan dont la soif est le
+  garde-fou, le cinacalcet et les fourmillements autour de la bouche qui
+  annoncent la calcémie basse, le Kaftrio qu'un repas sans gras ampute
+  de moitié, la desmopressine dont l'hyponatrémie impose d'arrêter de
+  boire, le filgrastim dont 38 °C est l'urgence, le géfitinib et sa
+  pneumopathie interstitielle, la résine échangeuse qu'on ne délaye
+  jamais dans un jus de fruit.
+- Sur les 813 fiches, **781 portent maintenant « En cas d'oubli » et
+  « Ce qui doit faire consulter »**. Les 32 autres sont administrées par
+  un professionnel et le restent : une perfusion n'a pas de dose
+  oubliée. Le test garde la liste d'attente vide — une fiche ajoutée
+  demain sans ses deux sections échoue à la construction, au lieu
+  d'arriver au comptoir avec un blanc qui ressemble à un choix.
+
 ## [0.83.0] - 2026-08-27
 
 ### Added
