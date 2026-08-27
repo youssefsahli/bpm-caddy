@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.97.0] - 2026-08-28
+
+### Fixed
+Suite de la passe à 1024x700 : trois vues qui repoussaient hors du cadre
+ce qu'on venait y chercher.
+
+- **Les tables de conversion montraient une ligne de table.** Vingt-sept
+  boutons de sélection prennent six rangées à cette largeur, et la table
+  elle-même commençait sous le pli. Le sélecteur est mesuré et plafonné
+  à trois rangées : au-delà il défile dans sa propre boîte, et la table
+  — ce pour quoi la vue existe — montre trois lignes au lieu d'une.
+- **Le codex effaçait le nom de ses préparations.** La forme galénique
+  était accolée au nom puis le tout tronqué : dans une colonne de
+  200 px, « Bain de bouche à la bétaméthasone » devenait « Bain de
+  bouche à la … ». Le nom prend la ligne, la forme passe au survol —
+  comme les protocoles depuis la 0.94.
+- **Le bouton « Ajouter » des notes sortait du panneau** sur une fiche
+  médicament, où la boîte fait 180 px : le champ était forcé à 120 px
+  minimum quoi qu'il reste. La largeur du bouton se mesure, et le champ
+  prend ce qui reste.
+
 ## [0.96.0] - 2026-08-28
 
 ### Fixed
