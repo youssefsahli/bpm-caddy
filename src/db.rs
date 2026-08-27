@@ -19844,8 +19844,14 @@ const fn act(text: &'static str) -> StarterNode {
 
 /// The protocols a fresh base starts with: the questions the counter
 /// actually asks itself when an ordonnance cannot be honoured as
-/// written. They are a starting point — every node is editable, and the
-/// team writes its own.
+/// written, and when someone comes in with a situation rather than a
+/// prescription — an oubli de pilule, une piqûre de tique, une douleur
+/// thoracique. They are a starting point — every node is editable, and
+/// the team writes its own.
+///
+/// A protocol earns its place by asking something the counter would not
+/// have asked, and by ending on a conduite precise enough to act on:
+/// [`tests::every_protocol_asks_before_it_answers`] holds that line.
 pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
     StarterProtocol {
         title: "Rupture de stock — conduite générale",
@@ -19940,10 +19946,379 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
             &[q(
                 "Fièvre depuis plus de trois jours, ou signes de gravité — confusion, essoufflement, raideur de nuque, éruption qui ne s'efface pas à la pression ?",
                 &[act(
-                    "Orientation médicale sans attendre ; en cas de purpura fébrile, c'est le 15.",
+                    "Orientation médicale sans attendre, le jour même. Devant un purpura fébrile — des taches rouges ou violacées qui ne s'effacent pas à la pression du doigt ou d'un verre —, c'est le 15 et rien d'autre : le pronostic se joue en heures.",
                 )],
                 &[act(
                     "Conseil et surveillance : paracétamol à la dose adaptée au poids, hydratation, et consultation si la fièvre dépasse trois jours ou si l'état se dégrade.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Signes d'AVC ou douleur thoracique au comptoir",
+        subject: "Urgence vitale — reconnaître, appeler, ne pas laisser repartir",
+        steps: &[q(
+            "Le visage est-il déformé, un bras ne se lève-t-il plus, la parole est-elle troublée — même brièvement ?",
+            &[act(
+                "C'est le 15, tout de suite, et l'heure exacte du début des signes se note : c'est elle qui décide de la thrombolyse. Ne rien faire boire ni avaler, allonger avec la tête légèrement surélevée, et rester avec la personne. Des signes qui régressent ne sont pas une fausse alerte, c'est un accident ischémique transitoire.",
+            )],
+            &[q(
+                "Y a-t-il une douleur thoracique serrante, irradiant au bras ou à la mâchoire, avec sueurs, nausées ou essoufflement ?",
+                &[act(
+                    "Le 15. Faire asseoir ou allonger, ne pas laisser repartir seul, et ne donner ni aspirine ni trinitrine de sa propre initiative — le régulateur le dira. Chez la femme et le diabétique, l'infarctus se réduit parfois à une fatigue et une gêne digestive.",
+                )],
+                &[q(
+                    "La personne est-elle inconsciente ou respire-t-elle anormalement ?",
+                    &[act(
+                        "Libérer les voies aériennes ; position latérale de sécurité si elle respire, massage cardiaque et défibrillateur si elle ne respire pas. Le 15 guide au téléphone : ne pas raccrocher.",
+                    )],
+                    &[act(
+                        "Malaise sans signe de gravité : allonger, jambes surélevées, glycémie capillaire si le patient est diabétique, tension au repos. Même si tout rentre dans l'ordre, orienter vers le médecin le jour même — un malaise a toujours une cause, et le suivant peut se produire au volant.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Oubli de pilule œstroprogestative",
+        subject: "Contraception orale combinée",
+        steps: &[q(
+            "L'oubli date-t-il de moins de douze heures ?",
+            &[act(
+                "Prendre le comprimé oublié tout de suite et poursuivre la plaquette à l'heure habituelle, même si cela fait deux comprimés le même jour. La contraception reste assurée, rien d'autre à faire.",
+            )],
+            &[q(
+                "L'oubli porte-t-il sur la première semaine de plaquette, avec un rapport dans les cinq jours qui précèdent ?",
+                &[act(
+                    "Prendre le comprimé oublié, poursuivre la plaquette, préservatif pendant sept jours, et proposer une contraception d'urgence : l'oubli de début de plaquette est celui qui expose le plus, parce qu'il rallonge l'intervalle sans hormone.",
+                )],
+                &[q(
+                    "Reste-t-il moins de sept comprimés actifs dans la plaquette ?",
+                    &[act(
+                        "Prendre le comprimé oublié, poursuivre, et enchaîner la plaquette suivante sans l'intervalle libre — les règles seront décalées, c'est normal. Préservatif pendant sept jours.",
+                    )],
+                    &[act(
+                        "Prendre le comprimé oublié, poursuivre à l'heure habituelle, préservatif pendant sept jours. Rappeler que des vomissements ou une diarrhée dans les quatre heures suivant la prise valent un oubli, et proposer une alarme ou un autre mode de contraception si les oublis se répètent.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Contraception d'urgence demandée",
+        subject: "Lévonorgestrel, ulipristal, DIU au cuivre",
+        steps: &[q(
+            "Le rapport remonte-t-il à plus de cinq jours ?",
+            &[act(
+                "Le délai des comprimés est dépassé : orienter vers un médecin ou un centre de santé sexuelle pour un dispositif intra-utérin au cuivre, qui reste posable jusqu'à cinq jours après la date présumée de l'ovulation et qui est de loin le plus efficace.",
+            )],
+            &[q(
+                "Le rapport remonte-t-il à plus de trois jours, ou la patiente pèse-t-elle plus de 75 kg ?",
+                &[act(
+                    "Ulipristal : efficace jusqu'à cinq jours et moins dépendant du poids que le lévonorgestrel. Délivrance sans ordonnance, gratuite et sans avance de frais, quel que soit l'âge.",
+                )],
+                &[q(
+                    "La patiente prend-elle un inducteur enzymatique — millepertuis, rifampicine, certains antiépileptiques — ou une contraception hormonale en cours ?",
+                    &[act(
+                        "Sous inducteur, l'efficacité chute : orienter vers un DIU au cuivre, ou vers un avis médical pour doubler la dose de lévonorgestrel. L'ulipristal, lui, suspend la contraception hormonale : la pilule se reprend cinq jours après, avec préservatif entre-temps.",
+                    )],
+                    &[act(
+                        "Lévonorgestrel, une prise immédiate — le plus tôt est le mieux, l'efficacité décroît d'heure en heure. Préservatif jusqu'aux règles suivantes, test de grossesse si le retard dépasse cinq jours, et reprise d'un comprimé si vomissements dans les trois heures. Proposer une contraception régulière et un dépistage IST.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Diarrhée aiguë de l'adulte",
+        subject: "Conseil, orientation, limites de l'automédication",
+        steps: &[q(
+            "Y a-t-il du sang dans les selles, une fièvre élevée, ou un retour de voyage tropical récent ?",
+            &[act(
+                "Ne pas donner de ralentisseur du transit : sur une diarrhée invasive, le lopéramide retient le germe et prolonge l'infection. Orientation médicale le jour même, avec une coproculture si le médecin la demande.",
+            )],
+            &[q(
+                "Le patient est-il âgé, enceinte, ou traité par diurétique, IEC, sartan ou metformine ?",
+                &[act(
+                    "La réhydratation passe avant tout le reste. Sous diurétique ou bloqueur du système rénine-angiotensine, la déshydratation fait l'insuffisance rénale aiguë : la suspension temporaire de ces lignes — et de la metformine — se discute avec le prescripteur le jour même.",
+                )],
+                &[q(
+                    "La diarrhée dure-t-elle depuis plus de trois jours, ou suit-elle une antibiothérapie récente ?",
+                    &[act(
+                        "Avis médical. Après un antibiotique, penser au Clostridioides difficile : le lopéramide y est contre-indiqué, et une diarrhée qui apparaît jusqu'à deux mois après la cure compte encore.",
+                    )],
+                    &[act(
+                        "Réhydratation abondante, racécadotril ou lopéramide sans dépasser la dose maximale, alimentation pauvre en résidus quelques jours. Reconsulter en cas de fièvre, de sang, ou si rien ne s'améliore en 48 heures. Rappeler qu'une diarrhée peut faire échouer une pilule.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Gastro-entérite du nourrisson",
+        subject: "Déshydratation du petit enfant",
+        steps: &[q(
+            "L'enfant a-t-il moins de trois mois, ou refuse-t-il de boire ?",
+            &[act(
+                "Orientation médicale immédiate : à cet âge la déshydratation s'installe en quelques heures, et un nourrisson qui refuse le biberon ne se rattrape pas à la maison.",
+            )],
+            &[q(
+                "Y a-t-il des signes de déshydratation — perte de poids de plus de 5 %, yeux cernés, pli cutané, couche sèche depuis six heures, somnolence inhabituelle ?",
+                &[act(
+                    "Consultation le jour même, sans attendre. Commencer la réhydratation orale pendant le trajet, par petites quantités très rapprochées.",
+                )],
+                &[q(
+                    "Les vomissements empêchent-ils toute prise de liquide ?",
+                    &[act(
+                        "Soluté de réhydratation à la cuillère, 5 mL toutes les cinq minutes : le fractionnement passe là où le biberon est rejeté. Si rien ne passe en deux heures, consultation.",
+                    )],
+                    &[act(
+                        "Soluté de réhydratation orale à volonté, un sachet dans 200 mL d'eau, reconstitué juste avant et conservé 24 heures au réfrigérateur — jamais dilué autrement, jamais remplacé par un soda. Poursuivre l'alimentation habituelle, peser l'enfant chaque jour, et reconsulter si le poids baisse.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Mal de tête au comptoir",
+        subject: "Drapeaux rouges, migraine, abus médicamenteux",
+        steps: &[q(
+            "La douleur est-elle brutale et maximale d'emblée, ou accompagnée de fièvre avec raideur de nuque, de troubles de la parole, de la vue ou de la force ?",
+            &[act(
+                "C'est le 15. Une céphalée en coup de tonnerre, un syndrome méningé ou un déficit neurologique ne s'antalgient pas au comptoir.",
+            )],
+            &[q(
+                "Le patient prend-il un antalgique pour ses maux de tête plus de dix jours par mois depuis trois mois ?",
+                &[act(
+                    "Céphalée par abus médicamenteux : c'est le traitement qui entretient la douleur. Ne pas renouveler la boîte sans en parler, et orienter vers le médecin pour un sevrage — les triptans et les associations avec caféine, codéine ou opium sont les plus en cause.",
+                )],
+                &[q(
+                    "S'agit-il d'une migraine déjà diagnostiquée ?",
+                    &[act(
+                        "Traiter tôt et à dose pleine : AINS ou paracétamol dès les premiers signes, triptan si prescrit et si l'AINS ne suffit pas. Compter les crises — au-delà de quatre par mois, un traitement de fond se discute, et le calendrier des crises est ce qui l'obtiendra.",
+                    )],
+                    &[act(
+                        "Paracétamol ou ibuprofène à dose adaptée, cinq jours au plus. Consulter si la céphalée est inhabituelle pour ce patient, si elle réveille la nuit, si elle s'aggrave à l'effort, à la toux ou en position couchée, ou si elle débute après 50 ans sans antécédent.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Œil rouge au comptoir",
+        subject: "Conjonctivite, corps étranger, orientation ophtalmologique",
+        steps: &[q(
+            "Y a-t-il une baisse de la vision, une douleur profonde, une gêne à la lumière, ou le patient porte-t-il des lentilles ?",
+            &[act(
+                "Avis ophtalmologique le jour même, sans collyre d'attente. Chez un porteur de lentilles, un œil rouge douloureux est un abcès de cornée jusqu'à preuve du contraire : retirer les lentilles, les garder pour le prescripteur, et ne pas les remettre.",
+            )],
+            &[q(
+                "L'œil a-t-il reçu un produit chimique, un corps étranger ou un choc ?",
+                &[act(
+                    "Projection chimique : rincer aussitôt au sérum physiologique ou à l'eau courante, quinze minutes sans interruption, puis urgences ophtalmologiques avec le nom du produit ou son emballage. Ne jamais tenter de retirer un corps étranger enchâssé.",
+                )],
+                &[q(
+                    "Les deux yeux sont-ils rouges, collés le matin, sans baisse de vision ?",
+                    &[act(
+                        "Conjonctivite banale : lavage au sérum physiologique plusieurs fois par jour, mouchoirs à usage unique, pas de lentilles, pas de maquillage, et un flacon par œil. Un antiseptique peut aider ; un collyre antibiotique ne se donne pas d'emblée. Consulter si rien ne bouge en 48 heures.",
+                    )],
+                    &[act(
+                        "Œil rouge d'un seul côté sans cause évidente : consultation dans la semaine, plus tôt si la douleur ou la vision changent. Aucun collyre corticoïde ne se délivre sans avis — sur une kératite herpétique, il fait perdre l'œil.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Piqûre de tique",
+        subject: "Retrait, surveillance, borréliose de Lyme",
+        steps: &[q(
+            "La tique est-elle encore en place ?",
+            &[act(
+                "Retirer au tire-tique, en tournant, sans écraser le corps ni appliquer d'éther, d'alcool ou de vaseline : un produit fait régurgiter la tique et augmente le risque de transmission. Désinfecter après le retrait, jamais avant, et noter la date sur la fiche patient.",
+            )],
+            &[q(
+                "Une plaque rouge qui s'élargit est-elle apparue autour du point de piqûre, entre trois jours et un mois après ?",
+                &[act(
+                    "Érythème migrant : consultation pour antibiothérapie, sans sérologie — à ce stade elle est souvent négative et ne changerait rien à la conduite. Le diagnostic est clinique.",
+                )],
+                &[q(
+                    "Y a-t-il, dans les semaines qui suivent, de la fièvre, des douleurs articulaires, une paralysie faciale ou une fatigue inhabituelle ?",
+                    &[act(
+                        "Consultation en signalant la piqûre et sa date : ces signes tardifs justifient un avis même sans érythème migrant, et l'anamnèse est ce qui met le médecin sur la piste.",
+                    )],
+                    &[act(
+                        "Surveiller le point de piqûre pendant un mois. Ni antibiotique préventif ni sérologie sur une simple piqûre. Pour la prochaine sortie : vêtements couvrants, répulsif, inspection au retour — une tique retirée dans les 24 heures transmet rarement.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Plaie et couverture antitétanique",
+        subject: "Petite plaie, rappel dTP",
+        steps: &[q(
+            "La plaie est-elle profonde, souillée de terre, due à une morsure, ou saigne-t-elle encore après dix minutes de compression ?",
+            &[act(
+                "Orientation médicale le jour même : parage, suture éventuelle dans les six heures, et évaluation du risque tétanique — et rabique s'il s'agit d'une morsure, en notant l'animal et son propriétaire.",
+            )],
+            &[q(
+                "Le dernier rappel tétanique remonte-t-il à moins de vingt ans avant 65 ans, ou à moins de dix ans au-delà ?",
+                &[act(
+                    "Couverture suffisante : nettoyage à l'eau et au savon, désinfection, pansement changé chaque jour. Surveiller rougeur, chaleur, écoulement et fièvre, et consulter si la plaie se referme mal.",
+                )],
+                &[q(
+                    "Le carnet de vaccination est-il retrouvable ?",
+                    &[act(
+                        "Rappel dTP à faire : la pharmacie peut l'administrer. Nettoyer et couvrir la plaie, noter la vaccination sur la fiche, et proposer le rattrapage des autres valences au passage.",
+                    )],
+                    &[act(
+                        "Statut inconnu : considérer le patient comme non protégé et l'orienter le jour même — c'est au médecin de décider de l'immunoglobuline et du vaccin. Le tétanos ne se rattrape pas une fois déclaré.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Brûlure au comptoir",
+        subject: "Étendue, profondeur, orientation",
+        steps: &[q(
+            "La brûlure dépasse-t-elle la paume de la main du patient, ou touche-t-elle le visage, les mains, les pieds, les plis ou les organes génitaux ?",
+            &[act(
+                "Orientation médicale, urgences pour ces localisations. En attendant : refroidir à l'eau du robinet tempérée pendant quinze minutes, puis couvrir d'un linge propre et non pelucheux. Ne rien appliquer d'autre.",
+            )],
+            &[q(
+                "La peau est-elle blanche, cartonnée ou insensible, ou s'agit-il d'une brûlure électrique ou chimique ?",
+                &[act(
+                    "Urgences. Une brûlure indolore n'est pas une brûlure bénigne : c'est une brûlure profonde qui a détruit les terminaisons nerveuses. Pour un produit chimique, rincer longuement et emporter l'emballage.",
+                )],
+                &[q(
+                    "La brûlure est-elle rouge et douloureuse, avec au plus une petite phlyctène ?",
+                    &[act(
+                        "Refroidir quinze minutes, ne pas percer la phlyctène, pansement gras ou hydrocolloïde, antalgique de palier 1. Revoir la plaie à 48 heures ; consulter si la douleur augmente, si elle suinte ou si elle sent.",
+                    )],
+                    &[act(
+                        "Rougeur simple sans phlyctène : refroidir, émollient, antalgique si besoin. Protéger la zone du soleil pendant plusieurs mois — elle pigmente durablement.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Hypoglycémie chez le patient diabétique",
+        subject: "Insuline, sulfamides, glinides",
+        steps: &[q(
+            "Le patient est-il conscient et capable d'avaler ?",
+            &[q(
+                "Est-il traité par un sulfamide hypoglycémiant — glimépiride, gliclazide — ou par un glinide ?",
+                &[act(
+                    "Resucrer par 15 g de sucre rapide et recontrôler à quinze minutes, puis prévenir le médecin : l'hypoglycémie d'un sulfamide dure plus longtemps que le resucrage et récidive dans les heures qui suivent. Chez la personne âgée, une surveillance prolongée, souvent hospitalière, se discute.",
+                )],
+                &[act(
+                    "Resucrer par 15 g de sucre rapide — trois morceaux de sucre, un petit verre de jus —, recontrôler à quinze minutes et recommencer si le chiffre reste bas, puis prendre un féculent si le repas est loin. Chercher la cause : repas sauté, effort inhabituel, erreur de dose, alcool.",
+                )],
+            )],
+            &[act(
+                "Ne rien faire avaler : un resucrage par la bouche chez un patient inconscient fait une fausse route. Appeler le 15, mettre en position latérale de sécurité, et administrer le glucagon si l'entourage en dispose et sait l'utiliser.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Demande de médicament chez la femme enceinte",
+        subject: "Automédication et grossesse",
+        steps: &[q(
+            "Le produit demandé est-il un AINS — ibuprofène, kétoprofène, aspirine à dose antalgique ?",
+            &[act(
+                "Contre-indication formelle à partir du début du sixième mois, et à éviter avant : fermeture du canal artériel et atteinte rénale du fœtus. Paracétamol à la dose efficace la plus faible et le moins longtemps possible, avis médical si la douleur persiste.",
+            )],
+            &[q(
+                "La demande porte-t-elle sur un traitement chronique déjà en cours ?",
+                &[act(
+                    "Ne rien arrêter de sa propre initiative : un antiépileptique, un antidépresseur ou un traitement de l'asthme interrompu brutalement fait courir plus de risque que la molécule. Relire chaque ligne sur le CRAT et adresser au prescripteur ce qui doit changer.",
+                )],
+                &[q(
+                    "S'agit-il d'une plante, d'un complément alimentaire ou d'une huile essentielle ?",
+                    &[act(
+                        "Absence de donnée n'est pas absence de risque : la plupart des huiles essentielles et beaucoup de plantes sont déconseillées pendant la grossesse. Refuser sans détour, expliquer pourquoi, et proposer une alternative documentée.",
+                    )],
+                    &[act(
+                        "Le petit nombre de molécules bien documentées suffit à la plupart des demandes : paracétamol pour la douleur et la fièvre, doxylamine pour les nausées, fer si la biologie le justifie. Le CRAT tranche le reste, et son avis se note sur la fiche patient avec sa date.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Demande de médicament pendant l'allaitement",
+        subject: "Compatibilité et conduite pratique",
+        steps: &[q(
+            "S'agit-il d'une molécule qui impose une alternative — codéine, tramadol, isotrétinoïne, anticancéreux, produit radiopharmaceutique ?",
+            &[act(
+                "Ne pas délivrer sans avis : la codéine et le tramadol exposent le nourrisson à une dépression respiratoire si la mère est métaboliseur rapide. Appeler le prescripteur pour une alternative — paracétamol et ibuprofène passent très peu dans le lait.",
+            )],
+            &[q(
+                "Le nourrisson a-t-il moins d'un mois, est-il prématuré ou porteur d'une pathologie ?",
+                &[act(
+                    "Prudence renforcée : le nouveau-né élimine mal, et une molécule bien tolérée à trois mois ne l'est pas à trois semaines. Vérifier sur le CRAT et demander un avis avant de délivrer.",
+                )],
+                &[q(
+                    "La prise peut-elle être calée juste après une tétée ?",
+                    &[act(
+                        "Prendre le médicament juste après la tétée, ou avant le plus long intervalle de sommeil : l'exposition du nourrisson est alors la plus faible. Surveiller somnolence, refus de téter et selles inhabituelles.",
+                    )],
+                    &[act(
+                        "Vérifier la compatibilité sur le CRAT, ligne par ligne. Ne conseiller ni interruption de l'allaitement ni sevrage sans avis : l'arrêt est presque toujours évitable, et il ne se reprend pas.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Double dose prise par erreur",
+        subject: "Erreur de prise au domicile",
+        steps: &[q(
+            "La molécule a-t-elle une marge thérapeutique étroite — AVK, digoxine, lithium, méthotrexate, antiépileptique, insuline, opioïde ?",
+            &[act(
+                "Appeler le centre antipoison ou le prescripteur avec le nom exact, la dose totale prise et l'heure. Ne pas attendre les symptômes : le méthotrexate pris chaque jour au lieu d'une fois par semaine est une urgence, même sans aucun signe.",
+            )],
+            &[q(
+                "La dose prise dépasse-t-elle largement la dose maximale journalière — plus de 4 g de paracétamol, plusieurs comprimés d'un même AINS ?",
+                &[act(
+                    "Paracétamol : c'est le centre antipoison qui décide, sur la dose rapportée au poids et l'heure de prise, et l'antidote a une fenêtre. Ne jamais attendre les nausées — elles arrivent quand le foie est déjà touché.",
+                )],
+                &[q(
+                    "S'agit-il d'un traitement chronique en une prise par jour ?",
+                    &[act(
+                        "Ne pas doubler ni sauter la prise suivante pour compenser : reprendre le rythme normal le lendemain, et surveiller ce que la classe fait de trop — tension, fréquence cardiaque, glycémie, somnolence.",
+                    )],
+                    &[act(
+                        "Le plus souvent sans conséquence : reprendre le schéma normal à la prise suivante, sans rattrapage. Profiter de l'occasion pour proposer un pilulier ou une semaine préparée — sans cela, l'erreur se répétera.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Demande répétée d'un antalgique opioïde",
+        subject: "Codéine, tramadol, opium — mésusage",
+        steps: &[q(
+            "L'ordonnance est-elle présentée avant la fin de la période couverte par la précédente ?",
+            &[act(
+                "Pas de délivrance par anticipation : le chevauchement se signale au prescripteur, appel à l'appui, et la date de la précédente délivrance se note sur la fiche. Le refus s'énonce sans jugement et pas devant la file.",
+            )],
+            &[q(
+                "Le patient exige-t-il une spécialité nommément, refuse-t-il tout générique ou toute alternative, ou vient-il d'une autre officine sans raison ?",
+                &[act(
+                    "Signes de mésusage : lire l'historique et le dossier pharmaceutique, appeler le prescripteur, et proposer au patient de reprendre rendez-vous. Un opioïde ne se retire jamais brutalement — c'est le médecin qui organise la décroissance, et le sevrage brutal renvoie vers le marché parallèle.",
+                )],
+                &[q(
+                    "La douleur est-elle chronique, et le traitement dure-t-il depuis plus de trois mois ?",
+                    &[act(
+                        "Au-delà de trois mois, un opioïde faible dans une douleur non cancéreuse a rarement fait la preuve de son intérêt : proposer une réévaluation, parler de la constipation et de la somnolence, et tracer l'entretien.",
+                    )],
+                    &[act(
+                        "Délivrer, annoncer la durée prévue, prévenir de la constipation — qui se prévient dès le premier jour —, de la somnolence et de l'alcool. Fixer un point à la prochaine venue : la dépendance s'installe en quelques semaines, y compris quand la douleur était réelle.",
+                    )],
                 )],
             )],
         )],
@@ -28267,6 +28642,72 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A protocol is a walk-through, not a leaflet: it earns its place
+    /// by asking something the counter would not have asked, and by
+    /// ending on a conduite precise enough to act on. One question and
+    /// two slogans is a card, and belongs on a fiche.
+    #[test]
+    fn every_protocol_asks_before_it_answers() {
+        // The catalogue only ever grows: a protocol removed is a
+        // question nobody asks any more.
+        assert!(
+            STARTER_PROTOCOLS.len() >= 20,
+            "{} protocoles livrés, il y en avait vingt",
+            STARTER_PROTOCOLS.len()
+        );
+
+        fn walk(nodes: &[StarterNode], questions: &mut usize, actions: &mut Vec<&'static str>) {
+            for node in nodes {
+                assert!(!node.text.trim().is_empty());
+                match node.kind {
+                    NodeKind::Question => {
+                        *questions += 1;
+                        assert!(
+                            node.text.trim_end().ends_with('?'),
+                            "une question qui ne se termine pas par un point d'interrogation : {}",
+                            node.text
+                        );
+                        walk(node.yes, questions, actions);
+                        walk(node.no, questions, actions);
+                    }
+                    NodeKind::Action => actions.push(node.text),
+                }
+            }
+        }
+
+        let mut titles: Vec<&str> = STARTER_PROTOCOLS.iter().map(|p| p.title).collect();
+        titles.sort_unstable();
+        let seen = titles.len();
+        titles.dedup();
+        assert_eq!(seen, titles.len(), "deux protocoles portent le même titre");
+
+        for p in STARTER_PROTOCOLS {
+            assert!(!p.subject.trim().is_empty(), "{} : sans sujet", p.title);
+            let (mut questions, mut actions) = (0, Vec::new());
+            walk(p.steps, &mut questions, &mut actions);
+            assert!(
+                questions >= 2,
+                "{} : une seule question, ce n'est pas un arbre",
+                p.title
+            );
+            assert!(
+                actions.len() >= 3,
+                "{} : {} conduites seulement",
+                p.title,
+                actions.len()
+            );
+            for conduite in &actions {
+                // What to do, not what is wrong: a conduite short
+                // enough to fit on a button says nothing.
+                assert!(
+                    conduite.chars().count() >= 80,
+                    "{} : conduite trop courte pour être suivie — « {conduite} »",
+                    p.title
+                );
+            }
+        }
     }
 
     /// The codex seeds once and then belongs to the team: a rewritten
