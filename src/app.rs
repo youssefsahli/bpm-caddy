@@ -5800,7 +5800,14 @@ impl App {
             // The table's own head (summary, fees, column titles) plus
             // a row of controls, which is taller than a line of text.
             let acts_min = line * 8.0 + ui.spacing().interact_size.y * 3.0;
-            let notes_h = (work.height() - acts_min).clamp(notes_min, work.height() * 0.42);
+            // The cap is raised to the floor rather than trusted to sit
+            // above it: `f32::clamp` panics outright when min > max, and
+            // on a short pane the journal's floor does cross two fifths
+            // of it. Found by raising the floor and watching the whole
+            // application come down — a crash one tweak away is worth
+            // closing whether or not today's numbers happen to miss it.
+            let cap = (work.height() * 0.42).max(notes_min);
+            let notes_h = (work.height() - acts_min).clamp(notes_min, cap);
             let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
             motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
                 Self::patient_acts_pane(ui, session, patient, config);
