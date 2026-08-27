@@ -24658,6 +24658,36 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Every posology line of the base at once, for the full-text
+    /// search: the card it belongs to, and its three columns.
+    ///
+    /// One query rather than one per card: the search reads eight
+    /// hundred fiches and would otherwise open eight hundred
+    /// statements to reach their thirteen hundred lines.
+    pub fn all_posologies(&self) -> Result<Vec<(i64, Posologie)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT drug_id, id, indication, posologie, remarque FROM posologies
+                 ORDER BY drug_id, position, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get(0)?,
+                    Posologie {
+                        id: r.get(1)?,
+                        indication: r.get(2)?,
+                        posologie: r.get(3)?,
+                        remarque: r.get(4)?,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Append a posology line to a drug.
     pub fn add_posologie(
         &self,

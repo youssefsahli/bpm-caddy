@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.77.0] - 2026-08-27
+
+### Changed
+- **La recherche plein texte lit aussi les posologies.** Les 1 319
+  lignes de posologie de la base — la dose et surtout la remarque à côté
+  d'elle — sont de la prose comme le reste, et c'est celle où les
+  réponses du comptoir sont écrites : « à jeun », « à distance du fer »,
+  « resucrage expliqué à l'entourage », « sortir le stylo trente minutes
+  avant ». Elles reviennent sous leur propre indication, pour que deux
+  lignes d'une même fiche ne se lisent pas pareil. Une seule requête les
+  lit toutes, à l'ouverture de la recherche.
+
 ## [0.76.0] - 2026-08-27
 
 ### Added
