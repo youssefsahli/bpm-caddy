@@ -19522,6 +19522,55 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Toplexil", "Toux sèche de l'adulte", "1 cuillère-mesure 2 à 3 fois par jour, de préférence le soir", "Antihistaminique sédatif : somnolence, contre-indiqué avant 2 ans et chez l'insuffisant respiratoire."),
     ("Néo-Codion", "Toux sèche de l'adulte", "1 comprimé jusqu'à 4 fois par jour, sans dépasser 5 jours", "Interdit avant 12 ans. Constipation et somnolence ; une toux grasse ne se bloque pas."),
     ("Tussidane", "Toux sèche de l'adulte", "1 dose 3 à 4 fois par jour, sans dépasser 5 jours", "À éviter avec un ISRS ou un IMAO (syndrome sérotoninergique) ; mésusage connu chez l'adolescent."),
+    // --- Biothérapies délivrées à l'officine : le rythme est le
+    // traitement, et la chaîne du froid en fait partie ---
+    ("Humira", "Polyarthrite rhumatoïde, psoriasis, MICI", "40 mg par voie sous-cutanée toutes les deux semaines, après la dose de charge propre à l'indication", "Conservation au réfrigérateur ; sortir le stylo 15 à 30 minutes avant pour que l'injection soit moins douloureuse, et changer de site à chaque fois."),
+    ("Humira", "En cas d'infection", "Injection suspendue le temps de l'épisode", "Fièvre, toux qui dure, brûlures urinaires : on ne fait pas l'injection et on appelle. Le traitement masque les signes autant qu'il favorise l'infection."),
+    ("Enbrel", "Polyarthrite rhumatoïde et psoriasis", "50 mg par voie sous-cutanée une fois par semaine, le même jour", "Le même jour chaque semaine, noté sur le calendrier : le rythme hebdomadaire s'oublie plus facilement qu'un traitement quotidien."),
+    ("Cosentyx", "Psoriasis en plaques", "300 mg aux semaines 0, 1, 2, 3 et 4, puis 300 mg une fois par mois", "Les quatre injections rapprochées du début ne sont pas une erreur d'ordonnance : c'est la phase d'induction."),
+    ("Taltz", "Psoriasis en plaques", "160 mg à la première injection, puis 80 mg toutes les deux semaines jusqu'à la semaine 12, puis 80 mg toutes les quatre semaines", "Le passage de deux à quatre semaines à la douzième semaine est le moment où le rythme se perd : le rappeler à la délivrance."),
+    ("Skyrizi", "Psoriasis en plaques", "150 mg aux semaines 0 et 4, puis toutes les 12 semaines", "Une injection par trimestre : la date de la suivante se note au moment de faire celle du jour."),
+    ("Tremfya", "Psoriasis en plaques", "100 mg aux semaines 0 et 4, puis toutes les 8 semaines", "Réfrigérateur, jamais le congélateur ; un stylo congelé se jette."),
+    ("Kesimpta", "Sclérose en plaques rémittente", "20 mg par voie sous-cutanée aux semaines 0, 1 et 2, puis une injection par mois à partir de la semaine 4", "Pas d'injection à la semaine 3 : c'est le schéma, pas un oubli."),
+    ("Aimovig", "Traitement de fond de la migraine", "70 mg par voie sous-cutanée une fois par mois, portés à 140 mg selon la réponse", "L'efficacité s'évalue sur trois mois, en comptant les jours de migraine dans un agenda : sans agenda, l'évaluation ne veut rien dire."),
+    ("Emgality", "Traitement de fond de la migraine", "Dose de charge de 240 mg, puis 120 mg une fois par mois", "Constipation fréquente : l'anticiper évite qu'elle fasse arrêter le traitement."),
+    ("Ajovy", "Traitement de fond de la migraine", "225 mg une fois par mois, ou 675 mg tous les trois mois", "Deux rythmes possibles pour la même molécule : vérifier lequel l'ordonnance retient avant de délivrer."),
+    ("Praluent", "Hypercholestérolémie non contrôlée par une statine", "75 mg toutes les deux semaines, portés à 150 mg si nécessaire, ou 300 mg toutes les quatre semaines", "Ne remplace pas la statine : elle se poursuit, sauf intolérance documentée."),
+    ("Repatha", "Hypercholestérolémie non contrôlée par une statine", "140 mg toutes les deux semaines ou 420 mg une fois par mois", "Sortir du réfrigérateur 30 minutes avant : injectée froide, la solution est douloureuse."),
+    // --- HBPM : la dose est au poids, la surveillance au contexte ---
+    ("Innohep", "Traitement curatif d'une maladie thromboembolique veineuse", "175 UI anti-Xa par kilo, en une injection sous-cutanée par jour", "Utilisable jusqu'à une clairance de 20 mL/min selon le RCP, ce qui la distingue des autres HBPM."),
+    ("Fraxiparine", "Traitement curatif d'une maladie thromboembolique veineuse", "85 UI anti-Xa par kilo, deux fois par jour", "Contre-indiquée en curatif si la clairance est inférieure à 30 mL/min ; peser le patient avant d'instaurer."),
+    ("Fragmine", "Traitement curatif d'une maladie thromboembolique veineuse", "100 UI par kilo deux fois par jour, ou 200 UI par kilo en une injection", "Ne jamais purger la seringue préremplie : la bulle fait partie de la dose."),
+    // --- Antiparasitaires : la dose unique, et la seconde quinze jours après ---
+    ("Vermox", "Oxyurose", "100 mg en une prise unique, à renouveler 15 à 21 jours plus tard", "Traiter toute la famille le même jour, laver le linge de lit et couper les ongles courts : sans cela, la réinfestation est la règle."),
+    ("Fluvermal", "Oxyurose", "100 mg en une prise unique, renouvelée après 15 à 21 jours", "La seconde prise est ce qui casse le cycle : elle se note tout de suite dans le téléphone."),
+    ("Zentel", "Ascaridiose, oxyurose, ankylostomose", "400 mg en une prise unique chez l'adulte et l'enfant de plus de deux ans", "En cas d'oxyurose, renouveler la prise après 15 jours et traiter l'entourage."),
+    ("Combantrin", "Oxyurose et ascaridiose", "10 à 12 mg par kilo en une prise unique", "Convient à partir de six mois, ce qui en fait l'antiparasitaire du tout-petit."),
+    ("Stromectol", "Gale", "200 µg par kilo en une prise unique, à jeun, renouvelée 8 à 15 jours plus tard", "À prendre à distance des repas, deux heures avant ou après. Traiter l'entourage le même jour et décontaminer le linge : la seconde prise couvre les œufs éclos depuis."),
+    // --- Antiseptiques : l'usage, pas la dose ---
+    ("Betadine", "Antisepsie de la peau et des plaies", "Solution dermique à 10 %, appliquée pure ou diluée selon la présentation, sans dépasser la durée nécessaire", "Contre-indiquée avant un mois, en cas de dysthyroïdie et avant un examen thyroïdien. Jamais associée à un dérivé mercuriel ni à un savon : ils s'inactivent."),
+    ("Dakin Cooper", "Antisepsie des plaies et des muqueuses", "Prêt à l'emploi, en application directe ou en irrigation", "Ne se dilue pas et ne se mélange pas ; flacon opaque, à l'abri de la lumière, et jeté après la durée indiquée à l'ouverture."),
+    ("Hexomédine", "Antisepsie des lésions cutanées localisées", "Une à deux applications par jour sur une surface limitée, pour quelques jours", "Traitement court : au-delà, la lésion se réévalue plutôt qu'on insiste."),
+    // --- Digestif et hépatique ---
+    ("Ursolvan", "Lithiase biliaire cholestérolique et cholestases chroniques", "8 à 10 mg par kilo et par jour, en deux à trois prises, la principale le soir", "Traitement long : plusieurs mois avant d'en juger, et une échographie de contrôle prévue par le prescripteur."),
+    ("Delursan", "Cholestases chroniques et cirrhose biliaire primitive", "13 à 15 mg par kilo et par jour selon l'indication", "À distance des pansements gastriques et de la cholestyramine, qui l'empêchent d'être absorbé."),
+    ("Pentasa", "Poussée et entretien de la rectocolite hémorragique", "2 à 4 g par jour en poussée, 2 g par jour en entretien", "Le traitement d'entretien se poursuit en période calme : c'est lui qui espace les poussées, et l'arrêter parce que « ça va » est la cause classique de rechute."),
+    ("Fivasa", "Poussée et entretien des MICI", "Selon la forme et l'indication, en une ou plusieurs prises", "Les granulés ne se croquent pas ; les suppositoires et les lavements traitent la partie basse mieux qu'un comprimé."),
+    // --- Neurologie ---
+    ("Comtan", "Maladie de Parkinson, fluctuations motrices", "200 mg avec chaque prise de lévodopa, sans dépasser dix prises par jour", "Il ne se prend jamais seul : une prise d'entacapone accompagne une prise de lévodopa. Urines orangées sans gravité."),
+    ("Ongentys", "Maladie de Parkinson, fluctuations motrices", "50 mg une fois par jour au coucher", "À prendre une heure avant ou une heure après la lévodopa, jamais en même temps."),
+    ("Nocertone", "Traitement de fond de la migraine", "1 à 3 comprimés par jour, principalement le soir", "Somnolence et prise de poids fréquentes ; l'efficacité se juge après deux à trois mois."),
+    ("Sanmigran", "Traitement de fond de la migraine", "1 comprimé le soir, augmenté progressivement selon la tolérance", "Somnolence et appétit augmenté : la titration lente est ce qui le rend supportable."),
+    ("Nordaz", "Anxiété", "7,5 mg le soir, adaptés à la réponse", "Demi-vie longue : accumulation chez la personne âgée, et durée limitée à douze semaines, arrêt compris."),
+    ("Veratran", "Anxiété", "5 à 10 mg par jour en une à deux prises", "Demi-vie courte : moins d'accumulation, mais un sevrage plus marqué si l'arrêt est brutal."),
+    // --- Douleur ---
+    ("Targinact", "Douleur chronique sévère", "5 mg / 2,5 mg deux fois par jour à l'instauration, puis titration par paliers", "La naloxone associée limite la constipation, elle ne la supprime pas : un laxatif est prévu dès le premier jour."),
+    ("Sophidone", "Douleur cancéreuse en relais de la morphine", "Dose déterminée par l'équivalence avec la morphine, en deux prises par jour", "L'hydromorphone est environ sept fois et demie plus puissante que la morphine orale : l'équivalence se vérifie avant chaque délivrance."),
+    // --- Urologie et gynécologie ---
+    ("Céris", "Hyperactivité vésicale", "20 mg deux fois par jour, à jeun", "À prendre à distance des repas ; anticholinergique, donc à revoir chez la personne âgée et en cas de glaucome ou d'adénome prostatique."),
+    ("Toviaz", "Hyperactivité vésicale", "4 mg par jour, portés à 8 mg selon la réponse", "Comprimé à libération prolongée : avalé entier. Bouche sèche et constipation sont les raisons d'arrêt les plus fréquentes."),
+    ("Lutéran", "Troubles du cycle et endométriose", "5 à 10 mg par jour, du 16e au 25e jour du cycle selon la prescription", "Le schéma dépend de l'indication : vérifier les jours du cycle avec la patiente avant de délivrer."),
+    ("Duphaston", "Insuffisance lutéale et troubles du cycle", "10 mg deux fois par jour, du 16e au 25e jour du cycle", "Ce n'est pas un contraceptif : le dire évite un malentendu fréquent."),
     // GENERATED-POSOLOGIES-END
 ];
 
