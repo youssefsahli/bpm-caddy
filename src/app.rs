@@ -1411,6 +1411,9 @@ struct Session {
     protocol_open: Option<db::Protocol>,
     protocol_nodes: Vec<db::ProtocolNode>,
     protocol_new_title: String,
+    /// Filter over the protocol list: twenty trees do not fit in a
+    /// glance, and the one wanted is known by name.
+    protocol_query: String,
     /// Editing buffer for the open protocol's title and subject: the
     /// fields were re-cloned each frame, so typing went nowhere.
     protocol_header: Option<(String, String)>,
@@ -1641,6 +1644,7 @@ impl Session {
             protocol_open: None,
             protocol_nodes: Vec::new(),
             protocol_new_title: String::new(),
+            protocol_query: String::new(),
             protocol_header: None,
             protocol_node_edit: None,
             protocol_walk: None,
@@ -12886,39 +12890,28 @@ impl App {
         }
     }
 
-    /// Substitution protocols: the list, the tree editor, and the
-    /// walk-through that asks the questions one at a time.
+    /// The protocols: the list, the tree editor, and the walk-through
+    /// that asks the questions one at a time.
+    ///
+    /// Carved like the codex and the dispositifs — the list on the left,
+    /// the open tree on the right. It used to be a 900 px column centred
+    /// on a 1600 px screen with the editor stacked under the list; that
+    /// held while there were five protocols and stopped holding at
+    /// twenty, which is the shape this application is supposed to avoid.
     fn protocols_view(ui: &mut egui::Ui, session: &mut Session) {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            motif::column(ui, 900.0, |ui| {
-                ui.add_space(24.0);
-                ui.horizontal(|ui| {
-                    ui.heading(tr("proto_title"));
-                    if motif::button(ui, tr("patient_back")).clicked() {
-                        session.show_protocols = false;
-                        session.protocol_open = None;
-                    }
-                });
-                ui.label(tr("proto_subtitle"));
-                ui.add_space(10.0);
-            });
-            if session.protocol_open.is_none() {
-                Self::protocol_list(ui, session);
-            } else {
-                Self::protocol_editor(ui, session);
-            }
-        });
-    }
-
-    fn protocol_list(ui: &mut egui::Ui, session: &mut Session) {
+        let body = motif::visible_rect(ui);
+        let narrow = body.width() < 940.0;
+        let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
         let mut create = false;
-        let mut open: Option<db::Protocol> = None;
-        let mut delete: Option<(i64, String)> = None;
-        motif::page(ui, 900.0, |ui| {
-            ui.horizontal(|ui| {
-                let w = (ui.available_width() - 110.0).clamp(180.0, 460.0);
+        motif::inside(ui, head[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("proto_title"));
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_protocols = false;
+                    session.protocol_open = None;
+                }
                 ui.add_sized(
-                    [w, 24.0],
+                    [220.0, 24.0],
                     egui::TextEdit::singleline(&mut session.protocol_new_title)
                         .hint_text(tr("proto_new_hint")),
                 );
@@ -12928,7 +12921,70 @@ impl App {
                     create = true;
                 }
             });
-            ui.add_space(8.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("proto_subtitle"))
+                        .size(11.5)
+                        .color(motif::TEXT_DIM),
+                )
+                .wrap(),
+            );
+        });
+        if create {
+            let title = session.protocol_new_title.trim().to_owned();
+            match session.db.add_protocol(&title, "") {
+                Ok(id) => {
+                    session.protocol_new_title.clear();
+                    session.protocols = session.db.protocols().unwrap_or_default();
+                    // A new tree is empty: it opens straight away, since
+                    // there is nothing to read in the list about it.
+                    if let Some(p) = session.protocols.iter().find(|p| p.id == id).cloned() {
+                        session.protocol_nodes =
+                            session.db.protocol_nodes(p.id).unwrap_or_default();
+                        session.protocol_open = Some(p);
+                        session.protocol_walk = None;
+                        session.protocol_header = None;
+                    }
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        let list_w = (head[1].width() * 0.30).clamp(240.0, 380.0);
+        let cols = [
+            egui::Rect::from_min_size(head[1].min, egui::vec2(list_w, head[1].height())),
+            egui::Rect::from_min_max(
+                egui::pos2(head[1].left() + list_w + 8.0, head[1].top()),
+                head[1].max,
+            ),
+        ];
+        Self::protocol_list(ui, session, cols[0]);
+        if session.protocol_open.is_none() {
+            motif::panel(ui, cols[1], Some(tr("proto_sheet")), |ui| {
+                ui.label(
+                    egui::RichText::new(tr("proto_pick"))
+                        .size(12.0)
+                        .color(motif::TEXT_DIM),
+                );
+            });
+        } else {
+            Self::protocol_editor(ui, session, cols[1]);
+        }
+    }
+
+    /// The list of protocols, filtered, in its own panel: title on the
+    /// left of the row, subject dimmed after it, and a × at the right
+    /// edge that deletes the tree.
+    fn protocol_list(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let mut open: Option<db::Protocol> = None;
+        let mut delete: Option<(i64, String)> = None;
+        let selected = session.protocol_open.as_ref().map(|p| p.id);
+        motif::panel(ui, rect, Some(tr("proto_list")), |ui| {
+            ui.add_sized(
+                [ui.available_width(), 24.0],
+                egui::TextEdit::singleline(&mut session.protocol_query)
+                    .hint_text(tr("proto_search_hint")),
+            );
+            ui.add_space(4.0);
             if session.protocols.is_empty() {
                 ui.label(
                     egui::RichText::new(tr("proto_empty"))
@@ -12937,11 +12993,21 @@ impl App {
                 );
                 return;
             }
+            let query = session.protocol_query.clone();
+            let rows: Vec<db::Protocol> = session
+                .protocols
+                .iter()
+                .filter(|p| {
+                    query.trim().is_empty()
+                        || [p.title.as_str(), p.subject.as_str()]
+                            .iter()
+                            .any(|f| fuzzy::score(&query, f).is_some())
+                })
+                .cloned()
+                .collect();
             // The same sunken list box as the patients and the drugs:
             // rows on a field of grey read as leftovers, not as a list.
             let rect = ui.available_rect_before_wrap();
-            let rect =
-                egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.bottom() - 8.0));
             if rect.height() < 30.0 {
                 return;
             }
@@ -12949,33 +13015,35 @@ impl App {
             motif::inside(ui, inner, |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("protocols")
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
-                        for p in session.protocols.clone() {
+                        for p in rows {
                             let row_h = (ui.spacing().interact_size.y + 2.0).max(18.0);
                             let (rect, resp) = ui.allocate_exact_size(
                                 egui::vec2(ui.available_width(), row_h),
                                 egui::Sense::click(),
                             );
-                            if resp.hovered() {
+                            let on = selected == Some(p.id);
+                            if on {
+                                ui.painter().rect_filled(rect, 0.0, motif::ACCENT);
+                            } else if resp.hovered() {
                                 ui.painter().rect_filled(rect, 0.0, motif::BG_HOVER);
+                            }
+                            // In a column the title takes the whole row
+                            // — half of three hundred pixels is not a
+                            // title — and the subject moves to the
+                            // hover, where it is still one glance away.
+                            if !p.subject.trim().is_empty() {
+                                resp.clone().on_hover_text(p.subject.trim());
                             }
                             ui.painter().text(
                                 egui::pos2(rect.left() + 8.0, rect.center().y),
                                 egui::Align2::LEFT_CENTER,
-                                elide(ui, &p.title, rect.width() * 0.5, 14.0),
-                                egui::FontId::proportional(14.0),
-                                motif::TEXT,
+                                elide(ui, &p.title, rect.width() - 34.0, 12.5),
+                                egui::FontId::proportional(12.5),
+                                if on { motif::BG } else { motif::TEXT },
                             );
-                            if !p.subject.trim().is_empty() {
-                                ui.painter().text(
-                                    egui::pos2(rect.left() + rect.width() * 0.55, rect.center().y),
-                                    egui::Align2::LEFT_CENTER,
-                                    elide(ui, &p.subject, rect.width() * 0.3, 11.0),
-                                    egui::FontId::proportional(11.0),
-                                    motif::TEXT_DIM,
-                                );
-                            }
                             // The delete target is the row's right edge.
                             let x = egui::Rect::from_center_size(
                                 egui::pos2(rect.right() - 12.0, rect.center().y),
@@ -13006,16 +13074,6 @@ impl App {
                     });
             });
         });
-        if create {
-            let title = session.protocol_new_title.trim().to_owned();
-            match session.db.add_protocol(&title, "") {
-                Ok(_) => {
-                    session.protocol_new_title.clear();
-                    session.protocols = session.db.protocols().unwrap_or_default();
-                }
-                Err(e) => session.error = Some(e),
-            }
-        }
         if let Some((id, title)) = delete {
             match session.db.delete_protocol(id, &title) {
                 Ok(true) => {}
@@ -13032,7 +13090,7 @@ impl App {
         }
     }
 
-    fn protocol_editor(ui: &mut egui::Ui, session: &mut Session) {
+    fn protocol_editor(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
         let Some(proto) = session.protocol_open.clone() else {
             return;
         };
@@ -13043,138 +13101,188 @@ impl App {
         let mut delete: Option<(i64, String)> = None;
         let mut save_edit = false;
         let mut rename: Option<(String, String)> = None;
-        motif::column(ui, 900.0, |ui| {
-            ui.horizontal(|ui| {
-                let mut title = proto.title.clone();
-                let mut subject = proto.subject.clone();
-                let t = ui.add_sized([260.0, 24.0], egui::TextEdit::singleline(&mut title));
-                ui.label(
-                    egui::RichText::new(tr("proto_subject"))
-                        .size(11.0)
-                        .color(motif::TEXT_DIM),
-                );
-                let sj = ui.add_sized([200.0, 24.0], egui::TextEdit::singleline(&mut subject));
-                if t.lost_focus() || sj.lost_focus() {
-                    rename = Some((title, subject));
-                }
-                if motif::button(ui, tr("proto_back")).clicked() {
-                    close = true;
-                }
-                let w = motif::button(
-                    ui,
+        motif::panel(ui, rect, Some(tr("proto_sheet")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("protocol_editor")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let mut title = proto.title.clone();
+                        let mut subject = proto.subject.clone();
+                        let t = ui.add_sized([260.0, 24.0], egui::TextEdit::singleline(&mut title));
+                        ui.label(
+                            egui::RichText::new(tr("proto_subject"))
+                                .size(11.0)
+                                .color(motif::TEXT_DIM),
+                        );
+                        let sj =
+                            ui.add_sized([200.0, 24.0], egui::TextEdit::singleline(&mut subject));
+                        if t.lost_focus() || sj.lost_focus() {
+                            rename = Some((title, subject));
+                        }
+                        if motif::button(ui, tr("proto_back")).clicked() {
+                            close = true;
+                        }
+                        let w = motif::button(
+                            ui,
+                            if session.protocol_walk.is_some() {
+                                tr("proto_walk_stop")
+                            } else {
+                                tr("proto_walk")
+                            },
+                        );
+                        if w.clicked() {
+                            walk = true;
+                        }
+                        if motif::button(ui, tr("proto_print")).clicked() {
+                            print = true;
+                        }
+                    });
+                    ui.add_space(8.0);
                     if session.protocol_walk.is_some() {
-                        tr("proto_walk_stop")
-                    } else {
-                        tr("proto_walk")
-                    },
-                );
-                if w.clicked() {
-                    walk = true;
-                }
-                if motif::button(ui, tr("proto_print")).clicked() {
-                    print = true;
-                }
-            });
-            ui.add_space(8.0);
-            if session.protocol_walk.is_some() {
-                Self::protocol_walkthrough(ui, session);
-                return;
-            }
-            if session.protocol_nodes.is_empty() {
-                ui.label(
-                    egui::RichText::new(tr("proto_no_steps"))
-                        .size(12.0)
-                        .color(motif::TEXT_DIM),
-                );
-                ui.horizontal(|ui| {
-                    if motif::button(ui, tr("proto_add_question")).clicked() {
-                        add = Some((None, db::Branch::Root, db::NodeKind::Question));
+                        Self::protocol_walkthrough(ui, session);
+                        return;
                     }
-                    if motif::button(ui, tr("proto_add_action")).clicked() {
-                        add = Some((None, db::Branch::Root, db::NodeKind::Action));
+                    if session.protocol_nodes.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("proto_no_steps"))
+                                .size(12.0)
+                                .color(motif::TEXT_DIM),
+                        );
+                        ui.horizontal(|ui| {
+                            if motif::button(ui, tr("proto_add_question")).clicked() {
+                                add = Some((None, db::Branch::Root, db::NodeKind::Question));
+                            }
+                            if motif::button(ui, tr("proto_add_action")).clicked() {
+                                add = Some((None, db::Branch::Root, db::NodeKind::Action));
+                            }
+                        });
+                        return;
+                    }
+                    // The tree, drawn depth-first with an indent per level.
+                    //
+                    // The wrap width is taken **here**, once, from the
+                    // panel itself. Read inside the row it would mean
+                    // « what is left on this line », which after an
+                    // indent and a branch tag is a different number
+                    // every time — and the sentences ran off the right
+                    // edge of the panel with the buttons behind them.
+                    let body_w = ui.available_width();
+                    let nodes = session.protocol_nodes.clone();
+                    let roots: Vec<&db::ProtocolNode> =
+                        nodes.iter().filter(|n| n.parent_id.is_none()).collect();
+                    let mut stack: Vec<(&db::ProtocolNode, usize)> =
+                        roots.into_iter().rev().map(|n| (n, 0)).collect();
+                    while let Some((node, depth)) = stack.pop() {
+                        // Wrapped, and the indent stops growing: a deep
+                        // branch must not push its own text off the
+                        // panel one level at a time.
+                        let indent = (depth as f32 * 14.0).min(56.0);
+                        // The indent belongs to the whole node, not to
+                        // its first line: text and buttons go in an
+                        // indented block, so a wrapped button row still
+                        // sits under the branch it belongs to.
+                        ui.horizontal(|ui| {
+                            ui.add_space(indent);
+                            ui.vertical(|ui| {
+                                ui.set_max_width((body_w - indent - 14.0).max(150.0));
+                                let tag = match node.branch {
+                                    db::Branch::Yes => tr("proto_branch_yes"),
+                                    db::Branch::No => tr("proto_branch_no"),
+                                    db::Branch::Root => "",
+                                };
+                                let editing = session
+                                    .protocol_node_edit
+                                    .as_ref()
+                                    .is_some_and(|(id, ..)| *id == node.id);
+                                if editing {
+                                    ui.horizontal_wrapped(|ui| {
+                                        let (_, _, text) =
+                                            session.protocol_node_edit.as_mut().unwrap();
+                                        let w = (body_w - indent - 100.0).clamp(150.0, 520.0);
+                                        ui.add_sized([w, 22.0], egui::TextEdit::singleline(text));
+                                        if motif::button(ui, tr("form_save")).clicked() {
+                                            save_edit = true;
+                                        }
+                                    });
+                                } else {
+                                    if !tag.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(tag)
+                                                .size(11.0)
+                                                .color(motif::TEXT_DIM),
+                                        );
+                                    }
+                                    let label = if node.kind == db::NodeKind::Question {
+                                        egui::RichText::new(format!(
+                                            "{} ?",
+                                            node.text.trim_end_matches('?').trim()
+                                        ))
+                                        .strong()
+                                    } else {
+                                        egui::RichText::new(&node.text)
+                                    };
+                                    // A conduite is a sentence, not a caption: it
+                                    // wraps to what is left after the buttons
+                                    // instead of running off the right edge.
+                                    let clicked = ui
+                                        .add(
+                                            egui::Label::new(label)
+                                                .wrap()
+                                                .sense(egui::Sense::click()),
+                                        )
+                                        .on_hover_text(tr("proto_edit_node"))
+                                        .clicked();
+                                    if clicked {
+                                        session.protocol_node_edit =
+                                            Some((node.id, node.kind, node.text.clone()));
+                                    }
+                                    ui.horizontal_wrapped(|ui| {
+                                        if node.kind == db::NodeKind::Question {
+                                            if motif::button(ui, tr("proto_add_yes")).clicked() {
+                                                add = Some((
+                                                    Some(node.id),
+                                                    db::Branch::Yes,
+                                                    db::NodeKind::Action,
+                                                ));
+                                            }
+                                            if motif::button(ui, tr("proto_add_no")).clicked() {
+                                                add = Some((
+                                                    Some(node.id),
+                                                    db::Branch::No,
+                                                    db::NodeKind::Action,
+                                                ));
+                                            }
+                                        } else if motif::button(ui, tr("proto_add_question"))
+                                            .clicked()
+                                        {
+                                            add = Some((
+                                                Some(node.id),
+                                                db::Branch::Root,
+                                                db::NodeKind::Question,
+                                            ));
+                                        }
+                                        if motif::button(ui, tr("itv_delete"))
+                                            .on_hover_text(tr("proto_delete_node"))
+                                            .clicked()
+                                        {
+                                            delete = Some((node.id, node.text.clone()));
+                                        }
+                                    });
+                                }
+                                ui.add_space(3.0);
+                            });
+                        });
+                        let mut children: Vec<&db::ProtocolNode> = nodes
+                            .iter()
+                            .filter(|n| n.parent_id == Some(node.id))
+                            .collect();
+                        children.sort_by_key(|n| (n.branch != db::Branch::Yes, n.position));
+                        for child in children.into_iter().rev() {
+                            stack.push((child, depth + 1));
+                        }
                     }
                 });
-                return;
-            }
-            // The tree, drawn depth-first with an indent per level.
-            let nodes = session.protocol_nodes.clone();
-            let roots: Vec<&db::ProtocolNode> =
-                nodes.iter().filter(|n| n.parent_id.is_none()).collect();
-            let mut stack: Vec<(&db::ProtocolNode, usize)> =
-                roots.into_iter().rev().map(|n| (n, 0)).collect();
-            while let Some((node, depth)) = stack.pop() {
-                ui.horizontal(|ui| {
-                    ui.add_space(depth as f32 * 22.0);
-                    let tag = match node.branch {
-                        db::Branch::Yes => tr("proto_branch_yes"),
-                        db::Branch::No => tr("proto_branch_no"),
-                        db::Branch::Root => "",
-                    };
-                    if !tag.is_empty() {
-                        ui.label(egui::RichText::new(tag).size(11.0).color(motif::TEXT_DIM));
-                    }
-                    let editing = session
-                        .protocol_node_edit
-                        .as_ref()
-                        .is_some_and(|(id, ..)| *id == node.id);
-                    if editing {
-                        let (_, _, text) = session.protocol_node_edit.as_mut().unwrap();
-                        ui.add_sized([420.0, 22.0], egui::TextEdit::singleline(text));
-                        if motif::button(ui, tr("form_save")).clicked() {
-                            save_edit = true;
-                        }
-                    } else {
-                        let label = if node.kind == db::NodeKind::Question {
-                            egui::RichText::new(format!(
-                                "{} ?",
-                                node.text.trim_end_matches('?').trim()
-                            ))
-                            .strong()
-                        } else {
-                            egui::RichText::new(&node.text)
-                        };
-                        // A conduite is a sentence, not a caption: it
-                        // wraps to what is left after the buttons
-                        // instead of running off the right edge.
-                        let clicked = ui
-                            .scope(|ui| {
-                                ui.set_max_width((ui.available_width() - 330.0).max(220.0));
-                                ui.add(egui::Label::new(label).wrap().sense(egui::Sense::click()))
-                                    .on_hover_text(tr("proto_edit_node"))
-                                    .clicked()
-                            })
-                            .inner;
-                        if clicked {
-                            session.protocol_node_edit =
-                                Some((node.id, node.kind, node.text.clone()));
-                        }
-                        if node.kind == db::NodeKind::Question {
-                            if motif::button(ui, tr("proto_add_yes")).clicked() {
-                                add = Some((Some(node.id), db::Branch::Yes, db::NodeKind::Action));
-                            }
-                            if motif::button(ui, tr("proto_add_no")).clicked() {
-                                add = Some((Some(node.id), db::Branch::No, db::NodeKind::Action));
-                            }
-                        } else if motif::button(ui, tr("proto_add_question")).clicked() {
-                            add = Some((Some(node.id), db::Branch::Root, db::NodeKind::Question));
-                        }
-                        if motif::button(ui, tr("itv_delete"))
-                            .on_hover_text(tr("proto_delete_node"))
-                            .clicked()
-                        {
-                            delete = Some((node.id, node.text.clone()));
-                        }
-                    }
-                });
-                let mut children: Vec<&db::ProtocolNode> = nodes
-                    .iter()
-                    .filter(|n| n.parent_id == Some(node.id))
-                    .collect();
-                children.sort_by_key(|n| (n.branch != db::Branch::Yes, n.position));
-                for child in children.into_iter().rev() {
-                    stack.push((child, depth + 1));
-                }
-            }
         });
         let reload = |session: &mut Session| {
             session.protocol_nodes = session.db.protocol_nodes(proto.id).unwrap_or_default();

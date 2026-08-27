@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.94.0] - 2026-08-27
+
+### Changed
+- **Les protocoles sont enfin taillés comme le reste.** C'était une
+  colonne de 900 pixels centrée sur un écran de 1600, avec l'éditeur
+  empilé sous la liste. Ça tenait à cinq protocoles ; à vingt, non — et
+  c'est précisément la forme que cette application s'interdit. La liste
+  passe à gauche, dans son panneau, avec **un champ de recherche** et la
+  ligne ouverte en surbrillance ; l'arbre passe à droite. Le sujet du
+  protocole, qui prenait la moitié d'une ligne, est au survol.
+- **L'arbre ne déborde plus de son panneau.** Chaque nœud est un bloc
+  indenté : son étiquette de branche, sa phrase qui va à la ligne dans
+  la largeur du panneau, et ses boutons en dessous. Avant, la largeur de
+  repli se lisait *dans* la rangée, où « largeur disponible » veut dire
+  « ce qui reste sur cette ligne » — un nombre différent à chaque
+  indentation, et les conduites sortaient par la droite avec les boutons
+  derrière elles. Elle se prend maintenant une fois, sur le panneau.
+- Un nouveau protocole s'ouvre directement dans l'éditeur : il est vide,
+  il n'y a rien à lire à son sujet dans la liste.
+- Vérifié à 1024x700 avec les deux panneaux latéraux ouverts, comme le
+  veut la règle : rien ne sort de son cadre.
+
 ## [0.93.0] - 2026-08-27
 
 ### Added
