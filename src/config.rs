@@ -1281,4 +1281,159 @@ mod tests {
         assert_eq!(back.rules.prevention_per_year, 2);
         assert_eq!(back.ui.operator, "CL");
     }
+
+    /// The configuration's whole life on disk, in one test: a first
+    /// launch that finds nothing and leaves a commented template, a
+    /// save, a reload, and the paths every printed document is looked
+    /// up through.
+    ///
+    /// One test and not five, deliberately: it moves `XDG_CONFIG_HOME`,
+    /// which is process-wide, and two of them running side by side
+    /// would each be reading the other's directory.
+    #[test]
+    fn the_configuration_survives_a_round_trip_through_the_disk() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-cfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", &dir);
+
+        let expected = dir.join("bpm-caddy").join("config.toml");
+        assert_eq!(Config::path(), expected);
+        assert!(!expected.exists());
+
+        // First launch: nothing to read, defaults returned, and the
+        // commented template left behind so the options are findable
+        // without opening the documentation.
+        let cfg = Config::load();
+        assert!(expected.exists(), "le modèle commenté doit être écrit");
+        let template = std::fs::read_to_string(&expected).unwrap();
+        assert!(template.contains("[billing]"));
+        assert!(template.contains("[locations]"));
+        assert!(template.starts_with("# BPM-Caddy"));
+        // Every option in the template is commented out: it documents
+        // the defaults, it does not impose them.
+        for line in template.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') || line.starts_with('[') {
+                continue;
+            }
+            panic!("option active dans le modèle : {line}");
+        }
+        // And the forfaits ship empty, whatever the template shows.
+        assert!(cfg.locations.forfaits.is_empty());
+        assert_eq!(cfg.locations.notice_days, 7);
+
+        // The template is written once: a second load does not stamp
+        // over what the officine has since written.
+        std::fs::write(
+            &expected,
+            "[ui]\ndensity = \"compact\"\noperator = \"CL\"\n",
+        )
+        .unwrap();
+        let cfg = Config::load();
+        assert_eq!(cfg.density(), motif::Density::Compact);
+        assert_eq!(cfg.ui.operator, "CL");
+
+        // Saving writes real TOML that loads back as itself.
+        let mut cfg = Config::default();
+        cfg.pharmacy.name = "Pharmacie du Centre".to_owned();
+        cfg.rules.bpm_per_year = 4;
+        cfg.locations.notice_days = 14;
+        cfg.locations.forfaits.push(LocationForfait {
+            label: "Nébuliseur".to_owned(),
+            lpp: "Titre I".to_owned(),
+            period: Period::Week,
+            fee: 12.0,
+            renewal_days: 28,
+            max_periods: 0,
+        });
+        cfg.save().unwrap();
+        let back = Config::load();
+        assert_eq!(back.pharmacy.name, "Pharmacie du Centre");
+        assert_eq!(back.per_year(crate::db::InterviewKind::Bpm), 4);
+        assert_eq!(back.locations.notice_days, 14);
+        assert_eq!(back.locations.forfaits.len(), 1);
+        assert_eq!(back.locations.forfaits[0].period, Period::Week);
+        assert!(back.locations.forfaits[0].is_named());
+        assert!(!LocationForfait::default().is_named());
+
+        // The four templates sit beside config.toml unless the officine
+        // pointed them somewhere else.
+        let beside = dir.join("bpm-caddy");
+        for path in [
+            back.template_path(),
+            back.cr_template_path(),
+            back.carnet_template_path(),
+            back.ordonnance_template_path(),
+        ] {
+            assert_eq!(path.parent().unwrap(), beside, "{path:?}");
+        }
+        let mut moved = back.clone();
+        moved.templates.bpm_template_path = Some(PathBuf::from("/srv/modeles/bpm.typ"));
+        assert_eq!(moved.template_path(), PathBuf::from("/srv/modeles/bpm.typ"));
+
+        // The window geometry has its own little file, and refuses a
+        // size a minimised window would have reported.
+        assert_eq!(Layout::path(), beside.join("layout.toml"));
+        let layout = Layout {
+            window_width: 1600.0,
+            window_height: 1000.0,
+            ..Layout::default()
+        };
+        layout.save();
+        let back = Layout::load();
+        assert_eq!(back.window(), Some([1600.0, 1000.0]));
+        let tiny = Layout {
+            window_width: 40.0,
+            window_height: 20.0,
+            ..Layout::default()
+        };
+        assert_eq!(
+            tiny.window(),
+            None,
+            "une fenêtre réduite ne se mémorise pas"
+        );
+        // An unreadable file is « no record », never a panic.
+        std::fs::write(Layout::path(), "ceci n'est pas du TOML {{{").unwrap();
+        assert_eq!(Layout::load().window(), Layout::default().window());
+
+        std::env::remove_var("XDG_CONFIG_HOME");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A period agrees with its count, and knows how long it is.
+    #[test]
+    fn a_period_knows_its_length_and_its_plural() {
+        assert_eq!(Period::Day.days(), 1);
+        assert_eq!(Period::Week.days(), 7);
+        assert_eq!(Period::Month.days(), 30);
+        assert_eq!(Period::default(), Period::Week);
+        assert_eq!(Period::Week.agreed(1), "semaine");
+        assert_eq!(Period::Week.agreed(11), "semaines");
+        assert_eq!(Period::Day.agreed(0), "jour");
+        assert_eq!(Period::Day.agreed(3), "jours");
+        // « mois » does not take an s, at one or at twelve.
+        assert_eq!(Period::Month.agreed(1), "mois");
+        assert_eq!(Period::Month.agreed(12), "mois");
+        // Every variant is in ALL, or the options list would hide one.
+        assert_eq!(Period::ALL.len(), 3);
+        for p in Period::ALL {
+            assert!(!p.label().is_empty());
+        }
+    }
+
+    /// The fee matrix is edited slot by slot in the options, and each
+    /// slot must be the one the sequence actually bills.
+    #[test]
+    fn a_fee_slot_is_reachable_and_writable() {
+        let mut fees = ActFees::staged([15.0, 15.0, 15.0, 20.0], [10.0, 20.0, 0.0, 0.0]);
+        assert_eq!(*fees.slot_mut(0, 0), 15.0);
+        assert_eq!(*fees.slot_mut(0, 3), 20.0);
+        assert_eq!(*fees.slot_mut(1, 1), 20.0);
+        *fees.slot_mut(1, 1) = 25.0;
+        assert_eq!(*fees.slot_mut(1, 1), 25.0);
+        // Out of range asks for a slot that does not exist: it must
+        // clamp rather than panic in the middle of the options screen.
+        let _ = *fees.slot_mut(9, 9);
+    }
 }

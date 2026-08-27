@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.93.0] - 2026-08-27
+
+### Added
+- **La couverture de tests est mesurée et tenue.**
+  `./scripts/coverage.sh` affiche le tableau par fichier et **échoue si
+  deux planchers sont franchis** — même idée que le cliquet des
+  posologies : ils ne descendent jamais. CI le lance à chaque poussée.
+- **Onze tests sur la logique qui restait nue** : les lignes
+  effectivement facturables et la date qu'elles portent, l'URL passée au
+  navigateur (la seule chaîne que cette application hors ligne envoie
+  quelque part), les interactions citées sur le bilan — une paire de
+  traitements citée une fois, jamais la fiche se citant elle-même —, les
+  locations qui atteignent le récapitulatif, la liste d'appel des
+  renouvellements dépassés, la configuration de bout en bout sur le
+  disque (premier lancement, modèle commenté, sauvegarde, rechargement,
+  géométrie de fenêtre), la journée ordinaire de la base (agenda,
+  carnet, voyage, note, cellule corrigée, posologie, fiche modifiée puis
+  supprimée), et les libellés de la carte du voyageur.
+- config.rs passe de 78 à 96 %, db.rs de 80 à 83,5 %, vaccines.rs de
+  82,5 à 91 %. **La logique métier est à 87,1 %**, dans la fourchette
+  que la feuille de route demandait.
+
+### Changed
+- Le chiffre du workspace (40,4 %) est bas et le restera tant que le
+  moteur n'est pas monté : `src/app.rs` fait 15 000 lignes de mise en
+  page egui, plus de la moitié du dépôt, et une vue ne se couvre pas
+  sans harnais d'interface. `egui_kittest` demande egui >= 0.30 quand le
+  projet est sur 0.29. Le script le dit en toutes lettres plutôt que de
+  laisser croire à un oubli, et `scripts/smoke.sh` reste ce qui tient
+  l'interface — 31 vues ouvertes à chaque fois, échec sur tout panic.
+
 ## [0.92.0] - 2026-08-27
 
 ### Added

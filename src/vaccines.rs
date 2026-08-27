@@ -2387,4 +2387,50 @@ mod tests {
         assert_eq!(france.recos().count(), 0);
         assert!(!france.yf.needed());
     }
+
+    /// Every label the traveller's map paints comes from one of these
+    /// three tables. A variant added without its wording would draw an
+    /// empty cell, and an empty cell on a map of yellow-fever
+    /// requirements reads as « rien à faire ».
+    #[test]
+    fn every_variant_of_the_map_says_something() {
+        for yf in [
+            Yf::No,
+            Yf::Recommended,
+            Yf::RequiredFromEndemic,
+            Yf::Required,
+        ] {
+            assert!(!yf.label().trim().is_empty());
+        }
+        // Only the two that put a dose in the traveller's arm.
+        assert!(Yf::Recommended.needed());
+        assert!(Yf::Required.needed());
+        assert!(!Yf::No.needed());
+        assert!(!Yf::RequiredFromEndemic.needed());
+
+        for palu in [Palu::No, Palu::Limited, Palu::Present, Palu::High] {
+            assert!(!palu.label().trim().is_empty());
+        }
+
+        // Every region of the grid is named, and no two share a name.
+        let mut names: Vec<&str> = Region::ALL
+            .iter()
+            .map(|r| {
+                assert!(!r.label().trim().is_empty());
+                r.label()
+            })
+            .collect();
+        names.sort_unstable();
+        let seen = names.len();
+        names.dedup();
+        assert_eq!(seen, names.len(), "deux régions portent le même nom");
+
+        // And every country of the table belongs to one of them, so no
+        // country can fall off the map.
+        for c in COUNTRIES {
+            assert!(Region::ALL.contains(&c.region), "{} hors grille", c.name);
+            assert!(!c.name.trim().is_empty());
+            assert_eq!(c.code.len(), 2, "{} : code ISO à deux lettres", c.name);
+        }
+    }
 }

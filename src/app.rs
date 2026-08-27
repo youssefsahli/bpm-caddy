@@ -18572,4 +18572,215 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// The récapitulatif's own arithmetic: only the acts that are done
+    /// are billable, the code and the step come from the convention's
+    /// sequence, and the total is what the options say — not a figure
+    /// computed twice in two places.
+    #[test]
+    fn the_billing_recap_lists_what_is_billable_and_nothing_else() {
+        use super::billing_lines;
+        let base = ExportRow {
+            patient_id: 1,
+            patient_name: "Hélène Lefèvre".to_owned(),
+            phone: String::new(),
+            birth_date: "1952-09-27".to_owned(),
+            kind: InterviewKind::Bpm,
+            state: InterviewState::Performed,
+            created_date: "2026-08-03".to_owned(),
+            scheduled_date: None,
+            duration_minutes: 45,
+            theme: "Observance".to_owned(),
+            fee_rank: 0,
+            fee_year: 0,
+            remote: false,
+            situation: String::new(),
+            treatment_change: false,
+            operator: "CL".to_owned(),
+        };
+        let cfg = Config::default();
+        // An act that is only identified is not billable yet.
+        let mut identified = base.clone();
+        identified.state = InterviewState::Identified;
+        assert!(billing_lines(&[identified], &cfg).is_empty());
+        // A performed one is, with the memo's own code and step.
+        let lines = billing_lines(std::slice::from_ref(&base), &cfg);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].code, "BMI");
+        assert_eq!(lines[0].patient, "Hélène Lefèvre");
+        assert_eq!(lines[0].coverage, 70);
+        assert!(lines[0].fee > 0.0);
+        // The date shown is the day it was done when one was set, and
+        // the day it was created otherwise: a recap that dated every
+        // act by its creation would bill August in September.
+        assert_eq!(lines[0].date, "2026-08-03");
+        let mut planned = base.clone();
+        planned.scheduled_date = Some("2026-08-28".to_owned());
+        assert_eq!(billing_lines(&[planned], &cfg)[0].date, "2026-08-28");
+        // Held remotely, the fee carries the TPH supplement — and with
+        // it at zero by default, it changes nothing until the officine
+        // says what its convention pays.
+        let mut remote = base.clone();
+        remote.remote = true;
+        assert!(billing_lines(&[remote], &cfg)[0].remote);
+    }
+
+    /// The URL handed to the browser is the only string this offline
+    /// application ever sends anywhere: it must survive accents, spaces
+    /// and the punctuation of a French drug name.
+    #[test]
+    fn a_lookup_url_escapes_everything_it_should() {
+        use super::urlencode;
+        assert_eq!(urlencode("Eliquis"), "Eliquis");
+        assert_eq!(
+            urlencode("acide acétylsalicylique"),
+            "acide+ac%C3%A9tylsalicylique"
+        );
+        assert_eq!(urlencode("a&b=c?d"), "a%26b%3Dc%3Fd");
+        assert_eq!(urlencode("-_.~"), "-_.~");
+        assert_eq!(urlencode(""), "");
+    }
+
+    /// The interactions quoted on the bilan are the sentences of each
+    /// card's own monograph that name another treatment of the same
+    /// file — each pair once, and never the card quoting itself.
+    #[test]
+    fn the_bilan_quotes_each_pair_of_treatments_once() {
+        use super::interactions_between;
+        use crate::db::Drug;
+        let statin = Drug {
+            id: 1,
+            name: "Tahor".to_owned(),
+            dci: "atorvastatine".to_owned(),
+            ddi: "Le risque musculaire augmente avec Lipanthyl.                   L'association à Lipanthyl impose une surveillance."
+                .to_owned(),
+            ..Drug::default()
+        };
+        let fibrate = Drug {
+            id: 2,
+            name: "Lipanthyl".to_owned(),
+            dci: "fénofibrate".to_owned(),
+            ddi: String::new(),
+            ..Drug::default()
+        };
+        let hits = interactions_between(&[statin.clone(), fibrate.clone()]);
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].0, "Tahor ↔ Lipanthyl");
+        // The quote is a whole sentence, not the matched word alone.
+        assert!(hits[0].1.contains("risque musculaire"));
+        assert!(hits[0].1.ends_with('.'));
+        // A file of one treatment has nothing to say about itself.
+        assert!(interactions_between(&[statin]).is_empty());
+        // And a card with no interactions section is simply skipped.
+        assert!(interactions_between(&[fibrate]).is_empty());
+    }
+
+    /// The rentals that reach the printed recap are the ones still out
+    /// and priced; a rental whose dates do not read is left out rather
+    /// than billed at zero.
+    #[test]
+    fn only_priceable_rentals_reach_the_recap() {
+        use crate::db::Location;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rec-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("recap.db");
+        let _ = std::fs::remove_file(&path);
+        let db = crate::db::Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let good = Location {
+            patient_id: pid,
+            label: "Nébuliseur".to_owned(),
+            period: "semaine".to_owned(),
+            fee: 12.0,
+            started_on: "2026-03-03".to_owned(),
+            ..Location::default()
+        };
+        db.add_location(&good).unwrap();
+        // A rental whose start date is unreadable prices to nothing.
+        let bad = Location {
+            started_on: "pas une date".to_owned(),
+            label: "Lit médicalisé".to_owned(),
+            ..good.clone()
+        };
+        db.add_location(&bad).unwrap();
+        let recap = super::billing_rentals(&db, "2026-03-24");
+        assert_eq!(recap.len(), 1, "{:?}", recap.len());
+        assert_eq!(recap[0].label, "Nébuliseur");
+        assert_eq!(recap[0].periods, 4);
+        assert_eq!(recap[0].amount, 48.0);
+        assert_eq!(recap[0].period_word, "semaine");
+        assert!(recap[0].patient.contains("Jean"));
+        // A rental taken back is off the recap: it is not still out.
+        let running = db.running_locations().unwrap();
+        let l = running
+            .iter()
+            .find(|(l, _)| l.label == "Nébuliseur")
+            .unwrap();
+        assert!(db
+            .update_location_dates(
+                l.0.id,
+                &l.0.started_on,
+                "2026-03-10",
+                "",
+                ("2026-03-03", "", "")
+            )
+            .unwrap());
+        assert!(super::billing_rentals(&db, "2026-03-24")
+            .iter()
+            .all(|r| r.label != "Nébuliseur"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The dashboard's rental call list: overdue first, then by the day
+    /// they fall due, and nothing that has no renewal rule at all.
+    #[test]
+    fn the_rental_call_list_raises_the_overdue_first() {
+        use crate::db::Location;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-watch-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("watch.db");
+        let _ = std::fs::remove_file(&path);
+        let db = crate::db::Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Moreau", "Lucie", "1960-01-01").unwrap();
+        let mk = |label: &str, started: &str, renewal_days: u32| Location {
+            patient_id: pid,
+            label: label.to_owned(),
+            period: "semaine".to_owned(),
+            fee: 10.0,
+            renewal_days,
+            started_on: started.to_owned(),
+            ..Location::default()
+        };
+        // Lapsed a month ago, due in three days, due in a year, and one
+        // with no renewal rule at all.
+        db.add_location(&mk("Lit", "2026-01-01", 28)).unwrap();
+        db.add_location(&mk("TENS", "2026-03-01", 28)).unwrap();
+        db.add_location(&mk("Fauteuil", "2026-03-01", 365)).unwrap();
+        db.add_location(&mk("Tire-lait", "2026-01-01", 0)).unwrap();
+        let watch = super::loc_watch(&db, "2026-03-26", 7);
+        let names: Vec<&str> = watch.iter().map(|w| w.label.as_str()).collect();
+        assert_eq!(names, ["Lit", "TENS"], "{names:?}");
+        assert!(watch[0].overdue, "le dépassé passe devant");
+        assert!(!watch[1].overdue);
+        assert!(watch[0].name.contains("Lucie"));
+        // A shorter notice drops the one that is merely approaching.
+        let strict = super::loc_watch(&db, "2026-03-26", 0);
+        assert_eq!(strict.len(), 1);
+        assert_eq!(strict[0].label, "Lit");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Minutes as the counter says them, for the insulin legends.
+    #[test]
+    fn a_span_reads_as_the_counter_says_it() {
+        use super::insulin_span;
+        assert_eq!(insulin_span(5), "5 min");
+        assert_eq!(insulin_span(59), "59 min");
+        assert_eq!(insulin_span(60), "1 h");
+        assert_eq!(insulin_span(90), "1 h 30");
+        assert_eq!(insulin_span(1440), "24 h");
+        assert_eq!(insulin_span(0), "0 min");
+    }
 }

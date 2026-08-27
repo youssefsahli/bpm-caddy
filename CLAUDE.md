@@ -32,7 +32,16 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
 Always build/lint with `--workspace`: plain `cargo build` only builds the
 root package. CI enforces `cargo fmt --all --check`,
 `cargo clippy --workspace --all-targets -- -D warnings` (the tests are
-linted too), `cargo test --workspace`.
+linted too), `cargo test --workspace`, and `./scripts/coverage.sh`.
+
+`scripts/coverage.sh` holds two floors that only ever move up: the
+**logic modules** (everything but `app.rs`, `main.rs`, `motif` and the
+launcher) and the workspace as a whole. The workspace figure is low and
+will stay low: `src/app.rs` is ~15 000 lines of egui layout, more than
+half the repo, and a view cannot be covered without a UI harness —
+`egui_kittest` needs egui ≥ 0.30 and the project is on 0.29. Until that
+upgrade is decided, the number to defend is the logic one, and
+`scripts/smoke.sh` is what holds the interface.
 
 ## Conventions
 
