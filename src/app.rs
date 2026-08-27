@@ -1020,6 +1020,28 @@ impl WorkTab {
     }
 }
 
+/// Where a jump-box result goes.
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum Goto {
+    /// One of the standing views, or a file already in the notebook.
+    Tab(WorkTab),
+    Patient(i64),
+    Drug(i64),
+    /// A reference table, by its index in `tables::TABLES`.
+    Table(usize),
+    Preparation(i64),
+    Protocol(i64),
+}
+
+/// One line of the jump box: where it goes, what it reads, and which
+/// kind of thing it is (a dim tag on the right, so « Coversyl » the
+/// fiche and « Coversyl » the treatment of a file never look alike).
+struct GotoHit {
+    dest: Goto,
+    label: String,
+    kind: &'static str,
+}
+
 /// Which half of an open patient file is on screen.
 ///
 /// The acts and the carnet both want the whole work area — ten columns
@@ -1357,6 +1379,13 @@ struct Session {
     map_lens: MapLens,
     map_country: Option<&'static str>,
     map_query: String,
+    /// The jump box (Ctrl+K): one search across everything the base
+    /// holds — patients, fiches, tables, préparations, protocoles and
+    /// the standing views. Open flag, what is typed, and where the
+    /// selection sits in the result list.
+    goto_open: bool,
+    goto_query: String,
+    goto_selected: usize,
     /// The workspace notebook: what the operator has opened, in the
     /// order they opened it. The *active* tab is never stored — it is
     /// derived from the live view each frame (see [`Session::current_tab`]),
@@ -1542,6 +1571,9 @@ impl Session {
             map_lens: MapLens::default(),
             map_country: None,
             map_query: String::new(),
+            goto_open: false,
+            goto_query: String::new(),
+            goto_selected: 0,
             // The five standing views are always in the strip, in a
             // fixed order, so their position never moves under the
             // pointer; opened files are appended after them.
@@ -1556,6 +1588,9 @@ impl Session {
             error: None,
         };
         session.set_patients(patients);
+        // The jump box searches the codex too, so it has to be loaded
+        // before the first Ctrl+K, not only when the codex is opened.
+        session.reload_codex();
         // The search view opens on the day's own panels, so the figures
         // they show have to be loaded before the first frame.
         session.refresh_dashboard();
@@ -1681,6 +1716,181 @@ impl Session {
         let n = self.tabs.len() as i64;
         let next = self.tabs[(at + delta).rem_euclid(n) as usize].clone();
         self.activate_tab(&next);
+    }
+
+    /// Everything the jump box can reach, ranked against `goto_query`.
+    ///
+    /// Six kinds share one list: the standing views, the patients, the
+    /// fiches, the reference tables, the préparations and the
+    /// protocoles. Each kind is scored on its own text and then all of
+    /// them are ranked together, so « eliq » lands on the fiche and
+    /// « cocke » on the table without the operator choosing a
+    /// category first. An empty query shows the views — the box is
+    /// then a menu of where to go.
+    fn goto_results(&self, limit: usize) -> Vec<GotoHit> {
+        let q = self.goto_query.trim();
+        let mut out: Vec<(i32, GotoHit)> = Vec::new();
+        let mut push = |score: i32, dest: Goto, label: String, kind: &'static str| {
+            out.push((score, GotoHit { dest, label, kind }));
+        };
+        // Each kind is scored on its own text, then a bonus decides the
+        // ties: at equal text score a patient outranks a fiche, and a
+        // fiche outranks a reference table. It is the order in which the
+        // counter means them.
+        const PATIENT_BONUS: i32 = 20;
+        const DRUG_BONUS: i32 = 10;
+        // The standing views come first on an empty box and stay
+        // reachable by name ("agenda", "carte").
+        for tab in [
+            WorkTab::Dashboard,
+            WorkTab::Search,
+            WorkTab::Drugs,
+            WorkTab::Agenda,
+            WorkTab::Carnet,
+            WorkTab::Map,
+        ] {
+            let label = self.tab_label(&tab);
+            let score = if q.is_empty() {
+                Some(0)
+            } else {
+                fuzzy::score(q, &label)
+            };
+            if let Some(sc) = score {
+                push(sc, Goto::Tab(tab), label, tr("goto_kind_view"));
+            }
+        }
+        if q.is_empty() {
+            return out.into_iter().map(|(_, h)| h).collect();
+        }
+        for (p, (k1, k2)) in self.patients.iter().zip(self.search_keys.iter()) {
+            let sc = fuzzy::score(q, k1).max(fuzzy::score(q, k2));
+            if let Some(sc) = sc {
+                push(
+                    sc + PATIENT_BONUS,
+                    Goto::Patient(p.id),
+                    format!("{} {}", p.first_name, p.last_name),
+                    tr("goto_kind_patient"),
+                );
+            }
+        }
+        for d in &self.drugs {
+            let name = fuzzy::score(q, &d.name);
+            let dci = if d.dci.is_empty() {
+                None
+            } else {
+                fuzzy::score(q, &d.dci)
+            };
+            if let Some(sc) = name.max(dci) {
+                let label = if d.dci.is_empty() {
+                    d.name.clone()
+                } else {
+                    format!("{} — {}", d.name, d.dci)
+                };
+                push(
+                    sc + DRUG_BONUS,
+                    Goto::Drug(d.id),
+                    label,
+                    tr("goto_kind_drug"),
+                );
+            }
+        }
+        for (i, t) in crate::tables::TABLES.iter().enumerate() {
+            let sc = fuzzy::score(q, t.short).max(fuzzy::score(q, t.title));
+            if let Some(sc) = sc {
+                push(
+                    sc,
+                    Goto::Table(i),
+                    t.title.to_owned(),
+                    tr("goto_kind_table"),
+                );
+            }
+        }
+        for prep in &self.preparations {
+            if let Some(sc) = fuzzy::score(q, &prep.name) {
+                push(
+                    sc,
+                    Goto::Preparation(prep.id),
+                    prep.name.clone(),
+                    tr("goto_kind_prep"),
+                );
+            }
+        }
+        for proto in &self.protocols {
+            let sc = fuzzy::score(q, &proto.title).max(if proto.subject.is_empty() {
+                None
+            } else {
+                fuzzy::score(q, &proto.subject)
+            });
+            if let Some(sc) = sc {
+                push(
+                    sc,
+                    Goto::Protocol(proto.id),
+                    proto.title.clone(),
+                    tr("goto_kind_protocol"),
+                );
+            }
+        }
+        goto_rank(out, limit)
+    }
+
+    /// Go where a jump-box result points, loading whatever that
+    /// destination needs — exactly as reaching it the long way would.
+    fn go_to(&mut self, dest: Goto) {
+        self.goto_open = false;
+        self.goto_query.clear();
+        self.goto_selected = 0;
+        match dest {
+            Goto::Tab(tab) => self.activate_tab(&tab),
+            Goto::Patient(id) => self.activate_tab(&WorkTab::Patient(id)),
+            Goto::Drug(id) => self.activate_tab(&WorkTab::Drug(id)),
+            // The three panels inside the drug view are exclusive: each
+            // destination closes the other two, or the codex would open
+            // behind the tables.
+            Goto::Table(i) => {
+                self.enter_drug_panel();
+                self.show_tables = true;
+                self.table_selected = i;
+                self.table_query.clear();
+                self.table_cells = self
+                    .db
+                    .table_cells(crate::tables::TABLES[i].short)
+                    .unwrap_or_default();
+            }
+            Goto::Preparation(id) => {
+                self.enter_drug_panel();
+                self.show_codex = true;
+                self.reload_codex();
+                self.codex_open = Some(id);
+                self.codex_edit = None;
+                self.codex_base = None;
+                self.codex_target.clear();
+            }
+            Goto::Protocol(id) => {
+                self.enter_drug_panel();
+                self.show_protocols = true;
+                self.protocols = self.db.protocols().unwrap_or_default();
+                if let Some(p) = self.protocols.iter().find(|p| p.id == id).cloned() {
+                    self.protocol_nodes = self.db.protocol_nodes(p.id).unwrap_or_default();
+                    self.protocol_open = Some(p);
+                    self.protocol_walk = None;
+                    self.protocol_header = None;
+                }
+            }
+        }
+    }
+
+    /// Land in the drug view with none of its three panels open: the
+    /// caller then opens the one it wants.
+    fn enter_drug_panel(&mut self) {
+        self.view = MainView::Drugs;
+        self.drug_form = None;
+        self.drug_base = None;
+        self.show_tables = false;
+        self.show_codex = false;
+        self.show_protocols = false;
+        self.codex_open = None;
+        self.protocol_open = None;
+        self.calc_open = false;
     }
 
     /// The drug base filtered by `drug_query`, best match first.
@@ -2745,6 +2955,140 @@ fn treatment_change_shortfall(
 /// Quick act picker: the nine acts with digit shortcuts and the theme
 /// the new act will carry. Returns the chosen kind (and closes) when a
 /// row is clicked or its digit is pressed.
+/// How many results one kind may take before the others get a turn.
+const GOTO_PER_KIND: usize = 4;
+
+/// Rank the jump box's candidates, best first, capped at `limit`.
+///
+/// Sorted on the score alone, and stably: two things that read as well
+/// as each other keep the order they were gathered in, which is the
+/// order of the kinds above. A jump box whose first line moves between
+/// frames is a jump box you cannot use blind.
+///
+/// The base holds eight hundred fiches and a handful of everything
+/// else, so a plain ranking is a list of fiches: « co » filled twelve
+/// rows with Codoliprane, Colchicine, Coltramyl… and buried both the
+/// patient and the Cockcroft table. Each kind therefore takes at most
+/// [`GOTO_PER_KIND`] rows in the first pass; whatever is left over is
+/// filled from the rest in score order, so a query that only matches
+/// fiches still fills the box.
+fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
+    scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
+    let mut taken = std::collections::HashMap::<&'static str, usize>::new();
+    let mut out: Vec<GotoHit> = Vec::new();
+    let mut spare: Vec<GotoHit> = Vec::new();
+    for (_, hit) in scored {
+        let n = taken.entry(hit.kind).or_insert(0);
+        if *n < GOTO_PER_KIND && out.len() < limit {
+            *n += 1;
+            out.push(hit);
+        } else {
+            spare.push(hit);
+        }
+    }
+    out.extend(spare.into_iter().take(limit.saturating_sub(out.len())));
+    out
+}
+
+/// The jump box (Ctrl+K): one line of text, everything the base holds
+/// under it.
+///
+/// The app is a notebook of views, and reaching a préparation used to
+/// mean the drug view, then the codex, then the list. This is the other
+/// route — type three letters of the thing itself and land on it. It is
+/// deliberately keyboard-only in spirit: the arrows walk the list, Entrée
+/// opens, Échap gives up and leaves the view exactly where it was.
+fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
+    // The arrows and Entrée are claimed before the field is drawn, or
+    // the text cursor would eat them and the list would never move.
+    let (down, up, enter) = ctx.input_mut(|i| {
+        (
+            i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+            i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+            i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+        )
+    });
+    let hits = session.goto_results(12);
+    if hits.is_empty() {
+        session.goto_selected = 0;
+    } else {
+        if down {
+            session.goto_selected = (session.goto_selected + 1) % hits.len();
+        }
+        if up {
+            session.goto_selected = (session.goto_selected + hits.len() - 1) % hits.len();
+        }
+        session.goto_selected = session.goto_selected.min(hits.len() - 1);
+    }
+    let mut chosen: Option<Goto> = None;
+    egui::Window::new(tr("goto_title"))
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])
+        .fixed_size([460.0, 0.0])
+        .show(ctx, |ui| {
+            let field = ui.add(
+                egui::TextEdit::singleline(&mut session.goto_query)
+                    .desired_width(f32::INFINITY)
+                    .hint_text(tr("goto_hint")),
+            );
+            // The box opens ready to type: it is summoned by a keystroke
+            // and asking for a click first would waste the gesture.
+            if !field.has_focus() {
+                field.request_focus();
+            }
+            if field.changed() {
+                session.goto_selected = 0;
+            }
+            ui.add_space(6.0);
+            if hits.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr("goto_none"))
+                        .size(11.0)
+                        .color(motif::TEXT_DIM),
+                );
+                return;
+            }
+            for (i, hit) in hits.iter().enumerate() {
+                let row = ui.available_width();
+                let (rect, resp) =
+                    ui.allocate_exact_size(egui::vec2(row, 22.0), egui::Sense::click());
+                let active = i == session.goto_selected;
+                if active || resp.hovered() {
+                    ui.painter().rect_filled(
+                        rect,
+                        0.0,
+                        if active { motif::ACCENT } else { motif::BG },
+                    );
+                }
+                let fg = if active { motif::BG } else { motif::TEXT };
+                ui.painter().text(
+                    rect.left_center() + egui::vec2(6.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    &hit.label,
+                    egui::FontId::proportional(13.0),
+                    fg,
+                );
+                ui.painter().text(
+                    rect.right_center() - egui::vec2(6.0, 0.0),
+                    egui::Align2::RIGHT_CENTER,
+                    hit.kind,
+                    egui::FontId::proportional(10.0),
+                    if active { motif::BG } else { motif::TEXT_DIM },
+                );
+                if resp.clicked() {
+                    chosen = Some(hit.dest.clone());
+                }
+            }
+        });
+    if enter {
+        if let Some(hit) = hits.get(session.goto_selected) {
+            chosen = Some(hit.dest.clone());
+        }
+    }
+    chosen
+}
+
 fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<InterviewKind> {
     // One digit per act, in the order the rows are drawn: 1-9 then 0
     // for the tenth. The list must cover `InterviewKind::ALL` — it held
@@ -3109,6 +3453,23 @@ impl App {
                         Ok("tables") => {
                             session.show_tables = true;
                             session.view = MainView::Drugs;
+                        }
+                        // The jump box, with something typed in it: the
+                        // result list is a code path of its own.
+                        Ok("goto") => {
+                            session.refresh_dashboard();
+                            session.view = MainView::Dashboard;
+                            session.goto_open = true;
+                            session.goto_query = "co".to_owned();
+                        }
+                        // …and the jump itself: type a préparation's
+                        // name and land on its sheet, which is the path
+                        // no screenshot of an open box can exercise.
+                        Ok("goto_jump") => {
+                            session.goto_query = "vaseline".to_owned();
+                            if let Some(hit) = session.goto_results(1).into_iter().next() {
+                                session.go_to(hit.dest);
+                            }
                         }
                         // The search across all the tables, with
                         // something typed in it: the results list is a
@@ -4060,7 +4421,7 @@ impl App {
     /// it acts on.
     fn keys_window(&mut self, ctx: &egui::Context) {
         // (key, what it does). An empty key starts a new group.
-        let rows: [(&str, &str); 23] = [
+        let rows: [(&str, &str); 24] = [
             ("", tr("keys_group_workspace")),
             ("F1", tr("toolbar_docs_tooltip")),
             ("F6", tr("toolbar_nav_tooltip")),
@@ -4074,6 +4435,7 @@ impl App {
             ("F4", tr("tab_agenda")),
             ("F5", tr("tab_carnet")),
             ("F7", tr("tab_map")),
+            ("Ctrl+K", tr("keys_goto")),
             ("Ctrl+F", tr("keys_search")),
             ("Échap", tr("keys_back")),
             ("", tr("keys_group_work")),
@@ -13948,6 +14310,27 @@ impl eframe::App for App {
         if ctx.input(|i| i.key_pressed(egui::Key::F1)) {
             self.show_docs = !self.show_docs;
         }
+        // Ctrl+K: one box over every view. Consumed, so the letter never
+        // reaches a field behind it.
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::K)) {
+            if let State::Unlocked(session) = &mut self.state {
+                session.goto_open = !session.goto_open;
+                session.goto_query.clear();
+                session.goto_selected = 0;
+            }
+        }
+        // Échap closes the box, and closes nothing else: it is consumed
+        // here, before the views draw, or the same keystroke would also
+        // close the patient file underneath it.
+        if let State::Unlocked(session) = &mut self.state {
+            if session.goto_open
+                && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+            {
+                session.goto_open = false;
+                session.goto_query.clear();
+                session.goto_selected = 0;
+            }
+        }
         if ctx.input(|i| i.key_pressed(egui::Key::F6)) {
             self.show_nav = !self.show_nav;
         }
@@ -13997,6 +14380,19 @@ impl eframe::App for App {
                         .clicked()
                     {
                         self.show_keys = !self.show_keys;
+                    }
+                    // The jump box has a button too: a shortcut nobody
+                    // is told about is a shortcut nobody uses.
+                    let goto_on = matches!(&self.state, State::Unlocked(s) if s.goto_open);
+                    if motif::toggle(ui, tr("toolbar_goto"), goto_on)
+                        .on_hover_text(tr("toolbar_goto_tooltip"))
+                        .clicked()
+                    {
+                        if let State::Unlocked(session) = &mut self.state {
+                            session.goto_open = !session.goto_open;
+                            session.goto_query.clear();
+                            session.goto_selected = 0;
+                        }
                     }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -15390,6 +15786,16 @@ impl eframe::App for App {
             self.keys_window(ctx);
         }
 
+        // The jump box sits above everything: it is how you leave
+        // wherever you are, so it cannot be drawn under it.
+        if let State::Unlocked(session) = &mut self.state {
+            if session.goto_open {
+                if let Some(dest) = goto_window(ctx, session) {
+                    session.go_to(dest);
+                }
+            }
+        }
+
         // The docs pane may hold patient-adjacent notes: never show it on
         // the lock screen. Same for the navigator, which lists patients.
         if self.show_docs && matches!(self.state, State::Unlocked(_)) {
@@ -15430,6 +15836,75 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    #[test]
+    fn the_jump_box_ranks_by_score_then_by_kind() {
+        use super::{goto_rank, Goto, GotoHit};
+        let hit = |sc: i32, dest: Goto, label: &str, kind: &'static str| {
+            (
+                sc,
+                GotoHit {
+                    dest,
+                    label: label.to_owned(),
+                    kind,
+                },
+            )
+        };
+        // Gathered in the order the kinds are gathered in: view,
+        // patient, fiche, table. The two middle ones read equally well.
+        let out = goto_rank(
+            vec![
+                hit(10, Goto::Table(0), "Cockcroft", "table"),
+                hit(50, Goto::Patient(7), "Paul Bernard", "patient"),
+                hit(50, Goto::Drug(3), "Bernadex", "fiche"),
+                hit(90, Goto::Drug(4), "Bernard", "fiche"),
+            ],
+            3,
+        );
+        // The best score first, whatever kind it is.
+        assert_eq!(out[0].dest, Goto::Drug(4));
+        // Then the tie, in the order the kinds were gathered: the
+        // patient before the fiche. A sort that shuffled equals would
+        // move the first line under the operator's fingers.
+        assert_eq!(out[1].dest, Goto::Patient(7));
+        assert_eq!(out[2].dest, Goto::Drug(3));
+        // And the cap is a cap: the table falls off.
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn one_kind_never_fills_the_jump_box_alone() {
+        use super::{goto_rank, Goto, GotoHit, GOTO_PER_KIND};
+        // Eight fiches that all read better than the one table.
+        let mut input: Vec<(i32, GotoHit)> = (0..8)
+            .map(|i| {
+                (
+                    100 - i,
+                    GotoHit {
+                        dest: Goto::Drug(i as i64),
+                        label: format!("Co{i}"),
+                        kind: "fiche",
+                    },
+                )
+            })
+            .collect();
+        input.push((
+            1,
+            GotoHit {
+                dest: Goto::Table(0),
+                label: "Cockcroft".to_owned(),
+                kind: "table",
+            },
+        ));
+        let out = goto_rank(input, 6);
+        // The table is worst by score and still on screen: the fiches
+        // took their four rows and stood aside.
+        assert_eq!(out[GOTO_PER_KIND].dest, Goto::Table(0));
+        // Then the box fills up again from what was left over, rather
+        // than showing five rows out of six.
+        assert_eq!(out.len(), 6);
+        assert_eq!(out[5].dest, Goto::Drug(4));
+    }
 
     #[test]
     fn half_life_units_are_whole_words() {
