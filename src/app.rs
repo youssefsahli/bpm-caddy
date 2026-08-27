@@ -5756,9 +5756,16 @@ impl App {
             // tab has at 1024x700 with both docks open, and the table
             // the file exists for showed its summary line and not one
             // act. The journal scrolls; the table is what is read.
+            // The acts keep enough for a whole row before the journal
+            // serves itself. Half a row of combo boxes cut off at the
+            // panel edge reads as a broken table, which is worse than a
+            // table one line short — and the row here is taller than a
+            // line of text, so the reserve is measured off the widget
+            // height rather than guessed at a round number.
+            let acts_min = 130.0 + ui.spacing().interact_size.y * 3.0;
             let notes_h = (work.height() * 0.34)
                 .clamp(170.0, 280.0)
-                .min((work.height() - 150.0).max(120.0));
+                .min((work.height() - acts_min).max(120.0));
             let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
             motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
                 Self::patient_acts_pane(ui, session, patient, config);
@@ -6123,9 +6130,16 @@ impl App {
             // there is barely 300 px here, and a band taking its share
             // of that left the table showing its header and nothing
             // else. The band scrolls inside whatever is left instead.
+            // « À faire » and « voyage » are the secondary halves of
+            // this tab: a heading, a button and a line or two, and they
+            // scroll. The carnet above has to hold a table *and* a
+            // two-row form that cannot be typed into if it is cut, so
+            // it keeps 240 px before the band serves itself, and the
+            // band's own floor is 96 — enough for its button and one
+            // line. (84 was too mean: it cut the buttons off.)
             let band = (work.height() * 0.40)
                 .clamp(150.0, 320.0)
-                .min((work.height() - 200.0).max(110.0));
+                .min((work.height() - 240.0).max(96.0));
             let stack = motif::split_rows(work, &[0.0, band], 8.0);
             (stack[0], stack[1])
         };
@@ -6197,14 +6211,13 @@ impl App {
             );
             // Plus the source line under it, which is part of the claim
             // the panel makes and must not be clipped away.
-            // The cap protects the table, not the form: a table that
-            // is one row short still reads, a form whose second row of
-            // fields is cut in half cannot be typed into. So the form
-            // keeps what it measured and the table gives way, down to a
-            // floor of a header and a line.
+            // The form always gets what it measured; the table takes
+            // what is left. A table one row short still reads and it
+            // scrolls, a form whose second row of fields is cut in half
+            // cannot be typed into. The only cap is the panel itself.
             let form_h = ((ui.spacing().interact_size.y + ui.spacing().item_spacing.y) * form_rows
                 + 34.0)
-                .min((inner.height() - 46.0).max(60.0));
+                .min((inner.height() - 34.0).max(60.0));
             let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
             let table = motif::well(ui, parts[0]);
             motif::inside(ui, table, |ui| {
@@ -10662,7 +10675,17 @@ impl App {
             } else {
                 ui.horizontal(|ui| {
                     category(ui, session);
-                    let field = title(ui, session, (avail - 360.0).clamp(140.0, 420.0));
+                    // The reserve is the sum of the fixed controls, not
+                    // a round number: 360 left out the width of the
+                    // « Ajouter » button itself, so at 1280 the button
+                    // went off the right edge of the day pane.
+                    let reserve = 110.0
+                        + 52.0
+                        + 130.0
+                        + Self::button_width(ui, tr("agenda_event_add"))
+                        + ui.spacing().button_padding.x * 4.0
+                        + ui.spacing().item_spacing.x * 4.0;
+                    let field = title(ui, session, (avail - reserve).clamp(140.0, 420.0));
                     entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     repeat(ui, session);
                     if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
