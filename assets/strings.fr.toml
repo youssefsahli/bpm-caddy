@@ -418,6 +418,7 @@ mono_subtitle = "Le mot tel qu'il est écrit dans les fiches, avec la phrase qui
 mono_hint = "Un mot du texte : pamplemousse, QT, allaitement, photosensibilisant…"
 mono_short = "Trois lettres au moins : deux en trouvent la moitié de la base."
 mono_count = "{} passage(s) dans les {} fiches"
+mono_count_capped = "Les {} premiers passages, sur les {} fiches — précisez le mot pour en voir la fin"
 mono_f_dosage = "Posologie"
 mono_f_ddi = "Interactions"
 mono_f_iup = "IUP"

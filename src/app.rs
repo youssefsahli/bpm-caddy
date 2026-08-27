@@ -1863,6 +1863,17 @@ impl Session {
         self.goto_query.clear();
         self.goto_selected = 0;
         match dest {
+            // Asking for « Médicaments » by name means the base's index,
+            // not wherever the drug view was left: the tab strip is what
+            // returns you to an open codex, the jump box is what leaves
+            // it.
+            Goto::Tab(WorkTab::Drugs) => {
+                self.enter_drug_panel();
+                self.drug_query.clear();
+                if let Ok(list) = self.db.drugs() {
+                    self.drugs = list;
+                }
+            }
             Goto::Tab(tab) => self.activate_tab(&tab),
             Goto::Patient(id) => self.activate_tab(&WorkTab::Patient(id)),
             Goto::Drug(id) => self.activate_tab(&WorkTab::Drug(id)),
@@ -1892,8 +1903,12 @@ impl Session {
                 self.enter_drug_panel();
                 self.open_mono_search();
                 self.mono_query = word;
-                self.mono_hits =
-                    mono_search(&self.drugs, &self.mono_posologies, &self.mono_query, 200);
+                self.mono_hits = mono_search(
+                    &self.drugs,
+                    &self.mono_posologies,
+                    &self.mono_query,
+                    MONO_LIMIT,
+                );
             }
             Goto::Protocol(id) => {
                 self.enter_drug_panel();
@@ -2572,6 +2587,10 @@ fn folded_find(text: &str, needle: &[char]) -> Option<(usize, usize)> {
         .find(|&i| folded[i..i + needle.len()] == *needle)
         .map(|i| (offsets[i], offsets[i + needle.len()]))
 }
+
+/// How many passages the prose search brings back at most. Beyond a
+/// couple of hundred nobody reads the list — they narrow the word.
+const MONO_LIMIT: usize = 200;
 
 /// The sentence with the searched word marked, so the eye lands on it
 /// rather than reading a hundred and twenty-three paragraphs.
@@ -3675,7 +3694,7 @@ impl App {
                                 &session.drugs,
                                 &session.mono_posologies,
                                 &session.mono_query,
-                                200,
+                                MONO_LIMIT,
                             );
                             session.view = MainView::Drugs;
                         }
@@ -14017,7 +14036,7 @@ impl App {
                     &session.drugs,
                     &session.mono_posologies,
                     &session.mono_query,
-                    200,
+                    MONO_LIMIT,
                 );
             }
             ui.add_space(10.0);
@@ -14033,14 +14052,16 @@ impl App {
                 );
                 return;
             }
-            ui.label(
-                egui::RichText::new(trn(
+            // A cap that says nothing reads as « that is all of them ».
+            let count = if session.mono_hits.len() >= MONO_LIMIT {
+                trn("mono_count_capped", &[&MONO_LIMIT, &session.drugs.len()])
+            } else {
+                trn(
                     "mono_count",
                     &[&session.mono_hits.len(), &session.drugs.len()],
-                ))
-                .size(11.5)
-                .color(motif::TEXT_DIM),
-            );
+                )
+            };
+            ui.label(egui::RichText::new(count).size(11.5).color(motif::TEXT_DIM));
             ui.add_space(6.0);
             let rect = ui.available_rect_before_wrap();
             if rect.height() < 40.0 {

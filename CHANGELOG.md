@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.79.1] - 2026-08-27
+
+### Fixed
+- La recherche plein texte ne rendait que ses 200 premiers passages et
+  les comptait comme si c'était tout : elle dit maintenant qu'elle
+  s'arrête là, et propose de préciser le mot. Un plafond muet se lit
+  « voilà tout ce qu'il y a ».
+- « Aller à… » vers « Médicaments » ramène à l'index de la base, et non
+  là où la vue avait été laissée : c'est la bande d'onglets qui rouvre
+  un codex resté ouvert, la boîte de recherche est ce qui en sort.
+
 ## [0.79.0] - 2026-08-27
 
 ### Changed
