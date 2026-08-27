@@ -5058,7 +5058,7 @@ impl App {
     /// it acts on.
     fn keys_window(&mut self, ctx: &egui::Context) {
         // (key, what it does). An empty key starts a new group.
-        let rows: [(&str, &str); 24] = [
+        let rows: [(&str, &str); 25] = [
             ("", tr("keys_group_workspace")),
             ("F1", tr("toolbar_docs_tooltip")),
             ("F6", tr("toolbar_nav_tooltip")),
@@ -5081,6 +5081,7 @@ impl App {
             ("Ctrl+N", tr("keys_new_act")),
             ("1 … 9, 0", tr("keys_act_digit")),
             ("← →", tr("keys_arrows")),
+            ("Alt + ← →", tr("keys_patient_tabs")),
             ("", tr("keys_group_dates")),
             ("230826 · 2308", tr("keys_dates")),
         ];
@@ -5748,12 +5749,32 @@ impl App {
         // area. They take turns behind a notebook strip instead of
         // sharing a split.
         let strip = motif::split_rows(rows[1], &[28.0, 0.0], 4.0);
-        let active = match session.patient_tab {
-            PatientTab::Acts => 0,
-            PatientTab::Vaccins => 1,
-            PatientTab::Bio => 2,
-            PatientTab::Locations => 3,
-        };
+        // Alt and the arrows walk the file's own four halves, the way
+        // Ctrl+Tab walks the workspace's. Three of them had no keyboard
+        // route at all. Alt, so the bare arrows keep driving the acts
+        // table and the agenda; and not while a field has the keyboard.
+        const TABS: [PatientTab; 4] = [
+            PatientTab::Acts,
+            PatientTab::Vaccins,
+            PatientTab::Bio,
+            PatientTab::Locations,
+        ];
+        let mut active = TABS
+            .iter()
+            .position(|t| *t == session.patient_tab)
+            .unwrap_or(0);
+        if !ctx.wants_keyboard_input() {
+            let step = ctx.input(|i| {
+                i.modifiers.alt as i32
+                    * (i.key_pressed(egui::Key::ArrowRight) as i32
+                        - i.key_pressed(egui::Key::ArrowLeft) as i32)
+            });
+            if step != 0 {
+                let n = TABS.len() as i32;
+                active = (((active as i32 + step) % n + n) % n) as usize;
+                session.patient_tab = TABS[active];
+            }
+        }
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
                 motif::Tab::new(tr("patient_tab_acts")),
@@ -13661,16 +13682,33 @@ impl App {
                 .find(|n| n.parent_id == Some(node.id) && n.branch == branch)
                 .map(|n| n.id)
         };
+        // A déroulé is walked while talking to someone: reaching for
+        // the mouse at every « oui » is the friction it exists to
+        // remove. O and N answer, the arrows do too, Entrée carries on.
+        // Not while a field has the keyboard — the title above is one.
+        let (yes_key, no_key, next_key) = if ui.ctx().wants_keyboard_input() {
+            (false, false, false)
+        } else {
+            ui.input(|i| {
+                (
+                    i.key_pressed(egui::Key::O) || i.key_pressed(egui::Key::ArrowLeft),
+                    i.key_pressed(egui::Key::N) || i.key_pressed(egui::Key::ArrowRight),
+                    i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Space),
+                )
+            })
+        };
         ui.horizontal(|ui| {
             if node.kind == db::NodeKind::Question {
-                if motif::button(ui, tr("proto_walk_yes")).clicked() {
+                if motif::button(ui, tr("proto_walk_yes")).clicked() || yes_key {
                     go = Some(child(db::Branch::Yes));
                 }
-                if motif::button(ui, tr("proto_walk_no")).clicked() {
+                if motif::button(ui, tr("proto_walk_no")).clicked() || no_key {
                     go = Some(child(db::Branch::No));
                 }
             } else if let Some(next) = child(db::Branch::Root) {
-                if motif::button(ui, tr("itv_advance").replace("{}", "").trim()).clicked() {
+                if motif::button(ui, tr("itv_advance").replace("{}", "").trim()).clicked()
+                    || next_key
+                {
                     go = Some(Some(next));
                 }
             } else {
@@ -13681,6 +13719,12 @@ impl App {
                 );
             }
         });
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("proto_walk_keys"))
+                .size(10.5)
+                .color(motif::TEXT_DIM),
+        );
         if let Some(next) = go {
             match next {
                 Some(id) => session.protocol_walk = Some(id),
