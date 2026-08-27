@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.82.0] - 2026-08-27
+
+### Added
+- **Cinquante-cinq règles de conduite de plus** : « En cas d'oubli » et
+  « Ce qui doit faire consulter » couvrent maintenant 484 des 505 fiches
+  de départ, contre 424. Ce sont les classes que le comptoir délivre et
+  qui n'avaient encore aucune des deux réponses — les antitussifs (dont
+  l'opiacé, à part), l'anticholinergique inhalé et son glaucome aigu par
+  projection oculaire, la colchicine dont la diarrhée *est* le signe de
+  surdosage, les antiacides et pansements gastriques, le cotrimoxazole
+  et son éruption qui fait arrêter le jour même, la clindamycine et sa
+  diarrhée jusqu'à deux mois après, les vitamines une par une, le
+  calcium et le magnésium, l'addictologie, le TDAH et la narcolepsie
+  dont la prise tardive coûte une nuit, le raloxifène et sa thrombose,
+  le dénosumab dont l'oubli est celui de l'injection semestrielle.
+- Les 21 fiches restantes — perfusions, injections intravitréennes,
+  ocytociques, antibiotiques hospitaliers — **restent délibérément sans
+  règle** : « en cas d'oubli » ne veut rien dire pour un produit qu'une
+  équipe administre, et une phrase inventée y serait pire que le vide.
+
 ## [0.81.1] - 2026-08-27
 
 ### Changed
