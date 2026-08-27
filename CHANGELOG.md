@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.72.0] - 2026-08-27
+
+### Added
+- **Quarante lignes de posologie de plus**, sur les fiches que le
+  comptoir voit tous les jours et qui n'en avaient pas : les
+  antiarythmiques et l'équivalence bumétanide-furosémide, l'ivabradine
+  qui ne marche qu'en rythme sinusal, le glimépiride qui ne se prend
+  pas sans le repas qui suit, le sémaglutide oral et ses trente minutes
+  à jeun, le tirzépatide et sa titration, la dégludec dont l'heure peut
+  bouger, l'insuline intermédiaire qu'on remet en suspension, le
+  sévélamer au milieu du repas, le calcium à distance de tout, le
+  bromure d'ipratropium et l'œil, le salmétérol qui ne s'utilise jamais
+  seul dans l'asthme, la pancréatine pendant le repas, la terbinafine
+  et le goût qui s'en va, l'acide fusidique et ses sept jours,
+  l'entécavir qu'on n'arrête pas, le dénosumab et son rendez-vous à six
+  mois, le léflunomide et son wash-out, le tamoxifène et les ISRS qui
+  le désactivent, l'isotrétinoïne et sa contraception sans exception,
+  le timolol et la compression de l'angle interne. 1 286 lignes sur
+  375 fiches.
+
 ## [0.71.0] - 2026-08-27
 
 ### Added
