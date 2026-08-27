@@ -5,12 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.0] - 2026-08-27
+
+### Added
+- **The template editor lists the markers each document may use** —
+  `{{PATIENT_NAME}}`, `{{TREATMENTS}}`, `{{CHECKLIST}}` and the rest,
+  per template, under the file's path. A marker nobody knows about is a
+  marker nobody uses, and a mistyped one prints itself on the page. A
+  test keeps the list and the templates in step, in both directions.
+
 ## [0.69.1] - 2026-08-27
 
 ### Fixed
 - **An act was stamped in UTC while the whole application works in the
-  counter's own time.** Between 22 h et minuit UTC — c'est-à-dire après
-  minuit en France — a new act and a new patient carried the previous
+  counter's own time.** Between 22:00 and midnight UTC — that is, after
+  midnight in France — a new act and a new patient carried the previous
   day: the act did not show as done today, and its day placed it in the
   wrong cycle, which is what picks the fee. A pharmacie de garde works
   at those hours. New rows are stamped in local time, on an existing

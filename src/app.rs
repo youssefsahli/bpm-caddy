@@ -14455,6 +14455,26 @@ impl eframe::App for App {
                             .size(11.0)
                             .color(motif::TEXT_DIM),
                     );
+                    // The markers this template may use: one mistyped
+                    // is printed as it stands, and one nobody knows
+                    // about is one nobody uses.
+                    let key = match target {
+                        TplTarget::Fiche => "fiche",
+                        TplTarget::Courrier => "cr",
+                        TplTarget::Carnet => "carnet",
+                        TplTarget::Ordonnance => "ordonnance",
+                    };
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(trf(
+                                "tpl_markers",
+                                crate::pdf::template_markers(key).join("  "),
+                            ))
+                            .size(10.5)
+                            .color(motif::TEXT_DIM),
+                        )
+                        .wrap(),
+                    );
                     ui.add_space(4.0);
                     egui::ScrollArea::vertical()
                         .max_height(editor_h)
