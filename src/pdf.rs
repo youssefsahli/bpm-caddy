@@ -277,6 +277,54 @@ pub fn open_interview_sheet(
     compile_and_open(filled, &stem)
 }
 
+/// The markers a template of each kind may use, in the order they
+/// appear on the page. The editor shows them: a marker nobody knows
+/// about is a marker nobody uses, and a mistyped one silently prints
+/// itself.
+pub fn template_markers(target: &str) -> &'static [&'static str] {
+    match target {
+        "fiche" => &[
+            "{{PATIENT_NAME}}",
+            "{{BIRTH_DATE}}",
+            "{{DATE}}",
+            "{{KIND}}",
+            "{{THEME}}",
+            "{{TREATMENTS}}",
+            "{{CHECKLIST}}",
+            "{{PHARMACIST}}",
+        ],
+        "cr" => &[
+            "{{PHARMACY_NAME}}",
+            "{{PHARMACY_ADDRESS}}",
+            "{{PHARMACY_PHONE}}",
+            "{{PHYSICIAN}}",
+            "{{PATIENT_NAME}}",
+            "{{BIRTH_DATE}}",
+            "{{KIND}}",
+            "{{DATE}}",
+            "{{THEME}}",
+            "{{TREATMENTS}}",
+            "{{PHARMACIST}}",
+        ],
+        "carnet" => &["{{DAY}}", "{{ENTRIES}}"],
+        _ => &[
+            "{{PHARMACY_NAME}}",
+            "{{PHARMACY_ADDRESS}}",
+            "{{PHARMACY_PHONE}}",
+            "{{PHARMACY_AM}}",
+            "{{PATIENT_NAME}}",
+            "{{BIRTH_DATE}}",
+            "{{INDICATION}}",
+            "{{DATE}}",
+            "{{LINES}}",
+            "{{ADVICE}}",
+            "{{MENTION_HEADER}}",
+            "{{MENTION_FOOTER}}",
+            "{{PHARMACIST}}",
+        ],
+    }
+}
+
 /// The embedded interview-sheet template, as a starting point for the
 /// in-app editor.
 pub fn default_template() -> &'static str {
@@ -991,7 +1039,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Régler l'application",
-        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées — vides par défaut, l'application n'ajoute aucun avertissement de son propre chef —, les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des documents imprimés, modifiables avec aperçu.",
+        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées — vides par défaut, l'application n'ajoute aucun avertissement de son propre chef —, les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des quatre documents à modèle — fiche d'entretien, courrier, carnet, ordonnance — modifiables avec aperçu.",
     ),
     (
         "Raccourcis",
@@ -2449,6 +2497,41 @@ mod tests {
                 std::path::Path::new(&dir).join("ordonnance_exemple.pdf"),
                 &pdf,
             );
+        }
+    }
+
+    /// Every marker the editor advertises must actually be filled, and
+    /// every marker the default template uses must be advertised. A
+    /// marker that is only half of that prints itself on the page.
+    #[test]
+    fn the_editor_advertises_the_markers_the_templates_fill() {
+        let cases: [(&str, &str); 4] = [
+            ("fiche", default_template()),
+            ("cr", default_cr_template()),
+            ("carnet", default_trans_template()),
+            ("ordonnance", default_ordonnance_template()),
+        ];
+        for (key, template) in cases {
+            let listed = template_markers(key);
+            for marker in listed {
+                assert!(
+                    template.contains(marker),
+                    "{key} : {marker} annoncé mais absent du modèle par défaut"
+                );
+            }
+            // And the other way round: every {{MARKER}} of the default
+            // template is listed.
+            let mut rest = template;
+            while let Some(at) = rest.find("{{") {
+                rest = &rest[at..];
+                let Some(end) = rest.find("}}") else { break };
+                let marker = &rest[..end + 2];
+                assert!(
+                    listed.contains(&marker),
+                    "{key} : {marker} utilisé mais non annoncé"
+                );
+                rest = &rest[end + 2..];
+            }
         }
     }
 
