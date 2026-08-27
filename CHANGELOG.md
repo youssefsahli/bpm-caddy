@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.101.0] - 2026-08-28
+
+### Fixed
+Dernier axe de la passe : **les deux panneaux latéraux tirés au large**.
+C'est le défaut que CLAUDE.md décrit — « un dock qui a grandi au-delà de
+la largeur qu'il s'était réservée laisse la vue centrale disposée plus
+large qu'elle n'est visible » — et il se produisait bel et bien.
+
+- **Les panneaux étaient plafonnés chacun de son côté**, à 30 % et 36 %
+  de la fenêtre. Chacun pour soi, jusqu'à ce que les deux soient tirés :
+  le travail au milieu — la raison pour laquelle les deux autres sont à
+  l'écran — tombait alors à 40 % et ses tables se dessinaient sous eux.
+  Ils se plafonnent maintenant **l'un contre l'autre** : quoi qu'on
+  tire, le centre garde 560 px. À 1280, les six colonnes d'une table de
+  référence redeviennent lisibles au lieu de passer sous le panneau
+  d'équipe.
+- **Le bouton « Ajouter » du journal passait à travers le bas de son
+  panneau** dans la même situation : le puits gardait 28 px quoi qu'il
+  reste. Il n'a plus de plancher — il peut se réduire à un filet, il
+  défile — et c'est la ligne où l'on écrit qui reste entière.
+
+### Non retenu
+- Une tentative de faire défiler la table de conversion horizontalement
+  a été annulée : `allocate_new_ui` ne réserve pas de place, la barre
+  n'apparaissait donc jamais, et le contenu débordait toujours. Plafonner
+  les panneaux règle le problème à la source, et pour toutes les vues.
+
 ## [0.100.0] - 2026-08-28
 
 ### Fixed
