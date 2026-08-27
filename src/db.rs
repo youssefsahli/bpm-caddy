@@ -113,6 +113,13 @@ CREATE TABLE IF NOT EXISTS biology (
     taken_on    TEXT NOT NULL DEFAULT '',
     remark      TEXT NOT NULL DEFAULT ''
 );
+-- Ce que les contenus livrés ont déjà semé dans cette base : une
+-- ligne par graine, pour ne pas réécrire à chaque lancement ce qui
+-- l'est déjà.
+CREATE TABLE IF NOT EXISTS seed_state (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
     name         TEXT NOT NULL,
@@ -188,6 +195,10 @@ CREATE TABLE IF NOT EXISTS patient_travel (
 
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
+    "CREATE TABLE IF NOT EXISTS seed_state (
+        key    TEXT PRIMARY KEY,
+        value  TEXT NOT NULL
+    )",
     // The five columns of the very first version are listed here too:
     // they cost nothing when they already exist, and they turn a « no
     // such column » on a hand-made base into a no-op.
@@ -24256,6 +24267,16 @@ impl Db {
     /// class-level because that is the level at which these two answers
     /// are true — a card that needs its own wording gets it by hand.
     pub fn seed_conduite(&self) -> Result<usize, String> {
+        // This runs at every launch. Once the shipped rules have been
+        // applied, it must cost one query and not a hundred and ten
+        // updates: the base is often on a network drive, and every
+        // statement is a round trip. The mark is the number of rules,
+        // so adding one in a later version makes the pass run again.
+        let done = self.seed_mark("conduite")?;
+        let mark = STARTER_CONDUITE.len().to_string();
+        if done.as_deref() == Some(mark.as_str()) {
+            return Ok(0);
+        }
         let tx = self
             .conn
             .unchecked_transaction()
@@ -24280,7 +24301,33 @@ impl Db {
                 .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
+        self.set_seed_mark("conduite", &mark)?;
         Ok(filled)
+    }
+
+    /// What a shipped content pass has already written into this base.
+    fn seed_mark(&self, key: &str) -> Result<Option<String>, String> {
+        self.conn
+            .query_row("SELECT value FROM seed_state WHERE key = ?1", [key], |r| {
+                r.get::<_, String>(0)
+            })
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.to_string()),
+            })
+    }
+
+    /// Remember it, so the next launch does not do it again.
+    fn set_seed_mark(&self, key: &str, value: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO seed_state (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Seed the protocols, once. A title already in the base is left
@@ -26860,8 +26907,14 @@ mod tests {
                 );
             }
         }
-        // Running it again changes nothing.
+        // Running it again changes nothing, and does not even look at
+        // the cards: the pass leaves a mark saying how many rules it
+        // applied.
         assert_eq!(db.seed_conduite().unwrap(), 0);
+        assert_eq!(
+            db.seed_mark("conduite").unwrap().as_deref(),
+            Some(STARTER_CONDUITE.len().to_string().as_str())
+        );
         // And a card the team has written to is left alone.
         let mut edited = all
             .iter()

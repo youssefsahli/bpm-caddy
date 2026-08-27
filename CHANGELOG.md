@@ -5,6 +5,14 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.70.1] - 2026-08-27
+
+### Changed
+- The « en cas d'oubli » content pass no longer writes a hundred and
+  ten updates at every launch: it leaves a mark saying how many rules
+  it applied, and does nothing until that number changes. On a base
+  sitting on a pharmacy network drive, every statement is a round trip.
+
 ## [0.70.0] - 2026-08-27
 
 ### Added
