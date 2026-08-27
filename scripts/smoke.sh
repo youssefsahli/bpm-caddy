@@ -29,7 +29,7 @@ views=(
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio revue vaccine_map ordonnance
     protocols protocol_open codex codex_open template options keys act_picker
-    goto goto_jump
+    goto goto_jump mono_search
 )
 
 failed=0

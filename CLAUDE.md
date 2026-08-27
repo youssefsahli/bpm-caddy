@@ -72,7 +72,7 @@ linted too), `cargo test --workspace`.
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|tables_search|calc|
   carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|codex_open|keys|
-  act_picker|goto|goto_jump`
+  act_picker|goto|goto_jump|mono_search`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
@@ -115,6 +115,11 @@ the app proposes, the pharmacist decides. It says so only if the
 officine asks it to: every printed or displayed mention lives in
 `[disclaimers]` (config.toml, Options › Mentions) and is empty by
 default. Never hardcode a new caveat — add a key there.
+
+A new prose field on a drug card is not searchable until it is in
+`MONO_FIELDS` (`src/app.rs`) with a label key: « Dans le texte… » reads
+that table and nothing else, so a field left out of it is a field nobody
+will ever find by its words.
 
 The codex works the same way: `src/db.rs` ships `STARTER_PREPARATIONS`
 into the `preparations` table once, and everything after that is the
