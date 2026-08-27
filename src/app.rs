@@ -13092,10 +13092,28 @@ impl App {
             // The technical sheet is collapsible: folded, it gives its
             // height back to the recall list and the journal rather
             // than leaving a stub panel.
+            // Folded, the panel must still hold its title rule *and* the
+            // button that unfolds it. `motif::panel` spends 8 px of
+            // padding at each edge, then the caption, its rule and a
+            // gap; what is left is the body. A flat 30 px left that body
+            // at less than nothing, the button was clipped away, and
+            // folding the sheet became a one-way door — the only way
+            // back was to restart. Measured from the live font and
+            // spacing so a larger text scale cannot bring the bug back.
+            let caption_h = ui.fonts(|f| {
+                f.layout_no_wrap(
+                    "X".to_owned(),
+                    egui::FontId::proportional(11.0),
+                    motif::TEXT_DIM,
+                )
+                .size()
+                .y
+            });
+            let folded_h = 16.0 + caption_h + 9.0 + ui.spacing().interact_size.y + 4.0;
             let tech_h = if session.drug_tech_open {
                 (side_rect.height() * 0.46).clamp(180.0, 460.0)
             } else {
-                30.0
+                folded_h
             };
             let (tech, recalls, journal) = if wide {
                 // Each row's height is stated: a zero row takes all the
@@ -13110,7 +13128,15 @@ impl App {
                 // the two others are lists of short lines.
                 let gap = 8.0;
                 let usable = side_rect.width() - 2.0 * gap;
-                let tech_w = (usable * 0.40).max(200.0);
+                // Side by side, folding gives its *width* back rather
+                // than its height: a folded sheet that kept a third of
+                // the row would have hidden its content and taken the
+                // space anyway.
+                let tech_w = if session.drug_tech_open {
+                    (usable * 0.40).max(200.0)
+                } else {
+                    (usable * 0.18).clamp(120.0, 190.0)
+                };
                 let rest = ((usable - tech_w) / 2.0).max(120.0);
                 let cut = |from: f32, w: f32| {
                     egui::Rect::from_min_size(

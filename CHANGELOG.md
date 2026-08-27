@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.88.1] - 2026-08-27
+
+### Fixed
+- **« Replier » faisait disparaître le bouton qui déplie.** Sur un écran
+  large, la fiche technique repliée n'avait plus que sa barre de titre :
+  les 30 pixels qu'on lui laissait étaient entièrement mangés par la
+  marge du panneau, le libellé et son filet, et le bouton « Déplier »
+  était rogné. Replier la fiche était une porte à sens unique — il
+  fallait relancer l'application pour la retrouver. La hauteur repliée
+  est maintenant mesurée sur la police et l'espacement réels, donc une
+  échelle de texte plus grande ne peut pas ramener le défaut.
+- Côté à côté, replier rend désormais sa **largeur** au lieu de garder
+  un tiers de la rangée pour ne rien montrer : le rappel patients et le
+  journal récupèrent la place.
+
 ## [0.88.0] - 2026-08-27
 
 ### Added
