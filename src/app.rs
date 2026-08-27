@@ -2573,6 +2573,42 @@ fn folded_find(text: &str, needle: &[char]) -> Option<(usize, usize)> {
         .map(|i| (offsets[i], offsets[i + needle.len()]))
 }
 
+/// The sentence with the searched word marked, so the eye lands on it
+/// rather than reading a hundred and twenty-three paragraphs.
+///
+/// The bundled family has no bold face — the same constraint
+/// [`rich_text`] works around — so the emphasis is a darker ink on the
+/// light background, the way the Motif widgets mark a selection.
+fn mono_sentence(sentence: &str, query: &str, size: f32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = f32::INFINITY;
+    let plain = egui::TextFormat {
+        font_id: egui::FontId::proportional(size),
+        color: motif::TEXT,
+        ..Default::default()
+    };
+    let needle: Vec<char> = fuzzy::sort_key(query.trim()).chars().collect();
+    match folded_find(sentence, &needle) {
+        Some((at, end)) => {
+            job.append(&sentence[..at], 0.0, plain.clone());
+            job.append(
+                &sentence[at..end],
+                0.0,
+                egui::TextFormat {
+                    color: egui::Color32::BLACK,
+                    background: motif::BG_LIGHT,
+                    ..plain.clone()
+                },
+            );
+            job.append(&sentence[end..], 0.0, plain);
+        }
+        // Nothing to mark: show the sentence as it stands rather than
+        // nothing at all.
+        None => job.append(sentence, 0.0, plain),
+    }
+    job
+}
+
 /// Every place `query` appears in the prose of the base, in the order
 /// the cards are held, capped at `limit`.
 ///
@@ -14010,6 +14046,9 @@ impl App {
             if rect.height() < 40.0 {
                 return;
             }
+            // The word to mark in each sentence, copied out before the
+            // list borrows the session.
+            let marked = session.mono_query.trim().to_owned();
             let inner = motif::well(ui, rect);
             motif::inside(ui, inner, |ui| {
                 egui::ScrollArea::vertical()
@@ -14036,7 +14075,7 @@ impl App {
                             ui.scope(|ui| {
                                 ui.set_max_width(ui.available_width());
                                 ui.add(
-                                    egui::Label::new(egui::RichText::new(&hit.sentence).size(12.0))
+                                    egui::Label::new(mono_sentence(&hit.sentence, &marked, 12.0))
                                         .wrap(),
                                 );
                             });
@@ -16212,6 +16251,29 @@ mod tests {
         for (key, _) in MONO_FIELDS {
             assert_ne!(crate::strings::tr(key), key, "libellé manquant : {key}");
         }
+    }
+
+    #[test]
+    fn the_searched_word_is_marked_in_the_sentence() {
+        use super::mono_sentence;
+        // Three sections — before, the word, after — and the word keeps
+        // the accents the sentence wrote it with, not the query's.
+        let job = mono_sentence("Éviter le jus de pamplemousse ici.", "PAMPLEMOUSSE", 12.0);
+        assert_eq!(job.sections.len(), 3);
+        let marked = &job.sections[1];
+        assert_eq!(
+            &job.text[marked.byte_range.clone()],
+            "pamplemousse",
+            "c'est le mot de la phrase qui est surligné"
+        );
+        assert_eq!(marked.format.background, motif::BG_LIGHT);
+        // The whole sentence is still there, once.
+        assert_eq!(job.text, "Éviter le jus de pamplemousse ici.");
+        // A word the sentence does not carry leaves it plain rather
+        // than blank.
+        let job = mono_sentence("Rien de particulier.", "amiodarone", 12.0);
+        assert_eq!(job.sections.len(), 1);
+        assert_eq!(job.text, "Rien de particulier.");
     }
 
     #[test]
