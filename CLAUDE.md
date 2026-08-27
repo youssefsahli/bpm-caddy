@@ -21,6 +21,9 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   doublons, associations, cascades — same shape, same discipline). The
   dispositifs médicaux have no module: they are fiches in the base
   (`STARTER_DISPOSITIFS` in `src/db.rs`), like the codex.
+  `src/location.rs` (what a rental of material owes and when its
+  ordonnance runs out — pure, tested, no internal clock; the forfaits
+  live in `[locations]` of config.toml and ship empty)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -74,7 +77,7 @@ linted too), `cargo test --workspace`.
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|tables|tables_search|calc|
   carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|codex_open|
-  dispositifs|dispositif_open|keys|
+  dispositifs|dispositif_open|locations|keys|
   act_picker|goto|goto_jump|mono_search|mono_patient`
   — land on a specific view (screenshots, e2e)
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

@@ -2129,7 +2129,25 @@ pub struct BillingLine {
 
 /// Build the billing recap: the acts to invoice, their codes and their
 /// amounts, with the total at the foot.
-fn billing_recap_source(lines: &[BillingLine], period: &str, today_french: &str) -> String {
+/// One rental as the recap prints it: the patient, the material, what
+/// it has run for and what that comes to.
+pub struct BillingRental {
+    pub patient: String,
+    pub label: String,
+    pub started: String,
+    /// Empty while the material is still out.
+    pub ended: String,
+    pub periods: u32,
+    pub period_word: String,
+    pub amount: f64,
+}
+
+fn billing_recap_source(
+    lines: &[BillingLine],
+    rentals: &[BillingRental],
+    period: &str,
+    today_french: &str,
+) -> String {
     let mut rows = String::new();
     let mut total = 0.0;
     for l in lines {
@@ -2153,6 +2171,49 @@ fn billing_recap_source(lines: &[BillingLine], period: &str, today_french: &str)
     }
     let total = format!("{total:.2} EUR").replace('.', ",");
     let count = lines.len();
+    // The rentals are a second table, not more rows of the first: they
+    // are not acts, they have no code acte and no étape, and adding them
+    // to the same grid would invite them into the acts' total.
+    let mut rental_block = String::new();
+    if !rentals.is_empty() {
+        let mut rows = String::new();
+        let mut sum = 0.0;
+        for r in rentals {
+            sum += r.amount;
+            rows.push_str(&format!(
+                "{}, {}, {}, {}, {}, {},\n",
+                typst_str(&r.patient),
+                typst_str(&r.label),
+                typst_str(&crate::db::format_french_date(&r.started)),
+                typst_str(&if r.ended.trim().is_empty() {
+                    "en cours".to_owned()
+                } else {
+                    crate::db::format_french_date(&r.ended)
+                }),
+                typst_str(&format!("{} {}", r.periods, r.period_word)),
+                typst_str(&format!("{:.2} EUR", r.amount).replace('.', ",")),
+            ));
+        }
+        let sum = format!("{sum:.2} EUR").replace('.', ",");
+        rental_block = format!(
+            r#"
+#v(6mm)
+#text(13pt, weight: "bold")[Locations de matériel]
+#v(2mm)
+#table(
+  columns: (1fr, auto, auto, auto, auto, auto),
+  inset: 6pt,
+  stroke: 0.6pt,
+  [*Patient*], [*Matériel*], [*Posé le*], [*Repris le*], [*Périodes*], [*Montant*],
+{rows})
+#v(2mm)
+#text(weight: "bold")[{n} location(s) — total {sum}]
+#v(2mm)
+#text(9pt)[Forfaits tels qu'ils étaient enregistrés à la pose. La ligne LPP et son tarif se vérifient avant facturation.]
+"#,
+            n = rentals.len()
+        );
+    }
     format!(
         r#"
 #set page(paper: "a4", margin: 1.5cm, flipped: true)
@@ -2172,18 +2233,19 @@ fn billing_recap_source(lines: &[BillingLine], period: &str, today_french: &str)
 #text(weight: "bold")[{count} acte(s) — total {total}]
 #v(3mm)
 #text(9pt)[Prestation facturée en tiers payant, indépendamment de tout code CIP, aux prix TTC. Une seule pharmacie accompagne un patient : celle qui a débuté la séquence annuelle perçoit la rémunération.]
-"#
+{rental_block}"#
     )
 }
 
 /// Compile and open the billing recap for printing.
 pub fn open_billing_recap(
     lines: &[BillingLine],
+    rentals: &[BillingRental],
     period: &str,
     today_french: &str,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        billing_recap_source(lines, period, today_french),
+        billing_recap_source(lines, rentals, period, today_french),
         "facturation",
     )
 }
@@ -2222,11 +2284,28 @@ mod tests {
             // A hostile name must not inject markup into the page.
             line("Paul #eval \"Bernard\"", "BMI", 20.5, true),
         ];
-        let src = billing_recap_source(&lines, "Août 2026", "24/08/2026");
+        // The rentals print as their own table, with their own total:
+        // they are not acts and must never join the acts' figure.
+        let rentals = vec![BillingRental {
+            patient: "Hélène Lefèvre".to_owned(),
+            label: "Nébuliseur".to_owned(),
+            started: "2026-08-03".to_owned(),
+            ended: String::new(),
+            periods: 4,
+            period_word: "semaine".to_owned(),
+            amount: 48.0,
+        }];
+        let src = billing_recap_source(&lines, &rentals, "Août 2026", "24/08/2026");
         assert!(!src.contains("#eval \"Bernard\"]"));
         // The TPH code sits beside the act code, and the total adds up.
         assert!(src.contains("BMI + TPH"));
         assert!(src.contains("35,50 EUR"));
+        assert!(src.contains("Locations de matériel"));
+        assert!(src.contains("48,00 EUR"));
+        assert!(src.contains("en cours"));
+        // No rental, no second table: an empty heading reads as a bug.
+        let bare = billing_recap_source(&lines, &[], "Août 2026", "24/08/2026");
+        assert!(!bare.contains("Locations de matériel"));
         let world = PdfWorld::new(src);
         let document: PagedDocument = typst::compile(&world)
             .output

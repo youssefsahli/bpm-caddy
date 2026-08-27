@@ -136,6 +136,32 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # avk_per_year = 3
 # anticancereux_per_year = 3
 # vaccination_per_year = 0
+
+[locations]
+# Les locations de matériel : nébuliseur, neurostimulateur, lit
+# médicalisé… Un forfait court tant que le matériel est sorti, et se
+# compte en périodes entamées.
+#
+# L'application ne connaît aucun tarif de sa propre autorité : la liste
+# est vide par défaut, et c'est l'officine qui écrit ce que sa LPP paie,
+# vérifié sur ameli.fr. Un montant livré serait faux dans l'année.
+#
+#   period       : "jour", "semaine" ou "mois"
+#   fee          : le forfait d'une période, en euros
+#   renewal_days : au bout de combien de jours l'ordonnance se renouvelle
+#                  (0 = pas de renouvellement à rappeler)
+#   max_periods  : nombre de périodes payées par la ligne LPP
+#                  (0 = sans plafond)
+# Le délai de prévenance des renouvellements, en jours.
+# notice_days = 7
+# forfaits = [
+#   { label = "Nébuliseur", lpp = "Aérosolthérapie — titre I", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
+#   { label = "Neurostimulateur (TENS)", lpp = "Neurostimulateur transcutané — titre I", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
+#   { label = "Lit médicalisé", lpp = "Maintien à domicile — titre I", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
+#   { label = "Matelas anti-escarre", lpp = "Support d\'aide à la prévention — titre I", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
+#   { label = "Fauteuil roulant", lpp = "Véhicule pour handicapé physique — titre IV", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
+#   { label = "Tire-lait", lpp = "Tire-lait — titre I", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
+# ]
 "#;
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -149,6 +175,107 @@ pub struct Config {
     pub rules: RulesConfig,
     pub ordonnance: OrdonnanceConfig,
     pub disclaimers: DisclaimersConfig,
+    pub locations: LocationsConfig,
+}
+
+/// How a rental forfait is counted. The LPP pays by the week for most
+/// of the material an officine lends out, by the month for some, by the
+/// day for none of it — but the officine's own agreements vary, so all
+/// three exist.
+#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Period {
+    #[serde(rename = "jour")]
+    Day,
+    #[default]
+    #[serde(rename = "semaine")]
+    Week,
+    #[serde(rename = "mois")]
+    Month,
+}
+
+impl Period {
+    /// The length of one period, in days.
+    pub fn days(self) -> u32 {
+        match self {
+            Period::Day => 1,
+            Period::Week => 7,
+            Period::Month => 30,
+        }
+    }
+
+    /// The French word, as it is written in `config.toml` and shown.
+    pub fn label(self) -> &'static str {
+        match self {
+            Period::Day => "jour",
+            Period::Week => "semaine",
+            Period::Month => "mois",
+        }
+    }
+
+    /// The same word agreed with a count — « 1 semaine », « 11 semaines »,
+    /// and « mois » either way. A table that says « 11 semaine » is a
+    /// table someone wrote in a hurry, and it shows.
+    pub fn agreed(self, count: u32) -> &'static str {
+        match (self, count) {
+            (Period::Month, _) => "mois",
+            (_, 0 | 1) => self.label(),
+            (Period::Day, _) => "jours",
+            (Period::Week, _) => "semaines",
+        }
+    }
+
+    pub const ALL: [Period; 3] = [Period::Day, Period::Week, Period::Month];
+}
+
+/// The rentals the officine bills, and how long before a renewal it
+/// wants to be told.
+///
+/// **Empty by default, on purpose.** The LPP's tarifs move, and a fee
+/// shipped in the application would be a fee wrong within the year —
+/// the same rule as the `lpp` field of a dispositif fiche. The officine
+/// writes what its own line pays, in Options › Locations.
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct LocationsConfig {
+    pub forfaits: Vec<LocationForfait>,
+    /// How many days before a renewal it is announced. 0 = the day of.
+    pub notice_days: u32,
+}
+
+impl Default for LocationsConfig {
+    fn default() -> Self {
+        Self {
+            forfaits: Vec::new(),
+            notice_days: 7,
+        }
+    }
+}
+
+/// One rental line as the officine bills it.
+#[derive(Deserialize, Serialize, Default, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct LocationForfait {
+    /// "Nébuliseur", "Neurostimulateur (TENS)"…
+    pub label: String,
+    /// The LPP line, as the team wrote it down.
+    pub lpp: String,
+    pub period: Period,
+    /// What one period is paid, in euros.
+    pub fee: f64,
+    /// Days before the prescription has to be renewed. 0 = no reminder.
+    pub renewal_days: u32,
+    /// Periods the LPP line pays. 0 = no cap.
+    pub max_periods: u32,
+}
+
+impl LocationForfait {
+    /// Whether this line is usable: a forfait without a name cannot be
+    /// chosen, and one at zero euros bills nothing — but it is still
+    /// legitimate, since the renewal reminder alone is worth having.
+    pub fn is_named(&self) -> bool {
+        !self.label.trim().is_empty()
+    }
 }
 
 /// Every mention the application prints or shows, and nothing it says

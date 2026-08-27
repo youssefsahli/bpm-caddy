@@ -113,6 +113,27 @@ CREATE TABLE IF NOT EXISTS biology (
     taken_on    TEXT NOT NULL DEFAULT '',
     remark      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS locations (
+    id           INTEGER PRIMARY KEY,
+    patient_id   INTEGER NOT NULL REFERENCES patients(id),
+    -- Le libellé du forfait, recopié depuis `[locations]` au moment de
+    -- la pose : le tarif de la configuration peut changer, ce que le
+    -- patient a signé, non.
+    label        TEXT NOT NULL,
+    lpp          TEXT NOT NULL DEFAULT '',
+    -- 'jour', 'semaine' ou 'mois'.
+    period       TEXT NOT NULL DEFAULT 'semaine',
+    fee          REAL NOT NULL DEFAULT 0,
+    renewal_days INTEGER NOT NULL DEFAULT 0,
+    max_periods  INTEGER NOT NULL DEFAULT 0,
+    -- Jour de pose et jour de reprise, ISO ; reprise vide = en cours.
+    started_on   TEXT NOT NULL DEFAULT '',
+    ended_on     TEXT NOT NULL DEFAULT '',
+    -- Dernier renouvellement d'ordonnance enregistré, ISO ; vide = le
+    -- compte part de la pose.
+    renewed_on   TEXT NOT NULL DEFAULT '',
+    remark       TEXT NOT NULL DEFAULT ''
+);
 -- Ce que les contenus livrés ont déjà semé dans cette base : une
 -- ligne par graine, pour ne pas réécrire à chaque lancement ce qui
 -- l'est déjà.
@@ -249,6 +270,20 @@ const MIGRATIONS: &[&str] = &[
         caution      TEXT NOT NULL DEFAULT '',
         tags         TEXT NOT NULL DEFAULT '',
         sources      TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS locations (
+        id           INTEGER PRIMARY KEY,
+        patient_id   INTEGER NOT NULL REFERENCES patients(id),
+        label        TEXT NOT NULL,
+        lpp          TEXT NOT NULL DEFAULT '',
+        period       TEXT NOT NULL DEFAULT 'semaine',
+        fee          REAL NOT NULL DEFAULT 0,
+        renewal_days INTEGER NOT NULL DEFAULT 0,
+        max_periods  INTEGER NOT NULL DEFAULT 0,
+        started_on   TEXT NOT NULL DEFAULT '',
+        ended_on     TEXT NOT NULL DEFAULT '',
+        renewed_on   TEXT NOT NULL DEFAULT '',
+        remark       TEXT NOT NULL DEFAULT ''
     )",
     "CREATE TABLE IF NOT EXISTS dispositifs (
         id           INTEGER PRIMARY KEY,
@@ -20651,6 +20686,60 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
     },
 ];
 
+/// One rental running on a patient's file.
+///
+/// The forfait is **copied** off the configuration when the material is
+/// given out, not looked up when the bill is drawn: a tarif that moves
+/// in June must not rewrite what was dispensed in March. That is the
+/// whole reason these six columns duplicate `[locations]`.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Location {
+    pub id: i64,
+    pub patient_id: i64,
+    pub label: String,
+    pub lpp: String,
+    /// "jour", "semaine" or "mois" — see [`crate::config::Period`].
+    pub period: String,
+    pub fee: f64,
+    pub renewal_days: u32,
+    pub max_periods: u32,
+    pub started_on: String,
+    /// Empty while the material is still out.
+    pub ended_on: String,
+    /// The last renewal the team recorded; empty means the count runs
+    /// from the day the material went out.
+    pub renewed_on: String,
+    pub remark: String,
+}
+
+impl Location {
+    /// The period as the arithmetic wants it, defaulting to the week —
+    /// an unreadable word in the column must not silently bill by the
+    /// day.
+    pub fn period(&self) -> crate::config::Period {
+        match self.period.trim() {
+            "jour" => crate::config::Period::Day,
+            "mois" => crate::config::Period::Month,
+            _ => crate::config::Period::Week,
+        }
+    }
+
+    /// Still out?
+    pub fn running(&self) -> bool {
+        self.ended_on.trim().is_empty()
+    }
+
+    /// The day the renewal counts from: the last one recorded, or the
+    /// day the material went out.
+    pub fn renewal_base(&self) -> &str {
+        if self.renewed_on.trim().is_empty() {
+            self.started_on.trim()
+        } else {
+            self.renewed_on.trim()
+        }
+    }
+}
+
 /// One shipped dispositif, before it reaches the base.
 pub struct StarterDispositif {
     pub name: &'static str,
@@ -25400,6 +25489,7 @@ impl Db {
             "drug_field_locks",
             "preparations",
             "dispositifs",
+            "locations",
             "biology",
             "interviews",
             "patients",
@@ -26485,6 +26575,142 @@ impl Db {
             .execute(
                 "DELETE FROM dispositifs WHERE id = ?1 AND name = ?2",
                 (id, expected_name),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// The rentals on one file, the ones still out first — those are
+    /// the ones that cost something today.
+    pub fn locations_for(&self, patient_id: i64) -> Result<Vec<Location>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, patient_id, label, lpp, period, fee, renewal_days,
+                        max_periods, started_on, ended_on, renewed_on, remark
+                 FROM locations WHERE patient_id = ?1
+                 ORDER BY (ended_on <> '') , started_on DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok(Location {
+                    id: r.get(0)?,
+                    patient_id: r.get(1)?,
+                    label: r.get(2)?,
+                    lpp: r.get(3)?,
+                    period: r.get(4)?,
+                    fee: r.get(5)?,
+                    renewal_days: r.get::<_, i64>(6)?.max(0) as u32,
+                    max_periods: r.get::<_, i64>(7)?.max(0) as u32,
+                    started_on: r.get(8)?,
+                    ended_on: r.get(9)?,
+                    renewed_on: r.get(10)?,
+                    remark: r.get(11)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Every rental still out, whoever it belongs to — what the counter
+    /// has lent and not yet got back.
+    pub fn running_locations(&self) -> Result<Vec<(Location, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT l.id, l.patient_id, l.label, l.lpp, l.period, l.fee,
+                        l.renewal_days, l.max_periods, l.started_on, l.ended_on,
+                        l.renewed_on, l.remark,
+                        p.last_name || ' ' || p.first_name
+                 FROM locations l JOIN patients p ON p.id = l.patient_id
+                 WHERE l.ended_on = ''
+                 ORDER BY l.started_on",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    Location {
+                        id: r.get(0)?,
+                        patient_id: r.get(1)?,
+                        label: r.get(2)?,
+                        lpp: r.get(3)?,
+                        period: r.get(4)?,
+                        fee: r.get(5)?,
+                        renewal_days: r.get::<_, i64>(6)?.max(0) as u32,
+                        max_periods: r.get::<_, i64>(7)?.max(0) as u32,
+                        started_on: r.get(8)?,
+                        ended_on: r.get(9)?,
+                        renewed_on: r.get(10)?,
+                        remark: r.get(11)?,
+                    },
+                    r.get::<_, String>(12)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Hand out a piece of material. The forfait is copied in, not
+    /// referenced: see [`Location`].
+    pub fn add_location(&self, l: &Location) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO locations
+                    (patient_id, label, lpp, period, fee, renewal_days,
+                     max_periods, started_on, ended_on, renewed_on, remark)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                rusqlite::params![
+                    l.patient_id,
+                    &l.label,
+                    &l.lpp,
+                    &l.period,
+                    l.fee,
+                    l.renewal_days as i64,
+                    l.max_periods as i64,
+                    &l.started_on,
+                    &l.ended_on,
+                    &l.renewed_on,
+                    &l.remark,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Take a rental back, or record a renewal. Compare-and-set on the
+    /// three dates this PC displayed: two posts closing the same rental
+    /// on different days must not both think they did it.
+    pub fn update_location_dates(
+        &self,
+        id: i64,
+        started_on: &str,
+        ended_on: &str,
+        renewed_on: &str,
+        expected: (&str, &str, &str),
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE locations SET started_on = ?1, ended_on = ?2, renewed_on = ?3
+                 WHERE id = ?4 AND started_on = ?5 AND ended_on = ?6 AND renewed_on = ?7",
+                rusqlite::params![
+                    started_on, ended_on, renewed_on, id, expected.0, expected.1, expected.2,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a rental line — a mistake at the counter, not a return.
+    /// Compare-and-set on the label displayed.
+    pub fn delete_location(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM locations WHERE id = ?1 AND label = ?2",
+                (id, expected_label),
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -29583,6 +29809,78 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// A rental is a shared row like any other: two posts must not both
+    /// believe they took the same machine back.
+    #[test]
+    fn a_rental_runs_until_it_is_taken_back() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-loc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("loc.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Lefèvre", "Hélène", "1948-02-11").unwrap();
+        let row = Location {
+            id: 0,
+            patient_id: pid,
+            label: "Nébuliseur".to_owned(),
+            lpp: "Aérosolthérapie — titre I".to_owned(),
+            period: "semaine".to_owned(),
+            fee: 12.0,
+            renewal_days: 28,
+            max_periods: 0,
+            started_on: "2026-03-03".to_owned(),
+            ended_on: String::new(),
+            renewed_on: String::new(),
+            remark: String::new(),
+        };
+        let id = db.add_location(&row).unwrap();
+        let all = db.locations_for(pid).unwrap();
+        assert_eq!(all.len(), 1);
+        let l = &all[0];
+        assert!(l.running(), "une location sans reprise est en cours");
+        assert_eq!(l.period(), crate::config::Period::Week);
+        // The renewal counts from the day it went out until one is
+        // recorded, and from that day afterwards.
+        assert_eq!(l.renewal_base(), "2026-03-03");
+        // It is on the running list, with the patient's name beside it.
+        let running = db.running_locations().unwrap();
+        assert_eq!(running.len(), 1);
+        assert!(running[0].1.contains("Hélène"));
+        // A renewal moves the base without touching the rest.
+        assert!(db
+            .update_location_dates(id, &l.started_on, "", "2026-03-30", ("2026-03-03", "", ""))
+            .unwrap());
+        let l = db.locations_for(pid).unwrap().remove(0);
+        assert_eq!(l.renewal_base(), "2026-03-30");
+        assert!(l.running());
+        // A second post still showing the old dates is refused rather
+        // than closing a rental someone else already renewed.
+        assert!(!db
+            .update_location_dates(id, "2026-03-03", "2026-04-10", "", ("2026-03-03", "", ""))
+            .unwrap());
+        // With the values actually on screen, the return goes through.
+        assert!(db
+            .update_location_dates(
+                id,
+                &l.started_on,
+                "2026-04-10",
+                &l.renewed_on,
+                (&l.started_on, "", "2026-03-30")
+            )
+            .unwrap());
+        let l = db.locations_for(pid).unwrap().remove(0);
+        assert!(!l.running());
+        assert_eq!(l.ended_on, "2026-04-10");
+        // And it drops off the running list.
+        assert!(db.running_locations().unwrap().is_empty());
+        // Deletion is compare-and-set on the label displayed.
+        assert!(!db.delete_location(id, "Autre matériel").unwrap());
+        assert!(db.delete_location(id, "Nébuliseur").unwrap());
+        assert!(db.locations_for(pid).unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// A new act carries the counter's day, not the UTC one. Between
     /// 22 h and minuit UTC — after midnight in France — the two differ,
     /// and a pharmacie de garde works then.
@@ -30566,6 +30864,25 @@ mod tests {
                     };
                     db.add_bio_result(pid, &row).unwrap();
                 }
+                // A machine still at this patient's home, on an
+                // ordonnance that lapsed: the demo shows the Locations
+                // tab and the dashboard's call list doing their work
+                // rather than two empty wells.
+                db.add_location(&Location {
+                    id: 0,
+                    patient_id: pid,
+                    label: "Nébuliseur".to_owned(),
+                    lpp: "Aérosolthérapie — titre I".to_owned(),
+                    period: "semaine".to_owned(),
+                    fee: 12.0,
+                    renewal_days: 28,
+                    max_periods: 0,
+                    started_on: "2026-06-15".to_owned(),
+                    ended_on: String::new(),
+                    renewed_on: String::new(),
+                    remark: String::new(),
+                })
+                .unwrap();
             }
             // Full record and current treatments for the demo's first
             // patient, so the patient view shows everything.
