@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.103.0] - 2026-08-28
+
+### Added
+- **Les trois listes taillées répondent enfin au clavier.** Protocoles,
+  préparations et dispositifs avaient un champ de recherche et rien
+  d'autre : il fallait la souris pour ouvrir la ligne trouvée. Elles
+  répondent maintenant aux trois touches auxquelles la liste des
+  patients répond depuis toujours — on tape, les flèches parcourent,
+  Entrée ouvre — et seulement pendant que leur propre champ a le focus,
+  pour que les flèches continuent de piloter l'agenda et le tableau des
+  actes partout ailleurs. La ligne ouverte reste marquée ; le curseur
+  clavier marque là où Entrée irait, ce qui n'est pas toujours la même.
+- Le raccourci est écrit dans F12 et dans le mode d'emploi imprimé.
+
+### Changed
+- L'arithmétique du curseur est sortie dans une fonction pure et testée.
+  Le cas qui compte est celui qu'aucune capture d'écran ne montre : le
+  curseur resté au-delà de la fin après que la recherche a réduit la
+  liste — vingt protocoles filtrés à trois, curseur sur le douzième.
+  Il revient dans la liste **avant** que la touche ne s'applique, donc
+  Entrée ouvre la dernière ligne et non une fiche périmée.
+
 ## [0.102.0] - 2026-08-28
 
 ### Fixed

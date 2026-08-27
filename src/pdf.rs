@@ -1047,7 +1047,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Raccourcis",
-        "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme ce qui est ouvert. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08 de l'année utile.",
+        "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme ce qui est ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08 de l'année utile.",
     ),
     (
         "En cas de doute",
