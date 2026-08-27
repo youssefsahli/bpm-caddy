@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.104.0] - 2026-08-28
+
+### Added
+- **Le déroulé d'un protocole se répond au clavier.** C'est un arbre
+  qu'on parcourt en parlant à quelqu'un : reprendre la souris à chaque
+  « oui » est exactement la friction qu'il existe pour supprimer. **O**
+  ou **←** répondent oui, **N** ou **→** répondent non, **Entrée** ou
+  **Espace** passent à la suite. Pas pendant qu'un champ a le clavier —
+  le titre au-dessus en est un. La ligne de rappel est sous les boutons.
+- **Alt + flèches change d'onglet sur la fiche patient.** Entretiens,
+  Vaccinations, Biologie, Locations : quatre moitiés d'un même dossier,
+  et trois n'avaient aucun chemin au clavier. Alt, pour que les flèches
+  nues continuent de piloter le tableau des actes et l'agenda. Le
+  raccourci est listé dans F12.
+
 ## [0.103.0] - 2026-08-28
 
 ### Added
