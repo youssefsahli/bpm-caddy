@@ -13221,14 +13221,26 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         let mut title = proto.title.clone();
                         let mut subject = proto.subject.clone();
-                        let t = ui.add_sized([260.0, 24.0], egui::TextEdit::singleline(&mut title));
+                        // Proportional, not 260 and 200: a protocol
+                        // title is a sentence — « Allergie à la
+                        // pénicilline annoncée au comptoir » — and a
+                        // fixed field showed two thirds of it however
+                        // wide the panel was.
+                        let field = ui.available_width();
+                        // The title gets the lion's share; the subject
+                        // wraps to the next line when both will not fit,
+                        // which is what the wrapped row is for.
+                        let title_w = (field * 0.60).clamp(200.0, 460.0);
+                        let subject_w = (field * 0.42).clamp(180.0, 340.0);
+                        let t =
+                            ui.add_sized([title_w, 24.0], egui::TextEdit::singleline(&mut title));
                         ui.label(
                             egui::RichText::new(tr("proto_subject"))
                                 .size(11.0)
                                 .color(motif::TEXT_DIM),
                         );
-                        let sj =
-                            ui.add_sized([200.0, 24.0], egui::TextEdit::singleline(&mut subject));
+                        let sj = ui
+                            .add_sized([subject_w, 24.0], egui::TextEdit::singleline(&mut subject));
                         if t.lost_focus() || sj.lost_focus() {
                             rename = Some((title, subject));
                         }

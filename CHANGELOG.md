@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.99.0] - 2026-08-28
+
+### Changed
+- **Les champs de titre d'un protocole étaient fixes** — 260 px pour le
+  nom, 200 pour le sujet — quelle que soit la largeur du panneau :
+  « Allergie à la pénicilline annoncée au comptoir » s'y lisait aux deux
+  tiers. Ils sont proportionnels, et le sujet passe à la ligne quand les
+  deux ne tiennent pas ensemble, ce à quoi sert une rangée qui se replie.
+- **Les invites des trois champs « Créer » étaient tronquées** en plein
+  mot : « Nom du protocole (ex. : AOD indisp… ». Elles disent le nom et
+  s'arrêtent là — l'exemple entre parenthèses n'y tenait pas et se
+  devine.
+
 ## [0.98.0] - 2026-08-28
 
 ### Fixed
