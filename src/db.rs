@@ -1226,7 +1226,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aod, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Pas de dosage en routine, donc pas de garde-fou biologique : la marge est portée par les critères de réduction de dose, et c'est là que la délivrance vérifie. 2,5 mg deux fois par jour dès que deux critères sur trois sont réunis — âge d'au moins 80 ans, poids inférieur ou égal à 60 kg, créatininémie d'au moins 133 µmol/L. Antidote disponible en établissement (andexanet alfa) ; le concentré de complexe prothrombinique reste le recours ailleurs.",
         forms: "",
     },
     StarterDetail {
@@ -1247,7 +1247,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aod, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Pas de dosage en routine. La marge tient à deux choses vérifiables au comptoir : les doses de 15 et 20 mg doivent être prises au cours d'un repas, faute de quoi l'absorption tombe de moitié et l'anticoagulation avec ; et la clairance, qui interdit la molécule au-dessous de 15 mL/min. Antidote andexanet alfa en établissement.",
         forms: "",
     },
     StarterDetail {
@@ -1268,7 +1268,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aod, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'AOD le plus dépendant du rein : environ 80 % de la dose est éliminée sous forme inchangée, ce qui rend toute dégradation de la fonction rénale immédiatement dangereuse. Les gélules ne s'ouvrent jamais — le contenu pris seul double la biodisponibilité. Un antidote spécifique existe et agit en minutes : idarucizumab, en établissement. Dyspepsie fréquente à l'instauration, souvent prise pour un saignement digestif ou l'inverse.",
         forms: "",
     },
     StarterDetail {
@@ -1289,7 +1289,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aod, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Pas de dosage en routine : la dose se décide sur le poids, la clairance et les associations, et se revérifie au moins une fois par an. 30 mg par jour dès que la clairance est comprise entre 15 et 50 mL/min, que le poids est inférieur ou égal à 60 kg, ou qu'un inhibiteur puissant de la P-gp est associé. Particularité de la molécule : une efficacité moindre a été décrite dans la fibrillation atriale lorsque la clairance dépasse 95 mL/min — c'est la seule limite haute de la classe.",
         forms: "",
     },
     StarterDetail {
@@ -1310,7 +1310,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "INR cible 2 à 3 dans la fibrillation atriale et la maladie thromboembolique, 2,5 à 3,5 sur prothèse valvulaire mécanique. Au-dessus de 5 sans saignement, la vitamine K orale à faible dose ramène l'INR sans rendre le patient résistant ; au-dessus de 10 ou devant un saignement grave, concentré de complexe prothrombinique en urgence. Demi-vie longue : un INR corrigé aujourd'hui reflète une dose donnée il y a deux à trois jours.",
         forms: "",
     },
     StarterDetail {
@@ -1331,7 +1331,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "Poursuite seulement — plus d'initiation chez un nouveau patient",
         smr: "",
         tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Même cible d'INR que la warfarine. Demi-vie d'environ 30 heures : tout changement de dose se juge à 48 à 72 heures, jamais le lendemain. Sa particularité est ailleurs — une hypersensibilité immuno-allergique (fièvre, éruption, atteinte rénale ou hépatique, hyperéosinophilie) survient dans les six premiers mois et impose l'arrêt définitif de la fluindione, sans réintroduction possible.",
         forms: "",
     },
     StarterDetail {
@@ -1352,7 +1352,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "avk, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Même cible d'INR que les autres AVK, mais la demi-vie la plus courte de la classe (8 à 11 heures) : l'INR répond plus vite et redescend plus vite, ce qui le rend à la fois plus maniable en périopératoire et plus instable en usage courant. Un oubli isolé se voit sur l'INR du surlendemain.",
         forms: "",
     },
     StarterDetail {
@@ -1919,7 +1919,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Pas de dosage plasmatique en routine : la toxicité est cumulative et se compte en dose totale reçue, pas en concentration. Thyroïde chez 15 à 20 % des patients (hypo comme hyper, l'hyperthyroïdie induite pouvant être sévère et retardée), pneumopathie interstitielle d'autant plus fréquente que la dose d'entretien dépasse 200 mg par jour, dépôts cornéens quasi constants et réversibles, hépatite, photosensibilité et pigmentation ardoisée. Demi-vie de 40 à 55 jours : les effets et les interactions persistent des mois après l'arrêt.",
         forms: "",
     },
     StarterDetail {
@@ -2024,7 +2024,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "digitalique, marge thérapeutique étroite, surveillance biologique",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Zone thérapeutique resserrée à 0,5 à 0,9 ng/mL dans l'insuffisance cardiaque — au-delà, le bénéfice ne monte plus, la mortalité si. Les signes de surdosage apparaissent dès 1,5 à 2 ng/mL et bien plus bas en cas d'hypokaliémie, d'hypomagnésémie, d'hypercalcémie ou d'insuffisance rénale : anorexie, nausées, vision colorée en jaune-vert, confusion chez la personne âgée, bradycardie et troubles du rythme. Le prélèvement se fait au moins six heures après la prise, sinon il ne veut rien dire. Antidote : fragments Fab anti-digoxine.",
         forms: "",
     },
     StarterDetail {
@@ -2234,7 +2234,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormone thyroïdienne, marge thérapeutique étroite, surveillance biologique",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "La marge ne se lit pas en concentration mais en TSH : cible 0,4 à 4 mUI/L, adaptée à l'âge et au contexte. Un palier de 12,5 à 25 µg suffit à faire basculer, et le contrôle se fait six à huit semaines après tout changement — de dose, de spécialité ou de formulation. Surdosage : palpitations, amaigrissement, insomnie, et chez le sujet âgé fibrillation atriale et perte osseuse, souvent sans que le patient s'en plaigne.",
         forms: "",
     },
     StarterDetail {
@@ -2423,7 +2423,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "La dose est hebdomadaire. La prise quotidienne par erreur — ordonnance mal lue, pilulier mal rempli, patient qui « rattrape » — reste la cause classique de pancytopénie mortelle : c'est le point à vérifier à chaque délivrance. Toxicité hématologique, hépatique, muqueuse et pulmonaire, majorée par l'insuffisance rénale, les AINS et le triméthoprime. L'acide folique se prend 24 à 48 heures après, jamais le même jour ; l'antidote d'un surdosage est l'acide folinique.",
         forms: "",
     },
     StarterDetail {
@@ -3410,7 +3410,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "thymorégulateur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Lithémie cible 0,5 à 0,8 mmol/L pour la forme classique, 0,8 à 1,2 mmol/L douze heures après la prise pour la forme à libération prolongée. Les signes d'intoxication commencent dès 1,2 à 1,5 — tremblement ample, diarrhée, ataxie, confusion — et au-delà de 2,5 imposent l'épuration extrarénale. Le piège est qu'une intoxication survient à dose inchangée : déshydratation, canicule, régime sans sel, AINS, IEC, sartans et diurétiques thiazidiques font tous monter la lithémie.",
         forms: "",
     },
     StarterDetail {
@@ -3431,7 +3431,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "Prescription encadrée chez la femme en âge de procréer (accord de soins)",
         smr: "",
         tags: "thymorégulateur, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Une concentration de 50 à 100 µg/mL est indicative, pas décisive : les deux toxicités qui tuent — hépatite fulminante et pancréatite — ne sont pas liées à la concentration, et l'hyperammoniémie peut survenir à taux normal. Le risque majeur est tératogène : environ 10 % de malformations et 30 à 40 % de troubles neurodéveloppementaux en cas d'exposition in utero, d'où le programme de prévention des grossesses, l'accord de soins annuel et le pictogramme sur la boîte.",
         forms: "",
     },
     StarterDetail {
@@ -3452,7 +3452,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Il n'y a pas de zone thérapeutique suivie en routine : la toxicité de cette molécule est la vitesse de titration. Le syndrome de Stevens-Johnson et le syndrome de Lyell surviennent dans les huit premières semaines, et la lenteur de la montée est ce qui les évite. Toute éruption apparue pendant cette période fait arrêter et consulter le jour même. La dose de départ se divise par deux avec le valproate et se double avec les inducteurs : une reprise après quelques jours d'arrêt recommence la titration à zéro.",
         forms: "",
     },
     StarterDetail {
@@ -3494,7 +3494,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Zone thérapeutique 4 à 12 µg/mL ; au-dessus de 12 apparaissent diplopie, nystagmus, ataxie et somnolence. Auto-inducteur : à dose constante, la concentration baisse pendant les trois à quatre premières semaines, ce qui fait croire à une inefficacité. Hyponatrémie fréquente chez le sujet âgé. Chez les patients d'origine asiatique, l'allèle HLA-B 15:02 expose au syndrome de Lyell et se recherche avant l'instauration.",
         forms: "",
     },
     StarterDetail {
@@ -4061,7 +4061,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, fluoropyrimidine, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "Le déficit en dihydropyrimidine déshydrogénase est le risque qui domine tout le reste : l'uracilémie se dose avant la première cure, et un déficit complet fait une toxicité mortelle dès la première administration. Ensuite, la toxicité est cumulative et lisible — syndrome main-pied, diarrhée, mucite : arrêter au premier grade 2 et appeler est ce qui évite le grade 4. Association aux AVK : l'INR grimpe fortement et durablement.",
         forms: "",
     },
     StarterDetail {
@@ -4817,7 +4817,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "Délivrance conditionnée à la NFS (carnet de surveillance)",
         smr: "",
         tags: "antipsychotique, nfs obligatoire, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.",
+        toxicity: "La marge ne se lit pas en dose mais en hémogramme : agranulocytose chez environ 0,8 % des patients, d'où une NFS hebdomadaire pendant dix-huit semaines puis mensuelle à vie, et une délivrance conditionnée au dernier résultat porté sur le carnet de suivi. Myocardite dans les huit premières semaines (fièvre, douleur thoracique, essoufflement), convulsions au-delà de 600 mg par jour, iléus paralytique dont la constipation banale est le premier signe. Le tabac est inducteur : arrêter de fumer fait monter la clozapinémie.",
         forms: "",
     },
     StarterDetail {
@@ -24504,6 +24504,46 @@ impl Db {
         Ok(())
     }
 
+    /// The « toxicité » section used to carry the same sentence on
+    /// thirteen cards — « marge thérapeutique étroite… voir les
+    /// sections Interactions et Surveillance » — which is a field
+    /// telling you to read another field. It now carries what the
+    /// counter actually needs: the target range, the concentration or
+    /// dose where toxicity starts, and what it looks like.
+    ///
+    /// A base created before that keeps the old sentence, because
+    /// [`Self::fill_starter_details`] only ever fills an *empty*
+    /// column. This pass replaces it — but only where the cell still
+    /// holds that exact sentence, character for character. A team who
+    /// has written one word of their own on that card has a cell that
+    /// no longer matches, and nothing happens to it. The mark makes it
+    /// run once.
+    pub fn refresh_toxicity(&self) -> Result<usize, String> {
+        const OLD: &str = "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.";
+        if self.seed_mark("toxicity")?.as_deref() == Some("1") {
+            return Ok(0);
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut changed = 0;
+        for d in STARTER_DETAILS {
+            if d.toxicity.is_empty() {
+                continue;
+            }
+            changed += tx
+                .execute(
+                    "UPDATE drugs SET toxicity = ?1 WHERE name = ?2 AND toxicity = ?3",
+                    (d.toxicity, d.name, OLD),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        self.set_seed_mark("toxicity", "1")?;
+        Ok(changed)
+    }
+
     /// Seed the protocols, once. A title already in the base is left
     /// alone: the tool is the team's, and a tree they have rewritten
     /// never comes back to what it shipped as.
@@ -27559,6 +27599,77 @@ mod tests {
         );
         assert_eq!(db.export_rows(12).unwrap()[0].created_date, "2026-03-02");
 
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The « toxicité » sections say something drug-specific, and the
+    /// one-time replacement of the old boilerplate never touches a cell
+    /// the team has written on.
+    #[test]
+    fn the_toxicity_sections_say_what_is_toxic_and_at_what_dose() {
+        const OLD: &str = "Marge thérapeutique étroite : un écart de dose ou une interaction suffit à faire basculer vers le sous-dosage ou la toxicité. Voir les sections Interactions et Surveillance.";
+        // No card is left with the sentence that sent the reader to
+        // another section. A field that answers nothing is worse than
+        // an empty one: the empty one at least looks unfinished.
+        for d in STARTER_DETAILS {
+            assert_ne!(d.toxicity, OLD, "{} garde l'ancien texte", d.name);
+            if !d.toxicity.is_empty() {
+                assert!(
+                    d.toxicity.len() > 150,
+                    "« toxicité » de {} trop courte pour dire une marge",
+                    d.name
+                );
+            }
+        }
+        // The four AOD carry one: they are the app's own subject, and
+        // their margin is not a concentration but a set of criteria.
+        for name in ["Eliquis", "Xarelto", "Pradaxa", "Lixiana"] {
+            let card = STARTER_DETAILS
+                .iter()
+                .find(|d| d.name == name)
+                .unwrap_or_else(|| panic!("fiche {name} absente"));
+            assert!(!card.toxicity.is_empty(), "{name} sans section toxicité");
+        }
+
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-tox-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tox.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+
+        // An old base: two cards still carrying the boilerplate, one of
+        // which the team has since rewritten in its own words.
+        for name in ["Digoxine", "Levothyrox"] {
+            db.conn
+                .execute(
+                    "UPDATE drugs SET toxicity = ?1 WHERE name = ?2",
+                    (OLD, name),
+                )
+                .unwrap();
+        }
+        db.conn
+            .execute(
+                "UPDATE drugs SET toxicity = 'Notre protocole interne.' WHERE name = 'Téralithe'",
+                (),
+            )
+            .unwrap();
+        let read = |name: &str| {
+            db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.name == name)
+                .unwrap()
+                .toxicity
+        };
+
+        assert_eq!(db.refresh_toxicity().unwrap(), 2);
+        assert!(read("Digoxine").contains("0,5 à 0,9 ng/mL"));
+        assert!(read("Levothyrox").contains("TSH"));
+        // What the team wrote is theirs, boilerplate or not.
+        assert_eq!(read("Téralithe"), "Notre protocole interne.");
+        // And the pass runs once: a second launch costs one query.
+        assert_eq!(db.refresh_toxicity().unwrap(), 0);
         let _ = std::fs::remove_file(&path);
     }
 

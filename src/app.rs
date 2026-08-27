@@ -1449,6 +1449,10 @@ impl Session {
         // The protocols too: a base opened before they existed gets
         // them, and a tree the team rewrote is never replaced.
         let _ = db.seed_protocols();
+        // And the thirteen « toxicité » sections that used to say the
+        // same nothing: replaced once, only where the old sentence is
+        // still there word for word.
+        let _ = db.refresh_toxicity();
         let drugs = db.drugs().unwrap_or_default();
         let protocols = db.protocols().unwrap_or_default();
         let mut session = Self {
