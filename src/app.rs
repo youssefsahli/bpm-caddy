@@ -872,7 +872,12 @@ fn notes_box(
     // a short box, a clipped button under a tall one.
     let budget = ui.max_rect().bottom() - top;
     let reserve = if with_add { notes_box_reserve(ui) } else { 0.0 };
-    let height = height.min(budget - reserve).max(28.0);
+    // No floor under the well. It used to keep 28 px whatever was left,
+    // which pushed the « add » row through the bottom of the panel when
+    // the docks were dragged wide and the journal was down to ninety
+    // pixels: half a button, and nothing to click. The well can shrink
+    // to nothing — it scrolls — but the row you type into stays whole.
+    let height = height.min(budget - reserve).max(0.0);
     let rect =
         egui::Rect::from_min_size(egui::pos2(ui.cursor().left(), top), egui::vec2(w, height));
     ui.painter().rect_filled(rect, 0.0, motif::TROUGH);
@@ -4346,6 +4351,12 @@ impl App {
     /// Before this, reaching the next patient meant leaving the open one
     /// (Escape, retype, re-open); the file being read and the list it
     /// came from were the same screen. They are now two.
+    /// The width the work area keeps, whatever the docks are dragged
+    /// to. Below this a six-column reference table cannot be laid out
+    /// at all and starts painting under the panel beside it — the two
+    /// docks exist to serve the middle, not to crowd it out.
+    const WORK_MIN: f32 = 560.0;
+
     fn nav_dock(&mut self, ctx: &egui::Context) {
         let focus = std::mem::take(&mut self.focus_nav);
         // A dock is a share of the window, not a fixed slab: at 1024 px
@@ -4368,7 +4379,18 @@ impl App {
                 .resizable(true)
                 .default_width(default_w)
                 .min_width(130.0)
-                .max_width((screen * 0.3).clamp(180.0, 420.0))
+                // Capped against the *other* dock, not only against the
+                // window. Thirty per cent each is thirty per cent each
+                // until both are dragged out, and then the work itself
+                // — the reason the other two are on screen — is down to
+                // forty per cent and its tables start painting under
+                // them. Whatever is dragged, the centre keeps
+                // [`Self::WORK_MIN`].
+                .max_width(
+                    (screen * 0.3).clamp(180.0, 420.0).min(
+                        (screen - self.layout.docs_width.max(200.0) - Self::WORK_MIN).max(180.0),
+                    ),
+                )
                 .show(ctx, |ui| {
                     width = ui.max_rect().width() + 16.0;
                     ui.add_space(6.0);
@@ -4801,7 +4823,11 @@ impl App {
             // the central view laid out wider than it is visible, and
             // everything on its right edge is clipped away — buttons
             // included. Cap it, and let the content inside wrap.
-            .max_width((screen * 0.36).clamp(260.0, 520.0))
+            .max_width(
+                (screen * 0.36)
+                    .clamp(260.0, 520.0)
+                    .min((screen - self.layout.nav_width.max(130.0) - Self::WORK_MIN).max(200.0)),
+            )
             .show(ctx, |ui| {
                 width = ui.max_rect().width() + 16.0;
                 ui.add_space(6.0);
@@ -13696,11 +13722,12 @@ impl App {
         const GAP: f32 = 20.0;
         let cols = t.columns.len().max(1) as f32;
         let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(80.0);
+        let left = avail.center().x - w / 2.0;
         // The cell edit committed this frame, applied after the grid.
         let mut commit: Option<(usize, usize, String)> = None;
         let bg = ui.painter().add(egui::Shape::Noop);
         let content = egui::Rect::from_min_size(
-            egui::pos2(avail.center().x - w / 2.0 + PAD, avail.top() + PAD),
+            egui::pos2(left + PAD, avail.top() + PAD),
             egui::vec2(w - 2.0 * PAD, avail.height().max(1.0)),
         );
         let used = ui
@@ -13787,7 +13814,7 @@ impl App {
             .response
             .rect;
         let box_rect = egui::Rect::from_min_size(
-            egui::pos2(avail.center().x - w / 2.0, avail.top()),
+            egui::pos2(left, avail.top()),
             egui::vec2(w, used.height() + 2.0 * PAD),
         );
         ui.painter()
