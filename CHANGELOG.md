@@ -5,6 +5,56 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.111.0] - 2026-08-28
+
+Une seconde passe de contenu : ce qui manquait aux catalogues, et la
+section que la feuille de route avait laissée ouverte.
+
+### Added
+- **« Toxicité / marge thérapeutique » : 40 → 64 fiches.** La ligne
+  restée ouverte depuis la v0.85.0, où elle était dite « éditoriale,
+  fiche par fiche ». Les vingt-quatre ajoutées sont celles où une dose,
+  une durée ou une exposition tue : tricycliques (cardiotoxiques avant
+  d'être neurologiques, sans antidote, chez la population même qui fait
+  des gestes), théophylline (toxique dès 20 mg/L, et arrêter de fumer
+  suffit à l'y amener), hydroxychloroquine (un comprimé peut tuer un
+  enfant), ciclosporine et tacrolimus, insuline et sulfamides
+  (l'hypoglycémie du sulfamide récidive vingt-quatre à quarante-huit
+  heures après le resucrage), baclofène, inhibiteurs calciques,
+  potassium, isotrétinoïne, vancomycine et aminosides, anesthésiques
+  locaux, méthadone, fentanyl transdermique (le patch délivre encore
+  après le retrait, et la chaleur augmente l'absorption), oxycodone LP,
+  allopurinol et cotrimoxazole (hypersensibilité retardée, sans rapport
+  avec la dose), valproate et amiodarone.
+- **Dispositifs : 47 → 55.** Pansement hémostatique, orthèse de poignet,
+  bas anti-thrombose, poche de stomie vidable contre fermée, seringues
+  et aiguilles, nébuliseur et son consommable, pilulier, automesure de
+  la tension et de la température.
+- **Revue d'ordonnance : 40 → 48 règles.** Méthotrexate +
+  cotrimoxazole, lévothyroxine chélatée, digoxine potentialisée,
+  syndrome sérotoninergique (le tramadol y est le plus souvent en cause
+  parce qu'il passe pour un simple antalgique), PDE5 avec un donneur de
+  NO, fluoroquinolone avec un corticoïde et le tendon d'Achille, statine
+  avec colchicine, et un corticoïde inhalé sans bronchodilatateur de
+  secours.
+- **Biologie : 62 → 78 règles.** La moitié du catalogue ne portait
+  qu'une règle, soit le minimum exigé et non ce à quoi le module sert.
+  Parmi les nouvelles : une créatinine qui monte sous triméthoprime,
+  dolutégravir ou cimétidine n'est pas une insuffisance rénale ; une
+  HbA1c *basse* sous sulfamide après 75 ans est un risque et non un bon
+  résultat ; une anémie sous AINS ou anticoagulant est un saignement
+  digestif jusqu'à preuve du contraire.
+- **Quatre thématiques d'entretien** (12 en tout), chacune avec sa
+  liste : sortie d'hôpital et conciliation, douleur chronique, sommeil,
+  chute et autonomie.
+- **Huit fiches du rayon conseil** (831 en tout) : pseudoéphédrine,
+  oxymétazoline, flurbiprofène en pastille, tétracaïne, montmorillonite,
+  fluticasone nasale, acide méfénamique, benzydamine.
+
+### Changed
+- Un cliquet de plus sur chaque catalogue ajouté, et les noms en double
+  refusés partout.
+
 ## [0.110.0] - 2026-08-28
 
 Une passe de contenu clinique, et un cliquet sur chaque catalogue.
