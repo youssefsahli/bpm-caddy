@@ -15,6 +15,12 @@
 pub struct ConvTable {
     /// Short name for the selector buttons.
     pub short: &'static str,
+    /// Which drawer of the list this table files under. The tables were
+    /// always grouped — this module's own first paragraph groups them —
+    /// but the grouping lived in prose, and the selector was
+    /// twenty-seven undifferentiated buttons. Five families, in the
+    /// order [`FAMILIES`] gives them.
+    pub family: &'static str,
     pub title: &'static str,
     /// When this table was last read against its sources, and against
     /// which edition. A reference table without a date is a reference
@@ -26,9 +32,21 @@ pub struct ConvTable {
     pub rows: &'static [&'static [&'static str]],
 }
 
+/// The drawers of the table list, in reading order: what a dose
+/// converts to, what a dose *is*, what changes it, what is decided
+/// without an ordonnance in hand, and how the thing is actually taken.
+pub const FAMILIES: [&str; 5] = [
+    "Équivalences",
+    "Posologies",
+    "Adaptation",
+    "Au comptoir",
+    "Administration",
+];
+
 pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "IPP",
+        family: "Équivalences",
         title: "IPP — équivalences, formes et prise",
         reviewed: "Août 2026 — RCP à jour et fiche HAS sur le bon usage des IPP",
         sources: &[
@@ -50,6 +68,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "HBPM",
+        family: "Posologies",
         title: "HBPM — posologies, rein, surveillance",
         reviewed: "Août 2026 — RCP à jour ; recommandations MTEV en vigueur",
         sources: &[
@@ -70,6 +89,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Statines",
+        family: "Équivalences",
         title: "Statines — intensité, efficacité, interactions",
         reviewed: "Août 2026 — ESC/EAS 2019, RCP à jour",
         sources: &[
@@ -95,6 +115,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Corticoïdes",
+        family: "Équivalences",
         title: "Corticoïdes — équivalences, durée, formes",
         reviewed: "Août 2026 — RCP à jour",
         sources: &[
@@ -117,6 +138,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Opioïdes",
+        family: "Équivalences",
         title: "Opioïdes — équianalgésie et repères pratiques",
         reviewed: "Août 2026 — recommandations douleur en vigueur, RCP à jour",
         sources: &[
@@ -141,6 +163,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Benzodiazépines",
+        family: "Équivalences",
         title: "Benzodiazépines — équivalences, demi-vie, indication",
         reviewed: "Août 2026 — fiches HAS sur l'arrêt des benzodiazépines, RCP à jour",
         sources: &[
@@ -166,6 +189,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "AOD",
+        family: "Posologies",
         title: "AOD — posologies, adaptation rénale et antidotes",
         reviewed: "Août 2026 — RCP à jour ; antidotes disponibles en France",
         sources: &[
@@ -190,6 +214,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Cortico. inhalés",
+        family: "Posologies",
         title: "Corticoïdes inhalés — paliers de dose, dispositifs et rinçage (adulte)",
         reviewed: "Août 2026 — GINA en vigueur, RCP à jour",
         sources: &[
@@ -213,6 +238,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Insulines",
+        family: "Posologies",
         title: "Insulines — profils d'action, injection et conservation",
         reviewed: "Août 2026 — RCP à jour",
         sources: &[
@@ -235,6 +261,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Fonction rénale",
+        family: "Adaptation",
         title: "Fonction rénale — stades et conséquences pratiques",
         reviewed: "Août 2026 — classification KDIGO, adaptations issues des RCP",
         sources: &[
@@ -256,6 +283,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Angine",
+        family: "Au comptoir",
         title: "Angine — score de Mac Isaac, TROD et antibiothérapie",
         reviewed: "Août 2026 — protocole de dispensation après TROD en vigueur",
         sources: &[
@@ -277,6 +305,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Cystite",
+        family: "Au comptoir",
         title: "Cystite simple — traitements, contre-indications et suivi",
         reviewed: "Août 2026 — protocole de dispensation après TROD en vigueur, recommandations SPILF",
         sources: &[
@@ -298,6 +327,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Contraception",
+        family: "Au comptoir",
         title: "Contraception — oubli, délai toléré et rattrapage",
         reviewed: "Août 2026 — recommandations HAS sur la contraception",
         sources: &[
@@ -319,6 +349,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Antalgiques",
+        family: "Posologies",
         title: "Antalgiques — palier, doses adulte et précautions",
         reviewed: "Août 2026 — RCP à jour, seuils de paracétamol révisés",
         sources: &[
@@ -342,6 +373,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Vaccins",
+        family: "Au comptoir",
         title: "Vaccination à l'officine — population, schéma et rôle du pharmacien",
         reviewed: "Août 2026 — calendrier vaccinal en vigueur",
         sources: &[
@@ -366,6 +398,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Pédiatrie",
+        family: "Adaptation",
         title: "Pédiatrie — doses usuelles, formes et maximum par jour",
         reviewed: "Août 2026 — RCP à jour",
         sources: &[
@@ -388,6 +421,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Broyage",
+        family: "Administration",
         title: "Écraser ou ouvrir — règles, raisons et alternatives",
         reviewed: "Août 2026 — listes de l'OMÉDIT, RCP à jour",
         sources: &[
@@ -412,6 +446,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Interactions",
+        family: "Au comptoir",
         title: "Interactions à repérer à la délivrance — aliments, plantes et inducteurs",
         reviewed: "Août 2026 — thésaurus des interactions médicamenteuses de l'ANSM",
         sources: &[
@@ -434,6 +469,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Urgence",
+        family: "Au comptoir",
         title: "Urgence au comptoir — reconnaître, agir, orienter",
         reviewed: "Août 2026 — recommandations de premiers secours en vigueur",
         sources: &[
@@ -456,6 +492,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Grossesse",
+        family: "Adaptation",
         title: "Grossesse et allaitement — ce qui se délivre au comptoir",
         reviewed: "Août 2026 — CRAT consulté, RCP à jour",
         sources: &[
@@ -478,6 +515,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Sujet âgé",
+        family: "Adaptation",
         title: "Sujet âgé — médicaments à réévaluer et ce qu'on propose à la place",
         reviewed: "Août 2026 — critères de Laroche adaptés à la pratique française, STOPP/START v2",
         sources: &[
@@ -500,6 +538,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Inhalateurs",
+        family: "Administration",
         title: "Dispositifs inhalés — technique, contrôle et erreurs qui font échouer le traitement",
         reviewed: "Août 2026 — notices des dispositifs commercialisés en France, GINA en vigueur",
         sources: &[
@@ -521,6 +560,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Antidiabétiques",
+        family: "Posologies",
         title: "Antidiabétiques oraux et injectables — ce qui change au comptoir",
         reviewed: "Août 2026 — RCP à jour, recommandations SFD en vigueur",
         sources: &[
@@ -542,6 +582,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Collyres",
+        family: "Administration",
         title: "Collyres et formes ophtalmiques — ordre, délai, conservation",
         reviewed: "Août 2026 — RCP à jour, recommandations d'usage des collyres",
         sources: &[
@@ -562,6 +603,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Automédication",
+        family: "Au comptoir",
         title: "Automédication — ce qui se refuse au comptoir, et ce qu'on propose",
         reviewed: "Août 2026 — RCP à jour, recommandations de bon usage en vigueur",
         sources: &[
@@ -585,6 +627,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Antibiotiques",
+        family: "Posologies",
         title: "Antibiotiques — durée, prise, et ce qui fait échouer le traitement",
         reviewed: "Août 2026 — RCP à jour, recommandations SPILF en vigueur",
         sources: &[
@@ -610,6 +653,7 @@ pub const TABLES: &[ConvTable] = &[
     },
     ConvTable {
         short: "Arrêts",
+        family: "Au comptoir",
         title: "Arrêts et sevrages — ce qui ne s'arrête jamais d'un coup",
         reviewed: "Août 2026 — fiches HAS sur l'arrêt des benzodiazépines et des antidépresseurs, RCP à jour",
         sources: &[
@@ -637,6 +681,15 @@ pub const TABLES: &[ConvTable] = &[
 mod tests {
     use super::*;
 
+    /// Every drawer of the list has something in it: a heading with no
+    /// rows under it is a family somebody renamed on one side only.
+    #[test]
+    fn every_family_has_tables_in_it() {
+        for f in FAMILIES {
+            assert!(TABLES.iter().any(|t| t.family == f), "famille vide : {f}");
+        }
+    }
+
     #[test]
     fn tables_are_well_formed() {
         assert!(TABLES.len() >= 6);
@@ -653,11 +706,19 @@ mod tests {
             );
             assert!(!t.rows.is_empty());
             assert!(!t.columns.is_empty());
-            // The selector shows `short`: two tables sharing one would
-            // put two identical buttons side by side.
+            // The list shows `short`: two tables sharing one would put
+            // two identical rows in the same drawer.
             assert!(
                 shorts.insert(t.short),
                 "nom de table en double : {}",
+                t.short
+            );
+            // A family the list has no drawer for is a table nobody can
+            // reach: the list is built from `FAMILIES`, in that order.
+            assert!(
+                FAMILIES.contains(&t.family),
+                "famille inconnue « {} » sur la table « {} »",
+                t.family,
                 t.short
             );
             for row in t.rows {

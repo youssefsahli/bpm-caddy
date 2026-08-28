@@ -27418,6 +27418,20 @@ impl Db {
     }
 
     /// Every table edit, for the printout.
+    /// Which reference tables the team has corrected at least one cell
+    /// of. The list marks them: a table the officine has edited is one
+    /// to read before trusting the shipped one beside it.
+    pub fn edited_table_keys(&self) -> Result<std::collections::HashSet<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT DISTINCT table_key FROM table_cells")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn all_table_cells(
         &self,
     ) -> Result<std::collections::HashMap<(String, usize, usize), String>, String> {
