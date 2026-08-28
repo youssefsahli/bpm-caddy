@@ -5,6 +5,53 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.114.0] - 2026-08-28
+
+Ce que la saison, le soleil et le pilulier font à une ordonnance, et sept
+règles que la revue ne trouvait pas.
+
+### Added
+- **31 → 34 tables de référence.**
+  - **« Canicule »** lit l'ordonnance contre la chaleur : le diurétique
+    et l'IEC qui vident un patient qui perd déjà de l'eau, l'AINS qui
+    complète la triade en insuffisance rénale aiguë, le lithium dont la
+    concentration monte sans changement de dose, les anticholinergiques
+    et les neuroleptiques qui suppriment la sudation — le seul
+    refroidissement dont dispose le corps —, le patch qui délivre
+    davantage quand il fait chaud, et le stylo à insuline oublié dans
+    une voiture. Chaque ligne porte une colonne « ce qu'on ne fait
+    pas » : l'essentiel des accidents de canicule vient d'un traitement
+    arrêté ou doublé de sa propre initiative.
+  - **« Soleil »** distingue les photosensibilisants par mécanisme,
+    parce que le conseil en dépend : la doxycycline brûle en quelques
+    heures et proportionnellement à la dose, l'éruption sous
+    cotrimoxazole est retardée et n'est pas toujours un coup de soleil,
+    le kétoprofène en gel reste dangereux deux semaines après la
+    dernière application — la seule règle de la table qui survit au
+    traitement —, et le thiazidique est un risque qui se compte en
+    décennies et non en vacances.
+  - **« Pilulier »** dit ce qui ne se déconditionne pas : le Pradaxa
+    hors de sa plaquette, les effervescents et les orodispersibles qui
+    prennent l'humidité, la trinitrine sublinguale dont le principe
+    actif est volatil, la dose « si besoin » qu'une semaine en cases
+    transforme en prise systématique, et le pilulier préparé le lundi
+    qui porte encore l'ordonnance du lundi le mercredi.
+- **48 → 55 règles de revue d'ordonnance.** Le bêtabloquant caché est
+  celle qu'il a fallu écrire avec soin : « bêtabloquant » désigne aussi
+  le collyre, et une combinaison laisse un seul traitement satisfaire ses
+  deux groupes — un patient sous Timoptol seul se serait vu annoncer
+  qu'il en prenait deux. La moitié orale est donc une liste de
+  molécules, et un test la tient. Les six autres : la contraception sous
+  inducteur enzymatique, qui échoue en silence jusqu'au test de
+  grossesse et où le millepertuis acheté sans ordonnance compte comme la
+  carbamazépine ; l'anticoagulant oral direct avec un inhibiteur de la
+  P-gp, dont l'exposition monte sans INR pour le dire ; la
+  corticothérapie avec un antidiabétique ; trois corticoïdes comptés
+  toutes voies confondues ; l'AVK avec l'amiodarone, dont l'INR s'emballe
+  une à trois semaines après l'introduction ; et le thiazidique avec le
+  calcium et la vitamine D, dont l'hypercalcémie lente se lit comme de la
+  vieillesse.
+
 ## [0.113.0] - 2026-08-28
 
 Six molécules et six préparations que la base ne savait pas traiter, et
