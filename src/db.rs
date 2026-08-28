@@ -20992,6 +20992,206 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
             )],
         )],
     },
+    StarterProtocol {
+        title: "Conjonctivite au comptoir",
+        subject: "Œil rouge avec sécrétions",
+        steps: &[q(
+            "Y a-t-il une douleur profonde, une baisse de vision, une pupille anormale, ou le patient porte-t-il des lentilles ?",
+            &[act(
+                "Orientation ophtalmologique le jour même : ces signes sortent de la conjonctivite banale, et un porteur de lentilles avec un œil rouge est un abcès de cornée jusqu'à preuve du contraire. Retirer les lentilles et ne pas les remettre.",
+            )],
+            &[q(
+                "Les deux yeux sont-ils atteints, avec des sécrétions claires, des démangeaisons et un contexte allergique ou de rhume ?",
+                &[act(
+                    "Conjonctivite virale ou allergique : lavage au sérum physiologique unidose plusieurs fois par jour, un œil puis l'autre avec une compresse différente, lavage des mains, serviette personnelle. Antihistaminique local si le contexte est allergique. Pas d'antibiotique.",
+                )],
+                &[q(
+                    "Les sécrétions sont-elles purulentes, collant les paupières au réveil, sur un seul œil ?",
+                    &[act(
+                        "Conjonctivite bactérienne probable : lavage au sérum physiologique, et collyre antibiotique sur prescription. Sans amélioration en 48 heures, consultation. Éviction du travail ou de l'école selon le contexte.",
+                    )],
+                    &[act(
+                        "Tableau non caractérisé : lavage au sérum physiologique unidose, hygiène des mains, et réévaluation à 48 heures. Toute douleur, toute baisse de vision ou toute photophobie fait consulter sans attendre.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Lombalgie aiguë au comptoir",
+        subject: "Mal de dos sans traumatisme",
+        steps: &[q(
+            "Y a-t-il une fièvre, une perte de poids, un antécédent de cancer, une douleur qui réveille la nuit, ou des troubles pour uriner ou marcher ?",
+            &[act(
+                "Ce ne sont pas des signes de lombalgie commune : consultation le jour même. Une incontinence, une anesthésie en selle ou une faiblesse des jambes est une urgence — c'est un syndrome de la queue de cheval.",
+            )],
+            &[q(
+                "La douleur descend-elle dans la jambe au-dessous du genou ?",
+                &[act(
+                    "Sciatique : antalgique, et consultation si la douleur dure plus de quelques jours, s'accompagne d'une faiblesse du pied ou d'une perte de sensibilité. Le repos strict est contre-indiqué, ici comme dans la lombalgie simple.",
+                )],
+                &[q(
+                    "Le patient prend-il un anticoagulant, un corticoïde au long cours, ou a-t-il plus de 70 ans ?",
+                    &[act(
+                        "Terrain à risque de fracture ou d'hématome : antalgique par paracétamol, pas d'AINS sous anticoagulant, et avis médical rapide plutôt qu'une automédication prolongée.",
+                    )],
+                    &[act(
+                        "Lombalgie commune : paracétamol, chaleur locale, et surtout maintien de l'activité — rester couché aggrave et prolonge. Le message est celui-là, pas la boîte : reprendre le mouvement dès que possible, et consulter si rien ne cède en une semaine.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Vomissements chez l'enfant",
+        subject: "Nourrisson et jeune enfant",
+        steps: &[q(
+            "L'enfant est-il abattu, les yeux cernés, la fontanelle creusée, sans urines depuis six heures, ou refuse-t-il de boire ?",
+            &[act(
+                "Déshydratation : orientation médicale immédiate, d'autant plus rapide que l'enfant est petit. Un nourrisson de moins de six mois se déshydrate en quelques heures.",
+            )],
+            &[q(
+                "Les vomissements sont-ils verts, sanglants, en jet, ou accompagnés de maux de tête violents, de raideur de nuque ou d'une douleur abdominale intense ?",
+                &[act(
+                    "Ce ne sont pas des vomissements de gastro-entérite : appel au 15 ou consultation immédiate selon le tableau. Un vomissement bilieux chez le nourrisson est une occlusion jusqu'à preuve du contraire.",
+                )],
+                &[q(
+                    "L'enfant boit-il et garde-t-il de petites quantités ?",
+                    &[act(
+                        "Solution de réhydratation orale, une cuillère toutes les cinq minutes puis à volonté, en reprenant l'alimentation habituelle dans les six heures. Ni jus, ni soda, ni eau seule. Peser l'enfant, et reconsulter si la perte dépasse 5 % du poids.",
+                    )],
+                    &[act(
+                        "Un enfant qui ne garde rien ne se traite pas au comptoir : consultation le jour même. Les antiémétiques n'ont pas de place ici sans avis, et le lopéramide est contre-indiqué avant 15 ans.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Éruption cutanée sous traitement",
+        subject: "Un bouton, une plaque, ou pire",
+        steps: &[q(
+            "Y a-t-il une atteinte des muqueuses — bouche, yeux, organes génitaux —, un décollement de la peau, une fièvre ou une altération de l'état général ?",
+            &[act(
+                "Arrêt immédiat du médicament suspect et appel au 15 : ce sont les signes d'une toxidermie grave, syndrome de Stevens-Johnson ou Lyell. Ne jamais attendre le lendemain, et noter le nom du médicament sur la fiche.",
+            )],
+            &[q(
+                "L'éruption est-elle apparue dans les minutes ou l'heure suivant la prise, avec un gonflement du visage, de la gorge, ou une gêne respiratoire ?",
+                &[act(
+                    "Réaction immédiate : appel au 15, adrénaline si le patient en a et si le tableau est celui d'une anaphylaxie. Le médicament est contre-indiqué à vie et inscrit sur la fiche en toutes lettres.",
+                )],
+                &[q(
+                    "Le traitement a-t-il été introduit entre deux et six semaines auparavant, avec de la fièvre, des ganglions ou un gonflement du visage ?",
+                    &[act(
+                        "Suspicion de DRESS : arrêt du médicament et avis le jour même. Le délai de deux à six semaines est la signature de ce tableau, et l'éosinophilie le confirme au bilan.",
+                    )],
+                    &[act(
+                        "Éruption sans signe de gravité : photographier la lésion, noter la date de début et celle du médicament introduit, et prendre un avis. La déclaration de pharmacovigilance se fait dans tous les cas, et elle appartient au pharmacien autant qu'au médecin.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Automédication chez la personne âgée",
+        subject: "Demande de conseil après 75 ans",
+        steps: &[q(
+            "Le produit demandé est-il un AINS, un décongestionnant, un antihistaminique sédatif ou un laxatif stimulant ?",
+            &[act(
+                "Ces quatre familles sont celles qui envoient les personnes âgées à l'hôpital : insuffisance rénale et hémorragie digestive pour l'AINS, poussée hypertensive et rétention pour le décongestionnant, chute et confusion pour l'antihistaminique, dépendance et hypokaliémie pour le laxatif stimulant. Proposer l'alternative avant de dire non.",
+            )],
+            &[q(
+                "Le patient prend-il déjà cinq médicaments ou plus ?",
+                &[q(
+                    "Le symptôme pourrait-il être l'effet d'un des traitements en cours ?",
+                    &[act(
+                        "Cascade médicamenteuse : avant d'ajouter une ligne, regarder si une ligne existante explique le symptôme — vertige sous antihypertenseur, constipation sous opioïde ou sous fer, sécheresse buccale sous anticholinergique. Le signaler au prescripteur plutôt que de superposer.",
+                    )],
+                    &[act(
+                        "Polymédication : proposer un bilan partagé de médication, vérifier l'interaction avec les traitements en cours, et délivrer la plus petite quantité pour la plus courte durée.",
+                    )],
+                )],
+                &[act(
+                    "Conseil délivré avec la durée maximale annoncée et le motif de reconsultation. Vérifier la fonction rénale connue, l'hydratation et les chutes récentes : ces trois questions changent souvent la réponse.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Demande de test de grossesse ou d'inquiétude de grossesse",
+        subject: "Retard de règles, rapport non protégé",
+        steps: &[q(
+            "Le rapport non protégé date-t-il de moins de cinq jours ?",
+            &[act(
+                "Contraception d'urgence possible : lévonorgestrel jusqu'à 72 heures, ulipristal jusqu'à 120 heures, délivrance sans ordonnance et gratuite pour toutes. Rappeler qu'elle n'est pas contraceptive pour la suite du cycle et proposer un dépistage des IST.",
+            )],
+            &[q(
+                "Le retard de règles dépasse-t-il quelques jours ?",
+                &[q(
+                    "Le test urinaire est-il positif ?",
+                    &[act(
+                        "Orienter vers le médecin ou la sage-femme sans attendre, et vérifier immédiatement l'ordonnance en cours : AINS, IEC, sartans, rétinoïdes, valproate et méthotrexate sont à arrêter et à signaler le jour même. Acide folique à commencer.",
+                    )],
+                    &[act(
+                        "Un test négatif fait moins de dix jours après le rapport ne conclut rien : le refaire une semaine plus tard. Un retard qui persiste avec des tests négatifs relève d'une consultation.",
+                    )],
+                )],
+                &[act(
+                    "Test réalisable dès le premier jour de retard, de préférence sur les urines du matin. Expliquer la lecture, la fenêtre de fiabilité et le motif de refaire.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Nourrisson qui pleure et régurgite",
+        subject: "Reflux, coliques, ou autre chose",
+        steps: &[q(
+            "L'enfant a-t-il une cassure de la courbe de poids, des vomissements en jet, du sang dans les selles, ou refuse-t-il de manger ?",
+            &[act(
+                "Ce n'est pas un reflux banal : consultation. La courbe de poids est le seul critère qui tranche vraiment, et c'est celui qu'on regarde en premier — la demander au carnet de santé.",
+            )],
+            &[q(
+                "Les régurgitations sont-elles simples, sans douleur, chez un enfant qui grossit bien ?",
+                &[act(
+                    "Reflux physiologique du nourrisson : il disparaît seul vers un an. Fractionner les repas, redresser après la tétée, épaissir si besoin. Aucun médicament n'est justifié, et surtout pas un IPP — ils ne marchent pas sur les régurgitations simples et exposent aux infections.",
+                )],
+                &[q(
+                    "Les pleurs surviennent-ils en fin de journée, plus de trois heures par jour, chez un enfant de moins de quatre mois par ailleurs bien portant ?",
+                    &[act(
+                        "Coliques du nourrisson : elles cèdent vers trois à quatre mois. Portage, chaleur, mouvement, et surtout soutien des parents — l'épuisement est le vrai risque, et le syndrome du bébé secoué naît là. Le dire explicitement.",
+                    )],
+                    &[act(
+                        "Tableau non caractérisé : consultation. Un nourrisson qui pleure sans raison évidente se regarde par un médecin, et l'énumération des causes possibles n'est pas un travail de comptoir.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Ordonnance illisible, douteuse ou périmée",
+        subject: "Avant de délivrer",
+        steps: &[q(
+            "L'ordonnance porte-t-elle des signes de falsification — écriture différente, quantité ajoutée, ordonnance photocopiée, prescripteur inconnu ?",
+            &[act(
+                "Ne pas délivrer et ne pas accuser : appeler le prescripteur pour vérifier, garder l'ordonnance, et signaler à l'Ordre si la falsification est avérée. Le refus s'énonce calmement, à l'écart de la file.",
+            )],
+            &[q(
+                "L'ordonnance date-t-elle de plus de trois mois, ou de plus d'un an pour un renouvellement ?",
+                &[act(
+                    "Au-delà de trois mois, une première délivrance n'est plus possible ; au-delà d'un an, plus aucune. Pour un traitement chronique interrompu, la dispensation d'urgence d'une boîte est possible dans les conditions prévues, et le prescripteur en est informé.",
+                )],
+                &[q(
+                    "Une mention est-elle illisible ou manquante — dosage, durée, forme, identité du patient ?",
+                    &[act(
+                        "Appeler le prescripteur : une posologie devinée est une erreur signée par le pharmacien. Noter la réponse et le nom de l'interlocuteur sur l'ordonnance, avec la date.",
+                    )],
+                    &[act(
+                        "Ordonnance conforme : délivrer, et profiter de l'analyse pour vérifier les interactions, les doublons et la cohérence avec l'historique du patient. C'est le moment où l'erreur du prescripteur se rattrape encore.",
+                    )],
+                )],
+            )],
+        )],
+    },
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.
@@ -30981,8 +31181,8 @@ mod tests {
         // The catalogue only ever grows: a protocol removed is a
         // question nobody asks any more.
         assert!(
-            STARTER_PROTOCOLS.len() >= 28,
-            "{} protocoles livrés, il y en avait vingt-huit",
+            STARTER_PROTOCOLS.len() >= 36,
+            "{} protocoles livrés, il y en avait trente-six",
             STARTER_PROTOCOLS.len()
         );
 
