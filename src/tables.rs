@@ -749,6 +749,32 @@ pub const TABLES: &[ConvTable] = &[
             &["Eau minérale", "Certaines sont très riches en sodium ou en magnésium", "Régimes hyposodés, insuffisance cardiaque, insuffisance rénale", "Lire l'étiquette : quelques eaux dépassent 1 g de sodium par litre", "Que toutes les eaux minérales se valent"],
         ],
     },
+    ConvTable {
+        short: "Biosimilaires",
+        family: "Au comptoir",
+        title: "Biosimilaires — ce qui se substitue, ce qui se trace, ce qui se remontre",
+        reviewed: "Août 2026 — état des lieux ANSM sur les biosimilaires, article L.5125-23-2 du code de la santé publique et l'arrêté qui fixe les groupes substituables",
+        sources: &[
+            "ANSM — état des lieux sur les médicaments biosimilaires",
+            "Code de la santé publique, article L.5125-23-2 et l'arrêté fixant la liste des groupes biologiques similaires substituables",
+            "EMA — Biosimilars in the EU, information guide for healthcare professionals",
+        ],
+        columns: &["Question", "La réponse", "Ce que fait le pharmacien", "Le piège"],
+        rows: &[
+            &["Un biosimilaire est-il un générique ?", "Non. Un générique est la même molécule chimique ; un biosimilaire est une protéine produite par une lignée cellulaire vivante, dont la comparabilité au médicament de référence est établie par un dossier de qualité, de pharmacocinétique et de clinique", "Le dire au patient dans ces termes : ce n'est pas une copie approximative, c'est une équivalence démontrée", "Employer le mot « générique » devant le patient : cela installe une méfiance qu'il faudra défaire ensuite"],
+            &["Puis-je le substituer au comptoir ?", "Seulement pour les groupes biologiques similaires inscrits par arrêté. La liste est courte et se vérifie : elle a commencé par le filgrastim et le pegfilgrastim", "Vérifier la liste en vigueur avant toute substitution ; hors de ces groupes, la substitution en officine n'est pas permise", "Supposer que ce qui vaut pour un groupe vaut pour tous : chaque groupe est inscrit un par un"],
+            &["Le prescripteur peut-il l'interdire ?", "Oui : la mention « non substituable » portée à la main sur l'ordonnance, avec sa justification, ferme la substitution pour cette ligne", "Respecter la mention et délivrer la spécialité prescrite ; ne pas la contourner", "Une mention pré-imprimée ou générale ne vaut pas : elle est manuscrite et propre à la ligne"],
+            &["Que dois-je faire si je substitue ?", "Informer le patient, inscrire la spécialité délivrée sur l'ordonnance, et informer le prescripteur", "Les trois, à chaque fois — l'information du prescripteur n'est pas facultative", "Substituer sans le dire au patient : il découvrira une autre boîte et un autre stylo tout seul"],
+            &["Et pour la suite du traitement ?", "La continuité prime : on délivre la même spécialité pour toute la durée du traitement", "Noter la spécialité choisie sur la fiche patient, pour que la délivrance suivante soit la même", "Changer de marque au gré du stock : c'est le changement répété, plus que le biosimilaire, qui inquiète le patient et brouille la traçabilité"],
+            &["Comment se trace un biologique ?", "Par le nom de marque **et** le numéro de lot, jamais par la DCI seule", "Noter les deux à chaque délivrance : c'est ce qui permet de rattacher un effet indésirable au bon produit", "Écrire « adalimumab » sur la fiche : trois spécialités le sont, et une déclaration de pharmacovigilance sans marque ne sert à rien"],
+            &["Le dispositif d'injection change-t-il ?", "Oui, presque toujours : les stylos, les seringues et leur gestuelle diffèrent d'une marque à l'autre, même à dose identique", "Remontrer la technique à chaque changement de spécialité, y compris à un patient qui s'injecte depuis des années", "Croire que « c'est la même molécule, donc le même geste » : la mauvaise technique est la première cause de dose non reçue"],
+            &["Qui peut faire un switch ?", "Le prescripteur, à tout moment, dans les deux sens et entre biosimilaires, avec information du patient. C'est l'interchangeabilité, et elle est distincte de la substitution en officine", "Distinguer les deux mots devant le patient : le médecin interchange, le pharmacien substitue dans les groupes prévus", "Confondre les deux et croire qu'un switch décidé par le médecin autorise la substitution au comptoir"],
+            &["Le patient a-t-il un mot à dire ?", "Oui : il est informé et son opposition se respecte", "Prendre le temps d'expliquer plutôt que d'imposer ; un refus se note sur la fiche", "Passer en force pour une différence de prix : le traitement abandonné coûte plus cher que l'écart"],
+            &["L'efficacité est-elle moindre ?", "Non : la comparabilité clinique fait partie de l'autorisation, et le recul est maintenant de plus de quinze ans en Europe", "Répondre sur ce terrain, avec ce chiffre : c'est la question que les patients posent réellement", "Répondre « c'est pareil » sans expliquer : la réponse courte se lit comme un aveu"],
+            &["Y a-t-il plus d'effets indésirables ?", "Non, y compris l'immunogénicité, qui est le point spécifiquement évalué pour ces produits", "Déclarer tout effet indésirable avec la marque et le lot ; c'est ce suivi qui alimente la connaissance", "Attribuer au biosimilaire un effet apparu au même moment qu'un autre changement de traitement"],
+            &["Et la conservation ?", "Chaîne du froid entre 2 et 8 °C, jamais de congélation, et une durée hors réfrigérateur propre à chaque spécialité", "Donner un sac isotherme, dire la durée exacte pour cette marque-là, et rappeler qu'un produit congelé se jette", "Transposer la durée hors froid d'une marque à l'autre : elles ne sont pas les mêmes"],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -769,8 +795,8 @@ mod tests {
         // The catalogue only ever grows: a table withdrawn is a question
         // the counter can no longer answer from the application.
         assert!(
-            TABLES.len() >= 30,
-            "{} tables livrées, il y en avait trente",
+            TABLES.len() >= 31,
+            "{} tables livrées, il y en avait trente et une",
             TABLES.len()
         );
         let mut shorts = std::collections::HashSet::new();
