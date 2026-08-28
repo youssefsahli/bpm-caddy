@@ -675,6 +675,80 @@ pub const TABLES: &[ConvTable] = &[
             &["Alcool", "Le sevrage non accompagné expose au delirium tremens et aux convulsions : c'est le seul sevrage qui tue", "Jamais seul et jamais brutal en cas de dépendance : encadrement médical, hydratation, vitamine B1", "Tremblement, sueurs, anxiété, confusion", "Tremblement majeur, hallucinations, fièvre, confusion : urgence"],
         ],
     },
+    ConvTable {
+        short: "Dermocorticoïdes",
+        family: "Équivalences",
+        title: "Dermocorticoïdes — classes, sites et quantités",
+        reviewed: "Août 2026 — RCP à jour ; recommandations dermatologiques en vigueur",
+        sources: &[
+            "RCP des spécialités, base de données publique des médicaments (ANSM)",
+            "Société française de dermatologie — traitement local de la dermatite atopique",
+            "HAS — prise en charge de la dermatite atopique de l'enfant",
+        ],
+        columns: &["Classe", "Molécules et spécialités", "Où on l'applique", "Durée usuelle", "Quantité pour un adulte", "Ce qui va de travers"],
+        rows: &[
+            &["I — très forte", "Clobétasol (Dermoval, Clarelux)", "Paumes, plantes, cuir chevelu, lichénifications épaisses ; jamais le visage ni les plis", "Deux à quatre semaines, puis relais par une classe plus faible", "Moins de 50 g par semaine", "Atrophie cutanée, vergetures définitives, et freinage surrénalien sur grande surface"],
+            &["II — forte", "Bétaméthasone dipropionate (Diprosone), désonide 0,1 %, difluprednate (Épitopic 0,05 %)", "Corps, membres, poussée de dermatite atopique de l'adulte", "Une à trois semaines par poussée", "30 à 60 g par mois selon l'étendue", "Rebond à l'arrêt brutal : espacer plutôt qu'arrêter net"],
+            &["III — modérée", "Bétaméthasone valérate 0,05 % (Betneval), désonide 0,05 % (Locapred, Tridésonit)", "Visage de l'adulte, plis, corps de l'enfant", "Une à deux semaines", "15 à 30 g par mois", "Sur le visage, dermite péri-orale et couperose après quelques semaines"],
+            &["IV — faible", "Hydrocortisone", "Paupières, nourrisson, entretien court", "Quelques jours", "Quelques grammes", "Peu efficace : une classe trop faible fait échouer le traitement et prolonger l'exposition"],
+            &["Règle de l'unité phalangette", "Un ruban de crème du pli de la première phalange à l'extrémité de l'index", "Couvre deux paumes de main d'adulte, soit environ 0,5 g", "—", "Visage et cou : 2,5 unités. Un bras : 3. Une jambe : 6. Tronc face avant : 7", "La sous-utilisation est plus fréquente que l'excès : un tube qui dure six mois est un tube qu'on n'applique pas"],
+            &["Rythme d'application", "Une fois par jour suffit pour presque tous", "Le soir, sur peau propre", "Jusqu'à disparition des lésions, puis arrêt", "—", "Deux applications par jour n'améliorent rien et doublent l'exposition"],
+            &["Émollient associé", "Tout dermocorticoïde s'accompagne d'un émollient", "Sur tout le corps, y compris les zones saines", "En continu, y compris entre les poussées", "100 à 200 g par mois chez l'enfant atopique", "L'émollient s'applique à distance du corticoïde, pas par-dessus dans la même minute"],
+            &["Occlusion", "Multiplie la pénétration par dix", "Uniquement sur prescription et sur une zone limitée", "Quelques jours", "—", "Une couche sur un siège de nourrisson est une occlusion : la classe se choisit en conséquence"],
+            &["Corticophobie", "La peur du corticoïde fait plus de dégâts que le corticoïde", "—", "—", "—", "Un traitement sous-dosé prolonge la poussée, donc l'exposition totale : le dire explicitement à la délivrance"],
+            &["Arrêt", "Pas de décroissance de dose, mais un espacement", "—", "Un jour sur deux, puis deux fois par semaine", "—", "L'arrêt net d'une classe forte sur une dermatose étendue donne un rebond"],
+        ],
+    },
+    ConvTable {
+        short: "Conduite",
+        family: "Au comptoir",
+        title: "Conduite automobile — les trois niveaux du pictogramme",
+        reviewed: "Août 2026 — arrêté relatif aux pictogrammes de conduite, RCP à jour",
+        sources: &[
+            "ANSM — médicaments et conduite automobile, les trois niveaux de risque",
+            "RCP des spécialités, base de données publique des médicaments (ANSM)",
+            "Code de la route, article R412-6",
+        ],
+        columns: &["Niveau", "Ce que dit le pictogramme", "Classes concernées", "Ce qu'on dit au comptoir", "Ce qui aggrave"],
+        rows: &[
+            &["Niveau 1 — jaune", "« Soyez prudent »", "Antihistaminiques de deuxième génération, certains antalgiques, antitussifs, antiémétiques", "Le risque existe mais reste faible : lire la notice, et ne pas conduire si l'on se sent somnolent", "L'alcool, la fatigue, une première prise"],
+            &["Niveau 2 — orange", "« Soyez très prudent — ne pas conduire sans l'avis d'un professionnel de santé »", "Benzodiazépines à demi-vie courte, antidépresseurs, antiépileptiques, opioïdes faibles, antihistaminiques sédatifs", "L'avis est celui du médecin ou du pharmacien : la conduite se discute, elle n'est pas interdite d'office", "Le début du traitement, tout changement de dose, l'association à un autre sédatif"],
+            &["Niveau 3 — rouge", "« Attention, danger : ne pas conduire — pour la reprise, demandez l'avis d'un médecin »", "Hypnotiques, benzodiazépines de longue durée, opioïdes forts, certains collyres mydriatiques, anesthésiques", "Pas de conduite du tout, et la reprise se décide par le médecin", "La conduite le lendemain matin après une prise du soir : l'effet dure au-delà du réveil"],
+            &["Le lendemain matin", "Un hypnotique pris à 23 h agit encore à 7 h", "Zolpidem, zopiclone, benzodiazépines de longue demi-vie", "Le risque du somnifère n'est pas la nuit, c'est le trajet du matin", "Une prise tardive, un réveil précoce, la personne âgée"],
+            &["Première délivrance", "Le risque est maximal au début et à chaque augmentation", "Toutes classes", "« Ne prenez pas le volant tant que vous ne savez pas comment vous réagissez » : la phrase se dit à la première boîte", "Le patient qui a déjà pris la molécule il y a des années et croit la connaître"],
+            &["Collyres mydriatiques", "Vision floue et éblouissement pendant plusieurs heures", "Tropicamide, atropine, cyclopentolate", "Pas de conduite après un fond d'œil : prévoir un accompagnant, et le dire à la prise de rendez-vous", "Le soleil, la conduite de nuit"],
+            &["Association", "Deux sédatifs ne s'additionnent pas, ils se multiplient", "Benzodiazépine + opioïde, antihistaminique + alcool", "C'est l'association qui fait l'accident, pas la molécule seule", "L'alcool, même à faible dose"],
+            &["Hypoglycémie", "Un malaise au volant ne prévient pas", "Insuline, sulfamides hypoglycémiants, glinides", "Glycémie avant de prendre le volant sur un long trajet, resucrage à portée de main, pause toutes les deux heures", "Le repas sauté, le bêtabloquant qui masque les signes"],
+            &["Ce que dit la loi", "Conduire sous l'effet d'un médicament n'est pas une infraction en soi", "—", "Mais l'assurance peut réduire sa garantie, et la responsabilité reste engagée en cas d'accident", "Le pictogramme sur la boîte : il vaut information donnée"],
+            &["Profession", "Chauffeurs, conducteurs d'engins, travail en hauteur", "—", "Le traitement se discute avec le médecin du travail, pas seulement avec le prescripteur", "Le patient qui ne dit pas son métier"],
+        ],
+    },
+    ConvTable {
+        short: "Aliments",
+        family: "Au comptoir",
+        title: "Aliments, boissons et médicaments — ce qui interfère vraiment",
+        reviewed: "Août 2026 — RCP à jour ; référentiel des interactions de l'ANSM",
+        sources: &[
+            "ANSM — thésaurus des interactions médicamenteuses",
+            "RCP des spécialités, base de données publique des médicaments (ANSM)",
+            "CRAT et sociétés savantes pour les recommandations diététiques associées",
+        ],
+        columns: &["Aliment ou boisson", "Ce qu'il fait", "Médicaments concernés", "Ce qu'on conseille", "Ce qui n'est pas vrai"],
+        rows: &[
+            &["Pamplemousse", "Inhibe le CYP3A4 intestinal pour 24 à 72 heures ; l'effet ne se rattrape pas en espaçant", "Statines (simvastatine, atorvastatine), inhibiteurs calciques, immunosuppresseurs, certains antiarythmiques", "On n'espace pas, on supprime : un verre suffit et l'effet dure des jours", "Que le jus d'orange fasse la même chose — il n'inhibe pas le CYP3A4"],
+            &["Vitamine K des légumes verts", "Antagonise l'AVK", "Warfarine, fluindione, acénocoumarol", "Ne pas supprimer les légumes verts, mais en manger une quantité régulière d'une semaine à l'autre : c'est la variation qui déséquilibre l'INR", "Qu'il faille les interdire — un régime pauvre en vitamine K rend l'INR instable, pas stable"],
+            &["Produits laitiers et calcium", "Chélation dans l'intestin", "Cyclines, fluoroquinolones, lévothyroxine, fer, bisphosphonates", "Deux heures d'écart au moins, dans un sens ou dans l'autre", "Que le lait « protège l'estomac » sous antibiotique — il annule la moitié de la dose"],
+            &["Thé et café", "Les tanins chélatent le fer ; la caféine s'accumule sous certains traitements", "Fer oral, théophylline, lithium", "Fer à distance du thé et du café. Sous théophylline, ne pas changer brutalement sa consommation de café", "Que le café « fasse passer » un médicament : il ne fait qu'accélérer le transit"],
+            &["Millepertuis", "Inducteur enzymatique puissant, en vente libre", "Contraception orale, AVK, antirétroviraux, immunosuppresseurs, antidépresseurs", "Demander systématiquement les compléments alimentaires : c'est la question qui manque le plus souvent", "Que « c'est une plante, donc c'est sans risque » — c'est l'inducteur le plus dangereux du rayon"],
+            &["Alcool", "Additionne ses effets sédatifs ; effet antabuse avec certaines molécules", "Benzodiazépines, opioïdes, antihistaminiques sédatifs, métronidazole, disulfirame, céphalosporines", "Zéro alcool sous métronidazole et jusqu'à 48 heures après. Sous sédatif, l'effet est multiplicatif et non additif", "Qu'un verre de vin soit « négligeable » sous benzodiazépine"],
+            &["Réglisse", "Effet minéralocorticoïde : hypokaliémie et hypertension", "Diurétiques, digoxine, corticoïdes, antihypertenseurs", "Chercher la réglisse devant une hypokaliémie inexpliquée — pastilles, boissons anisées sans alcool, tisanes", "Que la quantité soit anodine : quelques dizaines de grammes par jour suffisent"],
+            &["Tyramine (fromages affinés, charcuterie, vin rouge)", "Crise hypertensive avec les IMAO", "IMAO non sélectifs, linézolide, procarbazine", "Liste écrite remise au patient sous IMAO : c'est un des rares cas où le régime fait partie du traitement", "Que tous les fromages soient concernés : ce sont les affinés"],
+            &["Repas gras", "Augmente ou diminue l'absorption selon la molécule", "Griséofulvine et itraconazole (à prendre avec), rifampicine et lévothyroxine (à jeun)", "Lire la consigne du RCP et la répéter : « au cours du repas » et « à jeun » ne sont pas des détails", "Qu'on puisse toujours « prendre au repas pour protéger l'estomac »"],
+            &["Jus de canneberge", "Effet sur l'INR discuté et probablement modeste", "AVK", "Ne pas l'interdire, mais ne pas en changer brutalement la consommation, et contrôler l'INR si l'apport est important", "Qu'il prévienne les cystites récidivantes de façon démontrée — le niveau de preuve reste faible"],
+            &["Sel de régime", "Riche en potassium", "IEC, sartans, antialdostérone, suppléments potassiques", "Le déconseiller chez tout patient sous bloqueur du système rénine-angiotensine : c'est une source de potassium que personne ne compte", "Qu'un sel « sans sodium » soit sans risque"],
+            &["Eau minérale", "Certaines sont très riches en sodium ou en magnésium", "Régimes hyposodés, insuffisance cardiaque, insuffisance rénale", "Lire l'étiquette : quelques eaux dépassent 1 g de sodium par litre", "Que toutes les eaux minérales se valent"],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -692,7 +766,13 @@ mod tests {
 
     #[test]
     fn tables_are_well_formed() {
-        assert!(TABLES.len() >= 6);
+        // The catalogue only ever grows: a table withdrawn is a question
+        // the counter can no longer answer from the application.
+        assert!(
+            TABLES.len() >= 30,
+            "{} tables livrées, il y en avait trente",
+            TABLES.len()
+        );
         let mut shorts = std::collections::HashSet::new();
         for t in TABLES {
             assert!(!t.title.is_empty());
