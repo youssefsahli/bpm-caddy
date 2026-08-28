@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY,
     day         TEXT NOT NULL,
     time        TEXT NOT NULL DEFAULT '',
+    end_time    TEXT NOT NULL DEFAULT '',
     repeat_days INTEGER NOT NULL DEFAULT 0,
     repeat_until TEXT NOT NULL DEFAULT '',
     title       TEXT NOT NULL,
@@ -331,6 +332,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE events ADD COLUMN time TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE events ADD COLUMN repeat_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE events ADD COLUMN repeat_until TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE events ADD COLUMN end_time TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE interviews ADD COLUMN remote INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE interviews ADD COLUMN treatment_change INTEGER NOT NULL DEFAULT 0",
     "CREATE TABLE IF NOT EXISTS drug_field_locks (
@@ -1029,6 +1031,11 @@ pub struct Event {
     pub day: String,
     /// `HH:MM`, empty when the hour is not fixed.
     pub time: String,
+    /// `HH:MM` the entry runs *to*, empty when it is a point in the day
+    /// rather than a span. Drawn as the block's height on the day plan;
+    /// an end that is not after the start is ignored rather than drawn
+    /// upside down.
+    pub end_time: String,
     pub title: String,
     pub category: EventCategory,
     /// 0 for a one-off; 7 for "every week", 14 for "every fortnight".
@@ -27493,22 +27500,30 @@ impl Db {
 
     /// Add an agenda entry that is not a billable act — a formation, a
     /// réunion, a livraison, a congé.
-    pub fn add_event(
+    /// `end_time` is what a drag across the day plan produces, and is
+    /// empty for an entry that is a point in the day rather than a span.
+    /// An end that is not after the start is stored as no end at all: a
+    /// block drawn upside down is worse than a block one row tall.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_event_span(
         &self,
         day: &str,
         time: &str,
+        end_time: &str,
         title: &str,
         category: EventCategory,
         repeat_days: i64,
         repeat_until: &str,
     ) -> Result<i64, String> {
+        let end = if end_time > time { end_time } else { "" };
         self.conn
             .execute(
-                "INSERT INTO events (day, time, title, category, repeat_days, repeat_until)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO events (day, time, end_time, title, category, repeat_days, repeat_until)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 (
                     day,
                     time,
+                    end,
                     title,
                     category.as_str(),
                     repeat_days.max(0),
@@ -27524,7 +27539,8 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, day, title, category, time, repeat_days, repeat_until FROM events
+                "SELECT id, day, title, category, time, repeat_days, repeat_until, end_time
+                 FROM events
                  WHERE (repeat_days = 0 AND day >= ?1 AND day <= ?2)
                     OR (repeat_days > 0 AND day <= ?2
                         AND (repeat_until = '' OR repeat_until >= ?1))
@@ -27541,12 +27557,13 @@ impl Db {
                     r.get::<_, String>(4)?,
                     r.get::<_, i64>(5)?,
                     r.get::<_, String>(6)?,
+                    r.get::<_, String>(7)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, day, title, category, time, repeat_days, repeat_until) =
+            let (id, day, title, category, time, repeat_days, repeat_until, end_time) =
                 row.map_err(|e| e.to_string())?;
             let category = EventCategory::parse(&category).unwrap_or(EventCategory::Autre);
             if repeat_days <= 0 {
@@ -27554,6 +27571,7 @@ impl Db {
                     id,
                     day,
                     time,
+                    end_time,
                     title,
                     category,
                     repeat_days: 0,
@@ -27573,6 +27591,7 @@ impl Db {
                         id,
                         day: current.clone(),
                         time: time.clone(),
+                        end_time: end_time.clone(),
                         title: title.clone(),
                         category,
                         repeat_days,
@@ -28583,6 +28602,46 @@ mod tests {
         assert!(!db.preparations().unwrap().is_empty());
         assert!(!db.dispositifs().unwrap().is_empty());
         assert!(!db.protocols().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An agenda entry drawn as a span on the day plan: the end hour is
+    /// kept when it is after the start and dropped when it is not.
+    ///
+    /// A block drawn upside down is worse than a block one row tall, and
+    /// the drag that produces these can end above where it began — the
+    /// pointer goes back up as easily as down.
+    #[test]
+    fn an_entry_keeps_an_end_hour_only_when_it_is_after_the_start() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-span-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        let day = db.today_iso().unwrap();
+        let add = |time: &str, end: &str, title: &str| {
+            db.add_event_span(&day, time, end, title, EventCategory::Formation, 0, "")
+                .unwrap()
+        };
+        add("09:00", "10:30", "plage");
+        add("11:00", "10:00", "à l'envers");
+        add("14:00", "14:00", "sans durée");
+        add("", "", "sans heure");
+        let mut got: Vec<(String, String)> = db
+            .events_between(&day, &day)
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.title, e.end_time))
+            .collect();
+        got.sort();
+        assert_eq!(
+            got,
+            [
+                ("plage".to_owned(), "10:30".to_owned()),
+                ("sans durée".to_owned(), String::new()),
+                ("sans heure".to_owned(), String::new()),
+                ("à l'envers".to_owned(), String::new()),
+            ]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -31382,9 +31441,10 @@ mod tests {
 
                 // Agenda entries that are not acts, for the demo.
                 let today = db.today_iso().unwrap();
-                db.add_event(
+                db.add_event_span(
                     &today,
                     "14:00",
+                    "16:00",
                     "Formation AOD",
                     EventCategory::Formation,
                     0,
@@ -31394,9 +31454,10 @@ mod tests {
                 let plus2 = db.date_offset(&today, 2).unwrap();
                 // The delivery comes every week: one row, shown on
                 // every Thursday of the agenda.
-                db.add_event(
+                db.add_event_span(
                     &plus2,
                     "08:30",
+                    "",
                     "Livraison grossiste",
                     EventCategory::Livraison,
                     7,
@@ -31555,9 +31616,10 @@ mod tests {
 
         // --- An agenda entry that is not an act ---
         let ev = db
-            .add_event(
+            .add_event_span(
                 &today,
                 "14:00",
+                "17:00",
                 "Formation vaccination",
                 EventCategory::Formation,
                 0,
