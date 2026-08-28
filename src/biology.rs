@@ -693,6 +693,66 @@ pub const CATALOGUE: &[Analyte] = &[
         critical_high: Some(1.5),
         note: "La seule mesure de l'effet d'une héparine de bas poids moléculaire. Elle ne se fait pas en routine : elle sert quand le rein est mauvais, le poids extrême, ou qu'un saignement pose la question de l'accumulation. Le prélèvement se fait quatre heures après l'injection, et le résultat ne veut rien dire à un autre moment.",
     },
+    Analyte {
+        code: "UREE",
+        label: "Urée",
+        unit: "mmol/L",
+        low: Some(2.5),
+        high: Some(7.5),
+        critical_low: None,
+        critical_high: Some(20.0),
+        note: "Elle monte avant la créatinine quand le rein manque d'eau : une urée haute avec une créatinine encore normale est le premier signe d'une déshydratation, et c'est là qu'on agit. Elle monte aussi sous corticoïde, après un saignement digestif et avec un régime très riche en protéines, sans que le rein soit en cause.",
+    },
+    Analyte {
+        code: "TP",
+        label: "Taux de prothrombine",
+        unit: "%",
+        low: Some(70.0),
+        high: Some(100.0),
+        critical_low: Some(20.0),
+        critical_high: None,
+        note: "C'est l'autre face de l'INR, et c'est celle que les laboratoires français impriment : le TP baisse quand l'INR monte. Sous AVK on lit l'INR et rien d'autre ; hors AVK, un TP bas explore le foie et la vitamine K.",
+    },
+    Analyte {
+        code: "CT",
+        label: "Cholestérol total",
+        unit: "g/L",
+        low: None,
+        high: Some(2.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Le chiffre que le patient retient et le moins utile des quatre : c'est le LDL qui porte la cible et le risque, et un cholestérol total « normal » avec un HDL effondré n'est pas rassurant. Sert surtout au calcul du LDL et au rapport CT/HDL.",
+    },
+    Analyte {
+        code: "GB",
+        label: "Leucocytes",
+        unit: "G/L",
+        low: Some(4.0),
+        high: Some(10.0),
+        critical_low: Some(2.0),
+        critical_high: Some(30.0),
+        note: "Le total ne dit rien tout seul : c'est la formule qui parle, et surtout les polynucléaires neutrophiles. Une hyperleucocytose sous corticoïde est un effet du corticoïde et non une infection ; une leucopénie fébrile est une urgence.",
+    },
+    Analyte {
+        code: "HTE",
+        label: "Hématocrite",
+        unit: "%",
+        low: Some(37.0),
+        high: Some(50.0),
+        critical_low: Some(25.0),
+        critical_high: Some(60.0),
+        note: "Il suit l'hémoglobine et se lit avec elle. Un hématocrite haut est le plus souvent une hémoconcentration — déshydratation, diurétique — avant d'être une polyglobulie, mais la testostérone et le tabac en fabriquent de vraies.",
+    },
+    Analyte {
+        code: "PTH",
+        label: "Parathormone",
+        unit: "ng/L",
+        low: Some(15.0),
+        high: Some(65.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Elle se lit toujours avec la calcémie et la vitamine D, jamais seule : haute avec une calcémie basse ou normale, c'est une carence en vitamine D ou une insuffisance rénale qui la stimule ; haute avec une calcémie haute, c'est la glande elle-même.",
+    },
 ];
 
 /// What a value changes for the treatments the patient is actually on.
@@ -1336,6 +1396,78 @@ const RULES: &[Rule] = &[
         severity: Severity::Warn,
         text: "Hypoalbuminémie sous médicament fortement lié aux protéines : la fraction libre — celle qui agit — augmente à concentration totale inchangée. Un INR qui s'emballe chez un patient dénutri vient souvent de là, et la dose se revoit avec le prescripteur.",
     },
+    Rule {
+        code: "UREE",
+        side: Side::Above,
+        threshold: 10.0,
+        needs: &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide", "IEC", "sartan"],
+        severity: Severity::Warn,
+        text: "Urée élevée sous diurétique ou bloqueur du système rénine-angiotensine, créatinine encore acceptable : c'est le rein qui manque d'eau, pas encore le rein qui se dégrade. Chercher ce qui a fait perdre du volume — chaleur, diarrhée, diurétique majoré — et faire réévaluer avant que la créatinine ne suive.",
+    },
+    Rule {
+        code: "UREE",
+        side: Side::Above,
+        threshold: 10.0,
+        needs: &["AINS", "ibuprofène", "diclofénac", "anticoagulant", "AVK", "AOD", "antiagrégant"],
+        severity: Severity::Alert,
+        text: "Urée élevée avec une créatinine peu modifiée chez un patient sous AINS, anticoagulant ou antiagrégant : c'est aussi la signature d'un saignement digestif, le sang digéré fabriquant de l'urée. Chercher les selles noires et une anémie sur la même prise de sang, et faire évaluer sans attendre.",
+    },
+    Rule {
+        code: "TP",
+        side: Side::Below,
+        threshold: 60.0,
+        needs: &["AVK", "warfarine", "fluindione", "acénocoumarol"],
+        severity: Severity::Info,
+        text: "Sous AVK, le TP n'est pas le chiffre à lire : c'est l'INR, et lui seul, qui dit si l'anticoagulation est dans sa zone. Un TP bas est attendu et ne se corrige pas pour lui-même — vérifier l'INR de la même prise de sang avant toute conclusion.",
+    },
+    Rule {
+        code: "TP",
+        side: Side::Below,
+        threshold: 60.0,
+        needs: &["paracétamol", "amiodarone", "méthotrexate", "isoniazide", "antifongique azolé", "statine"],
+        severity: Severity::Alert,
+        text: "TP bas chez un patient qui ne prend pas d'AVK : le foie fabrique les facteurs de coagulation, et un TP qui chute sous un médicament hépatotoxique est un signe de gravité, plus parlant que les transaminases. Faire évaluer sans attendre, et vérifier la dose cumulée de paracétamol.",
+    },
+    Rule {
+        code: "GB",
+        side: Side::Above,
+        threshold: 12.0,
+        needs: &["corticoïde", "prednisone", "prednisolone", "méthylprednisolone"],
+        severity: Severity::Info,
+        text: "Hyperleucocytose sous corticoïde : la molécule démargine les polynucléaires et fait monter le chiffre sans la moindre infection. C'est une cause classique d'antibiothérapie inutile. La formule, la CRP et surtout l'état du patient tranchent — et à l'inverse, le corticoïde masque la fièvre d'une vraie infection.",
+    },
+    Rule {
+        code: "GB",
+        side: Side::Below,
+        threshold: 3.0,
+        needs: &["clozapine", "carbimazole", "thiamazole", "antithyroïdien", "méthotrexate", "sulfasalazine", "colchicine"],
+        severity: Severity::Alert,
+        text: "Leucopénie sous une molécule qui donne des agranulocytoses : la consigne est la même pour toutes, et elle se donne au comptoir avant la première boîte — toute fièvre, toute angine, tout aphte fait arrêter le traitement et faire une numération le jour même, sans attendre un rendez-vous.",
+    },
+    Rule {
+        code: "HTE",
+        side: Side::Above,
+        threshold: 52.0,
+        needs: &["testostérone", "androgène", "érythropoïétine", "epoétine", "darbépoétine"],
+        severity: Severity::Warn,
+        text: "Hématocrite élevé sous testostérone ou agent stimulant l'érythropoïèse : c'est l'effet indésirable qui compte pour ces deux classes, parce qu'il fait le risque thrombotique. Au-delà de 54 %, la dose se réduit ou le traitement se suspend — c'est une décision du prescripteur, et elle ne se reporte pas au prochain bilan.",
+    },
+    Rule {
+        code: "PTH",
+        side: Side::Above,
+        threshold: 65.0,
+        needs: &["chélateur du phosphore", "calcitriol", "alfacalcidol", "cinacalcet", "vitamine D"],
+        severity: Severity::Info,
+        text: "Parathormone élevée dans l'insuffisance rénale chronique : c'est l'hyperparathyroïdie secondaire, et son traitement se lit à trois chiffres, jamais à un seul — phosphore, calcium et PTH ensemble. Rappeler que le chélateur du phosphore se prend au milieu du repas et pas à distance : pris à jeun, il ne chélate rien.",
+    },
+    Rule {
+        code: "CT",
+        side: Side::Above,
+        threshold: 3.0,
+        needs: &["statine", "ézétimibe", "anti-PCSK9", "fibrate", "acide bempédoïque"],
+        severity: Severity::Warn,
+        text: "Cholestérol total au-delà de 3 g/L malgré un hypolipémiant : vérifier d'abord que le traitement est pris — l'inobservance explique la majorité des échecs, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent. Un chiffre aussi haut, surtout avant 40 ans ou avec un accident cardiovasculaire précoce dans la famille, fait évoquer une hypercholestérolémie familiale, qui se dépiste chez les apparentés au premier degré. C'est le LDL qui porte la cible : le total ne sert qu'à alerter.",
+    },
 ];
 
 #[cfg(test)]
@@ -1466,13 +1598,13 @@ mod tests {
         // value the counter can no longer read, and a rule withdrawn is
         // a reading nobody does any more.
         assert!(
-            CATALOGUE.len() >= 43,
-            "{} analytes, il y en avait quarante-trois",
+            CATALOGUE.len() >= 49,
+            "{} analytes, il y en avait quarante-neuf",
             CATALOGUE.len()
         );
         assert!(
-            RULES.len() >= 78,
-            "{} règles de biologie, il y en avait soixante-dix-huit",
+            RULES.len() >= 87,
+            "{} règles de biologie, il y en avait quatre-vingt-sept",
             RULES.len()
         );
         let mut codes: Vec<&str> = CATALOGUE.iter().map(|a| a.code).collect();
