@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "ab_glyph",
  "dirs",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "bpm-caddy-launcher"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "dirs",
  "eframe",
@@ -2857,7 +2857,7 @@ dependencies = [
 
 [[package]]
 name = "motif"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "eframe",
 ]

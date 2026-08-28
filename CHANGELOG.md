@@ -5,6 +5,74 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.109.0] - 2026-08-28
+
+Les quatre lignes ajoutées à la feuille de route, et les deux de données.
+
+### Added
+- **Six palettes X/Motif**, choisies dans Options › Interface : Motif
+  (le bleu-gris de mwm), CDE, DECwindows, Indigo Magic, HP VUE, et
+  « Contraste » pour un comptoir en plein soleil. Un thème ne porte que
+  les couleurs : angles droits, biseaux de deux pixels, widgets en
+  relief et cuvettes en creux sont ce qui fait le Motif, et aucune peau
+  n'a son mot à dire là-dessus. Les huit couleurs de la palette
+  s'affichent à côté de la liste, avant d'enregistrer. `[ui] theme` dans
+  config.toml ; un nom inconnu n'est pas une erreur, c'est la palette
+  classique — un fichier rapporté d'une version plus récente ne laisse
+  jamais l'officine devant une fenêtre blanche.
+- **Tracer une entrée sur le plan de la journée.** Balayer de 14 h à
+  16 h remplit la ligne « Ajouter » avec ces deux heures et met le
+  curseur dans le titre : le geste répond à *quand*, le clavier à
+  *quoi*. Les heures s'accrochent au quart d'heure. Une entrée a
+  maintenant une fin (`end_time`), et son bloc est dessiné jusqu'à
+  l'heure où il s'arrête — la formation de deux heures ressemble à deux
+  heures, sur l'écran comme sur le plan de semaine imprimé.
+- **Le déroulé d'un protocole s'écrit sur la fiche.** Il garde le chemin
+  parcouru et l'affiche au-dessus de l'étape en cours ; à la fin, avec
+  un patient ouvert, un clic écrit le protocole suivi, les réponses
+  données et la conduite atteinte dans son journal, daté et signé comme
+  toute note. Une décision prise au comptoir appartient au dossier.
+- **Dix préparations de plus au codex** (42) : liniment oléo-calcaire,
+  eau de Dalibour, lotion à la calamine, pâte de Lassar, permanganate à
+  1/10 000, chlorhexidine alcoolique à 0,5 %, SRO de l'OMS,
+  suppositoires à excipient semi-synthétique, pommade à la trinitrine de
+  la fissure anale, crème au métronidazole des plaies malodorantes.
+- **Dix fiches de plus** (823) : Telfast, Wystamm, Phénergan, Nautamine,
+  Sibélium, Jamylène, Surbronc, Biltricide, Veinamitol, Dexeryl —
+  monographie complète, lignes de posologie et mise en garde du comptoir
+  pour chacune.
+- **Huit protocoles de plus** (28) : toux, constipation, douleur
+  dentaire, insomnie demandée, mycose vaginale, chute chez la personne
+  âgée, voyage (trousse et ordonnance), interaction repérée à la
+  délivrance.
+
+### Changed
+- **Les tables de conversion ont une liste et non un mur de boutons.**
+  Le sélecteur était vingt-sept boutons indistincts en travers du haut
+  de page — six rangées à la largeur d'un comptoir, ce qui laissait une
+  ligne de la table au-dessus de la ligne de flottaison. C'est un
+  panneau à gauche, dans les cinq familles où le module était déjà
+  organisé mais en prose seulement : Équivalences, Posologies,
+  Adaptation, Au comptoir, Administration. Chaque ligne lit
+  « IPP *9 lignes* » et marque les tables que l'équipe a corrigées.
+- **Un protocole se lit avant de s'écrire.** Les commandes
+  « + si oui / + si non / × / + Question » passent derrière
+  « Modifier » ; la branche devient une pastille colorée au lieu de deux
+  mots gris qui diffèrent d'une lettre, et chaque niveau tire un filet
+  dans la gouttière pour qu'on suive une branche jusqu'à la question qui
+  l'a ouverte.
+
+### Fixed
+- Une table plus large que son volet ne part plus vers la gauche : la
+  première colonne — celle qui nomme la ligne — restait hors écran sans
+  moyen d'y revenir. Et le volet apprend enfin que la table dépasse :
+  `allocate_new_ui` ne réserve aucune place, donc l'ascenseur horizontal
+  n'existait pas et les colonnes de droite étaient dessinées sans être
+  atteignables.
+- La bande de titre des tables est mesurée : à 1024 px avec le texte à
+  1,25 elle prend trois lignes, et une bande devinée coupait le champ de
+  recherche en deux derrière la liste.
+
 ## [0.108.0] - 2026-08-28
 
 Toute la liste `UI:` de la feuille de route, et la passe de robustesse
