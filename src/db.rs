@@ -20427,6 +20427,188 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
             )],
         )],
     },
+    StarterProtocol {
+        title: "Toux au comptoir",
+        subject: "Toux sèche ou grasse, adulte et enfant",
+        steps: &[q(
+            "La toux s'accompagne-t-elle d'une gêne respiratoire, d'une douleur thoracique, de sang, ou dure-t-elle depuis plus de trois semaines ?",
+            &[act(
+                "Orienter vers le médecin sans délivrer d'antitussif : une toux qui dure ou qui essouffle n'est pas un symptôme à couvrir.",
+            )],
+            &[q(
+                "S'agit-il d'un enfant de moins de deux ans ?",
+                &[act(
+                    "Aucun antitussif ni mucolytique avant deux ans : lavage de nez au sérum physiologique, hydratation, position surélevée, et consultation si la gêne s'installe.",
+                )],
+                &[q(
+                    "La toux est-elle sèche et gênante la nuit ?",
+                    &[act(
+                        "Antitussif de courte durée, cinq jours au plus, en prévenant de la somnolence. Vérifier l'absence d'asthme, d'IEC dans le traitement — la toux sous IEC est un effet, pas une infection — et de reflux.",
+                    )],
+                    &[act(
+                        "Toux grasse : ne pas associer d'antitussif, qui bloquerait l'expectoration. Hydratation, mouchage, et consultation si la fièvre dépasse trois jours ou si l'expectoration devient purulente et fébrile.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Constipation au comptoir",
+        subject: "Adulte, enfant, femme enceinte",
+        steps: &[q(
+            "Y a-t-il des douleurs abdominales intenses, des vomissements, du sang dans les selles, ou un arrêt complet des gaz ?",
+            &[act(
+                "Ne rien délivrer : ces signes sont ceux d'une occlusion, et un laxatif sur une occlusion l'aggrave. Orientation médicale immédiate.",
+            )],
+            &[q(
+                "La constipation est-elle apparue depuis l'introduction d'un médicament — opioïde, fer, anticholinergique, antidépresseur, sétron ?",
+                &[act(
+                    "Constipation iatrogène : sous opioïde elle se prévient dès la première prise et ne s'épuise jamais avec le temps. Macrogol en systématique, et le prescripteur informé si le traitement est récent.",
+                )],
+                &[q(
+                    "S'agit-il d'une femme enceinte ou d'un enfant ?",
+                    &[act(
+                        "Macrogol ou lactulose, qui ne passent pas la barrière digestive. Éviter les laxatifs stimulants au long cours et l'huile de paraffine pendant la grossesse.",
+                    )],
+                    &[act(
+                        "Mesures d'abord — fibres, eau, marche, horaire régulier —, puis macrogol si besoin. Les laxatifs stimulants restent une solution ponctuelle : au long cours ils entretiennent la constipation qu'ils soulagent.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Douleur dentaire au comptoir",
+        subject: "En attendant le rendez-vous chez le dentiste",
+        steps: &[q(
+            "Le visage est-il gonflé, la bouche difficile à ouvrir, ou y a-t-il de la fièvre ?",
+            &[act(
+                "Abcès probable : orientation dentaire ou médicale le jour même. Un AINS sur un abcès dentaire peut aggraver l'infection — le paracétamol est l'antalgique de l'attente.",
+            )],
+            &[q(
+                "Le patient prend-il déjà un antalgique, et lequel ?",
+                &[act(
+                    "Vérifier la dose réelle et l'espacement avant d'ajouter quoi que ce soit : le surdosage en paracétamol au comptoir vient presque toujours de deux boîtes de deux noms différents.",
+                )],
+                &[act(
+                    "Paracétamol à dose pleine et espacée, bain de bouche, et rendez-vous dentaire — l'antalgique ne traite rien, il fait patienter. Pas d'aspirine sur une gencive qui saigne, pas d'application locale d'aspirine ni de clou de girofle pur.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Insomnie demandée au comptoir",
+        subject: "Demande de somnifère sans ordonnance",
+        steps: &[q(
+            "Le patient prend-il déjà une benzodiazépine ou un apparenté ?",
+            &[act(
+                "Ne rien ajouter : l'association de deux hypnotiques n'améliore pas le sommeil et multiplie les chutes. Réévaluation par le prescripteur, et rappel que l'arrêt se fait par décroissance et jamais d'un coup.",
+            )],
+            &[q(
+                "L'insomnie dure-t-elle depuis plus de trois semaines, ou s'accompagne-t-elle d'une tristesse, d'une perte d'intérêt ou d'un réveil précoce ?",
+                &[act(
+                    "Une insomnie qui dure est un symptôme : orienter vers le médecin. Le réveil précoce avec perte d'intérêt fait chercher une dépression avant un somnifère.",
+                )],
+                &[act(
+                    "Mesures d'hygiène du sommeil d'abord — horaires, écrans, caféine après 16 h, alcool qui fragmente la nuit. Une plante ou un antihistaminique sédatif quelques jours au plus, en prévenant de la somnolence au volant le lendemain matin.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Mycose vaginale annoncée au comptoir",
+        subject: "Prurit et pertes",
+        steps: &[q(
+            "Est-ce le premier épisode, ou la patiente a-t-elle moins de 18 ans ou plus de 65 ans ?",
+            &[act(
+                "Premier épisode ou âge extrême : le diagnostic se pose chez le médecin. Une mycose supposée est parfois une vaginose, une IST ou une dermatose.",
+            )],
+            &[q(
+                "Y a-t-il de la fièvre, des douleurs du bas-ventre, des pertes malodorantes, ou une grossesse en cours ?",
+                &[act(
+                    "Consultation : ces signes ne sont pas ceux d'une mycose simple, et la grossesse change le traitement.",
+                )],
+                &[q(
+                    "Les épisodes se répètent-ils, quatre fois par an ou plus ?",
+                    &[act(
+                        "Mycose récidivante : consultation pour un traitement de fond. Chercher un diabète méconnu, une antibiothérapie répétée, une contraception mal tolérée.",
+                    )],
+                    &[act(
+                        "Ovule antifongique en dose unique et crème pour les lésions externes. Toilette à un savon doux non antiseptique, pas de douche vaginale, sous-vêtements en coton. Le partenaire ne se traite que s'il a des signes.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Chute chez la personne âgée",
+        subject: "Après une chute, à l'officine",
+        steps: &[q(
+            "Y a-t-il eu perte de connaissance, un traumatisme crânien, ou le patient est-il sous anticoagulant ?",
+            &[act(
+                "Avis médical le jour même : sous anticoagulant, un saignement intracrânien peut se déclarer plusieurs jours après un choc apparemment bénin.",
+            )],
+            &[q(
+                "Le traitement comporte-t-il un psychotrope, un antihypertenseur récent, un diurétique ou un hypoglycémiant ?",
+                &[act(
+                    "Chute possiblement iatrogène : revoir l'ordonnance avec le prescripteur, mesurer la tension debout et couché, et vérifier l'observance. Quatre médicaments et plus multiplient le risque de chute.",
+                )],
+                &[act(
+                    "Conseils de prévention : chaussage fermé, tapis, éclairage nocturne, vitamine D, et bilan de la vue. Proposer un entretien BPM si la polymédication le justifie.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Voyage : trousse et ordonnance",
+        subject: "Départ à l'étranger",
+        steps: &[q(
+            "Le patient part-il avec un traitement chronique ?",
+            &[q(
+                "La durée du séjour dépasse-t-elle ce que l'ordonnance couvre ?",
+                &[act(
+                    "Faire renouveler avant le départ : une ordonnance française n'est honorée nulle part de plein droit. Prévoir une marge, garder les boîtes dans le bagage à main, et emporter l'ordonnance en DCI.",
+                )],
+                &[act(
+                    "Ordonnance en DCI dans le bagage à main, boîtes d'origine, et attention aux décalages horaires pour les traitements à horaire fixe — insuline, contraception, antirétroviraux, immunosuppresseurs.",
+                )],
+            )],
+            &[q(
+                "La destination demande-t-elle des vaccins ou une prophylaxie du paludisme ?",
+                &[act(
+                    "Ouvrir la carte vaccinale (F7) pour le pays, et orienter vers un centre de vaccination internationale si la fièvre jaune est exigée — au moins dix jours avant le départ.",
+                )],
+                &[act(
+                    "Trousse de base : antalgique, antidiarrhéique et réhydratation, antiseptique et pansements, répulsif, protection solaire. Rappeler l'assurance et le numéro d'urgence local.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Interaction repérée à la délivrance",
+        subject: "Une association que l'ordonnance porte",
+        steps: &[q(
+            "L'association est-elle contre-indiquée ou déconseillée dans le référentiel ?",
+            &[q(
+                "Le patient a-t-il déjà pris les deux ensemble sans incident ?",
+                &[act(
+                    "Une tolérance passée n'annule pas une contre-indication : appeler le prescripteur, tracer l'appel et la décision sur la fiche, et ne délivrer que ce qui a été convenu.",
+                )],
+                &[act(
+                    "Ne pas délivrer l'association : appeler le prescripteur, proposer l'alternative que la fiche ou la table des interactions donne, et noter la conduite sur le dossier.",
+                )],
+            )],
+            &[q(
+                "L'association demande-t-elle une précaution — horaire décalé, surveillance biologique, adaptation de dose ?",
+                &[act(
+                    "Délivrer en énonçant la précaution au patient, et l'écrire : deux heures d'écart, un INR à contrôler, une kaliémie à surveiller. Une précaution dite et non notée est une précaution perdue à la prochaine délivrance.",
+                )],
+                &[act(
+                    "Association à prendre en compte : délivrer, signaler ce qui doit faire revenir, et noter le repérage sur la fiche pour la prochaine fois.",
+                )],
+            )],
+        )],
+    },
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.
@@ -29971,8 +30153,8 @@ mod tests {
         // The catalogue only ever grows: a protocol removed is a
         // question nobody asks any more.
         assert!(
-            STARTER_PROTOCOLS.len() >= 20,
-            "{} protocoles livrés, il y en avait vingt",
+            STARTER_PROTOCOLS.len() >= 28,
+            "{} protocoles livrés, il y en avait vingt-huit",
             STARTER_PROTOCOLS.len()
         );
 

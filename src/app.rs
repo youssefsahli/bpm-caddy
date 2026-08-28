@@ -1366,6 +1366,16 @@ struct Session {
     /// A sweep just finished: put the cursor in the title, which is the
     /// only thing the gesture cannot say.
     focus_event_title: bool,
+    /// The open protocol is being rewritten, not read. Off by default:
+    /// a protocol is consulted a hundred times for every time it is
+    /// changed, and the « + si oui / + si non / × » under every step
+    /// made a decision tree look like a form.
+    protocol_editing: bool,
+    /// The answers given so far in a déroulé, in order — « Oui », « Non »
+    /// or the step passed through. What the walk concluded is worth
+    /// writing on the file, and « la conduite » alone does not say which
+    /// branch got there.
+    protocol_trail: Vec<(String, String)>,
     event_category: db::EventCategory,
     /// How often a new entry repeats, in days (0 = once).
     event_repeat: i64,
@@ -1673,6 +1683,8 @@ impl Session {
             event_end: String::new(),
             day_sweep: None,
             focus_event_title: false,
+            protocol_editing: false,
+            protocol_trail: Vec::new(),
             event_category: db::EventCategory::Formation,
             event_repeat: 0,
             agenda_filter: std::collections::HashSet::new(),
@@ -13772,7 +13784,7 @@ impl App {
     /// on a 1600 px screen with the editor stacked under the list; that
     /// held while there were five protocols and stopped holding at
     /// twenty, which is the shape this application is supposed to avoid.
-    fn protocols_view(ui: &mut egui::Ui, session: &mut Session) {
+    fn protocols_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
         let body = motif::visible_rect(ui);
         let narrow = body.width() < 940.0;
         let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
@@ -13841,7 +13853,7 @@ impl App {
                 );
             });
         } else {
-            Self::protocol_editor(ui, session, cols[1]);
+            Self::protocol_editor(ui, session, cols[1], operator);
         }
     }
 
@@ -13980,7 +13992,7 @@ impl App {
         }
     }
 
-    fn protocol_editor(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+    fn protocol_editor(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, operator: &str) {
         let Some(proto) = session.protocol_open.clone() else {
             return;
         };
@@ -13996,31 +14008,50 @@ impl App {
                 .id_salt("protocol_editor")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
+                    let editing = session.protocol_editing;
                     ui.horizontal_wrapped(|ui| {
-                        let mut title = proto.title.clone();
-                        let mut subject = proto.subject.clone();
-                        // Proportional, not 260 and 200: a protocol
-                        // title is a sentence — « Allergie à la
-                        // pénicilline annoncée au comptoir » — and a
-                        // fixed field showed two thirds of it however
-                        // wide the panel was.
-                        let field = ui.available_width();
-                        // The title gets the lion's share; the subject
-                        // wraps to the next line when both will not fit,
-                        // which is what the wrapped row is for.
-                        let title_w = (field * 0.60).clamp(200.0, 460.0);
-                        let subject_w = (field * 0.42).clamp(180.0, 340.0);
-                        let t =
-                            ui.add_sized([title_w, 24.0], egui::TextEdit::singleline(&mut title));
-                        ui.label(
-                            egui::RichText::new(tr("proto_subject"))
-                                .size(11.0)
-                                .color(motif::text_dim()),
-                        );
-                        let sj = ui
-                            .add_sized([subject_w, 24.0], egui::TextEdit::singleline(&mut subject));
-                        if t.lost_focus() || sj.lost_focus() {
-                            rename = Some((title, subject));
+                        if editing {
+                            let mut title = proto.title.clone();
+                            let mut subject = proto.subject.clone();
+                            // Proportional, not 260 and 200: a protocol
+                            // title is a sentence — « Allergie à la
+                            // pénicilline annoncée au comptoir » — and a
+                            // fixed field showed two thirds of it
+                            // however wide the panel was.
+                            let field = ui.available_width();
+                            // The title gets the lion's share; the
+                            // subject wraps to the next line when both
+                            // will not fit, which is what the wrapped
+                            // row is for.
+                            let title_w = (field * 0.60).clamp(200.0, 460.0);
+                            let subject_w = (field * 0.42).clamp(180.0, 340.0);
+                            let t = ui
+                                .add_sized([title_w, 24.0], egui::TextEdit::singleline(&mut title));
+                            ui.label(
+                                egui::RichText::new(tr("proto_subject"))
+                                    .size(11.0)
+                                    .color(motif::text_dim()),
+                            );
+                            let sj = ui.add_sized(
+                                [subject_w, 24.0],
+                                egui::TextEdit::singleline(&mut subject),
+                            );
+                            if t.lost_focus() || sj.lost_focus() {
+                                rename = Some((title, subject));
+                            }
+                        } else {
+                            // Read, not typed into: a title is a
+                            // heading, and a field around it invites a
+                            // typo nobody meant to make.
+                            ui.label(egui::RichText::new(&proto.title).size(15.0).strong());
+                            if !proto.subject.trim().is_empty() {
+                                ui.label(
+                                    egui::RichText::new(&proto.subject)
+                                        .size(11.5)
+                                        .italics()
+                                        .color(motif::text_dim()),
+                                );
+                            }
                         }
                         if motif::button(ui, tr("proto_back")).clicked() {
                             close = true;
@@ -14033,8 +14064,19 @@ impl App {
                                 tr("proto_walk")
                             },
                         );
-                        if w.clicked() {
+                        if w.on_hover_text(tr("proto_walk_tooltip")).clicked() {
                             walk = true;
+                        }
+                        // The tree is consulted a hundred times for
+                        // every time it is rewritten: the controls that
+                        // rewrite it live behind this.
+                        let edit = motif::button(ui, tr("drug_edit"));
+                        if editing {
+                            motif::bevel(ui.painter(), edit.rect, false);
+                        }
+                        if edit.on_hover_text(tr("proto_edit_tooltip")).clicked() {
+                            session.protocol_editing = !editing;
+                            session.protocol_node_edit = None;
                         }
                         if motif::button(ui, tr("proto_print")).clicked() {
                             print = true;
@@ -14042,7 +14084,7 @@ impl App {
                     });
                     ui.add_space(8.0);
                     if session.protocol_walk.is_some() {
-                        Self::protocol_walkthrough(ui, session);
+                        Self::protocol_walkthrough(ui, session, operator);
                         return;
                     }
                     if session.protocol_nodes.is_empty() {
@@ -14051,14 +14093,16 @@ impl App {
                                 .size(12.0)
                                 .color(motif::text_dim()),
                         );
-                        ui.horizontal(|ui| {
-                            if motif::button(ui, tr("proto_add_question")).clicked() {
-                                add = Some((None, db::Branch::Root, db::NodeKind::Question));
-                            }
-                            if motif::button(ui, tr("proto_add_action")).clicked() {
-                                add = Some((None, db::Branch::Root, db::NodeKind::Action));
-                            }
-                        });
+                        if editing {
+                            ui.horizontal(|ui| {
+                                if motif::button(ui, tr("proto_add_question")).clicked() {
+                                    add = Some((None, db::Branch::Root, db::NodeKind::Question));
+                                }
+                                if motif::button(ui, tr("proto_add_action")).clicked() {
+                                    add = Some((None, db::Branch::Root, db::NodeKind::Action));
+                                }
+                            });
+                        }
                         return;
                     }
                     // The tree, drawn depth-first with an indent per level.
@@ -14079,24 +14123,46 @@ impl App {
                         // Wrapped, and the indent stops growing: a deep
                         // branch must not push its own text off the
                         // panel one level at a time.
-                        let indent = (depth as f32 * 14.0).min(56.0);
+                        let indent = (depth as f32 * 16.0).min(64.0);
                         // The indent belongs to the whole node, not to
                         // its first line: text and buttons go in an
                         // indented block, so a wrapped button row still
                         // sits under the branch it belongs to.
-                        ui.horizontal(|ui| {
+                        let row = ui.horizontal(|ui| {
                             ui.add_space(indent);
                             ui.vertical(|ui| {
                                 ui.set_max_width((body_w - indent - 14.0).max(150.0));
-                                let tag = match node.branch {
-                                    db::Branch::Yes => tr("proto_branch_yes"),
-                                    db::Branch::No => tr("proto_branch_no"),
-                                    db::Branch::Root => "",
-                                };
                                 let editing = session
                                     .protocol_node_edit
                                     .as_ref()
                                     .is_some_and(|(id, ..)| *id == node.id);
+                                // The branch is a chip and not a caption:
+                                // « Oui » in the accent, « Non » in the
+                                // alert red. Reading a tree is following
+                                // one branch down, and two grey words
+                                // that differ by one letter are the
+                                // hardest possible way to do it.
+                                match node.branch {
+                                    db::Branch::Yes => {
+                                        ui.label(
+                                            egui::RichText::new(tr("proto_branch_yes"))
+                                                .size(10.5)
+                                                .strong()
+                                                .color(egui::Color32::WHITE)
+                                                .background_color(motif::accent()),
+                                        );
+                                    }
+                                    db::Branch::No => {
+                                        ui.label(
+                                            egui::RichText::new(tr("proto_branch_no"))
+                                                .size(10.5)
+                                                .strong()
+                                                .color(egui::Color32::WHITE)
+                                                .background_color(motif::alert()),
+                                        );
+                                    }
+                                    db::Branch::Root => {}
+                                }
                                 if editing {
                                     ui.horizontal_wrapped(|ui| {
                                         let (_, _, text) =
@@ -14108,13 +14174,6 @@ impl App {
                                         }
                                     });
                                 } else {
-                                    if !tag.is_empty() {
-                                        ui.label(
-                                            egui::RichText::new(tag)
-                                                .size(11.0)
-                                                .color(motif::text_dim()),
-                                        );
-                                    }
                                     let label = if node.kind == db::NodeKind::Question {
                                         egui::RichText::new(format!(
                                             "{} ?",
@@ -14127,17 +14186,30 @@ impl App {
                                     // A conduite is a sentence, not a caption: it
                                     // wraps to what is left after the buttons
                                     // instead of running off the right edge.
-                                    let clicked = ui
-                                        .add(
-                                            egui::Label::new(label)
-                                                .wrap()
-                                                .sense(egui::Sense::click()),
-                                        )
-                                        .on_hover_text(tr("proto_edit_node"))
-                                        .clicked();
-                                    if clicked {
-                                        session.protocol_node_edit =
-                                            Some((node.id, node.kind, node.text.clone()));
+                                    // Only clickable while the tree is being
+                                    // rewritten: reading is not editing, and a
+                                    // sentence that turns into a field under
+                                    // the cursor is a sentence nobody dares
+                                    // click.
+                                    if session.protocol_editing {
+                                        let clicked = ui
+                                            .add(
+                                                egui::Label::new(label)
+                                                    .wrap()
+                                                    .sense(egui::Sense::click()),
+                                            )
+                                            .on_hover_text(tr("proto_edit_node"))
+                                            .clicked();
+                                        if clicked {
+                                            session.protocol_node_edit =
+                                                Some((node.id, node.kind, node.text.clone()));
+                                        }
+                                    } else {
+                                        ui.add(egui::Label::new(label).wrap());
+                                    }
+                                    if !session.protocol_editing {
+                                        ui.add_space(3.0);
+                                        return;
                                     }
                                     ui.horizontal_wrapped(|ui| {
                                         if node.kind == db::NodeKind::Question {
@@ -14175,6 +14247,21 @@ impl App {
                                 ui.add_space(3.0);
                             });
                         });
+                        // The gutters: one hairline per level the node
+                        // hangs under, so the eye can follow a branch
+                        // back to the question that opened it. Indent
+                        // alone is a guess about which « Non » a
+                        // conduite belongs to.
+                        for d in 0..depth {
+                            let x = row.response.rect.left() + d as f32 * 16.0 + 6.0;
+                            ui.painter().line_segment(
+                                [
+                                    egui::pos2(x, row.response.rect.top() - 2.0),
+                                    egui::pos2(x, row.response.rect.bottom()),
+                                ],
+                                egui::Stroke::new(1.0_f32, motif::bg_dark()),
+                            );
+                        }
                         let mut children: Vec<&db::ProtocolNode> = nodes
                             .iter()
                             .filter(|n| n.parent_id == Some(node.id))
@@ -14235,6 +14322,10 @@ impl App {
             reload(session);
         }
         if walk {
+            // Starting or stopping, the road taken is cleared: a trail
+            // left over from the last déroulé would be written onto the
+            // next patient's file.
+            session.protocol_trail.clear();
             session.protocol_walk = if session.protocol_walk.is_some() {
                 None
             } else {
@@ -14279,12 +14370,14 @@ impl App {
             session.protocol_open = None;
             session.protocol_node_edit = None;
             session.protocol_walk = None;
+            session.protocol_trail.clear();
+            session.protocol_editing = false;
             session.protocol_header = None;
         }
     }
 
     /// The walk-through: one step at a time, answering the questions.
-    fn protocol_walkthrough(ui: &mut egui::Ui, session: &mut Session) {
+    fn protocol_walkthrough(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
         let Some(current) = session.protocol_walk else {
             return;
         };
@@ -14294,12 +14387,47 @@ impl App {
             return;
         };
         let mut go: Option<Option<i64>> = None;
+        let mut stamp = false;
         ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new(&node.text)
-                .size(16.0)
-                .strong()
-                .color(motif::accent()),
+        // The road taken, above the step being answered: at the fourth
+        // question nobody remembers whether they said yes to the second,
+        // and a déroulé you cannot re-read is one you start again.
+        if !session.protocol_trail.is_empty() {
+            for (answer, text) in &session.protocol_trail {
+                ui.horizontal_wrapped(|ui| {
+                    if !answer.is_empty() {
+                        ui.label(
+                            egui::RichText::new(answer)
+                                .size(10.5)
+                                .strong()
+                                .color(egui::Color32::WHITE)
+                                .background_color(if answer == tr("proto_walk_yes") {
+                                    motif::accent()
+                                } else {
+                                    motif::alert()
+                                }),
+                        );
+                    }
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(text)
+                                .size(11.0)
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                });
+            }
+            ui.add_space(6.0);
+        }
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(&node.text)
+                    .size(16.0)
+                    .strong()
+                    .color(motif::accent()),
+            )
+            .wrap(),
         );
         ui.add_space(10.0);
         let child = |branch: db::Branch| {
@@ -14323,12 +14451,15 @@ impl App {
                 )
             })
         };
-        ui.horizontal(|ui| {
+        let mut answered = String::new();
+        ui.horizontal_wrapped(|ui| {
             if node.kind == db::NodeKind::Question {
                 if motif::button(ui, tr("proto_walk_yes")).clicked() || yes_key {
+                    answered = tr("proto_walk_yes").to_owned();
                     go = Some(child(db::Branch::Yes));
                 }
                 if motif::button(ui, tr("proto_walk_no")).clicked() || no_key {
+                    answered = tr("proto_walk_no").to_owned();
                     go = Some(child(db::Branch::No));
                 }
             } else if let Some(next) = child(db::Branch::Root) {
@@ -14344,6 +14475,18 @@ impl App {
                         .color(motif::text_dim()),
                 );
             }
+            // The end of a déroulé is a decision, and a decision taken
+            // at the counter belongs on the file. One click writes the
+            // road taken and the conduite reached into the open
+            // patient's journal, dated and signed like every other note.
+            if node.kind == db::NodeKind::Action
+                && session.viewing.is_some()
+                && motif::button(ui, tr("proto_walk_note"))
+                    .on_hover_text(tr("proto_walk_note_tooltip"))
+                    .clicked()
+            {
+                stamp = true;
+            }
         });
         ui.add_space(4.0);
         ui.label(
@@ -14351,14 +14494,68 @@ impl App {
                 .size(10.5)
                 .color(motif::text_dim()),
         );
+        if stamp {
+            Self::note_protocol_walk(session, node, operator);
+        }
         if let Some(next) = go {
+            // The step just left joins the trail, with the answer that
+            // left it.
+            session
+                .protocol_trail
+                .push((answered, node.text.trim().to_owned()));
             match next {
                 Some(id) => session.protocol_walk = Some(id),
                 None => {
-                    ui.label(tr("proto_walk_done"));
+                    // A branch that leads nowhere: the tree is
+                    // unfinished, and stopping silently would look like
+                    // the application had lost the thread.
+                    ui.label(tr("proto_walk_dead_end"));
                     session.protocol_walk = None;
+                    session.protocol_trail.clear();
                 }
             }
+        }
+    }
+
+    /// Write a finished déroulé into the open patient's journal: the
+    /// protocol, the answers given, and the conduite reached.
+    ///
+    /// One note and not one per step: what the file needs six months
+    /// later is « on a suivi ce protocole et on a fait ça », on one
+    /// line, in the journal it already reads.
+    fn note_protocol_walk(session: &mut Session, node: &db::ProtocolNode, operator: &str) {
+        let Some(patient) = session.viewing.clone() else {
+            return;
+        };
+        let title = session
+            .protocol_open
+            .as_ref()
+            .map(|p| p.title.clone())
+            .unwrap_or_default();
+        let mut text = trf("proto_note_prefix", &title);
+        for (answer, step) in &session.protocol_trail {
+            if answer.is_empty() {
+                continue;
+            }
+            text.push_str(&format!(
+                " {} → {answer}.",
+                step.trim_end_matches('?').trim()
+            ));
+        }
+        text.push_str(&format!(" {}", node.text.trim()));
+
+        match session
+            .db
+            .add_note(NoteSubject::Patient, patient.id, operator, &text)
+        {
+            Ok(_) => {
+                session.error = None;
+                session.patient_notes = session
+                    .db
+                    .notes_for(NoteSubject::Patient, patient.id)
+                    .unwrap_or_default();
+            }
+            Err(e) => session.error = Some(e),
         }
     }
 
@@ -15254,7 +15451,7 @@ impl App {
             return;
         }
         if session.show_protocols {
-            Self::protocols_view(ui, session);
+            Self::protocols_view(ui, session, operator);
             return;
         }
         if session.show_mono {
