@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.105.0] - 2026-08-28
+
+### Changed
+- **Ctrl+F va au champ de la liste ouverte.** Les flèches et Entrée
+  parcourent les listes taillées depuis la 0.103 — mais seulement une
+  fois le curseur dans leur champ, et l'y mettre était la seule étape
+  qui demandait encore la souris. Avec les tables, les protocoles, le
+  codex ou les dispositifs ouverts, Ctrl+F y va ; ailleurs il fait ce
+  qu'il a toujours fait, la recherche patient. Le chemin complet se fait
+  donc au clavier : Ctrl+F, on tape, flèches, Entrée.
+
 ## [0.104.0] - 2026-08-28
 
 ### Added

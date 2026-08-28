@@ -1415,6 +1415,8 @@ struct Session {
     dispo_cursor: usize,
     codex_cursor: usize,
     protocol_cursor: usize,
+    /// Ctrl+F asked for the open list's own search field.
+    focus_list_search: bool,
     /// The rentals on the open file, the forfait being handed out, and
     /// the row whose return date is being typed.
     locations: Vec<db::Location>,
@@ -1657,6 +1659,7 @@ impl Session {
             dispo_cursor: 0,
             codex_cursor: 0,
             protocol_cursor: 0,
+            focus_list_search: false,
             locations: Vec::new(),
             loc_pick: 0,
             loc_start: String::new(),
@@ -5311,7 +5314,17 @@ impl App {
         // puts the cursor in it — closing the open file to reach a
         // search bar was the old shape of the app, not this one.
         let focus_search = ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F));
-        if focus_search && show_nav {
+        // With one of the carved lists open, the search that matters is
+        // that list's own — arrows and Enter walk it, but only once the
+        // cursor is in the field, and putting it there was the one step
+        // that still needed the mouse.
+        let list_open = session.show_codex
+            || session.show_dispositifs
+            || session.show_protocols
+            || session.show_tables;
+        if focus_search && list_open {
+            session.focus_list_search = true;
+        } else if focus_search && show_nav {
             self.focus_nav = true;
         } else if focus_search {
             session.flush_date_edits();
@@ -5319,7 +5332,7 @@ impl App {
             session.viewing = None;
             session.show_amounts = false;
         }
-        let focus_search = focus_search && !show_nav;
+        let focus_search = focus_search && !show_nav && !list_open;
         // Escape backs out of the dashboard, like everywhere else.
         if session.view == MainView::Dashboard
             && ctx.input(|i| i.key_pressed(egui::Key::Escape))
@@ -12193,6 +12206,9 @@ impl App {
                 egui::TextEdit::singleline(&mut session.codex_query)
                     .hint_text(tr("codex_search_hint")),
             );
+            if std::mem::take(&mut session.focus_list_search) {
+                field.request_focus();
+            }
             ui.add_space(4.0);
             let rect = ui.available_rect_before_wrap();
             if rect.height() < 30.0 {
@@ -12799,6 +12815,9 @@ impl App {
                 egui::TextEdit::singleline(&mut session.dispo_query)
                     .hint_text(tr("dispo_search_hint")),
             );
+            if std::mem::take(&mut session.focus_list_search) {
+                field.request_focus();
+            }
             ui.add_space(4.0);
             let rect = ui.available_rect_before_wrap();
             if rect.height() < 30.0 {
@@ -13235,6 +13254,9 @@ impl App {
                 egui::TextEdit::singleline(&mut session.protocol_query)
                     .hint_text(tr("proto_search_hint")),
             );
+            if std::mem::take(&mut session.focus_list_search) {
+                field.request_focus();
+            }
             ui.add_space(4.0);
             if session.protocols.is_empty() {
                 ui.label(
@@ -13779,11 +13801,14 @@ impl App {
             // One search across all twenty-five tables: at the counter
             // the question is « où est-ce que j'ai lu ça », and it is
             // not answered by clicking through twenty-five tabs.
-            ui.add_sized(
+            let field = ui.add_sized(
                 [ui.available_width().min(420.0), 24.0],
                 egui::TextEdit::singleline(&mut session.table_query)
                     .hint_text(tr("tables_search_hint")),
             );
+            if std::mem::take(&mut session.focus_list_search) {
+                field.request_focus();
+            }
             ui.add_space(8.0);
             // Selector: one button per table, the active one sunken.
             // There are more tables than fit on one line — let it wrap,
