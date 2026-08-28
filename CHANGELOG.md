@@ -5,6 +5,77 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.112.0] - 2026-08-28
+
+La carte Vitale ouvre la fiche, et deux ajouts de contenu que le
+comptoir attendait.
+
+### Added
+- **Lecture de la carte Vitale.** Un lecteur PC/SC sur le poste, et
+  présenter la carte devient une façon de nommer un patient : les
+  bénéficiaires de la carte s'affichent sous le champ de recherche — le
+  titulaire et ses ayants droit, parce que la personne au comptoir n'est
+  pas toujours le titulaire — et un clic ouvre la fiche qui porte ce
+  NIR, ou en pré-remplit une nouvelle avec le nom, le prénom et la date
+  de naissance.
+
+  Trois décisions valent d'être écrites, parce qu'elles portent toute la
+  fonction :
+
+  - **C'est le NIR qui rapproche, pas le nom.** Deux personnes portent
+    le même nom, personne ne partage un numéro. Une fiche ouverte sur
+    une homonymie est une erreur qui ne se voit pas.
+  - **Rien n'est lu à un offset.** Les octets de la carte sont
+    parcourus à la recherche d'une suite de quinze chiffres dont la clé
+    de contrôle se vérifie — une chance sur quatre-vingt-dix-sept qu'une
+    suite quelconque passe, et les noms autour confirment. La
+    disposition des fichiers change d'une génération de carte à
+    l'autre : un offset deviné lirait un patient plausible et faux, et
+    c'est la seule panne que ce module n'a pas le droit d'avoir. Une
+    date trouvée à côté ne devient une date de naissance que si elle
+    s'accorde avec le mois et l'année que le NIR porte lui-même.
+  - **La bibliothèque PC/SC du système est ouverte par son nom au
+    moment où une carte est demandée, jamais liée au binaire.** Un
+    exécutable lié à `libpcsclite` ne démarre pas du tout sur un poste
+    qui ne l'a pas — l'éditeur de liens échoue avant `main`, et
+    l'utilisateur ne voit qu'une fenêtre qui ne s'ouvre jamais. Une
+    officine sans lecteur est le cas courant, pas l'exception, et elle
+    garde l'application qu'elle avait.
+
+  La séquence de commandes APDU est en configuration (Options › Base) et
+  non dans le programme : elle relève des spécifications SESAM-Vitale,
+  qui sont sous licence et versionnées. Vide, l'application liste quand
+  même les lecteurs et affiche l'ATR — de quoi répondre à « le lecteur
+  et la carte sont-ils vus » sans développeur sur place. Les échecs du
+  comptoir sont nommés en français : service non démarré, aucune carte,
+  carte retirée, carte déjà prise par un autre logiciel.
+
+  **Elle ne facture rien.** Une feuille de soins électronique demande un
+  progiciel SESAM-Vitale agréé, une carte CPS et un concentrateur ; le
+  LGO reste l'outil qui facture, et rien ici ne prétend le contraire.
+- **Thyrozol et douze biosimilaires : 831 → 844 fiches.** Le thiamazole
+  manquait à côté du carbimazole, alors que la règle d'agranulocytose de
+  la biologie le nommait déjà. Les douze biosimilaires — Amgevita,
+  Hyrimoz et Imraldi (adalimumab), Benepali et Erelzi (étanercept),
+  Zarzio et Nivestim (filgrastim), Ziextenzo (pegfilgrastim), Semglee
+  (insuline glargine), Retacrit (époétine zêta), Terrosa (tériparatide)
+  et Inhixa (énoxaparine) — gardent la classe de leur référent
+  (« anti-TNF alpha », « HBPM », « insuline lente »…), de sorte que
+  toutes les règles déjà écrites — biologie, revue d'ordonnance, conduite
+  en cas d'oubli — s'appliquent sans être réécrites.
+- **Table « Biosimilaires » : 30 → 31 tables.** Ce qui se substitue au
+  comptoir et ce qui ne s'y substitue pas, pourquoi « générique » est le
+  mot à ne pas employer, pourquoi un biologique se trace par sa marque
+  **et** son numéro de lot et jamais par sa DCI seule, et pourquoi la
+  technique d'injection se remontre à chaque changement de spécialité —
+  le stylo n'est pas le même stylo. Quatre colonnes, dont « Le piège ».
+
+### Changed
+- `scripts/smoke.sh` ouvre trente-cinq vues au lieu de trente-quatre :
+  la lecture de carte est rejouée sur un relevé capturé
+  (`BPM_CADDY_VITALE_DUMP`), donc tout le chemin tourne à chaque passe —
+  sans matériel, sans carte réelle, sans l'identité de personne.
+
 ## [0.111.0] - 2026-08-28
 
 Une seconde passe de contenu : ce qui manquait aux catalogues, et la
