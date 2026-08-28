@@ -8,7 +8,7 @@
 
 use eframe::egui::{self, Color32, Stroke, Vec2};
 
-use crate::{bevel, BG, BG_DARK, BG_LIGHT, TEXT, TEXT_DIM, TROUGH};
+use crate::bevel;
 
 /// The part of `ui`'s available space that is actually on screen.
 ///
@@ -108,7 +108,7 @@ pub fn panel<R>(
     title: Option<&str>,
     add: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
-    ui.painter().rect_filled(rect, 0.0, BG);
+    ui.painter().rect_filled(rect, 0.0, crate::bg());
     bevel(ui.painter(), rect, true);
     let mut inner = rect.shrink(8.0);
     if let Some(title) = title {
@@ -118,13 +118,13 @@ pub fn panel<R>(
             .chars()
             .flat_map(|c| [c, '\u{2009}'])
             .collect();
-        let galley = ui
-            .painter()
-            .layout_no_wrap(caption.trim_end().to_owned(), font, TEXT_DIM);
+        let galley =
+            ui.painter()
+                .layout_no_wrap(caption.trim_end().to_owned(), font, crate::text_dim());
         ui.painter().galley(
             egui::pos2(inner.left() + 2.0, inner.top()),
             galley.clone(),
-            TEXT_DIM,
+            crate::text_dim(),
         );
         let y = inner.top() + galley.size().y + 3.0;
         rule(ui.painter(), inner.left(), inner.right(), y);
@@ -136,7 +136,7 @@ pub fn panel<R>(
 /// A sunken well — the trough a list, a chart or a scrolling text sits
 /// in. Returns the padded interior.
 pub fn well(ui: &egui::Ui, rect: egui::Rect) -> egui::Rect {
-    ui.painter().rect_filled(rect, 0.0, TROUGH);
+    ui.painter().rect_filled(rect, 0.0, crate::trough());
     bevel(ui.painter(), rect, false);
     rect.shrink(4.0)
 }
@@ -145,11 +145,11 @@ pub fn well(ui: &egui::Ui, rect: egui::Rect) -> egui::Rect {
 pub fn rule(painter: &egui::Painter, x0: f32, x1: f32, y: f32) {
     painter.line_segment(
         [egui::pos2(x0, y), egui::pos2(x1, y)],
-        Stroke::new(1.0_f32, BG_DARK),
+        Stroke::new(1.0_f32, crate::bg_dark()),
     );
     painter.line_segment(
         [egui::pos2(x0, y + 1.0), egui::pos2(x1, y + 1.0)],
-        Stroke::new(1.0_f32, BG_LIGHT),
+        Stroke::new(1.0_f32, crate::bg_light()),
     );
 }
 
@@ -157,11 +157,11 @@ pub fn rule(painter: &egui::Painter, x0: f32, x1: f32, y: f32) {
 pub fn vrule(painter: &egui::Painter, y0: f32, y1: f32, x: f32) {
     painter.line_segment(
         [egui::pos2(x, y0), egui::pos2(x, y1)],
-        Stroke::new(1.0_f32, BG_DARK),
+        Stroke::new(1.0_f32, crate::bg_dark()),
     );
     painter.line_segment(
         [egui::pos2(x + 1.0, y0), egui::pos2(x + 1.0, y1)],
-        Stroke::new(1.0_f32, BG_LIGHT),
+        Stroke::new(1.0_f32, crate::bg_light()),
     );
 }
 
@@ -223,9 +223,11 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
                 ui.spacing_mut().item_spacing.x = 2.0;
                 for (i, tab) in tabs.iter().enumerate() {
                     let is_active = i == active;
-                    let galley =
-                        ui.painter()
-                            .layout_no_wrap(tab.label.to_owned(), font.clone(), TEXT);
+                    let galley = ui.painter().layout_no_wrap(
+                        tab.label.to_owned(),
+                        font.clone(),
+                        crate::text(),
+                    );
                     let close_w = if tab.closable { 18.0 } else { 0.0 };
                     let w = galley.size().x + 24.0 + close_w;
                     let (rect, resp) =
@@ -246,11 +248,11 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
                         )
                     };
                     let fill = if is_active {
-                        BG
+                        crate::bg()
                     } else if resp.hovered() {
-                        crate::BG_HOVER
+                        crate::bg_hover()
                     } else {
-                        TROUGH
+                        crate::trough()
                     };
                     ui.painter().rect_filled(body, 0.0, fill);
                     // Bevel the three visible sides only: the fourth
@@ -260,15 +262,15 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
                         let r = body.shrink(k as f32 + 0.5);
                         p.line_segment(
                             [r.left_bottom(), r.left_top()],
-                            Stroke::new(1.0_f32, BG_LIGHT),
+                            Stroke::new(1.0_f32, crate::bg_light()),
                         );
                         p.line_segment(
                             [r.left_top(), r.right_top()],
-                            Stroke::new(1.0_f32, BG_LIGHT),
+                            Stroke::new(1.0_f32, crate::bg_light()),
                         );
                         p.line_segment(
                             [r.right_top(), r.right_bottom()],
-                            Stroke::new(1.0_f32, BG_DARK),
+                            Stroke::new(1.0_f32, crate::bg_dark()),
                         );
                     }
                     if let Some(tint) = tab.tint {
@@ -278,7 +280,11 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
                         );
                         ui.painter().rect_filled(bar, 0.0, tint);
                     }
-                    let color = if is_active { TEXT } else { TEXT_DIM };
+                    let color = if is_active {
+                        crate::text()
+                    } else {
+                        crate::text_dim()
+                    };
                     let galley =
                         ui.painter()
                             .layout_no_wrap(tab.label.to_owned(), font.clone(), color);
@@ -298,14 +304,18 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
                             egui::Sense::click(),
                         );
                         if hit.hovered() {
-                            ui.painter().rect_filled(x, 0.0, BG_HOVER_STRONG);
+                            ui.painter().rect_filled(x, 0.0, bg_hover_strong());
                         }
                         ui.painter().text(
                             x.center(),
                             egui::Align2::CENTER_CENTER,
                             "×",
                             egui::FontId::proportional(14.0),
-                            if hit.hovered() { TEXT } else { TEXT_DIM },
+                            if hit.hovered() {
+                                crate::text()
+                            } else {
+                                crate::text_dim()
+                            },
                         );
                         if hit.clicked() {
                             action = Some(TabAction::Close(i));
@@ -342,8 +352,12 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
     action
 }
 
-/// Slightly stronger than `BG_HOVER`, for the × target inside a tab.
-const BG_HOVER_STRONG: Color32 = Color32::from_rgb(0xc8, 0xcc, 0xdb);
+/// Slightly stronger than the hover tint, for the × target inside a tab.
+/// Mixed from the theme rather than fixed: a blue-grey highlight on the
+/// HP VUE green reads as a stain, not as a hover.
+fn bg_hover_strong() -> Color32 {
+    crate::bg_hover().lerp_to_gamma(crate::bg_light(), 0.45)
+}
 
 #[cfg(test)]
 mod tests {

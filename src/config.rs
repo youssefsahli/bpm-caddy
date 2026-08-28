@@ -28,6 +28,10 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # text_scale = 1.0
 # Densité de l'interface : "confortable" ou "compact".
 # density = "confortable"
+# Palette de l'interface : "motif", "cde", "decwindows", "indigo",
+# "olive" ou "contraste". La forme ne change pas — angles droits, biseaux
+# de deux pixels — seules les couleurs changent.
+# theme = "motif"
 # Pictogrammes dans la barre d'outils.
 # icons = false
 # Police de l'interface (fichier .ttf ou .otf ; vide = police intégrée).
@@ -587,6 +591,10 @@ pub struct UiConfig {
     /// "confortable" (default) or "compact": how much the interface
     /// spends on padding.
     pub density: String,
+    /// Which palette the Motif chrome is drawn from — one of
+    /// `motif::THEMES` by its key. The shape never changes; only the
+    /// colours. An unknown name falls back to the classic one.
+    pub theme: String,
     /// Draw the small pictograms next to the toolbar labels.
     pub icons: bool,
     /// A TrueType file to use for the whole interface. Empty keeps the
@@ -612,6 +620,7 @@ impl Default for UiConfig {
             show_nav_on_start: true,
             text_scale: 1.0,
             density: "confortable".to_owned(),
+            theme: motif::THEMES[0].key.to_owned(),
             icons: false,
             font_path: None,
             side_pane: "docs".to_owned(),
@@ -843,6 +852,13 @@ impl<'de> Deserialize<'de> for BillingConfig {
 }
 
 impl Config {
+    /// Put the chosen palette in force. Called once at start-up and
+    /// again whenever the options are saved; an unknown name is not an
+    /// error, it is the classic theme.
+    pub fn apply_theme(&self) {
+        motif::set_theme(&self.ui.theme);
+    }
+
     /// The density chosen in the options, as the `motif` enum.
     pub fn density(&self) -> motif::Density {
         if self.ui.density.trim().eq_ignore_ascii_case("compact") {
