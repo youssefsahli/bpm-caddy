@@ -1310,10 +1310,23 @@ struct Session {
     bio_edit_base: (f64, String),
     /// The analyte whose trend the right-hand panel is showing.
     bio_focus: Option<String>,
+    /// What the biology says about the open file's treatments, and what
+    /// the calendrier vaccinal still owes it: both are rule engines over
+    /// the file's own rows, so both are answered when those rows change
+    /// rather than on every frame that paints them.
+    bio_findings: Vec<crate::biology::Finding>,
+    vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
     /// The open ordonnance box, after a positive TROD.
     ordonnance: Option<OrdonnanceBox>,
+    /// The adjuvants offered by the open ordonnance box — the cards
+    /// carrying `[ordonnance] adjuvant_tag`, each with its own posology
+    /// lines — read once when the box opens rather than on every frame
+    /// it is painted. The key is the act it was read for, the tag in
+    /// force and the revision of the drug base.
+    ord_adjuvants: Vec<(Drug, Vec<db::Posologie>)>,
+    ord_adjuvants_key: Option<(i64, String, u64)>,
     /// The open drug card's dated notes, newest first.
     drug_notes: Vec<Note>,
     /// Transmission logbook: the shown day, its entries, and the days
@@ -1656,8 +1669,12 @@ impl Session {
             bio_edit_date: String::new(),
             bio_edit_base: (0.0, String::new()),
             bio_focus: None,
+            bio_findings: Vec::new(),
+            vacc_due: Vec::new(),
             travel_query: String::new(),
             ordonnance: None,
+            ord_adjuvants: Vec::new(),
+            ord_adjuvants_key: None,
             drug_notes: Vec::new(),
             trans_day: String::new(),
             trans_notes: Vec::new(),
@@ -2577,6 +2594,11 @@ impl Session {
     }
 
     fn open_patient(&mut self, patient: Patient) {
+        // The file is set before it is filled, not after: the loaders
+        // below rebuild what the calendrier vaccinal owes, and that
+        // answer is read against this patient's age. Set last, they
+        // computed it against the file that was open before.
+        self.viewing = Some(patient.clone());
         self.reload_interviews(patient.id);
         self.reload_treatments(patient.id);
         self.patient_notes = self
@@ -2591,7 +2613,6 @@ impl Session {
         self.confirm_delete_itv = None;
         self.rule_block = None;
         self.load_carnet(patient.id);
-        self.viewing = Some(patient);
     }
 
     /// (Re)read the patient's treatments, and with them the
@@ -2604,6 +2625,68 @@ impl Session {
         self.patient_treats = self.db.drugs_for_patient(patient_id).unwrap_or_default();
         self.patient_interactions = interactions_between(&self.patient_treats);
         self.patient_review = crate::revue::review(&ordonnance_terms(&self.patient_treats));
+        // The biology is read against the treatments: change the second
+        // and the first has a different answer.
+        self.refresh_bio_findings();
+    }
+
+    /// What the biology says about the treatments on the file.
+    ///
+    /// Same discipline as the interactions and the revue beside it: the
+    /// eighty-seven rules were run on every frame of the biology view,
+    /// each one folding a copy of every treatment's name, DCI, class and
+    /// tags to compare — a few hundred allocations sixty times a second
+    /// for an answer that only moves when a value is written or a
+    /// treatment added. It is now computed where those two are.
+    fn refresh_bio_findings(&mut self) {
+        let readings: Vec<crate::biology::Reading> = self
+            .bio_results
+            .iter()
+            .filter(|r| !r.code.is_empty())
+            .map(|r| crate::biology::Reading {
+                code: r.code.as_str(),
+                value: r.value,
+                date: r.taken_on.as_str(),
+            })
+            .collect();
+        // Everything the file knows about what the patient takes: the
+        // brand, the DCI, the class and the tags all feed the rules.
+        let treatments: Vec<String> = self
+            .patient_treats
+            .iter()
+            .flat_map(|d| {
+                [
+                    d.name.clone(),
+                    d.dci.clone(),
+                    d.class.clone(),
+                    d.tags.clone(),
+                ]
+            })
+            .filter(|t| !t.trim().is_empty())
+            .collect();
+        self.bio_findings = crate::biology::read(&readings, &treatments);
+    }
+
+    /// What the calendrier vaccinal still owes the open file, read
+    /// against the doses in the carnet — computed when the carnet
+    /// changes rather than on each of the frames that paint it, because
+    /// every line it returns is a `format!`.
+    fn refresh_vacc_due(&mut self) {
+        let Some(patient) = self.viewing.clone() else {
+            self.vacc_due.clear();
+            return;
+        };
+        let age = db::age_on(&patient.birth_date, &self.today);
+        let birth_year = patient.birth_date.get(..4).and_then(|y| y.parse().ok());
+        let doses: Vec<vaccines::Dose> = self
+            .vaccinations
+            .iter()
+            .map(|v| vaccines::Dose {
+                code: v.code.as_str(),
+                date: v.given_on.as_str(),
+            })
+            .collect();
+        self.vacc_due = vaccines::due_lines(age, birth_year, &self.today, &doses);
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -2618,6 +2701,7 @@ impl Session {
         self.vacc_edit_date.clear();
         self.vacc_confirm = None;
         self.vacc_fill_confirm = false;
+        self.refresh_vacc_due();
     }
 
     /// (Re)read the patient's biology. Called on open and after every
@@ -2629,6 +2713,7 @@ impl Session {
         // The trend panel follows the file it is on: the analyte
         // clicked on the previous patient means nothing here.
         self.bio_focus = None;
+        self.refresh_bio_findings();
     }
 
     /// (Re)read the patient's rentals, and forget whatever row was
@@ -6453,21 +6538,32 @@ impl App {
             session.ordonnance = None;
             return;
         }
-        // Read once per frame, before the window borrows the session:
-        // the base is small and this is a modal the operator opened on
-        // purpose, so a query per frame is cheaper than a cache that
-        // could go stale against another post's edit.
+        // Read once per opening, not once per frame.
+        //
+        // This was a query for the tagged cards plus one more per card
+        // found, on every repaint of a modal that stays open for as long
+        // as it takes to fill an ordonnance — a minute of typing is
+        // three thousand frames and some ten thousand queries for an
+        // answer that had not moved. It is now read when the box opens,
+        // like every other view's list; the key carries the act, the tag
+        // in force and the revision of the drug base, so correcting an
+        // adjuvant's card and coming back gives the corrected one.
         let adjuvant_tag = config.ordonnance.adjuvant_tag.clone();
-        let adjuvants: Vec<(Drug, Vec<db::Posologie>)> = session
-            .db
-            .drugs_with_tag(&adjuvant_tag)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|d| {
-                let posologies = session.db.posologies(d.id).unwrap_or_default();
-                (d, posologies)
-            })
-            .collect();
+        let key = (interview, adjuvant_tag.clone(), session.drugs_rev);
+        if session.ord_adjuvants_key.as_ref() != Some(&key) {
+            session.ord_adjuvants = session
+                .db
+                .drugs_with_tag(&adjuvant_tag)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|d| {
+                    let posologies = session.db.posologies(d.id).unwrap_or_default();
+                    (d, posologies)
+                })
+                .collect();
+            session.ord_adjuvants_key = Some(key);
+        }
+        let adjuvants = std::mem::take(&mut session.ord_adjuvants);
         let mut close = false;
         let mut print = false;
         egui::Window::new(trf("ord_title", protocol.indication))
@@ -6668,6 +6764,10 @@ impl App {
                     }
                 });
             });
+        // Lent to the window, which needs the session mutably at the
+        // same time, and handed straight back: nothing between the two
+        // lines returns.
+        session.ord_adjuvants = adjuvants;
 
         // Escape is handled by `patient_view`, which owns the key for
         // the whole file and dismisses this box before the file itself.
@@ -8152,32 +8252,9 @@ impl App {
     /// point of recording it at a pharmacy counter rather than at a
     /// laboratory.
     fn bio_reading_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
-        let readings: Vec<crate::biology::Reading> = session
-            .bio_results
-            .iter()
-            .filter(|r| !r.code.is_empty())
-            .map(|r| crate::biology::Reading {
-                code: r.code.as_str(),
-                value: r.value,
-                date: r.taken_on.as_str(),
-            })
-            .collect();
-        // Everything the file knows about what the patient takes: the
-        // brand, the DCI, the class and the tags all feed the rules.
-        let treatments: Vec<String> = session
-            .patient_treats
-            .iter()
-            .flat_map(|d| {
-                [
-                    d.name.clone(),
-                    d.dci.clone(),
-                    d.class.clone(),
-                    d.tags.clone(),
-                ]
-            })
-            .filter(|t| !t.trim().is_empty())
-            .collect();
-        let findings = crate::biology::read(&readings, &treatments);
+        // Answered by `Session::refresh_bio_findings` when a value is
+        // written or a treatment changes, not here.
+        let findings = &session.bio_findings;
         motif::panel(ui, rect, Some(tr("bio_reading")), |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("bio_reading")
@@ -8191,7 +8268,7 @@ impl App {
                         );
                         return;
                     }
-                    for f in &findings {
+                    for f in findings {
                         let (label, color) = match f.severity {
                             crate::biology::Severity::Alert => (tr("bio_alert"), motif::alert()),
                             crate::biology::Severity::Warn => {
@@ -8226,15 +8303,27 @@ impl App {
         // Whichever analyte was clicked, or the one with the most
         // readings — a single value has no trend to show.
         let code = session.bio_focus.clone().unwrap_or_else(|| {
-            let mut counts: std::collections::HashMap<&str, usize> =
-                std::collections::HashMap::new();
+            // Counted in the order the rows come back, not in a
+            // `HashMap`'s: two analytes with the same number of
+            // readings are the ordinary case on a fresh file — a bilan
+            // brings a dozen lines at once, all dated the same day —
+            // and a hash map hands the tie to a different one on every
+            // frame. The panel changed analyte sixty times a second.
+            let mut counts: Vec<(&str, usize)> = Vec::new();
             for r in &session.bio_results {
-                if !r.code.is_empty() {
-                    *counts.entry(r.code.as_str()).or_default() += 1;
+                if r.code.is_empty() {
+                    continue;
+                }
+                match counts.iter_mut().find(|(c, _)| *c == r.code) {
+                    Some((_, n)) => *n += 1,
+                    None => counts.push((r.code.as_str(), 1)),
                 }
             }
+            // `max_by_key` keeps the *last* maximum; the first one seen
+            // is the one to keep, so the reading order decides.
             counts
                 .into_iter()
+                .rev()
                 .max_by_key(|&(_, n)| n)
                 .map(|(c, _)| c.to_owned())
                 .unwrap_or_default()
@@ -8320,17 +8409,9 @@ impl App {
         patient: &Patient,
         rect: egui::Rect,
     ) {
-        let age = db::age_on(&patient.birth_date, &session.today);
-        let birth_year = patient.birth_date.get(..4).and_then(|y| y.parse().ok());
-        let doses: Vec<vaccines::Dose> = session
-            .vaccinations
-            .iter()
-            .map(|v| vaccines::Dose {
-                code: v.code.as_str(),
-                date: v.given_on.as_str(),
-            })
-            .collect();
-        let lines = vaccines::due_lines(age, birth_year, &session.today, &doses);
+        // Answered by `Session::refresh_vacc_due` when the carnet
+        // changes, not on each of the frames that paint it.
+        let lines = &session.vacc_due;
         // Clicking a line owed loads that vaccine into the form at the
         // foot of the carnet: the panel says what to do, and the click
         // is the doing.
@@ -8383,7 +8464,7 @@ impl App {
                         );
                         return;
                     }
-                    for line in &lines {
+                    for line in lines {
                         let (tag, color) = match line.level {
                             vaccines::DueLevel::Ok => (tr("vacc_due_ok"), motif::text_faint()),
                             vaccines::DueLevel::Due => (tr("vacc_due_todo"), motif::alert()),
@@ -20497,6 +20578,98 @@ mod tests {
         s.set_drugs(list);
         assert!(s.drug_hits_key.is_none(), "la base a bougé");
         assert_ne!(s.drugs_rev, rev);
+    }
+
+    /// The biology's rules and the calendrier vaccinal are rule engines
+    /// over the open file's own rows: they must be answered when those
+    /// rows change, and be right the first time the file is painted.
+    #[test]
+    fn the_file_s_rule_engines_are_run_when_it_is_opened_not_when_it_is_drawn() {
+        let (mut s, _swept) = scratch_session("derived");
+        let p = s.patients[0].clone();
+        s.today = "2026-08-29".to_owned();
+        s.open_patient(p.clone());
+        // Opening the file must already have the calendar's answer: the
+        // pane that shows it no longer computes anything. A patient born
+        // in 1958 owes at least one adult booster.
+        assert!(
+            !s.vacc_due.is_empty(),
+            "le calendrier n'a pas été lu à l'ouverture"
+        );
+        // And it is the *open* file's calendar, not the one that was
+        // open before. The answer is read against the patient's age, so
+        // the file has to be set before the carnet is loaded — it used
+        // to be set after, which would compute the second patient's
+        // calendar from the first one's age.
+        let other = s.patients[1].clone();
+        s.open_patient(other.clone());
+        assert_eq!(s.viewing.as_ref().map(|v| v.id), Some(other.id));
+        let by_hand = {
+            let age = crate::db::age_on(&other.birth_date, &s.today);
+            let year = other.birth_date.get(..4).and_then(|y| y.parse().ok());
+            crate::vaccines::due_lines(age, year, &s.today, &[])
+        };
+        assert_eq!(
+            s.vacc_due
+                .iter()
+                .map(|l| l.detail.as_str())
+                .collect::<Vec<_>>(),
+            by_hand
+                .iter()
+                .map(|l| l.detail.as_str())
+                .collect::<Vec<_>>(),
+            "le calendrier affiché n'est pas celui du dossier ouvert"
+        );
+
+        // The biology: no reading, nothing to say.
+        s.open_patient(p.clone());
+        assert!(s.bio_findings.is_empty());
+        // A kaliémie at 5,4 is a deviation on its own and an alert under
+        // an IEC: the value alone must not raise it, and the value read
+        // against the treatment must.
+        s.db.add_bio_result(
+            p.id,
+            &crate::db::BioResult {
+                id: 0,
+                code: "K".to_owned(),
+                label: "Kaliémie".to_owned(),
+                value: 5.4,
+                unit: "mmol/L".to_owned(),
+                taken_on: "2026-08-20".to_owned(),
+                remark: String::new(),
+            },
+        )
+        .unwrap();
+        // Writing a value reloads the biology, which re-reads the rules.
+        s.load_biology(p.id);
+        assert!(
+            !s.bio_findings.is_empty()
+                && !s
+                    .bio_findings
+                    .iter()
+                    .any(|f| f.severity == crate::biology::Severity::Alert),
+            "5,4 sans traitement n'est pas une alerte"
+        );
+        // Now the treatment behind it. Adding one to the file goes
+        // through `reload_treatments`, which must re-read the biology.
+        let id = s.db.add_drug("Triatec").unwrap();
+        let mut ipec =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.id == id)
+                .unwrap();
+        let base = ipec.clone();
+        ipec.class = "IEC".to_owned();
+        assert!(s.db.update_drug(&ipec, &base).unwrap());
+        s.db.add_patient_drug(p.id, id).unwrap();
+        s.reload_treatments(p.id);
+        assert!(
+            s.bio_findings
+                .iter()
+                .any(|f| f.code == "K" && f.severity == crate::biology::Severity::Alert),
+            "la kaliémie sous IEC n'a pas été relue"
+        );
     }
 
     /// The year is read off the date the session already holds, and the

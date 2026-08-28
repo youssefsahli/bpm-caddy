@@ -20,8 +20,49 @@ fn fold(c: char) -> char {
 /// Score `query` as a subsequence of `target`. Higher is better; `None`
 /// means no match. Word-start and consecutive matches score extra, so
 /// initials ("jd") and prefixes rank naturally.
+///
+/// This is the hottest function in the application: a keystroke in the
+/// medicine search asks it about 850 fiches on four fields each, the
+/// codex and the dispositifs do the same on their own lists, and the
+/// tables ask it about every cell. It therefore allocates **nothing** —
+/// it walks both sides as iterators rather than collecting them into
+/// `Vec<char>` the way [`score_with_indices`] must, and stops the
+/// moment the query is exhausted instead of scanning the rest of a
+/// monograph field that can no longer change the answer.
 pub fn score(query: &str, target: &str) -> Option<i32> {
-    score_with_indices(query, target).map(|(s, _)| s)
+    let mut q = query
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .map(fold)
+        .peekable();
+    if q.peek().is_none() {
+        return Some(0);
+    }
+    let mut total = 0;
+    // The index of the previous match, so a run of consecutive letters
+    // scores, and the character just before the one being looked at, so
+    // a match at the start of a word scores.
+    let mut prev = usize::MAX;
+    let mut before: Option<char> = None;
+    for (i, c) in target.chars().map(fold).enumerate() {
+        if q.peek() == Some(&c) {
+            let word_start = before.is_none_or(|p| !p.is_alphanumeric());
+            total += 1
+                + if word_start { 3 } else { 0 }
+                + if prev != usize::MAX && i == prev + 1 {
+                    2
+                } else {
+                    0
+                };
+            prev = i;
+            q.next();
+            if q.peek().is_none() {
+                return Some(total);
+            }
+        }
+        before = Some(c);
+    }
+    None
 }
 
 /// Lowercased, accent-stripped copy of `s` — a collation key so
@@ -134,6 +175,44 @@ mod tests {
         assert_eq!(super::index_letter("5-FU"), '#');
         assert_eq!(super::index_letter(""), '#');
         assert_eq!(super::index_letter("   "), '#');
+    }
+
+    #[test]
+    fn the_fast_score_and_the_highlighting_one_never_disagree() {
+        // `score` is written a second time, without allocating, because
+        // it is asked about several thousand strings per keystroke.
+        // Two implementations of one rule drift unless something holds
+        // them together: this is that thing. Every pair below is a case
+        // that separated them at some point — an empty query, a query
+        // longer than its target, accents on both sides, a match that
+        // completes before the end of the target, and a target whose
+        // first character is not a letter.
+        let queries = [
+            "", "  ", "a", "jd", "jndp", "elq", "eliquis", "xyz", "é", "eee", "5f", "l e",
+            "lefevre", "co",
+        ];
+        let targets = [
+            "",
+            "a",
+            "Jean Dupont",
+            "Hélène Lefèvre",
+            "ÉMILE LEFÈVRE",
+            "5-FU",
+            "Eliquis",
+            "  Zovirax",
+            "acide acétylsalicylique",
+            "Co-Renitec 20 mg/12,5 mg",
+            "aaaaaaaaaa",
+        ];
+        for q in queries {
+            for t in targets {
+                assert_eq!(
+                    super::score(q, t),
+                    super::score_with_indices(q, t).map(|(s, _)| s),
+                    "score(«{q}», «{t}») diverge"
+                );
+            }
+        }
     }
 
     #[test]
