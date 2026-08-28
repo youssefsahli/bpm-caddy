@@ -14559,10 +14559,34 @@ impl App {
         if session.drug_form.is_none() {
             motif::page(ui, 720.0, |ui| {
                 ui.add_space(24.0);
-                // The two side doors go hard right on a wide page and
-                // drop to their own line on a narrow one, where they
-                // used to be drawn over the title.
-                let roomy = ui.available_width() >= 620.0;
+                // The side doors go hard right when the title line has
+                // room for all of them, and drop to a wrapped row under
+                // the subtitle when it has not.
+                //
+                // Measured, never a pixel threshold. It used to be
+                // « wider than 620 px », a test the page's own 720 px cap
+                // passes at every window size, so the five buttons were
+                // laid out right-to-left straight across « Base
+                // médicaments » — and the five together are wider than
+                // the page, so there was never a width that worked.
+                let gap = ui.spacing().item_spacing.x;
+                let doors_width: f32 = [
+                    tr("tables_button"),
+                    tr("mono_button"),
+                    tr("proto_button"),
+                    tr("codex_button"),
+                    tr("dispo_button"),
+                ]
+                .into_iter()
+                .map(|l| Self::button_width(ui, l) + gap)
+                .sum();
+                let heading = egui::TextStyle::Heading.resolve(ui.style());
+                let title_width = ui.fonts(|f| {
+                    f.layout_no_wrap(tr("drug_title").to_owned(), heading, motif::TEXT)
+                        .size()
+                        .x
+                });
+                let roomy = title_width + gap + doors_width <= ui.available_width();
                 let doors = |ui: &mut egui::Ui, session: &mut Session| {
                     if motif::button(ui, tr("tables_button")).clicked() {
                         session.show_tables = true;
@@ -14603,10 +14627,14 @@ impl App {
                         });
                     }
                 });
+                ui.label(tr("drug_subtitle"));
+                // Under the subtitle rather than between it and the
+                // title: a heading and the line that explains it belong
+                // together, and the doors read as a toolbar for the page.
                 if !roomy {
+                    ui.add_space(8.0);
                     ui.horizontal_wrapped(|ui| doors(ui, session));
                 }
-                ui.label(tr("drug_subtitle"));
                 // A base that predates the starter list (or was started by
                 // hand) shows almost nothing — point at the one-click fix.
                 if session.drugs.len() < db::STARTER_DRUG_COUNT / 4 {

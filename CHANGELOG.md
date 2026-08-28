@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Les cinq portes de la base ne sont plus posées en travers de « Base
+  médicaments »** : elles ne partagent la ligne du titre que si elles y
+  tiennent, mesurées et non devinées. Le seuil était « plus large que
+  620 px », un test que la page — plafonnée à 720 — passait à toutes les
+  tailles de fenêtre, alors que les cinq boutons ensemble sont plus
+  larges que la page : aucune largeur ne marchait. Sur leur propre
+  ligne, elles passent maintenant sous le sous-titre, qui reste collé au
+  titre qu'il explique.
+
 ## [0.106.0] - 2026-08-28
 
 ### Changed
