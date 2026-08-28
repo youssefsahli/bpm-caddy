@@ -8,28 +8,49 @@
 
 use eframe::egui::{self, Color32, Stroke, Vec2};
 
-use crate::{bevel, ACCENT, BG_DARK, BG_LIGHT, TEXT, TEXT_DIM, TEXT_FAINT, TROUGH};
+use crate::bevel;
 
 /// Gridlines inside a trough: light enough to read numbers through.
-const GRID: Color32 = Color32::from_rgb(0xa4, 0xa8, 0xba);
+///
+/// Mixed from the theme rather than fixed — a blue-grey grid drawn on
+/// the HP VUE green reads as a stain, not as a rule.
+fn grid_color() -> Color32 {
+    crate::trough().lerp_to_gamma(crate::bg_dark(), 0.25)
+}
+
+/// How many colours the categorical ramp has.
+pub const SERIES_LEN: usize = 8;
 
 /// The categorical ramp: distinct at a glance on the Motif grey, and
-/// ordered so the first two are the ones every chart uses (the accent
-/// blue for what is done, the shadow grey for what is not).
-pub const SERIES: [Color32; 8] = [
-    ACCENT,
-    Color32::from_rgb(0x6b, 0x70, 0x82),
-    Color32::from_rgb(0x2f, 0x6b, 0x5c),
-    Color32::from_rgb(0x8b, 0x1a, 0x1a),
-    Color32::from_rgb(0x7a, 0x5c, 0x1f),
-    Color32::from_rgb(0x54, 0x3d, 0x73),
-    Color32::from_rgb(0x1f, 0x5c, 0x7a),
-    Color32::from_rgb(0x6e, 0x3d, 0x2a),
-];
+/// ordered so the first two are the ones every chart uses — the theme's
+/// own accent for what is done, a shadow grey for what is not.
+///
+/// A function and no longer a constant: the first colour follows the
+/// theme, so a chart on the HP VUE green does not go on drawing its
+/// first series in the Motif blue. The other seven are data colours,
+/// chosen to stay apart from each other and readable on every one of the
+/// palettes; they do not move.
+pub fn series() -> [Color32; SERIES_LEN] {
+    [
+        crate::accent(),
+        Color32::from_rgb(0x6b, 0x70, 0x82),
+        Color32::from_rgb(0x2f, 0x6b, 0x5c),
+        Color32::from_rgb(0x8b, 0x1a, 0x1a),
+        Color32::from_rgb(0x7a, 0x5c, 0x1f),
+        Color32::from_rgb(0x54, 0x3d, 0x73),
+        Color32::from_rgb(0x1f, 0x5c, 0x7a),
+        Color32::from_rgb(0x6e, 0x3d, 0x2a),
+    ]
+}
+
+/// One colour of the ramp, wrapping round.
+pub fn series_color(i: usize) -> Color32 {
+    series()[i % SERIES_LEN]
+}
 
 /// Sink `rect` into a trough and return the plotting interior.
 pub fn frame(ui: &egui::Ui, rect: egui::Rect) -> egui::Rect {
-    ui.painter().rect_filled(rect, 0.0, TROUGH);
+    ui.painter().rect_filled(rect, 0.0, crate::trough());
     bevel(ui.painter(), rect, false);
     rect.shrink(4.0)
 }
@@ -66,7 +87,7 @@ fn grid(
         .map(|i| {
             let v = max * i as f64 / steps as f64;
             ui.painter()
-                .layout_no_wrap(fmt(v), font.clone(), TEXT_FAINT)
+                .layout_no_wrap(fmt(v), font.clone(), crate::text_faint())
                 .size()
                 .x
         })
@@ -78,14 +99,21 @@ fn grid(
         let y = area.bottom() - (area.height() - 16.0) * (i as f32 / steps as f32);
         ui.painter().line_segment(
             [egui::pos2(area.left(), y), egui::pos2(area.right(), y)],
-            Stroke::new(1.0_f32, if i == 0 { BG_DARK } else { GRID }),
+            Stroke::new(
+                1.0_f32,
+                if i == 0 {
+                    crate::bg_dark()
+                } else {
+                    grid_color()
+                },
+            ),
         );
         ui.painter().text(
             egui::pos2(area.left() - 4.0, y),
             egui::Align2::RIGHT_CENTER,
             fmt(v),
             font.clone(),
-            TEXT_FAINT,
+            crate::text_faint(),
         );
     }
     area
@@ -145,14 +173,14 @@ pub fn bars(
                 egui::pos2(left, floor - h),
                 egui::pos2(left + bar_w - 1.0, floor),
             );
-            let color = colors.get(k).copied().unwrap_or(ACCENT);
+            let color = colors.get(k).copied().unwrap_or(crate::accent());
             ui.painter().rect_filled(bar, 0.0, color);
             if h > 3.0 {
                 // A one-pixel highlight on the top edge: the bars read
                 // as solid blocks rather than flat fills.
                 ui.painter().line_segment(
                     [bar.left_top(), bar.right_top()],
-                    Stroke::new(1.0_f32, BG_LIGHT.gamma_multiply(0.5)),
+                    Stroke::new(1.0_f32, crate::bg_light().gamma_multiply(0.5)),
                 );
             }
         }
@@ -165,7 +193,11 @@ pub fn bars(
                 egui::Align2::CENTER_CENTER,
                 g.label,
                 egui::FontId::proportional(9.5),
-                if over { TEXT } else { TEXT_DIM },
+                if over {
+                    crate::text()
+                } else {
+                    crate::text_dim()
+                },
             );
         }
     }
@@ -211,14 +243,14 @@ pub fn hbars(
         let over = pointer.is_some_and(|p| line.contains(p));
         if over {
             hovered = Some(i);
-            ui.painter().rect_filled(line, 0.0, crate::BG_HOVER);
+            ui.painter().rect_filled(line, 0.0, crate::bg_hover());
         }
         ui.painter().text(
             egui::pos2(rect.left() + 2.0, line.center().y),
             egui::Align2::LEFT_CENTER,
             r.label,
             font.clone(),
-            TEXT,
+            crate::text(),
         );
         let trough = egui::Rect::from_min_max(
             egui::pos2(rect.left() + label_w, top + 3.0),
@@ -227,7 +259,7 @@ pub fn hbars(
         if trough.width() < 4.0 {
             continue;
         }
-        ui.painter().rect_filled(trough, 0.0, TROUGH);
+        ui.painter().rect_filled(trough, 0.0, crate::trough());
         bevel(ui.painter(), trough, false);
         if r.value > 0.0 {
             let mut fill = trough.shrink(3.0);
@@ -239,7 +271,7 @@ pub fn hbars(
             egui::Align2::RIGHT_CENTER,
             fmt(r.value),
             font.clone(),
-            TEXT,
+            crate::text(),
         );
     }
     hovered
@@ -250,7 +282,7 @@ pub fn hbars(
 /// (one pixel) so nothing silently disappears.
 pub fn stacked(ui: &egui::Ui, rect: egui::Rect, parts: &[(f64, Color32)]) {
     let total: f64 = parts.iter().map(|(v, _)| *v).sum();
-    ui.painter().rect_filled(rect, 0.0, TROUGH);
+    ui.painter().rect_filled(rect, 0.0, crate::trough());
     bevel(ui.painter(), rect, false);
     if total <= 0.0 {
         return;
@@ -316,7 +348,7 @@ pub fn sparkline(ui: &egui::Ui, rect: egui::Rect, values: &[f64], color: Color32
 /// A segmented meter — the Motif way to show a fraction of a quota.
 /// `warn` above 1.0 turns the overflow segments red.
 pub fn meter(ui: &egui::Ui, rect: egui::Rect, fraction: f32, color: Color32) {
-    ui.painter().rect_filled(rect, 0.0, TROUGH);
+    ui.painter().rect_filled(rect, 0.0, crate::trough());
     bevel(ui.painter(), rect, false);
     let inner = rect.shrink(3.0);
     let cells = ((inner.width() / 7.0).floor() as usize).clamp(4, 40);
@@ -335,7 +367,7 @@ pub fn meter(ui: &egui::Ui, rect: egui::Rect, fraction: f32, color: Color32) {
     if fraction > 1.0 {
         // Over quota: a hard red cap on the right edge.
         let cap = egui::Rect::from_min_max(egui::pos2(inner.right() - 4.0, inner.top()), inner.max);
-        ui.painter().rect_filled(cap, 0.0, crate::ALERT);
+        ui.painter().rect_filled(cap, 0.0, crate::alert());
     }
 }
 
@@ -355,7 +387,7 @@ pub fn pips(ui: &egui::Ui, rect: egui::Rect, filled: usize, total: usize, color:
             ui.painter().rect_filled(cell, 0.0, color);
             bevel(ui.painter(), cell, true);
         } else {
-            ui.painter().rect_filled(cell, 0.0, TROUGH);
+            ui.painter().rect_filled(cell, 0.0, crate::trough());
             bevel(ui.painter(), cell, false);
         }
     }
@@ -367,7 +399,7 @@ pub fn pips(ui: &egui::Ui, rect: egui::Rect, filled: usize, total: usize, color:
             egui::Align2::LEFT_CENTER,
             format!("+{}", filled - total),
             egui::FontId::proportional(10.0),
-            crate::ALERT,
+            crate::alert(),
         );
     }
 }
@@ -396,7 +428,7 @@ pub fn heat_strip(
         );
         let t = (*v / max) as f32;
         let fill = if *v <= 0.0 {
-            TROUGH
+            crate::trough()
         } else {
             color.gamma_multiply(0.25 + 0.75 * t)
         };
@@ -404,7 +436,7 @@ pub fn heat_strip(
         if pointer.is_some_and(|p| cell.contains(p)) {
             hovered = Some(i);
             ui.painter()
-                .rect_stroke(cell, 0.0, Stroke::new(1.0_f32, TEXT));
+                .rect_stroke(cell, 0.0, Stroke::new(1.0_f32, crate::text()));
         }
     }
     hovered
@@ -423,7 +455,7 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
                         f.layout_no_wrap(
                             (*label).to_owned(),
                             egui::FontId::proportional(11.0),
-                            TEXT,
+                            crate::text(),
                         )
                         .size()
                         .x
@@ -438,13 +470,13 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
             );
             ui.painter().rect_filled(swatch, 0.0, *color);
             ui.painter()
-                .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, BG_DARK));
+                .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, crate::bg_dark()));
             ui.painter().text(
                 egui::pos2(rect.left() + 14.0, rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 *label,
                 egui::FontId::proportional(11.0),
-                TEXT_DIM,
+                crate::text_dim(),
             );
         }
     });
