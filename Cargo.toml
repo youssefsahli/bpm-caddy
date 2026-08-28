@@ -26,6 +26,12 @@ rfd = "0.15"
 # Validates a chosen font file before egui is asked to parse it.
 ab_glyph = "0.2"
 lopdf = { version = "0.44.0", default-features = false }
+# Only ever used by Options › À propos, on a button press, on a worker
+# thread: the application asks GitHub which release is the latest and
+# says whether this copy is behind. Nothing else reaches the network —
+# every other « … » button hands a URL to the browser and stops there.
+ureq = { version = "2", features = ["json"] }
+serde_json = "1"
 
 [profile.release]
 lto = true

@@ -30,6 +30,21 @@ pub fn sort_key(s: &str) -> String {
     s.chars().map(fold).collect()
 }
 
+/// The letter `s` files under in an A–Z index: the first letter,
+/// accent-folded and capitalised, or `#` for a name that starts with a
+/// digit or a symbol.
+///
+/// Folding matters here: « Élugan » belongs under E with the rest of
+/// its neighbours, not in a section of its own between Z and nothing.
+pub fn index_letter(s: &str) -> char {
+    s.chars()
+        .find(|c| !c.is_whitespace())
+        .map(fold)
+        .filter(|c| c.is_alphabetic())
+        .map(|c| c.to_ascii_uppercase())
+        .unwrap_or('#')
+}
+
 /// Like [`score`], also returning the char indices of `target` that
 /// matched (ascending), so the UI can highlight them.
 pub fn score_with_indices(query: &str, target: &str) -> Option<(i32, Vec<usize>)> {
@@ -105,6 +120,20 @@ mod tests {
         assert_eq!(super::sort_key("Lefèvre"), "lefevre");
         assert!(super::sort_key("Lefèvre") < super::sort_key("Martin"));
         assert!(super::sort_key("Émile") < super::sort_key("Zoé"));
+    }
+
+    #[test]
+    fn the_index_letter_folds_accents_and_names_the_rest() {
+        assert_eq!(super::index_letter("Aclasta"), 'A');
+        assert_eq!(super::index_letter("aclasta"), 'A');
+        // Folded, so an accented brand files with its neighbours
+        // instead of in a section of its own.
+        assert_eq!(super::index_letter("Élugan"), 'E');
+        assert_eq!(super::index_letter("  Zovirax"), 'Z');
+        // Everything that is not a letter shares one drawer.
+        assert_eq!(super::index_letter("5-FU"), '#');
+        assert_eq!(super::index_letter(""), '#');
+        assert_eq!(super::index_letter("   "), '#');
     }
 
     #[test]

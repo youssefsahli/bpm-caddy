@@ -473,6 +473,72 @@ pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui
     response
 }
 
+/// [`list_row`] with a second, quieter half: a name and what it *is*,
+/// on one line — « Aclasta  acide zolédronique », the second in italics
+/// and dimmed.
+///
+/// The two are laid out as one galley so the ellipsis falls where the
+/// panel edge is: the secondary half is what gets eaten as the dock
+/// narrows, and the name it belongs to stays whole. `indent` is the room
+/// left on the left for a tree's disclosure column.
+pub fn list_row_pair(
+    ui: &mut egui::Ui,
+    primary: &str,
+    secondary: &str,
+    selected: bool,
+    indent: f32,
+) -> egui::Response {
+    let width = ui.available_width();
+    let height = (ui.spacing().interact_size.y + 2.0).max(18.0);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        if selected {
+            ui.painter().rect_filled(rect, 0.0, ACCENT);
+        } else if response.hovered() {
+            ui.painter().rect_filled(rect, 0.0, BG_HOVER);
+        }
+        let color = if selected { Color32::WHITE } else { TEXT };
+        // On the selection blue, a dimmed grey is unreadable: the quiet
+        // half stays white and leans on the italics alone.
+        let dim = if selected { Color32::WHITE } else { TEXT_FAINT };
+        let mut job = egui::text::LayoutJob::default();
+        job.append(
+            primary,
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::proportional(14.0),
+                color,
+                ..Default::default()
+            },
+        );
+        if !secondary.is_empty() {
+            job.append(
+                secondary,
+                8.0,
+                egui::TextFormat {
+                    font_id: egui::FontId::proportional(12.0),
+                    color: dim,
+                    italics: true,
+                    ..Default::default()
+                },
+            );
+        }
+        job.wrap = egui::text::TextWrapping {
+            max_width: rect.width() - 12.0 - indent,
+            max_rows: 1,
+            break_anywhere: false,
+            overflow_character: Some('…'),
+        };
+        let galley = ui.fonts(|f| f.layout_job(job));
+        let pos = egui::pos2(
+            rect.left() + 8.0 + indent,
+            rect.center().y - galley.size().y / 2.0,
+        );
+        ui.painter().galley(pos, galley, color);
+    }
+    response
+}
+
 /// [`list_row`] variant taking a prebuilt layout job, for rows with
 /// per-character styling (fuzzy-match highlighting).
 pub fn list_row_job(

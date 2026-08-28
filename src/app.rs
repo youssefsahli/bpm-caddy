@@ -1015,6 +1015,38 @@ enum MainView {
     VaccineMap,
 }
 
+impl MainView {
+    /// The name this view is written down under in `layout.toml`, so a
+    /// session reopens where the last one was left.
+    ///
+    /// Stable strings and not a number: a view inserted in the middle of
+    /// the enum would silently renumber every record ever written, and
+    /// the post would reopen on the wrong screen with nothing to explain
+    /// it. A name this version does not know simply lands on the search.
+    fn as_key(self) -> &'static str {
+        match self {
+            MainView::Search => "search",
+            MainView::Dashboard => "dashboard",
+            MainView::Drugs => "drugs",
+            MainView::Agenda => "agenda",
+            MainView::Transmissions => "transmissions",
+            MainView::VaccineMap => "map",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<MainView> {
+        match key {
+            "search" => Some(MainView::Search),
+            "dashboard" => Some(MainView::Dashboard),
+            "drugs" => Some(MainView::Drugs),
+            "agenda" => Some(MainView::Agenda),
+            "transmissions" => Some(MainView::Transmissions),
+            "map" => Some(MainView::VaccineMap),
+            _ => None,
+        }
+    }
+}
+
 /// One item open in the workspace notebook.
 ///
 /// A tab is a *bookmark of a destination*, not a copy of the view's
@@ -1042,6 +1074,19 @@ impl WorkTab {
     fn closable(&self) -> bool {
         matches!(self, WorkTab::Patient(_) | WorkTab::Drug(_))
     }
+}
+
+/// One row of the drug navigator's A–Z tree: a drawer with the number
+/// of fiches in it, or one of those fiches.
+///
+/// A fiche is its *index*, never a copy: the tree is rebuilt on every
+/// frame the dock paints, and 813 cloned monographs a frame is a cost
+/// nobody sees but everybody feels. In the search list the index is
+/// into the match list; under a letter, into the base itself.
+#[derive(Clone, Copy)]
+enum NavDrugRow {
+    Letter(char, usize),
+    Card(usize),
 }
 
 /// Where a jump-box result goes.
@@ -1342,6 +1387,9 @@ struct Session {
     drugs: Vec<Drug>,
     drug_query: String,
     drug_selected: usize,
+    /// Which drawers of the navigator's A–Z tree are open. The letter of
+    /// the card being read is always one of them, whatever is in here.
+    nav_letters: std::collections::HashSet<char>,
     drug_form: Option<Drug>,
     /// A card opens as a monograph to read; "Modifier" switches to the
     /// editable form.
@@ -1617,6 +1665,7 @@ impl Session {
             drugs,
             drug_query: String::new(),
             drug_selected: 0,
+            nav_letters: std::collections::HashSet::new(),
             drug_form: None,
             drug_reading: true,
             class_note: String::new(),
@@ -2077,10 +2126,24 @@ impl Session {
         self.view = MainView::Drugs;
         self.drug_form = None;
         self.drug_base = None;
+        self.close_drug_lists();
+    }
+
+    /// Put the drug view's carved lists away: the tables, the codex, the
+    /// dispositifs, the protocols, the full-text search, the
+    /// calculators.
+    ///
+    /// Each of those takes the whole central panel, so with one of them
+    /// open a card asked for elsewhere — a name clicked in the
+    /// navigator, a treatment followed from a file, a tab reactivated —
+    /// was opened behind it and nothing on screen moved. Asking for a
+    /// fiche is asking to see it.
+    fn close_drug_lists(&mut self) {
         self.show_tables = false;
         self.show_codex = false;
         self.show_protocols = false;
         self.show_dispositifs = false;
+        self.show_mono = false;
         self.codex_open = None;
         self.dispo_open = None;
         self.protocol_open = None;
@@ -2167,6 +2230,7 @@ impl Session {
     /// Open a drug card: load its baseline for CAS and the patients
     /// currently on it (recall / alert lookup).
     fn open_drug_card(&mut self, d: Drug) {
+        self.close_drug_lists();
         self.drug_patients = self.db.patients_for_drug(d.id).unwrap_or_default();
         self.drug_notes = self
             .db
@@ -3798,6 +3862,13 @@ pub struct App {
     tpl_editor: Option<TplEditor>,
     /// Global options editor, when open.
     options: Option<OptionsEditor>,
+    /// A base found rather than configured, on a first launch. Kept so
+    /// the lock screen can say so before a password is typed into it.
+    db_adopted: Option<std::path::PathBuf>,
+    /// A version check in flight (Options › À propos), and what the last
+    /// one answered. `true` marks a failure.
+    update_check: Option<std::sync::mpsc::Receiver<crate::release::Checked>>,
+    update_note: Option<(bool, String)>,
 }
 
 /// In-app editor for `config.toml`.
@@ -3815,10 +3886,13 @@ enum OptionsPage {
     /// The rental forfaits: what the officine's own LPP line pays for a
     /// nébuliseur, a TENS, a lit médicalisé.
     Locations,
+    /// Which version this is, what the base holds, and whether GitHub
+    /// has a newer release.
+    About,
 }
 
 impl OptionsPage {
-    const ALL: [OptionsPage; 7] = [
+    const ALL: [OptionsPage; 8] = [
         Self::Pharmacy,
         Self::Mentions,
         Self::Ui,
@@ -3826,6 +3900,7 @@ impl OptionsPage {
         Self::Fees,
         Self::Rules,
         Self::Locations,
+        Self::About,
     ];
     /// The tab's own short label: the section headings inside run to a
     /// full sentence ("Règles (actes / année d'accompagnement…)"), which
@@ -3839,6 +3914,7 @@ impl OptionsPage {
             Self::Fees => tr("opts_tab_fees"),
             Self::Rules => tr("opts_tab_rules"),
             Self::Locations => tr("opts_tab_locations"),
+            Self::About => tr("opts_tab_about"),
         }
     }
 }
@@ -3881,13 +3957,58 @@ struct PwChangeForm {
     error: Option<String>,
 }
 
+/// Reopen on the view the last session was left on.
+///
+/// Each one has to have what it reads loaded before it is shown — the
+/// dashboard its figures, the transmissions their page — exactly as the
+/// toolbar keys do it; the search is the fallback and needs nothing. A
+/// name this version does not know is not an error: the view it named
+/// has been renamed or removed, and the search is where you start.
+fn restore_view(session: &mut Session, key: &str) {
+    let Some(view) = MainView::from_key(key) else {
+        return;
+    };
+    match view {
+        MainView::Dashboard => session.refresh_dashboard(),
+        MainView::Transmissions => {
+            session.trans_day = String::new();
+            session.load_transmissions();
+        }
+        _ => {}
+    }
+    session.view = view;
+}
+
 impl App {
     pub fn new() -> Self {
-        let config = Config::load();
+        let mut config = Config::load();
+        // A first launch with nothing written down and nothing where the
+        // default would be: look where an installed copy actually puts
+        // its base — the launcher's directory, or beside a portable
+        // executable — and adopt what is found, in writing.
+        //
+        // Without this the operator is shown a lock screen for a base
+        // that does not exist, types the master password, and gets a
+        // brand-new empty file next to the pharmacy's real one.
+        let mut adopted_db: Option<std::path::PathBuf> = None;
+        if config.database.path.is_none()
+            && std::env::var("BPM_CADDY_DB").is_err()
+            && !config.db_path().exists()
+        {
+            if let Some(found) = db::discover_existing() {
+                config.database.path = Some(found.clone());
+                let _ = config.save();
+                adopted_db = Some(found);
+            }
+        }
+        let config = config;
         let doc_text = std::fs::read_to_string(config.team_doc_path())
             .unwrap_or_else(|_| tr("team_doc_template").to_owned());
-        let show_docs = config.ui.show_docs_on_start;
-        let show_nav = config.ui.show_nav_on_start;
+        // The shape the post was last left in wins over the start-up
+        // flags; the flags are what a first launch has to go on.
+        let layout = crate::config::Layout::load();
+        let show_docs = layout.docs_open.unwrap_or(config.ui.show_docs_on_start);
+        let show_nav = layout.nav_open.unwrap_or(config.ui.show_nav_on_start);
 
         // Silent unlock when the OS credential manager holds the password.
         let mut state = State::Locked {
@@ -4181,7 +4302,10 @@ impl App {
                             }
                             session.view = MainView::Drugs;
                         }
-                        _ => {}
+                        // No hook: reopen where the last session was
+                        // left. The hooks are for screenshots and the
+                        // e2e run, and they must keep the last word.
+                        _ => restore_view(&mut session, &layout.view),
                     }
                     state = State::Unlocked(Box::new(session));
                     remember_password = true;
@@ -4206,9 +4330,16 @@ impl App {
         } else {
             None
         };
-        let options = if start_view == "options" {
+        // « about » is the same dialog on its last page: the smoke run
+        // and the screenshots need a way in, and the page is the one
+        // that reads the base and starts a thread.
+        let options = if start_view == "options" || start_view == "about" {
             Some(OptionsEditor {
-                page: OptionsPage::Pharmacy,
+                page: if start_view == "about" {
+                    OptionsPage::About
+                } else {
+                    OptionsPage::Pharmacy
+                },
                 cfg: config.clone(),
                 db_path_text: String::new(),
                 message: None,
@@ -4217,7 +4348,13 @@ impl App {
         } else {
             None
         };
-        let side_pane = config.ui.side_pane.clone();
+        // The pane's content is remembered too, so a post left on the
+        // carnet does not open on the team documentation every morning.
+        let side_pane = if layout.side_pane.is_empty() {
+            config.ui.side_pane.clone()
+        } else {
+            layout.side_pane.clone()
+        };
         Self {
             state,
             operator: config.ui.operator.clone(),
@@ -4228,8 +4365,8 @@ impl App {
             show_nav,
             show_keys: start_view == "keys",
             focus_nav: false,
-            layout: crate::config::Layout::load(),
-            layout_saved: crate::config::Layout::load(),
+            layout_saved: layout.clone(),
+            layout,
             layout_changed: Instant::now(),
             side_pane,
             doc_base: doc_text.clone(),
@@ -4248,6 +4385,9 @@ impl App {
             op_notes_for: None,
             op_note_text: String::new(),
             op_note_confirm: None,
+            db_adopted: adopted_db,
+            update_check: None,
+            update_note: None,
         }
     }
 
@@ -4545,6 +4685,16 @@ impl App {
 
     /// Drugs: the reference base's index, so a card can be compared with
     /// the next one without going back through the search screen.
+    ///
+    /// Two shapes, and the search box decides which. Typed into, it is
+    /// the flat list of best matches it always was. Empty, it is an
+    /// **A–Z tree**: 813 fiches are not a list anybody scrolls, but they
+    /// are twenty-seven drawers anybody can open, and the base is
+    /// browsable again for someone who knows the letter and not the
+    /// name. Either way a row reads « Aclasta *acide zolédronique* » —
+    /// the brand is what is on the box, the DCI is what the question was
+    /// actually about, and the second is the half that gets elided when
+    /// the dock is dragged narrow.
     fn nav_drugs(ui: &mut egui::Ui, session: &mut Session, focus: bool) {
         motif::section(ui, tr("nav_drugs"));
         ui.add_space(4.0);
@@ -4555,12 +4705,38 @@ impl App {
         if field.changed() {
             session.drug_selected = 0;
         }
-        let results = session.drug_results(60);
         let open = session.drug_form.as_ref().map(|d| d.id);
-        let mut clicked: Option<Drug> = None;
-        // Same keys as the patient dock: type, arrow down, Enter.
-        if field.has_focus() && !results.is_empty() {
-            session.drug_selected = session.drug_selected.min(results.len() - 1);
+        let searching = !session.drug_query.trim().is_empty();
+        // Searching, the fiches shown are the matches; browsing, they
+        // are the base itself. Either way a row holds an index into
+        // this list and never a copy of a fiche.
+        let matches: Vec<Drug> = if searching {
+            session.drug_results(60)
+        } else {
+            Vec::new()
+        };
+        let shown: &[Drug] = if searching { &matches } else { &session.drugs };
+        // The rows actually on screen, folded letters excluded: the
+        // keyboard walks what the eye walks, and nothing else.
+        let rows: Vec<NavDrugRow> = if searching {
+            (0..matches.len()).map(NavDrugRow::Card).collect()
+        } else {
+            Self::drug_tree_rows(session)
+        };
+        // Searching, the count is what matched. Browsing, it is what the
+        // base holds — counting the *unfolded* rows said « 0 résultat »
+        // over a tree of 813 fiches.
+        let count = if searching {
+            matches.len()
+        } else {
+            session.drugs.len()
+        };
+        let mut clicked: Option<usize> = None;
+        let mut toggled: Option<char> = None;
+        // Same keys as the patient dock: type, arrow down, Enter. On a
+        // letter, Enter opens the drawer rather than a fiche.
+        if field.has_focus() && !rows.is_empty() {
+            session.drug_selected = session.drug_selected.min(rows.len() - 1);
             let (up, down, enter) = ui.input(|i| {
                 (
                     i.key_pressed(egui::Key::ArrowUp),
@@ -4569,50 +4745,125 @@ impl App {
                 )
             });
             if down {
-                session.drug_selected = (session.drug_selected + 1).min(results.len() - 1);
+                session.drug_selected = (session.drug_selected + 1).min(rows.len() - 1);
             }
             if up {
                 session.drug_selected = session.drug_selected.saturating_sub(1);
             }
             if enter {
-                clicked = Some(results[session.drug_selected].clone());
+                match rows[session.drug_selected] {
+                    NavDrugRow::Card(k) => clicked = Some(k),
+                    NavDrugRow::Letter(c, _) => toggled = Some(c),
+                }
             }
         }
         let cursor = field.has_focus().then_some(session.drug_selected);
         ui.label(
-            egui::RichText::new(trf("nav_count", results.len()))
+            egui::RichText::new(trf("nav_count", count))
                 .size(10.5)
                 .color(motif::TEXT_FAINT),
         );
         ui.add_space(3.0);
+        let unfolded = &session.nav_letters;
         Self::nav_list(ui, |ui| {
-            for (i, d) in results.iter().enumerate() {
-                let mut hover = d.dci.clone();
-                if !d.class.is_empty() {
-                    if !hover.is_empty() {
-                        hover.push_str(" — ");
+            for (i, row) in rows.iter().enumerate() {
+                match *row {
+                    NavDrugRow::Letter(c, n) => {
+                        // ASCII for the disclosure mark, deliberately:
+                        // the embedded family has no ▸ and drew a tofu
+                        // box in front of every letter of the alphabet.
+                        let resp = motif::list_row_pair(
+                            ui,
+                            &format!("{} {c}", if unfolded.contains(&c) { '-' } else { '+' }),
+                            &trf("nav_letter_count", n),
+                            cursor == Some(i),
+                            0.0,
+                        );
+                        if cursor == Some(i) {
+                            resp.scroll_to_me(None);
+                        }
+                        if resp.clicked() {
+                            toggled = Some(c);
+                        }
                     }
-                    hover.push_str(&d.class);
-                }
-                let selected = cursor == Some(i) || (cursor.is_none() && open == Some(d.id));
-                let row = motif::list_row(ui, egui::RichText::new(d.name.trim()), selected);
-                let row = if hover.is_empty() {
-                    row
-                } else {
-                    row.on_hover_text(hover)
-                };
-                if cursor == Some(i) {
-                    row.scroll_to_me(None);
-                }
-                if row.clicked() {
-                    clicked = Some(d.clone());
+                    NavDrugRow::Card(k) => {
+                        let Some(d) = shown.get(k) else { continue };
+                        let selected =
+                            cursor == Some(i) || (cursor.is_none() && open == Some(d.id));
+                        // Under a letter the fiches are indented; in the
+                        // flat search list they are not.
+                        let resp = motif::list_row_pair(
+                            ui,
+                            d.name.trim(),
+                            d.dci.trim(),
+                            selected,
+                            if searching { 0.0 } else { 14.0 },
+                        );
+                        // The class is the half the row has no room for,
+                        // and the one the hover is for. Built only when
+                        // the row is actually hovered.
+                        let resp = if d.class.is_empty() {
+                            resp
+                        } else if d.dci.is_empty() {
+                            resp.on_hover_text(&d.class)
+                        } else {
+                            resp.on_hover_text(format!("{} — {}", d.dci, d.class))
+                        };
+                        if cursor == Some(i) {
+                            resp.scroll_to_me(None);
+                        }
+                        if resp.clicked() {
+                            clicked = Some(k);
+                        }
+                    }
                 }
             }
         });
-        if let Some(d) = clicked {
-            session.open_drug_card(d);
-            session.error = None;
+        if let Some(c) = toggled {
+            if !session.nav_letters.remove(&c) {
+                session.nav_letters.insert(c);
+            }
         }
+        if let Some(k) = clicked {
+            let picked = if searching {
+                matches.get(k).cloned()
+            } else {
+                session.drugs.get(k).cloned()
+            };
+            if let Some(d) = picked {
+                session.open_drug_card(d);
+                session.error = None;
+            }
+        }
+    }
+
+    /// The A–Z tree's visible rows: every letter the base uses, and
+    /// under each unfolded one its fiches in order.
+    ///
+    /// The letter of the open card is unfolded on its own: coming back
+    /// to the navigator from a fiche and finding twenty-seven closed
+    /// drawers, with no sign of which one you are standing in, is worse
+    /// than no tree at all.
+    fn drug_tree_rows(session: &Session) -> Vec<NavDrugRow> {
+        let open_letter = session
+            .drug_form
+            .as_ref()
+            .map(|d| fuzzy::index_letter(&d.name));
+        let mut rows = Vec::new();
+        let mut i = 0;
+        while i < session.drugs.len() {
+            let c = fuzzy::index_letter(&session.drugs[i].name);
+            let mut j = i;
+            while j < session.drugs.len() && fuzzy::index_letter(&session.drugs[j].name) == c {
+                j += 1;
+            }
+            rows.push(NavDrugRow::Letter(c, j - i));
+            if session.nav_letters.contains(&c) || open_letter == Some(c) {
+                rows.extend((i..j).map(NavDrugRow::Card));
+            }
+            i = j;
+        }
+        rows
     }
 
     /// Agenda: a month at a glance, and the queue of rendez-vous.
@@ -5265,6 +5516,19 @@ impl App {
                 egui::FontId::proportional(11.0),
                 motif::TEXT_DIM,
             );
+            // And when that path was not configured but *found*, say so
+            // in as many words: a base adopted silently is a base
+            // nobody checks, and the one thing worth checking is that it
+            // is the pharmacy's and not a stray copy.
+            if self.db_adopted.is_some() {
+                ui.painter().text(
+                    egui::pos2(screen.center().x, box_rect.bottom() + 38.0),
+                    egui::Align2::CENTER_CENTER,
+                    elide(ui, tr("lock_db_found"), screen.width() - 40.0, 11.0),
+                    egui::FontId::proportional(11.0),
+                    motif::ALERT,
+                );
+            }
         });
 
         self.remember_password = remember;
@@ -5276,12 +5540,15 @@ impl App {
                     s.refresh_dashboard();
                     s
                 }) {
-                Ok(session) => {
+                Ok(mut session) => {
                     spawn_daily_backup(
                         self.config.db_path(),
                         pw.clone(),
                         self.config.database.backups_keep,
                     );
+                    // Unlocking after the auto-lock, or first thing in
+                    // the morning: reopen the view the post was left on.
+                    restore_view(&mut session, &self.layout.view);
                     self.state = State::Unlocked(Box::new(session));
                     if let Some(entry) = keyring_entry() {
                         if self.remember_password {
@@ -6330,7 +6597,13 @@ impl App {
             let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
             let table = motif::well(ui, parts[0]);
             motif::inside(ui, table, |ui| {
-                egui::ScrollArea::vertical()
+                // Both ways. Correcting a line swaps its six columns for
+                // six fields plus two buttons, and that row is wider
+                // than the pane as soon as a dock is open: with a
+                // vertical bar alone the vaccine's name was cut off the
+                // left of the field and the buttons off the right, with
+                // no way to reach either.
+                egui::ScrollArea::both()
                     .id_salt("carnet_rows")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -6721,13 +6994,17 @@ impl App {
             // the results themselves are reduced to a title — at
             // 1024x700 with both docks open there are barely 280 px
             // here, and the panes share what there is.
+            // In lines, not pixels: at « échelle du texte » 1,25 a
+            // 240 px reserve for the results is barely the table's
+            // heading and its form, and the analyte chooser went under
+            // the fold. The results keep twelve of their own lines
+            // before the band takes any, and the band's floor is five —
+            // a table showing its column headings and a sliver of one
+            // row is worse than a reading scrolled by a line.
+            let line = ui.text_style_height(&egui::TextStyle::Body);
             let band = (work.height() * 0.46)
-                .clamp(140.0, 360.0)
-                // The results keep 240 px before the band takes any,
-                // and the band's own floor is 90: a table showing its
-                // column headings and a sliver of one row is worse than
-                // a reading the operator has to scroll a line for.
-                .min((work.height() - 240.0).max(90.0));
+                .clamp(line * 7.0, line * 18.0)
+                .min((work.height() - line * 12.0).max(line * 5.0));
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -6821,22 +7098,35 @@ impl App {
                         add = true;
                     }
                     let f = forfaits[session.loc_pick];
-                    ui.label(
-                        egui::RichText::new(trn(
-                            "loc_forfait_line",
-                            &[
-                                &crate::codex::format_quantity(f.fee),
-                                &f.period.label(),
-                                &if f.max_periods == 0 {
-                                    tr("loc_no_cap").to_owned()
-                                } else {
-                                    trf("loc_cap", f.max_periods.to_string())
-                                },
-                            ],
-                        ))
-                        .size(11.0)
-                        .color(motif::TEXT_DIM),
-                    );
+                    // The catalogue ships named and priced at nothing.
+                    // A line still at zero says so in as many words:
+                    // « 0 € par semaine » reads like a tarif the
+                    // application decided on, which is exactly what it
+                    // must never look like.
+                    if f.fee == 0.0 {
+                        ui.label(
+                            egui::RichText::new(tr("loc_fee_todo"))
+                                .size(11.0)
+                                .color(motif::ALERT),
+                        );
+                    } else {
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "loc_forfait_line",
+                                &[
+                                    &crate::codex::format_quantity(f.fee),
+                                    &f.period.label(),
+                                    &if f.max_periods == 0 {
+                                        tr("loc_no_cap").to_owned()
+                                    } else {
+                                        trf("loc_cap", f.max_periods.to_string())
+                                    },
+                                ],
+                            ))
+                            .size(11.0)
+                            .color(motif::TEXT_DIM),
+                        );
+                    }
                 });
             }
             ui.add_space(6.0);
@@ -7167,12 +7457,46 @@ impl App {
         let mut focus: Option<String> = None;
         motif::panel(ui, rect, Some(tr("bio_section")), |ui| {
             // The add row, and the line of suggestions that appears
-            // under it while an analyte is being typed.
-            let foot = 58.0;
+            // under it while an analyte is being typed. Both wrap, so
+            // the band is measured and never guessed: 58 px was one row
+            // of a form that is two on a narrow file, and the analyte
+            // chooser — the only way to pick one — was the half cut off
+            // the bottom.
             let body = ui.available_rect_before_wrap();
-            if body.height() < foot + 40.0 {
+            let line = ui.text_style_height(&egui::TextStyle::Body);
+            if body.height() < line * 3.0 {
                 return;
             }
+            let row_h = ui.spacing().interact_size.y.max(22.0) + ui.spacing().item_spacing.y;
+            let field = (body.width() * 0.3).clamp(120.0, 220.0);
+            let mut form_rows = Self::wrapped_rows_of(
+                ui,
+                body.width(),
+                [
+                    field,
+                    70.0,
+                    Self::button_width(ui, &session.bio_new_unit),
+                    92.0,
+                    Self::button_width(ui, tr("notes_add")),
+                ]
+                .into_iter(),
+            );
+            let picking = !session.bio_query.trim().is_empty() && session.bio_new_code.is_empty();
+            if picking {
+                form_rows += Self::wrapped_rows(
+                    ui,
+                    body.width(),
+                    crate::biology::search(&session.bio_query)
+                        .into_iter()
+                        .take(4)
+                        .map(|a| a.label),
+                );
+            }
+            // The form wins over the table: a table one row short still
+            // reads and scrolls, a chooser whose suggestions are cut
+            // cannot be used at all. The table keeps three lines, and
+            // past that the form scrolls inside its own share.
+            let foot = (row_h * form_rows + 6.0).min((body.height() - line * 3.0).max(row_h));
             let rows = motif::split_rows(body, &[0.0, foot], 6.0);
             let inner = motif::well(ui, rows[0]);
             motif::inside(ui, inner, |ui| {
@@ -7343,60 +7667,65 @@ impl App {
             });
             // The line being added: the analyte, the value, the date.
             motif::inside(ui, rows[1], |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    let w = (ui.available_width() * 0.3).clamp(120.0, 220.0);
-                    ui.add_sized(
-                        [w, 22.0],
-                        egui::TextEdit::singleline(&mut session.bio_query)
-                            .hint_text(tr("bio_pick_hint")),
-                    );
-                    // Typing over a picked analyte unpicks it: a line
-                    // must never be stored with one analyte's name and
-                    // another's code.
-                    let picked_label =
-                        crate::biology::find(&session.bio_new_code).map(|a| a.label.to_owned());
-                    if let Some(label) = picked_label {
-                        if session.bio_query.trim() != label {
-                            session.bio_new_code.clear();
-                            session.bio_new_unit.clear();
-                        }
-                    }
-                    ui.add_sized(
-                        [70.0, 22.0],
-                        egui::TextEdit::singleline(&mut session.bio_new_value)
-                            .hint_text(tr("bio_value_hint")),
-                    );
-                    ui.label(
-                        egui::RichText::new(&session.bio_new_unit)
-                            .size(11.5)
-                            .color(motif::TEXT_DIM),
-                    );
-                    ui.add_sized(
-                        [92.0, 22.0],
-                        egui::TextEdit::singleline(&mut session.bio_new_date)
-                            .hint_text(tr("itv_rdv_hint")),
-                    );
-                    if motif::button(ui, tr("notes_add")).clicked() {
-                        add = true;
-                    }
-                });
-                // The catalogue, filtered as it is typed: three lines,
-                // enough to choose without hiding the table.
-                if !session.bio_query.trim().is_empty() && session.bio_new_code.is_empty() {
-                    ui.horizontal_wrapped(|ui| {
-                        for a in crate::biology::search(&session.bio_query)
-                            .into_iter()
-                            .take(4)
-                        {
-                            if motif::toggle(ui, a.label, false)
-                                .on_hover_text(a.note)
-                                .clicked()
-                            {
-                                pick = Some(a);
+                egui::ScrollArea::vertical()
+                    .id_salt("bio_form")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            let w = (ui.available_width() * 0.3).clamp(120.0, 220.0);
+                            ui.add_sized(
+                                [w, 22.0],
+                                egui::TextEdit::singleline(&mut session.bio_query)
+                                    .hint_text(tr("bio_pick_hint")),
+                            );
+                            // Typing over a picked analyte unpicks it: a line
+                            // must never be stored with one analyte's name and
+                            // another's code.
+                            let picked_label = crate::biology::find(&session.bio_new_code)
+                                .map(|a| a.label.to_owned());
+                            if let Some(label) = picked_label {
+                                if session.bio_query.trim() != label {
+                                    session.bio_new_code.clear();
+                                    session.bio_new_unit.clear();
+                                }
                             }
+                            ui.add_sized(
+                                [70.0, 22.0],
+                                egui::TextEdit::singleline(&mut session.bio_new_value)
+                                    .hint_text(tr("bio_value_hint")),
+                            );
+                            ui.label(
+                                egui::RichText::new(&session.bio_new_unit)
+                                    .size(11.5)
+                                    .color(motif::TEXT_DIM),
+                            );
+                            ui.add_sized(
+                                [92.0, 22.0],
+                                egui::TextEdit::singleline(&mut session.bio_new_date)
+                                    .hint_text(tr("itv_rdv_hint")),
+                            );
+                            if motif::button(ui, tr("notes_add")).clicked() {
+                                add = true;
+                            }
+                        });
+                        // The catalogue, filtered as it is typed: three lines,
+                        // enough to choose without hiding the table.
+                        if picking {
+                            ui.horizontal_wrapped(|ui| {
+                                for a in crate::biology::search(&session.bio_query)
+                                    .into_iter()
+                                    .take(4)
+                                {
+                                    if motif::toggle(ui, a.label, false)
+                                        .on_hover_text(a.note)
+                                        .clicked()
+                                    {
+                                        pick = Some(a);
+                                    }
+                                }
+                            });
                         }
                     });
-                }
             });
         });
         if let Some(r) = start_edit {
@@ -8261,6 +8590,30 @@ impl App {
         });
         *cursor = list_step(*cursor, len, up, down);
         enter.then_some(*cursor)
+    }
+
+    /// Swallow the clicks aimed at the greyed-out workspace behind a
+    /// modal dialog.
+    ///
+    /// One full-screen widget, sensing everything and answering nothing.
+    /// It sits on `PanelResizeLine` — above the panels, below the
+    /// windows — so the pointer finds it instead of the table
+    /// underneath, while the dialog above it stays clickable.
+    ///
+    /// Only the *catching* happens here. The grey itself is painted at
+    /// the very end of the frame, into the background layer, once every
+    /// panel has finished painting into it: an `Area` clips to the
+    /// rectangle its content has claimed, so a full-screen fill drawn
+    /// from inside one is clipped away to nothing.
+    fn swallow_clicks_behind_modal(ctx: &egui::Context) {
+        let screen = ctx.screen_rect();
+        egui::Area::new(egui::Id::new("modal_dim"))
+            .order(egui::Order::PanelResizeLine)
+            .fixed_pos(screen.min)
+            .interactable(true)
+            .show(ctx, |ui| {
+                ui.allocate_response(screen.size(), egui::Sense::click_and_drag());
+            });
     }
 
     fn button_width(ui: &egui::Ui, label: &str) -> f32 {
@@ -13798,13 +14151,17 @@ impl App {
                 }
             });
             ui.add_space(8.0);
-            // One search across all twenty-five tables: at the counter
-            // the question is « où est-ce que j'ai lu ça », and it is
-            // not answered by clicking through twenty-five tabs.
+            // One search across every table: at the counter the
+            // question is « où est-ce que j'ai lu ça », and it is not
+            // answered by clicking through the tabs one by one. The
+            // count is read from the table list rather than written into
+            // the hint by hand: the next table added would have left the
+            // old number sitting there, and a figure that lies once is a
+            // figure nobody reads again.
             let field = ui.add_sized(
                 [ui.available_width().min(420.0), 24.0],
                 egui::TextEdit::singleline(&mut session.table_query)
-                    .hint_text(tr("tables_search_hint")),
+                    .hint_text(trf("tables_search_hint", crate::tables::TABLES.len())),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -16596,17 +16953,26 @@ impl eframe::App for App {
             motif::apply_scale(ctx, self.config.ui.text_scale, self.config.density());
             self.applied_look = Some(look);
         }
-        // Track the window so the next session opens at this size.
+        // Track the shape the workspace is in, so the next session opens
+        // in it: the window's size, the docks, the right pane's content,
+        // and the view on screen. All of it recorded by *working*, none
+        // of it a setting anyone has to find.
         {
             let size = ctx.screen_rect().size();
             self.layout.window_width = size.x;
             self.layout.window_height = size.y;
+            self.layout.nav_open = Some(self.show_nav);
+            self.layout.docs_open = Some(self.show_docs);
+            self.layout.side_pane = self.side_pane.clone();
+            if let State::Unlocked(session) = &self.state {
+                self.layout.view = session.view.as_key().to_owned();
+            }
             if self.layout != self.layout_saved {
                 // A drag reports a new width every frame: wait until it
                 // settles rather than writing the file 60 times a second.
                 if self.layout_changed.elapsed() > Duration::from_secs(2) {
                     self.layout.save();
-                    self.layout_saved = self.layout;
+                    self.layout_saved = self.layout.clone();
                 } else {
                     // Idle sessions only repaint every 30 s; without
                     // this the debounce would not come round until the
@@ -16617,6 +16983,41 @@ impl eframe::App for App {
                 self.layout_changed = Instant::now();
             }
         }
+        // A version check asked for in Options › À propos, answering on
+        // its own thread. Polled rather than blocked on: the counter
+        // goes on working while GitHub takes its time, and a network
+        // that never answers costs a timeout, not the session.
+        if let Some(rx) = &self.update_check {
+            match rx.try_recv() {
+                Ok(crate::release::Checked::Latest { tag, newer }) => {
+                    self.update_note = Some((
+                        false,
+                        if newer {
+                            trf("about_update_available", &tag)
+                        } else {
+                            trf("about_up_to_date", &tag)
+                        },
+                    ));
+                    self.update_check = None;
+                }
+                Ok(crate::release::Checked::Failed(e)) => {
+                    self.update_note = Some((true, trf("about_check_failed", e)));
+                    self.update_check = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // An idle session repaints every 30 s; without this
+                    // the answer would sit in the channel until the next
+                    // thing the operator did.
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+                // The worker died without sending: stop waiting on it.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.update_note = Some((true, tr("about_check_failed_silent").to_owned()));
+                    self.update_check = None;
+                }
+            }
+        }
+
         // Auto-lock after inactivity (spec 4.3).
         if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {
             self.last_activity = Instant::now();
@@ -17133,6 +17534,16 @@ impl eframe::App for App {
             }
         }
 
+        // The settings dialogs are modal in intent — you are configuring
+        // the application, not working in it — so the workspace is
+        // greyed out behind them and stops answering the mouse. Without
+        // it a click aimed at the dialog's edge landed in the table
+        // underneath, and on a dense screen the dialog itself was hard
+        // to pick out of the panels it floats over.
+        if self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some() {
+            Self::swallow_clicks_behind_modal(ctx);
+        }
+
         // Master-password change dialog (spec 4.2: key management).
         if !matches!(self.state, State::Unlocked(_)) {
             self.pw_change = None;
@@ -17394,6 +17805,38 @@ impl eframe::App for App {
         let mut db_seed = false;
         let mut db_details = false;
         let mut db_reset = false;
+        // Asked for on the « À propos » page, acted on below: the
+        // dialog holds `self.options` mutably while it draws, so
+        // anything that touches the rest of the application leaves as a
+        // flag rather than as a call.
+        let mut check_update = false;
+        let mut open_releases = false;
+        let mut sync_content = false;
+        // What that page states, read before the borrow.
+        let about_counts = match (&self.options, &self.state) {
+            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::About => Some([
+                (tr("about_count_patients"), s.patients.len()),
+                (tr("about_count_drugs"), s.drugs.len()),
+                (tr("about_count_preparations"), s.preparations.len()),
+                (tr("about_count_dispositifs"), s.dispositifs.len()),
+                (tr("about_count_protocols"), s.protocols.len()),
+                (tr("about_count_tables"), crate::tables::TABLES.len()),
+            ]),
+            _ => None,
+        };
+        let about_db = self.config.db_path();
+        let about_db_size = std::fs::metadata(&about_db).map(|m| m.len()).ok();
+        let about_adopted = self.db_adopted.is_some();
+        // Only worth a line when it disagrees with this binary: after an
+        // update, it says the workspace on screen was laid out by the
+        // version before — which is the answer to « c'était pas comme ça
+        // hier ».
+        let about_layout_version = self
+            .layout
+            .written_by_another_version()
+            .then(|| self.layout.version.clone());
+        let about_checking = self.update_check.is_some();
+        let about_note = self.update_note.clone();
         if let Some(editor) = &mut self.options {
             // Fit the dialog to the window: the options list is long,
             // and a fixed height clipped the last rows on small screens.
@@ -17657,13 +18100,150 @@ impl eframe::App for App {
                                 if let Some(i) = drop {
                                     editor.cfg.locations.forfaits.remove(i);
                                 }
-                                if motif::button(ui, tr("loc_opt_add")).clicked() {
-                                    editor
-                                        .cfg
-                                        .locations
-                                        .forfaits
-                                        .push(crate::config::LocationForfait::default());
+                                ui.horizontal(|ui| {
+                                    if motif::button(ui, tr("loc_opt_add")).clicked() {
+                                        editor
+                                            .cfg
+                                            .locations
+                                            .forfaits
+                                            .push(crate::config::LocationForfait::default());
+                                    }
+                                    // For a base that predates the
+                                    // shipped catalogue, or one someone
+                                    // has pruned: it adds the lines that
+                                    // are missing and touches none of
+                                    // the ones already written.
+                                    if motif::button(ui, tr("loc_opt_complete"))
+                                        .on_hover_text(tr("loc_opt_complete_tooltip"))
+                                        .clicked()
+                                    {
+                                        let n = editor.cfg.locations.complete_forfaits();
+                                        editor.message = Some((
+                                            false,
+                                            if n == 0 {
+                                                tr("loc_opt_complete_none").to_owned()
+                                            } else {
+                                                trf("loc_opt_complete_done", n)
+                                            },
+                                        ));
+                                    }
+                                });
+                            }
+                            if page == OptionsPage::About {
+                                // What this copy is, what its base
+                                // holds, and — only when asked — what
+                                // GitHub says the newest release is.
+                                motif::section(ui, tr("opts_about"));
+                                egui::Grid::new("opts_about")
+                                    .num_columns(2)
+                                    .spacing([12.0, 5.0])
+                                    .show(ui, |ui| {
+                                        ui.label(dim(tr("about_version")));
+                                        ui.label(
+                                            egui::RichText::new(crate::release::current()).strong(),
+                                        );
+                                        ui.end_row();
+                                        ui.label(dim(tr("about_target")));
+                                        ui.label(crate::release::target());
+                                        ui.end_row();
+                                        // Only when this copy was put
+                                        // here by the launcher: a build
+                                        // run by hand has no such file,
+                                        // and an empty row would read as
+                                        // a fault.
+                                        if let Some(v) = crate::release::launcher_version() {
+                                            ui.label(dim(tr("about_launcher")));
+                                            ui.label(v);
+                                            ui.end_row();
+                                        }
+                                        if let Some(v) = &about_layout_version {
+                                            ui.label(dim(tr("about_layout_version")));
+                                            ui.label(v.as_str());
+                                            ui.end_row();
+                                        }
+                                        ui.label(dim(tr("about_db")));
+                                        ui.label(
+                                            egui::RichText::new(about_db.display().to_string())
+                                                .size(11.5),
+                                        );
+                                        ui.end_row();
+                                        if let Some(bytes) = about_db_size {
+                                            ui.label(dim(tr("about_db_size")));
+                                            ui.label(trf(
+                                                "about_megabytes",
+                                                format!("{:.1}", bytes as f64 / 1e6),
+                                            ));
+                                            ui.end_row();
+                                        }
+                                        for (label, n) in about_counts.iter().flatten() {
+                                            ui.label(dim(label));
+                                            ui.label(n.to_string());
+                                            ui.end_row();
+                                        }
+                                    });
+                                if about_adopted {
+                                    ui.add_space(4.0);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(tr("about_db_found"))
+                                                .size(11.0)
+                                                .color(motif::ALERT),
+                                        )
+                                        .wrap(),
+                                    );
                                 }
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("about_updates"));
+                                ui.horizontal_wrapped(|ui| {
+                                    let check = motif::button(ui, tr("about_check"));
+                                    if check.on_hover_text(tr("about_check_tooltip")).clicked()
+                                        && !about_checking
+                                    {
+                                        check_update = true;
+                                    }
+                                    if motif::button(ui, tr("about_notes"))
+                                        .on_hover_text(tr("about_notes_tooltip"))
+                                        .clicked()
+                                    {
+                                        open_releases = true;
+                                    }
+                                    if motif::button(ui, tr("about_sync"))
+                                        .on_hover_text(tr("about_sync_tooltip"))
+                                        .clicked()
+                                    {
+                                        sync_content = true;
+                                    }
+                                });
+                                if about_checking {
+                                    ui.label(
+                                        egui::RichText::new(tr("about_checking"))
+                                            .size(11.0)
+                                            .color(motif::TEXT_DIM),
+                                    );
+                                }
+                                if let Some((is_error, msg)) = &about_note {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(msg.as_str()).size(11.5).color(
+                                                if *is_error {
+                                                    motif::ALERT
+                                                } else {
+                                                    motif::ACCENT
+                                                },
+                                            ),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                                ui.add_space(4.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("about_offline"))
+                                            .size(11.0)
+                                            .color(motif::TEXT_DIM),
+                                    )
+                                    .wrap(),
+                                );
                             }
                             if page == OptionsPage::Mentions {
                                 // Nothing here is filled in by the
@@ -18206,6 +18786,76 @@ impl eframe::App for App {
                     }
                 });
         }
+        if check_update {
+            self.update_note = None;
+            self.update_check = Some(crate::release::check_async());
+        }
+        if open_releases {
+            if let Err(e) = open::that_detached(crate::release::RELEASES_URL) {
+                self.update_note = Some((true, trf("drug_lookup_error", e)));
+            }
+        }
+        // « Synchroniser le contenu de référence ». The reference
+        // content — fiches, préparations, dispositifs, protocoles,
+        // posologies — travels *inside* the binary, not as a file on the
+        // release page, so bringing a base up to the latest release is
+        // two steps and the second one is this: update the application
+        // (the launcher does it at every start), then pour into the base
+        // whatever this version ships and the base has not got. Every
+        // one of these seeds only ever fills a gap; nothing the team has
+        // written is rewritten.
+        if sync_content {
+            let result = if let State::Unlocked(session) = &self.state {
+                let db = &session.db;
+                let mut n = 0;
+                let mut err: Option<String> = None;
+                for step in [
+                    db.seed_missing_drugs(),
+                    db.fill_starter_details(),
+                    db.seed_posologies(),
+                    db.seed_conduite(),
+                    db.refresh_toxicity(),
+                    db.seed_preparations(),
+                    db.seed_dispositifs(),
+                    db.seed_protocols(),
+                ] {
+                    match step {
+                        Ok(k) => n += k,
+                        // One failing step must not hide the seven that
+                        // worked: the count is still reported, with the
+                        // first error beside it.
+                        Err(e) => err = err.or(Some(e)),
+                    }
+                }
+                match err {
+                    Some(e) => Err(e),
+                    None => Ok(n),
+                }
+            } else {
+                Err(tr("opts_db_locked").to_owned())
+            };
+            match result {
+                Ok(n) => {
+                    if let State::Unlocked(session) = &mut self.state {
+                        if let Ok(list) = session.db.drugs() {
+                            session.drugs = list;
+                        }
+                        session.reload_codex();
+                        session.reload_dispositifs();
+                        session.protocols = session.db.protocols().unwrap_or_default();
+                    }
+                    self.update_note = Some((
+                        false,
+                        if n == 0 {
+                            tr("about_sync_none").to_owned()
+                        } else {
+                            trf("about_sync_done", n)
+                        },
+                    ));
+                }
+                Err(e) => self.update_note = Some((true, e)),
+            }
+        }
         if db_seed || db_details || db_reset {
             let result = if let State::Unlocked(session) = &mut self.state {
                 if db_reset {
@@ -18351,6 +19001,19 @@ impl eframe::App for App {
         match self.state {
             State::Locked { .. } => self.unlock_screen(ctx),
             State::Unlocked(_) => self.main_screen(ctx),
+        }
+
+        // Last of all, and deliberately: the veil behind a modal dialog
+        // is painted into the *background* layer, and every panel —
+        // toolbar, docks, workspace — has just finished painting into
+        // that same layer. A rectangle appended after them covers all of
+        // them, and the windows, which live a layer above, stay lit.
+        if self.options.is_some() || self.pw_change.is_some() || self.tpl_editor.is_some() {
+            ctx.layer_painter(egui::LayerId::background()).rect_filled(
+                ctx.screen_rect(),
+                0.0,
+                egui::Color32::from_black_alpha(96),
+            );
         }
     }
 

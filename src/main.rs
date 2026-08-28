@@ -12,6 +12,7 @@ mod insulin;
 mod location;
 mod ordonnance;
 mod pdf;
+mod release;
 mod revue;
 mod strings;
 mod tables;
