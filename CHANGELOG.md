@@ -5,6 +5,43 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.115.0] - 2026-08-28
+
+Six lignes que tous les bilans portent et que le catalogue n'avait pas.
+
+### Added
+- **43 → 49 analytes, 78 → 87 règles.** L'urée, le taux de prothrombine,
+  le cholestérol total, les leucocytes, l'hématocrite et la
+  parathormone : six lignes imprimées sur les bilans ordinaires, que les
+  patients apportent au comptoir pour se les faire expliquer. Chacune
+  gagne sa place par ce qu'un traitement en fait.
+  - **L'urée** monte avant la créatinine quand le rein manque d'eau :
+    c'est le chiffre qui attrape une déshydratation pendant qu'il suffit
+    encore de suspendre le diurétique quelques jours. Élevée avec une
+    créatinine peu modifiée sous AINS ou sous anticoagulant, c'est aussi
+    la signature d'un saignement digestif — le sang digéré fabrique de
+    l'urée.
+  - **Le TP** est la face que les laboratoires français impriment, et la
+    règle dit quoi en faire : sous AVK, on lit l'INR et rien d'autre.
+    Hors AVK, un TP qui chute sous un médicament hépatotoxique est plus
+    grave que les transaminases, parce que le foie a cessé de fabriquer
+    les facteurs.
+  - **Les leucocytes** : une hyperleucocytose sous corticoïde est le
+    corticoïde qui démargine les polynucléaires, pas une infection — et
+    c'est une cause classique d'antibiothérapie inutile, alors que la
+    même molécule masque la fièvre d'une vraie. Une leucopénie sous
+    clozapine ou antithyroïdien reçoit la consigne de sa classe.
+  - **L'hématocrite** est l'effet qui compte sous testostérone et sous
+    agent stimulant l'érythropoïèse, parce qu'il fait le risque
+    thrombotique.
+  - **La PTH** ne se lit qu'avec la calcémie et le phosphore, et la
+    ligne du comptoir est que le chélateur du phosphore se prend au
+    milieu du repas : à jeun, il ne chélate rien.
+  - **Le cholestérol total** est le chiffre que le patient retient et le
+    moins utile des quatre ; au-delà de 3 g/L malgré un hypolipémiant,
+    il demande d'abord si le traitement est pris, puis s'il faut
+    dépister la famille.
+
 ## [0.114.0] - 2026-08-28
 
 Ce que la saison, le soleil et le pilulier font à une ordonnance, et sept
