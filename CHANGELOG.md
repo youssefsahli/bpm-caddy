@@ -5,6 +5,65 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.113.0] - 2026-08-28
+
+Six molécules et six préparations que la base ne savait pas traiter, et
+la suite des tests qui cesse de laisser ses bases dans `/tmp`.
+
+### Added
+- **844 → 850 fiches.** Six molécules, et non six marques de plus pour
+  des molécules déjà présentes — c'est la pente à ne pas suivre, et le
+  relevé des manques a dû être refait une fois : chercher « Anoro » dans
+  une liste qui contient « Anoro Ellipta » avait déclaré manquante une
+  fiche présente depuis toujours.
+  - **Eklira Genuair** (aclidinium) est le seul anticholinergique inhalé
+    à deux prises par jour : un patient qui vient du tiotropium oubliera
+    celle du soir si personne ne le lui dit. Sa fenêtre de contrôle est
+    verte quand la dose est prête et rouge quand elle a été inhalée —
+    verte après l'inspiration, la dose n'est pas passée, et cela se
+    vérifie au comptoir.
+  - **Alvesco** (ciclésonide) n'est actif qu'une fois hydrolysé par les
+    estérases du poumon : il se dépose peu dans la gorge, donc beaucoup
+    moins de candidoses et d'enrouements. C'est sa raison d'être et la
+    raison de le connaître.
+  - **Zaditen collyre** (kétotifène) tient le rayon de la conjonctivite
+    allergique : antihistaminique et antidégranulant à la fois, et le
+    chlorure de benzalkonium du flacon multidose est ce qui fait donner
+    les unidoses à un porteur de lentilles.
+  - **Maxilase** (alpha-amylase) est le produit du mal de gorge le plus
+    demandé de France, et la fiche dit ce qu'il vaut : un appoint, un
+    service médical rendu jugé insuffisant, cinq jours au maximum — la
+    durée et le score de Mac Isaac sont ce qui compte vraiment.
+  - **Vydura** (rimégépant) ouvre la classe des gépants, que la base
+    n'avait pas : pas de vasoconstriction, donc l'option quand un
+    antécédent cardiovasculaire interdit les triptans.
+  - **Nilemdo** (acide bempédoïque) est ce qui reste quand la statine ne
+    passe pas — activé dans le foie et pas dans le muscle, c'est tout
+    son argument — avec la crise de goutte comme effet à annoncer.
+
+  Deux règles de conduite les accompagnent (« anti-inflammatoire
+  enzymatique », « gépant »).
+- **52 → 58 préparations.** L'établi de la pédiatrie, d'abord :
+  suspensions de captopril, de furosémide et de propranolol — la
+  première instable au-delà d'une semaine, la deuxième photosensible, la
+  troisième donnée pendant la tétée parce que l'hypoglycémie d'un
+  nourrisson bêtabloqué se manifeste par une somnolence et non par des
+  sueurs. Puis les gouttes auriculaires au bicarbonate pour le bouchon
+  de cérumen, les gélules de mélatonine, et une lotion mentholée dont la
+  contre-indication est ce qu'il faut retenir : jamais sur le visage
+  d'un enfant de moins de trente mois.
+
+### Fixed
+- **La suite de tests ne laisse plus ses bases dans `/tmp`.** Chaque
+  test travaille sur un vrai fichier SQLCipher dans un répertoire nommé
+  d'après le processus, et aucun ne l'effaçait : un `cargo test` en
+  fuyait quarante-cinq, une machine qui lance la suite quelques dizaines
+  de fois par jour en accumulait six gigaoctets, et la suite finissait
+  par échouer sur « database or disk is full » — ce qui se lit comme un
+  bug du code testé et non comme les restes des passes précédentes.
+  `Swept` est un répertoire qui s'efface à la fin du test, y compris
+  quand il panique.
+
 ## [0.112.0] - 2026-08-28
 
 La carte Vitale ouvre la fiche, et deux ajouts de contenu que le
