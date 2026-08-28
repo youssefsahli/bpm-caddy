@@ -63,6 +63,13 @@ upgrade is decided, the number to defend is the logic one, and
   buttons/panels, sunken for inputs/troughs; charts are painted by hand,
   no plotting library — `motif::chart` has bars, hbars, stacked,
   sparkline, meter, pips, heat strip and legend.
+- **Colour comes from the theme, never from a literal.** `motif::bg()`,
+  `text_dim()`, `accent()`… are functions over `motif::THEMES` (six
+  palettes, `[ui] theme`); a hard-coded `Color32::from_rgb` in the
+  chrome is a colour that will look wrong on five of the six. Chart
+  *data* colours (`chart::series_color`) are the exception and stay
+  fixed, except the first, which follows the accent. A new palette must
+  pass `every_palette_can_be_read`.
 - **Layout is carved, not stacked.** A view computes rectangles with
   `motif::split_rows` / `split_columns` and fills them with
   `motif::panel` / `well` / `inside`; it does not centre a fixed-width
