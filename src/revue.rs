@@ -537,6 +537,85 @@ const RULES: &[Rule] = &[
         title: "Corticoïde sans protection osseuse",
         detail: "Une corticothérapie orale prolongée fait perdre de l'os dès les premiers mois, et rien sur cette ordonnance ne s'y oppose. Si la cure dépasse trois mois, la question du calcium, de la vitamine D et d'un bisphosphonate se pose au prescripteur — s'il s'agit d'une cure courte, il n'y a rien à faire et cette ligne se referme.",
     },
+    Rule {
+        kind: Kind::Combination(&[
+            &["méthotrexate"],
+            &["cotrimoxazole", "triméthoprime", "sulfaméthoxazole", "bactrim"],
+        ]),
+        severity: Severity::Alert,
+        title: "Méthotrexate + cotrimoxazole",
+        detail: "Deux antifoliques ensemble : l'aplasie médullaire est le risque, et elle survient même sous méthotrexate hebdomadaire à faible dose. L'association est à proscrire — appeler le prescripteur pour un autre antibiotique avant de délivrer.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["lévothyroxine", "hormone thyroïdienne"],
+            &["fer", "calcium", "IPP", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "colestyramine"],
+        ]),
+        severity: Severity::Warn,
+        title: "Lévothyroxine et chélation",
+        detail: "Fer, calcium, IPP et résines abaissent l'absorption de la lévothyroxine, et une TSH qui dérive vient plus souvent de là que de la dose. Deux heures d'écart au moins, à heure fixe, et la TSH se recontrôle six semaines après tout changement.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["digoxine", "digitalique"],
+            &["amiodarone", "vérapamil", "diltiazem", "macrolide", "clarithromycine", "itraconazole"],
+        ]),
+        severity: Severity::Alert,
+        title: "Digoxine potentialisée",
+        detail: "Ces molécules font grimper la digoxinémie, parfois du double : nausées, vision jaune, pouls lent ou irrégulier et confusion en sont les premiers signes. La dose de digoxine se réduit à l'introduction et la digoxinémie se contrôle — cela ne s'improvise pas au comptoir.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["ISRS", "IRSNa", "fluoxétine", "paroxétine", "sertraline", "citalopram", "escitalopram", "venlafaxine", "duloxétine"],
+            &["tramadol", "triptan", "sumatriptan", "linézolide", "millepertuis", "lithium"],
+        ]),
+        severity: Severity::Alert,
+        title: "Risque de syndrome sérotoninergique",
+        detail: "Agitation, tremblements, sueurs, diarrhée, fièvre et rigidité dans les heures qui suivent l'ajout : c'est un syndrome sérotoninergique, et il peut être grave. Le tramadol est le plus souvent en cause parce qu'il passe pour un simple antalgique. Signaler avant de délivrer.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["inhibiteur PDE5", "sildénafil", "tadalafil", "vardénafil", "avanafil"],
+            &["dérivé nitré", "trinitrine", "molsidomine", "isosorbide", "nicorandil"],
+        ]),
+        severity: Severity::Alert,
+        title: "PDE5 + donneur de NO",
+        detail: "Association formellement contre-indiquée : la chute de tension est brutale et peut être fatale. Elle se cherche activement, parce que le patient n'annonce pas spontanément qu'il prend un traitement de l'érection, et parce que la trinitrine sublinguale se prend sans y penser.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["quinolone", "fluoroquinolone", "ciprofloxacine", "lévofloxacine", "ofloxacine", "norfloxacine", "moxifloxacine"],
+            &["corticoïde", "prednisone", "prednisolone", "méthylprednisolone"],
+        ]),
+        severity: Severity::Warn,
+        title: "Fluoroquinolone + corticoïde",
+        detail: "Le risque de rupture du tendon d'Achille est multiplié, et il est le plus élevé après 60 ans. Toute douleur tendineuse fait arrêter la quinolone et cesser tout appui sur le tendon — la rupture survient souvent sans effort particulier, parfois après l'arrêt du traitement.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["statine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
+            &["colchicine"],
+        ]),
+        severity: Severity::Warn,
+        title: "Statine + colchicine",
+        detail: "Les deux sont myotoxiques et l'association multiplie le risque de rhabdomyolyse, d'autant plus que la colchicine est prescrite dans la goutte, chez des patients souvent insuffisants rénaux. Toute douleur musculaire diffuse avec urines foncées fait arrêter les deux et consulter.",
+    },
+    Rule {
+        kind: Kind::Without(
+            &[&[
+                "corticoïde inhalé",
+                "CSI",
+                "budésonide",
+                "fluticasone",
+                "béclométasone",
+                "ciclésonide",
+            ]],
+            &["bêta-2", "salbutamol", "terbutaline", "bronchodilatateur"],
+        ),
+        severity: Severity::Warn,
+        title: "Corticoïde inhalé sans traitement de crise",
+        detail: "Un traitement de fond de l'asthme sans bronchodilatateur de secours sur l'ordonnance : soit le patient en a un chez lui et il faut vérifier sa date de péremption et sa technique, soit il n'en a pas, et c'est la crise qui le découvrira. La question se pose maintenant.",
+    },
 ];
 
 #[cfg(test)]
@@ -754,8 +833,8 @@ mod tests {
         // The catalogue only ever grows: a rule removed is a reading
         // nobody does any more.
         assert!(
-            RULES.len() >= 40,
-            "{} règles de revue, il y en avait quarante",
+            RULES.len() >= 48,
+            "{} règles de revue, il y en avait quarante-huit",
             RULES.len()
         );
         let mut titles: Vec<&str> = RULES.iter().map(|r| r.title).collect();
