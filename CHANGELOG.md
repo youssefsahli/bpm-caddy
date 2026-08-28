@@ -5,6 +5,98 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.108.0] - 2026-08-28
+
+Toute la liste `UI:` de la feuille de route, et la passe de robustesse
+et de performance qui la clôt.
+
+### Added
+- **Options › À propos** : ce qu'est cette installation (version,
+  plateforme, version posée par le lanceur, chemin et taille de la base,
+  ce qu'elle contient), puis « Vérifier la dernière version… » qui
+  interroge GitHub sur un fil à part — la seule requête réseau de
+  l'application, et seulement sur clic. Les autres boutons « … »
+  continuent de passer une adresse au navigateur et rien de plus. La
+  comparaison se fait par nombres et non par texte : `v0.10.0` se range
+  sous `v0.9.0` comme chaîne, et une officine à qui l'on dit qu'elle est
+  en avance sur une version qu'elle n'a pas ne regarde plus jamais.
+- **« Synchroniser le contenu de référence »** : le contenu de référence
+  voyage *dans* le binaire, donc se mettre au niveau de la dernière
+  version, c'est mettre à jour l'application (le lanceur le fait à
+  chaque démarrage) puis verser dans la base ce que cette version
+  apporte et qui manque. Le bouton fait la seconde moitié, la
+  vérification dit si la première est due. Rien de ce que l'équipe a
+  écrit n'est réécrit, et une seconde pression n'ajoute rien.
+- **Arbre A–Z dans la liste de gauche.** 813 fiches ne sont pas une
+  liste qu'on fait défiler ; ce sont vingt-sept tiroirs qu'on ouvre. La
+  recherche remplie donne la liste plate des correspondances comme
+  avant ; vide, elle donne l'arbre, le tiroir de la fiche ouverte
+  toujours déplié. Dans les deux cas une ligne se lit « Aclasta *acide
+  zolédronique* » — le nom est ce qui est sur la boîte, la DCI est la
+  question qu'on se posait, et c'est la DCI qui est coupée quand le
+  panneau est rétréci.
+- **Catalogue de locations fourni** : les six matériels et le libellé de
+  la ligne LPP de chacun, comme les six fiches de la famille
+  « Location ». Ce qui est fourni à zéro, c'est l'euro : un forfait
+  encore à zéro affiche « forfait à compléter » en rouge plutôt que
+  « 0 € par semaine », qui se lirait comme un tarif décidé par
+  l'application. Options › Locations reçoit « Compléter le catalogue ».
+- **La forme dans laquelle le poste a été laissé** est enregistrée dans
+  `layout.toml` : l'état des deux panneaux, le contenu du panneau de
+  droite, la vue à l'écran, et la version qui a écrit tout cela. Les
+  options de démarrage décident du premier lancement et de rien après.
+- **Base trouvée au premier lancement** : sans chemin écrit et sans rien
+  à l'emplacement par défaut, le répertoire du lanceur et celui de
+  l'exécutable sont regardés avant qu'on demande un mot de passe pour
+  une base qui n'existe pas — et l'écran de verrouillage dit que le
+  chemin a été trouvé, pas configuré. Sans cela : on tape le mot de
+  passe maître et on obtient un fichier vide tout neuf à côté de la
+  vraie base de l'officine.
+
+### Fixed
+- **Le choix d'analyte en biologie n'est plus coupé en bas.** Sa bande
+  valait 58 px devinés — une ligne d'un formulaire qui en fait deux sur
+  une fiche étroite, et la ligne de suggestions en dessous, seul moyen
+  de choisir un analyte, était la moitié qui tombait. Mesurée, le
+  formulaire l'emportant sur le tableau et défilant dans sa part quand
+  même cela ne suffit pas. La bande du volet passe de 240/90 px à douze
+  et cinq *lignes* : `text_scale = 1,25` ne coûte plus rien.
+- **La correction d'une vaccination n'est plus coupée à gauche et à
+  droite** : la ligne échange six colonnes contre six champs et deux
+  boutons, plus large que le volet dès qu'un panneau est ouvert, et
+  l'ascenseur n'était que vertical.
+- **Cliquer une fiche à gauche l'affiche.** Avec le codex, les
+  dispositifs, les tables, les protocoles ou la recherche plein texte
+  ouverts, la fiche s'ouvrait derrière eux et rien ne bougeait à
+  l'écran ; chacun de ces écrans prend tout le panneau central.
+- **Les fenêtres de réglages assombrissent l'espace de travail** et
+  celui-ci cesse de répondre à la souris.
+
+### Changed
+- **110 textes réécrits en notes professionnelles.** « Aucun résultat
+  enregistré. Ajoutez-en un ci-dessous : choisissez l'analyte, tapez la
+  valeur, la date si ce n'est pas aujourd'hui. » devient « Aucun
+  résultat enregistré. » Un pharmacien n'a pas besoin qu'on lui explique
+  comment taper dans un champ qu'il regarde. Les faits restent — les
+  réserves cliniques, ce que veut dire une ligne modifiée ailleurs, ce
+  dont dépend un tarif — et le tutoriel autour s'en va. Le champ de
+  recherche des tables compte les tables au lieu d'annoncer un nombre
+  qui dériverait.
+- **Le travail refait soixante fois par seconde ne l'est plus.** La
+  recherche dans les tables (une requête et quelque sept mille
+  allocations par image), la recherche de médicaments (trois mille
+  correspondances floues, deux fois par image), l'année demandée à la
+  base par le carnet à chaque image, et les 813 fiches recopiées par
+  l'arbre de gauche : toutes gardées d'une image à l'autre et refaites
+  quand la question ou la base change.
+- **Cinq panics de moins** : `partial_cmp().unwrap()` sur des hauteurs
+  calculées (un NaN en amont et l'application disparaît, sur une
+  question de mise en page), et quatre `unwrap()` sur une fiche ou une
+  ligne de carnet ouverte — inatteignables aujourd'hui, et pas dignes
+  d'un plantage au comptoir le jour où l'un d'eux cesserait de l'être.
+- `src/release.rs` rejoint les modules de logique de `coverage.sh` ;
+  le chiffre reste à 87,1 %.
+
 ## [0.107.0] - 2026-08-28
 
 ### Fixed

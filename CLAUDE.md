@@ -25,7 +25,11 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   ordonnance runs out — pure, tested, no internal clock; the forfaits
   live in `[locations]` of config.toml and ship empty),
   `src/insulin.rs` (each insulin's action profile as a curve, and the
-  500 / 1800 / titration rules — static, pure, tested)
+  500 / 1800 / titration rules — static, pure, tested),
+  `src/release.rs` (what version this is, and — only on a button press,
+  from Options › À propos — what GitHub says the newest release is; the
+  **only** network request in the application, everything else hands a
+  URL to the browser)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -95,6 +99,18 @@ upgrade is decided, the number to defend is the logic one, and
 - Every layout must survive four things, not one: 1024x700, 1280x800,
   `[ui] text_scale = 1.25`, and both docks dragged wide (the docks cap
   against each other so the middle keeps `App::WORK_MIN`).
+- **Nothing expensive on the frame.** A view is redrawn sixty times a
+  second: a query, a fuzzy pass over the base or a cloned list in a draw
+  path is that cost sixty times over. Memoise against the *question* and
+  a revision counter the writer moves (`set_drugs`, `table_rev`), never
+  against a timestamp; a list row holds an index, not a copy of the row.
+  `Session::year_now` reads the year off the date already in hand rather
+  than asking the base.
+- **A panic is worse than a wrong pixel.** `partial_cmp().unwrap()` on
+  computed geometry, `unwrap()` on state that « must » be open,
+  `f32::clamp` with a computed min: all of them take the whole
+  application down at the counter. Prefer `total_cmp`, an `if let`, and
+  a cap raised to its floor.
 - The database is shared between PCs: every write to a shared row
   (states, RDV dates, patient identity, deletions) is compare-and-set
   against the values the UI displayed (`WHERE … AND <old values>`,
@@ -108,16 +124,24 @@ upgrade is decided, the number to defend is the logic one, and
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
-  agenda_month|protocols|protocol_open|template|options|tables|tables_search|calc|
-  carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|codex_open|
-  dispositifs|dispositif_open|locations|keys|
+  agenda_month|protocols|protocol_open|template|options|about|tables|
+  tables_search|calc|carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|
+  codex_open|dispositifs|dispositif_open|locations|keys|
   act_picker|goto|goto_jump|mono_search|mono_patient`
-  — land on a specific view (screenshots, e2e)
+  — land on a specific view (screenshots, e2e). `about` is the Options
+  dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
 - `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card
   rather than Eliquis (checking an insulin's action profile, say)
+
+The workspace's shape — window size, dock widths, whether each dock is
+open, the right pane's content, the view on screen — is remembered in
+`layout.toml` beside `config.toml`, stamped with the version that wrote
+it. The `[ui] show_*_on_start` options decide the *first* launch and
+nothing after it, so a test that expects a particular starting shape
+must use a throwaway `XDG_CONFIG_HOME` (both scripts already do).
 
 The display settings that break layouts are not env hooks — they are
 config: write `[ui] text_scale = 1.25` (or `density = "compact"`) into a
