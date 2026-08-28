@@ -715,6 +715,10 @@ pub const THEMES: &[&str] = &[
     "Technique d'inhalation",
     "Vie quotidienne / diététique",
     "Automédication",
+    "Sortie d'hôpital / conciliation",
+    "Douleur chronique",
+    "Sommeil",
+    "Chute et autonomie",
 ];
 
 /// Dashboard aggregate: one row per interview, month-granular.

@@ -131,6 +131,55 @@ const CHECKLISTS: &[(&str, &[&str])] = &[
             "Quand consulter plutôt que se traiter",
         ],
     ),
+    (
+        "Sortie d'hôpital / conciliation",
+        &[
+            "L'ordonnance de sortie ligne par ligne, contre celle d'avant l'hospitalisation",
+            "Ce qui a été arrêté, ce qui a été ajouté, ce dont la dose a changé",
+            "Ce que le patient a rapporté de chez lui et qu'il risque de reprendre",
+            "Les traitements suspendus pendant le séjour : lesquels reprennent, et quand",
+            "Qui suit quoi, et la date du prochain rendez-vous",
+            "Les examens à faire dans les jours qui suivent, biologie comprise",
+            "Le matériel et les soins prévus à domicile : qui vient, à quelle heure",
+            "Ce qui doit faire rappeler le médecin plutôt qu'attendre la consultation",
+        ],
+    ),
+    (
+        "Douleur chronique",
+        &[
+            "L'intensité aujourd'hui et sur la semaine, avec la même échelle à chaque fois",
+            "Ce que la douleur empêche de faire : marcher, dormir, travailler, sortir",
+            "Le traitement de fond : pris comme prescrit, ou à la demande",
+            "Les interdoses : combien par jour, et à quel moment elles reviennent",
+            "La constipation, la somnolence et les nausées sous opioïde",
+            "Ce que le patient prend en plus, y compris ce qu'il achète seul",
+            "Ce qui a été essayé sans médicament, et ce qui pourrait l'être",
+        ],
+    ),
+    (
+        "Sommeil",
+        &[
+            "L'heure du coucher, l'heure du lever, et le temps réellement passé au lit",
+            "Combien de temps pour s'endormir, combien de réveils, et à quelle heure",
+            "Ce qui est pris pour dormir, depuis quand, et à quelle dose",
+            "Les écrans, la caféine après seize heures, l'alcool qui fragmente la nuit",
+            "La sieste, sa durée et son heure",
+            "Le ronflement, les pauses respiratoires signalées par l'entourage",
+            "Un objectif de décroissance si un hypnotique dure depuis plus de quatre semaines",
+        ],
+    ),
+    (
+        "Chute et autonomie",
+        &[
+            "Une chute dans les douze derniers mois, et les circonstances",
+            "L'ordonnance relue pour ce qui fait tomber : psychotropes, antihypertenseurs, diurétiques",
+            "La tension mesurée couchée puis debout, et le vertige au lever",
+            "La vue, l'audition, et la date du dernier contrôle de chacune",
+            "Le chaussage, les tapis, l'éclairage de nuit, la barre dans la salle de bain",
+            "L'activité physique de la semaine, et la peur de retomber",
+            "La vitamine D, le calcium alimentaire, et le dernier poids connu",
+        ],
+    ),
 ];
 
 #[cfg(test)]
@@ -139,6 +188,18 @@ mod tests {
 
     #[test]
     fn every_thematic_of_the_base_has_its_checklist() {
+        // The thematics only ever grow: one withdrawn is an entretien
+        // the officine can no longer bill under its own name.
+        assert!(
+            crate::db::THEMES.len() >= 12,
+            "{} thèmes livrés, il y en avait douze",
+            crate::db::THEMES.len()
+        );
+        let mut seen: Vec<&str> = crate::db::THEMES.to_vec();
+        seen.sort_unstable();
+        let n = seen.len();
+        seen.dedup();
+        assert_eq!(n, seen.len(), "deux thèmes portent le même nom");
         for theme in crate::db::THEMES {
             let points = checklist(theme);
             assert!(
