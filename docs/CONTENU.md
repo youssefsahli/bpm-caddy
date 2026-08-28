@@ -15,6 +15,15 @@ Deux règles valent partout :
    règles, qu'elles peuvent effectivement se déclencher sur la base
    livrée. Du contenu inatteignable est du contenu que personne ne
    corrigera jamais.
+3. **Chaque catalogue a son cliquet.** Un plancher sur le nombre de
+   fiches, de tables, de préparations, de dispositifs, de protocoles,
+   d'analytes et de règles : il ne peut que monter. Un contenu retiré
+   est une question à laquelle le comptoir ne sait plus répondre, et
+   sans plancher cela arrive sans que personne le voie. Le cas
+   particulier est `the_posology_coverage_only_improves`, qui compte ce
+   qui *manque* — les classes sans posologie — et dont le plafond ne
+   peut que descendre. Il exige d'être abaissé dès qu'il prend de
+   l'avance sur la réalité, ce qui l'empêche de devenir décoratif.
 
 ## Les fiches médicament
 
@@ -153,13 +162,22 @@ Deux règles valent partout :
 
 ## La revue d'ordonnance
 
-- **Où** : `src/revue.rs`, `RULES` : soit une `Combination` (chaque
-  groupe de mots doit trouver un traitement — une association fixe
-  compte pour ses deux moitiés), soit un `Duplicate` (N traitements
-  distincts portant l'un de ces mots).
-- **Test** : chaque règle doit pouvoir se déclencher sur la base
-  livrée ; chaque règle doit dire quoi faire, pas seulement ce qui ne va
-  pas.
+- **Où** : `src/revue.rs`, `RULES` : une `Combination` (chaque groupe de
+  mots doit trouver un traitement — une association fixe compte pour ses
+  deux moitiés), un `Duplicate` (N traitements distincts portant l'un de
+  ces mots), ou un `Without` (tous les groupes matchent **et** rien sur
+  l'ordonnance ne répond au dernier).
+- **Ce que `Without` sert** : ce qui *manque* est la moitié de ce qu'un
+  bilan trouve — un opioïde sans laxatif, une corticothérapie sans rien
+  pour l'os. Le point nomme les traitements qui *sont* là, puisqu'une
+  absence n'a pas de nom, et la phrase dit ce qui n'y est pas. La règle
+  se tait dès que la ligne manquante apparaît, et c'est ce que le test
+  vérifie.
+- **Test** : chaque règle doit pouvoir se déclencher sur la base livrée
+  — pour un `Without`, la chose dont l'absence est le constat doit
+  exister aussi, sans quoi la règle parle de la base et non du patient.
+  Chaque règle doit dire quoi faire, pas seulement ce qui ne va pas, et
+  le nombre de règles ne baisse jamais.
 
 ## Les listes d'entretien
 
