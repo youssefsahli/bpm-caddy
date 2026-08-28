@@ -775,6 +775,84 @@ pub const TABLES: &[ConvTable] = &[
             &["Et la conservation ?", "Chaîne du froid entre 2 et 8 °C, jamais de congélation, et une durée hors réfrigérateur propre à chaque spécialité", "Donner un sac isotherme, dire la durée exacte pour cette marque-là, et rappeler qu'un produit congelé se jette", "Transposer la durée hors froid d'une marque à l'autre : elles ne sont pas les mêmes"],
         ],
     },
+    ConvTable {
+        short: "Canicule",
+        family: "Au comptoir",
+        title: "Chaleur et traitements — ce que la canicule fait à une ordonnance",
+        reviewed: "Août 2026 — mise au point ANSM « Bon usage des médicaments en cas de vague de chaleur » et recommandations Santé publique France",
+        sources: &[
+            "ANSM — bon usage des médicaments en cas de vague de chaleur",
+            "Santé publique France — plan national canicule, recommandations sanitaires",
+            "HAS — repérage et prise en charge de la déshydratation du sujet âgé",
+        ],
+        columns: &["Traitement", "Ce que la chaleur en fait", "Ce qu'on surveille", "Ce qu'on ne fait pas"],
+        rows: &[
+            &["Diurétiques (thiazidiques, anse, antialdostérone)", "Ils font perdre de l'eau et du sel au moment où la sueur en fait perdre aussi : déshydratation, hyponatrémie, hypokaliémie", "Le poids tous les jours — deux kilos perdus en trois jours, c'est de l'eau — la soif, les urines rares et foncées, la confusion", "Ne jamais conseiller d'arrêter ni de doubler : c'est le prescripteur qui suspend un diurétique, souvent pour quelques jours seulement"],
+            &["IEC et ARA II", "Ils lèvent l'autorégulation rénale : sur un rein déjà déshydraté, la filtration s'effondre", "Créatinine et kaliémie si la chaleur dure, et tout ce qui fait perdre de l'eau — diarrhée, vomissements, fièvre", "Ne pas ajouter d'AINS : diurétique, bloqueur du système rénine-angiotensine et AINS ensemble, c'est la triade classique de l'insuffisance rénale aiguë"],
+            &["AINS, y compris ceux vendus sans ordonnance", "Ils réduisent le débit sanguin rénal exactement quand il faudrait le préserver", "La quantité d'urine, l'apparition d'œdèmes, la prise de poids brutale", "Ne pas délivrer un AINS de conseil à un patient âgé sous diurétique ou IEC pendant une vague de chaleur : proposer le paracétamol"],
+            &["Lithium", "La perte de sodium fait remonter la lithémie : le surdosage arrive sans changement de dose", "Tremblements qui s'aggravent, nausées, diarrhée, somnolence, marche instable — et une lithémie si la chaleur dure", "Ne pas conseiller un régime sans sel ni une eau très minéralisée sans avis : c'est l'équilibre sodé qui tient la lithémie"],
+            &["Anticholinergiques : antihistaminiques sédatifs, antiparkinsoniens, anticholinergiques vésicaux, tricycliques, néfopam", "Ils bloquent la sudation, qui est le seul moyen qu'a le corps de se refroidir", "Peau sèche et chaude sans transpiration, température qui monte, confusion : c'est le coup de chaleur, et il est mortel", "Ne pas ajouter un antihistaminique sédatif de conseil pour dormir chez une personne âgée traitée : les effets s'additionnent"],
+            &["Neuroleptiques et antipsychotiques", "Ils dérèglent la thermorégulation centrale et gênent la sudation", "Température, vigilance, rigidité musculaire — un syndrome malin se discute devant une fièvre inexpliquée", "Ne pas suspendre sur décision de comptoir : l'arrêt brutal a ses propres accidents"],
+            &["Metformine", "Une déshydratation avec insuffisance rénale expose à l'acidose lactique", "Crampes, douleurs abdominales, respiration rapide, malaise — et toute diarrhée ou vomissement qui dure", "Ne pas laisser poursuivre pendant une gastro-entérite fébrile : c'est la règle des jours de maladie, elle vaut aussi sous 38 °C dehors"],
+            &["Patchs : fentanyl, trinitrine, rivastigmine, nicotine, buprénorphine", "La chaleur augmente le débit du dispositif : un patch chauffé délivre davantage, et le surdosage passe pour une fatigue", "Somnolence inhabituelle, confusion, nausées, dépression respiratoire pour les opioïdes", "Ne pas exposer le patch au soleil, à une bouillotte, à un bain chaud ni à une couverture chauffante — et ne jamais coller un patch sur une peau moite"],
+            &["Insulines et analogues du GLP-1", "Au-delà de 30 °C la stabilité n'est plus garantie ; un stylo laissé dans une voiture est perdu", "L'aspect du produit, les glycémies qui montent sans raison — premier signe d'une insuline dégradée", "Ne pas remettre au réfrigérateur un stylo en cours d'utilisation ni congeler : une insuline congelée se jette, même redevenue liquide"],
+            &["Médicaments de la chaîne du froid en général", "Le transport d'été est le maillon faible, pas le réfrigérateur", "La durée hors froid propre à chaque spécialité, qui n'est pas la même d'une marque à l'autre", "Ne pas donner un sac isotherme sans dire combien de temps il tient, ni ranger un vaccin dans la porte du réfrigérateur"],
+            &["Antiépileptiques inhibant l'anhydrase carbonique : topiramate, zonisamide", "Ils réduisent la sudation, surtout chez l'enfant, et exposent à l'hyperthermie", "Enfant rouge, chaud et sec qui ne transpire pas pendant l'effort ou la chaleur", "Ne pas laisser faire du sport aux heures chaudes sans en avoir parlé"],
+            &["Le conseil qui vaut pour tous", "Boire régulièrement sans attendre la soif, garder la pièce fermée le jour et aérée la nuit, mouiller la peau, éviter l'effort de 11 h à 21 h", "Chez une personne âgée seule : passer un appel par jour est ce qui sauve le plus", "Ne pas faire boire des quantités massives d'eau pure à quelqu'un sous diurétique : cela fabrique l'hyponatrémie qu'on veut éviter"],
+        ],
+    },
+    ConvTable {
+        short: "Soleil",
+        family: "Au comptoir",
+        title: "Photosensibilisation — les traitements qui font brûler la peau",
+        reviewed: "Août 2026 — points d'information ANSM, dont la restriction du kétoprofène topique, et les RCP des spécialités citées",
+        sources: &[
+            "ANSM — photosensibilité médicamenteuse, points d'information",
+            "ANSM — kétoprofène en gel : rappel des conditions d'utilisation",
+            "Centre régional de pharmacovigilance — fiches de photosensibilisation médicamenteuse",
+        ],
+        columns: &["Médicament ou classe", "Type de réaction", "Ce qu'on dit au comptoir", "Le piège"],
+        rows: &[
+            &["Cyclines, doxycycline en tête", "Phototoxique et dose-dépendante : un coup de soleil démesuré pour une exposition banale, en quelques heures", "Chapeau, manches longues, indice 50 sur ce qui reste découvert, et pas de séance de bronzage pendant la cure", "La prescription d'été pour l'acné ou pour un voyage en zone impaludée est justement celle qu'on donne au moment où le soleil est le plus fort"],
+            &["Fluoroquinolones", "Phototoxique, avec un érythème parfois bulleux", "Éviter le soleil pendant le traitement et les jours qui suivent", "La réaction peut survenir sur une exposition à travers une vitre : la voiture ne protège pas des UVA"],
+            &["Sulfamides antibactériens, cotrimoxazole", "Photoallergique, donc retardée et non proportionnelle à la dose", "Protection complète, et signaler toute éruption qui déborde les zones exposées", "Une éruption sous cotrimoxazole n'est pas toujours un coup de soleil : c'est aussi le début possible d'une toxidermie grave"],
+            &["Kétoprofène en gel", "Photoallergique, parfois sévère et étendue", "Se laver les mains après chaque application, couvrir la zone traitée par un vêtement pendant tout le traitement et les deux semaines qui suivent", "Deux semaines après l'arrêt, la zone reste sensible : c'est la seule règle de cette table qui continue après la dernière application"],
+            &["Amiodarone", "Phototoxique, puis pigmentation ardoisée du visage et des mains", "Protection stricte et permanente, y compris l'hiver, pendant tout le traitement", "La pigmentation, une fois installée, met des mois à des années à disparaître — et parfois ne disparaît pas"],
+            &["Diurétiques thiazidiques, hydrochlorothiazide", "Photosensibilité, et une exposition cumulée associée à un sur-risque de cancer cutané", "Protection au quotidien, surveillance des grains de beauté et des lésions qui ne cicatrisent pas", "C'est un traitement de fond pris pendant des années : le risque n'est pas celui d'une semaine de vacances mais celui d'une décennie"],
+            &["Méthotrexate", "Réactivation d'un coup de soleil ancien sur la zone déjà brûlée, parfois plusieurs jours après la prise", "Éviter le soleil dans les jours qui entourent la prise hebdomadaire", "Le patient ne fait pas le lien : la brûlure réapparaît sans nouvelle exposition"],
+            &["Rétinoïdes oraux et topiques, isotrétinoïne, adapalène", "Fragilité cutanée et sensibilité accrue, sans phototoxicité vraie", "Crème solaire tous les jours, pas de UV artificiels, et une lèvre protégée par un stick", "Le patient acnéique croit que le soleil améliore son acné : il la masque quelques semaines, puis elle revient plus forte"],
+            &["Millepertuis", "Phototoxique à forte dose, surtout sur peau claire", "Prévenir, parce que le patient ne le compte pas comme un médicament", "C'est aussi un inducteur enzymatique majeur : la photosensibilité est le moindre de ses problèmes"],
+            &["Voriconazole", "Phototoxicité sévère et, en traitement prolongé, risque de carcinome cutané", "Protection maximale, et surveillance dermatologique organisée par le prescripteur", "Le traitement est souvent long : la règle n'est pas saisonnière"],
+            &["Phénothiazines, dont l'alimémazine et la prométhazine", "Phototoxique, avec une pigmentation possible", "Protection, et attention à ces molécules données le soir pour dormir ou pour la toux", "Elles sont aussi anticholinergiques : en cas de forte chaleur, la photosensibilité n'est pas le seul problème"],
+            &["Essences de bergamote et de citrus, parfums et huiles essentielles", "Phototoxicité par les furocoumarines : coulées pigmentées en traînée", "Ne pas appliquer sur une peau qui va voir le soleil, et rincer avant l'exposition", "Le patient cherche la cause dans son ordonnance alors qu'elle est dans son eau de toilette"],
+        ],
+    },
+    ConvTable {
+        short: "Pilulier",
+        family: "Administration",
+        title: "Pilulier — ce qui ne s'y met pas, et pourquoi",
+        reviewed: "Août 2026 — RCP des spécialités citées et recommandations de la Société française de pharmacie clinique sur la préparation des doses à administrer",
+        sources: &[
+            "Base de données publique des médicaments (ANSM) — RCP des spécialités citées",
+            "Société française de pharmacie clinique — préparation des doses à administrer",
+            "Ordre national des pharmaciens — recommandations sur la PDA en officine",
+        ],
+        columns: &["Forme ou médicament", "Pourquoi il n'y va pas", "Ce qu'on fait à la place"],
+        rows: &[
+            &["Pradaxa (dabigatran)", "Les gélules sont hygroscopiques : hors de leur plaquette ou de leur flacon d'origine, elles se dégradent, et un flacon entamé ne se garde que quatre mois", "Laisser dans la plaquette et découper la plaquette si le patient a besoin d'un repère de jour"],
+            &["Comprimés effervescents et sachets", "L'humidité les fait réagir avant l'heure ; ils gonflent, collent et perdent leur dose", "Les laisser dans leur tube ou leur sachet, et les compter à part sur le plan de prise"],
+            &["Lyophilisats oraux et orodispersibles", "Ils fondent à la moindre humidité et se brisent au moindre appui", "Les garder en plaquette : ils sont conçus pour être poussés au dernier moment"],
+            &["Comprimés sublinguaux de trinitrine", "Le principe actif est volatil : hors du flacon d'origine, la dose part avant la crise", "Flacon d'origine, bien fermé, gardé sur soi — et vérifier la date, parce qu'un flacon ouvert ne se garde pas indéfiniment"],
+            &["Capsules molles huileuses, vitamine D en ampoule", "Elles collent, se percent et souillent les autres cases", "Les délivrer à part, et rappeler la date de la prise mensuelle ou trimestrielle plutôt que de la déposer dans une case"],
+            &["Cytotoxiques oraux et immunosuppresseurs à manipuler avec précaution", "Le déconditionnement expose le préparateur et l'entourage à la poussière du comprimé", "Ne pas déconditionner ; si le patient a besoin d'aide, organiser le plan de prise autour de la plaquette"],
+            &["Médicaments photosensibles restant en plaquette opaque", "L'aluminium de la plaquette est ce qui les protège ; une case transparente ne protège rien", "Garder la plaquette et repérer les jours dessus"],
+            &["Traitements « si besoin »", "Un pilulier dit quand prendre : y déposer un antalgique à la demande le transforme en prise systématique", "Les sortir du pilulier et les écrire sur le plan de prise avec leur condition et leur intervalle minimal"],
+            &["Cures courtes d'antibiotiques", "Elles ne suivent pas le rythme hebdomadaire du pilulier et se terminent en milieu de semaine", "Les délivrer à part avec la date de fin écrite sur la boîte"],
+            &["Formes à libération prolongée non sécables", "Couper pour faire entrer une demi-dose dans une case détruit la libération prolongée", "Vérifier la sécabilité — une barre gravée n'est pas toujours une barre de sécabilité — et demander un autre dosage au prescripteur"],
+            &["Ce qui change en cours de semaine", "Un pilulier préparé le lundi porte l'ordonnance du lundi : une dose modifiée le mercredi reste fausse dans les cases suivantes", "Refaire le pilulier à chaque changement, et noter la date de préparation dessus"],
+            &["Le pilulier lui-même", "Un pilulier gardé dans une salle de bain prend l'humidité, et un pilulier au soleil prend la chaleur", "Un endroit sec, à l'abri de la lumière, hors de portée des enfants — et un pilulier par personne dans un foyer qui en compte deux"],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -795,8 +873,8 @@ mod tests {
         // The catalogue only ever grows: a table withdrawn is a question
         // the counter can no longer answer from the application.
         assert!(
-            TABLES.len() >= 31,
-            "{} tables livrées, il y en avait trente et une",
+            TABLES.len() >= 34,
+            "{} tables livrées, il y en avait trente-quatre",
             TABLES.len()
         );
         let mut shorts = std::collections::HashSet::new();
