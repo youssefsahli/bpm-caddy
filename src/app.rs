@@ -1357,6 +1357,15 @@ struct Session {
     day_note_confirm: Option<i64>,
     event_title: String,
     event_time: String,
+    /// The hour the entry runs to, empty when it is a point in the day.
+    event_end: String,
+    /// A sweep in progress on the day plan: where it started, in screen
+    /// y. Cleared the frame the pointer is let go, and the frame after
+    /// any that is not a drag.
+    day_sweep: Option<f32>,
+    /// A sweep just finished: put the cursor in the title, which is the
+    /// only thing the gesture cannot say.
+    focus_event_title: bool,
     event_category: db::EventCategory,
     /// How often a new entry repeats, in days (0 = once).
     event_repeat: i64,
@@ -1661,6 +1670,9 @@ impl Session {
             day_note_confirm: None,
             event_title: String::new(),
             event_time: String::new(),
+            event_end: String::new(),
+            day_sweep: None,
+            focus_event_title: false,
             event_category: db::EventCategory::Formation,
             event_repeat: 0,
             agenda_filter: std::collections::HashSet::new(),
@@ -10838,10 +10850,31 @@ impl App {
             }
             Some((h - start) as f32 * row_h + (m as f32 / 60.0) * row_h)
         };
+        // Drawing a new entry by dragging down the plan. The gesture is
+        // read *before* the blocks are drawn, so a drag started on an
+        // empty stretch of the day is not stolen by the block it ends
+        // over; the blocks themselves keep their own click.
+        let free =
+            egui::Rect::from_min_max(egui::pos2(inner.left() + gutter, inner.top()), inner.max);
+        let sweep = ui.interact(
+            free,
+            ui.id().with(("day_sweep", &day)),
+            egui::Sense::click_and_drag(),
+        );
+        // The hour a point on the plan stands for, snapped to the
+        // quarter: the counter books at the hour, the half and the
+        // quarter, and a drag that produced 9 h 07 would be corrected by
+        // hand every time.
+        let hour_at = |y: f32| -> String {
+            let rows = ((y - inner.top()) / row_h).clamp(0.0, hours);
+            let quarters = (rows * 4.0).round().clamp(0.0, hours * 4.0) as u32;
+            format!("{:02}:{:02}", start + quarters / 4, (quarters % 4) * 15)
+        };
         let mut untimed: Vec<String> = Vec::new();
         let mut slots: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
         let draw = |ui: &mut egui::Ui,
                     time: &str,
+                    end: &str,
                     label: String,
                     color: egui::Color32,
                     hover: String,
@@ -10858,16 +10891,21 @@ impl App {
             let index = *column;
             *column += 1;
             let width = (inner.width() - gutter - 8.0) / 2.0;
+            // An entry that runs to an hour is drawn to it; one that is
+            // a point in the day keeps its single row.
+            let height = place(end)
+                .map(|e| (e - offset - 4.0).max(row_h - 6.0))
+                .unwrap_or(row_h - 6.0);
             let block = egui::Rect::from_min_size(
                 egui::pos2(
                     inner.left() + gutter + 4.0 + (index % 2) as f32 * width,
                     inner.top() + offset + 2.0,
                 ),
-                egui::vec2(width - 4.0, row_h - 6.0),
+                egui::vec2(width - 4.0, height),
             );
             ui.painter().rect_filled(block, 0.0, color);
             ui.painter().with_clip_rect(block.shrink(2.0)).text(
-                egui::pos2(block.left() + 5.0, block.center().y),
+                egui::pos2(block.left() + 5.0, block.top() + (row_h - 6.0) / 2.0),
                 egui::Align2::LEFT_CENTER,
                 label,
                 egui::FontId::proportional(11.5),
@@ -10896,6 +10934,7 @@ impl App {
             draw(
                 ui,
                 &rdv.time,
+                "",
                 label,
                 kind_color(rdv.kind),
                 hover,
@@ -10906,11 +10945,16 @@ impl App {
             );
         }
         for ev in events.iter().filter(|e| e.day == day) {
-            let label = format!("{} {}", ev.time, ev.title);
+            let label = if ev.end_time.is_empty() {
+                format!("{} {}", ev.time, ev.title)
+            } else {
+                format!("{}–{} {}", ev.time, ev.end_time, ev.title)
+            };
             let hover = format!("{} — {}", ev.category.label(), ev.title);
             draw(
                 ui,
                 &ev.time,
+                &ev.end_time,
                 label,
                 motif::bg_dark(),
                 hover,
@@ -10919,6 +10963,53 @@ impl App {
                 &mut slots,
                 open_id,
             );
+        }
+        // The sweep itself, drawn over the blocks so it is visible while
+        // it is being made, and turned into an entry when it is let go.
+        //
+        // What it leaves is a *filled form*, not a saved entry: the two
+        // hours land in the day's own « Ajouter » row with the cursor in
+        // the title, so the gesture answers « quand » and the keyboard
+        // answers « quoi ». A drag that silently created « (sans titre) »
+        // would be a row to go and correct.
+        if sweep.dragged() || sweep.drag_stopped() {
+            if let Some(pos) = sweep.interact_pointer_pos() {
+                let from = session
+                    .day_sweep
+                    .get_or_insert_with(|| pos.y - sweep.drag_delta().y);
+                let (a, b) = (from.min(pos.y), from.max(pos.y));
+                let band = egui::Rect::from_min_max(
+                    egui::pos2(free.left() + 4.0, a),
+                    egui::pos2(free.right() - 4.0, b.max(a + 4.0)),
+                );
+                ui.painter()
+                    .rect_filled(band, 0.0, motif::accent().gamma_multiply(0.45));
+                ui.painter()
+                    .rect_stroke(band, 0.0, egui::Stroke::new(1.0_f32, motif::accent()));
+                let (h0, h1) = (hour_at(a), hour_at(b));
+                ui.painter().text(
+                    egui::pos2(band.left() + 6.0, band.top() + 9.0),
+                    egui::Align2::LEFT_TOP,
+                    if h1 > h0 {
+                        format!("{h0} – {h1}")
+                    } else {
+                        h0.clone()
+                    },
+                    egui::FontId::proportional(11.5),
+                    motif::text(),
+                );
+                if sweep.drag_stopped() {
+                    session.event_time = h0.clone();
+                    // A tap is a start hour and nothing more; only a
+                    // real drag — a quarter of an hour at least — says
+                    // when the thing ends.
+                    session.event_end = if h1 > h0 { h1 } else { String::new() };
+                    session.focus_event_title = true;
+                    session.day_sweep = None;
+                }
+            }
+        } else {
+            session.day_sweep = None;
         }
         let below = (plan.bottom() - ui.cursor().top()).max(0.0) + 8.0;
         ui.add_space(below);
@@ -11187,10 +11278,18 @@ impl App {
             }
             for ev in session.events.clone() {
                 ui.horizontal(|ui| {
+                    // An entry that runs to an hour says both, here as
+                    // on the plan above and on the printed week.
                     if ev.time.is_empty() {
                         ui.add_space(48.0);
-                    } else {
+                    } else if ev.end_time.is_empty() {
                         ui.label(egui::RichText::new(&ev.time).size(12.0).strong());
+                    } else {
+                        ui.label(
+                            egui::RichText::new(format!("{}–{}", ev.time, ev.end_time))
+                                .size(12.0)
+                                .strong(),
+                        );
                     }
                     ui.label(
                         egui::RichText::new(format!("  {}  ", ev.category.label()))
@@ -11242,14 +11341,33 @@ impl App {
                     [52.0, 24.0],
                     egui::TextEdit::singleline(&mut session.event_time)
                         .hint_text(tr("agenda_hour_hint")),
+                )
+                .on_hover_text(tr("agenda_sweep_tooltip"));
+                // An en dash and not an arrow: the embedded family has
+                // no → and drew a tofu box between the two hours.
+                ui.label(
+                    egui::RichText::new("–")
+                        .size(11.0)
+                        .color(motif::text_faint()),
+                );
+                ui.add_sized(
+                    [52.0, 24.0],
+                    egui::TextEdit::singleline(&mut session.event_end)
+                        .hint_text(tr("agenda_end_hint")),
                 );
             };
             let title = |ui: &mut egui::Ui, session: &mut Session, w: f32| -> egui::Response {
-                ui.add_sized(
+                let field = ui.add_sized(
                     [w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_title)
                         .hint_text(tr("agenda_event_hint")),
-                )
+                );
+                // A sweep just filled the hours in: the only thing left
+                // to say is what it is, so the cursor goes there.
+                if std::mem::take(&mut session.focus_event_title) {
+                    field.request_focus();
+                }
+                field
             };
             let repeat = |ui: &mut egui::Ui, session: &mut Session| {
                 // Every week, every fortnight, every month or once.
@@ -11294,6 +11412,8 @@ impl App {
                     // went off the right edge of the day pane.
                     let reserve = 110.0
                         + 52.0
+                        + 52.0
+                        + 18.0
                         + 130.0
                         + Self::button_width(ui, tr("agenda_event_add"))
                         + ui.spacing().button_padding.x * 4.0
@@ -11325,9 +11445,11 @@ impl App {
         if add_event {
             let title = session.event_title.trim().to_owned();
             let time = db::parse_hour(&session.event_time).unwrap_or_default();
-            match session.db.add_event(
+            let end = db::parse_hour(&session.event_end).unwrap_or_default();
+            match session.db.add_event_span(
                 &day,
                 &time,
+                &end,
                 &title,
                 session.event_category,
                 session.event_repeat,
@@ -11336,6 +11458,7 @@ impl App {
                 Ok(_) => {
                     session.event_title.clear();
                     session.event_time.clear();
+                    session.event_end.clear();
                     session.load_day();
                 }
                 Err(e) => session.error = Some(e),

@@ -1357,10 +1357,12 @@ fn week_plan_source(
             ));
         }
         for ev in events.iter().filter(|e| e.day == *day) {
-            let hour = if ev.time.is_empty() {
-                String::new()
-            } else {
-                format!("{} ", ev.time)
+            // An entry that runs to an hour prints both, so the plan on
+            // the wall says how much of the day it takes.
+            let hour = match (ev.time.as_str(), ev.end_time.as_str()) {
+                ("", _) => String::new(),
+                (t, "") => format!("{t} "),
+                (t, e) => format!("{t}–{e} "),
             };
             body.push_str(&format!(
                 "#text(size: 8pt, style: \"italic\")[#{}]#linebreak()\n",
@@ -2346,6 +2348,7 @@ mod tests {
             },
         ];
         let events = vec![Event {
+            end_time: String::new(),
             id: 1,
             day: "2026-08-25".to_owned(),
             time: "14:00".to_owned(),
