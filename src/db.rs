@@ -30333,6 +30333,24 @@ pub fn format_french_date(iso: &str) -> String {
     }
 }
 
+/// A directory a test made, removed when the test ends.
+///
+/// Every test here works on a real SQLCipher file, and every one of them
+/// used to leave its directory behind: one `cargo test` run leaked forty
+/// databases, and a machine that runs the suite a few dozen times filled
+/// `/tmp` with six gigabytes of them. The guard drops at the end of the
+/// test — including when it panics, since Drop runs while unwinding —
+/// so the suite cleans up after itself rather than after the operator.
+#[cfg(test)]
+pub(crate) struct Swept(pub std::path::PathBuf);
+
+#[cfg(test)]
+impl Drop for Swept {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -30392,6 +30410,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-sync-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let db = Db::open(&dir.join("live.db"), "secret").unwrap();
 
         // A base as a first unlock leaves it.
@@ -30453,6 +30472,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-span-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let db = Db::open(&dir.join("live.db"), "secret").unwrap();
         let day = db.today_iso().unwrap();
         let add = |time: &str, end: &str, title: &str| {
@@ -30494,6 +30514,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-sort-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let db = Db::open(&dir.join("live.db"), "secret").unwrap();
         for name in ["Zovirax", "elugan", "Élugan", "Aclasta", "Eliquis"] {
             db.add_drug(name).unwrap();
@@ -30587,6 +30608,7 @@ mod tests {
         // process id, so two using the same name race each other.
         let dir = std::env::temp_dir().join(format!("bpm-caddy-newposo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("newposo.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -30745,6 +30767,7 @@ mod tests {
     fn drugs_are_found_by_an_exact_tag_among_several() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-tag-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("tag.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -30807,6 +30830,7 @@ mod tests {
     fn the_carnet_de_vaccination_round_trips_and_is_compare_and_set() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-vacc-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("vacc.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -30876,6 +30900,7 @@ mod tests {
     fn week_dates_run_monday_to_sunday_around_today() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-week-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("week.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -30979,6 +31004,7 @@ mod tests {
     fn interviews_advance_and_persist() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-itest-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("interviews.db");
         let _ = std::fs::remove_file(&path);
 
@@ -31043,6 +31069,7 @@ mod tests {
     fn appointments_are_ordered_by_hour_within_a_day() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-hours-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("hours.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31207,6 +31234,7 @@ mod tests {
     fn themes_are_compare_and_set_and_reach_the_export() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-theme-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("theme.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31250,6 +31278,7 @@ mod tests {
     fn a_biology_result_is_written_and_corrected() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-bio-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("bio.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31297,6 +31326,7 @@ mod tests {
     fn the_watchlist_carries_each_patient_s_readings_and_treatments() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-watch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("watch.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31371,6 +31401,7 @@ mod tests {
     fn the_conduite_fills_the_cards_it_names_and_nothing_else() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-conduite-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("conduite.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31699,6 +31730,7 @@ mod tests {
     fn a_base_from_an_older_version_still_opens() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-old-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("old.db");
         let _ = std::fs::remove_file(&path);
         // The schema as it was several versions ago: no operator on an
@@ -31769,6 +31801,7 @@ mod tests {
     fn the_protocols_seed_once_and_keep_their_shape() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-proto-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("proto.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31911,6 +31944,7 @@ mod tests {
     fn the_codex_seeds_once_and_stays_the_team_s() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-codex-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("codex.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -31985,6 +32019,7 @@ mod tests {
     fn the_dispositifs_seed_once_and_answer_the_counter() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-dispo-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("dispo.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32100,6 +32135,7 @@ mod tests {
     fn a_rental_runs_until_it_is_taken_back() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-loc-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("loc.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32173,6 +32209,7 @@ mod tests {
     fn a_new_act_is_stamped_in_the_counter_s_own_day() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-clock-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("clock.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32206,6 +32243,7 @@ mod tests {
     fn moving_an_act_moves_its_year_and_its_rank() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-move-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("move.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32254,6 +32292,7 @@ mod tests {
     fn an_act_records_who_did_it() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-actby-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("actby.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32280,6 +32319,7 @@ mod tests {
     fn an_act_can_be_moved_to_the_day_it_was_held() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-actdate-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("actdate.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32337,6 +32377,7 @@ mod tests {
 
         let dir = std::env::temp_dir().join(format!("bpm-caddy-tox-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("tox.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32384,6 +32425,7 @@ mod tests {
     fn posologies_seed_once_and_stay_the_team_s() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-poso-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("poso.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32441,6 +32483,7 @@ mod tests {
     fn class_notes_are_shared_and_clearable() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-class-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("class.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32485,6 +32528,7 @@ mod tests {
     fn table_cells_override_and_reset() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-cells-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("cells.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32523,6 +32567,7 @@ mod tests {
     fn starter_details_fill_only_empty_fields() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-detail-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("detail.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32586,6 +32631,7 @@ mod tests {
     fn reset_clears_everything_and_reseeds_the_drugs() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-reset-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("reset.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();
@@ -32615,6 +32661,7 @@ mod tests {
     fn starter_drugs_seed_once_and_never_resurrect() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-sdrug-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("starter.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32687,6 +32734,7 @@ mod tests {
     fn transmission_logbook_groups_by_day() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-trans-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("trans.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32723,6 +32771,7 @@ mod tests {
     fn standalone_notes_journal() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-note-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("notes.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32768,6 +32817,7 @@ mod tests {
     fn drug_base_crud_is_cas() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-drug-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("drugs.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32811,6 +32861,7 @@ mod tests {
     fn rekey_changes_the_master_password() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-rekey-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("rekey.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32831,6 +32882,7 @@ mod tests {
     fn backup_snapshot_opens_with_the_same_password() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-bak-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("live.db");
         let bak = dir.join("bak.db");
         let _ = std::fs::remove_file(&path);
@@ -32853,6 +32905,7 @@ mod tests {
     fn patients_can_be_corrected_and_deleted() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-edit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("edit.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32934,6 +32987,7 @@ mod tests {
     fn stale_state_changes_are_rejected() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-cas-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("cas.db");
         let _ = std::fs::remove_file(&path);
 
@@ -32973,6 +33027,7 @@ mod tests {
     fn upcoming_appointments_lists_planned_interviews() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-rdv-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("rdv.db");
         let _ = std::fs::remove_file(&path);
 
@@ -33457,6 +33512,7 @@ mod tests {
     fn encrypted_db_rejects_wrong_password() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("test.db");
         let _ = std::fs::remove_file(&path);
 
@@ -33483,6 +33539,7 @@ mod tests {
     fn the_base_does_its_ordinary_work() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-day-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
         let path = dir.join("day.db");
         let _ = std::fs::remove_file(&path);
         let db = Db::open(&path, "secret").unwrap();

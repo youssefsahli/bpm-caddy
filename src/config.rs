@@ -1514,6 +1514,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-cfg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
         std::env::set_var("XDG_CONFIG_HOME", &dir);
 
         let expected = dir.join("bpm-caddy").join("config.toml");

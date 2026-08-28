@@ -20456,21 +20456,26 @@ mod tests {
     }
 
     /// A session on a scratch database, for the notebook tests.
-    fn scratch_session(tag: &str) -> super::Session {
+    ///
+    /// The guard comes back with the session and not instead of it: it
+    /// removes the directory when it drops, and dropping it here would
+    /// delete the database out from under the session it just opened.
+    fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-tab-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let swept = crate::db::Swept(dir.clone());
         let db = crate::db::Db::open(&dir.join("live.db"), "secret").unwrap();
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
-        super::Session::new(db, 12).unwrap()
+        (super::Session::new(db, 12).unwrap(), swept)
     }
 
     /// The drug search is asked for twice a frame; it must answer from
     /// the memo, and the memo must let go the moment the base moves.
     #[test]
     fn the_drug_search_answers_once_per_question() {
-        let mut s = scratch_session("memo");
+        let (mut s, _swept) = scratch_session("memo");
         s.drug_query = "elix".to_owned();
         s.refresh_drug_hits(super::App::DRUG_HITS);
         let first = s.drug_hits.clone();
@@ -20498,7 +20503,7 @@ mod tests {
     /// base is only asked when there is no date to read.
     #[test]
     fn the_year_comes_from_the_date_in_hand() {
-        let mut s = scratch_session("year");
+        let (mut s, _swept) = scratch_session("year");
         s.today = "2031-02-09".to_owned();
         assert_eq!(s.year_now(), 2031);
         // No date recorded: fall back on the base rather than on zero.
@@ -20514,7 +20519,7 @@ mod tests {
     #[test]
     fn the_drug_tree_lists_letters_and_opens_one_at_a_time() {
         use super::NavDrugRow;
-        let mut s = scratch_session("tree");
+        let (mut s, _swept) = scratch_session("tree");
         let rows = super::App::drug_tree_rows(&s);
         assert!(!rows.is_empty());
         // Folded, the tree is letters and nothing else.
@@ -20558,7 +20563,7 @@ mod tests {
 
     #[test]
     fn the_open_tab_follows_the_live_view() {
-        let mut s = scratch_session("follow");
+        let (mut s, _swept) = scratch_session("follow");
         assert_eq!(s.current_tab(), super::WorkTab::Search);
         // Opening a patient by any route — not only by clicking a tab —
         // must be what the strip then points at.
@@ -20575,7 +20580,7 @@ mod tests {
 
     #[test]
     fn closing_the_open_file_falls_back_to_its_left_neighbour() {
-        let mut s = scratch_session("close");
+        let (mut s, _swept) = scratch_session("close");
         let (a, b) = (s.patients[0].clone(), s.patients[1].clone());
         s.open_patient(a.clone());
         s.note_tab();
@@ -20589,7 +20594,7 @@ mod tests {
 
     #[test]
     fn the_standing_views_cannot_be_closed() {
-        let mut s = scratch_session("standing");
+        let (mut s, _swept) = scratch_session("standing");
         let before = s.tabs.clone();
         for tab in before.clone() {
             s.close_tab(&tab);
@@ -20599,7 +20604,7 @@ mod tests {
 
     #[test]
     fn cycling_wraps_in_both_directions() {
-        let mut s = scratch_session("cycle");
+        let (mut s, _swept) = scratch_session("cycle");
         s.activate_tab(&super::WorkTab::Dashboard);
         assert_eq!(s.current_tab(), super::WorkTab::Dashboard);
         // Dashboard is first: back one wraps to the last standing view.
@@ -20611,7 +20616,7 @@ mod tests {
 
     #[test]
     fn a_tab_whose_file_is_gone_drops_itself() {
-        let mut s = scratch_session("gone");
+        let (mut s, _swept) = scratch_session("gone");
         let p = s.patients[0].clone();
         s.open_patient(p.clone());
         s.note_tab();
@@ -20628,6 +20633,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-dbak-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
         let db_path = dir.join("live.db");
         let db = crate::db::Db::open(&db_path, "secret").unwrap();
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
@@ -20774,6 +20780,7 @@ mod tests {
         use crate::db::Location;
         let dir = std::env::temp_dir().join(format!("bpm-caddy-rec-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
         let path = dir.join("recap.db");
         let _ = std::fs::remove_file(&path);
         let db = crate::db::Db::open(&path, "secret").unwrap();
@@ -20830,6 +20837,7 @@ mod tests {
         use crate::db::Location;
         let dir = std::env::temp_dir().join(format!("bpm-caddy-watch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
         let path = dir.join("watch.db");
         let _ = std::fs::remove_file(&path);
         let db = crate::db::Db::open(&path, "secret").unwrap();

@@ -238,6 +238,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-rel-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
         let path = dir.join("version.txt");
         assert_eq!(read_version_file(&path), None, "fichier absent");
         std::fs::write(&path, "  v0.107.0\n").unwrap();
