@@ -616,6 +616,116 @@ const RULES: &[Rule] = &[
         title: "Corticoïde inhalé sans traitement de crise",
         detail: "Un traitement de fond de l'asthme sans bronchodilatateur de secours sur l'ordonnance : soit le patient en a un chez lui et il faut vérifier sa date de péremption et sa technique, soit il n'en a pas, et c'est la crise qui le découvrira. La question se pose maintenant.",
     },
+    Rule {
+        // The oral group deliberately lists molecules and not the class:
+        // « bêtabloquant » would match the collyre too, and a single
+        // Timoptol would then satisfy both halves of the pair.
+        kind: Kind::Combination(&[
+            &[
+                "bisoprolol",
+                "aténolol",
+                "métoprolol",
+                "propranolol",
+                "nébivolol",
+                "carvédilol",
+                "sotalol",
+                "acébutolol",
+                "céliprolol",
+                "labétalol",
+            ],
+            &["timolol", "cartéolol", "bétaxolol"],
+        ]),
+        severity: Severity::Warn,
+        title: "Bêtabloquant caché",
+        detail: "Un collyre bêtabloquant du glaucome passe dans la circulation par la muqueuse nasale et échappe au premier passage hépatique : il s'ajoute au bêtabloquant oral et la bradycardie, l'asthénie ou le bronchospasme qui suivent ne sont attribués ni à l'un ni à l'autre. Occlure le point lacrymal une minute après l'instillation divise ce passage. Un asthme est une contre-indication qui vaut aussi pour la goutte dans l'œil.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &[
+                "carbamazépine",
+                "oxcarbazépine",
+                "phénytoïne",
+                "phénobarbital",
+                "primidone",
+                "rifampicine",
+                "millepertuis",
+                "éfavirenz",
+            ],
+            &[
+                "contraception",
+                "éthinylestradiol",
+                "estroprogestatif",
+                "désogestrel",
+                "lévonorgestrel",
+                "drospirénone",
+                "gestodène",
+                "norgestimate",
+            ],
+        ]),
+        severity: Severity::Alert,
+        title: "Contraception sous inducteur",
+        detail: "L'inducteur enzymatique accélère la dégradation des hormones et fait échouer la contraception, pilule comme implant et anneau — le stérilet au cuivre et le dispositif au lévonorgestrel sont les deux méthodes qui n'en dépendent pas. L'échec est silencieux jusqu'au test de grossesse. Cela vaut pendant tout le traitement et encore quatre semaines après son arrêt, et le millepertuis compte, même acheté sans ordonnance.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["apixaban", "rivaroxaban", "édoxaban", "dabigatran"],
+            &[
+                "amiodarone",
+                "dronédarone",
+                "vérapamil",
+                "clarithromycine",
+                "itraconazole",
+                "kétoconazole",
+                "ciclosporine",
+                "ritonavir",
+            ],
+        ]),
+        severity: Severity::Warn,
+        title: "AOD potentialisé",
+        detail: "Ces molécules inhibent la P-glycoprotéine, et pour certaines le CYP3A4 : l'exposition à l'anticoagulant direct monte sans que rien ne se voie, puisqu'il n'y a pas d'INR pour le dire. Selon la molécule et l'association, la dose se réduit ou l'association se contre-indique — la dronédarone et le kétoconazole sont contre-indiqués avec le dabigatran. Vérifier la dose prescrite contre l'âge, le poids et la clairance, et signaler tout saignement.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["prednisone", "prednisolone", "méthylprednisolone", "bétaméthasone"],
+            &[
+                "insuline",
+                "biguanide",
+                "sulfamide hypoglycémiant",
+                "gliptine",
+                "isglt2",
+                "analogue glp-1",
+                "glinide",
+            ],
+        ]),
+        severity: Severity::Warn,
+        title: "Corticoïde et glycémie",
+        detail: "Une corticothérapie fait monter la glycémie dès les premiers jours, surtout en fin de journée avec une prise matinale, et un diabète équilibré ne l'est plus. Prévenir le patient d'augmenter l'autosurveillance pendant la cure et de ne pas s'inquiéter d'une baisse à l'arrêt : c'est l'adaptation qui suit la corticothérapie, et elle se fait avec le prescripteur. Chez un patient non diabétique connu, une cure prolongée justifie de vérifier la glycémie.",
+    },
+    Rule {
+        kind: Kind::Duplicate(&["corticoïde", "cortico"], 3),
+        severity: Severity::Info,
+        title: "Charge corticoïde cumulée",
+        detail: "Trois corticoïdes ou plus sur une même ordonnance — inhalé, nasal, cutané, collyre, oral — s'additionnent : chacun pris isolément est faible, la somme ne l'est pas. La freination surrénalienne, la fragilité cutanée, la cataracte et l'ostéoporose se jugent sur le total et non sur une ligne. Vérifier que chacun garde une indication actuelle et une durée, en particulier le dermocorticoïde renouvelé sans limite.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["warfarine", "fluindione", "acénocoumarol"],
+            &["amiodarone"],
+        ]),
+        severity: Severity::Alert,
+        title: "AVK + amiodarone",
+        detail: "L'amiodarone augmente fortement l'effet de l'antivitamine K, et elle le fait lentement : l'INR s'emballe au bout d'une à trois semaines, longtemps après l'introduction, puis reste perturbé des mois après l'arrêt tant la molécule est stockée. Un INR est nécessaire dans la semaine qui suit l'introduction, puis rapproché, et la dose d'AVK se réduit le plus souvent d'un tiers.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["hydrochlorothiazide", "indapamide", "thiazidique"],
+            &["calcium"],
+            &["vitamine d", "cholécalciférol", "calcifédiol"],
+        ]),
+        severity: Severity::Warn,
+        title: "Calcémie cumulée",
+        detail: "Le thiazidique réduit l'élimination urinaire du calcium pendant que la supplémentation en apporte : l'hypercalcémie s'installe lentement et se manifeste par de la soif, des urines abondantes, une constipation, des nausées et une confusion — signes qu'on met volontiers sur le compte de l'âge. Une calcémie suffit à trancher, et la supplémentation se réévalue : elle est souvent prescrite pour une durée que personne n'a rediscutée.",
+    },
 ];
 
 #[cfg(test)]
@@ -669,6 +779,84 @@ mod tests {
         assert!(review(&ordonnance)
             .iter()
             .any(|p| p.title == "Triade néfaste"));
+    }
+
+    /// The rule that had to be written by molecule and not by class:
+    /// « bêtabloquant » matches the collyre as well as the tablet, and
+    /// a Combination lets one treatment satisfy both groups — a patient
+    /// on Timoptol alone would have been told he takes two.
+    #[test]
+    fn a_collyre_alone_is_not_a_hidden_betablocker() {
+        let collyre = [t("Timoptol", "timolol", "collyre bêta-bloquant")];
+        assert!(review(&collyre)
+            .iter()
+            .all(|p| p.title != "Bêtabloquant caché"));
+        let oral = [t("Cardensiel", "bisoprolol", "bêtabloquant")];
+        assert!(review(&oral)
+            .iter()
+            .all(|p| p.title != "Bêtabloquant caché"));
+        let both = [
+            t("Cardensiel", "bisoprolol", "bêtabloquant"),
+            t("Timoptol", "timolol", "collyre bêta-bloquant"),
+        ];
+        let point = review(&both)
+            .into_iter()
+            .find(|p| p.title == "Bêtabloquant caché")
+            .expect("les deux ensemble doivent être repérés");
+        assert_eq!(point.drugs.len(), 2);
+    }
+
+    /// An inducer wrecks a contraception silently — and the herbal one
+    /// bought without a prescription counts like the others.
+    #[test]
+    fn an_inducer_beside_a_contraception_is_an_alert() {
+        let ordonnance = [
+            t("Tegretol", "carbamazépine", "antiépileptique"),
+            t("Leeloo", "lévonorgestrel éthinylestradiol", "contraception"),
+        ];
+        let point = review(&ordonnance)
+            .into_iter()
+            .find(|p| p.title == "Contraception sous inducteur")
+            .expect("l'échec de contraception doit être repéré");
+        assert_eq!(point.severity, Severity::Alert);
+        let herbal = [
+            t("Millepertuis", "hypericum perforatum", "phytothérapie"),
+            t("Optimizette", "désogestrel", "contraception"),
+        ];
+        assert!(review(&herbal)
+            .iter()
+            .any(|p| p.title == "Contraception sous inducteur"));
+        // The contraception alone says nothing.
+        let alone = [t(
+            "Leeloo",
+            "lévonorgestrel éthinylestradiol",
+            "contraception",
+        )];
+        assert!(review(&alone)
+            .iter()
+            .all(|p| p.title != "Contraception sous inducteur"));
+    }
+
+    /// Three corticosteroids by three routes are one corticosteroid load.
+    #[test]
+    fn the_corticoid_load_is_counted_across_routes() {
+        let two = [
+            t("Flixotide", "fluticasone", "corticoïde inhalé"),
+            t("Nasonex", "mométasone", "corticoïde nasal"),
+        ];
+        assert!(review(&two)
+            .iter()
+            .all(|p| p.title != "Charge corticoïde cumulée"));
+        let three = [
+            t("Flixotide", "fluticasone", "corticoïde inhalé"),
+            t("Nasonex", "mométasone", "corticoïde nasal"),
+            t("Diprosone", "bétaméthasone", "dermocorticoïde"),
+        ];
+        let point = review(&three)
+            .into_iter()
+            .find(|p| p.title == "Charge corticoïde cumulée")
+            .expect("la charge doit être comptée");
+        assert_eq!(point.drugs.len(), 3);
     }
 
     #[test]
@@ -833,8 +1021,8 @@ mod tests {
         // The catalogue only ever grows: a rule removed is a reading
         // nobody does any more.
         assert!(
-            RULES.len() >= 48,
-            "{} règles de revue, il y en avait quarante-huit",
+            RULES.len() >= 55,
+            "{} règles de revue, il y en avait cinquante-cinq",
             RULES.len()
         );
         let mut titles: Vec<&str> = RULES.iter().map(|r| r.title).collect();
