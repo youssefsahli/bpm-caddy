@@ -14362,13 +14362,18 @@ impl App {
         }
     }
 
+    /// The reference tables, as a carved master and detail.
+    ///
+    /// The selector used to be twenty-seven undifferentiated buttons
+    /// wrapped across the top — six rows at a counter width, which left
+    /// one row of the table itself above the fold, and no way to tell
+    /// « Broyage » from « Arrêts » but by opening both. Now the list is
+    /// a panel of its own down the left, in the five families the module
+    /// was always organised in: each row carries the short name, the
+    /// title in italics after it, and how many lines it holds, with the
+    /// tables the team has corrected marked. The table takes the rest
+    /// and scrolls on its own, so its first row is always on screen.
     fn tables_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            Self::tables_body(ui, session, config);
-        });
-    }
-
-    fn tables_body(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         if session.table_cells.is_empty() && session.table_edit.is_none() {
             // First paint (or after a view switch): load the team's
             // edits for the selected table.
@@ -14377,9 +14382,42 @@ impl App {
             .short;
             session.table_cells = session.db.table_cells(key).unwrap_or_default();
         }
-        motif::page(ui, 1500.0, |ui| {
-            ui.add_space(24.0);
-            ui.horizontal(|ui| {
+        let body = motif::visible_rect(ui);
+        // The head wraps at a counter width with both docks out: the
+        // title and three buttons take one line at 1600 px and three at
+        // 1024 with the text at 1,25. Measured, not guessed — a band
+        // short by one row cut the search field in half behind the list
+        // under it.
+        let head_row = ui
+            .spacing()
+            .interact_size
+            .y
+            .max(ui.text_style_height(&egui::TextStyle::Heading))
+            + ui.spacing().item_spacing.y;
+        let title_w = {
+            let font = egui::TextStyle::Heading.resolve(ui.style());
+            ui.fonts(|f| {
+                f.layout_no_wrap(tr("tables_title").to_owned(), font, motif::text())
+                    .size()
+                    .x
+            }) + ui.spacing().item_spacing.x
+        };
+        let head_rows = Self::wrapped_rows_of(
+            ui,
+            body.width(),
+            [
+                title_w,
+                Self::button_width(ui, tr("dash_print")),
+                Self::button_width(ui, tr("patient_back")),
+                Self::button_width(ui, tr("tables_calc")),
+            ]
+            .into_iter(),
+        );
+        // Those rows, plus the search field's own.
+        let head_h = head_row * head_rows + ui.spacing().interact_size.y.max(24.0) + 10.0;
+        let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("tables_title"));
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("tables_print_tooltip"))
@@ -14401,14 +14439,13 @@ impl App {
                     session.calc_open = !session.calc_open;
                 }
             });
-            ui.add_space(8.0);
-            // One search across every table: at the counter the
-            // question is « où est-ce que j'ai lu ça », and it is not
-            // answered by clicking through the tabs one by one. The
-            // count is read from the table list rather than written into
-            // the hint by hand: the next table added would have left the
-            // old number sitting there, and a figure that lies once is a
-            // figure nobody reads again.
+            // One search across every table: at the counter the question
+            // is « où est-ce que j'ai lu ça », and it is not answered by
+            // clicking through the tables one by one. The count is read
+            // from the table list rather than written into the hint by
+            // hand: the next table added would have left the old number
+            // sitting there, and a figure that lies once is a figure
+            // nobody reads again.
             let field = ui.add_sized(
                 [ui.available_width().min(420.0), 24.0],
                 egui::TextEdit::singleline(&mut session.table_query)
@@ -14417,45 +14454,89 @@ impl App {
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
             }
-            ui.add_space(8.0);
-            // Selector: one button per table, the active one sunken.
-            // There are more tables than fit on one line — let it wrap,
-            // but not down the whole screen. Twenty-seven of them take
-            // six rows at a counter width, which left one row of the
-            // table itself above the fold; past three rows the selector
-            // scrolls in its own box and the table stays in view. The
-            // band is measured, never guessed, like the others.
-            let rows = Self::wrapped_rows(
-                ui,
-                ui.available_width(),
-                crate::tables::TABLES.iter().map(|t| t.short),
-            );
-            let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
-            let selector = |ui: &mut egui::Ui, session: &mut Session| {
-                ui.horizontal_wrapped(|ui| {
-                    for (i, t) in crate::tables::TABLES.iter().enumerate() {
-                        let btn = motif::toggle(ui, t.short, i == session.table_selected);
-                        if btn.clicked() {
-                            session.table_selected = i;
-                            session.table_edit = None;
-                            session.table_undo = None;
-                            session.table_cells =
-                                session.db.table_cells(t.short).unwrap_or_default();
-                        }
-                    }
-                });
-            };
-            if rows > 3.0 {
-                egui::ScrollArea::vertical()
-                    .id_salt("tables_selector")
-                    .max_height(row_h * 3.0 + 6.0)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| selector(ui, session));
-            } else {
-                selector(ui, session);
-            }
-            ui.add_space(12.0);
         });
+        let list_w = (rows[1].width() * 0.22).clamp(175.0, 270.0);
+        let cols = [
+            egui::Rect::from_min_size(rows[1].min, egui::vec2(list_w, rows[1].height())),
+            egui::Rect::from_min_max(
+                egui::pos2(rows[1].left() + list_w + 8.0, rows[1].top()),
+                rows[1].max,
+            ),
+        ];
+        Self::tables_list(ui, session, cols[0]);
+        motif::inside(ui, cols[1], |ui| {
+            // Both ways. Six columns of full sentences do not fit in a
+            // pane that has just given a quarter of itself to the list,
+            // and a column squeezed to eighty pixels wraps « Comprimés
+            // gastro-résistants » over five lines. The columns keep a
+            // width they can be read at and the table scrolls sideways
+            // instead.
+            egui::ScrollArea::both()
+                .id_salt("tables_detail")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    Self::tables_body(ui, session, config);
+                });
+        });
+    }
+
+    /// The list panel: five families, the tables under each, and the
+    /// keyboard to walk them.
+    fn tables_list(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let edited = session.db.edited_table_keys().unwrap_or_default();
+        let mut pick: Option<usize> = None;
+        motif::panel(ui, rect, Some(tr("tables_list")), |ui| {
+            let body = ui.available_rect_before_wrap();
+            if body.height() < 30.0 {
+                return;
+            }
+            let inner = motif::well(ui, body);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("tables_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.y = 1.0;
+                        for family in crate::tables::FAMILIES {
+                            motif::section(ui, family);
+                            for (i, t) in crate::tables::TABLES.iter().enumerate() {
+                                if t.family != family {
+                                    continue;
+                                }
+                                // The count of lines, and a mark when
+                                // the team has corrected a cell: a table
+                                // the officine has edited is one to read
+                                // before trusting the shipped one beside
+                                // it.
+                                let mark = if edited.contains(t.short) { " ·" } else { "" };
+                                let resp = motif::list_row_pair(
+                                    ui,
+                                    &format!("{}{mark}", t.short),
+                                    &trf("tables_row_count", t.rows.len()),
+                                    i == session.table_selected,
+                                    10.0,
+                                );
+                                if resp.on_hover_text(t.title).clicked() {
+                                    pick = Some(i);
+                                }
+                            }
+                            ui.add_space(4.0);
+                        }
+                    });
+            });
+        });
+        if let Some(i) = pick {
+            session.table_selected = i;
+            session.table_edit = None;
+            session.table_undo = None;
+            session.table_cells = session
+                .db
+                .table_cells(crate::tables::TABLES[i].short)
+                .unwrap_or_default();
+        }
+    }
+
+    fn tables_body(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         // While something is being looked for, the rows that answer it
         // take the place of the open table — whichever table they are
         // in. Clicking one opens its table where it stands.
@@ -14469,12 +14550,12 @@ impl App {
         if session.calc_open {
             Self::calc_panel(ui, session, config);
         }
-        motif::page(ui, 1500.0, |ui| {
+        {
             let t =
                 &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
             ui.label(egui::RichText::new(t.title).strong().size(15.0));
             ui.add_space(6.0);
-        });
+        }
         // Sunken box around the table grid, centered. Reference cells
         // are long sentences, so each column gets a fixed share of the
         // width and wraps inside it; the box is then painted behind the
@@ -14486,12 +14567,23 @@ impl App {
         let avail =
             egui::Rect::from_min_max(avail.min, egui::pos2(avail.right() - 14.0, avail.bottom()));
         let t = &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
-        let w = avail.width().min(1500.0);
         const PAD: f32 = 8.0;
         const GAP: f32 = 20.0;
+        // The width a column of prose stops being readable below. Under
+        // it the table is drawn wider than the pane and scrolls, which
+        // is what the horizontal bar is there for.
+        const MIN_COL: f32 = 132.0;
         let cols = t.columns.len().max(1) as f32;
-        let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(80.0);
-        let left = avail.center().x - w / 2.0;
+        let w = avail
+            .width()
+            .min(1500.0)
+            .max(2.0 * PAD + GAP * (cols - 1.0) + MIN_COL * cols);
+        let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(MIN_COL);
+        // Centred while it fits, flush left once it does not: a table
+        // wider than the pane, centred, starts to the *left* of it, and
+        // the first column — the one naming the row — goes off the
+        // screen with no way back to it.
+        let left = (avail.center().x - w / 2.0).max(avail.left());
         // The cell edit committed this frame, applied after the grid.
         let mut commit: Option<(usize, usize, String)> = None;
         let bg = ui.painter().add(egui::Shape::Noop);
@@ -14589,8 +14681,14 @@ impl App {
         ui.painter()
             .set(bg, egui::Shape::rect_filled(box_rect, 0.0, motif::trough()));
         motif::bevel(ui.painter(), box_rect, false);
+        // Claim the box's whole width, not only its height:
+        // `allocate_new_ui` reserves *no* space, so the scroll area
+        // around this never learns the table is wider than the pane and
+        // offers no horizontal bar — the right-hand columns are drawn
+        // and unreachable.
+        ui.allocate_rect(box_rect, egui::Sense::hover());
         // Drop below the box (the child ui only advanced by the grid's
-        // own height), then the numbered sources on the column grid.
+        // own height), then the numbered sources under it.
         let below = (box_rect.bottom() - ui.cursor().top()).max(0.0) + 10.0;
         ui.add_space(below);
         let (mut undo, mut reset) = (false, false);
