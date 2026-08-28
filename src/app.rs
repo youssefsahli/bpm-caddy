@@ -1132,6 +1132,9 @@ enum PatientTab {
     /// The material lent out: what is still at the patient's home, what
     /// it has earned, and when its ordonnance has to be renewed.
     Locations,
+    /// The file's ordonnance against the one the patient came back from
+    /// hospital with: what was stopped, changed, added or replaced.
+    Conciliation,
 }
 
 /// The ordonnance being composed after a positive TROD.
@@ -1318,6 +1321,22 @@ struct Session {
     vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
+    /// The posology the file records for each of its treatments, by drug
+    /// id, and the copy it was read as — every write to a shared row is
+    /// compare-and-set against what the screen showed.
+    patient_doses: Vec<(i64, String)>,
+    patient_doses_base: Vec<(i64, String)>,
+    /// Bumped whenever the treatments or their posologies are re-read,
+    /// so the conciliation knows its answer is stale.
+    treats_rev: u64,
+    /// The discharge prescription being conciliated, the table it gives
+    /// against the file, and the question that table answers.
+    concil_sheet: String,
+    concil_rows: Vec<crate::conciliation::Divergence>,
+    concil_key: Option<(i64, String, u64)>,
+    /// « Reprendre les posologies » asks twice, like every other button
+    /// that writes to more than one row at once.
+    concil_adopt_confirm: bool,
     /// The open ordonnance box, after a positive TROD.
     ordonnance: Option<OrdonnanceBox>,
     /// The adjuvants offered by the open ordonnance box — the cards
@@ -1672,6 +1691,13 @@ impl Session {
             bio_findings: Vec::new(),
             vacc_due: Vec::new(),
             travel_query: String::new(),
+            patient_doses: Vec::new(),
+            patient_doses_base: Vec::new(),
+            treats_rev: 0,
+            concil_sheet: String::new(),
+            concil_rows: Vec::new(),
+            concil_key: None,
+            concil_adopt_confirm: false,
             ordonnance: None,
             ord_adjuvants: Vec::new(),
             ord_adjuvants_key: None,
@@ -2612,6 +2638,11 @@ impl Session {
         self.confirm_delete = false;
         self.confirm_delete_itv = None;
         self.rule_block = None;
+        // A discharge sheet belongs to the file it was pasted on: it
+        // must never be read against the next patient's ordonnance.
+        self.concil_sheet.clear();
+        self.concil_key = None;
+        self.concil_adopt_confirm = false;
         self.load_carnet(patient.id);
     }
 
@@ -2625,9 +2656,72 @@ impl Session {
         self.patient_treats = self.db.drugs_for_patient(patient_id).unwrap_or_default();
         self.patient_interactions = interactions_between(&self.patient_treats);
         self.patient_review = crate::revue::review(&ordonnance_terms(&self.patient_treats));
+        // The posology this file records for each of them — not the
+        // molecule's posologies, which live on the fiche, but the line
+        // that is on this patient's ordonnance.
+        let stored = self.db.patient_posologies(patient_id).unwrap_or_default();
+        self.patient_doses = self
+            .patient_treats
+            .iter()
+            .map(|d| {
+                let p = stored
+                    .iter()
+                    .find(|(id, _)| *id == d.id)
+                    .map(|(_, p)| p.clone())
+                    .unwrap_or_default();
+                (d.id, p)
+            })
+            .collect();
+        self.patient_doses_base = self.patient_doses.clone();
+        self.treats_rev = self.treats_rev.wrapping_add(1);
         // The biology is read against the treatments: change the second
         // and the first has a different answer.
         self.refresh_bio_findings();
+    }
+
+    /// The posology the file records for one treatment, or nothing.
+    fn dose_of(&self, drug_id: i64) -> &str {
+        self.patient_doses
+            .iter()
+            .find(|(id, _)| *id == drug_id)
+            .map(|(_, p)| p.as_str())
+            .unwrap_or_default()
+    }
+
+    /// Compare the file's ordonnance to the sheet that has been pasted,
+    /// once per question rather than on each frame that shows it: the
+    /// comparison folds every name and every dose on both sides.
+    fn refresh_conciliation(&mut self, patient_id: i64) {
+        let key = (patient_id, self.concil_sheet.clone(), self.treats_rev);
+        if self.concil_key.as_ref() == Some(&key) {
+            return;
+        }
+        let rows = {
+            let held: Vec<crate::conciliation::Held> = self
+                .patient_treats
+                .iter()
+                .map(|d| crate::conciliation::Held {
+                    name: &d.name,
+                    dci: &d.dci,
+                    class: &d.class,
+                    posology: self.dose_of(d.id),
+                })
+                .collect();
+            // The whole base, because the sheet names products the file
+            // does not carry: that is the point of it.
+            let base: Vec<crate::conciliation::Known> = self
+                .drugs
+                .iter()
+                .map(|d| crate::conciliation::Known {
+                    name: &d.name,
+                    dci: &d.dci,
+                    class: &d.class,
+                })
+                .collect();
+            crate::conciliation::compare(&held, &self.concil_sheet, &base)
+        };
+        self.concil_rows = rows;
+        self.concil_key = Some(key);
     }
 
     /// What the biology says about the treatments on the file.
@@ -4422,6 +4516,63 @@ impl App {
                                 session.open_patient(p);
                             }
                             session.patient_tab = PatientTab::Locations;
+                            session.view = MainView::Search;
+                        }
+                        // The conciliation on a file that has treatments
+                        // to conciliate, with a discharge sheet already
+                        // pasted: an empty box would show nothing but
+                        // its own hint, and prove nothing.
+                        Ok("conciliation") => {
+                            let pick = session
+                                .patients
+                                .iter()
+                                .find(|p| {
+                                    !session
+                                        .db
+                                        .drugs_for_patient(p.id)
+                                        .unwrap_or_default()
+                                        .is_empty()
+                                })
+                                .cloned()
+                                .or_else(|| session.patients.first().cloned());
+                            if let Some(p) = pick {
+                                session.open_patient(p);
+                            }
+                            // A sheet that exercises every reading the
+                            // table can give: the first treatment is
+                            // dropped, the second comes back at another
+                            // dose, the rest are reconducted, one line
+                            // names a molecule of a class already on the
+                            // file (a replacement), and one names a
+                            // product the base cannot answer for.
+                            let mut sheet = String::new();
+                            for (i, d) in session.patient_treats.iter().enumerate() {
+                                let dose = session.dose_of(d.id).trim().to_owned();
+                                match i {
+                                    0 => continue,
+                                    1 => sheet.push_str(&format!("{} 10 mg le soir\n", d.name)),
+                                    _ if dose.is_empty() => {
+                                        sheet.push_str(&format!("{}\n", d.name))
+                                    }
+                                    _ => sheet.push_str(&format!("{} : {dose}\n", d.name)),
+                                }
+                            }
+                            // Whatever the base carries of the dropped
+                            // treatment's class, so the table shows the
+                            // divergence the patient goes home with two
+                            // boxes of.
+                            let dropped = session.patient_treats.first().map(|d| d.class.clone());
+                            if let Some(class) = dropped.filter(|c| !c.trim().is_empty()) {
+                                if let Some(swap) = session.drugs.iter().find(|d| {
+                                    d.class == class
+                                        && !session.patient_treats.iter().any(|t| t.id == d.id)
+                                }) {
+                                    sheet.push_str(&format!("{} 5 mg le matin\n", swap.name));
+                                }
+                            }
+                            sheet.push_str("Zorglub lyoc si nausées\n");
+                            session.concil_sheet = sheet;
+                            session.patient_tab = PatientTab::Conciliation;
                             session.view = MainView::Search;
                         }
                         Ok("calc") => {
@@ -6392,11 +6543,12 @@ impl App {
         // Ctrl+Tab walks the workspace's. Three of them had no keyboard
         // route at all. Alt, so the bare arrows keep driving the acts
         // table and the agenda; and not while a field has the keyboard.
-        const TABS: [PatientTab; 4] = [
+        const TABS: [PatientTab; 5] = [
             PatientTab::Acts,
             PatientTab::Vaccins,
             PatientTab::Bio,
             PatientTab::Locations,
+            PatientTab::Conciliation,
         ];
         let mut active = TABS
             .iter()
@@ -6420,14 +6572,10 @@ impl App {
                 motif::Tab::new(tr("patient_tab_vaccins")),
                 motif::Tab::new(tr("patient_tab_bio")),
                 motif::Tab::new(tr("patient_tab_locations")),
+                motif::Tab::new(tr("patient_tab_conciliation")),
             ];
             if let Some(motif::TabAction::Select(i)) = motif::tab_strip(ui, &tabs, active) {
-                session.patient_tab = match i {
-                    0 => PatientTab::Acts,
-                    1 => PatientTab::Vaccins,
-                    2 => PatientTab::Bio,
-                    _ => PatientTab::Locations,
-                };
+                session.patient_tab = TABS[i.min(TABS.len() - 1)];
             }
         });
         let work = strip[1];
@@ -6443,6 +6591,10 @@ impl App {
         }
         if session.patient_tab == PatientTab::Locations {
             Self::patient_locations_pane(ui, session, patient, work, config);
+            return;
+        }
+        if session.patient_tab == PatientTab::Conciliation {
+            Self::patient_conciliation_pane(ui, session, patient, work, operator);
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
@@ -7422,6 +7574,449 @@ impl App {
     /// so the arithmetic is done here on every frame from the dates and
     /// the forfait copied in at the counter, and the renewal that has
     /// gone past is red before anyone has to look for it.
+    /// La conciliation : l'ordonnance du dossier contre celle que le
+    /// patient rapporte de l'hôpital.
+    ///
+    /// Trois panneaux, et l'arbitrage habituel entre eux : la réponse
+    /// prend la place, la feuille qu'on colle garde un plancher parce
+    /// qu'on y tape, et les posologies du dossier tiennent sous elle.
+    fn patient_conciliation_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        work: egui::Rect,
+        operator: &str,
+    ) {
+        session.refresh_conciliation(patient.id);
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let wide = work.width() >= 1100.0;
+        let (result, side) = if wide {
+            let side_w = (work.width() * 0.38).clamp(320.0, 520.0);
+            (
+                egui::Rect::from_min_size(
+                    work.min,
+                    egui::vec2(work.width() - side_w - 8.0, work.height()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(work.right() - side_w, work.top()), work.max),
+            )
+        } else {
+            // Under the answer rather than beside it. The band keeps
+            // enough for the paste box to be typed into — that is the
+            // pane the operator works in — and the answer keeps eight
+            // of its own lines before the band takes any.
+            // In lines, so `[ui] text_scale` costs nothing. The band's
+            // floor is what the paste box needs to be a paste box: its
+            // title, four lines of text and the button under them. Its
+            // cap is what leaves the answer above it more than a
+            // heading — and the cap is raised to the floor rather than
+            // trusted to sit above it, because on a short pane they do
+            // cross and `f32::clamp` panics when they do.
+            let band = (work.height() * 0.52)
+                .clamp(line * 7.0, line * 22.0)
+                .min((work.height() - line * 6.0).max(line * 7.0));
+            let rows = motif::split_rows(work, &[0.0, band], 8.0);
+            (rows[0], rows[1])
+        };
+        // The sheet above, the file's own posologies below: what is
+        // typed wins the flexible share.
+        let (sheet, doses) = if wide {
+            let doses_h = (side.height() * 0.46).clamp(line * 7.0, line * 20.0);
+            let rows = motif::split_rows(side, &[0.0, doses_h], 8.0);
+            (rows[0], rows[1])
+        } else {
+            let doses_w = (side.width() * 0.46).clamp(220.0, 460.0);
+            (
+                egui::Rect::from_min_size(
+                    side.min,
+                    egui::vec2(side.width() - doses_w - 8.0, side.height()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(side.right() - doses_w, side.top()), side.max),
+            )
+        };
+        Self::concil_result_pane(ui, session, patient, result, operator);
+        Self::concil_sheet_pane(ui, session, sheet);
+        Self::concil_doses_pane(ui, session, patient, doses);
+    }
+
+    /// La feuille de sortie, telle qu'elle est collée ou tapée.
+    fn concil_sheet_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let mut clear = false;
+        motif::panel(ui, rect, Some(tr("concil_sheet")), |ui| {
+            // Carved, not stacked. A `TextEdit::multiline` given a
+            // height by `add_sized` still adds its own frame margin on
+            // top of it, so a button placed after it by the flow always
+            // ended up a few pixels past the panel and half painted.
+            // The button's row is taken off the bottom first; whatever
+            // the box does inside its own share is clipped there and
+            // cannot reach the button.
+            let inner = ui.max_rect();
+            let btn = Self::button_height(ui);
+            let rows = motif::split_rows(inner, &[0.0, btn], 4.0);
+            let line = ui.text_style_height(&egui::TextStyle::Body);
+            motif::inside(ui, rows[0], |ui| {
+                // The sentence above the box costs two of its lines, and
+                // on a short pane those two lines are the difference
+                // between a box one can paste into and one that shows a
+                // line and a half. It is the box that must survive: the
+                // hint inside it says the same thing with an example.
+                let help_h = ui.fonts(|f| {
+                    f.layout(
+                        tr("concil_sheet_help").to_owned(),
+                        egui::FontId::proportional(10.5),
+                        motif::text_dim(),
+                        ui.available_width(),
+                    )
+                    .size()
+                    .y
+                });
+                if ui.available_height() - help_h - 4.0 >= line * 4.0 {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("concil_sheet_help"))
+                                .size(10.5)
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    ui.add_space(4.0);
+                }
+                // Whatever is left of this row, which is the box's own
+                // share: what it does inside it — scroll, wrap, show a
+                // line and a half of the next entry — is a text box's
+                // business, and the button below is out of its reach.
+                let h = ui.available_height().max(line);
+                ui.add_sized(
+                    [ui.available_width(), h],
+                    egui::TextEdit::multiline(&mut session.concil_sheet)
+                        .hint_text(tr("concil_sheet_hint")),
+                );
+            });
+            motif::inside(ui, rows[1], |ui| {
+                if motif::button(ui, tr("concil_clear")).clicked() {
+                    clear = true;
+                }
+            });
+        });
+        if clear {
+            session.concil_sheet.clear();
+            session.concil_adopt_confirm = false;
+        }
+    }
+
+    /// Les posologies du dossier : c'est ici qu'on les écrit, et nulle
+    /// part ailleurs — la fiche porte celles de la molécule.
+    fn concil_doses_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+    ) {
+        // Which row lost the keyboard with a value the base has not
+        // seen: written after the loop, so the list can be reloaded.
+        let mut write: Option<(i64, String, String)> = None;
+        let names: Vec<(i64, String)> = session
+            .patient_treats
+            .iter()
+            .map(|d| (d.id, d.name.clone()))
+            .collect();
+        motif::panel(ui, rect, Some(tr("concil_ordonnance")), |ui| {
+            if names.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("concil_ordonnance_empty"))
+                            .size(11.5)
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                return;
+            }
+            let label_w = (ui.available_width() * 0.42).clamp(90.0, 200.0);
+            egui::ScrollArea::vertical()
+                .id_salt("concil_doses")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (id, name) in &names {
+                        let base = session
+                            .patient_doses_base
+                            .iter()
+                            .find(|(i, _)| i == id)
+                            .map(|(_, p)| p.clone())
+                            .unwrap_or_default();
+                        let Some((_, buf)) =
+                            session.patient_doses.iter_mut().find(|(i, _)| i == id)
+                        else {
+                            continue;
+                        };
+                        ui.horizontal(|ui| {
+                            // A scope and not `add_sized`, which centres
+                            // what it is given: a column of names that
+                            // do not start on the same pixel is a column
+                            // nobody can run their eye down.
+                            ui.scope(|ui| {
+                                ui.set_min_width(label_w);
+                                ui.set_max_width(label_w);
+                                ui.add(
+                                    egui::Label::new(egui::RichText::new(name).size(11.5))
+                                        .truncate(),
+                                );
+                            });
+                            let field = ui.add_sized(
+                                [
+                                    (ui.available_width() - 4.0).max(60.0),
+                                    ui.spacing().interact_size.y,
+                                ],
+                                egui::TextEdit::singleline(buf)
+                                    .hint_text(tr("concil_posology_hint")),
+                            );
+                            if field
+                                .on_hover_text(tr("concil_posology_tooltip"))
+                                .lost_focus()
+                                && buf.trim() != base.trim()
+                            {
+                                write = Some((*id, buf.clone(), base));
+                            }
+                        });
+                    }
+                });
+        });
+        if let Some((id, new, expected)) = write {
+            match session
+                .db
+                .set_patient_posology(patient.id, id, &new, &expected)
+            {
+                Ok(true) => session.reload_treatments(patient.id),
+                Ok(false) => {
+                    session.reload_treatments(patient.id);
+                    session.error = Some(tr("concil_stale").to_owned());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
+    /// Le tableau des divergences, le plus fort en tête.
+    fn concil_result_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+        operator: &str,
+    ) {
+        use crate::conciliation::Change;
+        let counts = crate::conciliation::counts(&session.concil_rows);
+        let empty_sheet = session.concil_sheet.trim().is_empty();
+        let mut journal = false;
+        let mut adopt = false;
+        let rows = std::mem::take(&mut session.concil_rows);
+        motif::panel(ui, rect, Some(tr("concil_result")), |ui| {
+            if empty_sheet {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("concil_empty"))
+                            .size(11.5)
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                return;
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(trn("concil_count", &[&counts.divergences(), &rows.len()]))
+                        .size(11.5)
+                        .color(motif::text_dim()),
+                );
+                if motif::button(ui, tr("concil_journal")).clicked() {
+                    journal = true;
+                }
+                // Only worth offering when the sheet actually says
+                // something the file does not.
+                if counts.dose_changed > 0 {
+                    let label = if session.concil_adopt_confirm {
+                        trf("concil_adopt_confirm", counts.dose_changed.to_string())
+                    } else {
+                        tr("concil_adopt").to_owned()
+                    };
+                    if motif::button(ui, &label).clicked() {
+                        if session.concil_adopt_confirm {
+                            adopt = true;
+                        } else {
+                            session.concil_adopt_confirm = true;
+                        }
+                    }
+                }
+            });
+            ui.add_space(4.0);
+            if counts.divergences() == 0 {
+                ui.label(
+                    egui::RichText::new(tr("concil_none"))
+                        .size(11.5)
+                        .color(motif::text_dim()),
+                );
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("concil_rows")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for d in &rows {
+                        let (label, color) = match d.kind {
+                            Change::Unmatched => (tr("concil_kind_unmatched"), motif::alert()),
+                            Change::Switched => (tr("concil_kind_switched"), motif::alert()),
+                            Change::Stopped => (
+                                tr("concil_kind_stopped"),
+                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
+                            ),
+                            Change::DoseChanged => (
+                                tr("concil_kind_dose"),
+                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
+                            ),
+                            Change::Added => (tr("concil_kind_added"), motif::accent()),
+                            Change::Kept => (tr("concil_kind_kept"), motif::text_dim()),
+                        };
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("  {label}  "))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(color),
+                            );
+                            ui.label(
+                                egui::RichText::new(Self::concil_title(d))
+                                    .size(12.0)
+                                    .strong(),
+                            );
+                        });
+                        if !d.before.trim().is_empty() {
+                            ui.label(
+                                egui::RichText::new(trf("concil_before", d.before.clone()))
+                                    .size(11.0),
+                            );
+                        }
+                        if !d.after.trim().is_empty() {
+                            ui.label(
+                                egui::RichText::new(trf("concil_after", d.after.clone()))
+                                    .size(11.0),
+                            );
+                        }
+                        let note = match d.kind {
+                            Change::Unmatched => Some(tr("concil_unmatched_note").to_owned()),
+                            Change::Switched if !d.note.trim().is_empty() => {
+                                Some(trf("concil_switch_note", d.note.clone()))
+                            }
+                            _ => None,
+                        };
+                        if let Some(note) = note {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(note)
+                                        .size(10.5)
+                                        .italics()
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+        session.concil_rows = rows;
+        if journal {
+            Self::concil_to_journal(session, patient, operator);
+        }
+        if adopt {
+            Self::concil_adopt_doses(session, patient);
+        }
+    }
+
+    /// Le produit dont une ligne parle, écrit pour un lecteur : les
+    /// deux noms d'un remplacement s'y rejoignent par la phrase des
+    /// `strings`, et non par une flèche que la police n'a pas.
+    fn concil_title(d: &crate::conciliation::Divergence) -> String {
+        if d.replaces.trim().is_empty() {
+            d.label.clone()
+        } else {
+            trn("concil_switch_label", &[&d.replaces, &d.label])
+        }
+    }
+
+    /// Écrire la conciliation dans le journal du dossier : c'est la
+    /// trace de l'acte, et elle part avec la fiche à l'impression.
+    fn concil_to_journal(session: &mut Session, patient: &Patient, operator: &str) {
+        use crate::conciliation::Change;
+        let counts = crate::conciliation::counts(&session.concil_rows);
+        let mut body = trf("concil_journal_head", counts.divergences().to_string());
+        for d in &session.concil_rows {
+            if d.kind == Change::Kept {
+                continue;
+            }
+            let word = match d.kind {
+                Change::Unmatched => tr("concil_kind_unmatched"),
+                Change::Switched => tr("concil_kind_switched"),
+                Change::Stopped => tr("concil_kind_stopped"),
+                Change::DoseChanged => tr("concil_kind_dose"),
+                Change::Added => tr("concil_kind_added"),
+                Change::Kept => continue,
+            };
+            body.push_str(&format!("\n· {word} — {}", Self::concil_title(d)));
+            if !d.before.trim().is_empty() {
+                body.push_str(&format!(" | {}", trf("concil_before", d.before.clone())));
+            }
+            if !d.after.trim().is_empty() {
+                body.push_str(&format!(" | {}", trf("concil_after", d.after.clone())));
+            }
+        }
+        match session
+            .db
+            .add_note(NoteSubject::Patient, patient.id, operator, &body)
+        {
+            Ok(_) => {
+                session.patient_notes = session
+                    .db
+                    .notes_for(NoteSubject::Patient, patient.id)
+                    .unwrap_or_default();
+                session.error = Some(tr("concil_journal_done").to_owned());
+            }
+            Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// Reprendre au dossier les posologies de la feuille de sortie, pour
+    /// les seules lignes où les deux se contredisent. Rien n'est repris
+    /// d'une ligne que la base n'a pas su rapprocher.
+    fn concil_adopt_doses(session: &mut Session, patient: &Patient) {
+        use crate::conciliation::Change;
+        let wanted: Vec<(String, String)> = session
+            .concil_rows
+            .iter()
+            .filter(|d| d.kind == Change::DoseChanged && !d.after.trim().is_empty())
+            .map(|d| (d.label.clone(), d.after.trim().to_owned()))
+            .collect();
+        let mut done = 0usize;
+        for (name, dose) in wanted {
+            let Some(drug) = session.patient_treats.iter().find(|t| t.name == name) else {
+                continue;
+            };
+            let id = drug.id;
+            let expected = session.dose_of(id).to_owned();
+            match session
+                .db
+                .set_patient_posology(patient.id, id, &dose, &expected)
+            {
+                Ok(true) => done += 1,
+                Ok(false) => session.error = Some(tr("concil_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        session.concil_adopt_confirm = false;
+        session.reload_treatments(patient.id);
+        if done > 0 {
+            session.error = Some(trf("concil_adopt_done", done.to_string()));
+        }
+    }
+
     fn patient_locations_pane(
         ui: &mut egui::Ui,
         session: &mut Session,
@@ -8705,10 +9300,21 @@ impl App {
                     .map(|p| p.indication.clone())
                     .filter(|i| !i.trim().is_empty())
                     .unwrap_or_else(|| d.class.trim().to_owned());
-                let when = first
-                    .map(|p| p.posologie.clone())
-                    .filter(|p| !p.trim().is_empty())
-                    .unwrap_or_else(|| d.dosage.trim().to_owned());
+                // « Quand » comes from the file before it comes from the
+                // fiche: the posology the team wrote for *this* patient
+                // is the one on their ordonnance, and the fiche's first
+                // line is only the molecule's usual one. Printing the
+                // usual one on a sheet that goes home is how a patient
+                // ends up reading a schema that is not theirs.
+                let own = session.dose_of(d.id).trim().to_owned();
+                let when = if own.is_empty() {
+                    first
+                        .map(|p| p.posologie.clone())
+                        .filter(|p| !p.trim().is_empty())
+                        .unwrap_or_else(|| d.dosage.trim().to_owned())
+                } else {
+                    own
+                };
                 // What matters most to the person holding the sheet is
                 // what to do when a dose is missed.
                 let know = if d.missed_dose.trim().is_empty() {
@@ -9024,6 +9630,17 @@ impl App {
                 .x
         }) + ui.spacing().button_padding.x * 2.0
             + 8.0
+    }
+
+    /// How tall a `motif::button` is, by the formula `motif::button`
+    /// itself uses: the button font's line, plus the padding the density
+    /// sets and the pixel the bevel adds, top and bottom.
+    ///
+    /// `interact_size.y` is *not* that number — a pane that reserved it
+    /// for a button under a text box got « Vider » cut in half.
+    fn button_height(ui: &egui::Ui) -> f32 {
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        ui.fonts(|f| f.row_height(&font)) + (ui.spacing().button_padding.y + 1.0) * 2.0
     }
 
     /// How many lines a wrapped row of items of these widths takes at
@@ -20670,6 +21287,61 @@ mod tests {
                 .any(|f| f.code == "K" && f.severity == crate::biology::Severity::Alert),
             "la kaliémie sous IEC n'a pas été relue"
         );
+    }
+
+    /// The conciliation: answered once per question, rebuilt when the
+    /// file moves, and never carried from one patient to the next.
+    #[test]
+    fn the_conciliation_follows_the_file_it_was_pasted_on() {
+        use crate::conciliation::Change;
+        let (mut s, _swept) = scratch_session("concil");
+        let p = s.patients[0].clone();
+        let id = s.db.add_drug("Triatec").unwrap();
+        let list = s.db.drugs().unwrap();
+        s.set_drugs(list);
+        s.db.add_patient_drug(p.id, id).unwrap();
+        s.open_patient(p.clone());
+
+        // Nothing pasted: the file's own treatment is the only row, and
+        // it reads as stopped — the table says so rather than pretending
+        // an empty sheet means nothing changed.
+        s.refresh_conciliation(p.id);
+        assert_eq!(s.concil_rows.len(), 1);
+        assert_eq!(s.concil_rows[0].kind, Change::Stopped);
+
+        s.concil_sheet = "Triatec 10 mg : 1 cp le soir".to_owned();
+        s.refresh_conciliation(p.id);
+        // The file records no posology, so a sheet that gives one does
+        // not contradict it.
+        assert_eq!(s.concil_rows[0].kind, Change::Kept);
+        let key = s.concil_key.clone();
+        // The same question again is not asked again.
+        s.refresh_conciliation(p.id);
+        assert_eq!(s.concil_key, key);
+
+        // Writing the file's own posology is a different question, and
+        // now the two disagree.
+        assert!(s
+            .db
+            .set_patient_posology(p.id, id, "5 mg le soir", "")
+            .unwrap());
+        s.reload_treatments(p.id);
+        s.refresh_conciliation(p.id);
+        assert_ne!(s.concil_key, key);
+        assert_eq!(s.concil_rows[0].kind, Change::DoseChanged);
+        assert_eq!(s.dose_of(id), "5 mg le soir");
+
+        // « Reprendre les posologies » takes the sheet's line onto the
+        // file, and the table then says the two agree.
+        super::App::concil_adopt_doses(&mut s, &p);
+        assert_eq!(s.dose_of(id), "10 mg : 1 cp le soir");
+        s.refresh_conciliation(p.id);
+        assert_eq!(s.concil_rows[0].kind, Change::Kept);
+
+        // Another file is another conciliation: the sheet does not
+        // follow the patient who was open before.
+        s.open_patient(s.patients[1].clone());
+        assert!(s.concil_sheet.is_empty());
     }
 
     /// The year is read off the date the session already holds, and the

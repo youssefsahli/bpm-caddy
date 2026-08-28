@@ -32,6 +32,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Locations de matériel — les périodes entamées, ce qui est facturable, le renouvellement dépassé en rouge](docs/screenshot_locations.png)
 
+![Conciliation — l'ordonnance de sortie collée à droite, ce qui a été arrêté, changé ou remplacé à gauche](docs/screenshot_conciliation.png)
+
 ![Carte vaccinale — les pays par groupe, la fièvre jaune, le paludisme](docs/screenshot_map.png)
 
 ## Key features

@@ -179,6 +179,28 @@ Deux règles valent partout :
   Chaque règle doit dire quoi faire, pas seulement ce qui ne va pas, et
   le nombre de règles ne baisse jamais.
 
+## La conciliation médicamenteuse
+
+- **Où** : `src/conciliation.rs`. C'est le seul module « logique » qui ne
+  porte **aucun contenu** : ni catalogue, ni règles écrites à la main.
+  Tout ce qu'il sait, il le tient de ce qu'on lui passe — les
+  traitements du dossier, la feuille collée, et la base de fiches.
+- **Ce qui s'ajuste quand même** : la lecture d'une ligne
+  (`split_line`), qui doit survivre aux vingt façons dont une ordonnance
+  de sortie est écrite, et le rapprochement (`match_name`), qui refuse
+  de deviner sur moins de trois lettres. Une feuille d'un format que le
+  module lit mal se corrige **là**, avec un cas de plus dans
+  `a_line_gives_up_its_product_and_its_dose` — jamais par une liste de
+  noms en dur.
+- **La règle qui compte** : le rapprochement passe par les traitements du
+  dossier avant la base entière. Une reconduction affichée comme un
+  arrêt suivi d'un ajout est une divergence inventée, et c'est la pire
+  des deux erreurs possibles.
+- **Test** : la comparaison doit rendre exactement la même chose deux
+  fois de suite (elle s'affiche à chaque image), une ligne non
+  rapprochée doit rester visible, et un remplacement de classe doit
+  faire une ligne et non deux.
+
 ## Les listes d'entretien
 
 - **Où** : `src/entretien.rs` — une liste par thème, et un fond commun

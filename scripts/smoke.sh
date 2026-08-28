@@ -33,7 +33,7 @@ cargo build || exit 1
 views=(
     search dashboard patient drugs drug_card drug_edit
     agenda agenda_day agenda_month tables tables_search calc carnet
-    vaccins bio revue locations vaccine_map ordonnance
+    vaccins bio revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
     template options about keys act_picker vitale
     goto goto_jump mono_search mono_patient

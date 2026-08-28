@@ -72,4 +72,5 @@ shot tables docs/screenshot_tables.png
 shot protocol_open docs/screenshot_protocols.png
 shot dispositif_open docs/screenshot_dispositifs.png
 shot locations docs/screenshot_locations.png
+shot conciliation docs/screenshot_conciliation.png
 echo "Screenshots refreshed."

@@ -18,7 +18,11 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
   tested), `src/revue.rs` (what a set of treatments says about itself:
-  doublons, associations, cascades — same shape, same discipline). The
+  doublons, associations, cascades — same shape, same discipline),
+  `src/conciliation.rs` (the file's ordonnance against the one a patient
+  brings back from hospital: reads a pasted list, matches each line to a
+  fiche, and says what was stopped, changed, added or replaced — pure,
+  tested, no catalogue of its own). The
   dispositifs médicaux have no module: they are fiches in the base
   (`STARTER_DISPOSITIFS` in `src/db.rs`), like the codex.
   `src/location.rs` (what a rental of material owes and when its
@@ -90,6 +94,14 @@ upgrade is decided, the number to defend is the logic one, and
   its share rather than crowding out the panes under it. Every layout
   must survive 1024x700 with both docks open — `scripts/smoke.sh` and a
   screenshot at that size are the check.
+- A control that must stay visible under a widget that grows (a button
+  under a text box) gets its **own carved row**, taken off the bottom
+  with `split_rows` before the widget is drawn — not a height reserved
+  in the flow above it. `add_sized` sizes the *text*, and a
+  `TextEdit::multiline` adds its own frame margin on top, so a reserve
+  computed from `available_height` is always a few pixels short and the
+  button ends up half painted. `Self::button_height` is the button's
+  real height; `interact_size.y` is not.
 - `allocate_new_ui` only sets a max rect and egui paints through it: use
   `motif::inside` when content must not escape its frame. It also
   reserves **no space**, so a `ScrollArea` around it never learns the
@@ -140,7 +152,8 @@ upgrade is decided, the number to defend is the logic one, and
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|about|tables|
-  tables_search|calc|carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|
+  tables_search|calc|carnet|vaccins|bio|revue|conciliation|vaccine_map|
+  ordonnance|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient`
   — land on a specific view (screenshots, e2e). `about` is the Options

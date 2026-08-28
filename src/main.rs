@@ -4,6 +4,7 @@ mod app;
 mod biology;
 mod bulletin;
 mod codex;
+mod conciliation;
 mod config;
 mod db;
 mod entretien;

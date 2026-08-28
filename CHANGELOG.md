@@ -5,6 +5,78 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.116.0] - 2026-08-29
+
+La conciliation médicamenteuse, la posologie du patient, et quatre
+réponses que l'interface refaisait soixante fois par seconde.
+
+### Added
+- **Conciliation médicamenteuse.** Un cinquième onglet sur la fiche
+  patient. On y colle l'ordonnance de sortie d'hôpital telle qu'elle est
+  écrite — une ligne par traitement, la marque ou la DCI, le dosage et
+  le rythme derrière — et le tableau dit de chaque traitement ce qui lui
+  est arrivé : **reconduit**, **dose changée**, **arrêté**, **ajouté**,
+  **remplacé** par une molécule de sa classe, ou **non rapproché**.
+  - Ce qui a *disparu* de l'ordonnance est la raison d'être de l'acte :
+    c'est ce que le patient continuera de prendre s'il lui reste une
+    boîte et que personne ne le lui dit. Les arrêts sont donc en tête du
+    tableau, avec les remplacements — la divergence dont on repart avec
+    les deux boîtes.
+  - Une ligne que la base ne sait pas rapprocher n'est jamais écartée en
+    silence : elle est affichée telle qu'elle a été tapée, tout en haut,
+    parce que personne ne l'a vérifiée.
+  - Le rapprochement passe par les traitements du dossier avant la base
+    entière : une ligne qui nomme quelque chose que le patient prend
+    déjà désigne *ce* traitement-là, et pas un homonyme trouvé parmi les
+    850 fiches. Sinon une reconduction s'afficherait comme un arrêt
+    suivi d'un ajout — une divergence inventée, la pire des deux
+    erreurs.
+  - « Écrire au journal » verse la conciliation dans le journal du
+    dossier : c'est la trace de l'acte, et elle part avec la fiche.
+  - `src/conciliation.rs` est pur et testé, comme la biologie et la
+    revue. Il ne décide rien : la conciliation est un acte du
+    pharmacien.
+- **La posologie du patient, sur son dossier.** `patient_drugs` porte une
+  colonne `posology` : la ligne qui est sur *son* ordonnance, distincte
+  des posologies de la molécule, qui vivent sur la fiche et valent pour
+  tout le monde. Elle s'écrit dans l'onglet Conciliation, en
+  compare-and-set comme toute ligne partagée, et « Reprendre les
+  posologies de la sortie » la met à jour depuis la feuille.
+  - Le **plan de prise** imprime désormais celle-là en priorité.
+    Imprimer la posologie usuelle de la molécule sur une feuille qui
+    part chez le patient, c'est lui faire lire un schéma qui n'est pas
+    le sien.
+
+### Changed
+- **`fuzzy::score` n'alloue plus rien.** C'est la fonction la plus
+  sollicitée de l'application — une frappe dans la recherche de
+  médicaments l'interroge sur 850 fiches et quatre champs chacune, et le
+  codex, les dispositifs et les tables l'interrogent sur leurs propres
+  listes. Elle répondait en appelant la variante qui surligne et en
+  jetant les surlignages : deux `Vec<char>` et un `Vec<usize>` par
+  appel, plus un parcours de la cible entière même après que la requête
+  était épuisée. Écrite comme une marche sur deux itérateurs : **3,3×
+  plus rapide**, et un test tient les deux écritures ensemble.
+- **Trois réponses passent de l'image à l'événement qui les change** —
+  ce que le reste de l'application fait déjà des interactions et de la
+  revue : les 87 règles de biologie (qui repliaient une copie du nom, de
+  la DCI, de la classe et des étiquettes de chaque traitement à chaque
+  image), le calendrier vaccinal (dont chaque ligne est un `format!`),
+  et les adjuvants de l'ordonnance (une requête pour les fiches
+  étiquetées, plus une par fiche trouvée, sur chaque image d'une boîte
+  qui reste ouverte le temps de rédiger — quelque dix mille requêtes par
+  minute pour une réponse qui n'avait pas bougé).
+
+### Fixed
+- Le panneau d'évolution de la biologie choisissait l'analyte le plus
+  souvent mesuré dans une table de hachage : à égalité — le cas ordinaire
+  d'un bilan qui apporte douze lignes datées du même jour — il en
+  désignait un autre à chaque image. Compté dans l'ordre de lecture, le
+  premier gagne et reste gagnant.
+- Le dossier était ouvert *après* le chargement du carnet, si bien que
+  le calendrier vaccinal, une fois calculé une seule fois, l'aurait été
+  contre l'âge du dossier précédent.
+
 ## [0.115.0] - 2026-08-28
 
 Six lignes que tous les bilans portent et que le catalogue n'avait pas.

@@ -19,7 +19,7 @@
 set -uo pipefail
 
 # Lower these never; raise them whenever a batch of tests lands.
-TOTAL_FLOOR=40
+TOTAL_FLOOR=41
 LOGIC_FLOOR=86
 
 # The modules that carry the decisions: pure, or nearly so, and the ones

@@ -202,6 +202,11 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE TABLE IF NOT EXISTS patient_drugs (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
     drug_id     INTEGER NOT NULL REFERENCES drugs(id),
+    -- La posologie de *ce* patient, telle qu'elle est sur l'ordonnance.
+    -- La fiche porte les posologies de la molécule ; celle-ci porte
+    -- celle du dossier, et c'est elle que le plan de prise imprime et
+    -- que la conciliation compare.
+    posology    TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (patient_id, drug_id)
 );
 CREATE TABLE IF NOT EXISTS notes (
@@ -364,6 +369,7 @@ const MIGRATIONS: &[&str] = &[
         depart_on   TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (patient_id, country)
     )",
+    "ALTER TABLE patient_drugs ADD COLUMN posology TEXT NOT NULL DEFAULT ''",
 ];
 
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
@@ -27391,6 +27397,48 @@ impl Db {
         Ok(())
     }
 
+    /// The posology the team has written for *this* patient, by drug id.
+    ///
+    /// The fiche carries the molecule's posologies — every indication,
+    /// every schema. This one carries what is on the ordonnance in
+    /// front of the counter, and it is the one the plan de prise prints
+    /// and the conciliation compares. Empty is the ordinary state: a
+    /// file whose doses have never been typed is a file, not an error.
+    pub fn patient_posologies(&self, patient_id: i64) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT drug_id, posology FROM patient_drugs
+                 WHERE patient_id = ?1 AND posology <> ''",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Write it, compare-and-set against what the screen showed. Shared
+    /// row, shared base: the same discipline as everywhere else, and
+    /// `false` means a colleague got there first.
+    pub fn set_patient_posology(
+        &self,
+        patient_id: i64,
+        drug_id: i64,
+        posology: &str,
+        expected: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE patient_drugs SET posology = ?3
+                 WHERE patient_id = ?1 AND drug_id = ?2 AND posology = ?4",
+                (patient_id, drug_id, posology.trim(), expected.trim()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// Link a drug to a patient's current treatments (idempotent).
     pub fn add_patient_drug(&self, patient_id: i64, drug_id: i64) -> Result<(), String> {
         self.conn
@@ -31575,6 +31623,71 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The posology a file records for one of its treatments: written
+    /// compare-and-set like every other shared row, and gone with the
+    /// link when the treatment leaves the file.
+    #[test]
+    fn a_treatment_carries_the_posology_of_the_file_it_is_on() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-poso-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("poso.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let jean = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let claire = db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
+        let drug = db.add_drug("Triatec").unwrap();
+        db.add_patient_drug(jean, drug).unwrap();
+        db.add_patient_drug(claire, drug).unwrap();
+        // Nothing typed yet is the ordinary state, and it is not a row.
+        assert!(db.patient_posologies(jean).unwrap().is_empty());
+
+        assert!(db
+            .set_patient_posology(jean, drug, "5 mg le soir", "")
+            .unwrap());
+        assert_eq!(
+            db.patient_posologies(jean).unwrap(),
+            vec![(drug, "5 mg le soir".to_owned())]
+        );
+        // The same molecule on another file keeps its own line: this is
+        // the patient's posology, not the fiche's.
+        assert!(db.patient_posologies(claire).unwrap().is_empty());
+
+        // A colleague got there first: the write is refused rather than
+        // overwriting what the other post saw.
+        assert!(!db
+            .set_patient_posology(jean, drug, "10 mg", "2,5 mg")
+            .unwrap());
+        assert_eq!(
+            db.patient_posologies(jean).unwrap(),
+            vec![(drug, "5 mg le soir".to_owned())]
+        );
+        // And the expected value is compared trimmed, because that is
+        // how it was stored.
+        assert!(db
+            .set_patient_posology(jean, drug, " 10 mg le soir ", "  5 mg le soir  ")
+            .unwrap());
+        assert_eq!(
+            db.patient_posologies(jean).unwrap(),
+            vec![(drug, "10 mg le soir".to_owned())]
+        );
+
+        // Emptied, the line stops being one.
+        assert!(db
+            .set_patient_posology(jean, drug, "", "10 mg le soir")
+            .unwrap());
+        assert!(db.patient_posologies(jean).unwrap().is_empty());
+
+        // The treatment leaves the file and takes its posology with it:
+        // re-adding it does not resurrect yesterday's dose.
+        assert!(db.set_patient_posology(jean, drug, "5 mg", "").unwrap());
+        db.remove_patient_drug(jean, drug).unwrap();
+        db.add_patient_drug(jean, drug).unwrap();
+        assert!(db.patient_posologies(jean).unwrap().is_empty());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// The dashboard's call list reads the whole base in two queries,
     /// and only ever speaks about files that have biology on them.
     #[test]
@@ -33500,9 +33613,20 @@ mod tests {
                 // Four treatments, and among them an IEC: the demo's
                 // kaliémie at 5,4 then reads as what it is — a call to
                 // make, not a number in a table.
-                for name in ["Eliquis", "Tahor", "Coversyl", "Lasilix"] {
+                // Each with the posology of *this* file, so the plan de
+                // prise prints the patient's own schema and the
+                // conciliation has something to compare a sortie
+                // against — an ordonnance with no doses on it conciles
+                // presence and absence and nothing else.
+                for (name, poso) in [
+                    ("Eliquis", "5 mg matin et soir"),
+                    ("Tahor", "20 mg le soir"),
+                    ("Coversyl", "5 mg le matin"),
+                    ("Lasilix", "40 mg le matin"),
+                ] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();
+                        db.set_patient_posology(pid, d.id, poso, "").unwrap();
                         if name == "Eliquis" {
                             db.add_note(
                                 NoteSubject::Drug,
