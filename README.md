@@ -26,6 +26,12 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Codex des préparations — la formule mise à la quantité prescrite, le mode opératoire, les calculs](docs/screenshot_codex.png)
 
+![Protocoles de comptoir — la liste à gauche, l'arbre de décision à droite, le déroulé pas à pas](docs/screenshot_protocols.png)
+
+![Dispositifs médicaux — les familles, la pose, le rythme de renouvellement, ce que dit la ligne LPP](docs/screenshot_dispositifs.png)
+
+![Locations de matériel — les périodes entamées, ce qui est facturable, le renouvellement dépassé en rouge](docs/screenshot_locations.png)
+
 ![Carte vaccinale — les pays par groupe, la fièvre jaune, le paludisme](docs/screenshot_map.png)
 
 ## Key features

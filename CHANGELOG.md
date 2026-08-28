@@ -5,6 +5,20 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.106.0] - 2026-08-28
+
+### Changed
+- **Les captures du README montraient une application plus ancienne que
+  celle qui est livrée** : elles dataient d'avant la refonte des vues.
+  Les douze sont refaites, et trois s'ajoutent — protocoles taillés,
+  dispositifs, locations.
+- **Le pointeur ne traîne plus dans l'image.** Xvfb gare le pointeur au
+  centre de l'écran, c'est-à-dire au milieu de la fenêtre : chaque
+  capture revenait avec l'infobulle de ce qui se trouvait dessous. L'
+  écran virtuel fait maintenant trois fois la largeur de la fenêtre,
+  celle-ci reste à gauche, et l'image est recadrée — le pointeur ne
+  survole plus rien.
+
 ## [0.105.0] - 2026-08-28
 
 ### Changed

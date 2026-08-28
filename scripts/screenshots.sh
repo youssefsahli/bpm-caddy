@@ -33,15 +33,22 @@ shot() { # $1 = view, $2 = output file, $3.. = extra VAR=value env
     shift 2
     # WAYLAND_DISPLAY must be unset inside the xvfb shell or the window
     # opens on the real desktop instead (see CLAUDE.md).
-    view="$view" out="$out" extra="$*" \
-    xvfb-run -a -s "-screen 0 ${SIZE%x*}x${SIZE#*x}x24" bash -c '
+    # The virtual screen is three times the window wide, and the window
+    # sits at its left edge. Xvfb parks the pointer in the middle of the
+    # screen, which — on a screen the size of the window — is inside it:
+    # every shot came back with whatever tooltip happened to be under
+    # it. Off to the right, the pointer hovers nothing, and the image is
+    # cropped back to the window.
+    local w=${SIZE%x*} h=${SIZE#*x}
+    view="$view" out="$out" extra="$*" w="$w" h="$h" \
+    xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
         unset WAYLAND_DISPLAY
         [ "$view" = search ] || export BPM_CADDY_START_VIEW="$view"
         for kv in $extra; do export "$kv"; done
         ./target/debug/bpm-caddy &
         app=$!
         sleep 4
-        import -window root +repage "$out"
+        import -window root +repage -crop "${w}x${h}+0+0" +repage "$out"
         kill "$app"
     '
     echo "  $out"
@@ -59,4 +66,10 @@ shot bio docs/screenshot_bio.png
 shot codex_open docs/screenshot_codex.png
 shot vaccine_map docs/screenshot_map.png
 shot tables docs/screenshot_tables.png
+# The three carved list views, and the insulin panel under the
+# calculators: added when they were, so the README stops showing an
+# application older than the one it ships.
+shot protocol_open docs/screenshot_protocols.png
+shot dispositif_open docs/screenshot_dispositifs.png
+shot locations docs/screenshot_locations.png
 echo "Screenshots refreshed."
