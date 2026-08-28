@@ -32,6 +32,12 @@ lopdf = { version = "0.44.0", default-features = false }
 # every other « … » button hands a URL to the browser and stops there.
 ureq = { version = "2", features = ["json"] }
 serde_json = "1"
+# Reading a carte Vitale through a PC/SC reader. The system's card
+# library is opened by name at the moment a card is asked for, never
+# linked against: a binary linked to libpcsclite does not start at all on
+# a post that has none, and most posts have none. See src/winscard.rs.
+libloading = "0.8"
+
 
 [profile.release]
 lto = true

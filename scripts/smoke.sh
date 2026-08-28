@@ -21,6 +21,12 @@ export BPM_CADDY_WINDOW=1400x900
 mkdir -p "$tmp/config/bpm-caddy"
 export XDG_CONFIG_HOME="$tmp/config"
 
+# A captured card, so the reader path runs on every post: no hardware,
+# no real card, nobody's identity.
+card="$tmp/card.bin"
+export card
+printf '\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00' > "$card"
+
 BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null || exit 1
 cargo build || exit 1
 
@@ -29,7 +35,7 @@ views=(
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio revue locations vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
-    template options about keys act_picker
+    template options about keys act_picker vitale
     goto goto_jump mono_search mono_patient
 )
 
@@ -40,6 +46,11 @@ for view in "${views[@]}"; do
             unset WAYLAND_DISPLAY
             case "$view" in
                 drug_edit) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_DRUG_EDIT=1 ;;
+                # The card reader is exercised on a captured dump, never
+                # on a real card: the whole path runs, nothing is plugged
+                # in, and no patient of anybody is read.
+                vitale)    export BPM_CADDY_START_VIEW=vitale
+                           export BPM_CADDY_VITALE_DUMP="$card" ;;
                 search)    ;;
                 *)         export BPM_CADDY_START_VIEW="$view" ;;
             esac

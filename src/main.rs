@@ -17,6 +17,8 @@ mod revue;
 mod strings;
 mod tables;
 mod vaccines;
+mod vitale;
+mod winscard;
 
 use eframe::egui;
 

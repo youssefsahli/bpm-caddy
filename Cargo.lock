@@ -632,6 +632,7 @@ dependencies = [
  "dirs",
  "eframe",
  "keyring",
+ "libloading",
  "lopdf",
  "motif",
  "open",

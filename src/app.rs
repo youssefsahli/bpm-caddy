@@ -1415,6 +1415,11 @@ struct Session {
     /// The last drug search and the question it answered.
     drug_hits: Vec<Drug>,
     drug_hits_key: Option<(String, usize, u64)>,
+    /// What the last carte Vitale read gave: the beneficiaries it named,
+    /// and a line saying what happened — the readers seen, the ATR, or
+    /// why nothing came back.
+    vitale_found: Vec<crate::vitale::Beneficiary>,
+    vitale_note: Option<(bool, String)>,
     /// Bumped whenever a reference table's cell is corrected or reset.
     table_rev: u64,
     /// The last search across every reference table, and its question.
@@ -1704,6 +1709,8 @@ impl Session {
             drugs_rev: 0,
             drug_hits: Vec::new(),
             drug_hits_key: None,
+            vitale_found: Vec::new(),
+            vitale_note: None,
             table_rev: 0,
             table_hits: Vec::new(),
             table_hits_key: None,
@@ -2287,6 +2294,102 @@ impl Session {
                 .map(|d| d.name.trim().to_owned())
                 .unwrap_or_else(|| tr("tab_missing").to_owned()),
         }
+    }
+
+    /// Read the carte Vitale in the reader, and remember what it said.
+    ///
+    /// Nothing is written to the base here: the card names people, the
+    /// operator decides what to do with them. That separation is the
+    /// whole safety of the feature — a card read must never create a
+    /// patient by itself, because the person at the counter is not
+    /// always the person on the card.
+    fn read_vitale(&mut self, config: &Config) {
+        self.vitale_found.clear();
+        let year = self.year_now();
+        // Demo/e2e hook: replay a captured dump, so the whole path —
+        // parsing, matching, the picker — is exercised without a reader
+        // and without a real patient's card.
+        let raw = match std::env::var("BPM_CADDY_VITALE_DUMP") {
+            Ok(path) => {
+                std::fs::read(&path).map_err(|e| trf("vitale_dump_error", format!("{path} : {e}")))
+            }
+            Err(_) => match config.vitale.script() {
+                Ok(script) => crate::vitale::read_card(&config.vitale.reader, &script).map(|r| {
+                    // The diagnostic is kept whatever happens next: on a
+                    // post where nothing works, « quels lecteurs voit-on
+                    // et la carte répond-elle » is the only useful
+                    // question, and it must be answerable without a
+                    // developer.
+                    let mut note = trf("vitale_readers", r.readers.join(", "));
+                    if !r.atr.is_empty() {
+                        note.push_str(&trf("vitale_atr", &r.atr));
+                    }
+                    for line in &r.log {
+                        note.push('\n');
+                        note.push_str(line);
+                    }
+                    self.vitale_note = Some((false, note));
+                    r.data
+                }),
+                Err(e) => Err(e),
+            },
+        };
+        let raw = match raw {
+            Ok(raw) => raw,
+            Err(e) => {
+                self.vitale_note = Some((true, e));
+                return;
+            }
+        };
+        self.vitale_found = crate::vitale::beneficiaries(&raw, year);
+        if self.vitale_found.is_empty() {
+            let head = trf("vitale_none", raw.len());
+            let note = match self.vitale_note.take() {
+                Some((_, tail)) => format!("{head}\n{tail}"),
+                None => head,
+            };
+            self.vitale_note = Some((true, note));
+        } else {
+            self.vitale_note = None;
+        }
+    }
+
+    /// Act on one beneficiary of the card: open the file that already
+    /// carries this NIR, or fill a new one with what the card said.
+    ///
+    /// The NIR is what matches, not the name: two people can share a
+    /// name and nobody shares a NIR.
+    fn open_vitale(&mut self, who: &crate::vitale::Beneficiary) {
+        if let Some(p) = self
+            .patients
+            .iter()
+            .find(|p| !p.nir.trim().is_empty() && p.nir.trim() == who.nir)
+            .cloned()
+        {
+            self.vitale_found.clear();
+            self.vitale_note = None;
+            self.query.clear();
+            self.open_patient(p);
+            return;
+        }
+        // Nobody with that NIR: the creation form opens already filled,
+        // and the operator confirms it. The search box carries the name
+        // so the « aucun patient trouvé » branch is the one that shows.
+        self.query = who.surname.trim().to_owned();
+        self.selected = 0;
+        self.new_patient = Some(PatientForm {
+            last_name: who.surname.trim().to_owned(),
+            first_name: who.given.trim().to_owned(),
+            birth_date: if who.birth_date.is_empty() {
+                String::new()
+            } else {
+                db::format_french_date(&who.birth_date)
+            },
+            nir: who.nir.clone(),
+            ..Default::default()
+        });
+        self.vitale_found.clear();
+        self.vitale_note = Some((false, tr("vitale_new").to_owned()));
     }
 
     /// Reload the codex from the base.
@@ -4388,6 +4491,12 @@ impl App {
                             }
                             session.view = MainView::Drugs;
                         }
+                        // Reads the card at start-up, so the whole path
+                        // — transport or dump, parsing, the picker — is
+                        // exercised by the smoke run and the
+                        // screenshots without a reader and without a
+                        // real patient's card.
+                        Ok("vitale") => session.read_vitale(&config),
                         // No hook: reopen where the last session was
                         // left. The hooks are for screenshots and the
                         // e2e run, and they must keep the last word.
@@ -4636,6 +4745,10 @@ impl App {
             (screen * 0.15).clamp(150.0, 232.0)
         };
         let mut width = 0.0_f32;
+        // Cloned before the session is borrowed: the navigator's patient
+        // list needs the Vitale settings, and `self` is about to be held
+        // mutably for the whole panel.
+        let config = self.config.clone();
         {
             let State::Unlocked(session) = &mut self.state else {
                 return;
@@ -4666,7 +4779,7 @@ impl App {
                         MainView::Transmissions => Self::nav_carnet(ui, session),
                         MainView::VaccineMap => Self::nav_map(ui, session),
                         MainView::Dashboard | MainView::Search => {
-                            Self::nav_patients(ui, session, focus)
+                            Self::nav_patients(ui, session, focus, &config)
                         }
                     }
                 });
@@ -4706,7 +4819,7 @@ impl App {
     }
 
     /// Patients: the search that used to own the whole screen, docked.
-    fn nav_patients(ui: &mut egui::Ui, session: &mut Session, focus: bool) {
+    fn nav_patients(ui: &mut egui::Ui, session: &mut Session, focus: bool, config: &Config) {
         motif::section(ui, tr("nav_patients"));
         ui.add_space(4.0);
         let field = Self::nav_search(ui, tr("nav_search_hint"), &mut session.query);
@@ -4716,6 +4829,67 @@ impl App {
         if field.changed() {
             session.selected = 0;
             session.new_patient = None;
+        }
+        // The carte Vitale, where the search is: presenting the card is
+        // a way of naming a patient, and it belongs beside the field
+        // that does the same job by typing.
+        if config.vitale.enabled
+            && motif::button(ui, tr("vitale_read"))
+                .on_hover_text(tr("vitale_read_tooltip"))
+                .clicked()
+        {
+            session.read_vitale(config);
+        }
+        // What the card named. One beneficiary or six, the operator
+        // picks: a card carries the holder and the ayants droit, and the
+        // person at the counter is not always the holder.
+        //
+        // Shown whether or not the reader is enabled: turning the option
+        // off after a read must not strand the names the card gave, with
+        // nothing to click and no way to know why.
+        {
+            let people = session.vitale_found.clone();
+            if !people.is_empty() {
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new(tr("vitale_pick"))
+                        .size(10.5)
+                        .color(motif::text_dim()),
+                );
+                for who in &people {
+                    // The name on the row and the NIR in the hover, not
+                    // both on the row: fifteen digits and a name do not
+                    // fit side by side in a dock this narrow, and what
+                    // came back was « JEAN … » beside « … ». The name is
+                    // what the operator reads; the number is what they
+                    // check.
+                    let mut hover = who.nir.clone();
+                    hover.push('\n');
+                    hover.push_str(&if who.birth_date.is_empty() {
+                        tr("vitale_no_birth").to_owned()
+                    } else {
+                        db::format_french_date(&who.birth_date)
+                    });
+                    if motif::list_row(ui, egui::RichText::new(who.label()), false)
+                        .on_hover_text(hover)
+                        .clicked()
+                    {
+                        session.open_vitale(who);
+                        break;
+                    }
+                }
+            }
+            if let Some((is_error, note)) = session.vitale_note.clone() {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(note).size(10.0).color(if is_error {
+                        motif::alert()
+                    } else {
+                        motif::text_faint()
+                    }))
+                    .wrap(),
+                );
+            }
+            ui.add_space(4.0);
         }
         let results: Vec<Patient> = session.results().into_iter().cloned().collect();
         let open = session.viewing.as_ref().map(|p| p.id);
@@ -18838,6 +19012,62 @@ impl eframe::App for App {
                                     )
                                     .wrap(),
                                 );
+                            }
+                            if page == OptionsPage::Database {
+                                // The card reader lives on the Base page:
+                                // it is about this post's hardware, like
+                                // the database path beside it.
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("opts_vitale"));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("opts_vitale_hint"))
+                                            .size(11.0)
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.add_space(4.0);
+                                ui.checkbox(
+                                    &mut editor.cfg.vitale.enabled,
+                                    tr("opts_vitale_enabled"),
+                                );
+                                ui.horizontal(|ui| {
+                                    ui.label(dim(tr("opts_vitale_reader")));
+                                    ui.add_sized(
+                                        [240.0, 24.0],
+                                        egui::TextEdit::singleline(&mut editor.cfg.vitale.reader),
+                                    );
+                                });
+                                ui.label(dim(tr("opts_vitale_apdu")));
+                                // One command per line, edited as text:
+                                // a list of hex strings is a list, and a
+                                // grid of one-line fields for it is a
+                                // form nobody can paste into.
+                                let mut script = editor.cfg.vitale.apdu.join("\n");
+                                if ui
+                                    .add(
+                                        egui::TextEdit::multiline(&mut script)
+                                            .desired_rows(3)
+                                            .desired_width(f32::INFINITY)
+                                            .hint_text(tr("opts_vitale_apdu_hint")),
+                                    )
+                                    .changed()
+                                {
+                                    editor.cfg.vitale.apdu = script
+                                        .lines()
+                                        .map(str::trim)
+                                        .filter(|l| !l.is_empty())
+                                        .map(str::to_owned)
+                                        .collect();
+                                }
+                                // Say straight away whether the script
+                                // can be sent at all: a typo found when
+                                // the card is in the reader is a typo
+                                // found with a patient waiting.
+                                if let Err(e) = editor.cfg.vitale.script() {
+                                    ui.colored_label(motif::alert(), e);
+                                }
                             }
                             if page == OptionsPage::Mentions {
                                 // Nothing here is filled in by the

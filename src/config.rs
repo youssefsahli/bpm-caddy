@@ -141,6 +141,22 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # anticancereux_per_year = 3
 # vaccination_per_year = 0
 
+[vitale]
+# Lecture de la carte Vitale par un lecteur PC/SC : elle remplit
+# l'identité du patient — NIR, noms, date de naissance — au lieu de la
+# faire taper. Elle ne facture rien : une feuille de soins électronique
+# demande un progiciel SESAM-Vitale agréé et une carte CPS, et c'est le
+# LGO qui la produit.
+#
+# La séquence de commandes APDU est écrite ici et non dans le programme :
+# elle relève des spécifications SESAM-Vitale, qui sont sous licence et
+# versionnées. Vide, l'application liste quand même les lecteurs et
+# affiche l'ATR de la carte — de quoi voir si le lecteur et la carte sont
+# vus.
+# enabled = false
+# reader = ""
+# apdu = ["00A4040007A0000000180C000100", "00B0000000"]
+
 [locations]
 # Les locations de matériel : nébuliseur, neurostimulateur, lit
 # médicalisé… Un forfait court tant que le matériel est sorti, et se
@@ -185,6 +201,46 @@ pub struct Config {
     pub ordonnance: OrdonnanceConfig,
     pub disclaimers: DisclaimersConfig,
     pub locations: LocationsConfig,
+    pub vitale: VitaleConfig,
+}
+
+/// Reading a carte Vitale through a PC/SC reader.
+///
+/// **The command script lives here and not in the code**, and that is
+/// the point of this section. The sequence of APDU commands that reaches
+/// the beneficiary data belongs to the SESAM-Vitale specification, which
+/// is licensed and versioned: a sequence compiled into the binary could
+/// be corrected neither by the officine nor by whoever integrates the
+/// reader, and would not follow a card generation it predates. Empty by
+/// default — the application then still lists the readers and shows the
+/// card's ATR, which is what says whether the reader and the card are
+/// seen at all.
+///
+/// What this never does is bill: an FSE needs an agreed SESAM-Vitale
+/// package and a carte CPS, and the LGO stays the tool that produces it.
+#[derive(Deserialize, Serialize, Clone, Default)]
+#[serde(default)]
+pub struct VitaleConfig {
+    /// Off until a reader is actually connected: a button that always
+    /// fails is a button nobody presses twice.
+    pub enabled: bool,
+    /// Part of the reader's name, when the post has several. Empty takes
+    /// the first one found.
+    pub reader: String,
+    /// The commands sent to the card, in hexadecimal, in order.
+    pub apdu: Vec<String>,
+}
+
+impl VitaleConfig {
+    /// The script as bytes. An unreadable command stops the whole
+    /// script: half an APDU is a different command, and sending it to a
+    /// card is not something to do on a guess.
+    pub fn script(&self) -> Result<Vec<Vec<u8>>, String> {
+        self.apdu
+            .iter()
+            .map(|c| crate::vitale::parse_hex(c))
+            .collect()
+    }
 }
 
 /// How a rental forfait is counted. The LPP pays by the week for most

@@ -95,6 +95,23 @@ nav_search_hint = "Rechercher un patient…"
 nav_count = "{} résultat(s)"
 nav_letter_count = "{} fiches"
 
+# --- Carte Vitale ---
+vitale_read = "Carte Vitale"
+vitale_read_tooltip = "Lire la carte présentée : elle ouvre la fiche du patient, ou la crée déjà remplie"
+vitale_pick = "Sur la carte :"
+vitale_no_birth = "Date de naissance non lue sur la carte"
+vitale_new = "Aucune fiche avec ce numéro : la création est pré-remplie, vérifiez avant d'enregistrer."
+vitale_none = "Carte lue ({} octets) mais aucun bénéficiaire reconnu — la séquence APDU d'Options › Base est peut-être à compléter."
+vitale_readers = "Lecteurs : {}"
+vitale_atr = " · ATR : {}"
+vitale_dump_error = "Relevé de carte illisible : {}"
+opts_vitale = "Carte Vitale"
+opts_vitale_enabled = "Lecture de la carte Vitale"
+opts_vitale_reader = "Lecteur (vide = le premier trouvé)"
+opts_vitale_apdu = "Commandes APDU, une par ligne"
+opts_vitale_hint = "Lit l'identité du porteur pour ouvrir ou créer sa fiche. Ne facture rien : une feuille de soins électronique demande un progiciel SESAM-Vitale agréé et une carte CPS."
+opts_vitale_apdu_hint = "Hexadécimal, une commande par ligne. Vide : l'application liste les lecteurs et affiche l'ATR, sans lire la carte."
+
 # --- Tableau de bord : nouveaux libellés ---
 dash_discreet_tooltip = "Afficher ou masquer les montants"
 dash_acts_n = "{} acte(s)"

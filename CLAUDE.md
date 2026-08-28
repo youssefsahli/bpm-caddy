@@ -29,7 +29,15 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/release.rs` (what version this is, and — only on a button press,
   from Options › À propos — what GitHub says the newest release is; the
   **only** network request in the application, everything else hands a
-  URL to the browser)
+  URL to the browser),
+  `src/vitale.rs` (finding the beneficiaries on a carte Vitale — the NIR
+  proves itself by its control key, so nothing is read at an offset
+  anybody guessed; pure and tested apart from the one transmission
+  function), `src/winscard.rs` (the PC/SC library, opened **by name at
+  the moment a card is asked for and never linked against**: a binary
+  linked to `libpcsclite` does not start at all on a post that has none,
+  and most posts have none — which is also why no system package is
+  needed to build this, in CI or on the release runners either)
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
@@ -133,7 +141,7 @@ upgrade is decided, the number to defend is the logic one, and
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|revue|vaccine_map|ordonnance|codex|
-  codex_open|dispositifs|dispositif_open|locations|keys|
+  codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
@@ -142,6 +150,9 @@ upgrade is decided, the number to defend is the logic one, and
   editable form rather than the monograph
 - `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card
   rather than Eliquis (checking an insulin's action profile, say)
+- `BPM_CADDY_VITALE_DUMP=<path>` — replay a captured card instead of
+  talking to a reader, so `START_VIEW=vitale` exercises the whole path
+  (parsing, matching, the picker) with no hardware and nobody's identity
 
 The workspace's shape — window size, dock widths, whether each dock is
 open, the right pane's content, the view on screen — is remembered in
