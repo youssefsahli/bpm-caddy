@@ -1666,7 +1666,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde",
-        toxicity: "",
+        toxicity: "Comme toute forme à libération prolongée d'opioïde, il est mortel s'il est croqué, écrasé ou dissous : la dose de douze heures passe d'un coup. C'est le mécanisme des surdoses accidentelles et le mode de détournement. La dose létale n'existe pas dans l'absolu — elle dépend de la tolérance —, mais chez un sujet naïf un seul comprimé de dosage élevé suffit.",
         forms: "",
     },
     StarterDetail {
@@ -1687,7 +1687,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde",
-        toxicity: "",
+        toxicity: "Le patch est la forme la plus trompeuse de l'opioïde fort : il continue de délivrer plusieurs heures après le retrait, le réservoir cutané n'étant pas vide. La chaleur — fièvre, bain chaud, couverture chauffante — augmente l'absorption et a provoqué des surdoses mortelles. Un patch usagé contient encore la majeure partie de sa dose : il se plie face collante contre elle-même et se rapporte à l'officine, parce qu'un patch trouvé par un enfant est un décès.",
         forms: "",
     },
     StarterDetail {
@@ -2002,7 +2002,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique",
-        toxicity: "",
+        toxicity: "L'intoxication par inhibiteur calcique bradycardisant est une des plus graves de la pharmacopée courante : bradycardie, bloc, collapsus, et un choc réfractaire aux amines. Quelques comprimés suffisent chez un enfant. L'association à un bêtabloquant, même à doses usuelles, produit le même tableau — c'est pour cela qu'elle ne se délivre pas sans avis.",
         forms: "",
     },
     StarterDetail {
@@ -2044,7 +2044,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa toxicité est cumulative et se compte en mois, pas en comprimés : la demi-vie dépasse cinquante jours et le produit s'accumule dans tous les tissus. Dysthyroïdie dans les deux sens, pneumopathie interstitielle, dépôts cornéens, photosensibilisation et hépatite. Un effet apparu après un an peut persister des mois après l'arrêt, et un patient qui a arrêté depuis six mois est toujours exposé — ce que personne n'anticipe.",
         forms: "",
     },
     StarterDetail {
@@ -2170,7 +2170,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "sulfamide hypoglycémiant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'hypoglycémie sous sulfamide est plus longue et plus dangereuse que sous insuline : la molécule a une longue durée d'action, et l'hypoglycémie récidive après le resucrage pendant vingt-quatre à quarante-huit heures. Toute hypoglycémie sévère sous sulfamide s'hospitalise, surtout chez la personne âgée ou l'insuffisant rénal, où elle est parfois inaugurale et prise pour un accident vasculaire.",
         forms: "",
     },
     StarterDetail {
@@ -2212,7 +2212,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline, surveillance biologique",
-        toxicity: "",
+        toxicity: "La toxicité de l'insuline est l'hypoglycémie, et elle n'a pas de seuil : c'est l'erreur de dose qui la crée. Les deux erreurs classiques sont la confusion entre une insuline lente et une rapide, et la lecture de « 10 U » comme « 100 U » sur une prescription manuscrite — d'où l'écriture en toutes lettres. Une hypoglycémie sous insuline lente dure des heures et récidive : le resucrage ne suffit pas, il faut surveiller et souvent hospitaliser.",
         forms: "",
     },
     StarterDetail {
@@ -2758,7 +2758,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "sulfamide antibactérien, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux toxicités graves et sans rapport avec la dose. L'hypersensibilité retardée — Lyell, Stevens-Johnson, DRESS — fait de cette molécule une des plus pourvoyeuses de toxidermies sévères. Et l'hyperkaliémie, souvent oubliée : le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur, et l'association à un IEC, un sartan ou une spironolactone chez un sujet âgé a tué. Toute éruption fait arrêter.",
         forms: "",
     },
     StarterDetail {
@@ -3472,7 +3472,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur tricyclique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "L'intoxication par tricyclique est cardiaque avant d'être neurologique : élargissement du QRS, troubles du rythme, convulsions, coma. Quelques centaines de milligrammes suffisent chez l'adulte et beaucoup moins chez l'enfant — une seule prise accidentelle justifie un appel au centre antipoison. Il n'y a pas d'antidote : le bicarbonate de sodium molaire corrige l'effet stabilisant de membrane, et c'est une réanimation. Ne jamais laisser une grande quantité à disposition d'un patient à risque suicidaire, ce qui est précisément la population traitée.",
         forms: "",
     },
     StarterDetail {
@@ -3787,7 +3787,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "supplément potassique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le potassium est un des rares médicaments dont le surdosage tue en quelques minutes par arrêt cardiaque, sans signe annonciateur fiable. La marge se réduit encore chez l'insuffisant rénal et sous IEC, sartan ou antialdostérone. Localement, un comprimé bloqué dans l'œsophage ulcère : toujours avaler debout ou assis, avec un grand verre d'eau.",
         forms: "",
     },
     StarterDetail {
@@ -3934,7 +3934,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypo-uricémiant, surveillance biologique",
-        toxicity: "",
+        toxicity: "La toxicité de l'allopurinol n'est pas dose-dépendante au sens habituel : c'est une hypersensibilité retardée, DRESS ou syndrome de Lyell, qui survient dans les huit premières semaines et dont la mortalité est réelle. Le risque augmente avec l'insuffisance rénale et une dose initiale trop élevée, d'où l'instauration à faible dose. Toute éruption sous allopurinol fait arrêter définitivement et ne jamais réintroduire.",
         forms: "",
     },
     StarterDetail {
@@ -5320,7 +5320,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipaludéen de synthèse, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux toxicités sans rapport. En aigu, c'est un des rares médicaments dont **un seul comprimé peut tuer un enfant** : troubles du rythme, choc, convulsions en moins d'une heure. La boîte se range hors de portée, et cela se dit à la délivrance. En chronique, la rétinopathie est cumulative et irréversible : elle dépend de la dose rapportée au poids idéal et de la durée, d'où l'examen ophtalmologique de référence puis la surveillance régulière.",
         forms: "",
     },
     StarterDetail {
@@ -5341,7 +5341,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "Prescription et délivrance encadrées (grossesse)",
         smr: "",
         tags: "rétinoïde, tératogène, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La toxicité de l'isotrétinoïne n'est pas une question de dose mais d'exposition : c'est un des tératogènes les plus puissants connus, et une seule prise pendant la grossesse peut suffire. D'où le programme de prévention de la grossesse — contraception, tests, délivrance dans les sept jours de la prescription et pour trente jours au plus. Le don du sang est interdit pendant le traitement et un mois après, pour la même raison.",
         forms: "",
     },
     StarterDetail {
@@ -6202,7 +6202,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur tricyclique",
-        toxicity: "",
+        toxicity: "Même marge que l'amitriptyline, et même mécanisme : effet stabilisant de membrane, élargissement du QRS, troubles du rythme et convulsions. Le surdosage est la première cause de décès par antidépresseur, et le tricyclique est la classe concernée — les ISRS sont beaucoup moins toxiques en aigu. La quantité délivrée est un paramètre de sécurité au même titre que la dose.",
         forms: "",
     },
     StarterDetail {
@@ -7567,7 +7567,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le surdosage donne une vasodilatation majeure : hypotension profonde, tachycardie réflexe, œdème pulmonaire. Les formes à libération prolongée sont trompeuses, le tableau apparaissant plusieurs heures après la prise et durant longtemps. Une gélule à libération immédiate croquée pour « faire baisser la tension » est une pratique dangereuse et abandonnée : la chute brutale provoque des accidents ischémiques.",
         forms: "",
     },
     StarterDetail {
@@ -9604,7 +9604,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aminoside, surveillance biologique",
-        toxicity: "",
+        toxicity: "Toxicité de classe des aminosides, et elle est cumulative : néphrotoxicité réversible, ototoxicité et atteinte vestibulaire qui ne le sont pas. C'est la durée qui compte plus que le pic — d'où les schémas en une injection quotidienne et les traitements les plus courts possibles. Le dosage résiduel est ce qui décide, et une surdité qui s'installe sous aminoside ne revient pas.",
         forms: "",
     },
     StarterDetail {
@@ -9646,7 +9646,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "glycopeptide",
-        toxicity: "",
+        toxicity: "Marge étroite avec dosage : la zone résiduelle est fixée par le prescripteur et l'infection traitée. Au-dessus, néphrotoxicité et ototoxicité, la seconde étant souvent définitive. Le débit de perfusion compte autant que la dose : injectée trop vite, elle donne le syndrome de l'homme rouge, qui est une histaminolibération et non une allergie — il se prévient en ralentissant.",
         forms: "",
     },
     StarterDetail {
@@ -11011,7 +11011,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bronchodilatateur xanthique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Marge étroite au sens strict : la zone efficace est de 8 à 20 mg/L et les premiers signes toxiques commencent à 20. Nausées, palpitations, tremblements et insomnie ne sont pas des effets à supporter, ce sont déjà le surdosage. Au-delà, convulsions et troubles du rythme, parfois sans prodrome chez le sujet âgé. Tout ce qui modifie le métabolisme déplace la concentration : arrêter de fumer la fait monter, une fièvre, une insuffisance cardiaque ou un macrolide aussi.",
         forms: "",
     },
     StarterDetail {
@@ -11704,7 +11704,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, surveillance biologique, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "La toxicité n'est pas celle du surdosage mais celle de l'exposition. Chez la femme enceinte, c'est le tératogène le mieux documenté de la pharmacopée : malformations dans environ une grossesse sur dix et troubles neurodéveloppementaux dans trois à quatre sur dix, d'où le programme de prévention, l'accord de soins et la contraception obligatoires. À cela s'ajoutent l'hépatite fulminante du jeune enfant et l'hyperammoniémie, qui donne une confusion à concentration sanguine normale.",
         forms: "",
     },
     StarterDetail {
@@ -13090,7 +13090,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur tricyclique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Toxicité de classe des tricycliques : cardiotoxicité par effet stabilisant de membrane, convulsions, coma anticholinergique. La sédation qui fait choisir cette molécule dans l'insomnie fait aussi qu'elle est prise le soir, seul, sans témoin. Fractionner la délivrance chez un patient fragile.",
         forms: "",
     },
     StarterDetail {
@@ -13636,7 +13636,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "traitement de substitution aux opiacés, vigilance conduite",
-        toxicity: "",
+        toxicity: "La marge est étroite pendant la titration, et le danger n'est pas la dose du jour mais son accumulation : avec une demi-vie qui peut atteindre soixante heures, l'équilibre ne s'établit qu'au bout de quatre à cinq jours, et une augmentation décidée le troisième jour se surajoute à une concentration qui monte encore. La dose létale chez un sujet non tolérant est de l'ordre de 30 à 50 mg, celle d'une seule prise d'entretien — et le sirop tue un enfant en une gorgée. Au-delà de 120 mg par jour, le QT s'allonge et impose un ECG.",
         forms: "",
     },
     StarterDetail {
@@ -14119,7 +14119,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anesthésique local",
-        toxicity: "",
+        toxicity: "La toxicité systémique des anesthésiques locaux commence par des signes neurologiques — goût métallique, engourdissement péribuccal, acouphènes, agitation — puis convulsions, puis arrêt cardiaque. Elle survient sur une injection intravasculaire accidentelle ou sur un dépassement de la dose maximale rapportée au poids, qui est le seul chiffre à connaître. L'antidote est l'émulsion lipidique, et le traitement est une réanimation.",
         forms: "",
     },
     StarterDetail {
@@ -14791,7 +14791,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "myorelaxant",
-        toxicity: "",
+        toxicity: "La marge est étroite dès que la dose sort du cadre de la spasticité. Utilisé à forte dose dans l'alcoolodépendance, il donne somnolence, confusion, apnées et coma, et des décès ont été rapportés. L'arrêt brutal d'un traitement installé est un syndrome de sevrage avec hallucinations et convulsions, et il est d'autant plus grave que la voie était intrathécale. En insuffisance rénale, il s'accumule et l'encéphalopathie apparaît à des doses ordinaires.",
         forms: "",
     },
     StarterDetail {
@@ -17878,7 +17878,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, surveillance biologique",
-        toxicity: "",
+        toxicity: "Marge étroite avec dosage sanguin, et une biodisponibilité qui varie avec le repas : la prise se fait toujours de la même façon, à jeun ou toujours au même moment du repas, faute de quoi la concentration bouge sans que la dose ait changé. Néphrotoxicité, tremblement, diabète et hyperkaliémie sont les signes du surdosage. Les formes à libération immédiate et prolongée ne se substituent pas l'une à l'autre.",
         forms: "",
     },
     StarterDetail {
@@ -17899,7 +17899,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Marge étroite avec dosage sanguin : la zone dépend de l'organe greffé et du délai depuis la greffe, et c'est le prescripteur qui la fixe. En dessous, c'est le rejet ; au-dessus, la néphrotoxicité, l'hypertension et le tremblement. Deux pièges de comptoir : le pamplemousse, qui fait grimper la concentration, et la substitution entre formulations, qui n'est pas bioéquivalente — une même dose ne donne pas la même concentration d'une spécialité à l'autre.",
         forms: "",
     },
     StarterDetail {
@@ -30250,6 +30250,29 @@ mod tests {
         assert!(missing.is_empty(), "fiches sans monographie : {missing:?}");
         let orphan: Vec<&&str> = detailed.difference(&names).collect();
         assert!(orphan.is_empty(), "monographies sans fiche : {orphan:?}");
+
+        // « Toxicité / marge thérapeutique » is not required of every
+        // fiche — an antifongique local has no margin to speak of — but
+        // it is a ratchet like the rest: the fiches that carry it are
+        // the ones where a dose, a duration or an exposure kills, and
+        // that list only grows. A section too short to act on is worse
+        // than none.
+        let toxic: Vec<&StarterDetail> = STARTER_DETAILS
+            .iter()
+            .filter(|d| !d.toxicity.trim().is_empty())
+            .collect();
+        assert!(
+            toxic.len() >= 64,
+            "{} fiches portent une section toxicité, il y en avait soixante-quatre",
+            toxic.len()
+        );
+        for d in &toxic {
+            assert!(
+                d.toxicity.chars().count() >= 120,
+                "{} : section toxicité trop courte pour servir",
+                d.name
+            );
+        }
 
         // The clinical body of a monograph, and the sources behind it.
         // `status`, `smr` and `forms` are deliberately not in this list:
