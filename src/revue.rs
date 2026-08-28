@@ -50,6 +50,16 @@ enum Kind {
     Combination(&'static [&'static [&'static str]]),
     /// At least `1` distinct treatments carrying one of these words.
     Duplicate(&'static [&'static str], usize),
+    /// Every group matches, **and** nothing on the ordonnance carries
+    /// any of the last words.
+    ///
+    /// What is *missing* is half of what a bilan finds. An opioid with
+    /// no laxative beside it, a corticothérapie with nothing for the
+    /// bone: neither is an interaction, and both are the reason the
+    /// patient comes back. The point names the treatments that are
+    /// there — naming an absence is impossible, and the sentence says
+    /// what is not.
+    Without(&'static [&'static [&'static str]], &'static [&'static str]),
 }
 
 struct Rule {
@@ -108,6 +118,31 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
                     hit
                 } else {
                     Vec::new()
+                }
+            }
+            Kind::Without(groups, absent) => {
+                if !matches(absent).is_empty() {
+                    Vec::new()
+                } else {
+                    let mut named: Vec<String> = Vec::new();
+                    let mut complete = true;
+                    for group in groups.iter() {
+                        let hit = matches(group);
+                        if hit.is_empty() {
+                            complete = false;
+                            break;
+                        }
+                        for name in hit {
+                            if !named.contains(&name) {
+                                named.push(name);
+                            }
+                        }
+                    }
+                    if complete {
+                        named
+                    } else {
+                        Vec::new()
+                    }
                 }
             }
         };
@@ -370,6 +405,138 @@ const RULES: &[Rule] = &[
         title: "Bisphosphonate à distance",
         detail: "Le calcium et les cations divalents annulent l'absorption du bisphosphonate : la prise se fait à jeun, seule, et le calcium au moins deux heures plus tard.",
     },
+    Rule {
+        kind: Kind::Duplicate(&["paracétamol"], 2),
+        severity: Severity::Alert,
+        title: "Deux sources de paracétamol",
+        detail: "Deux spécialités contenant du paracétamol sur la même ordonnance : c'est ainsi que se fait le surdosage, sans que personne l'ait voulu, parce que l'un des deux noms ne dit pas ce qu'il contient. Faire la somme des grammes par jour devant le patient, et ne garder qu'une source.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["statine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
+            &["macrolide", "clarithromycine", "érythromycine", "azolé", "kétoconazole", "itraconazole", "fluconazole", "vérapamil", "diltiazem"],
+        ]),
+        severity: Severity::Alert,
+        title: "Statine + inhibiteur enzymatique",
+        detail: "Macrolide, azolé ou inhibiteur calcique bradycardisant : la concentration de la statine grimpe et c'est la rhabdomyolyse. Pour une antibiothérapie courte, la statine se suspend le temps du traitement — l'arrêt de quelques jours ne coûte rien, l'association coûte un muscle.",
+    },
+    Rule {
+        kind: Kind::Duplicate(
+            &["anticoagulant", "AOD", "AVK", "héparine", "apixaban", "rivaroxaban", "dabigatran", "édoxaban", "warfarine", "fluindione", "acénocoumarol", "énoxaparine", "tinzaparine", "fondaparinux"],
+            2,
+        ),
+        severity: Severity::Alert,
+        title: "Deux anticoagulants",
+        detail: "Deux anticoagulants ensemble hors relais organisé : le risque hémorragique s'additionne sans bénéfice. Un relais héparine-AVK se chevauche quelques jours et c'est écrit sur l'ordonnance ; en dehors de ce cas, appeler le prescripteur avant de délivrer.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["allopurinol", "fébuxostat"],
+            &["azathioprine", "mercaptopurine"],
+        ]),
+        severity: Severity::Alert,
+        title: "Allopurinol + azathioprine",
+        detail: "L'allopurinol bloque la voie qui dégrade l'azathioprine : l'exposition est multipliée et l'aplasie médullaire est le risque, pas une éventualité théorique. L'association se refuse en délivrance et se discute avec le prescripteur ; si elle est maintenue, la dose d'azathioprine est divisée par quatre et la NFS surveillée.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["IEC", "sartan", "ARA II"],
+            &["antialdostérone", "spironolactone", "éplérénone"],
+            &["potassium", "kaléorid", "diffu-k"],
+        ]),
+        severity: Severity::Alert,
+        title: "Triple risque hyperkaliémique",
+        detail: "Bloqueur du système rénine-angiotensine, antialdostérone et supplément potassique : trois sources de potassium sur la même ordonnance. La kaliémie se contrôle avant de délivrer, et le supplément est presque toujours celui qui se retire.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["AVK", "warfarine", "fluindione", "acénocoumarol"],
+            &["antibiotique", "amoxicilline", "macrolide", "fluoroquinolone", "cotrimoxazole", "métronidazole", "cycline", "céphalosporine"],
+        ]),
+        severity: Severity::Warn,
+        title: "AVK + antibiotique",
+        detail: "Toute antibiothérapie déséquilibre un AVK, dans un sens ou dans l'autre, et le cotrimoxazole et le métronidazole le font fortement. Prévoir un INR trois à cinq jours après le début du traitement, et le dire au patient avant qu'il sorte.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["metformine", "biguanide"],
+            &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide"],
+            &["IEC", "sartan", "ARA II"],
+        ]),
+        severity: Severity::Warn,
+        title: "Metformine et jours de maladie",
+        detail: "Metformine, diurétique et bloqueur du système rénine-angiotensine : le rein tient tant que le patient boit. Fièvre, diarrhée, vomissements ou forte chaleur, et les trois se suspendent le temps de l'épisode — c'est la règle des jours de maladie, et elle s'explique une fois pour toutes, par écrit.",
+    },
+    Rule {
+        kind: Kind::Duplicate(
+            &["antiagrégant", "clopidogrel", "ticagrélor", "prasugrel", "acide acétylsalicylique", "aspirine"],
+            2,
+        ),
+        severity: Severity::Warn,
+        title: "Double antiagrégation",
+        detail: "Deux antiagrégants : après un stent c'est le traitement, mais il a une durée — souvent six à douze mois — au terme de laquelle il n'en reste qu'un. Chercher la date de pose sur le dossier, et si elle est ancienne, poser la question au prescripteur.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["bêtabloquant", "bêta-bloquant", "bisoprolol", "aténolol", "métoprolol", "propranolol", "nébivolol"],
+            &["insuline", "sulfamide hypoglycémiant", "glinide", "gliclazide", "glimépiride", "répaglinide"],
+        ]),
+        severity: Severity::Warn,
+        title: "Bêtabloquant + hypoglycémiant",
+        detail: "Le bêtabloquant masque les signes de l'hypoglycémie — tremblements, palpitations — et n'en laisse que les sueurs. Le patient doit le savoir : la sueur seule devient le signal, et la glycémie se contrôle au moindre doute plutôt que de se fier aux sensations.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène", "coxib"],
+            &["antihypertenseur", "IEC", "sartan", "ARA II", "bêtabloquant", "diurétique", "inhibiteur calcique"],
+        ]),
+        severity: Severity::Warn,
+        title: "AINS et tension",
+        detail: "Un AINS fait remonter la tension et annule une partie de l'effet du traitement, y compris pris quelques jours en automédication. Une tension qui se dérègle sans raison se cherche d'abord dans l'armoire à pharmacie du patient.",
+    },
+    Rule {
+        kind: Kind::Without(
+            &[&[
+                "opioïde",
+                "morphine",
+                "oxycodone",
+                "tramadol",
+                "codéine",
+                "fentanyl",
+                "buprénorphine",
+            ]],
+            &["laxatif", "macrogol", "lactulose", "bisacodyl", "sterculia", "docusate"],
+        ),
+        severity: Severity::Warn,
+        title: "Opioïde sans laxatif",
+        detail: "La constipation sous opioïde est constante, ne s'épuise pas avec le temps et se prévient dès la première prise. Aucun laxatif sur cette ordonnance : le proposer maintenant coûte une phrase, l'occlusion coûte une hospitalisation.",
+    },
+    Rule {
+        kind: Kind::Without(
+            &[&[
+                "corticoïde",
+                "prednisone",
+                "prednisolone",
+                "méthylprednisolone",
+                "bétaméthasone",
+                "dexaméthasone",
+            ]],
+            &[
+                "vitamine D",
+                "cholécalciférol",
+                "calcium",
+                "bisphosphonate",
+                "biphosphonate",
+                "alendronate",
+                "risédronate",
+                "acide zolédronique",
+                "dénosumab",
+            ],
+        ),
+        severity: Severity::Warn,
+        title: "Corticoïde sans protection osseuse",
+        detail: "Une corticothérapie orale prolongée fait perdre de l'os dès les premiers mois, et rien sur cette ordonnance ne s'y oppose. Si la cure dépasse trois mois, la question du calcium, de la vitamine D et d'un bisphosphonate se pose au prescripteur — s'il s'agit d'une cure courte, il n'y a rien à faire et cette ligne se referme.",
+    },
 ];
 
 #[cfg(test)]
@@ -503,12 +670,99 @@ mod tests {
                     rule.title,
                     words
                 ),
+                Kind::Without(groups, absent) => {
+                    for group in groups.iter() {
+                        assert!(
+                            matches(group),
+                            "règle « {} » : aucun médicament de la base ne correspond à {:?}",
+                            rule.title,
+                            group
+                        );
+                    }
+                    // The thing whose absence is the finding has to
+                    // exist too: a rule that fires because the base has
+                    // no laxative at all is a rule about the base.
+                    assert!(
+                        matches(absent),
+                        "règle « {} » : le manque porte sur {:?}, que la base ne connaît pas",
+                        rule.title,
+                        absent
+                    );
+                }
             }
         }
     }
 
+    /// What is *missing* only counts as a finding when the thing that
+    /// should be there is not: the same ordonnance with a laxative on
+    /// it must say nothing.
+    #[test]
+    fn an_omission_is_a_finding_until_it_is_filled() {
+        let alone = [t("Skenan", "morphine", "opioïde")];
+        let point = review(&alone)
+            .into_iter()
+            .find(|p| p.title == "Opioïde sans laxatif")
+            .expect("un opioïde seul appelle un laxatif");
+        // The point names what *is* there — an absence has no name.
+        assert_eq!(point.drugs, ["Skenan"]);
+        assert_eq!(point.severity, Severity::Warn);
+
+        let with = [
+            t("Skenan", "morphine", "opioïde"),
+            t("Forlax", "macrogol 4000", "laxatif osmotique"),
+        ];
+        assert!(review(&with)
+            .iter()
+            .all(|p| p.title != "Opioïde sans laxatif"));
+
+        // And the same for the bone under a corticothérapie.
+        let bare = [t("Cortancyl", "prednisone", "corticoïde")];
+        assert!(review(&bare)
+            .iter()
+            .any(|p| p.title == "Corticoïde sans protection osseuse"));
+        let covered = [
+            t("Cortancyl", "prednisone", "corticoïde"),
+            t("Uvedose", "cholécalciférol", "vitamine D"),
+        ];
+        assert!(review(&covered)
+            .iter()
+            .all(|p| p.title != "Corticoïde sans protection osseuse"));
+    }
+
+    /// Two boxes of paracétamol under two different names is the way
+    /// the overdose actually happens at the counter.
+    #[test]
+    fn two_sources_of_the_same_molecule_are_counted() {
+        let one = [t("Doliprane", "paracétamol", "antalgique")];
+        assert!(review(&one)
+            .iter()
+            .all(|p| p.title != "Deux sources de paracétamol"));
+        let two = [
+            t("Doliprane", "paracétamol", "antalgique"),
+            t("Lamaline", "paracétamol opium caféine", "opioïde"),
+        ];
+        let point = review(&two)
+            .into_iter()
+            .find(|p| p.title == "Deux sources de paracétamol")
+            .expect("deux sources de paracétamol");
+        assert_eq!(point.severity, Severity::Alert);
+        assert_eq!(point.drugs.len(), 2);
+    }
+
     #[test]
     fn every_rule_says_what_to_do_about_it() {
+        // The catalogue only ever grows: a rule removed is a reading
+        // nobody does any more.
+        assert!(
+            RULES.len() >= 40,
+            "{} règles de revue, il y en avait quarante",
+            RULES.len()
+        );
+        let mut titles: Vec<&str> = RULES.iter().map(|r| r.title).collect();
+        titles.sort_unstable();
+        let seen = titles.len();
+        titles.dedup();
+        assert_eq!(seen, titles.len(), "deux règles portent le même titre");
         for rule in RULES {
             assert!(!rule.title.trim().is_empty());
             assert!(

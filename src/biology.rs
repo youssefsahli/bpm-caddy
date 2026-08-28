@@ -603,6 +603,96 @@ pub const CATALOGUE: &[Analyte] = &[
         critical_high: Some(30.0),
         note: "Le marqueur d'atteinte rénale qui bouge le plus tôt chez le diabétique et l'hypertendu, bien avant le DFG.",
     },
+    Analyte {
+        code: "HDL",
+        label: "HDL-cholestérol",
+        unit: "g/L",
+        low: Some(0.40),
+        high: None,
+        critical_low: None,
+        critical_high: None,
+        note: "Le « bon » cholestérol, et le seul dont on souhaite qu'il monte. Aucun traitement ne le cible utilement : c'est le LDL qui se traite, et le HDL bas se corrige par l'activité physique, l'arrêt du tabac et la perte de poids.",
+    },
+    Analyte {
+        code: "HCO3",
+        label: "Bicarbonates (réserve alcaline)",
+        unit: "mmol/L",
+        low: Some(22.0),
+        high: Some(29.0),
+        critical_low: Some(15.0),
+        critical_high: None,
+        note: "L'acidose se lit ici avant de se voir. Une réserve alcaline qui s'effondre chez un patient sous metformine, avec des vomissements ou une diarrhée, est l'alerte de l'acidose lactique.",
+    },
+    Analyte {
+        code: "BNP",
+        label: "NT-proBNP",
+        unit: "pg/mL",
+        low: None,
+        high: Some(125.0),
+        critical_low: None,
+        critical_high: Some(2000.0),
+        note: "Marqueur de la surcharge du cœur. Normal, il écarte l'insuffisance cardiaque ; élevé, il la suit. Il monte aussi avec l'âge et l'insuffisance rénale, et baisse chez l'obèse.",
+    },
+    Analyte {
+        code: "PSA",
+        label: "PSA (antigène prostatique)",
+        unit: "ng/mL",
+        low: None,
+        high: Some(4.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Le seuil dépend de l'âge, et c'est l'évolution d'un dosage à l'autre qui compte plus que le chiffre. Un toucher rectal, un vélo ou une infection urinaire récents le font monter.",
+    },
+    Analyte {
+        code: "CST",
+        label: "Coefficient de saturation de la transferrine",
+        unit: "%",
+        low: Some(20.0),
+        high: Some(40.0),
+        critical_low: None,
+        critical_high: Some(60.0),
+        note: "Il dit si le fer circulant est disponible, là où la ferritine dit la réserve. Bas avec une ferritine basse : carence vraie. Bas avec une ferritine haute : inflammation, et le fer oral n'y fera rien.",
+    },
+    Analyte {
+        code: "T4L",
+        label: "T4 libre",
+        unit: "pmol/L",
+        low: Some(9.0),
+        high: Some(19.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Elle tranche là où la TSH hésite : dans les premières semaines d'un traitement thyroïdien, la TSH retarde de six semaines et la T4 libre répond tout de suite.",
+    },
+    Analyte {
+        code: "PNE",
+        label: "Polynucléaires éosinophiles",
+        unit: "G/L",
+        low: None,
+        high: Some(0.5),
+        critical_low: None,
+        critical_high: Some(1.5),
+        note: "Au-dessus de 0,5 G/L : allergie, parasitose, ou médicament. Une éosinophilie qui apparaît deux à six semaines après un nouveau traitement, avec une éruption et de la fièvre, fait chercher un DRESS.",
+    },
+    Analyte {
+        code: "LYMPHO",
+        label: "Lymphocytes",
+        unit: "G/L",
+        low: Some(1.0),
+        high: Some(4.0),
+        critical_low: Some(0.5),
+        critical_high: None,
+        note: "La lymphopénie est ce que surveillent les traitements de fond de la sclérose en plaques et plusieurs immunosuppresseurs : sous 0,5 G/L le risque infectieux, dont la LEMP, n'est plus théorique.",
+    },
+    Analyte {
+        code: "ANTIXA",
+        label: "Activité anti-Xa",
+        unit: "UI/mL",
+        low: None,
+        high: None,
+        critical_low: None,
+        critical_high: Some(1.5),
+        note: "La seule mesure de l'effet d'une héparine de bas poids moléculaire. Elle ne se fait pas en routine : elle sert quand le rein est mauvais, le poids extrême, ou qu'un saignement pose la question de l'accumulation. Le prélèvement se fait quatre heures après l'injection, et le résultat ne veut rien dire à un autre moment.",
+    },
 ];
 
 /// What a value changes for the treatments the patient is actually on.
@@ -998,6 +1088,126 @@ const RULES: &[Rule] = &[
         severity: Severity::Info,
         text: "GGT isolément élevée sous inducteur enzymatique : c'est attendu et ce n'est pas une hépatite. Ce qui compte, c'est ce que l'induction fait au reste de l'ordonnance — AVK, contraception, immunosuppresseur.",
     },
+    Rule {
+        code: "HDL",
+        side: Side::Below,
+        threshold: 0.40,
+        needs: &["statine", "fibrate", "ézétimibe"],
+        severity: Severity::Info,
+        text: "HDL bas sous hypolipémiant : ce n'est pas la cible du traitement et aucune molécule ne le remonte utilement. Le LDL reste l'objectif ; le HDL se corrige par l'activité physique, l'arrêt du tabac et la perte de poids.",
+    },
+    Rule {
+        code: "HCO3",
+        side: Side::Below,
+        threshold: 20.0,
+        needs: &["metformine", "biguanide"],
+        severity: Severity::Alert,
+        text: "Réserve alcaline effondrée sous metformine : c'est le tableau biologique de l'acidose lactique. Suspendre et faire évaluer le jour même, d'autant plus s'il y a des vomissements, une diarrhée, des crampes ou une respiration ample.",
+    },
+    Rule {
+        code: "HCO3",
+        side: Side::Below,
+        threshold: 22.0,
+        needs: &[],
+        severity: Severity::Warn,
+        text: "Acidose métabolique débutante : chercher une insuffisance rénale, une diarrhée prolongée, un diabète déséquilibré ou un médicament — acétazolamide, topiramate, metformine.",
+    },
+    Rule {
+        code: "BNP",
+        side: Side::Above,
+        threshold: 2000.0,
+        needs: &["furosémide", "diurétique de l'anse", "bumétanide"],
+        severity: Severity::Alert,
+        text: "NT-proBNP très élevé sous diurétique de l'anse : décompensation cardiaque probable. Peser le patient, chercher l'essoufflement au moindre effort et les jambes gonflées, et faire évaluer sans attendre le prochain rendez-vous.",
+    },
+    Rule {
+        code: "BNP",
+        side: Side::Above,
+        threshold: 125.0,
+        needs: &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène"],
+        severity: Severity::Warn,
+        text: "NT-proBNP élevé chez un patient qui prend un AINS : l'AINS retient le sel et l'eau et décompense une insuffisance cardiaque. C'est la ligne à retirer, y compris si elle vient de l'automédication.",
+    },
+    Rule {
+        code: "PSA",
+        side: Side::Above,
+        threshold: 4.0,
+        needs: &["finastéride", "dutastéride", "5-alpha-réductase"],
+        severity: Severity::Alert,
+        text: "PSA au-dessus du seuil sous inhibiteur de la 5-alpha-réductase : ces molécules divisent le PSA par deux environ après six mois. Un chiffre déjà « normal » doit donc être doublé pour être interprété, et celui-ci, tel quel, est franchement anormal — le signaler.",
+    },
+    Rule {
+        code: "CST",
+        side: Side::Below,
+        threshold: 20.0,
+        needs: &["fer", "sulfate ferreux", "fumarate ferreux"],
+        severity: Severity::Warn,
+        text: "Saturation de la transferrine encore basse sous fer oral : soit le traitement n'est pas pris, soit il est mal absorbé. Vérifier la prise à jeun, à distance du thé, du café, du calcium et des IPP — un IPP à côté d'un fer oral annule une bonne partie du traitement.",
+    },
+    Rule {
+        code: "CST",
+        side: Side::Above,
+        threshold: 60.0,
+        needs: &[],
+        severity: Severity::Alert,
+        text: "Saturation au-delà de 60 % : surcharge en fer jusqu'à preuve du contraire — hémochromatose, transfusions répétées, supplémentation prolongée sans carence. Toute supplémentation martiale s'arrête et le bilan se fait.",
+    },
+    Rule {
+        code: "T4L",
+        side: Side::Above,
+        threshold: 19.0,
+        needs: &["lévothyroxine", "hormone thyroïdienne"],
+        severity: Severity::Warn,
+        text: "T4 libre au-dessus de l'intervalle sous lévothyroxine : surdosage. Palpitations, tremblements, insomnie et perte de poids le confirment ; chez la personne âgée le premier signe est souvent une fibrillation atriale, et chez l'ostéoporotique une perte osseuse silencieuse.",
+    },
+    Rule {
+        code: "T4L",
+        side: Side::Below,
+        threshold: 9.0,
+        needs: &["carbimazole", "thiamazole", "antithyroïdien", "propylthiouracile"],
+        severity: Severity::Warn,
+        text: "T4 libre basse sous antithyroïdien : la dose dépasse la cible. La TSH ne suit qu'au bout de six semaines et ne sert à rien pour cet ajustement — c'est la T4 libre qui guide la baisse.",
+    },
+    Rule {
+        code: "PNE",
+        side: Side::Above,
+        threshold: 1.5,
+        needs: &[],
+        severity: Severity::Alert,
+        text: "Éosinophilie franche : chercher un médicament introduit dans les deux à six semaines précédentes. Avec une éruption, de la fièvre et des transaminases hautes, c'est un DRESS — le médicament s'arrête et le patient est vu le jour même.",
+    },
+    Rule {
+        code: "PNE",
+        side: Side::Above,
+        threshold: 0.5,
+        needs: &["antibiotique", "antiépileptique", "allopurinol", "sulfamide"],
+        severity: Severity::Warn,
+        text: "Éosinophilie modérée sous une classe connue pour l'hypersensibilité retardée : la surveiller, et demander au patient s'il a une éruption, de la fièvre ou des ganglions. Ce sont les trois questions qui font la différence entre une anomalie et un DRESS qui commence.",
+    },
+    Rule {
+        code: "LYMPHO",
+        side: Side::Below,
+        threshold: 0.5,
+        needs: &["fingolimod", "diméthyle", "tériflunomide", "SEP", "immunomodulateur", "modulateur S1P"],
+        severity: Severity::Alert,
+        text: "Lymphopénie sévère sous traitement de fond de la sclérose en plaques : c'est le seuil auquel le traitement se suspend et où la LEMP cesse d'être théorique. Ne pas renouveler sans l'avis du neurologue.",
+    },
+    Rule {
+        code: "LYMPHO",
+        side: Side::Below,
+        threshold: 1.0,
+        needs: &["immunosuppresseur", "corticoïde", "méthotrexate", "azathioprine", "mycophénolate"],
+        severity: Severity::Warn,
+        text: "Lymphopénie sous immunosuppresseur : le risque est infectieux, et il est d'autant plus discret que le traitement masque la fièvre. Toute fièvre, toute toux qui dure, tout zona se signalent sans attendre.",
+    },
+    Rule {
+        code: "ANTIXA",
+        side: Side::Above,
+        threshold: 1.5,
+        needs: &["HBPM", "énoxaparine", "tinzaparine", "daltéparine", "héparine"],
+        severity: Severity::Alert,
+        text: "Activité anti-Xa au-dessus de la zone attendue au pic : accumulation. Chercher l'insuffisance rénale, qui en est la cause habituelle, et ne pas renouveler la dose sans avis. Vérifier aussi que le prélèvement a bien été fait quatre heures après l'injection, sans quoi il ne veut rien dire.",
+    },
 ];
 
 #[cfg(test)]
@@ -1124,6 +1334,24 @@ mod tests {
     /// one rule. Adding an analyte means writing that rule too.
     #[test]
     fn every_analyte_says_something_about_a_treatment() {
+        // Both catalogues only ever grow: an analyte withdrawn is a
+        // value the counter can no longer read, and a rule withdrawn is
+        // a reading nobody does any more.
+        assert!(
+            CATALOGUE.len() >= 43,
+            "{} analytes, il y en avait quarante-trois",
+            CATALOGUE.len()
+        );
+        assert!(
+            RULES.len() >= 62,
+            "{} règles de biologie, il y en avait soixante-deux",
+            RULES.len()
+        );
+        let mut codes: Vec<&str> = CATALOGUE.iter().map(|a| a.code).collect();
+        codes.sort_unstable();
+        let seen = codes.len();
+        codes.dedup();
+        assert_eq!(seen, codes.len(), "deux analytes portent le même code");
         for a in CATALOGUE {
             assert!(
                 RULES.iter().any(|r| r.code == a.code),
