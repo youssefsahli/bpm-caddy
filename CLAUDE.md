@@ -72,7 +72,29 @@ upgrade is decided, the number to defend is the logic one, and
   must survive 1024x700 with both docks open — `scripts/smoke.sh` and a
   screenshot at that size are the check.
 - `allocate_new_ui` only sets a max rect and egui paints through it: use
-  `motif::inside` when content must not escape its frame.
+  `motif::inside` when content must not escape its frame. It also
+  reserves **no space**, so a `ScrollArea` around it never learns the
+  content is wider than the viewport and offers no bar.
+- **Measure, never guess a threshold.** Every layout bug found in the
+  0.94–0.102 pass was a pixel constant standing in for a measurement:
+  « narrower than 620 px » put the file's buttons across the patient's
+  name at 645; a 360 px reserve for the agenda's title field had
+  forgotten the width of the button after it; a 170 px floor under the
+  notes journal was three of its own lines at text scale 1,25. Use
+  `Self::button_width`, `Self::wrapped_rows(_of)`,
+  `ui.text_style_height(&TextStyle::Body)` — and express floors in
+  **lines**, so `[ui] text_scale` costs nothing.
+- **When two panes cannot both fit, the one you type into wins.** A
+  table missing a row still reads and scrolls; a form whose second row
+  of fields is cut cannot be used. The same rule settled the carnet
+  (form over table), the journal (add row over well) and the acts tab
+  (table over journal — there the table *is* the subject).
+- `f32::clamp` **panics** when min > max, and computed floors do cross
+  computed caps on a short pane. Raise the cap to the floor
+  (`cap.max(floor)`) rather than trusting one to sit above the other.
+- Every layout must survive four things, not one: 1024x700, 1280x800,
+  `[ui] text_scale = 1.25`, and both docks dragged wide (the docks cap
+  against each other so the middle keeps `App::WORK_MIN`).
 - The database is shared between PCs: every write to a shared row
   (states, RDV dates, patient identity, deletions) is compare-and-set
   against the values the UI displayed (`WHERE … AND <old values>`,
@@ -96,8 +118,19 @@ upgrade is decided, the number to defend is the logic one, and
   editable form rather than the monograph
 - `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card
   rather than Eliquis (checking an insulin's action profile, say)
+
+The display settings that break layouts are not env hooks — they are
+config: write `[ui] text_scale = 1.25` (or `density = "compact"`) into a
+throwaway `XDG_CONFIG_HOME`, and `nav_width` / `docs_width` into
+`layout.toml` beside it, to reproduce a wide-dock or large-text screen.
 - `BPM_CADDY_SEED_DB=<path> cargo test seed_demo` — create a demo database
 - `BPM_CADDY_TEST_PDF_OUT=<dir> cargo test pdf` — write the sample PDF
+
+Xvfb parks the pointer at the centre of the screen, which on a screen
+the size of the window is *inside* it: every capture came back with the
+tooltip of whatever sat underneath. `screenshots.sh` opens a virtual
+screen three times the window's width, keeps the window at its left
+edge, and crops back — do the same in any new capture script.
 
 Headless runs: `./scripts/screenshots.sh` regenerates the README
 screenshots from a fresh demo seed, and `./scripts/smoke.sh` opens every
