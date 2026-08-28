@@ -5,6 +5,75 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.110.0] - 2026-08-28
+
+Une passe de contenu clinique, et un cliquet sur chaque catalogue.
+
+### Added
+- **Dispositifs médicaux : 35 → 47.** Pansement siliconé, mèche de plaie
+  cavitaire, pansement à l'acide hyaluronique, bande cohésive, manchon
+  du lymphœdème, alèse de literie, set de perfusion sous-cutanée, poche
+  de recueil de nuit, lecteur de glycémie, capteur de glucose en
+  continu, débitmètre de pointe, concentrateur d'oxygène en location.
+  Chacun dit ce qui n'est pas sur la boîte : une bande cohésive posée en
+  l'étirant fait un garrot dans l'heure, le glucose interstitiel retarde
+  de cinq à quinze minutes sur la glycémie capillaire, l'oxygène fait
+  flamber les corps gras, et une mèche oubliée au fond d'une cavité se
+  retrouve des semaines plus tard.
+- **Revue d'ordonnance : 28 → 40 règles**, et un nouveau genre de règle.
+  `Kind::Without` se déclenche quand tous les termes sont présents **et**
+  que rien sur l'ordonnance ne répond au dernier groupe : ce qui *manque*
+  est la moitié de ce qu'un bilan trouve. Un opioïde sans laxatif, une
+  corticothérapie sans rien pour l'os — et la règle se tait dès que la
+  ligne manquante apparaît. Les dix autres : deux sources de paracétamol
+  sous deux noms différents, statine + macrolide ou azolé, deux
+  anticoagulants, allopurinol + azathioprine, le triple risque
+  hyperkaliémique, AVK + antibiotique, la règle des jours de maladie
+  sous metformine, la double antiagrégation qui a une durée, le
+  bêtabloquant qui masque l'hypoglycémie, l'AINS qui dérègle la tension.
+- **Biologie : 34 → 43 analytes et 47 → 62 règles.** HDL, bicarbonates,
+  NT-proBNP, PSA, coefficient de saturation de la transferrine, T4 libre,
+  éosinophiles, lymphocytes, activité anti-Xa — chacun avec sa règle. Le
+  PSA sous inhibiteur de la 5-alpha-réductase est divisé par deux et doit
+  être doublé pour être lu ; la lymphopénie sous traitement de fond de la
+  SEP a un seuil auquel on suspend ; l'anti-Xa ne veut rien dire hors du
+  pic à quatre heures.
+- **Trois tables de référence** (30 en tout) : les dermocorticoïdes avec
+  la règle de l'unité phalangette et la quantité que chaque partie du
+  corps réclame vraiment ; les trois niveaux du pictogramme de conduite,
+  avec ce qu'ils ne disent pas — le risque d'un hypnotique n'est pas la
+  nuit mais le trajet du matin ; et « aliments et médicaments », dont
+  une colonne entière dit ce qui n'est **pas** vrai, parce que le
+  comptoir passe autant de temps à défaire des croyances qu'à conseiller.
+- **Codex : 42 → 52 préparations**, dont six soins de bouche — le bain de
+  bouche bicarbonaté qui se répète six à huit fois par jour justement
+  parce qu'il n'a ni alcool ni antiseptique, l'amphotéricine B, le bain
+  anesthésique qui se prend quinze minutes avant le repas et non pendant.
+  Plus la suspension d'oméprazole, où le bicarbonate remplace l'enrobage
+  gastro-résistant qu'il a lui-même dissous.
+- **Protocoles : 28 → 36.** Conjonctivite, lombalgie aiguë, vomissements
+  de l'enfant, éruption sous traitement, automédication après 75 ans,
+  retard de règles, nourrisson qui pleure — et « ordonnance illisible,
+  douteuse ou périmée », le premier arbre qui porte sur l'acte de
+  délivrance et non sur un symptôme.
+
+### Changed
+- **La couverture des posologies passe de 546 à 697 fiches sur 823**, et
+  le plafond du cliquet de 170 classes à 34. 151 lignes écrites, dont
+  celles des biologiques que le patient s'injecte chez lui — un Stelara
+  délivré sans ses douze semaines est un rendez-vous manqué. Ce qui
+  reste n'est plus une dette d'écriture : les 34 fiches sans posologie
+  sont injectées ou perfusées par quelqu'un d'autre, et inventer une
+  posologie de comptoir serait pire que le blanc. Elles ne sont
+  délibérément pas versées dans la liste des exemptions — une liste
+  d'exemptions blanchirait la dette, et l'intérêt du cliquet est
+  précisément qu'elle reste visible.
+- **Chaque catalogue a son cliquet** : fiches, tables, préparations,
+  dispositifs, protocoles, analytes et règles ont désormais un plancher
+  qui ne peut que monter, et les noms en double sont refusés partout.
+  C'est la troisième règle de `docs/CONTENU.md`, qui n'était jusqu'ici
+  suivie que par habitude.
+
 ## [0.109.0] - 2026-08-28
 
 Les quatre lignes ajoutées à la feuille de route, et les deux de données.
