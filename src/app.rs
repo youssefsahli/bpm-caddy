@@ -1390,6 +1390,17 @@ struct Session {
     /// Which drawers of the navigator's A–Z tree are open. The letter of
     /// the card being read is always one of them, whatever is in here.
     nav_letters: std::collections::HashSet<char>,
+    /// Bumped whenever the drug list is replaced, so the memos built
+    /// from it know they are stale.
+    drugs_rev: u64,
+    /// The last drug search and the question it answered.
+    drug_hits: Vec<Drug>,
+    drug_hits_key: Option<(String, usize, u64)>,
+    /// Bumped whenever a reference table's cell is corrected or reset.
+    table_rev: u64,
+    /// The last search across every reference table, and its question.
+    table_hits: Vec<(usize, usize, Vec<String>)>,
+    table_hits_key: Option<(String, u64)>,
     drug_form: Option<Drug>,
     /// A card opens as a monograph to read; "Modifier" switches to the
     /// editable form.
@@ -1666,6 +1677,12 @@ impl Session {
             drug_query: String::new(),
             drug_selected: 0,
             nav_letters: std::collections::HashSet::new(),
+            drugs_rev: 0,
+            drug_hits: Vec::new(),
+            drug_hits_key: None,
+            table_rev: 0,
+            table_hits: Vec::new(),
+            table_hits_key: None,
             drug_form: None,
             drug_reading: true,
             class_note: String::new(),
@@ -1835,7 +1852,7 @@ impl Session {
                 self.drug_form = None;
                 self.drug_base = None;
                 if let Ok(list) = self.db.drugs() {
-                    self.drugs = list;
+                    self.set_drugs(list);
                 }
             }
             WorkTab::Patient(id) => {
@@ -2045,7 +2062,7 @@ impl Session {
                 self.enter_drug_panel();
                 self.drug_query.clear();
                 if let Ok(list) = self.db.drugs() {
-                    self.drugs = list;
+                    self.set_drugs(list);
                 }
             }
             Goto::Tab(tab) => self.activate_tab(&tab),
@@ -2155,6 +2172,47 @@ impl Session {
     /// Brand name and DCI both match ("elix" or "apixa"); the class and
     /// the tags widen the net ("statine", "marge étroite"), scored below
     /// an identity match.
+    /// [`Self::drug_results`], answered once per question instead of
+    /// once per frame.
+    ///
+    /// The navigator and the view both ask, so the search ran twice a
+    /// frame over 813 fiches and four fields each — some three thousand
+    /// fuzzy matches, each allocating, sixty times a second, while the
+    /// operator is typing. Nothing about the answer changes between two
+    /// frames of the same question against the same base, so it is kept:
+    /// the key is the query and the revision the base is on, and
+    /// [`Self::set_drugs`] moves that revision.
+    fn refresh_drug_hits(&mut self, limit: usize) {
+        let key = (self.drug_query.clone(), limit, self.drugs_rev);
+        if self.drug_hits_key.as_ref() == Some(&key) {
+            return;
+        }
+        self.drug_hits = self.drug_results(limit);
+        self.drug_hits_key = Some(key);
+    }
+
+    /// What year it is, from the date the session already holds.
+    ///
+    /// `Db::current_year` is a query, and the carnet asked it on every
+    /// frame it painted to know how to expand a two-digit year nobody
+    /// had typed yet. The ISO date is `AAAA-MM-JJ`; its first four
+    /// characters are the answer, and the query is only made when there
+    /// is no date to read (a base that would not open).
+    fn year_now(&self) -> u32 {
+        self.today
+            .get(..4)
+            .and_then(|y| y.parse().ok())
+            .unwrap_or_else(|| self.db.current_year())
+    }
+
+    /// Replace the drug base and mark it changed, so every memo built
+    /// from it is rebuilt rather than answering from yesterday's list.
+    fn set_drugs(&mut self, list: Vec<Drug>) {
+        self.drugs = list;
+        self.drugs_rev = self.drugs_rev.wrapping_add(1);
+        self.drug_hits_key = None;
+    }
+
     fn drug_results(&self, limit: usize) -> Vec<Drug> {
         let mut scored: Vec<(i32, &Drug)> = self
             .drugs
@@ -4071,7 +4129,7 @@ impl App {
                         }
                         Ok("drugs") => {
                             if let Ok(list) = session.db.drugs() {
-                                session.drugs = list;
+                                session.set_drugs(list);
                             }
                             session.view = MainView::Drugs;
                         }
@@ -4279,7 +4337,7 @@ impl App {
                         }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
-                                session.drugs = list;
+                                session.set_drugs(list);
                             }
                             // BPM_CADDY_DRUG names the card to open, so
                             // a screenshot or a check can land on the
@@ -4529,6 +4587,14 @@ impl App {
     /// docks exist to serve the middle, not to crowd it out.
     const WORK_MIN: f32 = 560.0;
 
+    /// How many fiches a drug search answers with.
+    ///
+    /// One number for the navigator and the view, deliberately: they
+    /// both ask on the same frame, and two different limits would have
+    /// each invalidated the other's memo sixty times a second — which is
+    /// worse than not caching at all.
+    const DRUG_HITS: usize = 60;
+
     fn nav_dock(&mut self, ctx: &egui::Context) {
         let focus = std::mem::take(&mut self.focus_nav);
         // A dock is a share of the window, not a fixed slab: at 1024 px
@@ -4708,18 +4774,15 @@ impl App {
         let open = session.drug_form.as_ref().map(|d| d.id);
         let searching = !session.drug_query.trim().is_empty();
         // Searching, the fiches shown are the matches; browsing, they
-        // are the base itself. Either way a row holds an index into
-        // this list and never a copy of a fiche.
-        let matches: Vec<Drug> = if searching {
-            session.drug_results(60)
-        } else {
-            Vec::new()
-        };
-        let shown: &[Drug] = if searching { &matches } else { &session.drugs };
+        // are the base itself. Either way a row holds an index into that
+        // list and never a copy of a fiche.
+        if searching {
+            session.refresh_drug_hits(Self::DRUG_HITS);
+        }
         // The rows actually on screen, folded letters excluded: the
         // keyboard walks what the eye walks, and nothing else.
         let rows: Vec<NavDrugRow> = if searching {
-            (0..matches.len()).map(NavDrugRow::Card).collect()
+            (0..session.drug_hits.len()).map(NavDrugRow::Card).collect()
         } else {
             Self::drug_tree_rows(session)
         };
@@ -4727,7 +4790,7 @@ impl App {
         // base holds — counting the *unfolded* rows said « 0 résultat »
         // over a tree of 813 fiches.
         let count = if searching {
-            matches.len()
+            session.drug_hits.len()
         } else {
             session.drugs.len()
         };
@@ -4765,6 +4828,11 @@ impl App {
         );
         ui.add_space(3.0);
         let unfolded = &session.nav_letters;
+        let shown: &[Drug] = if searching {
+            &session.drug_hits
+        } else {
+            &session.drugs
+        };
         Self::nav_list(ui, |ui| {
             for (i, row) in rows.iter().enumerate() {
                 match *row {
@@ -4826,7 +4894,7 @@ impl App {
         }
         if let Some(k) = clicked {
             let picked = if searching {
-                matches.get(k).cloned()
+                session.drug_hits.get(k).cloned()
             } else {
                 session.drugs.get(k).cloned()
             };
@@ -6549,7 +6617,9 @@ impl App {
         let editing = session.vacc_edit.as_ref().map(|v| v.id);
         let confirm = session.vacc_confirm;
         let today = session.today.clone();
-        let year = session.db.current_year();
+        // Read from the date already in hand, not asked of the base:
+        // this is a per-frame path.
+        let year = session.year_now();
         let mut start_edit: Option<db::Vaccination> = None;
         let mut save_edit = false;
         let mut cancel_edit = false;
@@ -6636,8 +6706,13 @@ impl App {
                                 ui.label("");
                                 ui.end_row();
                                 for line in &lines {
-                                    if editing == Some(line.id) {
-                                        let e = session.vacc_edit.as_mut().unwrap();
+                                    // The `else` is unreachable — `editing`
+                                    // *is* the edit's id — but a row of the
+                                    // carnet is not worth a panic at the
+                                    // counter if that ever stops being true.
+                                    if let (true, Some(e)) =
+                                        (editing == Some(line.id), session.vacc_edit.as_mut())
+                                    {
                                         ui.add_sized(
                                             [w * 0.32, 22.0],
                                             egui::TextEdit::singleline(&mut e.label),
@@ -14409,6 +14484,7 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
             session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
+            session.table_rev = session.table_rev.wrapping_add(1);
             session.table_edit = None;
         }
         if undo {
@@ -14431,6 +14507,7 @@ impl App {
                     session.error = Some(e);
                 }
                 session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
+                session.table_rev = session.table_rev.wrapping_add(1);
             }
         }
         if reset {
@@ -14439,6 +14516,7 @@ impl App {
             }
             session.table_cells.clear();
             session.table_undo = None;
+            session.table_rev = session.table_rev.wrapping_add(1);
         }
         if let Some(err) = &session.error {
             ui.vertical_centered(|ui| {
@@ -15470,8 +15548,10 @@ impl App {
                     session.class_note_edit = Some(buffer);
                 }
             }
-            if insert_note {
-                let form = session.drug_form.as_ref().unwrap();
+            // The card is open — nothing sets these flags otherwise —
+            // but a card that has just been closed by another path is
+            // not worth a panic at the counter.
+            if let (true, Some(form)) = (insert_note, session.drug_form.as_ref()) {
                 let mut entry = format!("\n- {}", form.name.trim());
                 if !form.dci.trim().is_empty() {
                     entry.push_str(&format!(" ({})", form.dci.trim()));
@@ -15553,8 +15633,7 @@ impl App {
                     }
                 }
             }
-            if save {
-                let form = session.drug_form.clone().unwrap();
+            if let (true, Some(form)) = (save, session.drug_form.clone()) {
                 if form.name.trim().is_empty() {
                     session.error = Some(tr("drug_name_required").to_owned());
                 } else if let Some(base) = session.drug_base.clone() {
@@ -15564,14 +15643,14 @@ impl App {
                             session.drug_base = Some(form);
                             session.drug_reading = true;
                             if let Ok(list) = session.db.drugs() {
-                                session.drugs = list;
+                                session.set_drugs(list);
                             }
                         }
                         Ok(false) => {
                             // Reload the fresh card as the new baseline,
                             // keep the typed values so nothing is lost.
                             if let Ok(list) = session.db.drugs() {
-                                session.drugs = list;
+                                session.set_drugs(list);
                                 session.drug_base =
                                     session.drugs.iter().find(|d| d.id == form.id).cloned();
                             }
@@ -15582,8 +15661,8 @@ impl App {
                 }
             }
             if delete {
-                if session.confirm_delete_drug {
-                    let form = session.drug_form.clone().unwrap();
+                if let (true, Some(form)) = (session.confirm_delete_drug, session.drug_form.clone())
+                {
                     let name = session
                         .drug_base
                         .as_ref()
@@ -15596,7 +15675,7 @@ impl App {
                             session.drug_base = None;
                             session.confirm_delete_drug = false;
                             if let Ok(list) = session.db.drugs() {
-                                session.drugs = list;
+                                session.set_drugs(list);
                             }
                         }
                         Ok(false) => {
@@ -15679,13 +15758,19 @@ impl App {
             }
             ui.add_space(12.0);
 
-            let results: Vec<Drug> = session.drug_results(40);
+            // The same memo the navigator reads, refreshed once: the
+            // fuzzy pass over the base is done when the question
+            // changes, not when the screen repaints.
+            if !idle {
+                session.refresh_drug_hits(Self::DRUG_HITS);
+            }
+            let found = if idle { 0 } else { session.drug_hits.len() };
 
             // An empty query matches the whole base, and the left dock
             // is already its index: the middle of the screen is better
             // spent saying what is in the base.
-            if !results.is_empty() && !idle {
-                session.drug_selected = session.drug_selected.min(results.len() - 1);
+            if found > 0 {
+                session.drug_selected = session.drug_selected.min(found - 1);
                 let (up, down, enter) = ui.input(|i| {
                     (
                         i.key_pressed(egui::Key::ArrowUp),
@@ -15694,13 +15779,13 @@ impl App {
                     )
                 });
                 if down {
-                    session.drug_selected = (session.drug_selected + 1).min(results.len() - 1);
+                    session.drug_selected = (session.drug_selected + 1).min(found - 1);
                 }
                 if up {
                     session.drug_selected = session.drug_selected.saturating_sub(1);
                 }
                 if enter {
-                    open_drug = Some(results[session.drug_selected].clone());
+                    open_drug = session.drug_hits.get(session.drug_selected).cloned();
                 }
                 // Sunken Motif list box with full-width rows.
                 let avail = ui.available_rect_before_wrap();
@@ -15713,10 +15798,14 @@ impl App {
                 ui.painter().rect_filled(box_rect, 0.0, motif::TROUGH);
                 motif::bevel(ui.painter(), box_rect, false);
                 let builder = egui::UiBuilder::new().max_rect(box_rect.shrink(4.0));
+                // Borrowed, not copied: the rows are read straight out
+                // of the memo, and the selection was settled above.
+                let selected = session.drug_selected;
+                let hits = &session.drug_hits;
                 ui.allocate_new_ui(builder, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
-                        for (i, d) in results.iter().enumerate() {
+                        for (i, d) in hits.iter().enumerate() {
                             let mut text = d.name.clone();
                             if !d.dci.is_empty() {
                                 text.push_str(&format!(" ({})", d.dci));
@@ -15730,11 +15819,7 @@ impl App {
                             if !d.antidote.is_empty() {
                                 text.push_str(&trf("drug_row_antidote", &d.antidote));
                             }
-                            let row = motif::list_row(
-                                ui,
-                                egui::RichText::new(text),
-                                i == session.drug_selected,
-                            );
+                            let row = motif::list_row(ui, egui::RichText::new(text), i == selected);
                             if row.clicked() {
                                 open_drug = Some(d.clone());
                             }
@@ -15751,7 +15836,7 @@ impl App {
                             session.error = None;
                             session.drug_query.clear();
                             if let Ok(list) = session.db.drugs() {
-                                session.drugs = list;
+                                session.set_drugs(list);
                             }
                             open_drug = session.drugs.iter().find(|d| d.id == id).cloned();
                         }
@@ -16169,9 +16254,14 @@ impl App {
                     let lane = if cols == 1 {
                         0
                     } else {
+                        // `total_cmp`, not `partial_cmp().unwrap()`:
+                        // these are computed heights, and one NaN
+                        // anywhere in the arithmetic that produced them
+                        // would take the whole application down over
+                        // which of two columns is shorter.
                         y.iter()
                             .enumerate()
-                            .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                            .min_by(|a, b| a.1.total_cmp(b.1))
                             .map(|(k, _)| k)
                             .unwrap_or(0)
                     };
@@ -16491,32 +16581,54 @@ impl App {
         }
     }
 
-    fn tables_search_results(ui: &mut egui::Ui, session: &mut Session) {
-        let query = session.table_query.trim().to_owned();
+    /// Every row of every reference table whose text contains `query`,
+    /// with the team's corrections already applied.
+    ///
+    /// Plain containment, accent- and case-insensitive: a fuzzy
+    /// subsequence over 237 rows of prose matches everything and answers
+    /// nothing.
+    fn search_all_tables(session: &Session, query: &str) -> Vec<(usize, usize, Vec<String>)> {
         let edits = session.db.all_table_cells().unwrap_or_default();
-        let cell_of = |short: &str, ri: usize, ci: usize, shipped: &'static str| -> String {
-            edits
-                .get(&(short.to_owned(), ri, ci))
-                .cloned()
-                .unwrap_or_else(|| shipped.to_owned())
-        };
-        let needle = fuzzy::sort_key(&query);
+        let needle = fuzzy::sort_key(query);
         let mut hits: Vec<(usize, usize, Vec<String>)> = Vec::new();
         for (ti, t) in crate::tables::TABLES.iter().enumerate() {
             for (ri, row) in t.rows.iter().enumerate() {
                 let cells: Vec<String> = row
                     .iter()
                     .enumerate()
-                    .map(|(ci, cell)| cell_of(t.short, ri, ci, cell))
+                    .map(|(ci, shipped)| {
+                        edits
+                            .get(&(t.short.to_owned(), ri, ci))
+                            .cloned()
+                            .unwrap_or_else(|| (*shipped).to_owned())
+                    })
                     .collect();
-                // Plain containment, accent- and case-insensitive: a
-                // fuzzy subsequence over 237 rows of prose matches
-                // everything and answers nothing.
                 if cells.iter().any(|c| fuzzy::sort_key(c).contains(&needle)) {
                     hits.push((ti, ri, cells));
                 }
             }
         }
+        hits
+    }
+
+    fn tables_search_results(ui: &mut egui::Ui, session: &mut Session) {
+        let query = session.table_query.trim().to_owned();
+        // Once per question, not once per frame.
+        //
+        // This ran the whole search on every repaint: one query for the
+        // team's edits, then — for each of the 237 rows of the 27 tables
+        // — a `String` per cell, a folded copy of each of those to
+        // compare, and a `String` key per lookup. Some seven thousand
+        // allocations, sixty times a second, to arrive at the answer
+        // already on screen. The answer changes when the question
+        // changes or when a cell is corrected, and `table_rev` moves on
+        // the latter.
+        let key = (query.clone(), session.table_rev);
+        if session.table_hits_key.as_ref() != Some(&key) {
+            session.table_hits = Self::search_all_tables(session, &query);
+            session.table_hits_key = Some(key);
+        }
+        let hits = &session.table_hits;
         let mut open: Option<usize> = None;
         motif::page(ui, 1500.0, |ui| {
             ui.label(
@@ -16538,7 +16650,7 @@ impl App {
                     .id_salt("tables_search")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for (ti, _ri, cells) in &hits {
+                        for (ti, _ri, cells) in hits {
                             let table = &crate::tables::TABLES[*ti];
                             ui.horizontal(|ui| {
                                 if motif::button(ui, table.short)
@@ -17070,7 +17182,7 @@ impl eframe::App for App {
                 }
                 if session.view == MainView::Drugs && session.drug_form.is_none() {
                     if let Ok(list) = session.db.drugs() {
-                        session.drugs = list;
+                        session.set_drugs(list);
                     }
                 }
                 if session.view == MainView::Transmissions {
@@ -17525,7 +17637,7 @@ impl eframe::App for App {
                         session.flush_date_edits();
                         session.show_amounts = false;
                         match session.db.drugs() {
-                            Ok(list) => session.drugs = list,
+                            Ok(list) => session.set_drugs(list),
                             Err(e) => session.error = Some(e),
                         }
                         MainView::Drugs
@@ -18838,7 +18950,7 @@ impl eframe::App for App {
                 Ok(n) => {
                     if let State::Unlocked(session) = &mut self.state {
                         if let Ok(list) = session.db.drugs() {
-                            session.drugs = list;
+                            session.set_drugs(list);
                         }
                         session.reload_codex();
                         session.reload_dispositifs();
@@ -18880,7 +18992,7 @@ impl eframe::App for App {
                             session.set_patients(list);
                         }
                         if let Ok(list) = session.db.drugs() {
-                            session.drugs = list;
+                            session.set_drugs(list);
                         }
                         if let Ok(counts) = session.db.pending_counts() {
                             session.pending = counts;
@@ -19610,6 +19722,96 @@ mod tests {
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
         super::Session::new(db, 12).unwrap()
+    }
+
+    /// The drug search is asked for twice a frame; it must answer from
+    /// the memo, and the memo must let go the moment the base moves.
+    #[test]
+    fn the_drug_search_answers_once_per_question() {
+        let mut s = scratch_session("memo");
+        s.drug_query = "elix".to_owned();
+        s.refresh_drug_hits(super::App::DRUG_HITS);
+        let first = s.drug_hits.clone();
+        let rev = s.drugs_rev;
+        // Asking the same question again changes nothing at all.
+        s.refresh_drug_hits(super::App::DRUG_HITS);
+        assert_eq!(s.drug_hits, first);
+        assert_eq!(s.drugs_rev, rev);
+        // A different question is a different answer.
+        s.drug_query = "parac".to_owned();
+        s.refresh_drug_hits(super::App::DRUG_HITS);
+        assert_ne!(s.drug_hits, first);
+        // And replacing the base drops the memo, so a fiche renamed on
+        // another post is not answered for out of yesterday's list.
+        s.drug_query = "elix".to_owned();
+        s.refresh_drug_hits(super::App::DRUG_HITS);
+        assert_eq!(s.drug_hits, first);
+        let list = s.db.drugs().unwrap();
+        s.set_drugs(list);
+        assert!(s.drug_hits_key.is_none(), "la base a bougé");
+        assert_ne!(s.drugs_rev, rev);
+    }
+
+    /// The year is read off the date the session already holds, and the
+    /// base is only asked when there is no date to read.
+    #[test]
+    fn the_year_comes_from_the_date_in_hand() {
+        let mut s = scratch_session("year");
+        s.today = "2031-02-09".to_owned();
+        assert_eq!(s.year_now(), 2031);
+        // No date recorded: fall back on the base rather than on zero.
+        s.today = String::new();
+        assert_eq!(s.year_now(), s.db.current_year());
+        // A date the base could never produce is not read as a year.
+        s.today = "??".to_owned();
+        assert_eq!(s.year_now(), s.db.current_year());
+    }
+
+    /// The A–Z tree: one drawer per letter, in order, and the fiches of
+    /// a drawer only when it is open.
+    #[test]
+    fn the_drug_tree_lists_letters_and_opens_one_at_a_time() {
+        use super::NavDrugRow;
+        let mut s = scratch_session("tree");
+        let rows = super::App::drug_tree_rows(&s);
+        assert!(!rows.is_empty());
+        // Folded, the tree is letters and nothing else.
+        assert!(rows.iter().all(|r| matches!(r, NavDrugRow::Letter(..))));
+        let letters: Vec<char> = rows
+            .iter()
+            .filter_map(|r| match r {
+                NavDrugRow::Letter(c, _) => Some(*c),
+                NavDrugRow::Card(_) => None,
+            })
+            .collect();
+        // Each letter once, and in order: a second « E » at the end of
+        // the alphabet is what the accent-folded sort prevents.
+        let mut sorted = letters.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(letters, sorted, "{letters:?}");
+        // The counts add up to the whole base.
+        let counted: usize = rows
+            .iter()
+            .map(|r| match r {
+                NavDrugRow::Letter(_, n) => *n,
+                NavDrugRow::Card(_) => 0,
+            })
+            .sum();
+        assert_eq!(counted, s.drugs.len());
+        // Opening one drawer shows its fiches and only its fiches.
+        let (first, n) = match rows[0] {
+            NavDrugRow::Letter(c, n) => (c, n),
+            NavDrugRow::Card(_) => unreachable!(),
+        };
+        s.nav_letters.insert(first);
+        let rows = super::App::drug_tree_rows(&s);
+        let shown = rows
+            .iter()
+            .filter(|r| matches!(r, NavDrugRow::Card(_)))
+            .count();
+        assert_eq!(shown, n);
+        assert!(matches!(rows[1], NavDrugRow::Card(0)));
     }
 
     #[test]

@@ -28,8 +28,8 @@ LOGIC_FLOOR=86
 LOGIC_FILES=(
     src/biology.rs src/bulletin.rs src/codex.rs src/config.rs src/db.rs
     src/entretien.rs src/fuzzy.rs src/insulin.rs src/location.rs
-    src/ordonnance.rs src/pdf.rs src/revue.rs src/strings.rs
-    src/tables.rs src/vaccines.rs
+    src/ordonnance.rs src/pdf.rs src/release.rs src/revue.rs
+    src/strings.rs src/tables.rs src/vaccines.rs
 )
 
 if ! command -v cargo-llvm-cov >/dev/null 2>&1; then

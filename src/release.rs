@@ -40,7 +40,14 @@ pub fn target() -> &'static str {
 /// by it. The launcher writes the tag it downloaded next to the binary;
 /// a copy built or carried by hand has no such file.
 pub fn launcher_version() -> Option<String> {
-    let path = dirs::data_dir()?.join("bpm-caddy").join("version.txt");
+    read_version_file(&dirs::data_dir()?.join("bpm-caddy").join("version.txt"))
+}
+
+/// The tag written in a launcher's `version.txt`, if there is one to
+/// read and it says anything. A missing file, an unreadable one and an
+/// empty one are the same answer: this copy was not installed by the
+/// launcher, so the row is left off the page rather than shown blank.
+fn read_version_file(path: &std::path::Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
     let tag = text.trim();
     (!tag.is_empty()).then(|| tag.to_owned())
@@ -104,26 +111,52 @@ pub fn check_async() -> Receiver<Checked> {
     rx
 }
 
+/// The single request. Everything around it — reading the answer,
+/// deciding what it means — is a pure function beside it, so the only
+/// part that cannot be tested is the one that needs a network.
 fn check() -> Checked {
+    match fetch_latest() {
+        Ok(value) => match read_tag(&value) {
+            Ok(tag) => verdict(&tag),
+            Err(e) => Checked::Failed(e),
+        },
+        Err(e) => Checked::Failed(e),
+    }
+}
+
+fn fetch_latest() -> Result<serde_json::Value, String> {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(10))
         .timeout_read(std::time::Duration::from_secs(15))
         .user_agent("bpm-caddy")
         .build();
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
-    let value: serde_json::Value = match agent.get(&url).call() {
-        Ok(r) => match r.into_json() {
-            Ok(v) => v,
-            Err(e) => return Checked::Failed(e.to_string()),
-        },
-        Err(e) => return Checked::Failed(e.to_string()),
-    };
-    match value["tag_name"].as_str() {
-        Some(tag) => Checked::Latest {
-            newer: is_newer(tag, current()),
-            tag: tag.to_owned(),
-        },
-        None => Checked::Failed("réponse GitHub sans tag_name".to_owned()),
+    agent
+        .get(&url)
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_json()
+        .map_err(|e| e.to_string())
+}
+
+/// The tag out of GitHub's answer, or why there is not one.
+///
+/// A reply with no `tag_name`, or one that is not a string, is an
+/// answer to a different question — a rate-limit notice, an error
+/// document, a proxy's login page — and is reported as such rather than
+/// read as « pas de mise à jour ».
+fn read_tag(value: &serde_json::Value) -> Result<String, String> {
+    match value["tag_name"].as_str().map(str::trim) {
+        Some(tag) if !tag.is_empty() => Ok(tag.to_owned()),
+        _ => Err("réponse GitHub sans tag_name".to_owned()),
+    }
+}
+
+/// What that tag means for this binary.
+fn verdict(tag: &str) -> Checked {
+    Checked::Latest {
+        newer: is_newer(tag, current()),
+        tag: tag.to_owned(),
     }
 }
 
@@ -159,10 +192,68 @@ mod tests {
         assert!(is_newer("v0.108.0-rc1", "0.107.0"));
     }
 
+    /// GitHub's answer, and the three ways it can fail to be one.
+    #[test]
+    fn the_tag_is_read_out_of_the_answer_or_refused() {
+        let ok: serde_json::Value = serde_json::json!({ "tag_name": " v9.9.9 " });
+        assert_eq!(read_tag(&ok).unwrap(), "v9.9.9");
+        // A rate-limit notice, an error document, a proxy's login page:
+        // an answer to another question, reported as one rather than
+        // read as « pas de mise à jour ».
+        for wrong in [
+            serde_json::json!({ "message": "API rate limit exceeded" }),
+            serde_json::json!({ "tag_name": serde_json::Value::Null }),
+            serde_json::json!({ "tag_name": 107 }),
+            serde_json::json!({ "tag_name": "   " }),
+            serde_json::json!([]),
+        ] {
+            assert!(read_tag(&wrong).is_err(), "{wrong}");
+        }
+    }
+
+    #[test]
+    fn the_verdict_says_which_release_and_whether_it_is_ahead() {
+        match verdict("v99.0.0") {
+            Checked::Latest { tag, newer } => {
+                assert_eq!(tag, "v99.0.0");
+                assert!(newer);
+            }
+            Checked::Failed(e) => panic!("{e}"),
+        }
+        // The tag is reported as GitHub wrote it, `v` and all.
+        match verdict(&format!("v{}", current())) {
+            Checked::Latest { tag, newer } => {
+                assert_eq!(tag, format!("v{}", current()));
+                assert!(!newer);
+            }
+            Checked::Failed(e) => panic!("{e}"),
+        }
+    }
+
+    /// A copy the launcher installed leaves a tag beside itself; one
+    /// built or carried by hand does not, and neither does an empty
+    /// file. All three answers are the same shape.
+    #[test]
+    fn the_launchers_stamp_is_read_when_there_is_one() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rel-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("version.txt");
+        assert_eq!(read_version_file(&path), None, "fichier absent");
+        std::fs::write(&path, "  v0.107.0\n").unwrap();
+        assert_eq!(read_version_file(&path), Some("v0.107.0".to_owned()));
+        std::fs::write(&path, "   \n").unwrap();
+        assert_eq!(read_version_file(&path), None, "fichier vide");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn this_binary_knows_what_it_is() {
         assert_eq!(current(), env!("CARGO_PKG_VERSION"));
         assert!(!current().is_empty());
         assert!(RELEASES_URL.starts_with("https://github.com/"));
+        // The platform is named the way the release assets are.
+        assert!(!target().is_empty());
+        assert!(RELEASES_URL.contains(REPO));
     }
 }

@@ -24940,8 +24940,16 @@ pub fn discover_existing() -> Option<PathBuf> {
             dirs_to_try.push(dir.join("data"));
         }
     }
-    dirs_to_try
-        .into_iter()
+    first_db_in(dirs_to_try)
+}
+
+/// The first of these directories that holds a base, in the order
+/// given. Split out from [`discover_existing`] so the rule can be
+/// tested without a launcher installed: *order matters* — the launcher's
+/// directory answers before a stray copy beside the executable — and a
+/// directory of that name, rather than a file, is not an answer.
+fn first_db_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    dirs.into_iter()
         .map(|d| d.join(DB_FILE_NAME))
         .find(|p| p.is_file())
 }
@@ -28477,6 +28485,136 @@ mod tests {
     /// two-digit years.
     fn parse(input: &str) -> Result<String, String> {
         parse_french_date(input, 2026, YearHint::Past)
+    }
+
+    /// A first launch looks where an installed copy actually puts its
+    /// base, and adopts the first one it finds — the launcher's
+    /// directory before a stray copy beside the executable.
+    #[test]
+    fn a_first_launch_finds_the_base_the_launcher_left() {
+        let root = std::env::temp_dir().join(format!("bpm-caddy-find-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (launcher, portable) = (root.join("data/bpm-caddy"), root.join("usb"));
+        std::fs::create_dir_all(&launcher).unwrap();
+        std::fs::create_dir_all(&portable).unwrap();
+        let order = || vec![launcher.clone(), portable.clone()];
+
+        // Nothing anywhere: nothing to adopt, and the operator is shown
+        // the default path rather than a base picked at random.
+        assert_eq!(first_db_in(order()), None);
+
+        // Only the portable copy exists: that is the answer.
+        let carried = portable.join(DB_FILE_NAME);
+        std::fs::write(&carried, b"pas vraiment une base").unwrap();
+        assert_eq!(first_db_in(order()), Some(carried.clone()));
+
+        // With both, the launcher's wins: it is the installed one.
+        let installed = launcher.join(DB_FILE_NAME);
+        std::fs::write(&installed, b"pas vraiment une base").unwrap();
+        assert_eq!(first_db_in(order()), Some(installed));
+
+        // A *directory* of that name is not a base.
+        let _ = std::fs::remove_dir_all(&launcher);
+        std::fs::create_dir_all(launcher.join(DB_FILE_NAME)).unwrap();
+        assert_eq!(first_db_in(order()), Some(carried));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// « Synchroniser le contenu de référence » — every seed this
+    /// version ships, in the order the About page runs them.
+    ///
+    /// Two things are asserted, and they are the whole contract. It is
+    /// **idempotent**: a base already at this version gains nothing from
+    /// a second pass, so the button can be pressed twice without
+    /// doubling anything. And it **never rewrites the team's own text**:
+    /// a fiche the officine has edited comes out of the sync exactly as
+    /// it went in, because the reference content fills gaps and does not
+    /// correct pharmacists.
+    #[test]
+    fn synchronising_the_reference_content_fills_gaps_and_rewrites_nothing() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-sync-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+
+        // A base as a first unlock leaves it.
+        db.seed_drugs_if_empty().unwrap();
+        let sync = |db: &Db| -> usize {
+            db.seed_missing_drugs().unwrap()
+                + db.fill_starter_details().unwrap()
+                + db.seed_posologies().unwrap()
+                + db.seed_conduite().unwrap()
+                + db.refresh_toxicity().unwrap()
+                + db.seed_preparations().unwrap()
+                + db.seed_dispositifs().unwrap()
+                + db.seed_protocols().unwrap()
+        };
+
+        // The officine has written on one fiche, in a field the seeds
+        // fill: what it wrote has to survive every pass.
+        let mine = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name.eq_ignore_ascii_case("Eliquis"))
+            .expect("Eliquis est une fiche de départ");
+        let mut edited = mine.clone();
+        edited.iup = "NOTRE TEXTE À NOUS".to_owned();
+        edited.missed_dose = "NOTRE CONDUITE".to_owned();
+        edited.toxicity = "NOTRE TOXICITÉ".to_owned();
+        assert!(db.update_drug(&edited, &mine).unwrap());
+
+        sync(&db);
+        // Pressing it again is a no-op: nothing left to fill.
+        assert_eq!(sync(&db), 0, "la synchronisation doit être idempotente");
+
+        let after = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == mine.id)
+            .unwrap();
+        assert_eq!(after.iup, "NOTRE TEXTE À NOUS");
+        assert_eq!(after.missed_dose, "NOTRE CONDUITE");
+        assert_eq!(after.toxicity, "NOTRE TOXICITÉ");
+
+        // And the content that travels with the binary is in the base.
+        assert!(!db.preparations().unwrap().is_empty());
+        assert!(!db.dispositifs().unwrap().is_empty());
+        assert!(!db.protocols().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The list the navigator's A–Z tree is built from: sorted the way a
+    /// human reads, accents folded in with their letter.
+    ///
+    /// SQLite's `COLLATE NOCASE` is ASCII-only, so « Élugan » came back
+    /// after Z — which would have opened a second E drawer at the end of
+    /// the alphabet, with one fiche in it that nobody would look for
+    /// there.
+    #[test]
+    fn the_drug_list_sorts_with_accents_folded_in() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-sort-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        for name in ["Zovirax", "elugan", "Élugan", "Aclasta", "Eliquis"] {
+            db.add_drug(name).unwrap();
+        }
+        let names: Vec<String> = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .map(|d| d.name)
+            .filter(|n| ["Zovirax", "elugan", "Élugan", "Aclasta", "Eliquis"].contains(&n.as_str()))
+            .collect();
+        assert_eq!(
+            names,
+            ["Aclasta", "Eliquis", "elugan", "Élugan", "Zovirax"],
+            "{names:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
