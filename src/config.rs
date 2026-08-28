@@ -142,9 +142,14 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # médicalisé… Un forfait court tant que le matériel est sorti, et se
 # compte en périodes entamées.
 #
-# L'application ne connaît aucun tarif de sa propre autorité : la liste
-# est vide par défaut, et c'est l'officine qui écrit ce que sa LPP paie,
-# vérifié sur ameli.fr. Un montant livré serait faux dans l'année.
+# Le catalogue est fourni — les six matériels et la ligne LPP de chacun,
+# comme les six fiches de la famille « Location ». Ce qui est fourni à
+# zéro, c'est l'euro : l'application ne connaît aucun tarif de sa propre
+# autorité, et c'est l'officine qui écrit ce que sa LPP paie, vérifié sur
+# ameli.fr. Un montant livré serait faux dans l'année.
+#
+# Écrire « forfaits = [] » vide le catalogue ; le laisser en commentaire
+# le rétablit.
 #
 #   period       : "jour", "semaine" ou "mois"
 #   fee          : le forfait d'une période, en euros
@@ -231,10 +236,17 @@ impl Period {
 /// The rentals the officine bills, and how long before a renewal it
 /// wants to be told.
 ///
-/// **Empty by default, on purpose.** The LPP's tarifs move, and a fee
-/// shipped in the application would be a fee wrong within the year —
-/// the same rule as the `lpp` field of a dispositif fiche. The officine
-/// writes what its own line pays, in Options › Locations.
+/// The *catalogue* ships filled in — the six machines the officine
+/// actually lends out, each with the wording of its LPP line and the
+/// period it is counted in, matching the six fiches of the « Location »
+/// family. What ships at **zero** is every euro: the LPP's tarifs move,
+/// and a fee shipped in the application would be a fee wrong within the
+/// year, the same rule as the `lpp` field of a dispositif fiche. The
+/// officine writes what its own line pays, in Options › Locations.
+///
+/// The tab used to open on an empty list and a paragraph explaining how
+/// to fill it; now it opens on the six lines, and the only thing left to
+/// type is the amount.
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(default)]
 pub struct LocationsConfig {
@@ -243,10 +255,80 @@ pub struct LocationsConfig {
     pub notice_days: u32,
 }
 
+impl LocationsConfig {
+    /// The catalogue an officine starts from: what it lends, on which
+    /// LPP line, counted in which period. Never a price.
+    pub fn starter_forfaits() -> Vec<LocationForfait> {
+        [
+            (
+                "Nébuliseur",
+                "Titre I — forfait hebdomadaire d'aérosolthérapie ; consommables à part",
+                Period::Week,
+            ),
+            (
+                "Neurostimulateur (TENS)",
+                "Titre I — location du neurostimulateur ; électrodes sur ligne propre",
+                Period::Week,
+            ),
+            (
+                "Lit médicalisé",
+                "Titre I — forfait hebdomadaire lit, matelas et accessoires",
+                Period::Week,
+            ),
+            (
+                "Matelas anti-escarre",
+                "Titre I — support dynamique, ligne selon le niveau de risque",
+                Period::Week,
+            ),
+            (
+                "Fauteuil roulant",
+                "Titre IV — location du fauteuil roulant manuel ; coussin sur ligne propre",
+                Period::Week,
+            ),
+            (
+                "Tire-lait",
+                "Titre I — location sur prescription ; set de recueil sur ligne propre",
+                Period::Week,
+            ),
+        ]
+        .into_iter()
+        .map(|(label, lpp, period)| LocationForfait {
+            label: label.to_owned(),
+            lpp: lpp.to_owned(),
+            period,
+            fee: 0.0,
+            renewal_days: 0,
+            max_periods: 0,
+        })
+        .collect()
+    }
+
+    /// Append the starter lines this configuration is missing, matched
+    /// by label, and answer how many were added.
+    ///
+    /// The same discipline as the drug base's « Compléter les
+    /// médicaments de départ »: it never touches a line the officine has
+    /// already written, fee included.
+    pub fn complete_forfaits(&mut self) -> usize {
+        let mut added = 0;
+        for f in Self::starter_forfaits() {
+            let known = self
+                .forfaits
+                .iter()
+                .any(|k| k.label.trim().eq_ignore_ascii_case(f.label.trim()));
+            if !known {
+                self.forfaits.push(f);
+                added += 1;
+            }
+        }
+        added
+    }
+}
+
 impl Default for LocationsConfig {
     fn default() -> Self {
         Self {
-            forfaits: Vec::new(),
+            forfaits: Self::starter_forfaits(),
             notice_days: 7,
         }
     }
@@ -933,14 +1015,20 @@ impl Config {
     }
 }
 
-/// Where the workspace was left: the window's size and how wide the
-/// two docks were dragged.
+/// Where the workspace was left: the window's size, how wide the two
+/// docks were dragged, whether they were open at all, which view was on
+/// screen, and which version wrote all that down.
 ///
 /// Kept in its own `layout.toml` beside `config.toml` rather than in it:
 /// the configuration is hand-editable and carries the operator's own
 /// comments, and rewriting it on every quit to record a window size
 /// would quietly throw those away.
-#[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Debug)]
+///
+/// Every field means « never recorded » at its default, and every one
+/// of them is a *preference the operator expressed by working*, never a
+/// setting: `[ui] show_nav_on_start` still decides the first launch,
+/// and after that the shape the post was left in wins.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct Layout {
     /// Window size in logical pixels. Zero means "never recorded".
@@ -949,6 +1037,20 @@ pub struct Layout {
     /// Dock widths. Zero means "use the default share of the window".
     pub nav_width: f32,
     pub docs_width: f32,
+    /// Whether each dock was open. `None` = never recorded, so the
+    /// configuration's start-up flags decide.
+    pub nav_open: Option<bool>,
+    pub docs_open: Option<bool>,
+    /// The right pane's content: "docs", "carnet" or "notes".
+    pub side_pane: String,
+    /// Which view was on screen: see `MainView::as_key`. An empty string
+    /// — or a name this version does not know — lands on the search.
+    pub view: String,
+    /// The version of BPM-Caddy that wrote this file. Recorded so
+    /// Options › À propos can say when the workspace was last laid out
+    /// by another version, and so a future change of shape can tell a
+    /// stale record from a current one.
+    pub version: String,
 }
 
 impl Default for Layout {
@@ -958,6 +1060,11 @@ impl Default for Layout {
             window_height: 0.0,
             nav_width: 0.0,
             docs_width: 0.0,
+            nav_open: None,
+            docs_open: None,
+            side_pane: String::new(),
+            view: String::new(),
+            version: String::new(),
         }
     }
 }
@@ -983,7 +1090,16 @@ impl Layout {
             .then_some([self.window_width, self.window_height])
     }
 
-    pub fn save(&self) {
+    /// Was this record written by a different version of the
+    /// application? `false` when there is no record at all — nothing to
+    /// be surprised by on a first launch.
+    pub fn written_by_another_version(&self) -> bool {
+        !self.version.is_empty() && self.version != env!("CARGO_PKG_VERSION")
+    }
+
+    /// Write the record, stamping it with the version doing the writing.
+    pub fn save(&mut self) {
+        self.version = env!("CARGO_PKG_VERSION").to_owned();
         let Ok(text) = toml::to_string_pretty(self) else {
             return;
         };
@@ -1264,6 +1380,37 @@ mod tests {
         assert_eq!(l.window(), Some([1280.0, 800.0]));
     }
 
+    /// Completing the catalogue adds what is missing and rewrites
+    /// nothing: a fee the officine typed, or a line it renamed, has to
+    /// survive the button that fills the rest in.
+    #[test]
+    fn completing_the_forfaits_never_overwrites_what_is_there() {
+        let mut cfg = LocationsConfig {
+            forfaits: vec![LocationForfait {
+                label: "nébuliseur".to_owned(),
+                lpp: "notre ligne".to_owned(),
+                period: Period::Month,
+                fee: 12.5,
+                renewal_days: 28,
+                max_periods: 4,
+            }],
+            notice_days: 7,
+        };
+        let added = cfg.complete_forfaits();
+        assert_eq!(added, 5, "les cinq autres, pas le nébuliseur");
+        assert_eq!(cfg.forfaits.len(), 6);
+        let mine = &cfg.forfaits[0];
+        assert_eq!(mine.fee, 12.5);
+        assert_eq!(mine.period, Period::Month);
+        assert_eq!(mine.lpp, "notre ligne");
+        // And it is idempotent: pressing it twice adds nothing.
+        assert_eq!(cfg.complete_forfaits(), 0);
+        assert_eq!(cfg.forfaits.len(), 6);
+        // Every shipped line is usable and priced at nothing.
+        assert!(cfg.forfaits.iter().all(|f| f.is_named()));
+        assert!(cfg.forfaits[1..].iter().all(|f| f.fee == 0.0));
+    }
+
     #[test]
     fn config_roundtrips_through_toml() {
         let mut cfg = Config::default();
@@ -1319,8 +1466,13 @@ mod tests {
             }
             panic!("option active dans le modèle : {line}");
         }
-        // And the forfaits ship empty, whatever the template shows.
-        assert!(cfg.locations.forfaits.is_empty());
+        // The catalogue ships filled in and every euro ships at zero:
+        // the officine types the amount its own LPP line pays, and
+        // nothing else.
+        assert_eq!(cfg.locations.forfaits.len(), 6);
+        assert!(cfg.locations.forfaits.iter().all(|f| f.is_named()));
+        assert!(cfg.locations.forfaits.iter().all(|f| f.fee == 0.0));
+        assert!(cfg.locations.forfaits.iter().all(|f| !f.lpp.is_empty()));
         assert_eq!(cfg.locations.notice_days, 7);
 
         // The template is written once: a second load does not stamp
@@ -1339,19 +1491,21 @@ mod tests {
         cfg.pharmacy.name = "Pharmacie du Centre".to_owned();
         cfg.rules.bpm_per_year = 4;
         cfg.locations.notice_days = 14;
-        cfg.locations.forfaits.push(LocationForfait {
+        cfg.locations.forfaits = vec![LocationForfait {
             label: "Nébuliseur".to_owned(),
             lpp: "Titre I".to_owned(),
             period: Period::Week,
             fee: 12.0,
             renewal_days: 28,
             max_periods: 0,
-        });
+        }];
         cfg.save().unwrap();
         let back = Config::load();
         assert_eq!(back.pharmacy.name, "Pharmacie du Centre");
         assert_eq!(back.per_year(crate::db::InterviewKind::Bpm), 4);
         assert_eq!(back.locations.notice_days, 14);
+        // A list the officine has cut down stays cut down: what is
+        // written wins over what is shipped.
         assert_eq!(back.locations.forfaits.len(), 1);
         assert_eq!(back.locations.forfaits[0].period, Period::Week);
         assert!(back.locations.forfaits[0].is_named());
@@ -1375,14 +1529,34 @@ mod tests {
         // The window geometry has its own little file, and refuses a
         // size a minimised window would have reported.
         assert_eq!(Layout::path(), beside.join("layout.toml"));
-        let layout = Layout {
+        let mut layout = Layout {
             window_width: 1600.0,
             window_height: 1000.0,
+            nav_open: Some(true),
+            docs_open: Some(false),
+            side_pane: "carnet".to_owned(),
+            view: "agenda".to_owned(),
             ..Layout::default()
         };
+        // No record of a version until one is written.
+        assert!(!layout.written_by_another_version());
         layout.save();
         let back = Layout::load();
         assert_eq!(back.window(), Some([1600.0, 1000.0]));
+        // The whole shape of the workspace comes back, and the record
+        // is stamped with the version that wrote it.
+        assert_eq!(back.nav_open, Some(true));
+        assert_eq!(back.docs_open, Some(false));
+        assert_eq!(back.side_pane, "carnet");
+        assert_eq!(back.view, "agenda");
+        assert_eq!(back.version, env!("CARGO_PKG_VERSION"));
+        assert!(!back.written_by_another_version());
+        // A record left by an older release is recognised as one.
+        let old = Layout {
+            version: "0.1.0".to_owned(),
+            ..Layout::default()
+        };
+        assert!(old.written_by_another_version());
         let tiny = Layout {
             window_width: 40.0,
             window_height: 20.0,

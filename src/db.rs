@@ -24903,11 +24903,47 @@ pub struct Db {
     conn: Connection,
 }
 
+/// The database's file name, wherever it lives.
+pub const DB_FILE_NAME: &str = "bpm_caddy.db";
+
 pub fn default_path() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("bpm-caddy")
-        .join("bpm_caddy.db")
+        .join(DB_FILE_NAME)
+}
+
+/// Somewhere an existing base might already be, for a first launch that
+/// has no `[database] path` written and nothing at the default location.
+///
+/// A pharmacy installs through the launcher, which keeps itself and
+/// everything it downloads in one directory; a copy carried on a stick,
+/// or restored onto a replacement PC, sits beside the executable. Both
+/// are looked at before the operator is shown a lock screen for a base
+/// that does not exist yet — opening a second, empty file next to the
+/// real one is how a pharmacy loses a morning.
+///
+/// Only files are answered, and only the first one found: this decides
+/// what to *adopt*, never what to merge.
+pub fn discover_existing() -> Option<PathBuf> {
+    let mut dirs_to_try: Vec<PathBuf> = Vec::new();
+    // The launcher's own directory — the same one `default_path` uses,
+    // and the usual answer.
+    if let Some(data) = dirs::data_dir() {
+        dirs_to_try.push(data.join("bpm-caddy"));
+    }
+    // A portable copy: beside the executable, or one folder down.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            dirs_to_try.push(dir.to_path_buf());
+            dirs_to_try.push(dir.join("bpm-caddy"));
+            dirs_to_try.push(dir.join("data"));
+        }
+    }
+    dirs_to_try
+        .into_iter()
+        .map(|d| d.join(DB_FILE_NAME))
+        .find(|p| p.is_file())
 }
 
 impl Db {
@@ -25493,7 +25529,18 @@ impl Db {
                 })
             })
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+        let mut list: Vec<Drug> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        // SQLite's NOCASE is ASCII-only, so « Élugan » came back after
+        // Z. Nobody looks for it there, and the navigator's A–Z tree
+        // would have opened a second E drawer at the end of the
+        // alphabet. Sorted once here, on the folded key, rather than in
+        // each of the dozen places that reload the list.
+        list.sort_by(|a, b| {
+            crate::fuzzy::sort_key(&a.name)
+                .cmp(&crate::fuzzy::sort_key(&b.name))
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        Ok(list)
     }
 
     /// Populate a brand-new drug base with common French brand names and
