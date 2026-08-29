@@ -224,6 +224,14 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 #
 # Le plus gros fichier qui entre dans la base, en mégaoctets.
 # max_mb = 10
+#
+# Combien de copies quotidiennes du fichier des pièces sont gardées, à
+# part de celles de la base. Deux et non quatorze : c'est tout l'intérêt
+# de les avoir séparées. Quatorze copies d'une base de six mégaoctets
+# coûtent quatre-vingt-dix mégaoctets ; quatorze copies d'une année de
+# pièces en coûtent dix mille. Une pièce ne change jamais après avoir été
+# rangée. 0 désactive la copie des pièces.
+# backups_keep = 2
 "#;
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -264,6 +272,16 @@ pub struct ScansConfig {
     pub command: String,
     /// Le plus gros fichier qui entre dans la base, en mégaoctets.
     pub max_mb: u32,
+    /// Combien de copies quotidiennes du fichier des pièces sont
+    /// gardées, à part de celles de la base.
+    ///
+    /// Deux et non quatorze, et c'est tout l'intérêt de les avoir
+    /// séparées : quatorze copies d'une base de six mégaoctets coûtent
+    /// quatre-vingt-dix mégaoctets, quatorze copies d'un an de pièces en
+    /// coûtent dix mille. Une pièce ne change jamais après avoir été
+    /// rangée — on n'a pas besoin d'en garder l'historique comme d'un
+    /// dossier qu'on corrige tous les jours.
+    pub backups_keep: usize,
 }
 
 impl Default for ScansConfig {
@@ -275,6 +293,7 @@ impl Default for ScansConfig {
             // passer la couleur et le multipage, et arrêtent le TIFF de
             // deux cents.
             max_mb: 10,
+            backups_keep: 2,
         }
     }
 }

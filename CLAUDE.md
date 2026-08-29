@@ -219,11 +219,23 @@ upgrade is decided, the number to defend is the logic one, and
   The application keeps it and later hands it back to the OS to open;
   accepting a file because it is called `.pdf` is agreeing to hand back
   something nobody looked at. Four magic numbers (PDF, PNG, JPEG, TIFF)
-  and the rest is refused at the door. Pieces live **in** the encrypted
-  base and not in a folder beside it — a scanned ordonnance in the clear
-  next to an encrypted base undoes the encryption — which is why there is
-  a size cap (`[scans] max_mb`), and why Options › Base says what they
-  weigh: they travel in every daily backup.
+  and the rest is refused at the door.
+- **The pieces' bytes live in their own encrypted file** —
+  `<base>_scans.db` beside the base, same SQLCipher, same key. Measured
+  before deciding: 200 B&W ordonnances of 250 KB took a 6 MB base to
+  56 MB (89 % pieces), and `backups_keep = 14` made that 840 MB copied
+  across the officine's share every morning. The base keeps each piece's
+  **record** (label, kind, date, whom it belongs to) so a base copied
+  alone still shows what existed. Consequences to keep in mind:
+  `change_password` must rekey **both** files (a test catches it),
+  « Copier la base… » copies both, `[scans] backups_keep` is separate
+  and defaults to 2, and reading falls back to the legacy `bytes` column
+  so a base from before the split still opens its pieces.
+- **SQLite never shrinks a file.** Deleting 200 pieces frees pages and
+  leaves the file at 56 MB. Only `VACUUM` gives the disk back — that is
+  `Job::Compact`, which also moves any legacy bytes out and sweeps
+  orphans, in that order (compacting first would rewrite the base *with*
+  the pieces still in it).
 - A line of a register carries the patient's **file number**, never the
   name: a register is printed and left on a counter, and what it must
   allow is going *back* to the patient, not displaying them.

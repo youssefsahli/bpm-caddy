@@ -552,6 +552,15 @@ pub fn backup_name(day: &str) -> String {
     format!("bpm_caddy-{day}.db")
 }
 
+/// Le nom d'une copie du fichier des pièces pour un jour donné.
+///
+/// Un préfixe distinct, pour que l'élagage des deux ne se mélange pas :
+/// les copies de la base et celles des pièces se comptent séparément
+/// parce qu'on n'en garde pas le même nombre.
+pub fn scans_backup_name(day: &str) -> String {
+    format!("bpm_caddy_scans-{day}.db")
+}
+
 /// What the backup folder actually holds.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct BackupState {
@@ -27856,6 +27865,62 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
 
 pub struct Db {
     conn: Connection,
+    /// Les octets des pièces numérisées, dans leur **propre fichier
+    /// chiffré** à côté de la base — `bpm_caddy_scans.db`.
+    ///
+    /// Mesuré avant de le décider : une base semée sans pièce fait six
+    /// mégaoctets ; deux cents ordonnances noir et blanc de 250 Ko la
+    /// portent à cinquante-six, dont quatre-vingt-neuf pour cent de
+    /// pièces. Et la sauvegarde quotidienne recopie le fichier entier,
+    /// quatorze fois par défaut, sur le partage de l'officine : huit
+    /// cent quarante mégaoctets pour deux cents ordonnances, et dix
+    /// gigaoctets pour une année ordinaire.
+    ///
+    /// Séparés, la base de travail reste petite et rapide — c'est elle
+    /// qu'on ouvre cent fois par jour et qu'on recopie chaque soir — et
+    /// les pièces ont leur propre rythme de sauvegarde
+    /// (`[scans] backups_keep`). Elles ne sortent pas du chiffrement
+    /// pour autant : c'est le même SQLCipher et la même clé, et pas une
+    /// deuxième cryptographie écrite à la main.
+    ///
+    /// Ce qui reste dans la base principale, c'est la **fiche** de
+    /// chaque pièce — son libellé, son genre, sa date, à qui elle est
+    /// attachée. Volontairement : une officine qui ne copie que le `.db`
+    /// voit alors quelles pièces existaient et quand, au lieu de perdre
+    /// jusqu'à leur trace.
+    scans: Connection,
+}
+
+/// Le fichier des pièces, à côté de la base. Une seule table, un seul
+/// index implicite : l'identifiant de la fiche que la base principale
+/// porte, et les octets.
+const SCAN_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS scan_blobs (
+    scan_id INTEGER PRIMARY KEY,
+    bytes   BLOB NOT NULL
+);
+";
+
+/// Où vivent les octets des pièces, pour une base donnée.
+///
+/// À côté d'elle et **nommé d'après elle** : `bpm_caddy.db` a
+/// `bpm_caddy_scans.db`, et une copie appelée `sauvegarde.db` a
+/// `sauvegarde_scans.db`. Un nom fixe aurait fait partager le même
+/// fichier de pièces à deux bases posées dans le même dossier — ce qui
+/// arrive à la première copie de travail que quelqu'un pose à côté de
+/// la vraie.
+///
+/// Les deux se déplacent ensemble, et « Copier la base… » prend les
+/// deux, en nommant la copie des pièces d'après la destination.
+pub fn scans_path(db_path: &Path) -> PathBuf {
+    let stem = db_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "bpm_caddy".to_owned());
+    db_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(format!("{stem}_scans.db"))
 }
 
 /// The database's file name, wherever it lives.
@@ -27942,7 +28007,31 @@ impl Db {
             conn.execute(index, [])
                 .map_err(|e| format!("index impossible : {e}"))?;
         }
-        Ok(Self { conn })
+        let scans = Self::open_scan_store(path, password)?;
+        Ok(Self { conn, scans })
+    }
+
+    /// Ouvrir (ou créer) le fichier des pièces à côté de la base.
+    ///
+    /// Même mot de passe, même chiffrement. Un fichier absent est un
+    /// fichier neuf : une officine qui vient de la version d'avant n'a
+    /// rien à faire, et ses anciennes pièces continuent d'être lues
+    /// depuis la base principale jusqu'à ce qu'elle les y déplace.
+    fn open_scan_store(db_path: &Path, password: &str) -> Result<Connection, String> {
+        let path = scans_path(db_path);
+        let conn = Connection::open(&path)
+            .map_err(|e| format!("ouverture des pièces impossible : {e}"))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| format!("configuration impossible : {e}"))?;
+        conn.pragma_update(None, "key", password)
+            .map_err(|e| format!("chiffrement des pièces impossible : {e}"))?;
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .map_err(|_| "Fichier des pièces illisible (mot de passe ?).".to_owned())?;
+        conn.execute_batch(SCAN_SCHEMA)
+            .map_err(|e| format!("schéma des pièces impossible : {e}"))?;
+        Ok(conn)
     }
 
     pub fn patients(&self) -> Result<Vec<Patient>, String> {
@@ -27998,6 +28087,15 @@ impl Db {
         if new_password.is_empty() {
             return Err("Le mot de passe ne peut pas être vide.".to_owned());
         }
+        // **Les deux fichiers.** Oublier celui des pièces le laisserait
+        // chiffré avec l'ancienne clé : la base rouvrirait, la liste des
+        // pièces s'afficherait, et pas une seule ne s'ouvrirait — sans
+        // rien pour dire pourquoi. Le fichier des pièces d'abord : s'il
+        // échoue, la base garde son mot de passe et les deux restent
+        // d'accord, alors que dans l'autre ordre un échec les sépare.
+        self.scans
+            .pragma_update(None, "rekey", new_password)
+            .map_err(|e| format!("changement du mot de passe des pièces impossible : {e}"))?;
         self.conn
             .pragma_update(None, "rekey", new_password)
             .map_err(|e| format!("changement du mot de passe impossible : {e}"))
@@ -28014,6 +28112,26 @@ impl Db {
             .execute("VACUUM INTO ?1", [path_str])
             .map_err(|e| format!("sauvegarde impossible : {e}"))?;
         Ok(())
+    }
+
+    /// Rendre au disque ce que les suppressions ont laissé.
+    ///
+    /// SQLite ne rétrécit jamais un fichier de lui-même : effacer deux
+    /// cents pièces numérisées marque leurs pages comme libres et laisse
+    /// la base à cinquante-six mégaoctets. Elles seront réemployées, mais
+    /// la copie de sauvegarde du soir recopie le fichier entier, quatorze
+    /// fois, et sur le partage de l'officine.
+    ///
+    /// `VACUUM` réécrit la base sans les pages libres. C'est long et cela
+    /// demande le double de la place pendant l'opération, donc c'est un
+    /// geste demandé et jamais fait tout seul — il passe par
+    /// [`crate::maintenance`], sur son propre fil, comme les autres
+    /// passes longues.
+    pub fn compact(&self) -> Result<usize, String> {
+        self.conn
+            .execute_batch("VACUUM")
+            .map_err(|e| format!("compactage impossible : {e}"))?;
+        Ok(0)
     }
 
     /// Correct a patient's identity and contact details. Compare-and-set
@@ -30397,19 +30515,21 @@ impl Db {
         if bytes.is_empty() {
             return Err(crate::strings::tr("scan_err_empty").to_owned());
         }
+        // La fiche dans la base, les octets à côté. Un `bytes` vide dans
+        // la base principale : la colonne existe encore pour les bases
+        // d'avant, et n'est plus écrite.
         self.conn
             .execute(
                 "INSERT INTO scans
                      (subject_kind, subject_id, doc_kind, label, media, bytes,
                       size, taken_on, operator, remark)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, x'', ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     scan.subject_kind,
                     scan.subject_id,
                     scan.doc_kind,
                     scan.label.trim(),
                     scan.media,
-                    bytes,
                     bytes.len() as i64,
                     scan.taken_on.trim(),
                     scan.operator.trim(),
@@ -30417,16 +30537,108 @@ impl Db {
                 ],
             )
             .map_err(|e| e.to_string())?;
-        Ok(self.conn.last_insert_rowid())
+        let id = self.conn.last_insert_rowid();
+        // Si l'écriture des octets échoue — disque plein, partage tombé
+        // — la fiche ne doit pas rester seule à promettre une pièce qui
+        // n'existe pas : on la retire et on dit pourquoi.
+        if let Err(e) = self.scans.execute(
+            "INSERT OR REPLACE INTO scan_blobs (scan_id, bytes) VALUES (?1, ?2)",
+            rusqlite::params![id, bytes],
+        ) {
+            let _ = self.conn.execute("DELETE FROM scans WHERE id = ?1", [id]);
+            return Err(format!("écriture de la pièce impossible : {e}"));
+        }
+        Ok(id)
     }
 
     /// Les octets d'une pièce, pour la ressortir et l'ouvrir.
+    ///
+    /// Le fichier des pièces d'abord, puis la base principale : une
+    /// officine qui vient de la version d'avant a ses anciennes pièces
+    /// dans la base, et elles doivent continuer de s'ouvrir jusqu'à ce
+    /// qu'elle les déplace — et même si elle ne le fait jamais.
     pub fn scan_bytes(&self, id: i64) -> Result<(Vec<u8>, String), String> {
+        let media: String = self
+            .conn
+            .query_row("SELECT media FROM scans WHERE id = ?1", [id], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let side: Option<Vec<u8>> = self
+            .scans
+            .query_row(
+                "SELECT bytes FROM scan_blobs WHERE scan_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .ok();
+        if let Some(bytes) = side.filter(|b| !b.is_empty()) {
+            return Ok((bytes, media));
+        }
+        let legacy: Vec<u8> = self
+            .conn
+            .query_row("SELECT bytes FROM scans WHERE id = ?1", [id], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        if legacy.is_empty() {
+            // La fiche est là, les octets non : le fichier des pièces
+            // n'a pas été copié avec la base. Le dire plutôt que rendre
+            // un fichier vide au système.
+            return Err(crate::strings::tr("scan_err_no_store").to_owned());
+        }
+        Ok((legacy, media))
+    }
+
+    /// Combien de pièces attendent encore dans la base principale.
+    ///
+    /// Zéro sur une base neuve, et c'est le cas courant : la question ne
+    /// coûte alors qu'un parcours d'index vide. Sur une base qui vient
+    /// de la version d'avant, c'est ce que « Compacter » ira déplacer.
+    pub fn legacy_scan_count(&self) -> Result<i64, String> {
         self.conn
-            .query_row("SELECT bytes, media FROM scans WHERE id = ?1", [id], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM scans WHERE length(bytes) > 0",
+                [],
+                |r| r.get(0),
+            )
             .map_err(|e| e.to_string())
+    }
+
+    /// Déplacer dans leur fichier les pièces restées dans la base.
+    ///
+    /// Idempotent, et une par une : une base d'un gigaoctet ne se
+    /// recopie pas en mémoire. Retourne combien ont été déplacées.
+    pub fn move_scans_out(&self) -> Result<usize, String> {
+        let ids: Vec<i64> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM scans WHERE length(bytes) > 0")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let mut moved = 0;
+        for id in ids {
+            let bytes: Vec<u8> = self
+                .conn
+                .query_row("SELECT bytes FROM scans WHERE id = ?1", [id], |r| r.get(0))
+                .map_err(|e| e.to_string())?;
+            if bytes.is_empty() {
+                continue;
+            }
+            self.scans
+                .execute(
+                    "INSERT OR REPLACE INTO scan_blobs (scan_id, bytes) VALUES (?1, ?2)",
+                    rusqlite::params![id, bytes],
+                )
+                .map_err(|e| e.to_string())?;
+            // Vidée seulement une fois l'autre écriture faite : dans
+            // l'autre ordre, une coupure de courant perd la pièce.
+            self.conn
+                .execute("UPDATE scans SET bytes = x'' WHERE id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+            moved += 1;
+        }
+        Ok(moved)
     }
 
     /// Corriger ce qu'on a écrit **autour** d'une pièce : son genre, son
@@ -30475,7 +30687,54 @@ impl Db {
                 (id, expected_label.trim()),
             )
             .map_err(|e| e.to_string())?;
+        if changed == 1 {
+            // Les octets suivent la fiche. S'ils ne partent pas — fichier
+            // absent, partage tombé — la fiche est quand même partie :
+            // un orphelin dans le fichier des pièces ne se voit nulle
+            // part et le prochain compactage l'emporte.
+            let _ = self
+                .scans
+                .execute("DELETE FROM scan_blobs WHERE scan_id = ?1", [id]);
+        }
         Ok(changed == 1)
+    }
+
+    /// Les octets dont plus aucune fiche ne parle, retirés.
+    ///
+    /// Une suppression qui n'a pas pu atteindre le fichier des pièces en
+    /// laisse ; deux postes qui suppriment en même temps aussi. Passé
+    /// avec le compactage, qui est le moment où l'on reprend la place.
+    pub fn sweep_orphan_scans(&self) -> Result<usize, String> {
+        let kept: Vec<i64> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT id FROM scans")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let all: Vec<i64> = {
+            let mut stmt = self
+                .scans
+                .prepare("SELECT scan_id FROM scan_blobs")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let mut gone = 0;
+        for id in all {
+            if !kept.contains(&id) {
+                self.scans
+                    .execute("DELETE FROM scan_blobs WHERE scan_id = ?1", [id])
+                    .map_err(|e| e.to_string())?;
+                gone += 1;
+            }
+        }
+        Ok(gone)
     }
 
     /// Combien de pièces la base porte, et ce qu'elles pèsent.
@@ -30492,6 +30751,29 @@ impl Db {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .map_err(|e| e.to_string())
+    }
+
+    /// Compacter aussi le fichier des pièces.
+    ///
+    /// C'est **lui** qui grossit, et lui qu'il faut réécrire pour rendre
+    /// la place d'une pièce supprimée : la base principale ne porte plus
+    /// que des fiches de quelques centaines d'octets.
+    pub fn compact_scans(&self) -> Result<usize, String> {
+        self.scans
+            .execute_batch("VACUUM")
+            .map_err(|e| format!("compactage des pièces impossible : {e}"))?;
+        Ok(0)
+    }
+
+    /// Copier le fichier des pièces, comme `backup_to` copie la base.
+    pub fn backup_scans_to(&self, path: &Path) -> Result<(), String> {
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| "chemin de sauvegarde invalide".to_owned())?;
+        self.scans
+            .execute("VACUUM INTO ?1", [path_str])
+            .map_err(|e| format!("sauvegarde des pièces impossible : {e}"))?;
+        Ok(())
     }
 
     // --- Le registre des stupéfiants ---------------------------------
@@ -33187,6 +33469,219 @@ mod tests {
         .unwrap();
         assert_eq!(db.scans("PATIENT", pid).unwrap().len(), 1);
         assert_eq!(db.scans("OFFICINE", 0).unwrap().len(), 1);
+    }
+
+    /// **Les pièces ne pèsent pas sur la base de travail**, et le
+    /// compactage rend ce que les suppressions ont laissé.
+    ///
+    /// C'est le seul endroit où un test regarde la **taille des
+    /// fichiers**, et il le fait parce que c'est la seule façon de
+    /// prouver les deux. Mesuré avant de séparer : deux cents
+    /// ordonnances noir et blanc de 250 Ko portaient la base de six
+    /// mégaoctets à cinquante-six, dont 89 % de pièces — et la copie de
+    /// sauvegarde recopiait les cinquante-six, quatorze fois, sur le
+    /// partage de l'officine.
+    ///
+    /// Les seuils sont larges à dessein : ce qui est vérifié est un
+    /// ordre de grandeur, pas un nombre d'octets qui dépendrait de la
+    /// taille de page ou de la version de SQLCipher.
+    #[test]
+    fn the_pieces_weigh_on_their_own_file_and_compacting_gives_it_back() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-vac-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("vac.db");
+        let side = scans_path(&path);
+        assert_eq!(
+            side.file_name().unwrap(),
+            "vac_scans.db",
+            "nommé d'après la base"
+        );
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let size = |p: &std::path::Path| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+        let base_empty = size(&path);
+
+        // Vingt pièces d'un quart de mégaoctet : une semaine d'officine.
+        let mut pdf = b"%PDF-1.7\n".to_vec();
+        pdf.resize(256 * 1024, 0x41);
+        for i in 0..20 {
+            db.add_scan(
+                &Scan {
+                    id: 0,
+                    subject_kind: "PATIENT".to_owned(),
+                    subject_id: pid,
+                    doc_kind: "ORDONNANCE".to_owned(),
+                    label: format!("Ordonnance {i}"),
+                    media: "application/pdf".to_owned(),
+                    size: 0,
+                    taken_on: "2026-08-12".to_owned(),
+                    operator: "YS".to_owned(),
+                    remark: String::new(),
+                    created_at: String::new(),
+                },
+                &pdf,
+            )
+            .unwrap();
+        }
+        // La base de travail n'a presque pas bougé : c'est elle qu'on
+        // ouvre cent fois par jour et qu'on recopie chaque soir.
+        let base_full = size(&path);
+        assert!(
+            base_full < base_empty + 256 * 1024,
+            "la base ne doit pas porter les pièces : {base_empty} → {base_full}"
+        );
+        // Elles pèsent, mais à côté.
+        let side_full = size(&side);
+        assert!(
+            side_full > 4 * 1024 * 1024,
+            "le fichier des pièces doit les porter : {side_full}"
+        );
+        // Et elles se relisent.
+        assert_eq!(db.scan_bytes(1).unwrap().0, pdf);
+
+        for sc in db.scans("PATIENT", pid).unwrap() {
+            assert!(db.delete_scan(sc.id, &sc.label).unwrap());
+        }
+        assert!(db.scans("PATIENT", pid).unwrap().is_empty());
+        // Le fichier n'a pas rétréci : SQLite libère les pages, jamais
+        // le fichier. C'est tout le problème, et le motif du bouton.
+        let after_delete = size(&side);
+        assert!(
+            after_delete >= side_full - 64 * 1024,
+            "SQLite ne rétrécit pas de lui-même : {side_full} → {after_delete}"
+        );
+
+        db.compact_scans().unwrap();
+        let compacted = size(&side);
+        assert!(
+            compacted < 512 * 1024,
+            "le compactage doit rendre la place : {after_delete} → {compacted}"
+        );
+        assert_eq!(db.patients().unwrap().len(), 1);
+    }
+
+    /// Une base qui vient de la version d'avant porte ses pièces
+    /// dedans : elles s'ouvrent quand même, et « Compacter » les déplace.
+    ///
+    /// Le déplacement est le seul moment où les octets existent en deux
+    /// endroits. L'ordre est donc écrit et tenu : on écrit à côté, *puis*
+    /// on vide dans la base — dans l'autre sens, une coupure de courant
+    /// entre les deux perd la pièce.
+    #[test]
+    fn a_piece_left_in_the_base_by_an_older_version_still_opens_and_can_move_out() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-legacy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("legacy.db");
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let pdf = b"%PDF-1.7\nune ordonnance d'avant".to_vec();
+        // Écrite comme la version d'avant l'écrivait : octets dans la
+        // base, rien à côté.
+        db.conn
+            .execute(
+                "INSERT INTO scans
+                     (subject_kind, subject_id, doc_kind, label, media, bytes, size, taken_on)
+                 VALUES ('PATIENT', ?1, 'ORDONNANCE', 'Ancienne', 'application/pdf', ?2, ?3, '')",
+                rusqlite::params![pid, pdf, pdf.len() as i64],
+            )
+            .unwrap();
+        let id = db.conn.last_insert_rowid();
+
+        assert_eq!(db.legacy_scan_count().unwrap(), 1);
+        // Elle s'ouvre sans rien faire : une officine qui ne compacte
+        // jamais ne perd rien.
+        assert_eq!(db.scan_bytes(id).unwrap().0, pdf);
+
+        assert_eq!(db.move_scans_out().unwrap(), 1);
+        assert_eq!(db.legacy_scan_count().unwrap(), 0);
+        // Et elle s'ouvre toujours, depuis l'autre fichier maintenant.
+        assert_eq!(db.scan_bytes(id).unwrap().0, pdf);
+        // Idempotent : un deuxième compactage n'a plus rien à déplacer.
+        assert_eq!(db.move_scans_out().unwrap(), 0);
+
+        // Un octet orphelin — une suppression qui n'a pas atteint le
+        // fichier des pièces — est balayé, et rien d'autre avec lui.
+        db.scans
+            .execute(
+                "INSERT INTO scan_blobs (scan_id, bytes) VALUES (9999, x'0102')",
+                [],
+            )
+            .unwrap();
+        assert_eq!(db.sweep_orphan_scans().unwrap(), 1);
+        assert_eq!(db.scan_bytes(id).unwrap().0, pdf, "la pièce vivante reste");
+    }
+
+    /// Les deux fichiers se copient, et une base arrivée sans le sien
+    /// le dit au lieu de rendre un fichier vide au système.
+    ///
+    /// C'est le prix de la séparation, et il se paie ici : quelqu'un
+    /// copiera un jour la base seule sur une clé USB. La fiche de la
+    /// pièce est là — on voit qu'elle a existé, son libellé, sa date —
+    /// et l'ouvrir dit pourquoi elle ne s'ouvre pas.
+    #[test]
+    fn both_files_travel_and_a_base_arriving_alone_says_so() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-two-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("live.db");
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let pdf = b"%PDF-1.7\nordonnance".to_vec();
+        let id = db
+            .add_scan(
+                &Scan {
+                    id: 0,
+                    subject_kind: "PATIENT".to_owned(),
+                    subject_id: pid,
+                    doc_kind: "ORDONNANCE".to_owned(),
+                    label: "Ordonnance Dr Morel".to_owned(),
+                    media: "application/pdf".to_owned(),
+                    size: 0,
+                    taken_on: "2026-08-12".to_owned(),
+                    operator: "YS".to_owned(),
+                    remark: String::new(),
+                    created_at: String::new(),
+                },
+                &pdf,
+            )
+            .unwrap();
+
+        // Les deux copies, nommées d'après la destination.
+        let copy = dir.join("copie.db");
+        db.backup_to(&copy).unwrap();
+        db.backup_scans_to(&scans_path(&copy)).unwrap();
+        {
+            let there = Db::open(&copy, "secret").unwrap();
+            assert_eq!(
+                there.scan_bytes(id).unwrap().0,
+                pdf,
+                "la copie ouvre la pièce"
+            );
+            // Et le compactage de la base principale s'exécute.
+            there.compact().unwrap();
+            assert_eq!(there.patients().unwrap().len(), 1);
+        }
+
+        // La base seule, sans son fichier de pièces : la fiche est là,
+        // les octets non, et cela se dit.
+        let alone = dir.join("seule.db");
+        db.backup_to(&alone).unwrap();
+        let orphan = Db::open(&alone, "secret").unwrap();
+        let list = orphan.scans("PATIENT", pid).unwrap();
+        assert_eq!(list.len(), 1, "la fiche voyage avec la base");
+        assert_eq!(list[0].label, "Ordonnance Dr Morel");
+        let err = orphan.scan_bytes(id).unwrap_err();
+        assert!(
+            err.contains("_scans.db"),
+            "le message doit nommer le fichier manquant : {err}"
+        );
+        // Et une pièce qui n'existe pas du tout est une autre erreur.
+        assert!(orphan.scan_bytes(4242).is_err());
     }
 
     /// **Le registre ne se réécrit pas.**

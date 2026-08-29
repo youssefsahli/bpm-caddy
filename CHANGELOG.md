@@ -5,6 +5,47 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.141.0] - 2026-08-29
+
+### Changed
+- **Les pièces numérisées quittent la base et prennent leur propre
+  fichier.** Mesuré avant de décider : une base semée sans pièce fait
+  **6 Mo** ; deux cents ordonnances noir et blanc de 250 Ko la portent à
+  **56 Mo**, dont 89 % de pièces ; et les quatorze sauvegardes
+  quotidiennes en font **840 Mo**, recopiés chaque soir sur le partage
+  de l'officine. Une année ordinaire à dix pièces par jour : ~700 Mo de
+  base, ~10 Go avec les copies.
+  - Les octets vont dans `<base>_scans.db`, à côté, **même SQLCipher et
+    même clé** — pas une deuxième cryptographie écrite à la main. La
+    base de travail reste à six mégaoctets : c'est elle qu'on ouvre cent
+    fois par jour et qu'on recopie chaque soir.
+  - `[scans] backups_keep` est séparé et vaut **2**, contre 14 pour la
+    base. C'est tout l'intérêt de la séparation : une pièce ne change
+    jamais après avoir été rangée, on n'a pas besoin d'en garder
+    quatorze états.
+  - La base garde la **fiche** de chaque pièce — libellé, genre, date, à
+    qui elle est attachée. Volontairement : une base copiée seule montre
+    encore ce qui existait, au lieu d'en perdre jusqu'à la trace, et
+    l'ouvrir dit alors quel fichier manque.
+  - Ce que la séparation impose, et qui est tenu : `change_password`
+    rechiffre **les deux** fichiers — l'oublier laissait la liste des
+    pièces s'afficher et pas une seule s'ouvrir, et c'est un test qui l'a
+    trouvé —, « Copier la base… » copie les deux, et la lecture retombe
+    sur l'ancienne colonne pour qu'une base d'avant ouvre encore ses
+    pièces sans rien faire.
+  - Le fichier est nommé d'après la base et non d'un nom fixe : deux
+    bases posées dans le même dossier auraient partagé leurs pièces.
+
+### Fixed
+- **Supprimer une pièce ne rendait rien.** SQLite marque les pages
+  libres et ne rétrécit jamais le fichier : effacer deux cents pièces
+  laissait la base à cinquante-six mégaoctets, et la copie du soir
+  recopiait les cinquante-six. Options › Base reçoit « Compacter la
+  base » — sur son propre fil, comme les autres passes longues — qui
+  déplace ce qui restait de pièces dans la base, balaie les octets
+  orphelins, puis réécrit les deux fichiers. Dans cet ordre : compacter
+  avant d'avoir déplacé réécrirait la base *avec* les pièces dedans.
+
 ## [0.140.0] - 2026-08-29
 
 ### Added

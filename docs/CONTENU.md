@@ -152,10 +152,21 @@ Deux règles valent partout :
   JPEG, TIFF, et le reste est refusé à l'entrée. L'application ressort
   la pièce sur le disque et la confie au système : ce qu'elle a accepté
   est ce qu'elle rendra, et l'extension vient du contenu.
-- **Dans la base, pas à côté** : une ordonnance numérisée en clair à côté
-  d'une base chiffrée annule le chiffrement de la base. D'où le plafond
-  `[scans] max_mb`, et la ligne d'Options › Base qui dit ce que les
-  pièces pèsent — elles voyagent dans chaque sauvegarde quotidienne.
+- **Chiffrées, mais dans leur propre fichier** : `<base>_scans.db` à côté
+  de la base, même SQLCipher et même clé. Une ordonnance numérisée posée
+  en clair annulerait le chiffrement ; la laisser *dans* la base la fait
+  grossir sans mesure — 200 ordonnances N&B portent une base de 6 Mo à
+  56, et les quatorze sauvegardes quotidiennes à 840. La base garde la
+  **fiche** de chaque pièce, pas ses octets : une base copiée seule
+  montre encore ce qui existait.
+- **Ce que la séparation impose** : `change_password` rechiffre les deux
+  fichiers (un test le tient), « Copier la base… » copie les deux,
+  `[scans] backups_keep` est à part (2 par défaut, contre 14 pour la
+  base), et la lecture retombe sur l'ancienne colonne `bytes` pour qu'une
+  base d'avant la séparation ouvre encore ses pièces.
+- **SQLite ne rend jamais la place** : supprimer une pièce libère des
+  pages, pas le fichier. « Compacter la base » déplace ce qui restait,
+  balaie les orphelins, puis réécrit les deux fichiers — dans cet ordre.
 - **Les octets ne se réécrivent pas** : une numérisation est ce que le
   scanner a produit. Le genre, le libellé, la date et la remarque se
   corrigent (compare-and-set) ; le fichier, non. On en range un autre.

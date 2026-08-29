@@ -22,15 +22,69 @@ enum State {
 /// Run [`daily_backup`] on a background thread with its own connection:
 /// `VACUUM INTO` rewrites the whole encrypted file, and doing that
 /// synchronously over a network share would freeze the UI at unlock.
-fn spawn_daily_backup(db_path: std::path::PathBuf, password: String, keep: usize) {
-    if keep == 0 {
+fn spawn_daily_backup(
+    db_path: std::path::PathBuf,
+    password: String,
+    keep: usize,
+    scans_keep: usize,
+) {
+    if keep == 0 && scans_keep == 0 {
         return;
     }
     std::thread::spawn(move || {
         if let Ok(db) = Db::open(&db_path, &password) {
             daily_backup(&db, &db_path, keep);
+            daily_scans_backup(&db, &db_path, scans_keep);
         }
     });
+}
+
+/// La copie quotidienne du fichier des pièces, sur son propre compte.
+///
+/// Séparée de celle de la base, et pas par symétrie : c'est le fichier
+/// qui pèse. Quatorze copies d'une base de six mégaoctets coûtent
+/// quatre-vingt-dix mégaoctets ; quatorze copies d'un fichier de pièces
+/// d'un an en coûtent dix mille. L'officine choisit combien elle en
+/// garde (`[scans] backups_keep`, deux par défaut), et le choix est
+/// possible parce que les deux fichiers sont séparés.
+fn daily_scans_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
+    if keep == 0 {
+        return;
+    }
+    // Rien à copier tant que personne n'a rangé de pièce : un fichier
+    // vide recopié tous les jours n'apprend rien à personne.
+    if db.scan_weight().map(|(n, _)| n) == Ok(0) {
+        return;
+    }
+    let Ok(today) = db.today_iso() else { return };
+    let dir = db::backup_dir(db_path);
+    let target = dir.join(db::scans_backup_name(&today));
+    if target.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
+        return;
+    }
+    if let Err(e) = db.backup_scans_to(&target) {
+        eprintln!("bpm-caddy : {e}");
+        return;
+    }
+    let mut backups: Vec<_> = std::fs::read_dir(&dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with("bpm_caddy_scans-") && n.ends_with(".db"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    backups.sort();
+    while backups.len() > keep {
+        let _ = std::fs::remove_file(backups.remove(0));
+    }
 }
 
 /// One backup per day, in `backups/` next to the database, pruned to
@@ -5054,7 +5108,12 @@ impl App {
                     s
                 }) {
                 Ok(mut session) => {
-                    spawn_daily_backup(config.db_path(), pw.clone(), config.database.backups_keep);
+                    spawn_daily_backup(
+                        config.db_path(),
+                        pw.clone(),
+                        config.database.backups_keep,
+                        config.scans.backups_keep,
+                    );
                     // Demo hook: land on a specific view (screenshots, e2e).
                     match std::env::var("BPM_CADDY_START_VIEW").as_deref() {
                         Ok("dashboard") => {
@@ -5657,6 +5716,10 @@ impl App {
                 let n = outcome.total();
                 (n, trf("opts_db_details_done", n))
             }
+            // Le compactage ne compte rien : il **reprend**. Ce qui
+            // intéresse est la place rendue, et elle se lit sur le
+            // fichier, avant et après.
+            Job::Compact => (1, tr("opts_db_compact_done").to_owned()),
             // « Compléter les médicaments de départ » counts *cards*,
             // which is the first step's answer and not the whole.
             Job::SeedMissing => {
@@ -6961,6 +7024,7 @@ impl App {
                         self.config.db_path(),
                         pw.clone(),
                         self.config.database.backups_keep,
+                        self.config.scans.backups_keep,
                     );
                     // Unlocking after the auto-lock, or first thing in
                     // the morning: reopen the view the post was left on.
@@ -22621,6 +22685,7 @@ impl eframe::App for App {
         let mut db_seed = false;
         let mut db_details = false;
         let mut db_reset = false;
+        let mut db_compact = false;
         // Asked for on the « À propos » page, acted on below: the
         // dialog holds `self.options` mutably while it draws, so
         // anything that touches the rest of the application leaves as a
@@ -22656,7 +22721,9 @@ impl eframe::App for App {
         // toute la table, pas une question à poser par image.
         let scan_weight = match (&self.options, &self.state) {
             (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
-                s.db.scan_weight().ok()
+                s.db.scan_weight()
+                    .ok()
+                    .map(|(n, b)| (n, b, s.db.legacy_scan_count().unwrap_or(0)))
             }
             _ => None,
         };
@@ -23473,7 +23540,7 @@ impl eframe::App for App {
                                         .desired_width(f32::INFINITY)
                                         .hint_text(tr("opts_scan_command_hint")),
                                 );
-                                if let Some((count, bytes)) = scan_weight {
+                                if let Some((count, bytes, legacy)) = scan_weight {
                                     if count > 0 {
                                         ui.add(
                                             egui::Label::new(
@@ -23484,10 +23551,32 @@ impl eframe::App for App {
                                                         &crate::scans::human_size(
                                                             bytes.max(0) as u64
                                                         ),
+                                                        &db::scans_path(&about_db)
+                                                            .file_name()
+                                                            .map(|n| {
+                                                                n.to_string_lossy().into_owned()
+                                                            })
+                                                            .unwrap_or_default(),
                                                     ],
                                                 ))
                                                 .size(11.0)
                                                 .color(motif::text_dim()),
+                                            )
+                                            .wrap(),
+                                        );
+                                    }
+                                    // Ce qui vient de la version d'avant et pèse
+                                    // encore sur la base : le dire, et dire quel
+                                    // bouton le règle.
+                                    if legacy > 0 {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(trf(
+                                                    "opts_scan_legacy",
+                                                    legacy,
+                                                ))
+                                                .size(11.0)
+                                                .color(motif::alert()),
                                             )
                                             .wrap(),
                                         );
@@ -23529,6 +23618,18 @@ impl eframe::App for App {
                                         .clicked()
                                     {
                                         db_details = true;
+                                    }
+                                    // Rendre au disque ce que les
+                                    // suppressions ont laissé : SQLite ne
+                                    // rétrécit jamais un fichier de
+                                    // lui-même, et une pièce numérisée
+                                    // effacée ne rend rien tant que la
+                                    // base n'est pas réécrite.
+                                    if motif::button_enabled(ui, tr("opts_db_compact"), !maint_busy)
+                                        .on_hover_text(tr("opts_db_compact_tooltip"))
+                                        .clicked()
+                                    {
+                                        db_compact = true;
                                     }
                                     let danger = if editor.confirm_reset {
                                         tr("opts_db_reset_confirm")
@@ -23852,6 +23953,8 @@ impl eframe::App for App {
             Some(crate::maintenance::Job::Sync)
         } else if db_reset {
             Some(crate::maintenance::Job::Reset)
+        } else if db_compact {
+            Some(crate::maintenance::Job::Compact)
         } else if db_details {
             Some(crate::maintenance::Job::FillDetails)
         } else if db_seed {
@@ -23893,7 +23996,20 @@ impl eframe::App for App {
                 if target.exists() {
                     let _ = std::fs::remove_file(&target);
                 }
-                session.db.backup_to(&target)
+                // Les deux fichiers, toujours. Copier la base seule
+                // emporterait les fiches des pièces et laisserait leurs
+                // octets derrière : sur le poste d'arrivée, chaque pièce
+                // s'afficherait dans sa liste et refuserait de s'ouvrir.
+                session.db.backup_to(&target).and_then(|()| {
+                    if session.db.scan_weight().map(|(n, _)| n).unwrap_or(0) == 0 {
+                        return Ok(());
+                    }
+                    let side = db::scans_path(&target);
+                    if side.exists() {
+                        let _ = std::fs::remove_file(&side);
+                    }
+                    session.db.backup_scans_to(&side)
+                })
             } else {
                 Err(tr("opts_db_locked").to_owned())
             };

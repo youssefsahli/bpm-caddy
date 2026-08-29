@@ -51,6 +51,27 @@ pub enum Job {
     FillDetails,
     /// Options › Base › « Réinitialiser la base… ». Two clicks, red.
     Reset,
+    /// Options › Base › « Compacter la base ». Rend au disque la place
+    /// que les suppressions ont laissée — c'est la seule passe qui ne
+    /// sème rien et ne fait que reprendre.
+    Compact,
+}
+
+impl Job {
+    /// Every job, so a test cannot forget one when a job is added.
+    ///
+    /// `#[cfg(test)]` like [`run_all`] below: nothing in the application
+    /// enumerates the jobs — each button names the one it starts — but
+    /// the tests must, or a fifth job could ship with no French label
+    /// and nobody would hear about it.
+    #[cfg(test)]
+    pub const ALL: [Job; 5] = [
+        Job::Sync,
+        Job::SeedMissing,
+        Job::FillDetails,
+        Job::Compact,
+        Job::Reset,
+    ];
 }
 
 /// The eight passes that carry this version's reference content into a
@@ -108,6 +129,32 @@ const RESET: &[Step] = &[Step {
     run: Db::wipe_all_data,
 }];
 
+/// Reprendre la place : déplacer ce qui restait de pièces dans la base
+/// principale, balayer les octets orphelins, puis réécrire les deux
+/// fichiers sans leurs pages libres.
+///
+/// Dans cet ordre, et l'ordre est la moitié du travail : compacter avant
+/// d'avoir déplacé réécrirait la base principale avec les pièces encore
+/// dedans, c'est-à-dire tout le contraire de ce qu'on demande.
+const COMPACT: &[Step] = &[
+    Step {
+        key: "maint_step_move_scans",
+        run: Db::move_scans_out,
+    },
+    Step {
+        key: "maint_step_sweep_scans",
+        run: Db::sweep_orphan_scans,
+    },
+    Step {
+        key: "maint_step_compact",
+        run: Db::compact,
+    },
+    Step {
+        key: "maint_step_compact_scans",
+        run: Db::compact_scans,
+    },
+];
+
 /// The passes a job runs, in order.
 ///
 /// « Compléter les médicaments de départ » and « Synchroniser » have
@@ -119,6 +166,7 @@ pub fn steps(job: Job) -> Vec<&'static Step> {
     match job {
         Job::Sync | Job::SeedMissing => CONTENT.iter().collect(),
         Job::FillDetails => DETAILS.iter().collect(),
+        Job::Compact => COMPACT.iter().collect(),
         Job::Reset => RESET.iter().chain(CONTENT.iter()).collect(),
     }
 }
@@ -244,7 +292,7 @@ mod tests {
     /// pharmacist ends up looking at `maint_step_dispositifs`.
     #[test]
     fn every_step_is_named_in_french() {
-        for job in [Job::Sync, Job::SeedMissing, Job::FillDetails, Job::Reset] {
+        for job in Job::ALL {
             for step in steps(job) {
                 let label = crate::strings::tr(step.key);
                 assert_ne!(label, step.key, "clé sans libellé : {}", step.key);
@@ -259,7 +307,7 @@ mod tests {
     /// harmless at four minutes.
     #[test]
     fn no_job_runs_the_same_pass_twice() {
-        for job in [Job::Sync, Job::SeedMissing, Job::FillDetails, Job::Reset] {
+        for job in Job::ALL {
             let mut seen = std::collections::HashSet::new();
             for step in steps(job) {
                 assert!(seen.insert(step.key), "{:?} répète {}", job, step.key);
