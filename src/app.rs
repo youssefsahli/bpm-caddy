@@ -5889,20 +5889,31 @@ impl App {
                 .show(ctx, |ui| {
                     width = ui.max_rect().width() + 16.0;
                     ui.add_space(6.0);
-                    match view {
-                        MainView::Drugs => Self::nav_drugs(ui, session, focus),
-                        MainView::Agenda => Self::nav_agenda(ui, session),
-                        MainView::Transmissions => Self::nav_carnet(ui, session),
-                        MainView::VaccineMap => Self::nav_map(ui, session),
-                        // Le dock des patients, et pas par défaut : pour
-                        // inscrire une délivrance au registre il faut le
-                        // dossier ouvert, et c'est cette liste qui
-                        // l'ouvre. « Ouvrez d'abord le dossier » est le
-                        // message du formulaire ; voici le moyen.
-                        MainView::Dashboard | MainView::Search | MainView::Registres => {
-                            Self::nav_patients(ui, session, focus, &config)
+                    // Dans le cadre, et découpé à lui. Le calendrier du
+                    // mois de l'agenda demande plus large que le dock ne
+                    // l'est : il peignait *à côté*, sur une bande que le
+                    // panneau ne couvre pas et où l'on voyait le fond
+                    // noir de la fenêtre. `allocate_new_ui` ne fixe
+                    // qu'un rectangle maximal et egui peint au travers —
+                    // c'est écrit dans les notes du projet, et c'est
+                    // exactement ce qui est arrivé.
+                    let frame = ui.max_rect();
+                    motif::inside(ui, frame, |ui| {
+                        match view {
+                            MainView::Drugs => Self::nav_drugs(ui, session, focus),
+                            MainView::Agenda => Self::nav_agenda(ui, session),
+                            MainView::Transmissions => Self::nav_carnet(ui, session),
+                            MainView::VaccineMap => Self::nav_map(ui, session),
+                            // Le dock des patients, et pas par défaut : pour
+                            // inscrire une délivrance au registre il faut le
+                            // dossier ouvert, et c'est cette liste qui
+                            // l'ouvre. « Ouvrez d'abord le dossier » est le
+                            // message du formulaire ; voici le moyen.
+                            MainView::Dashboard | MainView::Search | MainView::Registres => {
+                                Self::nav_patients(ui, session, focus, &config)
+                            }
                         }
-                    }
+                    });
                 });
         }
         if width >= 130.0 {
@@ -10833,6 +10844,18 @@ impl App {
             + 8.0
     }
 
+    /// How wide a heading is, for the same reason `button_width` exists:
+    /// a band that shares its row with a title has to know how much the
+    /// title takes before deciding how many rows it needs.
+    fn heading_width(ui: &egui::Ui, label: &str) -> f32 {
+        let font = egui::TextStyle::Heading.resolve(ui.style());
+        ui.fonts(|f| {
+            f.layout_no_wrap(label.to_owned(), font, motif::text())
+                .size()
+                .x
+        }) + ui.spacing().item_spacing.x
+    }
+
     /// How tall a `motif::button` is, by the formula `motif::button`
     /// itself uses: the button font's line, plus the padding the density
     /// sets and the pixel the bevel adds, top and bottom.
@@ -10864,6 +10887,46 @@ impl App {
     /// [`wrapped_rows_of`] for a row that is all buttons.
     fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
         Self::wrapped_rows_of(ui, width, labels.map(|l| Self::button_width(ui, l)))
+    }
+
+    /// How tall a « titre + boutons + sous-titre » band has to be.
+    ///
+    /// Measured, never a pixel constant. The codex, the protocols and
+    /// the dispositifs all carved theirs at « 116 px if narrower than
+    /// 940, else 64 » — a guess that held at the default text size and
+    /// cut the subtitle in half at `text_scale = 1.25`, where a heading
+    /// is taller, a button is taller, and the subtitle wraps onto two
+    /// lines. That is the project's own rule broken three times in the
+    /// same shape, which is what a copied constant does.
+    ///
+    /// `controls` are the widths of what shares the title's row — the
+    /// title itself included, since it wraps with them.
+    fn title_band_height(
+        ui: &egui::Ui,
+        width: f32,
+        controls: impl Iterator<Item = f32>,
+        subtitle: &str,
+    ) -> f32 {
+        let usable = (width - 24.0).max(80.0);
+        let rows = Self::wrapped_rows_of(ui, usable, controls);
+        // A heading is taller than a button, and it is on the first row.
+        let heading = ui.text_style_height(&egui::TextStyle::Heading);
+        let button = Self::button_height(ui);
+        let spacing = ui.spacing().item_spacing.y;
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        // The subtitle wraps like any label: how many lines it takes is
+        // its width over the room it has, and never fewer than one.
+        let sub_w = ui.fonts(|f| {
+            f.layout_no_wrap(
+                subtitle.to_owned(),
+                egui::FontId::proportional(11.5),
+                motif::text_dim(),
+            )
+            .size()
+            .x
+        });
+        let sub_rows = (sub_w / usable).ceil().max(1.0);
+        heading.max(button) + (rows - 1.0) * (button + spacing) + spacing + sub_rows * line + 14.0
     }
 
     /// How tall the identity band needs to be: a header and one or two
@@ -14854,9 +14917,22 @@ impl App {
         let body = motif::visible_rect(ui);
         // At a counter width, with both docks out, the title and the
         // four controls do not fit on one line: they wrap, and the band
-        // is given the room for the second row.
-        let narrow = body.width() < 940.0;
-        let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
+        // is given the room for the rows they take — measured, and the
+        // subtitle's own wrapping with them.
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("codex_title")),
+                Self::button_width(ui, tr("patient_back")),
+                220.0,
+                Self::button_width(ui, tr("dash_print")),
+                Self::button_width(ui, tr("codex_new")),
+            ]
+            .into_iter(),
+            tr("codex_subtitle"),
+        );
+        let head = motif::split_rows(body, &[band, 0.0], 6.0);
         motif::inside(ui, head[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("codex_title"));
@@ -16728,8 +16804,20 @@ impl App {
 
     fn dispositifs_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
-        let narrow = body.width() < 940.0;
-        let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("dispo_title")),
+                Self::button_width(ui, tr("patient_back")),
+                220.0,
+                Self::button_width(ui, tr("dash_print")),
+                Self::button_width(ui, tr("dispo_new")),
+            ]
+            .into_iter(),
+            tr("dispo_subtitle"),
+        );
+        let head = motif::split_rows(body, &[band, 0.0], 6.0);
         motif::inside(ui, head[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("dispo_title"));
@@ -17150,8 +17238,19 @@ impl App {
     /// twenty, which is the shape this application is supposed to avoid.
     fn protocols_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
         let body = motif::visible_rect(ui);
-        let narrow = body.width() < 940.0;
-        let head = motif::split_rows(body, &[if narrow { 116.0 } else { 64.0 }, 0.0], 6.0);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("proto_title")),
+                Self::button_width(ui, tr("patient_back")),
+                220.0,
+                Self::button_width(ui, tr("proto_new")),
+            ]
+            .into_iter(),
+            tr("proto_subtitle"),
+        );
+        let head = motif::split_rows(body, &[band, 0.0], 6.0);
         let mut create = false;
         motif::inside(ui, head[0], |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -20011,10 +20110,23 @@ impl App {
     /// The "Exporter CSV" button with its status line: writes every
     /// interview (with fees) to `exports/` next to the database and
     /// opens the file, for billing reconciliation with the LGO.
-    fn export_controls(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
-        // Right-to-left inside the header bar: the buttons hug the
-        // corner instead of stacking down the middle of the page.
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    ///
+    /// `wrap` chooses the layout, and it is not cosmetic. Hugging the
+    /// right corner is right when the buttons share the title's row:
+    /// they sit where the eye already goes. It is *wrong* on a row of
+    /// their own, because a right-to-left row wider than its pane
+    /// overflows **to the left** — off the edge, under the dock, with
+    /// nothing to show for it. A row that overflows to the right looks
+    /// cut; one that overflows to the left looks like a button somebody
+    /// misnamed, which is how « Récapitulatif de facturation… » read as
+    /// « itulatif de facturation… » at 1024 px in large text.
+    fn export_controls(ui: &mut egui::Ui, session: &mut Session, config: &Config, wrap: bool) {
+        let layout = if wrap {
+            egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true)
+        } else {
+            egui::Layout::right_to_left(egui::Align::Center)
+        };
+        ui.with_layout(layout, |ui| {
             if motif::button(ui, tr("dash_export")).clicked() {
                 match session.db.export_rows(config.rules.cycle_months.max(1)) {
                     Ok(rows) => {
@@ -20150,9 +20262,43 @@ impl App {
         // ---- Header: title, the discreet-mode switch, the exports ----
         let masked = config.ui.discreet_finances && !session.show_amounts;
         ui.add_space(6.0);
+        // Le titre et les boutons sur une ligne **s'ils y tiennent**, et
+        // sinon les boutons sur leur propre rangée dessous.
+        //
+        // Mesuré, jamais un seuil en pixels. Alignés à droite sans cette
+        // mesure, les trois boutons débordaient **vers la gauche** quand
+        // la somme de leurs largeurs dépassait le volet : à 1024 px en
+        // texte 1,25, « Récapitulatif de facturation… » sortait par le
+        // bord gauche de l'espace de travail et le titre avait disparu.
+        // Un débordement vers la droite se voit ; celui-là ne se voit
+        // pas, il se lit comme un bouton mal nommé.
+        let gap = ui.spacing().item_spacing.x;
+        let buttons_w: f32 = [
+            tr("dash_billing_recap"),
+            tr("dash_call_list"),
+            tr("dash_export"),
+        ]
+        .into_iter()
+        .map(|l| Self::button_width(ui, l) + gap)
+        .sum::<f32>()
+            + if config.ui.discreet_finances {
+                34.0
+            } else {
+                0.0
+            };
+        let heading = egui::TextStyle::Heading.resolve(ui.style());
+        let title_w = ui.fonts(|f| {
+            f.layout_no_wrap(tr("dash_title").to_owned(), heading, motif::text())
+                .size()
+                .x
+        });
+        let roomy = title_w + gap + buttons_w <= motif::visible_rect(ui).width() - 16.0;
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             ui.heading(tr("dash_title"));
+            if !roomy {
+                return;
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if config.ui.discreet_finances {
                     // Deliberately unobtrusive: a small unlabeled square,
@@ -20176,9 +20322,15 @@ impl App {
                         session.show_amounts = !session.show_amounts;
                     }
                 }
-                Self::export_controls(ui, session, config);
+                Self::export_controls(ui, session, config, false);
             });
         });
+        if !roomy {
+            ui.horizontal_wrapped(|ui| {
+                ui.add_space(4.0);
+                Self::export_controls(ui, session, config, true);
+            });
+        }
         ui.add_space(6.0);
 
         // ---- The figures every panel below reads from ----

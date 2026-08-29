@@ -5,6 +5,34 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.138.0] - 2026-08-29
+
+### Fixed
+- **Deuxième tour de la passe sur l'interface**, sur les vues que le
+  premier n'avait pas regardées. Quatre défauts, tous trouvés en
+  ouvrant les images de `./scripts/eyeball.sh`.
+- **Une bande noire le long du dock, sur l'agenda.** Le calendrier du
+  mois demande plus large que le dock ne l'est : il peignait *à côté*,
+  sur une bande que le panneau ne couvre pas, et l'on y voyait le fond
+  de la fenêtre. `allocate_new_ui` ne fixe qu'un rectangle maximal et
+  egui peint au travers — c'est écrit dans les notes du projet, et c'est
+  exactement ce qui est arrivé. Les cinq navigateurs sont maintenant
+  dessinés dans `motif::inside`, donc aucun ne peut en sortir.
+- **Les boutons du tableau de bord débordaient vers la gauche.** Alignés
+  à droite, une rangée plus large que son volet sort par le bord gauche,
+  passe sous le dock, et « Récapitulatif de facturation… » se lisait
+  « itulatif de facturation… » — le titre, lui, avait entièrement
+  disparu. Un débordement vers la droite se voit ; celui-là se lit comme
+  un bouton que quelqu'un a mal nommé. Le titre et les boutons partagent
+  une ligne s'ils y tiennent, mesuré, et sinon les boutons prennent la
+  leur — et de gauche à droite, où déborder se verrait.
+- **Trois sous-titres coupés en deux** — codex, protocoles, dispositifs.
+  Les trois bandes valaient « 116 px si plus étroit que 940, sinon 64 » :
+  un même nombre deviné, recopié trois fois, juste à la taille de texte
+  par défaut et faux à 1,25, où un titre est plus haut, un bouton est
+  plus haut et le sous-titre passe à la ligne. `title_band_height` les
+  mesure, sous-titre compris.
+
 ## [0.137.0] - 2026-08-29
 
 ### Changed
