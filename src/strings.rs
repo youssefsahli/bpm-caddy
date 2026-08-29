@@ -71,6 +71,7 @@ mod tests {
             ("maintenance.rs", include_str!("maintenance.rs")),
             ("graph.rs", include_str!("graph.rs")),
             ("ordonnancier.rs", include_str!("ordonnancier.rs")),
+            ("scans.rs", include_str!("scans.rs")),
         ];
         let mut missing: Vec<String> = Vec::new();
         for (file, source) in SOURCES {
@@ -133,6 +134,7 @@ mod tests {
             include_str!("maintenance.rs"),
             include_str!("graph.rs"),
             include_str!("ordonnancier.rs"),
+            include_str!("scans.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

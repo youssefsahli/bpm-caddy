@@ -5,6 +5,49 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.136.0] - 2026-08-29
+
+### Added
+- **Les pièces numérisées.** L'ordonnance, la déclaration d'accident du
+  travail, le courrier du spécialiste, le compte rendu de biologie : une
+  officine reçoit du papier toute la journée et le range dans un
+  classeur qui n'est pas à côté du dossier.
+  - Un onglet « Pièces » sur la fiche patient — c'est là qu'on cherche
+    une ordonnance, et l'y faire chercher ailleurs serait un clic de plus
+    cent fois par jour. Le même volet sert la fiche médicament (une
+    notice, un courrier de retrait de lot) et l'officine (les factures,
+    le registre AT, ce qui n'appartient à aucun dossier).
+  - **Le format se lit dans les octets, jamais dans le nom.**
+    L'application garde la pièce puis la ressort sur le disque et la
+    confie au système : accepter un fichier parce qu'il s'appelle `.pdf`
+    serait accepter de rendre plus tard au système ce qu'on lui a pris
+    sans le regarder. Quatre nombres magiques — PDF, PNG, JPEG, TIFF — et
+    le reste est refusé à l'entrée, où le refus se comprend. L'extension
+    sous laquelle la pièce ressort vient du contenu.
+  - **Dans la base et non dans un dossier à côté** : une ordonnance
+    numérisée posée en clair à côté d'une base chiffrée annule le
+    chiffrement de la base. D'où un plafond de taille (`[scans] max_mb`,
+    dix mégaoctets par défaut) et une ligne dans Options › Base qui dit
+    ce que les pièces pèsent — elles voyagent dans chaque sauvegarde
+    quotidienne, et une officine qui ne le voit pas s'en aperçoit le jour
+    où la copie du soir ne tient plus.
+  - **Les octets ne se réécrivent jamais.** Une numérisation est ce que
+    le scanner a produit ; la remplacer sous le même libellé ferait
+    mentir tout ce qui la cite. Le genre, le libellé, la date et la
+    remarque se corrigent — compare-and-set, comme toute ligne partagée.
+    Une pièce se supprime, elle, en deux clics : elle a pu être
+    numérisée deux fois ou attachée au mauvais dossier.
+  - **Le scanner est en configuration**, comme la séquence APDU de la
+    carte Vitale : `scanimage` sur un poste Linux, le pilote du
+    constructeur ailleurs, et l'officine sait quel est son matériel mieux
+    que ce binaire. `{out}` est le fichier que l'application ira lire, et
+    une commande qui ne le nomme pas est refusée avant d'être lancée.
+    Réglable dans Options › Base ; vide, il n'y a qu'« Importer… ».
+  - Le découpage de cette commande a son test, et il a servi : rempli
+    avant d'être découpé, un chemin de sortie contenant une espace —
+    « C:\Users\Jean Martin\… », la moitié des postes — devenait deux
+    arguments, et le scanner écrivait dans « C:\Users\Jean ».
+
 ## [0.135.0] - 2026-08-29
 
 ### Added

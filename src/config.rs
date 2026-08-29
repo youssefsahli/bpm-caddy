@@ -203,6 +203,27 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # rythme que l'officine se donne, et il n'a rien à voir avec le minimum
 # légal.
 # count_days = 30
+
+[scans]
+# Les pièces numérisées : ordonnance, feuille d'accident du travail,
+# courrier, compte rendu de biologie.
+#
+# Elles sont rangées **dans** la base, qui est chiffrée : une ordonnance
+# numérisée posée en clair à côté d'une base chiffrée annule le
+# chiffrement de la base. Elles voyagent donc dans chaque sauvegarde
+# quotidienne — d'où le plafond ci-dessous.
+#
+# La commande du scanner, si l'officine en a une. « {out} » est remplacé
+# par le chemin où l'application ira lire le fichier ; sans lui, la
+# commande est refusée plutôt qu'exécutée pour rien. Vide : seul
+# « Importer… » est proposé, ce qui suffit puisque tous les logiciels de
+# scanner savent écrire un PDF quelque part.
+#   Linux  : command = "scanimage --format=pdf --resolution 300 -o {out}"
+#   Windows: command = "C:\\Program Files\\Scanner\\scan.exe /out \"{out}\""
+# command = ""
+#
+# Le plus gros fichier qui entre dans la base, en mégaoctets.
+# max_mb = 10
 "#;
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -218,7 +239,44 @@ pub struct Config {
     pub disclaimers: DisclaimersConfig,
     pub locations: LocationsConfig,
     pub stock: StockConfig,
+    pub scans: ScansConfig,
     pub vitale: VitaleConfig,
+}
+
+/// Les pièces numérisées : d'où elles viennent, et jusqu'où elles vont.
+///
+/// **La commande du scanner est ici et non dans le code**, pour la même
+/// raison que la séquence APDU de la carte Vitale : `scanimage` sur un
+/// poste Linux, le pilote du constructeur ailleurs, et l'officine sait
+/// quel est son matériel mieux que ce binaire. Vide par défaut — sans
+/// commande il n'y a qu'« Importer… », ce qui suffit puisque tous les
+/// logiciels de scanner savent écrire un PDF quelque part.
+///
+/// Le **plafond de taille** existe parce que les pièces vivent *dans* la
+/// base chiffrée : elles voyagent donc dans chaque sauvegarde
+/// quotidienne et dans chaque copie sur le partage, et une numérisation
+/// à 600 ppp produit un TIFF de deux cents mégaoctets sans prévenir.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct ScansConfig {
+    /// La ligne de commande qui produit un fichier, `{out}` étant le
+    /// chemin où l'application ira le lire. Vide = pas de scanner.
+    pub command: String,
+    /// Le plus gros fichier qui entre dans la base, en mégaoctets.
+    pub max_mb: u32,
+}
+
+impl Default for ScansConfig {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            // Une ordonnance numérisée en noir et blanc à 300 ppp fait
+            // quelques centaines de kilooctets ; dix mégaoctets laissent
+            // passer la couleur et le multipage, et arrêtent le TIFF de
+            // deux cents.
+            max_mb: 10,
+        }
+    }
 }
 
 /// Le registre des stupéfiants et la réception des commandes.

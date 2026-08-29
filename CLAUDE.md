@@ -34,6 +34,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   is **not** a sum, an inventory *sets* it —, the dispensing number,
   the inventory gap, and what to go and count. Pure, tested, no clock:
   the day is passed in),
+  `src/scans.rs` (the scanned pieces: what a file **is**, read in its
+  bytes and never in its name, what a piece can be, and how the
+  officine's own scanner is asked for one — pure, tested, reads no
+  disk),
   `src/maintenance.rs` (the long passes over the base — synchroniser,
   compléter, réinitialiser — as named steps run on a thread of their own
   against a connection of their own). The
@@ -183,6 +187,15 @@ upgrade is decided, the number to defend is the logic one, and
   The dispensing number is assigned **inside** the inserting
   transaction, never by the caller: two PCs dispensing at once would ask
   for the same one.
+- **A scanned piece's format is read in its bytes, never in its name.**
+  The application keeps it and later hands it back to the OS to open;
+  accepting a file because it is called `.pdf` is agreeing to hand back
+  something nobody looked at. Four magic numbers (PDF, PNG, JPEG, TIFF)
+  and the rest is refused at the door. Pieces live **in** the encrypted
+  base and not in a folder beside it — a scanned ordonnance in the clear
+  next to an encrypted base undoes the encryption — which is why there is
+  a size cap (`[scans] max_mb`), and why Options › Base says what they
+  weigh: they travel in every daily backup.
 - A line of a register carries the patient's **file number**, never the
   name: a register is printed and left on a counter, and what it must
   allow is going *back* to the patient, not displaying them.
@@ -203,7 +216,8 @@ upgrade is decided, the number to defend is the logic one, and
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient|graph|stup`
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph|stup|scans|
+  patient_scans`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

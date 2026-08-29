@@ -1132,6 +1132,9 @@ enum PatientTab {
     /// The file's ordonnance against the one the patient came back from
     /// hospital with: what was stopped, changed, added or replaced.
     Conciliation,
+    /// The paper the file has: the scanned ordonnance, the AT/MP sheet,
+    /// the specialist's letter, the laboratory report.
+    Scans,
 }
 
 /// The ordonnance being composed after a positive TROD.
@@ -1538,6 +1541,26 @@ struct Session {
     /// error line, which is painted in the alert red: « Eliquis ajouté à
     /// l'ordonnance » in red reads as a refusal.
     graph_note: Option<String>,
+    /// Les pièces numérisées du sujet ouvert, et la question qu'elles
+    /// répondent — le sujet, son identifiant. Rechargées à l'ouverture
+    /// et après chaque écriture, jamais par image.
+    scans: Vec<db::Scan>,
+    scans_key: Option<(&'static str, i64)>,
+    scan_new_kind: crate::scans::DocKind,
+    scan_new_label: String,
+    scan_new_day: String,
+    scan_confirm: Option<i64>,
+    /// La pièce en cours de correction, et la copie qu'elle a été
+    /// chargée depuis — la référence du compare-and-set. Ce qu'on
+    /// corrige est ce qu'on a écrit **autour** de la pièce ; les octets
+    /// ne bougent jamais.
+    scan_edit: Option<(db::Scan, db::Scan)>,
+    scan_note: Option<(bool, String)>,
+    /// L'écran des pièces, quand il est ouvert : à quoi elles sont
+    /// attachées, et le titre à écrire en haut. Le dossier patient a le
+    /// sien en onglet — c'est là qu'on cherche une ordonnance ; la fiche
+    /// médicament et l'officine passent par cet écran.
+    show_scans: Option<(crate::scans::Subject, i64, String)>,
     /// Le registre des stupéfiants : les produits suivis avec leur solde
     /// et leur dernier comptage, le produit ouvert, et la ligne en cours
     /// d'écriture.
@@ -1867,6 +1890,15 @@ impl Session {
             graph_key: None,
             graph_query: String::new(),
             graph_note: None,
+            scans: Vec::new(),
+            scans_key: None,
+            scan_new_kind: crate::scans::DocKind::Ordonnance,
+            scan_new_label: String::new(),
+            scan_new_day: String::new(),
+            scan_confirm: None,
+            scan_edit: None,
+            scan_note: None,
+            show_scans: None,
             show_stup: false,
             stup_summary: Vec::new(),
             stup_open: None,
@@ -2379,6 +2411,7 @@ impl Session {
         self.show_mono = false;
         self.show_graph = false;
         self.show_stup = false;
+        self.show_scans = None;
         self.codex_open = None;
         self.dispo_open = None;
         self.protocol_open = None;
@@ -2407,6 +2440,35 @@ impl Session {
         }
         self.drug_hits = self.drug_results(limit);
         self.drug_hits_key = Some(key);
+    }
+
+    /// Ouvrir l'écran des pièces sur un sujet.
+    fn open_scans(&mut self, subject: crate::scans::Subject, id: i64, title: String) {
+        self.close_drug_lists();
+        self.show_scans = Some((subject, id, title));
+        self.scan_note = None;
+        self.scan_edit = None;
+        // La clé du mémo change avec le sujet, donc la relecture se fait
+        // toute seule ; ceci est pour le cas où l'on rouvre le même.
+        self.scans_key = None;
+    }
+
+    /// Relire les pièces d'un sujet, si ce n'est pas déjà celles-là.
+    ///
+    /// La clé est le sujet ; `scans_key = None` force la relecture après
+    /// une écriture. Sans mémo, ouvrir un dossier ferait une requête par
+    /// image sur une table qui porte des mégaoctets.
+    fn refresh_scans(&mut self, subject: crate::scans::Subject, subject_id: i64) {
+        let key = (subject.as_key(), subject_id);
+        if self.scans_key == Some(key) {
+            return;
+        }
+        self.scans = self
+            .db
+            .scans(subject.as_key(), subject_id)
+            .unwrap_or_default();
+        self.scans_key = Some(key);
+        self.scan_confirm = None;
     }
 
     /// Relire le registre : le résumé de tous les produits, et les
@@ -4977,6 +5039,28 @@ impl App {
                         }
                         // Landing on the quick picker needs the patient
                         // under it: same branch, one flag more.
+                        Ok("patient_scans") => {
+                            // Le dossier qui a des pièces, et non le
+                            // premier de la liste : un onglet ouvert sur
+                            // « Aucune pièce » n'exerce ni la liste, ni
+                            // les genres, ni les boutons de chaque ligne.
+                            let with = session
+                                .patients
+                                .iter()
+                                .find(|p| {
+                                    session
+                                        .db
+                                        .scans("PATIENT", p.id)
+                                        .is_ok_and(|l| !l.is_empty())
+                                })
+                                .or_else(|| session.patients.first())
+                                .cloned();
+                            if let Some(p) = with {
+                                session.open_patient(p);
+                            }
+                            session.patient_tab = PatientTab::Scans;
+                            session.view = MainView::Search;
+                        }
                         Ok(v @ ("patient" | "act_picker" | "revue")) => {
                             session.act_picker = v == "act_picker";
                             // Prefer the fullest record for screenshots;
@@ -5055,6 +5139,18 @@ impl App {
                             if v == "codex_open" {
                                 session.codex_open = session.preparations.first().map(|p| p.id);
                             }
+                            session.view = MainView::Drugs;
+                        }
+                        // Les pièces : celles de l'officine, et
+                        // l'onglet « Pièces » d'un dossier — deux
+                        // chemins vers le même volet, donc les deux sont
+                        // ouverts par le garde-fou.
+                        Ok("scans") => {
+                            session.open_scans(
+                                crate::scans::Subject::Officine,
+                                0,
+                                tr("scan_officine").to_owned(),
+                            );
                             session.view = MainView::Drugs;
                         }
                         // Le registre des stupéfiants, sur le produit
@@ -7332,12 +7428,13 @@ impl App {
         // Ctrl+Tab walks the workspace's. Three of them had no keyboard
         // route at all. Alt, so the bare arrows keep driving the acts
         // table and the agenda; and not while a field has the keyboard.
-        const TABS: [PatientTab; 5] = [
+        const TABS: [PatientTab; 6] = [
             PatientTab::Acts,
             PatientTab::Vaccins,
             PatientTab::Bio,
             PatientTab::Locations,
             PatientTab::Conciliation,
+            PatientTab::Scans,
         ];
         let mut active = TABS
             .iter()
@@ -7362,6 +7459,7 @@ impl App {
                 motif::Tab::new(tr("patient_tab_bio")),
                 motif::Tab::new(tr("patient_tab_locations")),
                 motif::Tab::new(tr("patient_tab_conciliation")),
+                motif::Tab::new(tr("patient_tab_scans")),
             ];
             if let Some(motif::TabAction::Select(i)) =
                 motif::tab_strip(ui, "patient_tabs", &tabs, active)
@@ -7386,6 +7484,18 @@ impl App {
         }
         if session.patient_tab == PatientTab::Conciliation {
             Self::patient_conciliation_pane(ui, session, patient, work, operator, config);
+            return;
+        }
+        if session.patient_tab == PatientTab::Scans {
+            Self::scans_pane(
+                ui,
+                session,
+                crate::scans::Subject::Patient,
+                patient.id,
+                work,
+                operator,
+                config,
+            );
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
@@ -15327,6 +15437,443 @@ impl App {
     /// « quelle poche » are the questions, and they are answered by the
     /// family before they are answered by the name. The families
     /// themselves are alphabetical, since the team invents its own.
+    /// L'écran des pièces d'une fiche médicament ou de l'officine.
+    ///
+    /// Le dossier patient a le sien en onglet — c'est là qu'on cherche
+    /// une ordonnance, et l'y faire chercher ailleurs serait un clic de
+    /// plus cent fois par jour. Les deux autres sujets passent par ici,
+    /// et c'est le même volet en dessous : une seule chose à corriger.
+    fn scans_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
+        let Some((subject, id, title)) = session.show_scans.clone() else {
+            return;
+        };
+        let body = motif::visible_rect(ui);
+        let head = Self::button_height(ui) + 14.0;
+        let rows = motif::split_rows(body, &[head, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(title.as_str());
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_scans = None;
+                }
+            });
+        });
+        Self::scans_pane(ui, session, subject, id, rows[1], operator, config);
+    }
+
+    /// Les pièces numérisées d'un sujet : la liste, ce qu'on y ajoute,
+    /// et de quoi ouvrir ce qu'on a rangé.
+    ///
+    /// Le même volet sert le dossier patient, la fiche médicament et
+    /// l'officine — c'est la même question posée à trois endroits, et un
+    /// deuxième écran pour la même chose serait un deuxième écran à
+    /// corriger.
+    fn scans_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        subject: crate::scans::Subject,
+        subject_id: i64,
+        rect: egui::Rect,
+        operator: &str,
+        config: &Config,
+    ) {
+        use crate::scans::{DocKind, Subject};
+        session.refresh_scans(subject, subject_id);
+        // La bande de saisie est mesurée : deux rangées de pastilles de
+        // genre sur un volet étroit, plus la rangée des champs et celle
+        // des boutons.
+        let kinds = Self::wrapped_rows(
+            ui,
+            rect.width() - 24.0,
+            DocKind::ALL.iter().map(|k| tr(k.label_key())),
+        );
+        let band = (kinds + 2.0) * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 22.0;
+        let rows = motif::split_rows(rect, &[band, 0.0], 6.0);
+
+        let mut import = false;
+        let mut scan_now = false;
+        let mut open_id: Option<i64> = None;
+        let mut drop_id: Option<(i64, String)> = None;
+        let mut edit: Option<db::Scan> = None;
+        let mut save_edit = false;
+        let mut close_edit = false;
+
+        motif::panel(ui, rows[0], Some(tr("scan_add")), |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for k in DocKind::ALL {
+                    if motif::toggle(ui, tr(k.label_key()), session.scan_new_kind == k).clicked() {
+                        session.scan_new_kind = k;
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                let w = (ui.available_width() * 0.4).clamp(120.0, 300.0);
+                ui.add_sized(
+                    [w, Self::button_height(ui)],
+                    egui::TextEdit::singleline(&mut session.scan_new_label)
+                        .hint_text(tr("scan_label_hint")),
+                );
+                // Mesurée sur le texte d'invite : « Date du document »
+                // dans un champ de 110 px se lit « Date du docume », ce
+                // qui est un champ dont personne ne sait ce qu'il veut.
+                ui.add_sized(
+                    [
+                        Self::button_width(ui, tr("scan_day_hint")) + 8.0,
+                        Self::button_height(ui),
+                    ],
+                    egui::TextEdit::singleline(&mut session.scan_new_day)
+                        .hint_text(tr("scan_day_hint")),
+                );
+            });
+            ui.horizontal_wrapped(|ui| {
+                if motif::button(ui, tr("scan_import"))
+                    .on_hover_text(tr("scan_import_tooltip"))
+                    .clicked()
+                {
+                    import = true;
+                }
+                // Le bouton du scanner n'apparaît que si l'officine a
+                // écrit sa commande : proposer un bouton qui ne peut
+                // qu'échouer est pire que ne rien proposer.
+                if !config.scans.command.trim().is_empty()
+                    && motif::button(ui, tr("scan_scan"))
+                        .on_hover_text(tr("scan_scan_tooltip"))
+                        .clicked()
+                {
+                    scan_now = true;
+                }
+                if let Some((is_error, msg)) = &session.scan_note {
+                    ui.label(
+                        egui::RichText::new(msg.as_str())
+                            .size(11.0)
+                            .color(if *is_error {
+                                motif::alert()
+                            } else {
+                                motif::accent()
+                            }),
+                    );
+                }
+            });
+        });
+
+        motif::panel(ui, rows[1], Some(tr("scan_filed")), |ui| {
+            let body = ui.available_rect_before_wrap();
+            let inner = motif::well(ui, body);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("scans_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if session.scans.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("scan_none"))
+                                    .size(11.5)
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for sc in &session.scans {
+                            let kind = DocKind::from_key(&sc.doc_kind);
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tr(kind.label_key()))
+                                        .size(11.0)
+                                        .color(motif::chart::series_color(kind.series())),
+                                );
+                                let when = if sc.taken_on.is_empty() {
+                                    // Sans date portée par le document,
+                                    // celle du rangement : une pièce
+                                    // sans repère temporel ne se
+                                    // retrouve pas.
+                                    sc.created_at.get(..10).unwrap_or("").to_owned()
+                                } else {
+                                    sc.taken_on.clone()
+                                };
+                                ui.label(
+                                    egui::RichText::new(db::format_french_date(&when))
+                                        .size(11.0)
+                                        .monospace()
+                                        .color(motif::text_dim()),
+                                );
+                                if motif::button(ui, &sc.label)
+                                    .on_hover_text(tr("scan_open_tooltip"))
+                                    .clicked()
+                                {
+                                    open_id = Some(sc.id);
+                                }
+                                ui.label(
+                                    egui::RichText::new(crate::scans::human_size(
+                                        sc.size.max(0) as u64
+                                    ))
+                                    .size(10.5)
+                                    .color(motif::text_dim()),
+                                );
+                                if !sc.remark.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(sc.remark.as_str())
+                                            .size(10.5)
+                                            .color(motif::text_dim()),
+                                    );
+                                }
+                                if motif::button(ui, tr("scan_edit"))
+                                    .on_hover_text(tr("scan_edit_tooltip"))
+                                    .clicked()
+                                {
+                                    edit = Some(sc.clone());
+                                }
+                                // Deux clics pour retirer, comme partout
+                                // ailleurs : une pièce se supprime, mais
+                                // pas par un frôlement.
+                                let armed = session.scan_confirm == Some(sc.id);
+                                if motif::button(
+                                    ui,
+                                    if armed {
+                                        tr("scan_delete_confirm")
+                                    } else {
+                                        tr("scan_delete")
+                                    },
+                                )
+                                .clicked()
+                                {
+                                    if armed {
+                                        drop_id = Some((sc.id, sc.label.clone()));
+                                    } else {
+                                        session.scan_confirm = Some(sc.id);
+                                    }
+                                }
+                            });
+                        }
+                    });
+            });
+        });
+
+        // La correction de ce qu'on a écrit **autour** d'une pièce :
+        // son genre, son libellé, sa date, sa remarque. Les octets ne
+        // sont pas dans ce formulaire et ne peuvent pas l'être — une
+        // numérisation est ce que le scanner a produit, et la remplacer
+        // sous le même libellé ferait mentir tout ce qui la cite.
+        if let Some((edited, _)) = &mut session.scan_edit {
+            let mut kind = crate::scans::DocKind::from_key(&edited.doc_kind);
+            egui::Window::new(tr("scan_edit_title"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .show(ui.ctx(), |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for k in crate::scans::DocKind::ALL {
+                            if motif::toggle(ui, tr(k.label_key()), kind == k).clicked() {
+                                kind = k;
+                            }
+                        }
+                    });
+                    ui.add_sized(
+                        [320.0, Self::button_height(ui)],
+                        egui::TextEdit::singleline(&mut edited.label)
+                            .hint_text(tr("scan_label_hint")),
+                    );
+                    ui.add_sized(
+                        [320.0, Self::button_height(ui)],
+                        egui::TextEdit::singleline(&mut edited.taken_on)
+                            .hint_text(tr("scan_day_iso_hint")),
+                    );
+                    ui.add_sized(
+                        [320.0, Self::button_height(ui)],
+                        egui::TextEdit::singleline(&mut edited.remark)
+                            .hint_text(tr("scan_remark_hint")),
+                    );
+                    ui.horizontal(|ui| {
+                        if motif::button(ui, tr("form_save")).clicked() {
+                            save_edit = true;
+                        }
+                        if motif::button(ui, tr("form_cancel")).clicked() {
+                            close_edit = true;
+                        }
+                    });
+                });
+            edited.doc_kind = kind.as_key().to_owned();
+        }
+        if let Some(sc) = edit {
+            session.scan_edit = Some((sc.clone(), sc));
+        }
+        if close_edit {
+            session.scan_edit = None;
+        }
+        if save_edit {
+            if let Some((edited, base)) = session.scan_edit.take() {
+                match session.db.update_scan(&edited, &base) {
+                    Ok(true) => {
+                        session.scan_note = None;
+                        session.scans_key = None;
+                    }
+                    Ok(false) => {
+                        session.scan_note = Some((true, tr("scan_stale_edit").to_owned()));
+                        session.scans_key = None;
+                    }
+                    Err(e) => {
+                        session.scan_note = Some((true, e));
+                        session.scan_edit = Some((edited, base));
+                    }
+                }
+            }
+        }
+
+        // Ouvrir une pièce : elle est ressortie sur le disque et confiée
+        // au système, comme un PDF imprimé par l'application l'est déjà.
+        // C'est le seul moment où le contenu d'une pièce quitte la base
+        // chiffrée, et l'extension vient de ce que les octets **sont**,
+        // jamais du nom du fichier d'origine.
+        if let Some(id) = open_id {
+            match session.db.scan_bytes(id) {
+                Ok((bytes, media)) => {
+                    let ext = crate::scans::Media::from_key(&media)
+                        .map_or("bin", crate::scans::Media::extension);
+                    let path = std::env::temp_dir().join(format!("bpm-caddy-piece-{id}.{ext}"));
+                    let result = std::fs::write(&path, &bytes)
+                        .map_err(|e| e.to_string())
+                        .and_then(|()| open::that_detached(&path).map_err(|e| e.to_string()));
+                    if let Err(e) = result {
+                        session.scan_note = Some((true, e));
+                    }
+                }
+                Err(e) => session.scan_note = Some((true, e)),
+            }
+        }
+        if let Some((id, label)) = drop_id {
+            session.scan_confirm = None;
+            match session.db.delete_scan(id, &label) {
+                Ok(true) => session.scan_note = None,
+                Ok(false) => {
+                    session.scan_note = Some((true, tr("scan_stale").to_owned()));
+                }
+                Err(e) => session.scan_note = Some((true, e)),
+            }
+            session.scans_key = None;
+        }
+
+        if !(import || scan_now) {
+            return;
+        }
+        // D'où viennent les octets : un fichier choisi, ou le scanner de
+        // l'officine lancé par sa propre ligne de commande.
+        let picked: Result<std::path::PathBuf, String> = if import {
+            rfd::FileDialog::new()
+                .add_filter(
+                    tr("scan_filter"),
+                    &["pdf", "png", "jpg", "jpeg", "tif", "tiff"],
+                )
+                .pick_file()
+                .ok_or_else(String::new)
+        } else {
+            Self::run_scanner(&config.scans.command)
+        };
+        let path = match picked {
+            Ok(p) => p,
+            // Une chaîne vide veut dire « le dialogue a été fermé » :
+            // ce n'est pas une erreur et cela ne s'affiche pas.
+            Err(e) if e.is_empty() => return,
+            Err(e) => {
+                session.scan_note = Some((true, e));
+                return;
+            }
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(e) => {
+                session.scan_note = Some((true, e.to_string()));
+                return;
+            }
+        };
+        let media = match crate::scans::accept(&bytes, config.scans.max_mb) {
+            Ok(m) => m,
+            Err(refusal) => {
+                session.scan_note = Some((true, tr(refusal.label_key()).to_owned()));
+                return;
+            }
+        };
+        // Sans libellé, celui du fichier : mieux qu'un refus quand on
+        // vient de scanner et qu'on veut ranger tout de suite.
+        let label = if session.scan_new_label.trim().is_empty() {
+            path.file_stem()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| tr(session.scan_new_kind.label_key()).to_owned())
+        } else {
+            session.scan_new_label.trim().to_owned()
+        };
+        let taken_on = if session.scan_new_day.trim().is_empty() {
+            String::new()
+        } else {
+            match db::parse_french_date(
+                &session.scan_new_day,
+                session.year_now(),
+                db::YearHint::Past,
+            ) {
+                Ok(iso) => iso,
+                Err(e) => {
+                    session.scan_note = Some((true, e));
+                    return;
+                }
+            }
+        };
+        let scan = db::Scan {
+            id: 0,
+            subject_kind: subject.as_key().to_owned(),
+            subject_id: if subject == Subject::Officine {
+                0
+            } else {
+                subject_id
+            },
+            doc_kind: session.scan_new_kind.as_key().to_owned(),
+            label,
+            media: media.as_key().to_owned(),
+            size: 0,
+            taken_on,
+            operator: operator.to_owned(),
+            remark: String::new(),
+            created_at: String::new(),
+        };
+        match session.db.add_scan(&scan, &bytes) {
+            Ok(_) => {
+                session.scan_new_label.clear();
+                session.scan_new_day.clear();
+                session.scans_key = None;
+                session.scan_note = Some((
+                    false,
+                    trf("scan_added", crate::scans::human_size(bytes.len() as u64)),
+                ));
+            }
+            Err(e) => session.scan_note = Some((true, e)),
+        }
+    }
+
+    /// Lancer le scanner de l'officine et rendre le fichier qu'il a
+    /// écrit.
+    ///
+    /// La commande vient de `[scans] command` et non du code : le
+    /// matériel d'une officine n'est pas connu d'ici, et `scanimage`
+    /// n'existe pas sous Windows. `{out}` est l'emplacement que
+    /// l'application ira lire — une commande qui ne le nomme pas est
+    /// refusée avant d'être lancée.
+    ///
+    /// Bloquant, et assumé : c'est un geste, pas une tâche de fond, et
+    /// personne ne fait autre chose pendant qu'une feuille passe dans un
+    /// scanner. La fenêtre reste figée le temps du scan, ce que
+    /// l'opérateur attend.
+    fn run_scanner(template: &str) -> Result<std::path::PathBuf, String> {
+        let out = std::env::temp_dir().join(format!("bpm-caddy-scan-{}.out", std::process::id()));
+        let _ = std::fs::remove_file(&out);
+        let argv = crate::scans::scanner_command(template, &out)?;
+        let status = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .status()
+            .map_err(|e| trf("scan_err_spawn", e))?;
+        if !status.success() {
+            return Err(trf("scan_err_failed", status));
+        }
+        if !out.is_file() {
+            return Err(tr("scan_err_nothing").to_owned());
+        }
+        Ok(out)
+    }
+
     /// Le registre des stupéfiants.
     ///
     /// Trois colonnes carvées : à gauche les produits suivis avec leur
@@ -18304,6 +18851,8 @@ impl App {
                 }
             } else if session.show_stup {
                 session.show_stup = false;
+            } else if session.show_scans.is_some() {
+                session.show_scans = None;
             } else {
                 session.view = MainView::Search;
                 return;
@@ -18338,6 +18887,10 @@ impl App {
             Self::stup_view(ui, session, config, operator);
             return;
         }
+        if session.show_scans.is_some() {
+            Self::scans_view(ui, session, operator, config);
+            return;
+        }
 
         // The title block belongs to the base's index, not to an open
         // card: the tab already says which drug is on screen, and the
@@ -18357,6 +18910,7 @@ impl App {
                 // the page, so there was never a width that worked.
                 let gap = ui.spacing().item_spacing.x;
                 let doors_width: f32 = [
+                    tr("scan_button"),
                     tr("stup_button"),
                     tr("graph_button"),
                     tr("tables_button"),
@@ -18376,6 +18930,16 @@ impl App {
                 });
                 let roomy = title_width + gap + doors_width <= ui.available_width();
                 let doors = |ui: &mut egui::Ui, session: &mut Session| {
+                    if motif::button(ui, tr("scan_button"))
+                        .on_hover_text(tr("scan_button_tooltip"))
+                        .clicked()
+                    {
+                        session.open_scans(
+                            crate::scans::Subject::Officine,
+                            0,
+                            tr("scan_officine").to_owned(),
+                        );
+                    }
                     if motif::button(ui, tr("stup_button"))
                         .on_hover_text(tr("stup_button_tooltip"))
                         .clicked()
@@ -18487,6 +19051,7 @@ impl App {
             let mut search_keyword: Option<String> = None;
             // The codex, opened from the card and searched on it.
             let mut open_codex = false;
+            let mut open_scans = false;
             // The actions stay above the scroll: a full monograph is
             // several screens tall, and « Modifier » or « Enregistrer »
             // must never be something to go looking for.
@@ -18519,6 +19084,15 @@ impl App {
                             .clicked()
                         {
                             open_codex = true;
+                        }
+                        // La notice, un courrier de retrait de lot : ce
+                        // qui est du papier et qui appartient à cette
+                        // fiche plutôt qu'à un dossier.
+                        if motif::button(ui, tr("scan_button"))
+                            .on_hover_text(tr("scan_drug_tooltip"))
+                            .clicked()
+                        {
+                            open_scans = true;
                         }
                         for (source, label, tooltip) in [
                             (Lookup::Ansm, tr("drug_lookup"), tr("drug_lookup_tooltip")),
@@ -19086,6 +19660,16 @@ impl App {
             }
             // From a card, the codex opens already searched on the
             // molecule: « qu'est-ce qui se prépare avec ça ».
+            if open_scans {
+                if let Some(card) = session.drug_form.clone() {
+                    session.open_scans(
+                        crate::scans::Subject::Drug,
+                        card.id,
+                        trf("scan_drug_title", &card.name),
+                    );
+                }
+                return;
+            }
             if open_codex {
                 let card = session.drug_form.clone();
                 session.show_codex = true;
@@ -21744,6 +22328,15 @@ impl eframe::App for App {
             .layout
             .written_by_another_version()
             .then(|| self.layout.version.clone());
+        // Lu avant l'emprunt, comme le reste de cette page — et
+        // seulement quand la page Base est ouverte : c'est une somme sur
+        // toute la table, pas une question à poser par image.
+        let scan_weight = match (&self.options, &self.state) {
+            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
+                s.db.scan_weight().ok()
+            }
+            _ => None,
+        };
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
         // A long pass over the base, in flight. Read before the borrow,
@@ -22517,6 +23110,66 @@ impl eframe::App for App {
                                         );
                                         ui.end_row();
                                     });
+                                // Ce que les pièces numérisées ajoutent à
+                                // la base. Elles y vivent — une
+                                // ordonnance posée en clair à côté d'une
+                                // base chiffrée annulerait le
+                                // chiffrement — donc elles voyagent dans
+                                // chaque sauvegarde quotidienne et dans
+                                // chaque copie sur le partage. Une
+                                // officine qui ne le voit pas s'en
+                                // aperçoit le jour où la copie du soir
+                                // ne tient plus.
+                                // La commande du scanner et le plafond
+                                // des pièces, ici plutôt que dans le
+                                // seul config.toml : une officine qui a
+                                // un scanner ne devrait pas avoir à
+                                // ouvrir un fichier texte pour s'en
+                                // servir, et la séquence APDU de la
+                                // carte Vitale a sa page pour la même
+                                // raison.
+                                motif::section(ui, tr("opts_scans"));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("opts_scans_hint"))
+                                            .size(11.0)
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.horizontal(|ui| {
+                                    ui.label(dim(tr("opts_scan_max")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.scans.max_mb)
+                                            .range(0..=200)
+                                            .suffix(" Mo"),
+                                    );
+                                });
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut editor.cfg.scans.command)
+                                        .desired_width(f32::INFINITY)
+                                        .hint_text(tr("opts_scan_command_hint")),
+                                );
+                                if let Some((count, bytes)) = scan_weight {
+                                    if count > 0 {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(trn(
+                                                    "opts_scan_weight",
+                                                    &[
+                                                        &count,
+                                                        &crate::scans::human_size(
+                                                            bytes.max(0) as u64
+                                                        ),
+                                                    ],
+                                                ))
+                                                .size(11.0)
+                                                .color(motif::text_dim()),
+                                            )
+                                            .wrap(),
+                                        );
+                                    }
+                                }
                                 // File-level tools: consistent encrypted copy
                                 // (VACUUM INTO) to any destination; "move"
                                 // additionally points the config at the copy

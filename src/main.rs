@@ -18,6 +18,7 @@ mod ordonnancier;
 mod pdf;
 mod release;
 mod revue;
+mod scans;
 mod strings;
 mod surveillance;
 mod tables;

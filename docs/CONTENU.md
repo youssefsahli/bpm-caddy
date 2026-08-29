@@ -122,6 +122,30 @@ Deux règles valent partout :
   recompté revient sur la liste de contrôle ; la loi en demande un par
   an, c'est le rythme que l'officine se donne).
 
+## Les pièces numérisées
+
+- **Où** : la table `scans` dans `src/db.rs` ; ce qu'un fichier *est* et
+  ce qu'une pièce peut être sont dans `src/scans.rs` (pur, testé).
+- **Rien n'est livré** : ce sont les papiers de l'officine.
+- **Le format se lit dans les octets, jamais dans le nom.** PDF, PNG,
+  JPEG, TIFF, et le reste est refusé à l'entrée. L'application ressort
+  la pièce sur le disque et la confie au système : ce qu'elle a accepté
+  est ce qu'elle rendra, et l'extension vient du contenu.
+- **Dans la base, pas à côté** : une ordonnance numérisée en clair à côté
+  d'une base chiffrée annule le chiffrement de la base. D'où le plafond
+  `[scans] max_mb`, et la ligne d'Options › Base qui dit ce que les
+  pièces pèsent — elles voyagent dans chaque sauvegarde quotidienne.
+- **Les octets ne se réécrivent pas** : une numérisation est ce que le
+  scanner a produit. Le genre, le libellé, la date et la remarque se
+  corrigent (compare-and-set) ; le fichier, non. On en range un autre.
+- **Le genre est un vocabulaire** : ordonnance, accident du travail,
+  biologie, courrier, facture, autre. La liste se colore dessus, et un
+  genre inventé une fois resterait seul.
+- **Le scanner est en configuration** (`[scans] command`, `{out}` étant
+  le fichier à lire), comme la séquence APDU de la carte Vitale : le
+  matériel d'une officine n'est pas connu du binaire. Vide = seul
+  « Importer… ».
+
 ## Les dispositifs médicaux
 
 - **Où** : `src/db.rs`, `STARTER_DISPOSITIFS` : nom, famille, indication,

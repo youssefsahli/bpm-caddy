@@ -290,6 +290,31 @@ CREATE TABLE IF NOT EXISTS stup_moves (
     remark       TEXT NOT NULL DEFAULT '',
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+-- Les pièces numérisées : ordonnance, feuille d'accident du travail,
+-- courrier, compte rendu de biologie.
+--
+-- **Dans la base et non dans un dossier à côté.** Une ordonnance
+-- numérisée posée en clair à côté d'une base chiffrée annule le
+-- chiffrement de la base ; c'est aussi la raison pour laquelle il y a
+-- un plafond de taille (`[scans] max_mb`).
+CREATE TABLE IF NOT EXISTS scans (
+    id           INTEGER PRIMARY KEY,
+    -- 'PATIENT', 'DRUG' ou 'OFFICINE'.
+    subject_kind TEXT NOT NULL,
+    subject_id   INTEGER NOT NULL DEFAULT 0,
+    -- 'ORDONNANCE', 'AT_MP', 'BIOLOGIE', 'COURRIER', 'FACTURE', 'AUTRE'.
+    doc_kind     TEXT NOT NULL DEFAULT 'AUTRE',
+    label        TEXT NOT NULL,
+    -- Le type lu dans les octets du fichier, jamais dans son nom.
+    media        TEXT NOT NULL DEFAULT '',
+    bytes        BLOB NOT NULL,
+    size         INTEGER NOT NULL DEFAULT 0,
+    -- La date que le document porte, ISO ; vide si on ne l'a pas notée.
+    taken_on     TEXT NOT NULL DEFAULT '',
+    operator     TEXT NOT NULL DEFAULT '',
+    remark       TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 ";
 
 /// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
@@ -335,6 +360,8 @@ const INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_stup_moves_stup ON stup_moves(stup_id)",
     // « Quel numéro d'ordonnancier est libre » se demande par année.
     "CREATE INDEX IF NOT EXISTS idx_stup_moves_ordo ON stup_moves(ordo_year, ordo_no)",
+    // Les pièces d'un dossier, demandées chaque fois qu'on l'ouvre.
+    "CREATE INDEX IF NOT EXISTS idx_scans_subject ON scans(subject_kind, subject_id)",
 ];
 
 /// Idempotent migrations for databases created by older versions.
@@ -491,6 +518,20 @@ const MIGRATIONS: &[&str] = &[
         supplier     TEXT NOT NULL DEFAULT '',
         reference    TEXT NOT NULL DEFAULT '',
         expected     REAL NOT NULL DEFAULT 0,
+        operator     TEXT NOT NULL DEFAULT '',
+        remark       TEXT NOT NULL DEFAULT '',
+        created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
+    "CREATE TABLE IF NOT EXISTS scans (
+        id           INTEGER PRIMARY KEY,
+        subject_kind TEXT NOT NULL,
+        subject_id   INTEGER NOT NULL DEFAULT 0,
+        doc_kind     TEXT NOT NULL DEFAULT 'AUTRE',
+        label        TEXT NOT NULL,
+        media        TEXT NOT NULL DEFAULT '',
+        bytes        BLOB NOT NULL,
+        size         INTEGER NOT NULL DEFAULT 0,
+        taken_on     TEXT NOT NULL DEFAULT '',
         operator     TEXT NOT NULL DEFAULT '',
         remark       TEXT NOT NULL DEFAULT '',
         created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -1266,6 +1307,32 @@ pub struct StupMove {
     pub expected: f64,
     pub operator: String,
     pub remark: String,
+}
+
+/// Une pièce numérisée, **sans ses octets**.
+///
+/// La liste d'un dossier n'a pas besoin des fichiers, et les charger
+/// pour la dessiner serait tirer vingt mégaoctets de la base pour
+/// afficher cinq lignes. Les octets se demandent par
+/// [`Db::scan_bytes`], au moment où l'on ouvre la pièce.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Scan {
+    pub id: i64,
+    /// La clé de `crate::scans::Subject`.
+    pub subject_kind: String,
+    pub subject_id: i64,
+    /// La clé de `crate::scans::DocKind`.
+    pub doc_kind: String,
+    pub label: String,
+    /// Le type lu dans les octets, jamais dans le nom du fichier.
+    pub media: String,
+    pub size: i64,
+    /// La date que le document porte, ISO ; vide si on ne l'a pas notée.
+    pub taken_on: String,
+    pub operator: String,
+    pub remark: String,
+    /// Quand elle a été rangée, tel que la base l'a écrit.
+    pub created_at: String,
 }
 
 /// One agenda entry that is not tied to a patient.
@@ -30090,6 +30157,145 @@ impl Db {
         Ok(changed == 1)
     }
 
+    // --- Les pièces numérisées ---------------------------------------
+
+    /// Les pièces d'un sujet, la plus récente d'abord. Sans les octets.
+    pub fn scans(&self, subject_kind: &str, subject_id: i64) -> Result<Vec<Scan>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, subject_kind, subject_id, doc_kind, label, media, size,
+                        taken_on, operator, remark, created_at
+                 FROM scans WHERE subject_kind = ?1 AND subject_id = ?2
+                 ORDER BY (taken_on = '') ASC, taken_on DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map((subject_kind, subject_id), |r| {
+                Ok(Scan {
+                    id: r.get(0)?,
+                    subject_kind: r.get(1)?,
+                    subject_id: r.get(2)?,
+                    doc_kind: r.get(3)?,
+                    label: r.get(4)?,
+                    media: r.get(5)?,
+                    size: r.get(6)?,
+                    taken_on: r.get(7)?,
+                    operator: r.get(8)?,
+                    remark: r.get(9)?,
+                    created_at: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ranger une pièce. `bytes` a déjà passé `crate::scans::accept` :
+    /// c'est là que le format se décide, pas ici.
+    pub fn add_scan(&self, scan: &Scan, bytes: &[u8]) -> Result<i64, String> {
+        if scan.label.trim().is_empty() {
+            return Err(crate::strings::tr("scan_err_no_label").to_owned());
+        }
+        if bytes.is_empty() {
+            return Err(crate::strings::tr("scan_err_empty").to_owned());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO scans
+                     (subject_kind, subject_id, doc_kind, label, media, bytes,
+                      size, taken_on, operator, remark)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    scan.subject_kind,
+                    scan.subject_id,
+                    scan.doc_kind,
+                    scan.label.trim(),
+                    scan.media,
+                    bytes,
+                    bytes.len() as i64,
+                    scan.taken_on.trim(),
+                    scan.operator.trim(),
+                    scan.remark.trim(),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Les octets d'une pièce, pour la ressortir et l'ouvrir.
+    pub fn scan_bytes(&self, id: i64) -> Result<(Vec<u8>, String), String> {
+        self.conn
+            .query_row("SELECT bytes, media FROM scans WHERE id = ?1", [id], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })
+            .map_err(|e| e.to_string())
+    }
+
+    /// Corriger ce qu'on a écrit **autour** d'une pièce : son genre, son
+    /// libellé, sa date, sa remarque. Compare-and-set sur ce que l'écran
+    /// affichait, comme toute ligne partagée.
+    ///
+    /// Les octets ne bougent jamais : une pièce numérisée est ce que le
+    /// scanner a produit, et la remplacer sous le même libellé ferait
+    /// mentir tout ce qui la cite. On en range une autre.
+    pub fn update_scan(&self, new: &Scan, expected: &Scan) -> Result<bool, String> {
+        if new.label.trim().is_empty() {
+            return Err(crate::strings::tr("scan_err_no_label").to_owned());
+        }
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE scans SET doc_kind = ?2, label = ?3, taken_on = ?4, remark = ?5
+                  WHERE id = ?1 AND doc_kind = ?6 AND label = ?7
+                    AND taken_on = ?8 AND remark = ?9",
+                (
+                    new.id,
+                    &new.doc_kind,
+                    new.label.trim(),
+                    new.taken_on.trim(),
+                    new.remark.trim(),
+                    &expected.doc_kind,
+                    expected.label.trim(),
+                    expected.taken_on.trim(),
+                    expected.remark.trim(),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une pièce, compare-and-set sur le libellé affiché.
+    ///
+    /// Une pièce se supprime, contrairement à une ligne du registre des
+    /// stupéfiants : elle a pu être numérisée deux fois, ou attachée au
+    /// mauvais dossier, et l'y laisser serait pire que l'enlever.
+    pub fn delete_scan(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM scans WHERE id = ?1 AND label = ?2",
+                (id, expected_label.trim()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Combien de pièces la base porte, et ce qu'elles pèsent.
+    ///
+    /// Options › Base le dit : les pièces vivent *dans* la base, donc
+    /// elles voyagent dans chaque sauvegarde quotidienne et dans chaque
+    /// copie sur le partage. Une officine qui ne le voit pas s'en aperçoit
+    /// le jour où la copie du soir ne tient plus.
+    pub fn scan_weight(&self) -> Result<(i64, i64), String> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM scans",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .map_err(|e| e.to_string())
+    }
+
     // --- Le registre des stupéfiants ---------------------------------
     //
     // Deux tables et **un seul verbe d'écriture sur l'une d'elles**. Les
@@ -32673,6 +32879,116 @@ mod tests {
                 "sans index : {sql}\n  → {plan}"
             );
         }
+    }
+
+    /// Les pièces numérisées : rangées, relues, corrigées autour, et
+    /// retirées.
+    ///
+    /// Deux propriétés que la table porte et que le module pur ne peut
+    /// pas tenir seul : la liste **ne charge pas les octets** — vingt
+    /// mégaoctets tirés de la base pour dessiner cinq lignes —, et les
+    /// octets d'une pièce ne se réécrivent jamais. Une numérisation est
+    /// ce que le scanner a produit ; la remplacer sous le même libellé
+    /// ferait mentir tout ce qui la cite. On en range une autre.
+    #[test]
+    fn a_scanned_piece_is_filed_reread_and_never_rewritten() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("scan.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+
+        let pdf = b"%PDF-1.7\nune ordonnance numerisee".to_vec();
+        let piece = Scan {
+            id: 0,
+            subject_kind: "PATIENT".to_owned(),
+            subject_id: pid,
+            doc_kind: "ORDONNANCE".to_owned(),
+            label: "  Ordonnance Dr Morel  ".to_owned(),
+            media: "application/pdf".to_owned(),
+            size: 0,
+            taken_on: "2026-08-12".to_owned(),
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            created_at: String::new(),
+        };
+        let id = db.add_scan(&piece, &pdf).unwrap();
+
+        // Une feuille d'accident du travail sur le même dossier, sans
+        // date : c'est le cas courant, et elle ne doit pas disparaître
+        // du classement pour autant.
+        let mut at = piece.clone();
+        at.doc_kind = "AT_MP".to_owned();
+        at.label = "Déclaration AT du 3 août".to_owned();
+        at.taken_on = String::new();
+        db.add_scan(&at, b"%PDF-1.7\nAT").unwrap();
+
+        let list = db.scans("PATIENT", pid).unwrap();
+        assert_eq!(list.len(), 2);
+        // La datée d'abord, la sans-date ensuite : une pièce sans date
+        // reste dans la liste, en queue, et n'est pas perdue.
+        assert_eq!(
+            list[0].label, "Ordonnance Dr Morel",
+            "le libellé est ébarbé"
+        );
+        assert_eq!(list[0].taken_on, "2026-08-12");
+        assert_eq!(list[1].doc_kind, "AT_MP");
+        assert_eq!(list[1].taken_on, "");
+        // La taille est celle des octets, comptée à l'écriture.
+        assert_eq!(list[0].size, pdf.len() as i64);
+
+        // Les octets se demandent séparément, et ils sont ceux qu'on a
+        // rangés.
+        let (bytes, media) = db.scan_bytes(id).unwrap();
+        assert_eq!(bytes, pdf);
+        assert_eq!(media, "application/pdf");
+
+        // Rien sans libellé, rien sans octets : les deux refus disent ce
+        // qui manque plutôt que d'écrire une ligne inutile.
+        let mut blank = piece.clone();
+        blank.label = "   ".to_owned();
+        assert!(db.add_scan(&blank, &pdf).is_err());
+        assert!(db.add_scan(&piece, b"").is_err());
+
+        // Ce qu'on a écrit **autour** se corrige, compare-and-set.
+        let shown = list[0].clone();
+        let mut edited = shown.clone();
+        edited.doc_kind = "COURRIER".to_owned();
+        edited.remark = "en fait un courrier".to_owned();
+        assert!(db.update_scan(&edited, &shown).unwrap());
+        let mut stale = shown.clone();
+        stale.label = "Autre chose".to_owned();
+        assert!(!db.update_scan(&stale, &shown).unwrap(), "version périmée");
+        // …et les octets n'ont pas bougé.
+        assert_eq!(db.scan_bytes(id).unwrap().0, pdf);
+
+        // Le poids que les pièces ajoutent à la base, que Options › Base
+        // affiche : elles voyagent dans chaque sauvegarde.
+        let (count, weight) = db.scan_weight().unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(weight, pdf.len() as i64 + b"%PDF-1.7\nAT".len() as i64);
+
+        // Une pièce se retire — contrairement à une ligne du registre
+        // des stupéfiants : elle a pu être numérisée deux fois ou
+        // attachée au mauvais dossier.
+        assert!(!db.delete_scan(id, "un autre libellé").unwrap());
+        assert!(db.delete_scan(id, "Ordonnance Dr Morel").unwrap());
+        assert_eq!(db.scans("PATIENT", pid).unwrap().len(), 1);
+        // Et une pièce rangée sur l'officine n'est pas sur le dossier.
+        db.add_scan(
+            &Scan {
+                subject_kind: "OFFICINE".to_owned(),
+                subject_id: 0,
+                label: "Facture OCP août".to_owned(),
+                doc_kind: "FACTURE".to_owned(),
+                ..piece.clone()
+            },
+            b"%PDF-1.7\nfacture",
+        )
+        .unwrap();
+        assert_eq!(db.scans("PATIENT", pid).unwrap().len(), 1);
+        assert_eq!(db.scans("OFFICINE", 0).unwrap().len(), 1);
     }
 
     /// **Le registre ne se réécrit pas.**
@@ -35322,6 +35638,57 @@ mod tests {
             .unwrap();
         write(metha, "ENTREE", 14.0, day(5, 4), 0, 0.0);
         write(metha, "SORTIE", 7.0, day(5, 11), pid, 0.0);
+
+        // Trois pièces au dossier, dont une feuille d'accident du
+        // travail : c'est le genre qui se retrouve toujours au mauvais
+        // endroit, et la démonstration ne montrerait rien avec un seul.
+        // Des PDF minimaux — un PDF de démonstration n'a pas à être
+        // lisible, il a à être un PDF, et le format se lit dans les
+        // octets.
+        let tiny = |title: &str| {
+            format!("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n% {title}\ntrailer<<>>\n%%EOF\n")
+                .into_bytes()
+        };
+        for (kind, label, when) in [
+            ("ORDONNANCE", "Ordonnance Dr Morel", day(8, 12)),
+            ("AT_MP", "Déclaration AT — chute au travail", day(6, 3)),
+            ("BIOLOGIE", "Bilan du laboratoire", day(7, 28)),
+        ] {
+            db.add_scan(
+                &Scan {
+                    id: 0,
+                    subject_kind: "PATIENT".to_owned(),
+                    subject_id: pid,
+                    doc_kind: kind.to_owned(),
+                    label: label.to_owned(),
+                    media: "application/pdf".to_owned(),
+                    size: 0,
+                    taken_on: when,
+                    operator: "CL".to_owned(),
+                    remark: String::new(),
+                    created_at: String::new(),
+                },
+                &tiny(label),
+            )
+            .unwrap();
+        }
+        db.add_scan(
+            &Scan {
+                id: 0,
+                subject_kind: "OFFICINE".to_owned(),
+                subject_id: 0,
+                doc_kind: "FACTURE".to_owned(),
+                label: "Facture OCP — août".to_owned(),
+                media: "application/pdf".to_owned(),
+                size: 0,
+                taken_on: day(8, 31),
+                operator: "CL".to_owned(),
+                remark: "à rapprocher du relevé".to_owned(),
+                created_at: String::new(),
+            },
+            &tiny("facture"),
+        )
+        .unwrap();
     }
 
     #[test]
