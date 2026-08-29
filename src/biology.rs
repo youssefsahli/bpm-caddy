@@ -170,8 +170,9 @@ pub fn read(readings: &[Reading], treatments: &[String]) -> Vec<Finding> {
         .map(|t| crate::fuzzy::sort_key(t))
         .collect();
     let takes = |needle: &str| {
-        let needle = crate::fuzzy::sort_key(needle);
-        haystack.iter().any(|t| t.contains(&needle))
+        haystack
+            .iter()
+            .any(|t| crate::fuzzy::contains_folded(t, needle))
     };
     let mut latest: std::collections::HashMap<&str, &Reading> = std::collections::HashMap::new();
     for r in readings {
@@ -753,6 +754,66 @@ pub const CATALOGUE: &[Analyte] = &[
         critical_high: None,
         note: "Elle se lit toujours avec la calcémie et la vitamine D, jamais seule : haute avec une calcémie basse ou normale, c'est une carence en vitamine D ou une insuffisance rénale qui la stimule ; haute avec une calcémie haute, c'est la glande elle-même.",
     },
+    Analyte {
+        code: "TCA",
+        label: "TCA (rapport malade/témoin)",
+        unit: "",
+        low: None,
+        high: None,
+        critical_low: None,
+        critical_high: Some(4.0),
+        note: "C'est le test de l'héparine non fractionnée, et de rien d'autre : sous HBPM il ne veut rien dire, et c'est l'activité anti-Xa qui répond. La zone curative usuelle est un rapport de 1,5 à 2,5, à lire avec l'heure du prélèvement.",
+    },
+    Analyte {
+        code: "RETIC",
+        label: "Réticulocytes",
+        unit: "G/L",
+        low: Some(25.0),
+        high: Some(120.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Ils disent si la moelle répond. Une anémie avec des réticulocytes bas est une moelle qui ne fabrique pas — carence ou toxicité médicamenteuse ; avec des réticulocytes hauts, c'est une perte ou une destruction, et on cherche un saignement ou une hémolyse.",
+    },
+    Analyte {
+        code: "LDH",
+        label: "LDH (lactate déshydrogénase)",
+        unit: "UI/L",
+        low: None,
+        high: Some(250.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Élevée partout où des cellules se cassent : hémolyse, infarctus, tumeur, muscle. Seule elle ne dit rien ; avec une haptoglobine effondrée et des réticulocytes hauts, c'est une hémolyse.",
+    },
+    Analyte {
+        code: "HAPTO",
+        label: "Haptoglobine",
+        unit: "g/L",
+        low: Some(0.3),
+        high: Some(2.0),
+        critical_low: None,
+        critical_high: None,
+        note: "Elle capture l'hémoglobine libérée par les globules rouges détruits : effondrée, c'est le signe le plus direct d'une hémolyse. C'est aussi une protéine de l'inflammation, ce qui peut la faire paraître normale au cours d'une infection.",
+    },
+    Analyte {
+        code: "CORT",
+        label: "Cortisol à 8 h",
+        unit: "nmol/L",
+        low: Some(150.0),
+        high: Some(700.0),
+        critical_low: Some(80.0),
+        critical_high: None,
+        note: "Il se prélève le matin, à jeun, parce que sa sécrétion suit l'heure. Bas après une corticothérapie prolongée, c'est une insuffisance surrénalienne : la glande ne s'est pas remise en route, et l'arrêt brutal du traitement devient dangereux.",
+    },
+    Analyte {
+        code: "NH3",
+        label: "Ammoniémie",
+        unit: "µmol/L",
+        low: None,
+        high: Some(50.0),
+        critical_low: None,
+        critical_high: Some(100.0),
+        note: "Prélèvement délicat — tube sur glace, acheminé tout de suite — et un garrot serré la fait monter à lui seul. Élevée avec une confusion, elle oriente vers une encéphalopathie : hépatique le plus souvent, médicamenteuse sous valproate.",
+    },
 ];
 
 /// What a value changes for the treatments the patient is actually on.
@@ -760,6 +821,70 @@ pub const CATALOGUE: &[Analyte] = &[
 /// The `needs` words are matched inside the treatments' names, DCI,
 /// classes and tags, accent- and case-insensitively.
 const RULES: &[Rule] = &[
+    Rule {
+        code: "TCA",
+        side: Side::Above,
+        threshold: 3.0,
+        needs: &["héparine", "héparine non fractionnée", "calciparine"],
+        severity: Severity::Alert,
+        text: "TCA au-delà de 3 fois le témoin sous héparine non fractionnée : surdosage. Ne pas administrer l'injection suivante sans avis, chercher un saignement, et vérifier l'heure du prélèvement — un TCA fait trop tôt après l'injection surestime toujours.",
+    },
+    Rule {
+        code: "TCA",
+        side: Side::Below,
+        threshold: 1.5,
+        needs: &["héparine", "héparine non fractionnée", "calciparine"],
+        severity: Severity::Warn,
+        text: "TCA en dessous de la zone curative sous héparine non fractionnée : l'anticoagulation est insuffisante et le risque est celui de la thrombose qu'on traite. La dose se réajuste sur avis, jamais au comptoir.",
+    },
+    Rule {
+        code: "RETIC",
+        side: Side::Below,
+        threshold: 25.0,
+        needs: &["méthotrexate", "azathioprine", "mycophénolate", "hydroxyurée", "anticancéreux"],
+        severity: Severity::Alert,
+        text: "Réticulocytes bas sous immunosuppresseur ou anticancéreux : la moelle ne répond plus. Numération complète en urgence et avis avant la prise suivante — et sous méthotrexate, vérifier que l'acide folique est bien pris à distance de la prise hebdomadaire.",
+    },
+    Rule {
+        code: "LDH",
+        side: Side::Above,
+        threshold: 400.0,
+        needs: &["nitrofurantoïne", "dapsone", "sulfaméthoxazole", "primaquine", "rasburicase"],
+        severity: Severity::Alert,
+        text: "LDH élevée sous une molécule oxydante : penser à l'hémolyse du déficit en G6PD, surtout devant des urines foncées et une pâleur récente. Arrêt et avis le jour même ; la liste des médicaments interdits en cas de déficit est à donner au patient.",
+    },
+    Rule {
+        code: "HAPTO",
+        side: Side::Below,
+        threshold: 0.3,
+        needs: &[],
+        severity: Severity::Warn,
+        text: "Haptoglobine effondrée : hémolyse jusqu'à preuve du contraire. Elle se lit avec les LDH, les réticulocytes et la bilirubine libre, et il faut chercher ce qui l'a déclenchée — un médicament oxydant, une valve, une infection.",
+    },
+    Rule {
+        code: "CORT",
+        side: Side::Below,
+        threshold: 150.0,
+        needs: &["corticoïde", "prednisone", "prednisolone", "hydrocortisone", "corticothérapie"],
+        severity: Severity::Alert,
+        text: "Cortisol bas sous ou après corticothérapie prolongée : la surrénale ne s'est pas remise en route. Ne jamais arrêter d'un coup, et doubler la dose en cas de fièvre, de vomissements ou d'intervention — c'est la règle des jours de maladie, et elle s'explique au comptoir.",
+    },
+    Rule {
+        code: "NH3",
+        side: Side::Above,
+        threshold: 80.0,
+        needs: &["valproate", "valproïque", "dépakine", "topiramate"],
+        severity: Severity::Alert,
+        text: "Ammoniémie élevée sous valproate : l'encéphalopathie hyperammoniémique survient à valproatémie normale, souvent à l'instauration ou après une majoration, et le topiramate associé l'aggrave. Somnolence, vomissements ou confusion : avis en urgence.",
+    },
+    Rule {
+        code: "NH3",
+        side: Side::Above,
+        threshold: 80.0,
+        needs: &["lactulose", "rifaximine"],
+        severity: Severity::Warn,
+        text: "Ammoniémie élevée sous traitement de l'encéphalopathie hépatique : vérifier d'abord que le lactulose est pris à la dose qui donne deux à trois selles molles par jour — c'est l'effet recherché, et beaucoup de patients le réduisent d'eux-mêmes par gêne.",
+    },
     Rule {
         code: "K",
         side: Side::Above,
@@ -1598,12 +1723,12 @@ mod tests {
         // value the counter can no longer read, and a rule withdrawn is
         // a reading nobody does any more.
         assert!(
-            CATALOGUE.len() >= 49,
+            CATALOGUE.len() >= 55,
             "{} analytes, il y en avait quarante-neuf",
             CATALOGUE.len()
         );
         assert!(
-            RULES.len() >= 87,
+            RULES.len() >= 94,
             "{} règles de biologie, il y en avait quatre-vingt-sept",
             RULES.len()
         );

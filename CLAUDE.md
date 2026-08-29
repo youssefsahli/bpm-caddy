@@ -79,6 +79,12 @@ upgrade is decided, the number to defend is the logic one, and
   buttons/panels, sunken for inputs/troughs; charts are painted by hand,
   no plotting library — `motif::chart` has bars, hbars, stacked,
   sparkline, meter, pips, heat strip and legend.
+- **The application ships no font.** It draws with egui's own faces, and
+  the proportional one has no arrows (U+2192 and friends) — the
+  monospace one does. So an arrow may appear in a key chip and never in
+  a sentence, and three strings were hollow boxes on screen for months
+  because the chip beside them was right. Two tests in `src/strings.rs`
+  pass every shipped character through the face that will draw it.
 - **Colour comes from the theme, never from a literal.** `motif::bg()`,
   `text_dim()`, `accent()`… are functions over `motif::THEMES` (six
   palettes, `[ui] theme`); a hard-coded `Color32::from_rgb` in the

@@ -1234,6 +1234,9 @@ struct Session {
     /// Bumped whenever the patient list is replaced, so the memo built
     /// from it knows it is stale.
     patients_rev: u64,
+    /// Whether the call list has to be read again. Set by every
+    /// `refresh_dashboard`; acted on by the view that shows it.
+    watch_stale: bool,
     /// Bumped whenever one of the catalogues the jump box searches — the
     /// codex, the dispositifs, the protocoles — is re-read.
     catalog_rev: u64,
@@ -1664,6 +1667,7 @@ impl Session {
             patients: Vec::new(),
             search_keys: Vec::new(),
             patients_rev: 0,
+            watch_stale: true,
             catalog_rev: 0,
             goto_hits: Vec::new(),
             goto_hits_key: None,
@@ -2931,6 +2935,17 @@ impl Session {
     }
 
     /// Load everything the dashboard shows: summaries, appointments, today.
+    /// The call list, computed when the view that shows it is drawn and
+    /// not before. Everything else on the dashboard is a query; this one
+    /// is a pass over the base.
+    fn refresh_watchlist(&mut self) {
+        if !self.watch_stale {
+            return;
+        }
+        self.bio_watch = bio_watch(&self.db, &self.today);
+        self.watch_stale = false;
+    }
+
     fn refresh_dashboard(&mut self) {
         let months = self.cycle_months;
         match self.db.interview_summaries(months) {
@@ -2945,7 +2960,14 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
-        self.bio_watch = bio_watch(&self.db, &self.today);
+        // Not the call list: it reads the whole base and runs three rule
+        // engines over every file on it — the biology's eighty-seven,
+        // the revue's fifty-five and the forty-six surveillances. That
+        // is a fraction of a second per thousand files, and
+        // `refresh_dashboard` is called from eighteen places, including
+        // every switch between workspace tabs. It is marked stale here
+        // and computed by the one view that shows it.
+        self.watch_stale = true;
         self.loc_watch = loc_watch(&self.db, &self.today, self.loc_notice_days);
         // The sequences waiting for their next rendez-vous, read from
         // the same export the CSV is made of.
@@ -15845,8 +15867,11 @@ impl App {
             if answer.is_empty() {
                 continue;
             }
+            // An em dash and not an arrow: the embedded proportional
+            // face has no U+2192, and this sentence is written into the
+            // file's journal, where it is read as a sentence.
             text.push_str(&format!(
-                " {} → {answer}.",
+                " {} — {answer}.",
                 step.trim_end_matches('?').trim()
             ));
         }
@@ -17801,6 +17826,7 @@ impl App {
     /// week's load, what the team wrote — belong side by side, not
     /// stacked three screens deep.
     fn dashboard_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        session.refresh_watchlist();
         // ---- Header: title, the discreet-mode switch, the exports ----
         let masked = config.ui.discreet_finances && !session.show_amounts;
         ui.add_space(6.0);
@@ -21942,6 +21968,58 @@ mod tests {
         )
         .unwrap();
         assert!(super::bio_watch(&s.db, today).is_empty());
+    }
+
+    /// The call list is a pass over the whole base, and
+    /// `refresh_dashboard` is called from eighteen places — including
+    /// every switch between workspace tabs. It must be marked stale
+    /// there and read by the one view that shows it, once.
+    #[test]
+    fn the_call_list_is_read_by_the_view_that_shows_it_and_not_by_every_refresh() {
+        let (mut s, _swept) = scratch_session("lazywatch");
+        let p = s.patients[0].clone();
+        let tahor =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.name == "Tahor")
+                .unwrap();
+        s.db.add_patient_drug(p.id, tahor.id).unwrap();
+        s.db.add_bio_result(
+            p.id,
+            &crate::db::BioResult {
+                id: 0,
+                code: "ALAT".to_owned(),
+                label: "ALAT (transaminases)".to_owned(),
+                value: 25.0,
+                unit: "UI/L".to_owned(),
+                taken_on: "2024-02-12".to_owned(),
+                remark: String::new(),
+            },
+        )
+        .unwrap();
+        s.today = "2026-08-29".to_owned();
+
+        // Marked stale but not read.
+        s.bio_watch.clear();
+        s.watch_stale = true;
+        s.refresh_watchlist();
+        assert!(!s.watch_stale, "lue une fois, et la marque retombe");
+        assert_eq!(s.bio_watch.len(), 1);
+
+        // Asked again without a refresh in between: nothing is re-read.
+        s.bio_watch.clear();
+        s.refresh_watchlist();
+        assert!(s.bio_watch.is_empty(), "relue sans raison");
+
+        // A refresh marks it stale again, and the next reading is fresh.
+        s.refresh_dashboard();
+        assert!(s.watch_stale);
+        // `refresh_dashboard` reads today off the base, so put back the
+        // day this file's dates were written against.
+        s.today = "2026-08-29".to_owned();
+        s.refresh_watchlist();
+        assert_eq!(s.bio_watch.len(), 1);
     }
 
     /// The year is read off the date the session already holds, and the

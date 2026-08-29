@@ -138,7 +138,7 @@ pub fn due(
                 watch
                     .needs
                     .iter()
-                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+                    .any(|n| crate::fuzzy::contains_folded(hay, n))
             })
             .map(|(name, _)| name.clone())
             .collect();
@@ -251,6 +251,14 @@ pub const WATCHES: &[Watch] = &[
         code: "PLQ",
         every_months: 1,
         why: "La thrombopénie induite par l'héparine survient entre le cinquième et le vingt et unième jour : la numération plaquettaire est ce qui la trouve, et elle se surveille pendant tout le traitement.",
+    },
+    Watch {
+        // The unfractionated one only: under a low-molecular-weight
+        // heparin the TCA says nothing, and the anti-Xa is the test.
+        needs: &["héparine sodique", "héparine non fractionnée", "calciparine"],
+        code: "TCA",
+        every_months: 1,
+        why: "Sous héparine non fractionnée, c'est le TCA qui règle la dose : rapport de 1,5 à 2,5 fois le témoin, contrôlé 4 à 6 h après le début ou tout changement, puis chaque jour. Sous HBPM il ne veut rien dire.",
     },
     Watch {
         needs: &["HBPM", "énoxaparine", "tinzaparine", "daltéparine"],
@@ -695,7 +703,7 @@ mod tests {
     #[test]
     fn the_watch_count_only_grows() {
         assert!(
-            WATCHES.len() >= 46,
+            WATCHES.len() >= 47,
             "{} surveillances : le compte ne baisse pas",
             WATCHES.len()
         );

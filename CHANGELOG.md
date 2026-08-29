@@ -5,6 +5,100 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.120.0] - 2026-08-29
+
+Les moteurs de règles à l'échelle d'une vraie base, et trois carrés
+creux que personne n'avait vus.
+
+### Added
+- **49 → 55 analytes, 87 → 94 règles, 46 → 47 surveillances.** Six lignes
+  que la ville imprime et que le catalogue n'avait pas, chacune entrant
+  avec la règle qui la lit contre un traitement.
+  - **Le TCA** est le test de l'héparine non fractionnée et de rien
+    d'autre : sous HBPM il ne veut rien dire, et c'est l'anti-Xa qui
+    répond. Au-delà de 3 fois le témoin c'est un surdosage — et il faut
+    vérifier l'heure du prélèvement, parce qu'un TCA fait trop tôt
+    surestime toujours. Une surveillance va avec.
+  - **Les réticulocytes** disent si la moelle répond : une anémie avec
+    des réticulocytes bas sous méthotrexate ou azathioprine est une
+    toxicité médullaire, pas une carence.
+  - **Les LDH et l'haptoglobine** se lisent ensemble : LDH hautes,
+    haptoglobine effondrée, c'est une hémolyse — et sous
+    nitrofurantoïne, dapsone ou sulfamide, on pense au déficit en G6PD.
+  - **Le cortisol à 8 h** bas sous ou après corticothérapie prolongée :
+    la surrénale ne s'est pas remise en route. C'est la règle des jours
+    de maladie qu'il faut expliquer, et c'est au comptoir qu'on
+    l'explique.
+  - **L'ammoniémie** monte sous valproate à valproatémie normale, et le
+    topiramate associé aggrave : l'encéphalopathie hyperammoniémique se
+    manifeste par une somnolence qu'on met sur le compte du traitement.
+
+- **34 → 38 tables de référence.**
+  - **« Foie »** : l'insuffisance hépatique n'avait pas sa table alors
+    que le rein avait la sienne. Le score de Child-Pugh, parce que la
+    plupart des RCP ne parlent qu'en Child et que la moitié des
+    contre-indications commencent à Child B ; le paracétamol, qui reste
+    le premier choix mais à 3 g et à 2 g chez le dénutri ; les AINS, qui
+    précipitent le syndrome hépato-rénal et l'hémorragie sur varices ;
+    les benzodiazépines qui passent — oxazépam, lorazépam, témazépam —
+    et celles qui s'accumulent ; l'AOD contre-indiqué en Child C ; et
+    l'alcool des excipients, qu'on oublie chez quelqu'un en sevrage.
+    Avec une colonne « ce qu'on ne fait pas », parce qu'ici la moitié
+    des erreurs sont des gestes de bonne foi.
+  - **« Tabac »** : les substituts nicotiniques, dose comprise. Une
+    cigarette vaut environ 1 mg absorbé, le sous-dosage est la première
+    cause d'échec et il se voit ; le délai de la première cigarette est
+    la question la plus utile du Fagerström ; rien d'acide dans les
+    quinze minutes qui précèdent une gomme, ce que personne ne dit
+    spontanément ; fumer sous patch demande d'augmenter la dose et non
+    de retirer le patch ; et l'induction du CYP1A2 qui disparaît à
+    l'arrêt — une des rares interactions qui apparaissent en *arrêtant*
+    quelque chose.
+  - **« Sonde »** : donner un médicament sans la bouche. Le rinçage
+    entre deux médicaments, qui est ce qui manque le plus souvent ; un
+    médicament à la fois et jamais un mélange ; la lévothyroxine et la
+    phénytoïne dont l'absorption s'effondre au contact de la nutrition ;
+    l'IPP dispersé dans le bicarbonate plutôt qu'écrasé ; et la question
+    qu'on oublie de poser — où la sonde se termine.
+  - **« Voyage »** : l'ordonnance en DCI, parce qu'un nom de marque
+    français ne veut rien dire ailleurs ; l'insuline en cabine, parce
+    que la soute descend sous zéro ; le décalage horaire traité
+    séparément pour la thyroïde, la contraception, l'insuline et
+    l'anticoagulant, qui n'ont pas la même tolérance ; et la phrase qui
+    change une prise en charge au retour — « je reviens de… ».
+
+### Changed
+- **`fuzzy::contains_folded` : les moteurs de règles n'allouent plus.**
+  La revue passe cinquante-cinq règles sur une ordonnance, la plupart
+  nommant une demi-douzaine de mots, contre une dizaine de traitements —
+  et le tableau de bord fait tourner l'ensemble sur **chaque dossier de
+  la base**. Écrit `hay.contains(&sort_key(w))`, c'était un `String` par
+  mot *et par traitement*, quelque dix mille allocations par patient. Le
+  repliage se fait maintenant à la volée pendant la comparaison : les
+  aiguilles sont courtes, les bottes de foin font une ligne, et la passe
+  y gagne environ un tiers. La biologie et la surveillance suivent la
+  même route.
+- **La liste d'appel se lit quand on la regarde.** Elle parcourt toute
+  la base et y fait tourner les trois moteurs ; `refresh_dashboard` est
+  appelé depuis dix-huit endroits, dont chaque changement d'onglet de
+  l'espace de travail. Elle y est maintenant seulement *marquée à
+  relire*, et c'est la vue qui la montre qui la lit.
+
+### Fixed
+- **Trois carrés creux.** L'application ne livre aucune police : elle
+  dessine avec celles d'egui, dont la romaine n'a pas la flèche U+2192.
+  « Saisie courte : 230826 → 23/08/2026 » s'affichait donc avec un carré
+  au milieu — et la pastille « ← → » juste à côté était correcte, parce
+  qu'elle est en chasse fixe, qui les a. Trois textes étaient touchés :
+  celui-là, la ligne de touches du déroulé d'un protocole, et la phrase
+  écrite au journal quand on enregistre un protocole parcouru.
+  - Deux tests le tiennent désormais : l'un passe **chaque caractère de
+    chaque chaîne livrée** dans la police qui la dessinera, l'autre fait
+    de même pour les symboles que le code écrit lui-même — et il exige
+    en retour que les flèches n'aient *pas* de glyphe en romain, pour
+    que la règle « les flèches restent dans les pastilles » cesse d'être
+    vraie le jour où elle cesse d'être nécessaire.
+
 ## [0.119.0] - 2026-08-29
 
 Ce qui n'a pas été fait remonte au tableau de bord, et s'imprime sur le

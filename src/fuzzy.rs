@@ -71,6 +71,33 @@ pub fn sort_key(s: &str) -> String {
     s.chars().map(fold).collect()
 }
 
+/// Does `hay` — **already folded**, by [`sort_key`] — contain `needle`
+/// once folded? Without folding a copy of the needle first.
+///
+/// This is what the three rule engines ask, and they ask it a great many
+/// times: the revue runs fifty-five rules over an ordonnance, most of
+/// them naming half a dozen words, against ten treatments — and the
+/// dashboard runs the whole thing for every file in the base. Written as
+/// `hay.contains(&sort_key(w))` that was one `String` per word *per
+/// treatment*, some ten thousand allocations per patient. The needles
+/// are short and the haystacks are a line long, so a plain scan with the
+/// folding done on the fly costs nothing and allocates nothing.
+pub fn contains_folded(hay: &str, needle: &str) -> bool {
+    let Some(first) = needle.chars().next().map(fold) else {
+        return true;
+    };
+    for (i, c) in hay.char_indices() {
+        if c != first {
+            continue;
+        }
+        let mut rest = hay[i..].chars();
+        if needle.chars().map(fold).all(|n| rest.next() == Some(n)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// The letter `s` files under in an A–Z index: the first letter,
 /// accent-folded and capitalised, or `#` for a name that starts with a
 /// digit or a symbol.
@@ -213,6 +240,52 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_folding_search_answers_what_the_folded_copy_would_have() {
+        // Same rule written twice again, and held together the same way:
+        // `contains_folded(hay, n)` must answer exactly what
+        // `hay.contains(&sort_key(n))` answered before it.
+        let hays = [
+            "coversyl perindopril iec",
+            "aldactone spironolactone anti-aldosterone diuretique",
+            "",
+            "eee",
+            "methotrexate",
+            "5-fu antimetabolite",
+        ];
+        let needles = [
+            "IEC",
+            "iec",
+            "éplérénone",
+            "spironolactone",
+            "ALDOSTÉRONE",
+            "",
+            "e",
+            "eeee",
+            "méthotrexate",
+            "5-FU",
+            "z",
+        ];
+        for hay in hays {
+            for n in needles {
+                assert_eq!(
+                    super::contains_folded(hay, n),
+                    hay.contains(&super::sort_key(n)),
+                    "contains_folded(«{hay}», «{n}») diverge"
+                );
+            }
+        }
+        // The haystack is folded by the caller; the needle is not, and
+        // that is the whole point.
+        assert!(super::contains_folded(
+            &super::sort_key("Éplérénone 25 mg"),
+            "ÉPLÉRÉNONE"
+        ));
+        // An empty needle is contained in everything, `str::contains`
+        // included.
+        assert!(super::contains_folded("", ""));
     }
 
     #[test]

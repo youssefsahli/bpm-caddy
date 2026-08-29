@@ -80,11 +80,7 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
     let matches = |words: &[&str]| -> Vec<String> {
         folded
             .iter()
-            .filter(|(_, hay)| {
-                words
-                    .iter()
-                    .any(|w| hay.contains(&crate::fuzzy::sort_key(w)))
-            })
+            .filter(|(_, hay)| words.iter().any(|w| crate::fuzzy::contains_folded(hay, w)))
             .map(|(name, _)| name.clone())
             .collect()
     };
@@ -907,6 +903,7 @@ mod tests {
 
     /// Same discipline as the biology rules: a rule whose every term
     /// names a card the base does not carry can never fire.
+
     #[test]
     fn every_rule_can_fire_on_the_base_as_shipped() {
         let matches = |words: &[&str]| {
