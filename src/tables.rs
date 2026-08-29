@@ -953,6 +953,270 @@ pub const TABLES: &[ConvTable] = &[
             &["Fièvre au retour", "Une fièvre dans les mois qui suivent un séjour en zone impaludée est un paludisme jusqu'à preuve du contraire", "Consulter en urgence en le disant : « je reviens de… ». C'est la phrase qui change la prise en charge"],
         ],
     },
+    // --- Les tableaux des recommandations ---------------------------
+    //
+    // Les tables ci-dessus disent ce qu'une dose vaut, ou ce qu'on fait
+    // d'un produit. Celles-ci disent la **cible** : le chiffre à
+    // atteindre et ce qui range un patient dans une catégorie plutôt
+    // qu'une autre. C'est ce qu'on cherche quand une ordonnance semble
+    // légère et qu'on ne sait plus si c'est elle ou notre souvenir.
+    ConvTable {
+        short: "LDL",
+        family: "Adaptation",
+        title: "LDL — la cible dépend du risque, pas d'un seuil unique",
+        reviewed: "Août 2026 — recommandations ESC/EAS sur les dyslipidémies, fiche HAS",
+        sources: &[
+            "ESC/EAS — prise en charge des dyslipidémies",
+            "HAS — principales dyslipidémies : stratégies de prise en charge",
+        ],
+        columns: &[
+            "Niveau de risque",
+            "Ce qui range le patient là",
+            "Cible de LDL",
+            "En mmol/L",
+            "Ce qu'on fait pour l'atteindre",
+        ],
+        rows: &[
+            &[
+                "Très haut",
+                "Maladie cardiovasculaire avérée (infarctus, AVC, artériopathie), diabète avec atteinte d'organe ou ≥ 3 facteurs, IRC sévère, hypercholestérolémie familiale avec un autre facteur",
+                "< 0,55 g/L et baisse d'au moins 50 %",
+                "< 1,4 mmol/L",
+                "Statine de forte intensité à dose maximale tolérée, puis ézétimibe, puis inhibiteur de PCSK9",
+            ],
+            &[
+                "Haut",
+                "Un facteur très élevé isolé (LDL > 1,90 g/L, PA ≥ 180/110), hypercholestérolémie familiale seule, diabète ≥ 10 ans sans atteinte, IRC modérée",
+                "< 0,70 g/L et baisse d'au moins 50 %",
+                "< 1,8 mmol/L",
+                "Statine de forte intensité ; ézétimibe si la cible n'est pas atteinte",
+            ],
+            &[
+                "Modéré",
+                "Diabète de moins de 10 ans sans autre facteur, ou risque calculé intermédiaire",
+                "< 1,00 g/L",
+                "< 2,6 mmol/L",
+                "Mesures de mode de vie d'abord ; statine si la cible n'est pas atteinte",
+            ],
+            &[
+                "Faible",
+                "Aucun facteur au-delà de l'âge, risque calculé bas",
+                "< 1,16 g/L",
+                "< 3,0 mmol/L",
+                "Mode de vie. Une statine ici se discute et ne va pas de soi",
+            ],
+            &[
+                "Ce qui se vérifie au comptoir",
+                "La cible n'est pas sur l'ordonnance : elle se déduit du dossier",
+                "—",
+                "—",
+                "Un LDL « normal » sur le compte rendu du laboratoire ne dit rien : les bornes usuelles du laboratoire ne sont pas des cibles thérapeutiques",
+            ],
+        ],
+    },
+    ConvTable {
+        short: "IC — piliers",
+        family: "Posologies",
+        title: "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        reviewed: "Août 2026 — recommandations ESC sur l'insuffisance cardiaque, RCP",
+        sources: &[
+            "ESC — insuffisance cardiaque aiguë et chronique",
+            "RCP des spécialités, base de données publique des médicaments (ANSM)",
+            "HAS — guide du parcours de soins : insuffisance cardiaque",
+        ],
+        columns: &[
+            "Pilier",
+            "Molécules",
+            "Dose de départ",
+            "Dose cible",
+            "Ce qui se surveille",
+            "Le piège",
+        ],
+        rows: &[
+            &[
+                "Bloqueur du SRAA",
+                "Ramipril, périndopril, énalapril ; losartan ou candésartan si toux ; sacubitril/valsartan",
+                "Ramipril 1,25 mg × 2 ; sacubitril/valsartan 24/26 mg × 2",
+                "Ramipril 5 mg × 2 ; sacubitril/valsartan 97/103 mg × 2",
+                "Kaliémie et créatininémie à 1 et 4 semaines de chaque palier ; pression artérielle",
+                "36 heures d'arrêt entre un IEC et le sacubitril/valsartan — sinon angio-œdème. Jamais les deux ensemble",
+            ],
+            &[
+                "Bêtabloquant",
+                "Bisoprolol, carvédilol, métoprolol succinate, nébivolol — ces quatre-là et pas un autre",
+                "Bisoprolol 1,25 mg/j ; carvédilol 3,125 mg × 2",
+                "Bisoprolol 10 mg/j ; carvédilol 25 mg × 2",
+                "Fréquence cardiaque, pression artérielle, poids et signes de congestion",
+                "Ne s'instaure pas en pleine décompensation, et ne s'arrête jamais brutalement — l'arrêt brusque expose à l'aggravation",
+            ],
+            &[
+                "Antialdostérone",
+                "Spironolactone, éplérénone",
+                "12,5 à 25 mg/j",
+                "25 à 50 mg/j",
+                "Kaliémie et créatininémie à 1 semaine, 1 mois, puis tous les 4 mois",
+                "Contre-indiqué si kaliémie > 5,0 mmol/L ou DFG < 30. Gynécomastie sous spironolactone : l'éplérénone la remplace",
+            ],
+            &[
+                "Gliflozine",
+                "Dapagliflozine, empagliflozine",
+                "10 mg/j — pas de titration",
+                "10 mg/j",
+                "DFG au début puis annuellement ; signes d'infection génitale",
+                "Avec ou sans diabète. Règle des jours de maladie : on l'arrête si l'on ne mange plus, si l'on vomit ou si l'on se déshydrate",
+            ],
+            &[
+                "Ce que le comptoir vérifie",
+                "Les quatre présents, et titrés en parallèle",
+                "Tôt et bas",
+                "Ou la dose maximale tolérée",
+                "Poids quotidien : +2 kg en trois jours, c'est de la congestion",
+                "Les quatre s'instaurent ensemble et se montent ensemble, jamais l'un après l'autre jusqu'à sa cible",
+            ],
+        ],
+    },
+    ConvTable {
+        short: "FA — scores",
+        family: "Au comptoir",
+        title: "Fibrillation atriale — CHA₂DS₂-VASc et HAS-BLED",
+        reviewed: "Août 2026 — recommandations ESC sur la fibrillation atriale",
+        sources: &[
+            "ESC — prise en charge de la fibrillation atriale",
+            "HAS — fibrillation atriale : guide du parcours de soins",
+        ],
+        columns: &[
+            "Item",
+            "Score",
+            "Lequel",
+            "Ce que cela veut dire",
+        ],
+        rows: &[
+            &["Insuffisance cardiaque ou FEVG altérée", "1", "CHA₂DS₂-VASc", "C"],
+            &["Hypertension artérielle", "1", "Les deux", "H — traitée ou non"],
+            &["Âge ≥ 75 ans", "2", "CHA₂DS₂-VASc", "A₂ — c'est le poids le plus lourd avec l'AVC"],
+            &["Diabète", "1", "CHA₂DS₂-VASc", "D"],
+            &["AVC, AIT ou embolie antérieurs", "2", "CHA₂DS₂-VASc", "S₂"],
+            &["Maladie vasculaire (infarctus, artériopathie, plaque aortique)", "1", "CHA₂DS₂-VASc", "V"],
+            &["Âge 65 à 74 ans", "1", "CHA₂DS₂-VASc", "A"],
+            &["Sexe féminin", "1", "CHA₂DS₂-VASc", "Sc — modulateur, il ne fait pas indication à lui seul"],
+            &["Fonction rénale ou hépatique altérée", "1 ou 2", "HAS-BLED", "R et L — un point chacun"],
+            &["Antécédent hémorragique ou anémie", "1", "HAS-BLED", "B"],
+            &["INR instable sous AVK", "1", "HAS-BLED", "L — sans objet sous AOD"],
+            &["Âge > 65 ans", "1", "HAS-BLED", "E"],
+            &["Alcool ou médicaments qui font saigner (AINS, antiagrégants)", "1 ou 2", "HAS-BLED", "D — un point chacun"],
+            &["Comment on lit le total", "—", "—", "CHA₂DS₂-VASc ≥ 2 chez l'homme ou ≥ 3 chez la femme : anticoaguler. HAS-BLED ≥ 3 : ce n'est pas une contre-indication, c'est une liste de choses à corriger"],
+        ],
+    },
+    ConvTable {
+        short: "HbA1c",
+        family: "Adaptation",
+        title: "HbA1c — l'objectif se choisit sur le patient",
+        reviewed: "Août 2026 — recommandations HAS/SFD sur le diabète de type 2",
+        sources: &[
+            "HAS — stratégie médicamenteuse du contrôle glycémique du diabète de type 2",
+            "SFD — prise de position sur la prise en charge du diabète de type 2",
+        ],
+        columns: &["Profil", "Objectif d'HbA1c", "Pourquoi", "Ce qu'il ne faut pas faire"],
+        rows: &[
+            &[
+                "Diabète récent, espérance de vie longue, sans comorbidité",
+                "≤ 6,5 %",
+                "Le bénéfice microvasculaire d'un contrôle strict se joue tôt et dure",
+                "Y arriver par un sulfamide à dose forte : les hypoglycémies annulent le bénéfice",
+            ],
+            &[
+                "Cas général",
+                "≤ 7 %",
+                "L'objectif de la plupart des patients suivis en ville",
+                "Le lire comme une note : une HbA1c à 7,2 % chez un patient stable n'est pas un échec",
+            ],
+            &[
+                "Comorbidité sévère, complications évoluées, diabète ancien",
+                "≤ 8 %",
+                "Le bénéfice d'un contrôle strict ne se voit plus, le risque d'hypoglycémie, si",
+                "Intensifier parce que le chiffre dépasse 7 : ce serait faire du mal",
+            ],
+            &[
+                "Sujet âgé dit « fragile »",
+                "≤ 8 %",
+                "Une hypoglycémie chez lui, c'est une chute, une fracture, une hospitalisation",
+                "Laisser un sulfamide ou une insuline rapide sans réévaluer",
+            ],
+            &[
+                "Sujet âgé dit « malade »",
+                "< 9 % et éviter les glycémies < 1 g/L",
+                "L'objectif devient le confort et l'absence d'hypoglycémie",
+                "Poursuivre une intensification décidée dix ans plus tôt",
+            ],
+            &[
+                "Grossesse (diabète préexistant)",
+                "≤ 6,5 % avant la conception",
+                "Le risque malformatif se joue aux premières semaines",
+                "Poursuivre metformine hors avis, IEC, ARA2, statines : tous se revoient avant la conception",
+            ],
+        ],
+    },
+    ConvTable {
+        short: "DFG — stades",
+        family: "Adaptation",
+        title: "Insuffisance rénale chronique — les stades et ce qu'ils changent",
+        reviewed: "Août 2026 — guide HAS sur la maladie rénale chronique, RCP",
+        sources: &[
+            "HAS — guide du parcours de soins : maladie rénale chronique de l'adulte",
+            "RCP des spécialités, base de données publique des médicaments (ANSM)",
+        ],
+        columns: &[
+            "Stade",
+            "DFG (mL/min/1,73 m²)",
+            "Ce qui s'arrête ou se réduit",
+            "Ce qui se surveille",
+            "Ce qu'on dit au patient",
+        ],
+        rows: &[
+            &[
+                "1 et 2",
+                "≥ 60 avec une anomalie rénale",
+                "Rien au titre du DFG seul",
+                "DFG et albuminurie une fois par an",
+                "Les AINS et la déshydratation font baisser le DFG plus vite que la maladie",
+            ],
+            &[
+                "3A",
+                "45 à 59",
+                "Metformine poursuivie ; AOD à vérifier ; AINS à éviter",
+                "DFG et kaliémie tous les 6 mois",
+                "Boire normalement, et signaler tout épisode de vomissements ou de diarrhée",
+            ],
+            &[
+                "3B",
+                "30 à 44",
+                "Metformine à dose réduite (max 1 000 mg/j) ; doses d'AOD adaptées ; AINS proscrits",
+                "DFG, kaliémie et hémoglobine tous les 3 à 6 mois",
+                "Règle des jours de maladie : on suspend metformine et gliflozine quand on ne mange plus",
+            ],
+            &[
+                "4",
+                "15 à 29",
+                "Metformine et la plupart des gliflozines arrêtées ; dabigatran contre-indiqué ; revoir toute l'ordonnance",
+                "DFG, kaliémie, calcémie, phosphorémie, hémoglobine tous les 3 mois",
+                "Néphrologue ; et ne jamais prendre d'anti-inflammatoire, même vendu sans ordonnance",
+            ],
+            &[
+                "5",
+                "< 15",
+                "Ordonnance revue molécule par molécule avec le néphrologue",
+                "Suivi néphrologique rapproché",
+                "Toute automédication passe par un avis, y compris la phytothérapie",
+            ],
+            &[
+                "Ce qui trompe",
+                "Créatininémie normale ≠ DFG normal",
+                "Chez le sujet âgé peu musclé, une créatininémie à 90 µmol/L peut recouvrir un DFG à 40",
+                "Le DFG se calcule, il ne se lit pas",
+                "La calculatrice de Cockcroft du module le donne en trois champs",
+            ],
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -973,8 +1237,8 @@ mod tests {
         // The catalogue only ever grows: a table withdrawn is a question
         // the counter can no longer answer from the application.
         assert!(
-            TABLES.len() >= 38,
-            "{} tables livrées, il y en avait trente-quatre",
+            TABLES.len() >= 43,
+            "{} tables livrées, il y en avait quarante-trois",
             TABLES.len()
         );
         let mut shorts = std::collections::HashSet::new();
@@ -1043,6 +1307,13 @@ mod tests {
             "Automédication",
             "Antibiotiques",
             "Arrêts et sevrages",
+            // Les tableaux des recommandations : la cible, et ce qui
+            // range un patient dans une catégorie plutôt qu'une autre.
+            "LDL",
+            "Insuffisance cardiaque",
+            "Fibrillation atriale",
+            "HbA1c",
+            "Insuffisance rénale chronique",
         ] {
             assert!(
                 TABLES.iter().any(|t| t.title.starts_with(prefix)),

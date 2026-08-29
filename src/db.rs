@@ -22213,6 +22213,204 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
             )],
         )],
     },
+    // --- Les algorithmes de prise en charge -------------------------
+    //
+    // Les protocoles ci-dessus répondent à ce qui arrive au comptoir.
+    // Ceux-ci répondent à ce que l'ordonnance *devrait* porter : la
+    // stratégie recommandée pour une maladie chronique, déroulée pas à
+    // pas. Le pharmacien ne prescrit pas ; il vérifie, il explique et il
+    // signale ce qui manque, et pour cela il faut connaître la marche.
+    //
+    // Ils citent leur source dans le sujet, et le disent : ce sont des
+    // recommandations, pas des ordres, et un prescripteur qui s'en écarte
+    // a le plus souvent une raison qui n'est pas sur l'ordonnance.
+    StarterProtocol {
+        title: "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        subject: "IC à fraction d'éjection altérée (≤ 40 %) — ESC 2021/2023, HAS",
+        steps: &[q(
+            "Les quatre classes sont-elles toutes sur l'ordonnance — bloqueur du SRAA, bêtabloquant, antialdostérone, gliflozine ?",
+            &[q(
+                "Chacune est-elle à la dose cible, ou à la dose maximale tolérée ?",
+                &[act(
+                    "Rien à signaler : le traitement est complet et titré. Le suivi porte alors sur l'observance, le poids quotidien et les signes de congestion.",
+                )],
+                &[act(
+                    "Titration en cours : les quatre s'instaurent tôt et se montent en parallèle, pas l'une après l'autre. Vérifier que le patient a un rendez-vous de titration, et surveiller kaliémie, créatininémie et pression artérielle à chaque palier.",
+                )],
+            )],
+            &[q(
+                "Le bloqueur du SRAA manque-t-il — IEC, ARA2, ou sacubitril/valsartan ?",
+                &[act(
+                    "Signaler au prescripteur. C'est le socle : IEC en première intention, ARA2 en cas de toux, et le sacubitril/valsartan à la place de l'IEC quand le patient reste symptomatique. Jamais les deux ensemble, et 36 heures d'arrêt entre un IEC et le sacubitril/valsartan — le risque est l'angio-œdème.",
+                )],
+                &[q(
+                    "Le bêtabloquant manque-t-il ?",
+                    &[act(
+                        "Signaler. Quatre seulement ont l'indication dans l'IC : bisoprolol, carvédilol, métoprolol succinate, nébivolol. Il s'instaure à distance d'une décompensation, à faible dose, et ne s'arrête jamais brutalement.",
+                    )],
+                    &[q(
+                        "L'antialdostérone manque-t-il — spironolactone ou éplérénone ?",
+                        &[act(
+                            "Signaler, sauf si la kaliémie ou le DFG l'interdisent. Contre-indiqué au-dessus de 5,0 mmol/L de kaliémie ou en dessous de 30 mL/min ; kaliémie et créatininémie à une semaine, un mois, puis tous les quatre mois.",
+                        )],
+                        &[act(
+                            "C'est la gliflozine qui manque : dapagliflozine ou empagliflozine, avec ou sans diabète, et quel que soit le DFG au-dessus de 20 mL/min. Prévenir du risque de mycose génitale, et de la règle des jours de maladie — on l'arrête si on ne mange plus, si on vomit ou si on se déshydrate.",
+                        )],
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Hypertension artérielle — la marche du traitement",
+        subject: "HTA de l'adulte — SFHTA/HAS, stratégie par paliers",
+        steps: &[q(
+            "Le diagnostic repose-t-il sur des mesures hors du cabinet — automesure ou MAPA ?",
+            &[q(
+                "La pression est-elle à l'objectif — moins de 130/80 en automesure pour la plupart des adultes ?",
+                &[act(
+                    "À l'objectif : le suivi porte sur l'observance, le sel, l'alcool, l'activité et le poids. Rappeler que le traitement ne se juge pas sur une mesure isolée, et qu'il ne s'arrête pas parce que les chiffres sont bons.",
+                )],
+                &[q(
+                    "Combien de classes l'ordonnance porte-t-elle — une seule ?",
+                    &[act(
+                        "La bithérapie est la première intention chez la plupart des patients : bloqueur du SRAA (IEC ou ARA2) associé à un inhibiteur calcique ou à un diurétique thiazidique, de préférence en une seule prise. Le signaler au prescripteur si le contrôle n'est pas atteint après quatre semaines.",
+                    )],
+                    &[q(
+                        "L'ordonnance porte-t-elle déjà les trois classes — SRAA, calcique, thiazidique — à dose optimale ?",
+                        &[act(
+                            "HTA résistante : le quatrième médicament est la spironolactone à faible dose, sous surveillance de la kaliémie. Avant d'en arriver là, vérifier l'observance, le sel, et ce qui fait monter la pression — AINS, corticoïdes, vasoconstricteurs nasaux, réglisse, certains antidépresseurs.",
+                        )],
+                        &[act(
+                            "Compléter la trithérapie avant de parler de résistance : SRAA + inhibiteur calcique + thiazidique, chacun à dose optimale. Un bêtabloquant n'entre dans l'HTA simple qu'avec une indication propre — coronaropathie, insuffisance cardiaque, trouble du rythme.",
+                        )],
+                    )],
+                )],
+            )],
+            &[act(
+                "Le rappeler : une HTA ne se confirme pas au cabinet seul. L'automesure se fait sur trois jours, trois mesures le matin et trois le soir, assis depuis cinq minutes — la règle des trois. Proposer le prêt ou la vente d'un tensiomètre validé, brassard huméral et non poignet.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Diabète de type 2 — l'escalade thérapeutique",
+        subject: "DT2 de l'adulte — HAS/SFD, stratégie médicamenteuse",
+        steps: &[q(
+            "Le patient a-t-il une maladie cardiovasculaire avérée, une insuffisance cardiaque ou une atteinte rénale ?",
+            &[act(
+                "Dans ces trois situations le choix ne se fait plus sur la seule HbA1c : une gliflozine ou un analogue du GLP-1 est indiqué pour le bénéfice cardiovasculaire ou rénal lui-même, avec la metformine ou même avant elle. Si l'ordonnance n'en porte pas, c'est ce qu'il faut signaler.",
+            )],
+            &[q(
+                "La metformine est-elle sur l'ordonnance, ou clairement contre-indiquée ?",
+                &[q(
+                    "L'HbA1c est-elle à l'objectif fixé pour ce patient ?",
+                    &[act(
+                        "À l'objectif : le suivi porte sur l'observance, la tolérance digestive de la metformine, le pied, l'ophtalmologie annuelle et le DFG. Rappeler la règle des jours de maladie — metformine et gliflozine s'arrêtent si l'on ne mange plus, si l'on vomit ou si l'on se déshydrate.",
+                    )],
+                    &[act(
+                        "Bithérapie : le deuxième médicament se choisit sur le profil, non par ordre alphabétique. Surpoids marqué ou besoin d'un effet fort : analogue du GLP-1. Insuffisance cardiaque ou rénale : gliflozine. Contrainte de coût : sulfamide, en prévenant du risque d'hypoglycémie et en fournissant du resucrage.",
+                    )],
+                )],
+                &[act(
+                    "Vérifier pourquoi : le DFG en dessous de 30 mL/min la contre-indique, entre 30 et 45 elle se poursuit à dose réduite. Une intolérance digestive se travaille — dose progressive, forme à libération prolongée, prise au milieu du repas — avant de conclure à l'échec.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Dyslipidémie — la cible dépend du risque, pas du chiffre",
+        subject: "Prévention cardiovasculaire — HAS/ESC, objectifs de LDL",
+        steps: &[q(
+            "Le patient a-t-il une maladie cardiovasculaire avérée, un diabète avec atteinte d'organe, une IRC sévère ou une hypercholestérolémie familiale ?",
+            &[q(
+                "Le LDL est-il en dessous de 0,55 g/L (1,4 mmol/L), et abaissé d'au moins la moitié ?",
+                &[act(
+                    "À la cible du très haut risque. Le suivi porte sur l'observance : c'est là que se perdent les statines, sur des douleurs musculaires qui méritent d'être écoutées et un dosage de CPK plutôt qu'un arrêt silencieux.",
+                )],
+                &[act(
+                    "Statine de forte intensité à dose maximale tolérée. Si la cible n'est pas atteinte, on ajoute l'ézétimibe, puis un inhibiteur de PCSK9. Signaler au prescripteur un LDL qui reste au-dessus de la cible sous traitement maximal.",
+                )],
+            )],
+            &[act(
+                "La cible se lit sur le niveau de risque et non sur un seuil unique : moins de 0,70 g/L à haut risque, moins de 1,00 g/L à risque modéré, moins de 1,16 g/L à risque faible. La table « LDL » du module donne les quatre niveaux et ce qui range un patient dans chacun.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Fibrillation atriale — faut-il anticoaguler ?",
+        subject: "FA non valvulaire — score CHA₂DS₂-VASc, HAS/ESC",
+        steps: &[q(
+            "S'agit-il d'un rétrécissement mitral serré ou d'une prothèse valvulaire mécanique ?",
+            &[act(
+                "Ce n'est pas une FA non valvulaire : l'anticoagulation est l'AVK, et les AOD y sont contre-indiqués. Une ordonnance d'AOD dans ce contexte se signale au prescripteur le jour même.",
+            )],
+            &[q(
+                "Le score CHA₂DS₂-VASc est-il d'au moins 2 chez l'homme, ou 3 chez la femme ?",
+                &[act(
+                    "Anticoagulation indiquée, et l'AOD est préféré à l'AVK en première intention. Vérifier la dose contre l'âge, le poids et la créatininémie — c'est là que se font les erreurs — et rappeler qu'un AOD se prend à heure fixe et ne se rattrape jamais en doublant.",
+                )],
+                &[q(
+                    "Le score est-il de 1 chez l'homme, ou 2 chez la femme ?",
+                    &[act(
+                        "Zone de discussion : l'anticoagulation se pèse contre le risque hémorragique. Ce n'est pas une décision de comptoir ; ce qui l'est, c'est de vérifier que la question a été posée.",
+                    )],
+                    &[act(
+                        "Pas d'anticoagulation au titre du score. L'aspirine n'est pas une alternative : elle ne protège pas de l'AVC cardio-embolique et elle fait saigner. Une ordonnance d'aspirine « pour le cœur » dans une FA se discute avec le prescripteur.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Asthme — le palier, et ce qui se vérifie avant de le monter",
+        subject: "Asthme de l'adulte — GINA/HAS, traitement de fond",
+        steps: &[q(
+            "Le patient utilise-t-il un bronchodilatateur de courte durée seul, sans corticoïde inhalé ?",
+            &[act(
+                "C'est ce qu'il ne faut plus faire : le salbutamol seul soulage et ne traite pas, et son usage isolé est associé à un excès d'exacerbations. Tout asthmatique reçoit un corticoïde inhalé, même en asthme intermittent. À signaler.",
+            )],
+            &[q(
+                "Combien de flacons de bronchodilatateur de courte durée en un an ?",
+                &[q(
+                    "Trois ou plus ?",
+                    &[act(
+                        "Asthme non contrôlé, quel que soit ce que dit le patient : trois flacons par an, c'est plus de deux bouffées par semaine. Avant de monter le palier, vérifier trois choses — la technique d'inhalation, l'observance du traitement de fond, et l'éviction de ce qui déclenche.",
+                    )],
+                    &[act(
+                        "Contrôle acceptable. Refaire quand même la technique d'inhalation une fois par an : la moitié des patients se trompe, et le geste se perd sans qu'on s'en aperçoive.",
+                    )],
+                )],
+                &[act(
+                    "Reprendre la question autrement : combien de fois par semaine s'en sert-il, se réveille-t-il la nuit, et a-t-il dû limiter un effort ? Trois réponses qui disent le contrôle mieux qu'un chiffre de spirométrie vieux d'un an.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Insuffisance rénale chronique — ce que le stade change",
+        subject: "IRC de l'adulte — HAS, adaptation et surveillance",
+        steps: &[q(
+            "Le DFG est-il connu et daté de moins d'un an ?",
+            &[q(
+                "Est-il en dessous de 30 mL/min ?",
+                &[act(
+                    "Stade 4 ou 5 : passer en revue toute l'ordonnance. Metformine et gliflozines contre-indiquées ou à réévaluer, AOD à dose adaptée voire contre-indiqués, AINS proscrits, produits de contraste à signaler. Vérifier aussi ce qui ne se voit pas — automédication, compléments, phytothérapie.",
+                )],
+                &[q(
+                    "Est-il entre 30 et 60 mL/min ?",
+                    &[act(
+                        "Stade 3 : les doses s'adaptent, molécule par molécule. Metformine à dose réduite entre 30 et 45. AOD à vérifier contre la créatininémie et non contre l'âge seul. AINS à éviter, et la trithérapie néfaste — IEC ou ARA2 + diurétique + AINS — se signale immédiatement.",
+                    )],
+                    &[act(
+                        "Fonction rénale conservée ou peu altérée : rien à adapter aujourd'hui, mais le DFG se recontrôle, et il baisse plus vite en cas de diabète, d'HTA ou de déshydratation. Rappeler la règle des jours de maladie pour ce qui l'exige.",
+                    )],
+                )],
+            )],
+            &[act(
+                "Le demander avant de délivrer ce qui en dépend. Chez le sujet âgé, la créatininémie seule ment : une créatininémie normale avec peu de masse musculaire peut recouvrir un DFG à 40. La calculatrice de Cockcroft du module le dit en trois champs.",
+            )],
+        )],
+    },
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.
@@ -33881,8 +34079,8 @@ mod tests {
         // The catalogue only ever grows: a protocol removed is a
         // question nobody asks any more.
         assert!(
-            STARTER_PROTOCOLS.len() >= 40,
-            "{} protocoles livrés, il y en avait trente-six",
+            STARTER_PROTOCOLS.len() >= 47,
+            "{} protocoles livrés, il y en avait quarante-sept",
             STARTER_PROTOCOLS.len()
         );
 

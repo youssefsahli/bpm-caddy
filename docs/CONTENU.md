@@ -100,6 +100,27 @@ Deux règles valent partout :
   livre pour retrouver. Deux préparations ne peuvent pas porter le même
   nom.
 
+## Les protocoles et les algorithmes de prise en charge
+
+- **Où** : `src/db.rs`, `STARTER_PROTOCOLS` — un arbre par protocole,
+  fait de questions (`q`) et de conduites (`act`).
+- **Deux familles dans la même liste** : les protocoles *de comptoir*
+  répondent à ce qui arrive (une rupture, une piqûre de tique, un oubli
+  de pilule) ; les *algorithmes de prise en charge* répondent à ce que
+  l'ordonnance devrait porter — la stratégie recommandée d'une maladie
+  chronique, déroulée pas à pas. Le pharmacien ne prescrit pas ; il
+  vérifie, il explique et il signale ce qui manque, et pour cela il faut
+  connaître la marche.
+- **Un algorithme cite sa source dans son sujet** (ESC, HAS, SFHTA,
+  GINA…) et le dit : ce sont des recommandations et pas des ordres, et
+  un prescripteur qui s'en écarte a le plus souvent une raison qui n'est
+  pas sur l'ordonnance.
+- **Semé par** : `Db::seed_protocols`, une fois, par titre.
+- **Tests** : `every_protocol_asks_before_it_answers` — un protocole
+  demande avant de répondre (au moins une question), toute question se
+  termine par un point d'interrogation, aucune conduite n'est vide, pas
+  deux titres identiques, et le compte est un cliquet.
+
 ## Le registre des stupéfiants
 
 - **Où** : deux tables dans `src/db.rs` — `stupefiants` (les produits

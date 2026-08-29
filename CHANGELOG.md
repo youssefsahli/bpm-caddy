@@ -5,6 +5,40 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.140.0] - 2026-08-29
+
+### Added
+- **Les algorithmes de prise en charge, et les tableaux qui portent leurs
+  cibles.** Les protocoles répondaient à ce qui arrive au comptoir — une
+  rupture, une piqûre de tique, un oubli de pilule. Il manquait l'autre
+  moitié : ce que l'ordonnance *devrait* porter. Le pharmacien ne
+  prescrit pas ; il vérifie, il explique et il signale ce qui manque, et
+  pour cela il faut connaître la marche.
+  - **Sept algorithmes** (47 protocoles au lieu de 40) :
+    l'**insuffisance cardiaque à FEVG altérée et ses quatre piliers** —
+    demandée nommément —, où l'arbre demande classe par classe ce qui
+    manque à l'ordonnance et rappelle les 36 heures entre un IEC et le
+    sacubitril/valsartan ; l'**HTA** et sa marche (bithérapie d'emblée,
+    trithérapie, puis spironolactone, et ce qui fait monter la pression
+    avant de parler de résistance) ; le **diabète de type 2**, où
+    l'atteinte cardiovasculaire ou rénale décide avant l'HbA1c ; la
+    **dyslipidémie**, dont la cible se lit sur le risque et jamais sur un
+    seuil unique ; la **fibrillation atriale** et le CHA₂DS₂-VASc, avec
+    le rappel qu'un AOD est contre-indiqué sur valve mécanique et que
+    l'aspirine n'est pas une alternative ; l'**asthme**, où trois flacons
+    de salbutamol par an disent le non-contrôle mieux que le patient ;
+    et l'**insuffisance rénale chronique**, stade par stade.
+  - **Cinq tableaux** (43 au lieu de 38) : les cibles de LDL par niveau
+    de risque, les quatre piliers de l'IC avec doses de départ, cibles et
+    pièges, CHA₂DS₂-VASc et HAS-BLED item par item, les objectifs
+    d'HbA1c selon le profil — y compris les deux du sujet âgé, où
+    intensifier fait du mal —, et les stades de DFG avec ce que chacun
+    arrête. Chacun cite ses sources et porte sa date de relecture.
+  - Chaque algorithme nomme sa source dans son sujet et le dit : ce sont
+    des recommandations et pas des ordres, et un prescripteur qui s'en
+    écarte a le plus souvent une raison qui n'est pas sur l'ordonnance.
+  - Les deux cliquets suivent : 47 protocoles, 43 tables.
+
 ## [0.139.0] - 2026-08-29
 
 ### Fixed
