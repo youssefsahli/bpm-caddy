@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.130.0] - 2026-08-29
+
+### Fixed
+- **La bibliothèque qui manquait au runner : `libxkbcommon-x11-0`.**
+  winit l'ouvre au moment de l'exécution, comme eframe le fait d'OpenGL,
+  et le paquet `-dev` que les autres travaux installent ne porte pas
+  celui du système. Ce n'était donc pas une histoire de carte graphique.
+  Le garde-fou l'a nommé lui-même — « Library libxkbcommon-x11.so could
+  not be loaded » — à sa deuxième exécution, ce qui est précisément ce
+  pour quoi on lui a fait dire pourquoi.
+
 ## [0.129.0] - 2026-08-29
 
 ### Fixed

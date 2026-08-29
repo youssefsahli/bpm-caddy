@@ -59,13 +59,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev \
             libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libdbus-1-dev \
-            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri libxkbcommon-x11-0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # eframe draws through OpenGL, which it opens at run time rather
       # than linking: a runner with no GPU needs Mesa's software
       # rasteriser, and needs to be told to use it rather than probe for
-      # hardware that is not there.
+      # hardware that is not there. winit opens `libxkbcommon-x11.so`
+      # the same way, and the `-dev` package the other jobs install does
+      # not carry the runtime one — the guard named it, in those words,
+      # on its second run.
       #
       # If this job ever fails because the application will not start,
       # the two honest answers are to fix the packages or to drop the
