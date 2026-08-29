@@ -161,7 +161,14 @@ upgrade is decided, the number to defend is the logic one, and
   `TextEdit::multiline` adds its own frame margin on top, so a reserve
   computed from `available_height` is always a few pixels short and the
   button ends up half painted. `Self::button_height` is the button's
-  real height; `interact_size.y` is not.
+  real height; `interact_size.y` is not — at `text_scale = 1.25` it is
+  27.5 px where a button is 38, so a band reserving rows with it and
+  then drawing buttons is **ten pixels short per row**.
+  `Self::row_height` is the number every band that carves rows uses.
+- **`ui.columns` does not clip.** Each column gets a rect and content
+  wider than it paints straight into the neighbour: the two counter
+  calculators drew « 1050 mg par prise » over « Clairance estimée ».
+  Measure whether both fit, and stack them when they do not.
 - `allocate_new_ui` only sets a max rect and egui paints through it: use
   `motif::inside` when content must not escape its frame. It also
   reserves **no space**, so a `ScrollArea` around it never learns the

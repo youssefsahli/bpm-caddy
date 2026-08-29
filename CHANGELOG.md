@@ -5,6 +5,34 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.139.0] - 2026-08-29
+
+### Fixed
+- **Troisième tour, et le plus instructif : deux réserves de hauteur
+  fausses depuis longtemps.**
+- **Les deux calculatrices se peignaient l'une sur l'autre.**
+  `ui.columns` donne à chaque colonne son rectangle et ne découpe rien :
+  à 1024 px en texte 1,25 les deux grilles étaient plus larges que leur
+  moitié, et « 1050 mg par prise » se dessinait par-dessus « Clairance
+  estimée : 62 mL/min ». Deux textes superposés ne se lisent ni l'un ni
+  l'autre, et rien dans l'image ne dit lequel est lequel. Côte à côte si
+  les deux tiennent — mesuré sur le plus long libellé —, l'un sous
+  l'autre sinon.
+- **`interact_size.y` n'est pas la hauteur d'une rangée.** À
+  `text_scale = 1.25` elle vaut 27,5 px là où un bouton Motif en fait
+  38 : une bande qui réservait ses rangées avec le premier nombre puis y
+  dessinait des boutons était **dix pixels trop courte par rangée**. Le
+  formulaire du carnet de vaccination en sortait avec sa deuxième
+  rangée tranchée — précisément ce que les notes du projet interdisent,
+  parce qu'une table à qui il manque une ligne se lit et défile, tandis
+  qu'un formulaire coupé en deux ne se tape pas. La leçon était déjà
+  écrite sur `button_height` ; elle est maintenant un `row_height` que
+  les sept bandes concernées appellent.
+- Et le partage du carnet est pris **dans l'autre sens** : le carnet
+  demande d'abord ce que son formulaire exige, la bande « À faire /
+  Voyage » prend ce qui reste et défile. Servie la première, elle
+  laissait au formulaire six pixels de moins qu'il n'en faut.
+
 ## [0.138.0] - 2026-08-29
 
 ### Fixed

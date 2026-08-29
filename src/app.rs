@@ -7577,7 +7577,7 @@ impl App {
             let notes_min = line * 5.5;
             // The table's own head (summary, fees, column titles) plus
             // a row of controls, which is taller than a line of text.
-            let acts_min = line * 8.0 + ui.spacing().interact_size.y * 3.0;
+            let acts_min = line * 8.0 + Self::row_height(ui) * 3.0;
             // The cap is raised to the floor rather than trusted to sit
             // above it: `f32::clamp` panics outright when min > max, and
             // on a short pane the journal's floor does cross two fifths
@@ -7976,9 +7976,21 @@ impl App {
             // a 96 px floor is barely five of the band's own lines and
             // « Voyage » lost its button off the bottom.
             let line = ui.text_style_height(&egui::TextStyle::Body);
-            let band = (work.height() * 0.40)
-                .clamp(150.0, 320.0)
-                .min((work.height() - line * 16.0).max(line * 6.5));
+            // Ce que le carnet demande **d'abord**, et la bande prend ce
+            // qui reste : son cadre, les deux rangées du formulaire —
+            // celui qu'on ne peut pas couper — et deux lignes de table.
+            //
+            // Dans l'autre sens, la bande servait sa part et le carnet
+            // héritait du reste, qui à 1024x700 en texte 1,25 était six
+            // pixels de moins que le formulaire, et sa deuxième rangée
+            // sortait tranchée. C'est précisément le cas que les notes du
+            // projet nomment : une table à qui il manque une ligne se
+            // lit et défile, un formulaire coupé en deux ne se tape pas.
+            let form_need =
+                (Self::row_height(ui) + ui.spacing().item_spacing.y) * 2.0 + 34.0 + line * 2.0;
+            let band = (work.height() - form_need - 8.0)
+                .min(work.height() * 0.40)
+                .clamp(line * 4.0, 320.0);
             let stack = motif::split_rows(work, &[0.0, band], 8.0);
             (stack[0], stack[1])
         };
@@ -8056,8 +8068,7 @@ impl App {
             // what is left. A table one row short still reads and it
             // scrolls, a form whose second row of fields is cut in half
             // cannot be typed into. The only cap is the panel itself.
-            let form_h = ((ui.spacing().interact_size.y + ui.spacing().item_spacing.y) * form_rows
-                + 34.0)
+            let form_h = ((Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows + 34.0)
                 .min((inner.height() - 34.0).max(60.0));
             let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
             let table = motif::well(ui, parts[0]);
@@ -10867,6 +10878,23 @@ impl App {
         ui.fonts(|f| f.row_height(&font)) + (ui.spacing().button_padding.y + 1.0) * 2.0
     }
 
+    /// How tall one row of controls is: the height of the tallest thing
+    /// that goes in one — a Motif button.
+    ///
+    /// `interact_size.y` is what a bare egui widget asks for, and it is
+    /// **smaller**: at `[ui] text_scale = 1.25` it is 27,5 px where a
+    /// button is 38. A band that reserved rows at the first number and
+    /// then drew buttons was ten pixels short *per row*, which is why
+    /// the carnet's two-row form came out with its second row sliced in
+    /// half — the one thing the file's own notes say must never happen,
+    /// because a form that cannot be typed into is worse than a table
+    /// missing a line.
+    ///
+    /// Every band that carves rows of controls measures with this.
+    fn row_height(ui: &egui::Ui) -> f32 {
+        Self::button_height(ui).max(ui.spacing().interact_size.y)
+    }
+
     /// How many lines a wrapped row of items of these widths takes at
     /// `width`. Bands are carved rectangles, so their height has to be
     /// known before the content is drawn — measured, not guessed.
@@ -10936,7 +10964,7 @@ impl App {
         let w = motif::visible_rect(ui).width() - 40.0;
         // The act buttons are the part that wraps.
         let lines = Self::wrapped_rows(ui, w, InterviewKind::ALL.iter().map(|k| k.label()));
-        let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y + 8.0;
+        let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
         // Header (name, birth, contact, address, comment) + treatments +
         // "nouvel entretien" + the wrapped act rows + the eligibility note.
         let mut h = 96.0 + row * (2.0 + lines);
@@ -12532,7 +12560,7 @@ impl App {
                 body.width() - 40.0,
                 MapLens::ALL.iter().map(|l| l.label()),
             );
-            let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+            let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
             // 44 px of panel chrome: the inset title, its rule, and the
             // padding above and below. Leaving it out cost the band a
             // row, and the last lens with it.
@@ -13795,7 +13823,7 @@ impl App {
             ]
             .into_iter(),
         );
-        let row = ui.spacing().interact_size.y + ui.spacing().item_spacing.y + 8.0;
+        let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
         let want =
             row * (control_lines + filter_lines) + if overdue.is_empty() { 6.0 } else { row + 6.0 };
         // However much the band would like, the calendar keeps most of
@@ -14450,9 +14478,40 @@ impl App {
         motif::column(ui, 940.0, |ui| {
             motif::section(ui, tr("calc_title"));
             ui.add_space(6.0);
-            ui.columns(2, |cols| {
+            // Côte à côte **si les deux tiennent**, l'un sous l'autre
+            // sinon. `ui.columns` donne à chaque colonne son rectangle et
+            // ne découpe rien : à 1024 px en texte 1,25 les deux grilles
+            // étaient plus larges que leur moitié, et « 1050 mg par
+            // prise » se peignait par-dessus « Clairance estimée :
+            // 62 mL/min ». Deux textes superposés ne se lisent ni l'un ni
+            // l'autre, et rien dans l'image ne dit lequel est lequel.
+            //
+            // La largeur nécessaire est mesurée sur le plus long libellé
+            // et la place que prend un champ, jamais devinée.
+            let body_font = egui::TextStyle::Body.resolve(ui.style());
+            let widest = [
+                tr("calc_age"),
+                tr("calc_weight"),
+                tr("calc_creat"),
+                tr("calc_sex"),
+                tr("calc_dose_kg"),
+                tr("calc_takes"),
+            ]
+            .into_iter()
+            .map(|l| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(l.to_owned(), body_font.clone(), motif::text())
+                        .size()
+                        .x
+                })
+            })
+            .fold(0.0_f32, f32::max);
+            // Le champ le plus large est celui qui porte « µmol/L », et
+            // les deux boutons radio du sexe tiennent sur la même ligne.
+            let need = widest + 12.0 + Self::button_width(ui, "9999 µmol/L") + 16.0;
+            let side_by_side = ui.available_width() / 2.0 >= need;
+            let cockcroft = |ui: &mut egui::Ui, session: &mut Session| {
                 // --- Cockcroft & Gault ---
-                let ui = &mut cols[0];
                 ui.label(egui::RichText::new(tr("calc_dfg")).strong().size(13.0));
                 egui::Grid::new("calc_dfg")
                     .num_columns(2)
@@ -14507,9 +14566,9 @@ impl App {
                         .size(11.0)
                         .color(motif::text_dim()),
                 );
-
+            };
+            let per_kilo = |ui: &mut egui::Ui, session: &mut Session| {
                 // --- Dose par kilo ---
-                let ui = &mut cols[1];
                 ui.label(egui::RichText::new(tr("calc_perkg")).strong().size(13.0));
                 egui::Grid::new("calc_perkg")
                     .num_columns(2)
@@ -14549,7 +14608,17 @@ impl App {
                         .size(11.0)
                         .color(motif::text_dim()),
                 );
-            });
+            };
+            if side_by_side {
+                ui.columns(2, |cols| {
+                    cockcroft(&mut cols[0], session);
+                    per_kilo(&mut cols[1], session);
+                });
+            } else {
+                cockcroft(ui, session);
+                ui.add_space(10.0);
+                per_kilo(ui, session);
+            }
 
             // --- Décroissance et accumulation ---
             ui.add_space(10.0);
@@ -18088,7 +18157,7 @@ impl App {
             .into_iter(),
         );
         // Those rows, plus the search field's own.
-        let head_h = head_row * head_rows + ui.spacing().interact_size.y.max(24.0) + 10.0;
+        let head_h = head_row * head_rows + Self::row_height(ui).max(24.0) + 10.0;
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -19556,7 +19625,7 @@ impl App {
                 .size()
                 .y
             });
-            let folded_h = 16.0 + caption_h + 9.0 + ui.spacing().interact_size.y + 4.0;
+            let folded_h = 16.0 + caption_h + 9.0 + Self::row_height(ui) + 4.0;
             let tech_h = if session.drug_tech_open {
                 (side_rect.height() * 0.46).clamp(180.0, 460.0)
             } else {
