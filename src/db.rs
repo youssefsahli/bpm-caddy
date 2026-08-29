@@ -33560,6 +33560,11 @@ mod tests {
                     ("CREAT", "Créatininémie", 112.0, "µmol/L", "2026-08-20"),
                     ("HB", "Hémoglobine", 11.4, "g/dL", "2026-08-20"),
                     ("TSH", "TSH", 2.1, "mUI/L", "2026-08-20"),
+                    // Deux ans et demi : sous statine, le bilan
+                    // lipidique se refait une fois par an, et « À
+                    // surveiller » n'a de sens que si la démo montre
+                    // aussi une ligne en retard.
+                    ("LDL", "LDL-cholestérol", 1.35, "g/L", "2024-02-12"),
                 ] {
                     let row = BioResult {
                         id: 0,

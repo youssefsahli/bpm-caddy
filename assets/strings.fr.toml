@@ -298,6 +298,23 @@ bio_info = "INFO"
 bio_trend = "Évolution"
 bio_trend_empty = "Deux résultats au moins sur un analyte pour tracer la courbe."
 bio_trend_span = "Du {} ({}) au {} ({})"
+
+# --- Ce que l'ordonnance demande de faire vérifier ---
+# L'autre panneau lit les chiffres qui sont là ; celui-ci nomme ceux qui
+# n'y sont pas.
+watch_section = "À surveiller"
+watch_empty = "Aucun des traitements du dossier ne demande de surveillance biologique programmée."
+watch_overdue = "À REFAIRE"
+watch_never = "JAMAIS NOTÉ"
+watch_soon = "BIENTÔT"
+watch_ok = "À JOUR"
+watch_last = "Dernier le {} — {}."
+watch_months_zero = "il y a moins d'un mois"
+watch_months_one = "il y a un mois"
+watch_months_many = "il y a {} mois"
+watch_no_result = "Aucun résultat noté au dossier."
+watch_asked_by = "Demandé par : {}"
+watch_pick_tooltip = "Noter un résultat pour cet analyte"
 vacc_section = "Carnet de vaccination"
 vacc_due_section = "À faire"
 vacc_travel_section = "Voyage"

@@ -179,6 +179,26 @@ Deux règles valent partout :
   Chaque règle doit dire quoi faire, pas seulement ce qui ne va pas, et
   le nombre de règles ne baisse jamais.
 
+## Ce qu'un traitement demande de surveiller
+
+- **Où** : `src/surveillance.rs`, `WATCHES` : les mots qui désignent le
+  traitement, le code d'un analyte de `biology::CATALOGUE`, le rythme en
+  mois, et la raison.
+- **La question qu'il pose** : la biologie répond à « ce chiffre, sous ce
+  traitement, qu'est-ce que ça change ». Celui-ci pose la question
+  d'avant — **quel chiffre n'a pas été demandé depuis trop longtemps**.
+  Une règle ne peut rien dire d'un examen qu'on n'a pas fait, et c'est le
+  trou que personne ne voit.
+- **Tests** : chaque surveillance nomme un analyte du catalogue, dit
+  pourquoi en une phrase (et pas en une étiquette), et doit pouvoir se
+  déclencher sur la base livrée. Le compte est un cliquet.
+- **Ajouter une surveillance** : une entrée `Watch`. Si l'analyte n'existe
+  pas encore, il faut d'abord l'ajouter à `biology::CATALOGUE` — avec sa
+  règle, que ce catalogue-là exige.
+- **Ce qui ne s'y met pas** : un rythme que le prescripteur seul décide.
+  Les rythmes sont ceux des RCP et des recommandations usuelles ; c'est
+  un aide-mémoire de comptoir, et l'application le dit.
+
 ## La conciliation médicamenteuse
 
 - **Où** : `src/conciliation.rs`. C'est le seul module « logique » qui ne

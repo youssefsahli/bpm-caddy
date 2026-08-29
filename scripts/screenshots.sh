@@ -63,6 +63,7 @@ shot drug_card docs/screenshot_drugs.png
 shot agenda docs/screenshot_agenda.png
 shot vaccins docs/screenshot_vaccins.png
 shot bio docs/screenshot_bio.png
+shot watch docs/screenshot_watch.png
 shot codex_open docs/screenshot_codex.png
 shot vaccine_map docs/screenshot_map.png
 shot tables docs/screenshot_tables.png

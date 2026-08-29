@@ -1330,6 +1330,12 @@ struct Session {
     /// the file's own rows, so both are answered when those rows change
     /// rather than on every frame that paints them.
     bio_findings: Vec<crate::biology::Finding>,
+    /// What the file's ordonnance asks to have measured, and how long
+    /// ago it was. Computed with the findings, from the same two lists.
+    surveillance: Vec<crate::surveillance::Due>,
+    /// Which of the two readings the side panel is showing: what the
+    /// values say, or what has not been asked for.
+    bio_side_tab: usize,
     vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
@@ -1707,6 +1713,8 @@ impl Session {
             bio_edit_base: (0.0, String::new()),
             bio_focus: None,
             bio_findings: Vec::new(),
+            surveillance: Vec::new(),
+            bio_side_tab: 0,
             vacc_due: Vec::new(),
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -2844,6 +2852,10 @@ impl Session {
             .filter(|t| !t.trim().is_empty())
             .collect();
         self.bio_findings = crate::biology::read(&readings, &treatments);
+        // The other half of the same question: not what the values say,
+        // but which of them has not been asked for in too long.
+        let terms = ordonnance_terms(&self.patient_treats);
+        self.surveillance = crate::surveillance::due(&terms, &readings, &self.today);
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -4775,7 +4787,11 @@ impl App {
                                 });
                             }
                         }
-                        Ok(v @ ("vaccins" | "bio")) => {
+                        // « watch » is the biology tab with its side
+                        // panel on the second reading: what the
+                        // ordonnance asks to have measured, rather than
+                        // what the values already there say.
+                        Ok(v @ ("vaccins" | "bio" | "watch")) => {
                             let pick = session
                                 .patients
                                 .iter()
@@ -4785,11 +4801,12 @@ impl App {
                             if let Some(p) = pick {
                                 session.open_patient(p);
                             }
-                            session.patient_tab = if v == "bio" {
-                                PatientTab::Bio
-                            } else {
+                            session.patient_tab = if v == "vaccins" {
                                 PatientTab::Vaccins
+                            } else {
+                                PatientTab::Bio
                             };
+                            session.bio_side_tab = usize::from(v == "watch");
                         }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
@@ -6677,7 +6694,9 @@ impl App {
                 motif::Tab::new(tr("patient_tab_locations")),
                 motif::Tab::new(tr("patient_tab_conciliation")),
             ];
-            if let Some(motif::TabAction::Select(i)) = motif::tab_strip(ui, &tabs, active) {
+            if let Some(motif::TabAction::Select(i)) =
+                motif::tab_strip(ui, "patient_tabs", &tabs, active)
+            {
                 session.patient_tab = TABS[i.min(TABS.len() - 1)];
             }
         });
@@ -7665,8 +7684,135 @@ impl App {
                 egui::Rect::from_min_max(egui::pos2(side.right() - trend_w, side.top()), side.max),
             )
         };
-        Self::bio_reading_pane(ui, session, reading);
+        // Two readings of the same file share one pane behind a strip:
+        // what the values say about the treatments, and what the
+        // treatments ask to have measured. A fourth panel would have
+        // left each of them three lines.
+        let strip = motif::split_rows(reading, &[24.0, 0.0], 2.0);
+        motif::inside(ui, strip[0], |ui| {
+            let tabs = [
+                motif::Tab::new(tr("bio_reading")),
+                motif::Tab::new(tr("watch_section")),
+            ];
+            if let Some(motif::TabAction::Select(i)) =
+                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(1))
+            {
+                session.bio_side_tab = i.min(1);
+            }
+        });
+        if session.bio_side_tab == 0 {
+            Self::bio_reading_pane(ui, session, strip[1]);
+        } else {
+            Self::bio_watch_pane(ui, session, strip[1]);
+        }
         Self::bio_trend_pane(ui, session, trend);
+    }
+
+    /// Ce que l'ordonnance demande de faire vérifier, et depuis combien
+    /// de temps ça ne l'a pas été.
+    ///
+    /// L'autre panneau lit les chiffres qui sont là ; celui-ci nomme
+    /// ceux qui n'y sont pas. Une règle de biologie ne peut rien dire
+    /// d'un examen qu'on n'a pas fait, et c'est le trou que personne ne
+    /// voit — un INR qui alerte est un INR qu'on a demandé.
+    fn bio_watch_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        use crate::surveillance::Level;
+        // Answered by `Session::refresh_bio_findings`, with the rules.
+        let due = std::mem::take(&mut session.surveillance);
+        let mut pick: Option<&'static str> = None;
+        motif::panel(ui, rect, Some(tr("watch_section")), |ui| {
+            if due.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("watch_empty"))
+                            .size(11.5)
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("bio_watch")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for d in &due {
+                        let (word, color) = match d.level {
+                            Level::Overdue => (tr("watch_overdue"), motif::alert()),
+                            // « Jamais noté » is an absence of data and
+                            // not an absence of care: on a base that has
+                            // just been started it is almost every line,
+                            // and it must not read like an alert.
+                            Level::Never => {
+                                (tr("watch_never"), egui::Color32::from_rgb(0x7a, 0x5c, 0x1f))
+                            }
+                            Level::Soon => (tr("watch_soon"), motif::accent()),
+                            Level::Ok => (tr("watch_ok"), motif::text_dim()),
+                        };
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("  {word}  "))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(egui::Color32::WHITE)
+                                    .background_color(color),
+                            );
+                            let row = ui.add(
+                                egui::Label::new(egui::RichText::new(d.label).size(12.0).strong())
+                                    .sense(egui::Sense::click()),
+                            );
+                            if row.on_hover_text(tr("watch_pick_tooltip")).clicked() {
+                                pick = Some(d.code);
+                            }
+                            ui.label(
+                                egui::RichText::new(crate::surveillance::rhythm_text(
+                                    d.every_months,
+                                ))
+                                .size(10.5)
+                                .color(motif::text_dim()),
+                            );
+                        });
+                        let since = match (&d.last, d.months) {
+                            (Some(day), Some(m)) => {
+                                let ago = match m {
+                                    0 => tr("watch_months_zero").to_owned(),
+                                    1 => tr("watch_months_one").to_owned(),
+                                    n => trf("watch_months_many", n),
+                                };
+                                trn("watch_last", &[&db::format_french_date(day), &ago])
+                            }
+                            _ => tr("watch_no_result").to_owned(),
+                        };
+                        ui.label(egui::RichText::new(since).size(11.0));
+                        ui.label(
+                            egui::RichText::new(trf("watch_asked_by", d.drugs.join(", ")))
+                                .size(10.5)
+                                .color(motif::text_dim()),
+                        );
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(d.why)
+                                    .size(10.5)
+                                    .italics()
+                                    .color(motif::text_faint()),
+                            )
+                            .wrap(),
+                        );
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+        session.surveillance = due;
+        // Clicking an analyte loads it into the form at the foot of the
+        // table and shows its trend: the panel says what to ask for, and
+        // the click is the noting down of the answer.
+        if let Some(code) = pick {
+            if let Some(a) = crate::biology::find(code) {
+                session.bio_new_code = a.code.to_owned();
+                session.bio_query = a.label.to_owned();
+                session.bio_focus = Some(a.code.to_owned());
+            }
+        }
     }
 
     /// The material lent out: what is still at the patient's home, what
@@ -19021,7 +19167,7 @@ impl eframe::App for App {
                             t
                         })
                         .collect();
-                    let action = motif::tab_strip(ui, &tabs, active);
+                    let action = motif::tab_strip(ui, "workspace_tabs", &tabs, active);
                     match action {
                         Some(motif::TabAction::Select(i)) => {
                             if let Some(t) = session.tabs.get(i).cloned() {

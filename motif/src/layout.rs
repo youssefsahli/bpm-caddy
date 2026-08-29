@@ -204,7 +204,12 @@ pub enum TabAction {
 ///
 /// Scrolls horizontally when there are more tabs than room, so an
 /// operator who has opened a dozen patients never loses one off-screen.
-pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAction> {
+///
+/// `salt` names this strip. Two strips on one screen used to share a
+/// hard-coded one, and egui painted « First use of ScrollArea ID … »
+/// across both of them the day a second one appeared: a widget meant to
+/// be used twice cannot name itself.
+pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> Option<TabAction> {
     let font = egui::TextStyle::Button.resolve(ui.style());
     let height = (font.size + 14.0).max(26.0);
     let mut action = None;
@@ -216,7 +221,7 @@ pub fn tab_strip(ui: &mut egui::Ui, tabs: &[Tab], active: usize) -> Option<TabAc
         Vec2::new(ui.available_width(), height + 2.0),
     );
     egui::ScrollArea::horizontal()
-        .id_salt("motif_tabs")
+        .id_salt(salt)
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
         .show(ui, |ui| {
             ui.horizontal(|ui| {

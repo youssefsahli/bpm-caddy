@@ -5,6 +5,50 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.118.0] - 2026-08-29
+
+Ce que l'ordonnance demande de faire vérifier, et depuis combien de temps
+ça ne l'a pas été.
+
+### Added
+- **« À surveiller ».** La biologie répondait à « ce chiffre, sous ce
+  traitement, qu'est-ce que ça change ». Il manquait la question d'avant,
+  celle que personne ne pose : **quel chiffre n'a pas été demandé depuis
+  trop longtemps**. Un INR qui alerte est un INR qu'on a fait ; le
+  patient sous AVK dont le dernier INR date de neuf mois ne déclenche
+  aucune règle, parce qu'il n'y a rien à lire.
+  - Un second onglet dans le panneau de la vue Biologie : pour
+    l'ordonnance du dossier, quels analytes elle réclame, tous les
+    combien, la date du dernier résultat noté, et depuis combien de mois.
+  - **46 surveillances** sur les classes courantes : l'INR mensuel de
+    l'AVK, la clairance annuelle de l'AOD, les plaquettes de l'héparine,
+    la kaliémie de l'anti-aldostérone, la natrémie du thiazidique, la
+    lithémie trimestrielle, la TSH de l'amiodarone et de la
+    lévothyroxine, la numération de la clozapine et de l'antithyroïdien,
+    l'HbA1c, le LDL, l'uricémie qui dit si la dose d'hypo-uricémiant
+    suffit, la calcémie **avant** l'injection de dénosumab, la
+    magnésémie des IPP au long cours, la B12 de la metformine…
+  - **Quatre niveaux, et un seul est une alerte.** « À refaire » est un
+    fait : on a la date, elle est dépassée. « Jamais noté » est une
+    absence de donnée, qui n'est pas une absence d'examen — sur une base
+    qui démarre c'est presque toute la liste, et cela ne se dit pas du
+    même ton.
+  - Deux traitements qui demandent le même analyte font **une** ligne, au
+    rythme du plus serré : c'est une prise de sang, pas deux.
+  - Un clic sur une ligne charge l'analyte dans le formulaire au bas du
+    tableau et affiche sa courbe : le panneau dit quoi demander, le clic
+    est la façon de noter la réponse.
+  - Les rythmes sont ceux des RCP et des recommandations usuelles, et
+    l'espacement réel est décidé par le prescripteur : `surveillance.rs`
+    ne prescrit rien, et il le dit.
+
+### Fixed
+- Deux `tab_strip` sur un même écran partageaient un identifiant écrit en
+  dur dans le widget, et egui peignait « First use of ScrollArea ID … »
+  en travers des deux le jour où un second est apparu. Un widget fait
+  pour servir deux fois ne peut pas se nommer lui-même : il prend
+  maintenant son sel en argument.
+
 ## [0.117.0] - 2026-08-29
 
 La conciliation part chez le prescripteur, et deux recherches de plus

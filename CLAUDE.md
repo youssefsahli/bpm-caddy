@@ -22,7 +22,11 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/conciliation.rs` (the file's ordonnance against the one a patient
   brings back from hospital: reads a pasted list, matches each line to a
   fiche, and says what was stopped, changed, added or replaced — pure,
-  tested, no catalogue of its own). The
+  tested, no catalogue of its own),
+  `src/surveillance.rs` (what a treatment asks to have measured and how
+  often, read against the dates already in the file — the other half of
+  `biology.rs`: that one reads the values that are there, this one names
+  the ones that are not). The
   dispositifs médicaux have no module: they are fiches in the base
   (`STARTER_DISPOSITIFS` in `src/db.rs`), like the codex.
   `src/location.rs` (what a rental of material owes and when its
@@ -152,8 +156,8 @@ upgrade is decided, the number to defend is the logic one, and
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|about|tables|
-  tables_search|calc|carnet|vaccins|bio|revue|conciliation|vaccine_map|
-  ordonnance|codex|
+  tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
+  vaccine_map|ordonnance|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient`
   — land on a specific view (screenshots, e2e). `about` is the Options

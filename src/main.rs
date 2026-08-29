@@ -16,6 +16,7 @@ mod pdf;
 mod release;
 mod revue;
 mod strings;
+mod surveillance;
 mod tables;
 mod vaccines;
 mod vitale;
