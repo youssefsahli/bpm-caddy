@@ -278,3 +278,83 @@ fn main() -> eframe::Result {
         Box::new(|cc| Ok(Box::new(Launcher::new(&cc.egui_ctx)))),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    /// The release workflow, read at compile time. It is the other half
+    /// of this file's only external contract.
+    const WORKFLOW: &str = include_str!("../../.github/workflows/release.yml");
+
+    /// The names this launcher downloads must be the names the workflow
+    /// uploads.
+    ///
+    /// They live in two files that nothing else ties together, and a
+    /// rename in either one is invisible: the build goes green, the
+    /// release is published, and every launcher already installed at
+    /// every officine looks for a file that is not there — silently,
+    /// until somebody restarts and is told « pas de binaire … dans la
+    /// release ». There is no way to fix that remotely, because the
+    /// thing that would fetch the fix is the thing that is broken.
+    #[test]
+    fn the_launcher_asks_for_the_files_the_workflow_uploads() {
+        // Each matrix row gives a `suffix` and an `ext`; the rename step
+        // makes `bpm-caddy-{suffix}{ext}` out of them.
+        let mut produced: Vec<String> = Vec::new();
+        let mut suffix: Option<String> = None;
+        for line in WORKFLOW.lines() {
+            let t = line.trim();
+            if let Some(v) = t.strip_prefix("suffix:") {
+                suffix = Some(v.trim().trim_matches('"').to_owned());
+            }
+            if let Some(v) = t.strip_prefix("ext:") {
+                let ext = v.trim().trim_matches('"').to_owned();
+                if let Some(s) = suffix.take() {
+                    produced.push(format!("bpm-caddy-{s}{ext}"));
+                }
+            }
+        }
+        assert_eq!(
+            produced.len(),
+            3,
+            "trois plateformes attendues dans la matrice, lues : {produced:?}"
+        );
+        // Every name this file can be compiled with, whatever the
+        // platform doing the compiling: a Linux build must still notice
+        // that the Windows asset has been renamed.
+        for name in [
+            "bpm-caddy-linux-x86_64",
+            "bpm-caddy-windows-x86_64.exe",
+            "bpm-caddy-macos-arm64",
+        ] {
+            assert!(
+                produced.iter().any(|p| p == name),
+                "{name} n'est plus produit par le workflow : {produced:?}"
+            );
+        }
+        // …and the one this build will actually ask GitHub for.
+        assert!(
+            produced.iter().any(|p| p == super::APP_ASSET),
+            "{} n'est pas dans {produced:?}",
+            super::APP_ASSET
+        );
+        // The rename step builds the names; the upload step must send
+        // them. Two different lines, and only the second is what
+        // reaches the release.
+        assert!(
+            WORKFLOW.contains("bpm-caddy-${{ matrix.suffix }}${{ matrix.ext }}"),
+            "l'étape « Upload to release » n'envoie plus le binaire de l'application"
+        );
+        assert!(
+            WORKFLOW.contains("bpm-caddy-launcher-${{ matrix.suffix }}${{ matrix.ext }}"),
+            "l'étape « Upload to release » n'envoie plus le lanceur — \
+             une officine qui installe pour la première fois n'a rien à télécharger"
+        );
+        // And the repository it asks: a fork left in there would send
+        // every officine to somebody else's releases.
+        assert!(
+            WORKFLOW.contains("tags: [\"v*\"]"),
+            "le workflow ne se déclenche plus sur un tag v*"
+        );
+        assert_eq!(super::REPO, "youssefsahli/bpm-caddy");
+    }
+}

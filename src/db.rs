@@ -21879,6 +21879,106 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
             )],
         )],
     },
+    StarterProtocol {
+        title: "Ordonnance de sortie d'hôpital présentée au comptoir",
+        subject: "Conciliation médicamenteuse",
+        steps: &[q(
+            "Le patient a-t-il apporté la feuille de sortie, et pas seulement une ordonnance de ville refaite ?",
+            &[q(
+                "Le rapprochement avec l'ordonnance du dossier fait-il apparaître un traitement qui a disparu ?",
+                &[q(
+                    "Le patient a-t-il encore des boîtes de ce traitement chez lui ?",
+                    &[act(
+                        "C'est la situation qui fait le plus de dégâts : il continuera de le prendre. Le lui dire explicitement, lui demander de sortir la boîte du pilulier, et écrire l'arrêt sur son plan de prise. Puis vérifier auprès du prescripteur que l'arrêt est bien voulu et non un oubli de recopie.",
+                    )],
+                    &[act(
+                        "Noter l'arrêt sur la fiche et sur le plan de prise, et vérifier auprès du prescripteur qu'il est voulu : une ligne perdue à la recopie ressemble en tout point à une ligne arrêtée.",
+                    )],
+                )],
+                &[q(
+                    "Une molécule de la même classe qu'un traitement arrêté apparaît-elle à sa place ?",
+                    &[act(
+                        "C'est un remplacement, et le risque est que les deux soient pris ensemble. Nommer les deux boîtes au patient, faire retirer l'ancienne, et l'écrire sur le plan de prise.",
+                    )],
+                    &[act(
+                        "Reprendre la feuille ligne par ligne avec le patient : ce qui change de dose, ce qui est nouveau, ce qui continue. Écrire la conciliation au journal du dossier et imprimer la fiche pour le prescripteur s'il reste une question.",
+                    )],
+                )],
+            )],
+            &[act(
+                "Sans la feuille, on ne concilie rien : on délivre ce qui est prescrit, on note que la sortie d'hôpital n'a pas été rapprochée, et on demande au patient de rapporter le compte rendu ou l'ordonnance de sortie au prochain passage.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Bilan biologique apporté au comptoir",
+        subject: "Résultats de laboratoire",
+        steps: &[q(
+            "Le patient demande-t-il ce que veut dire un résultat, ou ce qu'il doit en faire ?",
+            &[q(
+                "Un résultat est-il au-delà d'un seuil critique — kaliémie, INR, DFG, plaquettes, neutrophiles ?",
+                &[act(
+                    "Ne pas laisser repartir sans avis : appeler le prescripteur ou orienter aux urgences selon le chiffre. Un résultat critique arrive souvent à l'officine avant d'être vu par le médecin, et c'est précisément là qu'il se rattrape.",
+                )],
+                &[act(
+                    "Noter les valeurs sur la fiche : c'est ce qui permet à l'application de les lire contre les traitements, et de voir la fois suivante ce qui n'a pas été redemandé depuis trop longtemps. Expliquer ce que dit le chiffre sans se substituer au prescripteur.",
+                )],
+            )],
+            &[q(
+                "Le bilan a-t-il été demandé pour un traitement du dossier — INR, clairance, TSH, transaminases ?",
+                &[act(
+                    "Noter les valeurs et les dates, et vérifier l'onglet « À surveiller » : le bilan qu'on tient dans la main est souvent l'occasion de voir celui qui manque.",
+                )],
+                &[act(
+                    "Le patient ne demande rien et le bilan n'a pas de rapport avec son ordonnance : ne pas insister. Proposer simplement de le noter au dossier, et l'expliquer — c'est ce qui rendra le suivant lisible.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Erreur de délivrance constatée après coup",
+        subject: "Qualité et sécurité de la dispensation",
+        steps: &[q(
+            "Le patient a-t-il déjà pris au moins une dose de ce qui a été délivré par erreur ?",
+            &[q(
+                "S'agit-il d'un médicament à marge thérapeutique étroite, d'un anticoagulant, d'un antidiabétique ou d'un traitement du cœur ?",
+                &[act(
+                    "Appeler le patient immédiatement, lui dire d'arrêter la prise, et joindre le prescripteur ou le centre antipoison selon la molécule et la dose. C'est un appel qui se fait tout de suite, pas à la fermeture.",
+                )],
+                &[act(
+                    "Appeler le patient, faire arrêter la prise, récupérer la boîte, délivrer le bon traitement et vérifier la tolérance. Tracer l'appel et la réponse.",
+                )],
+            )],
+            &[act(
+                "Rappeler le patient avant qu'il ne prenne la première dose, échanger la boîte, et s'assurer qu'il a bien compris laquelle jeter.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Sevrage tabagique demandé au comptoir",
+        subject: "Substituts nicotiniques",
+        steps: &[q(
+            "La personne fume-t-elle sa première cigarette dans la demi-heure qui suit le réveil ?",
+            &[q(
+                "Fume-t-elle plus de quinze cigarettes par jour ?",
+                &[act(
+                    "Dépendance forte : patch de 21 mg par 24 h, et une forme orale pour l'envie qui monte — gomme, pastille ou spray. Voir la table « Tabac » pour la dose et pour ce qui fait échouer : rien d'acide dans le quart d'heure qui précède une forme orale.",
+                )],
+                &[act(
+                    "Patch de 14 mg par 24 h, avec une forme orale à côté. Prévenir que fumer sous patch n'est pas dangereux mais signe une dose trop faible : on augmente, on ne retire pas le patch.",
+                )],
+            )],
+            &[q(
+                "Fume-t-elle plus de dix cigarettes par jour ?",
+                &[act(
+                    "Patch de 14 mg par 24 h, ou une forme orale seule si elle préfère commencer par là. Trois mois à dose pleine avant toute décroissance.",
+                )],
+                &[act(
+                    "Une forme orale seule peut suffire. Rappeler que le pharmacien peut prescrire les substituts, et que la prescription ouvre le remboursement : les vendre hors ordonnance ferait payer pour rien.",
+                )],
+            )],
+        )],
+    },
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.
@@ -32360,7 +32460,7 @@ mod tests {
         // The catalogue only ever grows: a protocol removed is a
         // question nobody asks any more.
         assert!(
-            STARTER_PROTOCOLS.len() >= 36,
+            STARTER_PROTOCOLS.len() >= 40,
             "{} protocoles livrés, il y en avait trente-six",
             STARTER_PROTOCOLS.len()
         );

@@ -5,6 +5,59 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.123.0] - 2026-08-29
+
+Deux contrats que rien ne tenait : celui du lanceur avec le workflow, et
+celui des couleurs de graphique avec les palettes.
+
+### Added
+- **Le lanceur a son premier test, et c'est celui qui compte.** Les noms
+  de fichiers qu'il télécharge et ceux que le workflow de release publie
+  vivent dans deux fichiers que rien ne rapprochait : `CLAUDE.md` le
+  disait en prose, et une prose ne casse pas une compilation. Un
+  renommage dans l'un des deux est invisible — la construction passe au
+  vert, la release est publiée, et tous les lanceurs déjà installés
+  cherchent un fichier qui n'existe pas. Silencieusement, jusqu'à ce que
+  quelqu'un redémarre. Et il n'y a aucun moyen de corriger cela à
+  distance, puisque ce qui irait chercher le correctif est justement ce
+  qui est cassé.
+  - Le test lit `.github/workflows/release.yml` à la compilation,
+    reconstitue les trois noms que la matrice produit, et exige que les
+    trois plateformes s'y retrouvent — un poste Linux doit remarquer
+    qu'on a renommé l'asset Windows. Il vérifie aussi que l'étape
+    d'envoi envoie bien le lanceur : une officine qui installe pour la
+    première fois n'a que celui-là à télécharger.
+- **36 → 40 protocoles de comptoir**, dont trois qui répondent à ce que
+  les nouveautés de cette série ont rendu possible.
+  - **« Ordonnance de sortie d'hôpital présentée au comptoir »** — le
+    déroulé de la conciliation : la feuille est-elle là, un traitement
+    a-t-il disparu, et surtout — le patient en a-t-il encore des boîtes
+    chez lui. C'est la branche qui fait le plus de dégâts, parce qu'il
+    continuera de le prendre.
+  - **« Bilan biologique apporté au comptoir »** — un résultat critique
+    arrive souvent à l'officine avant d'avoir été vu par le médecin, et
+    c'est là qu'il se rattrape. Sinon, noter les valeurs : c'est ce qui
+    permet à l'application de les lire contre les traitements, et de
+    voir la fois d'après ce qui n'a pas été redemandé.
+  - **« Erreur de délivrance constatée après coup »** — rien ne couvrait
+    ce moment-là. La première question est si une dose a été prise, la
+    seconde ce que c'était, et l'appel se fait tout de suite, pas à la
+    fermeture.
+  - **« Sevrage tabagique demandé au comptoir »**, qui déroule la table
+    « Tabac » : le délai de la première cigarette, le nombre par jour,
+    la dose de patch, et le rappel que le pharmacien peut prescrire —
+    vendre hors ordonnance ferait payer pour rien.
+
+- **Les couleurs de graphique sont tenues par un test.** Leur propre
+  commentaire promettait qu'elles se distinguent et qu'elles se lisent
+  sur les six palettes ; personne ne l'avait vérifié. La lisibilité est
+  la moitié qui compte — une barre de la couleur de son fond est une
+  barre que personne ne voit, et cela arriverait sans bruit parce qu'un
+  graphique *ressemble* toujours à un graphique. La séparation est un
+  cliquet plutôt qu'une règle : la paire la plus proche
+  d'aujourd'hui — le vert de la série 2 et le bleu de la série 6 — fixe
+  la limite, et aucune nouvelle couleur ne peut faire pire.
+
 ## [0.122.0] - 2026-08-29
 
 Ce que le dossier de sauvegarde contient — parce que jusqu'ici rien ne le

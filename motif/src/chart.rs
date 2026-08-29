@@ -486,6 +486,90 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
 mod tests {
     use super::nice_max;
 
+    /// The data colours have to stand off the trough they are painted
+    /// on, on every palette, and none of them may be another one.
+    ///
+    /// The readability half is the one that matters: a bar the colour of
+    /// its own background is a bar nobody sees, and it would reach the
+    /// counter unnoticed because a chart always *looks* like a chart.
+    ///
+    /// The separation half is deliberately a ratchet and not a rule.
+    /// The closest pair today is the green of series 2 and the blue of
+    /// series 6, about thirty-seven apart in plain RGB; the legend is
+    /// what tells them apart, and repainting them would change every
+    /// screenshot and every printed sheet for a difference the officine
+    /// has not asked for. The test holds the line where it is: no new
+    /// colour may come closer than the closest pair already there.
+    #[test]
+    fn the_data_colours_read_on_every_palette_and_none_repeats_another() {
+        use super::Color32;
+        fn lum(c: Color32) -> f32 {
+            (0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32) / 255.0
+        }
+        // Distance in plain RGB: cheap, and enough to catch two colours
+        // that would land on the same bar.
+        fn apart(a: Color32, b: Color32) -> f32 {
+            let d = |x: u8, y: u8| (x as f32 - y as f32).powi(2);
+            (d(a.r(), b.r()) + d(a.g(), b.g()) + d(a.b(), b.b())).sqrt()
+        }
+        // The first one follows the accent, so it is checked per theme
+        // below; these are the seven that never move.
+        let fixed: Vec<Color32> = super::series()[1..].to_vec();
+        assert_eq!(fixed.len(), super::SERIES_LEN - 1);
+        for (i, a) in fixed.iter().enumerate() {
+            for (j, b) in fixed.iter().enumerate().skip(i + 1) {
+                assert!(
+                    apart(*a, *b) > 35.0,
+                    "les séries {} et {} sont plus proches que la paire la plus proche d'aujourd'hui ({:?} / {:?})",
+                    i + 1,
+                    j + 1,
+                    a,
+                    b
+                );
+            }
+        }
+        for t in crate::THEMES.iter() {
+            // A chart is painted in the trough and not on the panel:
+            // that is the ground the data has to stand off.
+            for (i, c) in super::series().iter().enumerate() {
+                assert!(
+                    (lum(t.palette.trough) - lum(*c)).abs() > 0.12,
+                    "{} : la série {i} se perd dans le fond du graphique",
+                    t.key
+                );
+            }
+            // Series 0 *is* the accent on this theme. It may sit in the
+            // same family as one of the seven — two of the six palettes
+            // are built on a teal and a green — but it must not be one
+            // of them, or a chart would draw two series identically.
+            for (i, c) in fixed.iter().enumerate() {
+                assert!(
+                    apart(t.palette.accent, *c) > 12.0,
+                    "{} : l'accent est la série {}",
+                    t.key,
+                    i + 1
+                );
+            }
+        }
+    }
+
+    /// The ramp wraps rather than panicking: a chart with more series
+    /// than colours is a chart that repeats, not a crash at the counter.
+    #[test]
+    fn the_colour_ramp_wraps_instead_of_running_out() {
+        for i in [0usize, 7, 8, 15, 1_000, usize::MAX] {
+            let _ = super::series_color(i);
+        }
+        assert_eq!(
+            super::series_color(0),
+            super::series_color(super::SERIES_LEN)
+        );
+        assert_eq!(
+            super::series_color(3),
+            super::series_color(super::SERIES_LEN + 3)
+        );
+    }
+
     #[test]
     fn axis_tops_land_on_the_one_two_five_ladder() {
         assert_eq!(nice_max(0.0), 1.0);
