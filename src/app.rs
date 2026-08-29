@@ -1231,6 +1231,18 @@ struct Session {
     /// `patients` — two string allocations per patient per *load*, not
     /// per frame while typing.
     search_keys: Vec<(String, String)>,
+    /// Bumped whenever the patient list is replaced, so the memo built
+    /// from it knows it is stale.
+    patients_rev: u64,
+    /// Bumped whenever one of the catalogues the jump box searches — the
+    /// codex, the dispositifs, the protocoles — is re-read.
+    catalog_rev: u64,
+    /// The last ranking of the jump box, and the question it answered.
+    goto_hits: Vec<GotoHit>,
+    goto_hits_key: Option<(String, usize, u64, u64, u64, u64)>,
+    /// The last patient search, and the question it answered.
+    patient_hits: Vec<Patient>,
+    patient_hits_key: Option<(String, u64)>,
     /// Not-yet-billed interview count per patient id ("n en cours").
     pending: std::collections::HashMap<i64, i64>,
     query: String,
@@ -1645,6 +1657,12 @@ impl Session {
             db,
             patients: Vec::new(),
             search_keys: Vec::new(),
+            patients_rev: 0,
+            catalog_rev: 0,
+            goto_hits: Vec::new(),
+            goto_hits_key: None,
+            patient_hits: Vec::new(),
+            patient_hits_key: None,
             pending,
             query: String::new(),
             selected: 0,
@@ -1994,6 +2012,34 @@ impl Session {
     /// « cocke » on the table without the operator choosing a
     /// category first. An empty query shows the views — the box is
     /// then a menu of where to go.
+    /// [`Self::goto_results`], answered once per question.
+    ///
+    /// The jump box is an `egui::Window`, so it is repainted with the
+    /// rest of the frame: scoring the standing views, every patient, all
+    /// 850 fiches, the tables, the préparations, the dispositifs and the
+    /// protocoles, and building a `String` label for each hit — sixty
+    /// times a second, while somebody types three letters into it. Every
+    /// list behind it carries a revision, and all of them are in the key.
+    ///
+    /// Like the patient memo, it rebuilds on an empty list too, so a
+    /// view that borrows it and does not hand it back costs one pass and
+    /// not a box that stays empty.
+    fn refresh_goto_hits(&mut self, limit: usize) {
+        let key = (
+            self.goto_query.clone(),
+            limit,
+            self.patients_rev,
+            self.drugs_rev,
+            self.table_rev,
+            self.catalog_rev,
+        );
+        if self.goto_hits_key.as_ref() == Some(&key) && !self.goto_hits.is_empty() {
+            return;
+        }
+        self.goto_hits = self.goto_results(limit);
+        self.goto_hits_key = Some(key);
+    }
+
     fn goto_results(&self, limit: usize) -> Vec<GotoHit> {
         let q = self.goto_query.trim();
         let mut out: Vec<(i32, GotoHit)> = Vec::new();
@@ -2181,7 +2227,7 @@ impl Session {
             Goto::Protocol(id) => {
                 self.enter_drug_panel();
                 self.show_protocols = true;
-                self.protocols = self.db.protocols().unwrap_or_default();
+                self.reload_protocols();
                 if let Some(p) = self.protocols.iter().find(|p| p.id == id).cloned() {
                     self.protocol_nodes = self.db.protocol_nodes(p.id).unwrap_or_default();
                     self.protocol_open = Some(p);
@@ -2438,6 +2484,7 @@ impl Session {
     /// Reload the codex from the base.
     fn reload_codex(&mut self) {
         self.preparations = self.db.preparations().unwrap_or_default();
+        self.catalog_rev = self.catalog_rev.wrapping_add(1);
     }
 
     /// One preparation by id, as it stands in the loaded codex.
@@ -2448,6 +2495,15 @@ impl Session {
     /// Reload the dispositifs from the base.
     fn reload_dispositifs(&mut self) {
         self.dispositifs = self.db.dispositifs().unwrap_or_default();
+        self.catalog_rev = self.catalog_rev.wrapping_add(1);
+    }
+
+    /// Reload the protocols from the base. Written nine times over
+    /// before it was a function, which is nine places a memo built on
+    /// the list could have gone stale without anybody noticing.
+    fn reload_protocols(&mut self) {
+        self.protocols = self.db.protocols().unwrap_or_default();
+        self.catalog_rev = self.catalog_rev.wrapping_add(1);
     }
 
     /// One dispositif by id, as it stands in the loaded list.
@@ -2595,6 +2651,35 @@ impl Session {
             })
             .collect();
         self.patients = list;
+        self.patients_rev = self.patients_rev.wrapping_add(1);
+        self.patient_hits_key = None;
+    }
+
+    /// [`Self::results`], answered once per question instead of three
+    /// times per frame.
+    ///
+    /// The left dock asks, the search view asks, and the empty-result
+    /// branch asks again — three fuzzy passes over the whole file and
+    /// three copies of up to twenty patients, sixty times a second,
+    /// while somebody is typing a name. The answer only changes when the
+    /// query changes or when the list is replaced, and `set_patients` is
+    /// the one door the list comes in by.
+    ///
+    /// It also rebuilds when the list it holds is *empty*, and that is
+    /// not an optimisation but the thing that makes it safe: the views
+    /// borrow the memo by taking it out of the session — they need the
+    /// session mutably at the same time — and one of them can return
+    /// before handing it back. An empty memo therefore means « on loan
+    /// or genuinely empty », and both readings are answered by asking
+    /// again. Asking again for an empty answer costs a scoring pass that
+    /// allocates nothing and copies no one.
+    fn refresh_patient_hits(&mut self) {
+        let key = (self.query.clone(), self.patients_rev);
+        if self.patient_hits_key.as_ref() == Some(&key) && !self.patient_hits.is_empty() {
+            return;
+        }
+        self.patient_hits = self.results().into_iter().cloned().collect();
+        self.patient_hits_key = Some(key);
     }
 
     /// Fuzzy-rank patients against the query (best first, capped at 20).
@@ -2856,7 +2941,7 @@ impl Session {
             &self.db.export_rows(months).unwrap_or_default(),
             &self.db.today_iso().unwrap_or_default(),
         );
-        self.protocols = self.db.protocols().unwrap_or_default();
+        self.reload_protocols();
         // What the team wrote today: the day's notes, then the day's
         // transmissions — the two journals a morning starts with.
         let mut notes = self
@@ -3979,7 +4064,8 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
         )
     });
-    let hits = session.goto_results(12);
+    session.refresh_goto_hits(12);
+    let hits = std::mem::take(&mut session.goto_hits);
     if hits.is_empty() {
         session.goto_selected = 0;
     } else {
@@ -4061,6 +4147,9 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             chosen = Some(hit.dest.clone());
         }
     }
+    // Lent to the window, which needed the session mutably at the same
+    // time, and handed straight back.
+    session.goto_hits = hits;
     chosen
 }
 
@@ -4465,7 +4554,7 @@ impl App {
                         }
                         Ok(v @ ("protocols" | "protocol_open")) => {
                             session.show_protocols = true;
-                            session.protocols = session.db.protocols().unwrap_or_default();
+                            session.reload_protocols();
                             if v == "protocol_open" {
                                 if let Some(p) = session.protocols.first().cloned() {
                                     session.protocol_nodes =
@@ -5127,7 +5216,10 @@ impl App {
             }
             ui.add_space(4.0);
         }
-        let results: Vec<Patient> = session.results().into_iter().cloned().collect();
+        // Answered once per question by `refresh_patient_hits`, not
+        // three times per frame.
+        session.refresh_patient_hits();
+        let results = std::mem::take(&mut session.patient_hits);
         let open = session.viewing.as_ref().map(|p| p.id);
         let mut clicked: Option<Patient> = None;
         // The dock is the search now, so it answers to the keys the
@@ -5180,6 +5272,10 @@ impl App {
                 }
             }
         });
+        // Lent to the list above, which needed the session mutably at
+        // the same time, and handed straight back — `open_patient`
+        // rebuilds it anyway, and only after this line.
+        session.patient_hits = results;
         if let Some(p) = clicked {
             session.view = MainView::Search;
             session.show_amounts = false;
@@ -6172,7 +6268,12 @@ impl App {
             });
             ui.add_space(12.0);
 
-            let results: Vec<Patient> = session.results().into_iter().cloned().collect();
+            // Borrowed by taking it out: the block below needs the
+            // session mutably too. It is handed back at the end, and an
+            // exit that does not hand it back is caught by
+            // `refresh_patient_hits`, which rebuilds an empty memo.
+            session.refresh_patient_hits();
+            let results = std::mem::take(&mut session.patient_hits);
 
             // An empty query matches everyone, and that list is already
             // in the left dock: the middle of the screen is better spent
@@ -6285,7 +6386,8 @@ impl App {
                             session.pending = counts;
                         }
                     }
-                    if !session.results().is_empty() {
+                    session.refresh_patient_hits();
+                    if !session.patient_hits.is_empty() {
                         // The refreshed list matches after all: render it
                         // on the next frame instead of the creation form.
                         ctx.request_repaint();
@@ -6371,6 +6473,7 @@ impl App {
                 }
             }
 
+            session.patient_hits = results;
             if idle {
                 Self::home_panels(ui, session);
             }
@@ -12083,12 +12186,16 @@ impl App {
             for rdv in &rdvs {
                 ui.horizontal(|ui| {
                     // The hour, typed the fast way: 9, 9h30, 930, 09:30.
+                    // `filter` and not « ask whether, then unwrap »: the
+                    // two readings of the same Option are one line apart
+                    // today and will not always be, and an `unwrap` on
+                    // state that « must » be open takes the whole
+                    // application down at the counter.
                     let editing = session
                         .rdv_time_edit
-                        .as_ref()
-                        .is_some_and(|(id, _)| *id == rdv.id);
-                    if editing {
-                        let (_, text) = session.rdv_time_edit.as_mut().unwrap();
+                        .as_mut()
+                        .filter(|(id, _)| *id == rdv.id);
+                    if let Some((_, text)) = editing {
                         let field = ui.add_sized(
                             [56.0, 22.0],
                             egui::TextEdit::singleline(text).hint_text(tr("agenda_hour_hint")),
@@ -12139,10 +12246,9 @@ impl App {
                     // Moving a rendez-vous without opening the record.
                     let moving = session
                         .rdv_move_edit
-                        .as_ref()
-                        .is_some_and(|(id, _)| *id == rdv.id);
-                    if moving {
-                        let (_, text) = session.rdv_move_edit.as_mut().unwrap();
+                        .as_mut()
+                        .filter(|(id, _)| *id == rdv.id);
+                    if let Some((_, text)) = moving {
                         let field = ui.add_sized(
                             [96.0, 22.0],
                             egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
@@ -14693,7 +14799,7 @@ impl App {
             match session.db.add_protocol(&title, "") {
                 Ok(id) => {
                     session.protocol_new_title.clear();
-                    session.protocols = session.db.protocols().unwrap_or_default();
+                    session.reload_protocols();
                     // A new tree is empty: it opens straight away, since
                     // there is nothing to read in the list about it.
                     if let Some(p) = session.protocols.iter().find(|p| p.id == id).cloned() {
@@ -14854,7 +14960,7 @@ impl App {
                 Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
                 Err(e) => session.error = Some(e),
             }
-            session.protocols = session.db.protocols().unwrap_or_default();
+            session.reload_protocols();
         }
         if let Some(p) = open {
             session.protocol_nodes = session.db.protocol_nodes(p.id).unwrap_or_default();
@@ -15037,10 +15143,21 @@ impl App {
                                 }
                                 if editing {
                                     ui.horizontal_wrapped(|ui| {
-                                        let (_, _, text) =
-                                            session.protocol_node_edit.as_mut().unwrap();
-                                        let w = (body_w - indent - 100.0).clamp(150.0, 520.0);
-                                        ui.add_sized([w, 22.0], egui::TextEdit::singleline(text));
+                                        // Read as an `if let` rather than
+                                        // unwrapped on the strength of the
+                                        // flag above: the two are twenty
+                                        // lines apart, and a panic here is
+                                        // the whole application closing at
+                                        // the counter.
+                                        if let Some((_, _, text)) =
+                                            session.protocol_node_edit.as_mut()
+                                        {
+                                            let w = (body_w - indent - 100.0).clamp(150.0, 520.0);
+                                            ui.add_sized(
+                                                [w, 22.0],
+                                                egui::TextEdit::singleline(text),
+                                            );
+                                        }
                                         if motif::button(ui, tr("form_save")).clicked() {
                                             save_edit = true;
                                         }
@@ -15224,14 +15341,14 @@ impl App {
                     &proto.title,
                 ) {
                     Ok(true) => {
-                        session.protocols = session.db.protocols().unwrap_or_default();
+                        session.reload_protocols();
                         session.protocol_open =
                             session.protocols.iter().find(|p| p.id == proto.id).cloned();
                         session.protocol_header = None;
                     }
                     Ok(false) => {
                         session.error = Some(tr("proto_stale").to_owned());
-                        session.protocols = session.db.protocols().unwrap_or_default();
+                        session.reload_protocols();
                         session.protocol_header = None;
                     }
                     Err(e) => session.error = Some(e),
@@ -16380,7 +16497,7 @@ impl App {
                         .clicked()
                     {
                         session.show_protocols = true;
-                        session.protocols = session.db.protocols().unwrap_or_default();
+                        session.reload_protocols();
                     }
                     if motif::button(ui, tr("codex_button"))
                         .on_hover_text(tr("codex_button_tooltip"))
@@ -16658,12 +16775,9 @@ impl App {
                                         ui.label("");
                                         ui.end_row();
                                         for p in session.posologies.clone() {
-                                            let editing = session
-                                                .poso_edit
-                                                .as_ref()
-                                                .is_some_and(|e| e.id == p.id);
-                                            if editing {
-                                                let e = session.poso_edit.as_mut().unwrap();
+                                            let editing =
+                                                session.poso_edit.as_mut().filter(|e| e.id == p.id);
+                                            if let Some(e) = editing {
                                                 ui.add_sized(
                                                     [poso_w * 0.3, 22.0],
                                                     egui::TextEdit::singleline(&mut e.indication),
@@ -20394,7 +20508,7 @@ impl eframe::App for App {
                         }
                         session.reload_codex();
                         session.reload_dispositifs();
-                        session.protocols = session.db.protocols().unwrap_or_default();
+                        session.reload_protocols();
                     }
                     self.update_note = Some((
                         false,
@@ -21342,6 +21456,96 @@ mod tests {
         // follow the patient who was open before.
         s.open_patient(s.patients[1].clone());
         assert!(s.concil_sheet.is_empty());
+    }
+
+    /// The patient search is asked three times a frame; it must answer
+    /// from the memo, let go when the list moves, and survive being
+    /// borrowed by a view that never hands it back.
+    #[test]
+    fn the_patient_search_answers_once_per_question_and_survives_a_loan() {
+        let (mut s, _swept) = scratch_session("phits");
+        s.query = "dup".to_owned();
+        s.refresh_patient_hits();
+        assert_eq!(s.patient_hits.len(), 1);
+        assert_eq!(s.patient_hits[0].last_name, "Dupont");
+        let rev = s.patients_rev;
+        s.refresh_patient_hits();
+        assert_eq!(s.patients_rev, rev);
+
+        // A view takes the memo and returns without giving it back —
+        // the shape of the early return in the search screen. The next
+        // ask must rebuild it rather than show an empty list for ever.
+        let borrowed = std::mem::take(&mut s.patient_hits);
+        assert_eq!(borrowed.len(), 1);
+        s.refresh_patient_hits();
+        assert_eq!(s.patient_hits.len(), 1, "le memo prêté n'est pas revenu");
+
+        // A different question is a different answer.
+        s.query = "mart".to_owned();
+        s.refresh_patient_hits();
+        assert_eq!(s.patient_hits[0].last_name, "Martin");
+        // A question nobody answers is an empty answer, not the last one.
+        s.query = "zzzz".to_owned();
+        s.refresh_patient_hits();
+        assert!(s.patient_hits.is_empty());
+
+        // And replacing the list drops the memo, so a patient created on
+        // another post is not searched for in yesterday's list.
+        s.query = "dup".to_owned();
+        s.refresh_patient_hits();
+        s.db.add_patient("Dupond", "Alice", "1970-01-01").unwrap();
+        let list = s.db.patients().unwrap();
+        s.set_patients(list);
+        assert!(s.patient_hits_key.is_none(), "la liste a bougé");
+        s.refresh_patient_hits();
+        assert_eq!(s.patient_hits.len(), 2);
+    }
+
+    /// The jump box ranks six catalogues at once and is repainted with
+    /// the rest of the frame: it must answer from the memo, and every
+    /// list behind it must be able to drop that memo.
+    #[test]
+    fn the_jump_box_answers_once_per_question_and_every_catalogue_can_drop_it() {
+        let (mut s, _swept) = scratch_session("goto");
+        s.goto_query = "dup".to_owned();
+        s.refresh_goto_hits(12);
+        assert!(!s.goto_hits.is_empty());
+        let key = s.goto_hits_key.clone();
+        s.refresh_goto_hits(12);
+        assert_eq!(s.goto_hits_key, key, "la même question deux fois");
+
+        // Each of the four revisions in the key must invalidate it, or
+        // the box would answer for a base that has moved.
+        for drop in [0, 1, 2, 3] {
+            s.refresh_goto_hits(12);
+            assert!(s.goto_hits_key.is_some());
+            match drop {
+                0 => {
+                    let list = s.db.patients().unwrap();
+                    s.set_patients(list);
+                }
+                1 => {
+                    let list = s.db.drugs().unwrap();
+                    s.set_drugs(list);
+                }
+                2 => s.table_rev = s.table_rev.wrapping_add(1),
+                _ => s.reload_protocols(),
+            }
+            let before = s.goto_hits_key.clone();
+            s.refresh_goto_hits(12);
+            assert_ne!(
+                s.goto_hits_key, before,
+                "la révision {drop} n'a pas invalidé le memo"
+            );
+        }
+
+        // Borrowed and never handed back — the shape of every window
+        // that needs the session while it draws.
+        s.refresh_goto_hits(12);
+        let borrowed = std::mem::take(&mut s.goto_hits);
+        assert!(!borrowed.is_empty());
+        s.refresh_goto_hits(12);
+        assert!(!s.goto_hits.is_empty(), "le memo prêté n'est pas revenu");
     }
 
     /// The year is read off the date the session already holds, and the
