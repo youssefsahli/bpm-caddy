@@ -49,14 +49,24 @@ cargo build || exit 1
 # 124 when it had to kill something that was still alive, and anything
 # else means the process ended on its own.
 mkdir -p "$tmp/alive/bpm-caddy"
+alive="$tmp/alive.log"
 XDG_CONFIG_HOME="$tmp/alive" BPM_CADDY_WINDOW=1400x900 \
     xvfb-run -a -s "-screen 0 1400x900x24" bash -c '
         unset WAYLAND_DISPLAY
-        timeout 5 ./target/debug/bpm-caddy >/dev/null 2>&1'
-if [ $? -ne 124 ]; then
+        timeout 5 ./target/debug/bpm-caddy' > "$alive" 2>&1
+code=$?
+if [ "$code" -ne 124 ]; then
     echo "L'application ne reste pas ouverte cinq secondes : un passage" >&2
-    echo "sans panique ne prouverait rien. Vérifiez l'affichage et les" >&2
-    echo "bibliothèques du système." >&2
+    echo "sans panique ne prouverait rien." >&2
+    echo "  (le programme s'est arrêté de lui-même, code $code)" >&2
+    # What it said on the way out. A guard that only reports *that* it
+    # failed sends whoever reads it guessing at system packages; this is
+    # the line that names the missing one.
+    if [ -s "$alive" ]; then
+        sed 's/^/  | /' "$alive" >&2
+    else
+        echo "  | (rien sur la sortie d'erreur)" >&2
+    fi
     exit 1
 fi
 

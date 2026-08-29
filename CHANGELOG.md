@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.129.0] - 2026-08-29
+
+### Fixed
+- **Le garde-fou de démarrage dit pourquoi.** Il disait « l'application
+  ne reste pas ouverte cinq secondes » et rien d'autre, ce qui envoie
+  celui qui le lit deviner des paquets système. Il rapporte maintenant
+  le code de sortie et ce que le programme a écrit en partant — la ligne
+  qui nomme la bibliothèque manquante. Un garde-fou qui détecte sans
+  expliquer fait la moitié du travail, et c'est la moitié facile.
+
 ## [0.128.0] - 2026-08-29
 
 ### Fixed
