@@ -163,7 +163,7 @@ upgrade is decided, the number to defend is the logic one, and
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_month|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|codex|
+  vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient`
   — land on a specific view (screenshots, e2e). `about` is the Options

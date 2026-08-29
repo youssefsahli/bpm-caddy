@@ -43,11 +43,8 @@ fn daily_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
         return;
     }
     let Ok(today) = db.today_iso() else { return };
-    let Some(parent) = db_path.parent() else {
-        return;
-    };
-    let dir = parent.join("backups");
-    let target = dir.join(format!("bpm_caddy-{today}.db"));
+    let dir = db::backup_dir(db_path);
+    let target = dir.join(db::backup_name(&today));
     if target.exists() {
         return;
     }
@@ -4933,12 +4930,16 @@ impl App {
         // « about » is the same dialog on its last page: the smoke run
         // and the screenshots need a way in, and the page is the one
         // that reads the base and starts a thread.
-        let options = if start_view == "options" || start_view == "about" {
+        let options = if start_view == "options" || start_view == "about" || start_view == "base" {
             Some(OptionsEditor {
-                page: if start_view == "about" {
-                    OptionsPage::About
-                } else {
-                    OptionsPage::Pharmacy
+                page: match start_view.as_str() {
+                    "about" => OptionsPage::About,
+                    // The page that says where the base is and what the
+                    // backup folder holds: a screenshot and the smoke
+                    // run need a way in, and it is the page that reads
+                    // the disk.
+                    "base" => OptionsPage::Database,
+                    _ => OptionsPage::Pharmacy,
                 },
                 cfg: config.clone(),
                 db_path_text: String::new(),
@@ -20552,6 +20553,46 @@ impl eframe::App for App {
                                                 }
                                             }
                                         });
+                                        ui.end_row();
+                                        // What the backup folder actually
+                                        // holds. The daily copy writes its
+                                        // failures to stderr and nowhere
+                                        // else, so a share that did not
+                                        // mount or a folder made read-only
+                                        // is silent: this line is what
+                                        // makes it audible.
+                                        ui.label(dim(tr("opts_backup_state")));
+                                        let state = crate::db::backup_state(&editor.cfg.db_path());
+                                        let text = match (&state.newest, &state.oldest) {
+                                            (Some(newest), Some(oldest)) => trn(
+                                                "opts_backup_have",
+                                                &[
+                                                    &state.count,
+                                                    &db::format_french_date(oldest),
+                                                    &db::format_french_date(newest),
+                                                    &(state.bytes / 1_048_576),
+                                                ],
+                                            ),
+                                            _ if editor.cfg.database.backups_keep == 0 => {
+                                                tr("opts_backup_off").to_owned()
+                                            }
+                                            _ => tr("opts_backup_none").to_owned(),
+                                        };
+                                        // Stated and not judged: this page
+                                        // does not know what day it is —
+                                        // the session does, and it is not
+                                        // in scope here. The sentence says
+                                        // what to compare the date with,
+                                        // which is what an operator needs
+                                        // to see it.
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(text)
+                                                    .size(11.0)
+                                                    .color(motif::text_dim()),
+                                            )
+                                            .wrap(),
+                                        );
                                         ui.end_row();
                                     });
                                 // File-level tools: consistent encrypted copy

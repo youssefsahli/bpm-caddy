@@ -372,6 +372,74 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patient_drugs ADD COLUMN posology TEXT NOT NULL DEFAULT ''",
 ];
 
+/// The folder the daily backups live in: `backups/` beside the base.
+pub fn backup_dir(db_path: &Path) -> PathBuf {
+    db_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("backups")
+}
+
+/// The name a backup takes for an ISO day. Date-named so the folder
+/// sorts chronologically and the pruning is a `sort` and a `remove`.
+pub fn backup_name(day: &str) -> String {
+    format!("bpm_caddy-{day}.db")
+}
+
+/// What the backup folder actually holds.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct BackupState {
+    pub count: usize,
+    /// The ISO days read off the file names.
+    pub oldest: Option<String>,
+    pub newest: Option<String>,
+    pub bytes: u64,
+}
+
+/// Read the backup folder beside `db_path`.
+///
+/// Nothing is created and nothing fails: a folder that is not there is a
+/// folder with nothing in it, and that is exactly what has to be said
+/// out loud. The daily backup writes its failures to stderr and to
+/// nowhere else — a full disk, a network share that did not mount, a
+/// folder somebody made read-only, and the officine goes on for months
+/// believing it has copies. This is the number that answers that.
+pub fn backup_state(db_path: &Path) -> BackupState {
+    let dir = backup_dir(db_path);
+    let mut days: Vec<String> = Vec::new();
+    let mut bytes = 0u64;
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return BackupState::default();
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let Some(day) = name
+            .strip_prefix("bpm_caddy-")
+            .and_then(|r| r.strip_suffix(".db"))
+        else {
+            continue;
+        };
+        // Only the ones this application named: a stray file in the
+        // folder is not a backup, and counting it would say the
+        // officine has one more copy than it does.
+        if day.len() != 10 || !day.chars().all(|c| c.is_ascii_digit() || c == '-') {
+            continue;
+        }
+        bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+        days.push(day.to_owned());
+    }
+    days.sort();
+    BackupState {
+        count: days.len(),
+        oldest: days.first().cloned(),
+        newest: days.last().cloned(),
+        bytes,
+    }
+}
+
 /// Interview lifecycle (spec section 5): a strict pipeline so no billable
 /// act is ever lost.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -31621,6 +31689,50 @@ mod tests {
         assert!(db.bio_results(pid).unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The backup folder says what it holds, and says nothing it does
+    /// not: a stray file is not a copy, and a folder that is not there
+    /// is a folder with nothing in it.
+    #[test]
+    fn the_backup_folder_says_what_it_holds() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-bkstate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let live = dir.join("bpm_caddy.db");
+
+        // No folder at all is the state of a base that has never been
+        // unlocked — and of one whose share did not mount.
+        assert_eq!(backup_state(&live), BackupState::default());
+        assert_eq!(backup_dir(&live), dir.join("backups"));
+        assert_eq!(backup_name("2026-08-29"), "bpm_caddy-2026-08-29.db");
+
+        let bdir = backup_dir(&live);
+        std::fs::create_dir_all(&bdir).unwrap();
+        // An empty folder is not the same as no folder, and both mean
+        // « aucune copie ».
+        assert_eq!(backup_state(&live).count, 0);
+
+        for (day, size) in [
+            ("2026-08-27", 10usize),
+            ("2026-08-29", 20),
+            ("2026-08-28", 30),
+        ] {
+            std::fs::write(bdir.join(backup_name(day)), vec![b'x'; size]).unwrap();
+        }
+        // Anything this application did not name is not a copy: a note
+        // left in the folder, a half-written file, the operator's own
+        // export.
+        std::fs::write(bdir.join("notes.txt"), b"pas une copie").unwrap();
+        std::fs::write(bdir.join("bpm_caddy-hier.db"), b"pas une date").unwrap();
+        std::fs::write(bdir.join("bpm_caddy-2026-08.db"), b"pas une date").unwrap();
+
+        let state = backup_state(&live);
+        assert_eq!(state.count, 3);
+        assert_eq!(state.oldest.as_deref(), Some("2026-08-27"));
+        assert_eq!(state.newest.as_deref(), Some("2026-08-29"));
+        assert_eq!(state.bytes, 60);
     }
 
     /// The posology a file records for one of its treatments: written

@@ -5,6 +5,53 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.122.0] - 2026-08-29
+
+Ce que le dossier de sauvegarde contient — parce que jusqu'ici rien ne le
+disait — et six règles de revue de plus.
+
+### Added
+- **55 → 61 règles de revue d'ordonnance.**
+  - **Bêtabloquant + anticholinestérasique** : les deux ralentissent le
+    cœur par des voies différentes, et l'effet s'additionne. Bradycardie,
+    syncope, et la chute qui s'ensuit chez quelqu'un qu'on traite déjà
+    pour ses troubles cognitifs.
+  - **Bêtabloquant + amiodarone** : l'association existe et se surveille,
+    mais elle n'est jamais anodine — d'autant que l'amiodarone s'élimine
+    sur des mois.
+  - **Deux opioïdes faibles** : le pendant de « deux sources de
+    paracétamol », et l'une des deux est souvent cachée dans une
+    association.
+  - **Sulfamide + insuline** : les deux seuls antidiabétiques qui font
+    l'hypoglycémie, ensemble.
+  - **Alpha-bloquant + antihypertenseur** : l'hypotension orthostatique
+    est un mécanisme de chute que personne ne relie au traitement de la
+    prostate.
+  - **IPP + fer oral** : le fer a besoin de l'acidité que l'IPP
+    supprime ; le traitement martial échoue et on augmente la dose au
+    lieu de regarder l'ordonnance.
+- **Options › Base dit ce que le dossier `backups` contient** : combien
+  de copies, de quand à quand, et combien de méga-octets. La copie
+  quotidienne écrit ses échecs sur la sortie d'erreur et nulle part
+  ailleurs — c'est délibéré, une sauvegarde qui échoue ne doit pas
+  bloquer le comptoir — mais cela veut dire qu'un disque plein, un
+  partage réseau qui n'a pas monté ou un dossier passé en lecture seule
+  sont totalement silencieux, et que l'officine peut se croire
+  sauvegardée pendant des mois. La ligne dit aussi quoi regarder : si la
+  date la plus récente n'est pas celle du jour, le dossier n'est pas
+  accessible.
+  - `db::backup_state` lit le dossier et ne crée rien. Un dossier absent
+    est un dossier vide, ce qui est précisément ce qu'il faut annoncer.
+    Il ne compte que les fichiers que l'application a nommés : une note
+    laissée là ou un export de l'équipe n'est pas une copie, et le
+    compter ferait croire à une copie de plus.
+  - Le nom et le dossier des sauvegardes sont maintenant dits à un seul
+    endroit (`db::backup_dir` / `db::backup_name`), au lieu d'être
+    réécrits par la routine quotidienne et par ce qui la relit.
+- `BPM_CADDY_START_VIEW=base` ouvre les options sur cette page — la seule
+  qui lise le disque, et donc la seule que le passage de `smoke.sh` ne
+  couvrait pas.
+
 ## [0.121.0] - 2026-08-29
 
 La liste d'appel s'imprime, et une posologie à moitié tapée ne fait plus

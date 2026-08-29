@@ -162,6 +162,57 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
 const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
+            &["bêtabloquant", "bêta-bloquant", "bisoprolol", "métoprolol", "aténolol", "propranolol", "nébivolol", "sotalol"],
+            &["donépézil", "rivastigmine", "galantamine", "anticholinestérasique"],
+        ]),
+        severity: Severity::Alert,
+        title: "Bêtabloquant + anticholinestérasique",
+        detail: "Les deux ralentissent le cœur par des voies différentes et l'effet s'additionne : bradycardie, syncope, et la chute qui s'ensuit chez quelqu'un qu'on traite déjà pour ses troubles cognitifs. Prendre le pouls, demander s'il y a eu des malaises, et signaler l'association.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["bêtabloquant", "bêta-bloquant", "bisoprolol", "métoprolol", "aténolol", "propranolol", "nébivolol"],
+            &["amiodarone", "dronédarone"],
+        ]),
+        severity: Severity::Alert,
+        title: "Bêtabloquant + amiodarone",
+        detail: "Bradycardie et troubles de la conduction, d'autant que l'amiodarone allonge aussi le QT et s'élimine sur des mois. L'association existe et se surveille, mais elle n'est jamais anodine : pouls, tolérance à l'effort, et un ECG si le patient dit se sentir ralenti.",
+    },
+    Rule {
+        kind: Kind::Duplicate(&["codéine", "tramadol", "opium", "dihydrocodéine"], 2),
+        severity: Severity::Alert,
+        title: "Deux opioïdes faibles",
+        detail: "Deux sources d'opioïde faible sur la même ordonnance : les effets s'additionnent — somnolence, constipation, dépression respiratoire — et l'une des deux est souvent cachée dans une association au paracétamol. Faire la somme devant le patient et n'en garder qu'une.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["sulfamide hypoglycémiant", "gliclazide", "glimépiride", "glibenclamide", "répaglinide"],
+            &["insuline"],
+        ]),
+        severity: Severity::Alert,
+        title: "Sulfamide + insuline",
+        detail: "Les deux seuls antidiabétiques qui font l'hypoglycémie, ensemble : le risque est celui du malaise nocturne et de la chute chez le sujet âgé. Vérifier que le patient a du sucre sur lui, qu'il sait reconnaître les signes, et que l'entourage sait quoi faire.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["alfuzosine", "tamsulosine", "silodosine", "doxazosine", "alpha-bloquant"],
+            &["antihypertenseur", "IEC", "sartan", "bêtabloquant", "diurétique", "inhibiteur calcique", "amlodipine"],
+        ]),
+        severity: Severity::Warn,
+        title: "Alpha-bloquant + antihypertenseur",
+        detail: "Hypotension orthostatique, surtout à l'instauration et à la première dose du soir : c'est un mécanisme de chute que personne ne relie au traitement de la prostate. Se lever en deux temps, prendre la dose au coucher, et signaler tout vertige au lever.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["IPP", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "rabéprazole"],
+            &["fer", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
+        ]),
+        severity: Severity::Warn,
+        title: "IPP + fer oral",
+        detail: "Le fer a besoin de l'acidité de l'estomac pour être absorbé, et l'IPP la supprime : le traitement martial échoue sans que personne comprenne pourquoi, et on augmente la dose au lieu de regarder l'ordonnance. Fer à distance, avec de la vitamine C, et réévaluer l'IPP.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
             &["IEC", "sartan", "ARA II"],
             &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide"],
             &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène", "coxib"],
@@ -1018,7 +1069,7 @@ mod tests {
         // The catalogue only ever grows: a rule removed is a reading
         // nobody does any more.
         assert!(
-            RULES.len() >= 55,
+            RULES.len() >= 61,
             "{} règles de revue, il y en avait cinquante-cinq",
             RULES.len()
         );
