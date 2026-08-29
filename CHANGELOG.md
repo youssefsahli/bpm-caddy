@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.126.0] - 2026-08-29
+
+La règle des migrations est tenue par un test au lieu d'être demandée
+par une phrase.
+
+### Added
+- **`tests/fixtures/schema-0.109.0.sql`** : une photographie du schéma
+  tel que cette version l'a livré, et un test qui crée une base avec,
+  l'ouvre, et fait tourner dessus **chaque lecture que l'application
+  fait** — les patients, les fiches, les posologies, la biologie, le
+  carnet, les locations, le codex, les dispositifs, les protocoles, les
+  notes, la liste d'appel, l'export, l'agenda.
+  - `SCHEMA` crée ce dont une base *neuve* a besoin ; `MIGRATIONS` est la
+    seule chose qui transforme une ancienne en celle-là. La règle — un
+    changement de schéma va dans les deux — était écrite dans
+    `CLAUDE.md` et rien ne la faisait respecter : on ajoute une colonne à
+    `SCHEMA`, on la lit dans une requête, on oublie l'`ALTER`, et tous
+    les tests passent. Ils tournent tous sur des bases que *cette*
+    version a créées, où `SCHEMA` a mis la colonne de toute façon.
+    L'officine qui met à jour est celle qui l'apprend.
+  - Vérifié en retirant l'`ALTER` de `posology` : le test existant
+    passe — son schéma ancien est écrit à la main et ne contient pas
+    cette table — et le nouveau échoue sur « no such column: posology ».
+
 ## [0.125.0] - 2026-08-29
 
 Le passage de vérification ouvre chaque vue dans deux formes, parce que

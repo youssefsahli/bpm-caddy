@@ -74,7 +74,14 @@ upgrade is decided, the number to defend is the logic one, and
   compact shorthand (`230826`, `2308`); `db::YearHint` picks how
   two-digit years expand (birth dates → past, RDV → 20xx).
 - Schema changes go in `SCHEMA` **and** as an idempotent `ALTER TABLE` in
-  `MIGRATIONS` (`src/db.rs`).
+  `MIGRATIONS` (`src/db.rs`). This is now enforced rather than asked
+  for: `tests/fixtures/schema-0.109.0.sql` is a photograph of the schema
+  as that version shipped it, and
+  `a_base_from_an_older_version_still_answers_every_query` creates a
+  base from it, opens it, and runs every read the application makes.
+  Forget the `ALTER` and every other test still passes — they all run on
+  bases *this* version created, where `SCHEMA` put the column there
+  anyway — and that one fails with « no such column ».
 - Keep the Motif look: square corners, `motif::bevel` raised for
   buttons/panels, sunken for inputs/troughs; charts are painted by hand,
   no plotting library — `motif::chart` has bars, hbars, stacked,

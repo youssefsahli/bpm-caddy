@@ -31803,6 +31803,80 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// A base created by v0.109.0 must still open, and every query the
+    /// application makes must still answer.
+    ///
+    /// `SCHEMA` creates what a *new* base needs; `MIGRATIONS` is the
+    /// only thing that turns an old one into it. The rule — a schema
+    /// change goes in both — is written in CLAUDE.md and nothing
+    /// enforced it: add a column to `SCHEMA`, read it in a query, forget
+    /// the `ALTER`, and every test passes. They all run on bases this
+    /// version created, where `SCHEMA` put the column there anyway. The
+    /// officine that upgrades is the one that finds out.
+    ///
+    /// So the fixture is a photograph of the schema as it shipped, and
+    /// this walks the whole application over it.
+    #[test]
+    fn a_base_from_an_older_version_still_answers_every_query() {
+        const OLD: &str = include_str!("../tests/fixtures/schema-0.109.0.sql");
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-v109-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("v109.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.pragma_update(None, "key", "secret").unwrap();
+            conn.execute_batch(OLD)
+                .expect("le schéma de la 0.109 doit se créer");
+        }
+
+        let db = Db::open(&path, "secret").expect("une base de 0.109 doit s'ouvrir");
+        // Every read the application makes, once. A column added to
+        // `SCHEMA` without its `ALTER` is invisible on a new base and
+        // fails here, which is the whole point.
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let did = db.add_drug("Triatec").unwrap();
+        db.add_patient_drug(pid, did).unwrap();
+        db.patients().expect("patients");
+        db.drugs().expect("drugs");
+        db.drugs_for_patient(pid).expect("drugs_for_patient");
+        db.patients_for_drug(did).expect("patients_for_drug");
+        db.patient_posologies(pid).expect("patient_posologies");
+        db.posologies(did).expect("posologies");
+        db.interviews_for(pid).expect("interviews_for");
+        db.bio_results(pid).expect("bio_results");
+        db.vaccinations(pid).expect("vaccinations");
+        db.travels(pid).expect("travels");
+        db.locations_for(pid).expect("locations_for");
+        db.running_locations().expect("running_locations");
+        db.preparations().expect("preparations");
+        db.dispositifs().expect("dispositifs");
+        db.protocols().expect("protocols");
+        db.notes_for(NoteSubject::Patient, pid).expect("notes_for");
+        db.notes_for_operator("CL").expect("notes_for_operator");
+        db.watchlist().expect("watchlist");
+        db.pending_counts().expect("pending_counts");
+        db.recent_patients(6).expect("recent_patients");
+        db.upcoming_appointments().expect("upcoming_appointments");
+        db.interview_summaries(12).expect("interview_summaries");
+        db.export_rows(12).expect("export_rows");
+        db.month_grid(0).expect("month_grid");
+        db.week_dates(0).expect("week_dates");
+        db.edited_table_keys().expect("edited_table_keys");
+        db.class_note("IEC").expect("class_note");
+        db.drugs_with_tag("probiotique").expect("drugs_with_tag");
+
+        // And a write on each of the columns this version added.
+        assert!(db
+            .set_patient_posology(pid, did, "5 mg le soir", "")
+            .unwrap());
+        assert_eq!(
+            db.patient_posologies(pid).unwrap(),
+            vec![(did, "5 mg le soir".to_owned())]
+        );
+    }
+
     /// The backup folder says what it holds, and says nothing it does
     /// not: a stray file is not a copy, and a folder that is not there
     /// is a folder with nothing in it.
