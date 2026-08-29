@@ -189,6 +189,20 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 #   { label = "Fauteuil roulant", lpp = "Véhicule pour handicapé physique — titre IV", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
 #   { label = "Tire-lait", lpp = "Tire-lait — titre I", period = "semaine", fee = 0.0, renewal_days = 0, max_periods = 0 },
 # ]
+
+[stock]
+# Le registre des stupéfiants et la réception des commandes.
+#
+# La liste des grossistes n'est là que pour la vitesse : une réception se
+# saisit entre deux clients, et le premier de la liste est celui que le
+# formulaire propose. Mettez le vôtre en tête.
+# suppliers = ["OCP", "CERP", "Alliance Healthcare", "Phoenix"]
+#
+# Au bout de combien de jours un produit non recompté est rappelé sur la
+# liste de contrôle. La loi demande un inventaire par an ; ceci est le
+# rythme que l'officine se donne, et il n'a rien à voir avec le minimum
+# légal.
+# count_days = 30
 "#;
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -203,7 +217,44 @@ pub struct Config {
     pub ordonnance: OrdonnanceConfig,
     pub disclaimers: DisclaimersConfig,
     pub locations: LocationsConfig,
+    pub stock: StockConfig,
     pub vitale: VitaleConfig,
+}
+
+/// Le registre des stupéfiants et la réception des commandes.
+///
+/// Deux réglages et rien de plus. La **liste des grossistes** existe
+/// pour une seule raison, qui est la vitesse : une réception se saisit
+/// entre deux clients, et taper « OCP » quinze fois par semaine est
+/// quinze fois de trop. Le premier de la liste est celui que le
+/// formulaire propose. Le **délai entre deux comptages** est celui que
+/// l'officine se donne : la loi en demande un par an, une officine
+/// sérieuse en fait un par mois sur ce qui bouge, et c'est ce délai qui
+/// décide de la liste de ce qu'il faut aller compter.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct StockConfig {
+    /// Les grossistes, le premier étant celui qu'on propose.
+    pub suppliers: Vec<String>,
+    /// Au bout de combien de jours un produit non compté est rappelé.
+    pub count_days: u32,
+}
+
+impl Default for StockConfig {
+    fn default() -> Self {
+        Self {
+            // Les quatre répartiteurs qui livrent la quasi-totalité des
+            // officines françaises. L'ordre est alphabétique et non un
+            // classement : l'officine met le sien en tête.
+            suppliers: ["Alliance Healthcare", "CERP", "OCP", "Phoenix"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            // Un mois : le rythme d'une officine qui tient son registre,
+            // et douze fois ce que la loi exige au minimum.
+            count_days: 30,
+        }
+    }
 }
 
 /// Reading a carte Vitale through a PC/SC reader.

@@ -100,6 +100,28 @@ Deux règles valent partout :
   livre pour retrouver. Deux préparations ne peuvent pas porter le même
   nom.
 
+## Le registre des stupéfiants
+
+- **Où** : deux tables dans `src/db.rs` — `stupefiants` (les produits
+  suivis, leur unité, leur seuil) et `stup_moves` (le registre). Le
+  calcul est dans `src/ordonnancier.rs` (pur, testé).
+- **Rien n'est livré** : un registre est celui de l'officine, et une
+  ligne semée serait une ligne que personne n'a écrite. L'équipe ajoute
+  les produits qu'elle suit.
+- **La règle qui décide de tout** : le registre est inaltérable. Pas
+  d'`UPDATE`, pas de `DELETE`, pas de méthode qui en proposerait. Une
+  erreur se contre-passe. Un test relit `db.rs` et le refuse.
+- **La balance n'est pas une somme** : un inventaire *pose* le solde.
+  Additionner l'écart et poser le compte le compterait deux fois, et le
+  registre dériverait dès le premier comptage qui ne tombe pas juste.
+- **Le numéro d'ordonnancier** est séquentiel dans l'année, attribué par
+  la base dans la transaction qui écrit la ligne, et jamais réattribué.
+- **Réglages** : `[stock] suppliers` (les grossistes, le premier étant
+  celui qu'on propose — c'est pour la vitesse de saisie) et
+  `[stock] count_days` (au bout de combien de jours un produit non
+  recompté revient sur la liste de contrôle ; la loi en demande un par
+  an, c'est le rythme que l'officine se donne).
+
 ## Les dispositifs médicaux
 
 - **Où** : `src/db.rs`, `STARTER_DISPOSITIFS` : nom, famille, indication,

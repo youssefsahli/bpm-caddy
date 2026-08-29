@@ -1208,6 +1208,70 @@ fn call_list_source(rows: &[CallRow], today: &str, pharmacy: &PharmacyConfig) ->
     src
 }
 
+/// La liste de ce qu'il faut aller compter, sur papier.
+///
+/// Elle sort du placard avec la clé : on lit le libellé, on compte, on
+/// écrit ce qu'on a trouvé dans la colonne vide, et on ressaisit ensuite.
+/// C'est pour cela que le solde du registre est **imprimé** en face —
+/// compter à l'aveugle est plus honnête, mais recompter tout un placard
+/// sans savoir ce qu'on cherche est ce qui fait qu'on ne le fait pas.
+///
+/// Aucun nom de patient : c'est une feuille qui traîne sur une paillasse.
+pub fn open_stock_check(
+    rows: &[crate::ordonnancier::ToCheck],
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(stock_check_source(rows, pharmacy, today), "controle_stock")
+}
+
+fn stock_check_source(
+    rows: &[crate::ordonnancier::ToCheck],
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[Contrôle des stupéfiants]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n#v(4mm)\n",
+        typst_str(&pharmacy.name),
+        typst_str(&crate::db::format_french_date(today))
+    ));
+    let mut body = String::new();
+    for r in rows {
+        let since = match r.days {
+            Some(d) => format!("{d} j"),
+            None => "jamais".to_owned(),
+        };
+        body.push_str(&format!(
+            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [#{}], [], [],\n",
+            typst_str(&r.label),
+            typst_str(&format!(
+                "{} {}",
+                crate::codex::format_quantity(r.stock),
+                r.unit
+            )),
+            typst_str(crate::strings::tr(r.why.label_key())),
+            typst_str(&since),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("[], [], [], [], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, 1.4fr, auto, auto, auto, auto, 1fr), inset: 5pt, stroke: 0.5pt,\n  [], [*Produit*], [*Au registre*], [*Motif*], [*Dernier comptage*], [*Compté*], [*Observation*],\n{body})\n"
+    ));
+    src.push_str(
+        "#v(6mm)\n#text(9pt)[Compté par : #box(width: 5cm, stroke: (bottom: 0.5pt))   Le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Signature : #box(width: 4cm, stroke: (bottom: 0.5pt))]\n",
+    );
+    src.push_str(
+        "#v(3mm)\n#text(9pt, style: \"italic\")[Tout écart entre le comptage et le registre est porté au registre par une ligne d'inventaire, avec son explication. Le registre ne se rature pas.]\n",
+    );
+    src
+}
+
 pub struct ConciliationData<'a> {
     pub patient: &'a Patient,
     pub today: &'a str,
@@ -2949,6 +3013,64 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("mode_emploi.pdf"), &pdf);
         }
+    }
+
+    /// La liste de contrôle se travaille dans le placard : elle porte le
+    /// solde du registre, une colonne pour ce qu'on trouve, et une
+    /// signature. Et aucun nom de patient — c'est une feuille qui reste
+    /// sur une paillasse.
+    #[test]
+    fn the_stock_check_sheet_can_be_worked_through() {
+        use crate::ordonnancier::{ToCheck, Why};
+        let rows = vec![
+            ToCheck {
+                id: 1,
+                label: "Skenan #eval \"x\" LP 30 mg".to_owned(),
+                unit: "gélule".to_owned(),
+                stock: -2.0,
+                why: Why::Negative,
+                days: Some(28),
+            },
+            ToCheck {
+                id: 2,
+                label: "Méthadone 40 mg".to_owned(),
+                unit: "gélule".to_owned(),
+                stock: 7.0,
+                why: Why::Uncounted,
+                days: None,
+            },
+        ];
+        let source = stock_check_source(&rows, &sample_pharmacy(), "2026-08-29");
+        assert!(source.contains("Contrôle des stupéfiants"));
+        assert!(source.contains("29/08/2026"), "la date se lit en français");
+        // Le solde du registre est imprimé en face : recompter tout un
+        // placard sans savoir ce qu'on cherche est ce qui fait qu'on ne
+        // le fait pas.
+        assert!(source.contains("Au registre"));
+        assert!(source.contains("Compté"));
+        assert!(source.contains("Observation"));
+        assert!(source.contains("stroke: 0.6pt"), "une case à cocher");
+        assert!(source.contains("jamais"), "jamais compté se dit");
+        assert!(source.contains("Signature"));
+        // Rien de ce qui vient de la base n'est du code Typst.
+        assert!(!source.contains("#eval \"x\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la liste de contrôle doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("controle_stock_exemple.pdf"),
+                &pdf,
+            );
+        }
+        // Rien à compter compile aussi : le bouton n'apparaît que
+        // lorsqu'il y a quelque chose, mais la fonction n'en dépend pas.
+        let world = PdfWorld::new(stock_check_source(&[], &sample_pharmacy(), "2026-08-29"));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
     /// The call list is worked through at the telephone: it must carry

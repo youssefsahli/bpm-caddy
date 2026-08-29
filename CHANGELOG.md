@@ -5,6 +5,65 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.135.0] - 2026-08-29
+
+### Added
+- **L'ordonnancier des stupéfiants**, et la réception des commandes avec
+  lui. « Stupéfiants… » depuis la vue Médicaments : les produits suivis
+  à gauche avec leur solde, le registre du produit ouvert au milieu, la
+  ligne qu'on écrit à droite.
+  - **Le registre est inaltérable, et c'est un test et non une
+    convention.** R. 5132-36 demande un registre qu'on ne rature pas :
+    une ligne écrite ne se corrige pas, elle se contre-passe. Il n'y a
+    donc sur `stup_moves` ni `UPDATE`, ni `DELETE`, ni méthode qui en
+    proposerait — et `the_register_can_only_ever_be_written_to` relit le
+    texte de `db.rs` et refuse qu'il en apparaisse un. Vérifié en
+    ajoutant une correction « bien intentionnée » : le test la voit.
+  - **La balance n'est pas une somme.** Un inventaire *pose* le solde au
+    lieu de s'y ajouter : additionner l'écart et poser le compte le
+    compterait deux fois, et le registre dériverait dès le premier
+    comptage qui ne tombe pas juste — c'est-à-dire dès le premier. Le
+    registre se lit dans l'ordre des **jours** et non des identifiants :
+    une réception saisie le lendemain n'est pas une réception du
+    lendemain, et un inventaire lu avant les sorties qui le précèdent
+    invente un manquant.
+  - **Le numéro d'ordonnancier** est attribué par la base, dans la
+    transaction qui écrit la ligne : proposé par l'écran, il serait un
+    numéro que le poste d'à côté peut avoir pris entre-temps. Séquentiel
+    dans l'année, jamais réattribué — un numéro annulé laisse un trou, et
+    le reboucher ferait exister deux délivrances sous le même numéro.
+  - **Le patient est lié, jamais affiché.** Une ligne de délivrance porte
+    « dossier 42 », cliquable ; le nom se lit en ouvrant le dossier. Un
+    registre s'imprime et traîne au comptoir : ce qu'il doit permettre,
+    c'est de *remonter* au patient. Et une délivrance sans dossier ouvert
+    est refusée plutôt qu'écrite sans patient.
+  - **La réception va vite** : `[stock] suppliers` donne les grossistes
+    en pastilles, le premier étant celui qu'on propose — une réception se
+    saisit entre deux clients, et taper « OCP » quinze fois par semaine
+    est quinze fois de trop. Le formulaire change avec la nature de la
+    ligne : une délivrance demande un prescripteur, une réception un
+    grossiste et un bon de livraison, un inventaire rien qu'un comptage.
+  - **La liste de contrôle** dit ce qu'il faut aller compter et pourquoi
+    — solde négatif (le seul motif qui est une erreur et pas un rappel),
+    sous le seuil, jamais recompté depuis `[stock] count_days`. Elle
+    s'imprime avec le solde du registre en face et une colonne pour ce
+    qu'on trouve : recompter un placard sans savoir ce qu'on cherche est
+    ce qui fait qu'on ne le fait pas.
+  - Et la courbe du stock, en couleurs par nature de ligne.
+
+### Fixed
+- **`motif::list_row` prenait un `RichText` et n'en gardait que la
+  chaîne.** Trois endroits peignaient un rendez-vous en retard dans le
+  rouge d'alerte, et il sortait dans l'encre ordinaire depuis le jour où
+  ils ont été écrits. Rien n'échouait, rien n'avait l'air cassé, et le
+  rouge n'était simplement pas là. La mise en page est celle d'egui
+  maintenant : couleur, graisse et italique arrivent avec elle.
+  - Au passage, la police venait d'un 14 px en dur : les listes ne
+    grandissaient pas avec `[ui] text_scale`, exactement le défaut que
+    les boutons avaient et avaient corrigé. Et la hauteur d'une ligne est
+    **mesurée après** la mise en page : une police plus grande donne une
+    ligne plus haute au lieu d'une ligne rognée.
+
 ## [0.134.0] - 2026-08-29
 
 ### Added

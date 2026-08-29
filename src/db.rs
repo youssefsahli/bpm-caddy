@@ -236,6 +236,60 @@ CREATE TABLE IF NOT EXISTS patient_travel (
     depart_on   TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (patient_id, country)
 );
+-- Les produits que l'officine suit au registre des stupéfiants.
+-- Ce sont eux qui portent le seuil et l'unité ; le registre lui-même
+-- est `stup_moves`.
+CREATE TABLE IF NOT EXISTS stupefiants (
+    id          INTEGER PRIMARY KEY,
+    -- La fiche du médicament, quand il y en a une ; 0 sinon. Un produit
+    -- se suit même si personne n'a écrit sa monographie.
+    drug_id     INTEGER NOT NULL DEFAULT 0,
+    -- Ce qui est écrit sur la ligne du registre : nom, dosage, forme.
+    label       TEXT NOT NULL,
+    -- Comprimé, mL, patch, ampoule : l'unité du comptage.
+    unit        TEXT NOT NULL DEFAULT '',
+    -- Le plancher que l'officine se donne ; 0 = pas de plancher.
+    threshold   REAL NOT NULL DEFAULT 0,
+    -- Un produit qu'on ne suit plus reste au registre pour l'historique.
+    archived    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+-- Le registre. **Inaltérable** : rien ici ne se modifie et rien ne se
+-- supprime. Une erreur se corrige par une ligne contraire qui dit
+-- pourquoi, jamais en réécrivant celle d'avant — c'est ce que
+-- R. 5132-36 demande d'un registre, et c'est ce qui fait qu'il prouve
+-- quelque chose. `src/db.rs` n'écrit donc pour cette table qu'un
+-- INSERT, et un test le vérifie sur le texte du fichier.
+CREATE TABLE IF NOT EXISTS stup_moves (
+    id           INTEGER PRIMARY KEY,
+    stup_id      INTEGER NOT NULL REFERENCES stupefiants(id),
+    -- 'ENTREE', 'SORTIE', 'INVENTAIRE' ou 'PERTE'.
+    kind         TEXT NOT NULL,
+    -- Le jour du mouvement, ISO. C'est lui qui ordonne le registre, et
+    -- non l'identifiant : une réception saisie le lendemain n'est pas
+    -- une réception du lendemain.
+    happened_on  TEXT NOT NULL,
+    -- Toujours positive : c'est `kind` qui dit le sens.
+    quantity     REAL NOT NULL DEFAULT 0,
+    -- Numéro d'ordonnancier, séquentiel dans l'année, sur une sortie
+    -- seulement ; 0 ailleurs. Jamais réattribué.
+    ordo_year    INTEGER NOT NULL DEFAULT 0,
+    ordo_no      INTEGER NOT NULL DEFAULT 0,
+    -- Le dossier, et non le nom. Le registre doit permettre de remonter
+    -- au patient ; il n'a pas à l'afficher en clair sur chaque ligne
+    -- d'une liste qu'on imprime et qui traîne au comptoir.
+    patient_id   INTEGER NOT NULL DEFAULT 0,
+    prescriber   TEXT NOT NULL DEFAULT '',
+    -- Une entrée porte son grossiste et sa référence de bon de livraison.
+    supplier     TEXT NOT NULL DEFAULT '',
+    reference    TEXT NOT NULL DEFAULT '',
+    -- Ce que le registre disait avant un inventaire, pour que l'écart
+    -- se relise sans refaire le calcul de l'époque.
+    expected     REAL NOT NULL DEFAULT 0,
+    operator     TEXT NOT NULL DEFAULT '',
+    remark       TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 ";
 
 /// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
@@ -275,6 +329,12 @@ const INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_events_day ON events(day)",
     "CREATE INDEX IF NOT EXISTS idx_preparations_name ON preparations(name)",
     "CREATE INDEX IF NOT EXISTS idx_dispositifs_name ON dispositifs(name)",
+    // Le registre se lit produit par produit, et son solde est la somme
+    // de toutes ses lignes : sans index, chaque solde relit le registre
+    // entier, et le tableau des produits en demande un par ligne.
+    "CREATE INDEX IF NOT EXISTS idx_stup_moves_stup ON stup_moves(stup_id)",
+    // « Quel numéro d'ordonnancier est libre » se demande par année.
+    "CREATE INDEX IF NOT EXISTS idx_stup_moves_ordo ON stup_moves(ordo_year, ordo_no)",
 ];
 
 /// Idempotent migrations for databases created by older versions.
@@ -409,6 +469,32 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (patient_id, country)
     )",
     "ALTER TABLE patient_drugs ADD COLUMN posology TEXT NOT NULL DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS stupefiants (
+        id          INTEGER PRIMARY KEY,
+        drug_id     INTEGER NOT NULL DEFAULT 0,
+        label       TEXT NOT NULL,
+        unit        TEXT NOT NULL DEFAULT '',
+        threshold   REAL NOT NULL DEFAULT 0,
+        archived    INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
+    "CREATE TABLE IF NOT EXISTS stup_moves (
+        id           INTEGER PRIMARY KEY,
+        stup_id      INTEGER NOT NULL REFERENCES stupefiants(id),
+        kind         TEXT NOT NULL,
+        happened_on  TEXT NOT NULL,
+        quantity     REAL NOT NULL DEFAULT 0,
+        ordo_year    INTEGER NOT NULL DEFAULT 0,
+        ordo_no      INTEGER NOT NULL DEFAULT 0,
+        patient_id   INTEGER NOT NULL DEFAULT 0,
+        prescriber   TEXT NOT NULL DEFAULT '',
+        supplier     TEXT NOT NULL DEFAULT '',
+        reference    TEXT NOT NULL DEFAULT '',
+        expected     REAL NOT NULL DEFAULT 0,
+        operator     TEXT NOT NULL DEFAULT '',
+        remark       TEXT NOT NULL DEFAULT '',
+        created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -1138,6 +1224,48 @@ pub struct Travel {
     pub country: String,
     /// ISO `YYYY-MM-DD`, possibly empty.
     pub depart_on: String,
+}
+
+/// Un produit suivi au registre des stupéfiants.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Stupefiant {
+    pub id: i64,
+    /// La fiche du médicament, ou 0 : un produit se suit même si
+    /// personne n'a écrit sa monographie.
+    pub drug_id: i64,
+    pub label: String,
+    pub unit: String,
+    /// Le plancher que l'officine s'est donné ; 0 = pas de plancher.
+    pub threshold: f64,
+    pub archived: bool,
+}
+
+/// Une ligne du registre, telle qu'elle est écrite.
+///
+/// Rien ici n'est modifiable : il n'existe ni `update_` ni `delete_`
+/// pour cette table, et un test lit le fichier pour s'en assurer. Une
+/// erreur se corrige par une ligne contraire qui dit pourquoi.
+#[derive(Clone, PartialEq, Debug)]
+pub struct StupMove {
+    pub id: i64,
+    pub stup_id: i64,
+    /// La clé de `crate::ordonnancier::Kind`.
+    pub kind: String,
+    /// ISO.
+    pub happened_on: String,
+    /// Toujours positive : `kind` dit le sens.
+    pub quantity: f64,
+    pub ordo_year: i64,
+    pub ordo_no: i64,
+    /// Le dossier, et non le nom. 0 quand la ligne n'en a pas.
+    pub patient_id: i64,
+    pub prescriber: String,
+    pub supplier: String,
+    pub reference: String,
+    /// Ce que le registre disait avant un inventaire.
+    pub expected: f64,
+    pub operator: String,
+    pub remark: String,
 }
 
 /// One agenda entry that is not tied to a patient.
@@ -29962,6 +30090,295 @@ impl Db {
         Ok(changed == 1)
     }
 
+    // --- Le registre des stupéfiants ---------------------------------
+    //
+    // Deux tables et **un seul verbe d'écriture sur l'une d'elles**. Les
+    // produits suivis (`stupefiants`) se corrigent comme n'importe quelle
+    // fiche ; le registre (`stup_moves`) ne se corrige pas. Il n'y a donc
+    // ici ni `update_stup_move` ni `delete_stup_move`, et ce n'est pas un
+    // oubli : `the_register_can_only_ever_be_written_to` relit le texte
+    // de ce fichier et refuse qu'il en apparaisse un.
+
+    /// Les produits suivis, les archivés en dernier, par nom.
+    pub fn stupefiants(&self) -> Result<Vec<Stupefiant>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, drug_id, label, unit, threshold, archived
+                 FROM stupefiants ORDER BY archived ASC, label COLLATE NOCASE ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Stupefiant {
+                    id: r.get(0)?,
+                    drug_id: r.get(1)?,
+                    label: r.get(2)?,
+                    unit: r.get(3)?,
+                    threshold: r.get(4)?,
+                    archived: r.get::<_, i64>(5)? != 0,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Suivre un produit de plus. Le libellé est ce qui s'écrit sur la
+    /// ligne du registre, et deux produits ne peuvent pas porter le même.
+    pub fn add_stupefiant(
+        &self,
+        drug_id: i64,
+        label: &str,
+        unit: &str,
+        threshold: f64,
+    ) -> Result<i64, String> {
+        let label = label.trim();
+        if label.is_empty() {
+            return Err(crate::strings::tr("stup_err_no_label").to_owned());
+        }
+        let taken: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM stupefiants WHERE label = ?1 COLLATE NOCASE",
+                [label],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if taken > 0 {
+            return Err(crate::strings::tr("stup_err_duplicate").to_owned());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO stupefiants (drug_id, label, unit, threshold)
+                 VALUES (?1, ?2, ?3, ?4)",
+                (drug_id, label, unit.trim(), threshold.max(0.0)),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Corriger un produit suivi : compare-and-set sur ce que l'écran
+    /// affichait, comme toute ligne partagée entre deux postes.
+    ///
+    /// Le registre lui-même n'est pas touché — c'est l'étiquette du
+    /// produit qui change, pas ce qui a été délivré sous elle.
+    pub fn update_stupefiant(
+        &self,
+        new: &Stupefiant,
+        expected: &Stupefiant,
+    ) -> Result<bool, String> {
+        let label = new.label.trim();
+        if label.is_empty() {
+            return Err(crate::strings::tr("stup_err_no_label").to_owned());
+        }
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE stupefiants
+                    SET label = ?2, unit = ?3, threshold = ?4, archived = ?5, drug_id = ?6
+                  WHERE id = ?1 AND label = ?7 AND unit = ?8
+                    AND threshold = ?9 AND archived = ?10",
+                (
+                    new.id,
+                    label,
+                    new.unit.trim(),
+                    new.threshold.max(0.0),
+                    i64::from(new.archived),
+                    new.drug_id,
+                    expected.label.trim(),
+                    expected.unit.trim(),
+                    expected.threshold,
+                    i64::from(expected.archived),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Le registre d'un produit, du plus ancien au plus récent.
+    ///
+    /// Dans l'ordre des jours puis de la saisie, qui est l'ordre dans
+    /// lequel `crate::ordonnancier` le lit — et non celui des
+    /// identifiants : une réception saisie le lendemain n'est pas une
+    /// réception du lendemain.
+    pub fn stup_moves(&self, stup_id: i64) -> Result<Vec<StupMove>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                        patient_id, prescriber, supplier, reference, expected,
+                        operator, remark
+                 FROM stup_moves WHERE stup_id = ?1
+                 ORDER BY happened_on ASC, id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([stup_id], |r| {
+                Ok(StupMove {
+                    id: r.get(0)?,
+                    stup_id: r.get(1)?,
+                    kind: r.get(2)?,
+                    happened_on: r.get(3)?,
+                    quantity: r.get(4)?,
+                    ordo_year: r.get(5)?,
+                    ordo_no: r.get(6)?,
+                    patient_id: r.get(7)?,
+                    prescriber: r.get(8)?,
+                    supplier: r.get(9)?,
+                    reference: r.get(10)?,
+                    expected: r.get(11)?,
+                    operator: r.get(12)?,
+                    remark: r.get(13)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Écrire une ligne au registre. Le seul verbe d'écriture qu'il ait.
+    ///
+    /// Le numéro d'ordonnancier est attribué **ici**, dans la même
+    /// transaction que l'insertion, et jamais calculé par l'appelant :
+    /// deux postes qui délivrent en même temps demanderaient le même
+    /// numéro et l'un des deux écrirait un doublon. Le numéro n'est posé
+    /// que sur une sortie ; il n'est jamais réattribué.
+    pub fn add_stup_move(&self, m: &StupMove) -> Result<i64, String> {
+        let day = m.happened_on.trim();
+        if day.is_empty() {
+            return Err(crate::strings::tr("stup_err_no_day").to_owned());
+        }
+        let kind = crate::ordonnancier::Kind::from_key(&m.kind);
+        // Un mouvement de zéro n'est pas un mouvement — sauf un
+        // inventaire, où zéro est un comptage et une information.
+        if m.quantity < 0.0 || (m.quantity == 0.0 && kind != crate::ordonnancier::Kind::Inventaire)
+        {
+            return Err(crate::strings::tr("stup_err_quantity").to_owned());
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let (year, no) = if kind.is_dispensing() {
+            let year: i64 = day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
+            // Les numéros déjà pris de cette année, et la règle qui en
+            // tire le suivant est celle de `crate::ordonnancier` — pas
+            // un `MAX(…) + 1` écrit ici, qui serait la même règle dite
+            // une seconde fois et un jour différemment.
+            //
+            // La liste entière et non son maximum : l'index
+            // `idx_stup_moves_ordo` la rend sans toucher la table, et
+            // cela n'arrive qu'au moment où quelqu'un délivre.
+            let used: Vec<u32> = {
+                let mut stmt = tx
+                    .prepare("SELECT ordo_no FROM stup_moves WHERE ordo_year = ?1")
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([year], |r| r.get::<_, i64>(0))
+                    .map_err(|e| e.to_string())?;
+                rows.map(|r| r.map(|n| n.max(0) as u32))
+                    .collect::<Result<_, _>>()
+                    .map_err(|e| e.to_string())?
+            };
+            (year, i64::from(crate::ordonnancier::next_number(&used)))
+        } else {
+            (0, 0)
+        };
+        tx.execute(
+            "INSERT INTO stup_moves
+                 (stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                  patient_id, prescriber, supplier, reference, expected,
+                  operator, remark)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                m.stup_id,
+                kind.as_key(),
+                day,
+                m.quantity,
+                year,
+                no,
+                // Seule une délivrance porte un dossier : une réception
+                // n'a pas de patient, et en écrire un serait mettre un
+                // nom dans un registre pour rien.
+                if kind.is_dispensing() {
+                    m.patient_id
+                } else {
+                    0
+                },
+                m.prescriber.trim(),
+                m.supplier.trim(),
+                m.reference.trim(),
+                m.expected,
+                m.operator.trim(),
+                m.remark.trim(),
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let id = tx.last_insert_rowid();
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(id)
+    }
+
+    /// Ce que le registre dit de chaque produit suivi : le solde et la
+    /// date du dernier comptage.
+    ///
+    /// Une requête pour toute la table, et non une par produit : la vue
+    /// en affiche la liste, et quarante soldes lus un par un sur un
+    /// partage réseau, c'est quarante allers-retours.
+    pub fn stup_summary(&self) -> Result<Vec<(Stupefiant, f64, String)>, String> {
+        let products = self.stupefiants()?;
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT stup_id, kind, happened_on, quantity, id
+                 FROM stup_moves ORDER BY happened_on ASC, id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, f64>(3)?,
+                    r.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut by_product: std::collections::HashMap<i64, Vec<(String, String, f64, i64)>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            let (stup_id, kind, day, qty, id) = row.map_err(|e| e.to_string())?;
+            by_product
+                .entry(stup_id)
+                .or_default()
+                .push((kind, day, qty, id));
+        }
+        Ok(products
+            .into_iter()
+            .map(|p| {
+                let lines = by_product.remove(&p.id).unwrap_or_default();
+                let moves: Vec<crate::ordonnancier::Move> = lines
+                    .iter()
+                    .map(|(kind, day, qty, id)| crate::ordonnancier::Move {
+                        kind: crate::ordonnancier::Kind::from_key(kind),
+                        quantity: *qty,
+                        day,
+                        seq: *id,
+                    })
+                    .collect();
+                let stock = crate::ordonnancier::balance(&moves);
+                // Le dernier comptage, qui est ce qui décide de la liste
+                // de contrôle. Les lignes sont déjà dans l'ordre.
+                let last = lines
+                    .iter()
+                    .rfind(|(kind, _, _, _)| kind == "INVENTAIRE")
+                    .map(|(_, day, _, _)| day.clone())
+                    .unwrap_or_default();
+                (p, stock, last)
+            })
+            .collect())
+    }
+
     /// Remove a posology line, compare-and-set on its indication.
     pub fn delete_posologie(&self, id: i64, expected_indication: &str) -> Result<bool, String> {
         let changed = self
@@ -32256,6 +32673,227 @@ mod tests {
                 "sans index : {sql}\n  → {plan}"
             );
         }
+    }
+
+    /// **Le registre ne se réécrit pas.**
+    ///
+    /// R. 5132-36 demande un registre inaltérable : une ligne écrite ne
+    /// se corrige pas, elle se contre-passe. Un `UPDATE` ou un `DELETE`
+    /// sur `stup_moves`, même bien intentionné — corriger une faute de
+    /// frappe, effacer un doublon — enlève au registre la seule chose
+    /// qu'il apporte, qui est de prouver ce qui a été écrit et quand.
+    ///
+    /// Alors ce n'est pas une convention, c'est un test : il relit le
+    /// texte de ce fichier et refuse qu'un tel verbe y apparaisse. La
+    /// discipline se perd, le test non.
+    #[test]
+    fn the_register_can_only_ever_be_written_to() {
+        const SOURCE: &str = include_str!("db.rs");
+        // Les mots cherchés sont assemblés et jamais écrits d'un bloc :
+        // un test qui se lit lui-même trouverait d'abord ses propres
+        // constantes, et un test qui ne peut pas se prononcer sur son
+        // propre fichier ne sert à rien. Ce n'est pas de la ruse, c'est
+        // la seule façon d'écrire celui-ci.
+        let table = concat!("stup_", "moves");
+        let update = concat!("UPDA", "TE");
+        let delete = concat!("DELE", "TE FROM");
+        for (n, line) in SOURCE.lines().enumerate() {
+            let line = line.trim();
+            if line.starts_with("//") || line.starts_with("--") {
+                continue;
+            }
+            let touches = line.contains(table);
+            let writes = line.contains(update) || line.contains(delete);
+            assert!(
+                !(touches && writes),
+                "le registre ne se réécrit pas (db.rs:{}) : {line}",
+                n + 1
+            );
+        }
+        // Et pas de méthode qui en proposerait une, fût-elle inutilisée.
+        for verb in [
+            concat!("fn upda", "te_stup_move"),
+            concat!("fn dele", "te_stup_move"),
+        ] {
+            assert!(
+                !SOURCE.contains(verb),
+                "le registre ne se réécrit pas : {verb}"
+            );
+        }
+    }
+
+    /// Le registre écrit, compte, et attribue ses numéros.
+    ///
+    /// Trois choses, et ce sont les trois qu'un contrôle regarde : le
+    /// solde suit la règle de `crate::ordonnancier` (un inventaire
+    /// **pose** le solde), le numéro d'ordonnancier est séquentiel dans
+    /// l'année et attribué par la base et non par l'appelant, et une
+    /// ligne qui n'est pas une délivrance ne porte ni numéro ni dossier.
+    #[test]
+    fn the_register_numbers_its_dispensings_and_keeps_the_balance() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-stup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("stup.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+
+        let sid = db
+            .add_stupefiant(0, "  Skenan LP 30 mg  ", "gélule", 10.0)
+            .unwrap();
+        // Deux produits ne peuvent pas porter le même libellé : le
+        // registre serait illisible et le solde partagé entre deux
+        // lignes qui se croient distinctes.
+        assert!(db
+            .add_stupefiant(0, "skenan lp 30 mg", "gélule", 0.0)
+            .is_err());
+        assert!(db.add_stupefiant(0, "   ", "", 0.0).is_err());
+        assert_eq!(db.stupefiants().unwrap()[0].label, "Skenan LP 30 mg");
+
+        let write = |kind: crate::ordonnancier::Kind, qty: f64, day: &str, patient: i64| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: kind.as_key().to_owned(),
+                happened_on: day.to_owned(),
+                quantity: qty,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: patient,
+                prescriber: "Dr Martin".to_owned(),
+                supplier: "OCP".to_owned(),
+                reference: "BL-4471".to_owned(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: String::new(),
+            })
+            .unwrap()
+        };
+        use crate::ordonnancier::Kind;
+        write(Kind::Entree, 30.0, "2026-01-05", 0);
+        write(Kind::Sortie, 14.0, "2026-01-08", pid);
+        write(Kind::Sortie, 5.0, "2026-01-12", pid);
+
+        let moves = db.stup_moves(sid).unwrap();
+        assert_eq!(moves.len(), 3);
+        // Le numéro est attribué par la base, dans la transaction qui
+        // écrit la ligne : l'appelant en a passé zéro, et deux postes
+        // qui délivrent en même temps ne peuvent pas obtenir le même.
+        let numbered: Vec<(i64, i64)> = moves
+            .iter()
+            .filter(|m| m.kind == "SORTIE")
+            .map(|m| (m.ordo_year, m.ordo_no))
+            .collect();
+        assert_eq!(numbered, vec![(2026, 1), (2026, 2)]);
+        // Une entrée n'en porte pas, et ne porte pas de dossier non
+        // plus : une réception n'a pas de patient, et en écrire un
+        // serait mettre un nom dans un registre pour rien.
+        let entry = moves.iter().find(|m| m.kind == "ENTREE").unwrap();
+        assert_eq!((entry.ordo_year, entry.ordo_no), (0, 0));
+        assert_eq!(entry.patient_id, 0);
+        assert_eq!(entry.supplier, "OCP");
+        // La délivrance, elle, porte le dossier — et pas le nom.
+        let out = moves.iter().find(|m| m.kind == "SORTIE").unwrap();
+        assert_eq!(out.patient_id, pid);
+
+        // Le solde suit la règle : 30 − 14 − 5.
+        let summary = db.stup_summary().unwrap();
+        assert_eq!(summary.len(), 1);
+        assert!((summary[0].1 - 11.0).abs() < 1e-9, "{}", summary[0].1);
+        assert_eq!(summary[0].2, "", "aucun comptage encore");
+
+        // Un inventaire pose le solde et garde ce qu'il a corrigé.
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: sid,
+            kind: "INVENTAIRE".to_owned(),
+            happened_on: "2026-01-20".to_owned(),
+            quantity: 10.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 11.0,
+            operator: "YS".to_owned(),
+            remark: "une gélule manquante".to_owned(),
+        })
+        .unwrap();
+        let summary = db.stup_summary().unwrap();
+        assert!((summary[0].1 - 10.0).abs() < 1e-9, "{}", summary[0].1);
+        assert_eq!(summary[0].2, "2026-01-20", "le dernier comptage");
+
+        // L'année suivante repart à un.
+        write(Kind::Sortie, 2.0, "2027-01-03", pid);
+        let last = db.stup_moves(sid).unwrap().pop().unwrap();
+        assert_eq!((last.ordo_year, last.ordo_no), (2027, 1));
+
+        // Ce qui n'est pas un mouvement est refusé : pas de jour, une
+        // quantité négative, une sortie de zéro. Un inventaire de zéro,
+        // lui, est un comptage et une information.
+        let bad = |kind: &str, qty: f64, day: &str| StupMove {
+            id: 0,
+            stup_id: sid,
+            kind: kind.to_owned(),
+            happened_on: day.to_owned(),
+            quantity: qty,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: String::new(),
+            remark: String::new(),
+        };
+        assert!(db.add_stup_move(&bad("ENTREE", 5.0, "  ")).is_err());
+        assert!(db
+            .add_stup_move(&bad("ENTREE", -1.0, "2026-02-01"))
+            .is_err());
+        assert!(db.add_stup_move(&bad("SORTIE", 0.0, "2026-02-01")).is_err());
+        assert!(db
+            .add_stup_move(&bad("INVENTAIRE", 0.0, "2026-02-01"))
+            .is_ok());
+    }
+
+    /// L'étiquette du produit se corrige comme toute ligne partagée :
+    /// compare-and-set sur ce que l'écran affichait.
+    ///
+    /// Le registre, lui, ne bouge pas : c'est le nom sous lequel on
+    /// délivre qui change, pas ce qui a été délivré.
+    #[test]
+    fn a_followed_product_is_corrected_compare_and_set() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-stupe-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("stup.db"), "secret").unwrap();
+        let id = db
+            .add_stupefiant(0, "Oxycontin 10 mg", "comprimé", 5.0)
+            .unwrap();
+        let shown = db.stupefiants().unwrap().pop().unwrap();
+
+        let mut edited = shown.clone();
+        edited.threshold = 12.0;
+        edited.unit = "comprimé LP".to_owned();
+        assert!(db.update_stupefiant(&edited, &shown).unwrap());
+
+        // Un deuxième poste qui écrit sur la version qu'il affichait
+        // encore est refusé, et rien n'est écrasé.
+        let mut stale = shown.clone();
+        stale.threshold = 3.0;
+        assert!(!db.update_stupefiant(&stale, &shown).unwrap());
+        let now = db.stupefiants().unwrap().pop().unwrap();
+        assert_eq!(now.id, id);
+        assert!((now.threshold - 12.0).abs() < 1e-9);
+        assert_eq!(now.unit, "comprimé LP");
+
+        // Un libellé vide est refusé plutôt qu'écrit.
+        let mut blank = now.clone();
+        blank.label = "   ".to_owned();
+        assert!(db.update_stupefiant(&blank, &now).is_err());
     }
 
     /// The backup folder says what it holds, and says nothing it does
@@ -34583,6 +35221,107 @@ mod tests {
                 }
             }
         }
+
+        // Un registre des stupéfiants qui a vécu : trois produits, une
+        // réception, des délivrances numérotées, un comptage qui ne
+        // tombe pas juste, et un produit sous son seuil. Sans quoi la
+        // vue s'ouvrirait sur trois cadres vides et ne montrerait ni la
+        // courbe, ni l'écart, ni la liste de contrôle.
+        let pid = db.patients().unwrap().first().map_or(0, |p| p.id);
+        let year: i64 = db
+            .conn
+            .query_row(
+                "SELECT CAST(strftime('%Y','now','localtime') AS INTEGER)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(2026);
+        let day = |m: u32, d: u32| format!("{year}-{m:02}-{d:02}");
+        let write = |sid: i64, kind: &str, qty: f64, day: String, patient: i64, expected: f64| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: kind.to_owned(),
+                happened_on: day,
+                quantity: qty,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: patient,
+                prescriber: "Dr Morel".to_owned(),
+                supplier: if kind == "ENTREE" {
+                    "OCP".to_owned()
+                } else {
+                    String::new()
+                },
+                reference: if kind == "ENTREE" {
+                    "BL-88214".to_owned()
+                } else {
+                    String::new()
+                },
+                expected,
+                operator: "CL".to_owned(),
+                remark: String::new(),
+            })
+            .unwrap();
+        };
+        let skenan = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 14.0)
+            .unwrap();
+        write(skenan, "ENTREE", 28.0, day(1, 12), 0, 0.0);
+        write(skenan, "SORTIE", 14.0, day(2, 3), pid, 0.0);
+        write(skenan, "SORTIE", 14.0, day(3, 9), pid, 0.0);
+        write(skenan, "ENTREE", 56.0, day(3, 10), 0, 0.0);
+        // Un comptage qui trouve une gélule de moins : c'est l'écart qui
+        // fait ouvrir un registre, et il s'inscrit avec ce qu'il corrige.
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: skenan,
+            kind: "INVENTAIRE".to_owned(),
+            happened_on: day(4, 2),
+            quantity: 55.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 56.0,
+            operator: "CL".to_owned(),
+            remark: "une gélule non retrouvée — signalée".to_owned(),
+        })
+        .unwrap();
+        write(skenan, "SORTIE", 14.0, day(4, 18), pid, 0.0);
+
+        // Un produit sous son seuil, jamais recompté : la liste de
+        // contrôle a de quoi dire.
+        let oxy = db
+            .add_stupefiant(0, "Oxycontin LP 10 mg", "comprimé", 20.0)
+            .unwrap();
+        write(oxy, "ENTREE", 28.0, day(2, 6), 0, 0.0);
+        write(oxy, "SORTIE", 14.0, day(2, 20), pid, 0.0);
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: oxy,
+            kind: "PERTE".to_owned(),
+            happened_on: day(3, 1),
+            quantity: 2.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: "blister écrasé à la réception".to_owned(),
+        })
+        .unwrap();
+
+        let metha = db
+            .add_stupefiant(0, "Méthadone gélules 40 mg", "gélule", 7.0)
+            .unwrap();
+        write(metha, "ENTREE", 14.0, day(5, 4), 0, 0.0);
+        write(metha, "SORTIE", 7.0, day(5, 11), pid, 0.0);
     }
 
     #[test]

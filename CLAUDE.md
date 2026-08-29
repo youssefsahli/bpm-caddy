@@ -30,6 +30,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints),
+  `src/ordonnancier.rs` (the register of stupéfiants: the balance — which
+  is **not** a sum, an inventory *sets* it —, the dispensing number,
+  the inventory gap, and what to go and count. Pure, tested, no clock:
+  the day is passed in),
   `src/maintenance.rs` (the long passes over the base — synchroniser,
   compléter, réinitialiser — as named steps run on a thread of their own
   against a connection of their own). The
@@ -169,6 +173,19 @@ upgrade is decided, the number to defend is the logic one, and
   `f32::clamp` with a computed min: all of them take the whole
   application down at the counter. Prefer `total_cmp`, an `if let`, and
   a cap raised to its floor.
+- **The register of stupéfiants is inalterable.** `stup_moves` takes an
+  `INSERT` and nothing else: no `UPDATE`, no `DELETE`, no
+  `update_stup_move`, no `delete_stup_move`. A mistake is corrected by
+  an opposite line that says why. That is what R. 5132-36 asks of a
+  register and the only reason it proves anything, so it is a test and
+  not a convention — `the_register_can_only_ever_be_written_to` reads
+  the text of `db.rs` and refuses such a verb (verified by adding one).
+  The dispensing number is assigned **inside** the inserting
+  transaction, never by the caller: two PCs dispensing at once would ask
+  for the same one.
+- A line of a register carries the patient's **file number**, never the
+  name: a register is printed and left on a counter, and what it must
+  allow is going *back* to the patient, not displaying them.
 - The database is shared between PCs: every write to a shared row
   (states, RDV dates, patient identity, deletions) is compare-and-set
   against the values the UI displayed (`WHERE … AND <old values>`,
@@ -186,7 +203,7 @@ upgrade is decided, the number to defend is the logic one, and
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient|graph`
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph|stup`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

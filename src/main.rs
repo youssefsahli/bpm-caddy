@@ -14,6 +14,7 @@ mod insulin;
 mod location;
 mod maintenance;
 mod ordonnance;
+mod ordonnancier;
 mod pdf;
 mod release;
 mod revue;

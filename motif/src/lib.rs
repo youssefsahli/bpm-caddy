@@ -713,9 +713,56 @@ pub fn button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Res
 
 /// A full-width Motif list row: hover tint, `crate::accent()` selection bar,
 /// left-aligned text. For the sunken list boxes (patients, drugs…).
+///
+/// **Everything the `RichText` says is honoured**, and it did not use to
+/// be: this kept the string and threw the rest away, so three call sites
+/// that painted an overdue rendez-vous in `crate::alert()` had been
+/// drawing it in the ordinary ink since the day they were written.
+/// Nothing errored, nothing looked broken, and the red simply was not
+/// there. A widget that accepts a type and ignores most of it will go on
+/// fooling whoever calls it next — so the layout is egui's own now, and
+/// colour, weight and italics arrive with it.
+///
+/// A selected row overrides the colour: white on the accent bar is a
+/// legibility rule and not a preference, and a red on that blue reads as
+/// neither.
 pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui::Response {
     let width = ui.available_width();
-    let height = (ui.spacing().interact_size.y + 2.0).max(18.0);
+    // The face comes from the style, so `[ui] text_scale` and the
+    // density reach the lists too: a hardcoded 14 px left every list row
+    // at 14 px while the rest of the interface grew, which is the bug
+    // the buttons had and had fixed.
+    let mut style = egui::Style::clone(ui.style());
+    // The fallback when the caller sets no colour of its own; a colour
+    // it *does* set wins over this, which is the whole point.
+    style.visuals.override_text_color = Some(crate::text());
+    let mut job = egui::text::LayoutJob::default();
+    text.append_to(
+        &mut job,
+        &style,
+        egui::FontSelection::Style(egui::TextStyle::Body),
+        egui::Align::Center,
+    );
+    if selected {
+        for section in &mut job.sections {
+            section.format.color = Color32::WHITE;
+        }
+    }
+    // One line, ending in an ellipsis rather than mid-letter: a row
+    // clipped by the panel edge reads as a rendering fault, and hides
+    // the fact that there was more to read.
+    job.wrap = egui::text::TextWrapping {
+        max_width: (width - 12.0).max(1.0),
+        max_rows: 1,
+        break_anywhere: false,
+        overflow_character: Some('…'),
+    };
+    let galley = ui.fonts(|f| f.layout_job(job));
+    // Measured after laying out, not guessed before: a caller that asks
+    // for a bigger face gets a taller row instead of a clipped one.
+    let height = (ui.spacing().interact_size.y + 2.0)
+        .max(galley.size().y + 4.0)
+        .max(18.0);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
     if ui.is_rect_visible(rect) {
         if selected {
@@ -723,31 +770,8 @@ pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui
         } else if response.hovered() {
             ui.painter().rect_filled(rect, 0.0, crate::bg_hover());
         }
-        let color = if selected {
-            Color32::WHITE
-        } else {
-            crate::text()
-        };
-        // One line, ending in an ellipsis rather than mid-letter: a row
-        // clipped by the panel edge reads as a rendering fault, and
-        // hides the fact that there was more to read.
-        let mut job = egui::text::LayoutJob::single_section(
-            text.text().to_owned(),
-            egui::TextFormat {
-                font_id: egui::FontId::proportional(14.0),
-                color,
-                ..Default::default()
-            },
-        );
-        job.wrap = egui::text::TextWrapping {
-            max_width: rect.width() - 12.0,
-            max_rows: 1,
-            break_anywhere: false,
-            overflow_character: Some('…'),
-        };
-        let galley = ui.fonts(|f| f.layout_job(job));
         let pos = egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0);
-        ui.painter().galley(pos, galley, color);
+        ui.painter().galley(pos, galley, crate::text());
     }
     response
 }
@@ -768,7 +792,14 @@ pub fn list_row_pair(
     indent: f32,
 ) -> egui::Response {
     let width = ui.available_width();
-    let height = (ui.spacing().interact_size.y + 2.0).max(18.0);
+    // Both faces come from the style, so the pair grows with the text
+    // scale like the plain row beside it.
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let quiet = egui::FontId::new(font.size * 0.86, font.family.clone());
+    let row = ui.fonts(|f| f.row_height(&font));
+    let height = (ui.spacing().interact_size.y + 2.0)
+        .max(row + 4.0)
+        .max(18.0);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
     if ui.is_rect_visible(rect) {
         if selected {
@@ -793,7 +824,7 @@ pub fn list_row_pair(
             primary,
             0.0,
             egui::TextFormat {
-                font_id: egui::FontId::proportional(14.0),
+                font_id: font,
                 color,
                 ..Default::default()
             },
@@ -803,7 +834,7 @@ pub fn list_row_pair(
                 secondary,
                 8.0,
                 egui::TextFormat {
-                    font_id: egui::FontId::proportional(12.0),
+                    font_id: quiet,
                     color: dim,
                     italics: true,
                     ..Default::default()

@@ -74,7 +74,7 @@ views=(
     search dashboard patient drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio watch revue locations conciliation vaccine_map ordonnance
-    protocols protocol_open codex codex_open dispositifs dispositif_open graph
+    protocols protocol_open codex codex_open dispositifs dispositif_open graph stup
     template options about base keys act_picker vitale
     goto goto_jump mono_search mono_patient
 )
