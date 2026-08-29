@@ -1473,6 +1473,13 @@ struct Session {
     /// The last drug search and the question it answered.
     drug_hits: Vec<Drug>,
     drug_hits_key: Option<(String, usize, u64)>,
+    /// The open card's neighbours, and which card they were read for.
+    drug_kin: DrugKin,
+    drug_kin_key: Option<(i64, u64)>,
+    /// Which neighbour list the operator has open, if either. Cleared
+    /// when a card is opened: the answer belongs to the card that was
+    /// asked, not to the next one.
+    drug_kin_show: Option<KinList>,
     /// What the last carte Vitale read gave: the beneficiaries it named,
     /// and a line saying what happened — the readers seen, the ATR, or
     /// why nothing came back.
@@ -1788,6 +1795,9 @@ impl Session {
             drugs_rev: 0,
             drug_hits: Vec::new(),
             drug_hits_key: None,
+            drug_kin: DrugKin::default(),
+            drug_kin_key: None,
+            drug_kin_show: None,
             vitale_found: Vec::new(),
             vitale_note: None,
             table_rev: 0,
@@ -2329,6 +2339,28 @@ impl Session {
         self.drug_hits_key = Some(key);
     }
 
+    /// The open card's neighbourhood, kept between frames.
+    ///
+    /// Both lists are a pass over the whole base — 850 cards, two
+    /// folded comparisons each — and the answer cannot change while the
+    /// same card is open on the same list. The key is the card and the
+    /// revision [`Self::set_drugs`] moves.
+    fn refresh_drug_kin(&mut self, card: &Drug) {
+        let key = (card.id, self.drugs_rev);
+        if self.drug_kin_key == Some(key) {
+            return;
+        }
+        self.drug_kin = DrugKin::of(card, &self.drugs);
+        self.drug_kin_key = Some(key);
+        // The base can be replaced under an open list — a reset, a
+        // synchronisation, a card deleted — and a card that has lost its
+        // neighbours must not be left with a chip lit for a list that is
+        // no longer there.
+        if self.drug_kin.is_empty() {
+            self.drug_kin_show = None;
+        }
+    }
+
     /// What year it is, from the date the session already holds.
     ///
     /// `Db::current_year` is a query, and the carnet asked it on every
@@ -2550,6 +2582,9 @@ impl Session {
         self.drug_reading = true;
         self.class_note_edit = None;
         self.confirm_delete_drug = false;
+        // A list of neighbours is an answer about the card that was
+        // open; following one of them asks a new question.
+        self.drug_kin_show = None;
     }
 
     /// Load (or reload) the transmission logbook for `trans_day`.
@@ -3422,6 +3457,123 @@ pub fn mono_search(
     hits
 }
 
+/// One neighbour of the open card: enough to draw a row and to open it.
+///
+/// An id and two names, never a copy of the card — the whole point of
+/// this list is that it costs a pass over the base and nothing else.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Kin {
+    id: i64,
+    name: String,
+    dci: String,
+}
+
+/// What else the base holds around one card: the two questions asked at
+/// the counter with the box already in hand.
+///
+/// « Est-ce que c'est la même chose ? » — the other brands of the same
+/// molecule, which is the substitution question and the one a generic or
+/// a biosimilar raises every day. And « qu'est-ce qu'on peut mettre à la
+/// place ? » — the rest of the class, which is what a rupture de stock
+/// or a contre-indication asks.
+///
+/// The two are kept apart because they are not the same answer: another
+/// brand of apixaban *is* apixaban, and another AOD is not.
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+struct DrugKin {
+    /// Same DCI, other card — sorted by name.
+    same_dci: Vec<Kin>,
+    /// Same class, other molecule — sorted by DCI then name, so the
+    /// brands of one molecule stand together.
+    same_class: Vec<Kin>,
+}
+
+impl DrugKin {
+    /// Read `card`'s neighbourhood out of the whole base.
+    ///
+    /// A card is never its own neighbour, and never appears in both
+    /// lists: a card sharing the DCI is above, so listing it again
+    /// under the class would say the same thing twice with a different
+    /// heading. A card with no DCI or no class simply has no list of
+    /// that kind — an empty string is not a molecule and not a class,
+    /// and matching on it would put every unfilled card together.
+    fn of(card: &Drug, drugs: &[Drug]) -> Self {
+        let dci = card.dci.trim();
+        let class = card.class.trim();
+        let kin = |d: &Drug| Kin {
+            id: d.id,
+            name: d.name.trim().to_owned(),
+            dci: d.dci.trim().to_owned(),
+        };
+        let mut same_dci: Vec<Kin> = if dci.is_empty() {
+            Vec::new()
+        } else {
+            drugs
+                .iter()
+                .filter(|d| d.id != card.id && fuzzy::eq_folded(&d.dci, dci))
+                .map(kin)
+                .collect()
+        };
+        same_dci.sort_by_key(|a| fuzzy::sort_key(&a.name));
+        let mut same_class: Vec<Kin> = if class.is_empty() {
+            Vec::new()
+        } else {
+            drugs
+                .iter()
+                .filter(|d| {
+                    d.id != card.id
+                        && fuzzy::eq_folded(&d.class, class)
+                        // …and not already listed above. Guarded on a
+                        // card that has no DCI of its own: without it,
+                        // every class-mate whose DCI is also blank would
+                        // match this test and drop out of a list it
+                        // belongs in.
+                        && !(!dci.is_empty() && fuzzy::eq_folded(&d.dci, dci))
+                })
+                .map(kin)
+                .collect()
+        };
+        same_class.sort_by(|a, b| {
+            (fuzzy::sort_key(&a.dci), fuzzy::sort_key(&a.name))
+                .cmp(&(fuzzy::sort_key(&b.dci), fuzzy::sort_key(&b.name)))
+        });
+        Self {
+            same_dci,
+            same_class,
+        }
+    }
+
+    /// Nothing to show, on either side — a card the base holds alone.
+    /// Both chips then stay what they were before this list existed: a
+    /// search for that word, and no count in the label.
+    fn is_empty(&self) -> bool {
+        self.same_dci.is_empty() && self.same_class.is_empty()
+    }
+}
+
+/// What a click in the technical pane asks for.
+///
+/// Two different things, and they must not be run together: a chip
+/// (« AOD », « probiotique ») *leaves* the card to search the base for
+/// that word, while a neighbour opens another card and stays in the
+/// fiche. The pane cannot do either itself — it holds the card borrowed
+/// while it draws — so it names what it wants and the caller acts.
+enum TechAction {
+    Search(String),
+    /// Show (or hide again) one of the two neighbour lists.
+    Neighbours(KinList),
+    Open(i64),
+}
+
+/// Which of a card's two neighbourhoods is on show. One at a time: the
+/// technical sheet is a strip two hundred pixels tall under a wide
+/// monograph, and two lists open at once would be the whole of it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum KinList {
+    Dci,
+    Class,
+}
+
 /// Link every prose field of one card against the rest of the base.
 /// Done once, when the card is opened: the monograph is redrawn sixty
 /// times a second and this is not work for a frame.
@@ -3634,6 +3786,72 @@ fn parse_hours(text: &str) -> Option<f64> {
         0 => None,
         1 => Some(nums[0] * factor),
         _ => Some((nums[0] + nums[1]) / 2.0 * factor),
+    }
+}
+
+/// The two questions a half-life answers, and the second one was
+/// missing from the card.
+///
+/// The decay curve already on the technical sheet says **when it is
+/// gone**: five half-lives after the last dose, which is what an
+/// interaction, a surgery or a switch needs to know. Its mirror says
+/// **when it is fully there** — the fraction of the steady-state
+/// concentration reached after a given time on a regular dose,
+/// `1 − 0,5^(t/t½)`.
+///
+/// That second one is the one asked at the counter and never written on
+/// a box. Levothyroxine has a seven-day half-life, so a dose changed
+/// today is at its full effect in about five weeks, and a TSH drawn
+/// before that measures a patient halfway there and sends the
+/// prescriber chasing a number that was still moving. Same for lithium,
+/// amiodarone (weeks), digoxin, an AVK at initiation, an SSRI. Same
+/// arithmetic every time, and nobody does it in their head over a
+/// counter.
+///
+/// The time to steady state does **not** depend on the dosing interval —
+/// only on the half-life — which is why one field is enough to draw it.
+struct SteadyState {
+    /// Hours to practical steady state: five half-lives, ≈ 97 %.
+    hours: f64,
+    /// The rise, sampled for a sparkline over [`Self::hours`].
+    curve: Vec<f64>,
+}
+
+impl SteadyState {
+    /// Sample the rise, or `None` when the card has no usable half-life.
+    fn of(half_life_hours: f64) -> Option<Self> {
+        if !(half_life_hours.is_finite() && half_life_hours > 0.0) {
+            return None;
+        }
+        let hours = 5.0 * half_life_hours;
+        let curve = (0..=48)
+            .map(|i| {
+                let t = hours * f64::from(i) / 48.0;
+                100.0 * (1.0 - 0.5_f64.powf(t / half_life_hours))
+            })
+            .collect();
+        Some(Self { hours, curve })
+    }
+
+    /// How far along after `t` hours, as a percentage.
+    fn at(half_life_hours: f64, t: f64) -> f64 {
+        100.0 * (1.0 - 0.5_f64.powf(t / half_life_hours))
+    }
+
+    /// « environ 5 semaines », « environ 18 heures » — the delay in the
+    /// largest unit that does not make it a decimal nobody reads. Hours
+    /// under two days, days under three weeks, weeks beyond.
+    fn delay_label(&self) -> String {
+        if self.hours < 48.0 {
+            trf("drug_steady_hours", format!("{:.0}", self.hours))
+        } else if self.hours < 21.0 * 24.0 {
+            trf("drug_steady_days", format!("{:.0}", self.hours / 24.0))
+        } else {
+            trf(
+                "drug_steady_weeks",
+                format!("{:.0}", self.hours / (24.0 * 7.0)),
+            )
+        }
     }
 }
 
@@ -4910,6 +5128,15 @@ impl App {
                             if std::env::var("BPM_CADDY_DRUG_EDIT").is_ok() {
                                 session.drug_reading = false;
                             }
+                            // …or with one of the neighbour lists open,
+                            // so the shape the smoke run checks is the
+                            // one with the most in the technical pane.
+                            session.drug_kin_show = match std::env::var("BPM_CADDY_KIN").as_deref()
+                            {
+                                Ok("dci") => Some(KinList::Dci),
+                                Ok("class") => Some(KinList::Class),
+                                _ => None,
+                            };
                             session.view = MainView::Drugs;
                         }
                         // Reads the card at start-up, so the whole path
@@ -16712,6 +16939,52 @@ impl App {
         open
     }
 
+    /// « Même molécule » and « Même classe », as rows one can open.
+    ///
+    /// Returns the id of a card clicked, if one was. A row carries an id
+    /// and two borrowed names and never a copy of the card: this is
+    /// drawn sixty times a second like everything else, and the list it
+    /// reads was computed once by [`DrugKin::of`].
+    ///
+    /// Both lists are capped in *lines*, not pixels, so `[ui] text_scale`
+    /// costs nothing, and scroll past their share rather than pushing
+    /// the properties grid off the pane — the class of an AINS is forty
+    /// cards long and would be the whole panel.
+    fn drug_kin_list(ui: &mut egui::Ui, list: &[Kin], with_dci: bool) -> Option<i64> {
+        let mut open = None;
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        // Eight lines: enough to read a small class whole, short enough
+        // that the class of an AINS — forty cards — scrolls in its share
+        // instead of becoming the whole panel. Expressed in lines, so
+        // `[ui] text_scale` costs nothing.
+        let height = (line + 3.0) * (list.len() as f32).clamp(1.0, 8.0);
+        egui::ScrollArea::vertical()
+            .id_salt("drug_kin")
+            .max_height(height)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for k in list {
+                    // « Aclasta · acide zolédronique », the same reading
+                    // as the navigator's tree. On a same-molecule list
+                    // the DCI is what the list is *about*, so it is left
+                    // off rather than repeated on every line.
+                    let text = if with_dci && !k.dci.is_empty() {
+                        egui::RichText::new(format!("{}  ·  {}", k.name, k.dci))
+                    } else {
+                        egui::RichText::new(k.name.clone())
+                    }
+                    .size(11.5);
+                    if motif::list_row(ui, text, false)
+                        .on_hover_text(tr("drug_kin_open_tooltip"))
+                        .clicked()
+                    {
+                        open = Some(k.id);
+                    }
+                }
+            });
+        open
+    }
+
     /// The card's technical sheet: what the monograph says in prose,
     /// read here as property and value — and, where a number is worth a
     /// shape, as a small chart.
@@ -16720,32 +16993,82 @@ impl App {
     /// looked at again at the counter, mid-sentence, and it must be
     /// legible without reading a paragraph. Returns the keyword clicked,
     /// which sends the base's search to it.
-    fn drug_tech_pane(ui: &mut egui::Ui, d: &Drug, rect: egui::Rect) -> Option<String> {
-        let mut search = None;
+    fn drug_tech_pane(
+        ui: &mut egui::Ui,
+        d: &Drug,
+        kin: &DrugKin,
+        shown: Option<KinList>,
+        rect: egui::Rect,
+    ) -> Option<TechAction> {
+        let mut action = None;
         motif::inside(ui, rect, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("drug_tech")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    // The identity, as chips one can click: the DCI, the
-                    // class and the tags are the three ways a card is
-                    // looked for again.
+                    // A chip that only searches: a tag, or a DCI or a
+                    // class the base holds nothing else under.
+                    fn search_chip(ui: &mut egui::Ui, text: &str) -> bool {
+                        !text.is_empty()
+                            && motif::toggle(ui, text, false)
+                                .on_hover_text(tr("drug_tech_search_tooltip"))
+                                .clicked()
+                    }
+                    // The identity, as chips one can click. The molecule
+                    // and the class answer with a *list* when the base
+                    // holds one — « AOD (11) » opens the eleven other
+                    // AOD right here, and the count is already an answer
+                    // before anything is clicked. A tag cannot: it is a
+                    // loose word, so it still sends the search after it,
+                    // which is what tags have always done.
                     ui.horizontal_wrapped(|ui| {
-                        let mut chip = |ui: &mut egui::Ui, text: &str, tooltip: &str| {
-                            if text.trim().is_empty() {
-                                return;
+                        for (text, list, which) in [
+                            (d.dci.trim(), &kin.same_dci, KinList::Dci),
+                            (d.class.trim(), &kin.same_class, KinList::Class),
+                        ] {
+                            if text.is_empty() {
+                                continue;
                             }
-                            if motif::toggle(ui, text.trim(), false)
-                                .on_hover_text(tooltip)
+                            if list.is_empty() {
+                                if search_chip(ui, text) {
+                                    action = Some(TechAction::Search(text.to_owned()));
+                                }
+                                continue;
+                            }
+                            let label = format!("{text} ({})", list.len());
+                            if motif::toggle(ui, &label, shown == Some(which))
+                                .on_hover_text(tr("drug_kin_chip_tooltip"))
                                 .clicked()
                             {
-                                search = Some(text.trim().to_owned());
+                                action = Some(TechAction::Neighbours(which));
                             }
+                        }
+                    });
+                    // The list opens **between the two chip rows**, under
+                    // the chip that opened it and above the tags.
+                    //
+                    // Not below them, which is where it was first put and
+                    // where nobody would have found it: under a wide
+                    // monograph this pane is a two-hundred-pixel strip,
+                    // the tags of a well-filled card wrap to three rows,
+                    // and an answer that needs a scroll to be seen is an
+                    // answer nobody asked twice.
+                    if let Some(which) = shown {
+                        let (list, with_dci) = match which {
+                            KinList::Dci => (&kin.same_dci, false),
+                            KinList::Class => (&kin.same_class, true),
                         };
-                        chip(ui, &d.dci, tr("drug_tech_search_tooltip"));
-                        chip(ui, &d.class, tr("drug_tech_search_tooltip"));
+                        ui.add_space(4.0);
+                        if let Some(id) = Self::drug_kin_list(ui, list, with_dci) {
+                            action = Some(TechAction::Open(id));
+                        }
+                    }
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
                         for tag in d.tags.split(',') {
-                            chip(ui, tag, tr("drug_tech_search_tooltip"));
+                            if search_chip(ui, tag.trim()) {
+                                action = Some(TechAction::Search(tag.trim().to_owned()));
+                            }
                         }
                     });
                     ui.add_space(6.0);
@@ -16755,10 +17078,25 @@ impl App {
                     if let Some(p) = profile {
                         insulin_strip(ui, ui.available_width().min(280.0), p);
                     }
-                    // The half-life as a shape: what is left a day after
-                    // the last dose, and how long until it is gone.
+                    // The half-life as a shape — and as *two* shapes,
+                    // because it answers two questions and the card only
+                    // ever drew one of them.
+                    //
+                    // Down: what is left after the last dose, which is
+                    // what an interaction, an operation or a switch has
+                    // to know. Up: how far a regular dose has come
+                    // towards its full effect, which is what a titration
+                    // has to know — a lévothyroxine changed today is at
+                    // its plateau in five weeks, and a TSH drawn before
+                    // that measures a patient still on the way up.
+                    //
+                    // Both run over the same five half-lives, so they go
+                    // in **one** plot on **one** scale, where they cross
+                    // at 50 % after one half-life. Two `sparkline` calls
+                    // would each have scaled to their own data and drawn
+                    // a 96,9 % plateau level with a 100 % start.
                     if let Some(hl) = parse_hours(&d.half_life).filter(|_| profile.is_none()) {
-                        if hl > 0.0 {
+                        if let Some(rise) = SteadyState::of(hl) {
                             let left = 100.0 * 0.5_f64.powf(24.0 / hl);
                             ui.label(
                                 egui::RichText::new(trn(
@@ -16768,21 +17106,58 @@ impl App {
                                 .size(11.0)
                                 .color(motif::text_dim()),
                             );
+                            // The two sentences go **above** the plot and
+                            // the key below it: what the curves say, then
+                            // the curves, then which is which. Written
+                            // under the legend, this one fell off the
+                            // bottom of a two-hundred-pixel strip and the
+                            // whole reason for the second curve went with
+                            // it.
+                            ui.label(
+                                egui::RichText::new(rise.delay_label())
+                                    .size(11.0)
+                                    .color(motif::text_dim()),
+                            )
+                            // The tooltip carries the three numbers the
+                            // rise is drawn from, so nobody has to read a
+                            // plateau off a forty-pixel plot.
+                            .on_hover_text(trn(
+                                "drug_steady_tooltip",
+                                &[
+                                    &format!("{:.0}", SteadyState::at(hl, hl)),
+                                    &format!("{:.0}", SteadyState::at(hl, 3.0 * hl)),
+                                    &format!("{:.0}", SteadyState::at(hl, 5.0 * hl)),
+                                ],
+                            ));
                             let w = ui.available_width().min(280.0);
                             let (bar, _) =
                                 ui.allocate_exact_size(egui::vec2(w, 14.0), egui::Sense::hover());
                             motif::chart::meter(ui, bar, (left / 100.0) as f32, motif::accent());
-                            let span = (hl * 5.0).clamp(6.0, 240.0);
-                            let curve: Vec<f64> = (0..=48)
+                            let decay: Vec<f64> = (0..=48)
                                 .map(|i| {
-                                    let t = span * i as f64 / 48.0;
+                                    let t = rise.hours * f64::from(i) / 48.0;
                                     100.0 * 0.5_f64.powf(t / hl)
                                 })
                                 .collect();
                             let (plot, resp) =
-                                ui.allocate_exact_size(egui::vec2(w, 40.0), egui::Sense::hover());
-                            motif::chart::sparkline(ui, plot.shrink(2.0), &curve, motif::accent());
+                                ui.allocate_exact_size(egui::vec2(w, 44.0), egui::Sense::hover());
+                            motif::chart::lines(
+                                ui,
+                                plot.shrink(2.0),
+                                &[
+                                    (decay.as_slice(), motif::accent()),
+                                    (rise.curve.as_slice(), motif::chart::series_color(1)),
+                                ],
+                                100.0,
+                            );
                             resp.on_hover_text(trf("drug_decay_tooltip", format!("{hl:.1}")));
+                            motif::chart::legend(
+                                ui,
+                                &[
+                                    (tr("drug_decay_legend"), motif::accent()),
+                                    (tr("drug_steady_legend"), motif::chart::series_color(1)),
+                                ],
+                            );
                             ui.add_space(6.0);
                         }
                     }
@@ -16854,7 +17229,7 @@ impl App {
                         });
                 });
         });
-        search
+        action
     }
 
     /// The open drug card's dated notes journal. Shared by the card's
@@ -17498,8 +17873,19 @@ impl App {
                     let body = ui.available_rect_before_wrap();
                     if body.height() > 30.0 {
                         if let Some(card) = session.drug_form.clone() {
-                            if let Some(word) = Self::drug_tech_pane(ui, &card, body) {
-                                search_keyword = Some(word);
+                            // Read once per card, not per frame: it is a
+                            // pass over the whole base.
+                            session.refresh_drug_kin(&card);
+                            let shown = session.drug_kin_show;
+                            match Self::drug_tech_pane(ui, &card, &session.drug_kin, shown, body) {
+                                Some(TechAction::Search(word)) => search_keyword = Some(word),
+                                Some(TechAction::Open(id)) => follow_link = Some(id),
+                                // Clicking the chip that is already open
+                                // closes it again: one gesture, both ways.
+                                Some(TechAction::Neighbours(which)) => {
+                                    session.drug_kin_show = (shown != Some(which)).then_some(which);
+                                }
+                                None => {}
                             }
                         }
                     }
@@ -21330,6 +21716,155 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    /// « Même molécule » and « Même classe » — the two lists a card
+    /// carries about its neighbourhood.
+    ///
+    /// Four rules, and all four are what makes the lists worth reading:
+    /// a card is not its own neighbour; a card already listed as the
+    /// same molecule is not listed again under the class; case and
+    /// accents are folded on both sides, because « Bêtabloquant » and
+    /// « betabloquant » are one class typed twice; and an empty DCI or
+    /// class matches nothing at all — otherwise every card the team has
+    /// not finished filling would be everyone's neighbour.
+    #[test]
+    fn a_card_knows_its_molecule_and_its_class_apart() {
+        use super::DrugKin;
+        use crate::db::Drug;
+        let card = |id: i64, name: &str, dci: &str, class: &str| Drug {
+            id,
+            name: name.to_owned(),
+            dci: dci.to_owned(),
+            class: class.to_owned(),
+            ..Drug::default()
+        };
+        let base = [
+            card(1, "Eliquis", "apixaban", "AOD"),
+            // Another brand of the same molecule, written differently.
+            card(2, "Apixaban Viatris", "Apixaban", "aod"),
+            // The rest of the class.
+            card(3, "Xarelto", "rivaroxaban", "AOD"),
+            card(4, "Pradaxa", "dabigatran", "AOD"),
+            // Another class entirely.
+            card(5, "Previscan", "fluindione", "AVK"),
+            // A card the team has not filled in.
+            card(6, "Sans classe", "", ""),
+        ];
+
+        let kin = DrugKin::of(&base[0], &base);
+        // Same molecule: the other brand, and only it.
+        assert_eq!(
+            kin.same_dci.iter().map(|k| k.id).collect::<Vec<_>>(),
+            vec![2],
+            "la casse de la DCI ne doit pas séparer deux marques"
+        );
+        // Same class: the rest of the class, sorted by DCI — and never
+        // the card itself, nor the brand already named above.
+        assert_eq!(
+            kin.same_class.iter().map(|k| k.id).collect::<Vec<_>>(),
+            vec![4, 3],
+            "dabigatran avant rivaroxaban, et pas d'Apixaban Viatris"
+        );
+        assert!(!kin.is_empty());
+
+        // A card with nothing written on it is nobody's neighbour, and
+        // has none of its own: an empty class is not a class.
+        let orphan = DrugKin::of(&base[5], &base);
+        assert!(orphan.is_empty(), "{orphan:?}");
+        for other in &base[..5] {
+            let kin = DrugKin::of(other, &base);
+            assert!(
+                !kin.same_class
+                    .iter()
+                    .chain(&kin.same_dci)
+                    .any(|k| k.id == 6),
+                "une fiche sans classe ne rejoint personne"
+            );
+        }
+
+        // The only card of its class has a molecule list and no class
+        // list — one is not a neighbourhood.
+        let alone = DrugKin::of(&base[4], &base);
+        assert!(alone.same_dci.is_empty());
+        assert!(alone.same_class.is_empty());
+    }
+
+    /// The rise to steady state: the textbook numbers, and the wording
+    /// that carries them.
+    ///
+    /// One half-life is 50 % of the plateau, three are 87,5 %, five are
+    /// 96,9 % — which is why « cinq demi-vies » is the answer to « on
+    /// dose quand ». The delay is a *pure* function of the half-life,
+    /// with no dosing interval in it, and that is the whole reason one
+    /// field on the card is enough to draw this.
+    #[test]
+    fn the_rise_to_steady_state_is_five_half_lives() {
+        use super::SteadyState;
+        for hl in [0.5, 4.0, 24.0, 7.0 * 24.0] {
+            assert!((SteadyState::at(hl, hl) - 50.0).abs() < 0.01, "{hl}");
+            assert!((SteadyState::at(hl, 3.0 * hl) - 87.5).abs() < 0.01, "{hl}");
+            assert!(
+                (SteadyState::at(hl, 5.0 * hl) - 96.875).abs() < 0.01,
+                "{hl}"
+            );
+            assert!((SteadyState::at(hl, 0.0)).abs() < 0.01, "à t=0, rien");
+        }
+
+        // The curve runs from nothing to the plateau, and only upwards:
+        // it is the mirror of the decay one drawn beside it.
+        let s = SteadyState::of(24.0).expect("24 h est une demi-vie");
+        assert!((s.hours - 120.0).abs() < 0.01, "cinq demi-vies");
+        assert!(s.curve.first().copied().unwrap() < 0.01);
+        assert!((s.curve.last().copied().unwrap() - 96.875).abs() < 0.01);
+        for pair in s.curve.windows(2) {
+            assert!(pair[1] > pair[0], "la montée ne redescend jamais");
+        }
+
+        // A card whose half-life field says nothing usable draws
+        // nothing at all, rather than a flat line meaning « instantané ».
+        for bad in [0.0, -3.0, f64::NAN, f64::INFINITY] {
+            assert!(SteadyState::of(bad).is_none(), "{bad}");
+        }
+
+        // The delay is written in the largest unit that keeps it a whole
+        // number one can act on: hours for a short one, weeks for the
+        // lévothyroxine, whose seven-day half-life is the case this was
+        // written for.
+        let label = |hl: f64| SteadyState::of(hl).unwrap().delay_label();
+        assert!(label(4.0).contains("20"), "{}", label(4.0));
+        assert!(label(24.0).contains("5"), "{}", label(24.0));
+        let levo = label(7.0 * 24.0);
+        assert!(levo.contains('5') && levo.contains("semaines"), "{levo}");
+    }
+
+    /// A class-mate whose DCI is blank still belongs to its class.
+    ///
+    /// The exclusion that keeps a same-molecule card out of the class
+    /// list compares DCIs; written without a guard on the *open* card
+    /// having one, it read « blank equals blank » and dropped every
+    /// unfilled class-mate out of the list it belongs in.
+    #[test]
+    fn a_class_mate_with_no_dci_is_not_dropped() {
+        use super::DrugKin;
+        use crate::db::Drug;
+        let card = |id: i64, name: &str, dci: &str| Drug {
+            id,
+            name: name.to_owned(),
+            dci: dci.to_owned(),
+            class: "pansement gastrique".to_owned(),
+            ..Drug::default()
+        };
+        let base = [card(1, "Sans DCI", ""), card(2, "Aussi sans DCI", "")];
+        let kin = DrugKin::of(&base[0], &base);
+        assert!(
+            kin.same_dci.is_empty(),
+            "une DCI vide n'est pas une molécule"
+        );
+        assert_eq!(
+            kin.same_class.iter().map(|k| k.id).collect::<Vec<_>>(),
+            vec![2]
+        );
+    }
 
     #[test]
     fn the_prose_search_quotes_the_sentence_it_found() {

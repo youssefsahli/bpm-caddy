@@ -71,7 +71,7 @@ if [ "$code" -ne 124 ]; then
 fi
 
 views=(
-    search dashboard patient drugs drug_card drug_edit
+    search dashboard patient drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio watch revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
@@ -101,6 +101,10 @@ for shape in "${shapes[@]}"; do
                 unset WAYLAND_DISPLAY
                 case "$view" in
                     drug_edit) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_DRUG_EDIT=1 ;;
+                    # The technical pane with a neighbour list unfolded:
+                    # its tallest shape, and the one whose height is
+                    # computed rather than fixed.
+                    drug_kin)  export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_KIN=class ;;
                     # The card reader is exercised on a captured dump, never
                     # on a real card: the whole path runs, nothing is plugged
                     # in, and no patient of anybody is read.

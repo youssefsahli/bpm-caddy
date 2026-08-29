@@ -345,6 +345,69 @@ pub fn sparkline(ui: &egui::Ui, rect: egui::Rect, values: &[f64], color: Color32
     );
 }
 
+/// Several series in one plot, on **one shared scale**.
+///
+/// [`sparkline`] scales each call to its own data, which is right for a
+/// figure standing beside a number and wrong the moment two curves are
+/// meant to be compared: two series with maxima of 100 and 96,9 would be
+/// drawn to the same height and read as equal. Here the ceiling is given
+/// by the caller, once, and every series is measured against it — so
+/// where two curves cross is where they actually cross.
+///
+/// The floor is zero: these are quantities, and a line chart of a
+/// quantity that does not start at zero is a lie about its shape. Only
+/// the first series is filled underneath — two washes overlapping read
+/// as a third colour that means nothing.
+pub fn lines(ui: &egui::Ui, rect: egui::Rect, series: &[(&[f64], Color32)], max: f64) {
+    for (n, (values, color)) in series.iter().enumerate() {
+        if values.len() < 2 {
+            continue;
+        }
+        let poly = line_points(rect, values, max);
+        if n == 0 {
+            let mut area = poly.clone();
+            area.push(egui::pos2(rect.right(), rect.bottom()));
+            area.push(egui::pos2(rect.left(), rect.bottom()));
+            ui.painter().add(egui::Shape::convex_polygon(
+                area,
+                color.gamma_multiply(0.22),
+                Stroke::NONE,
+            ));
+        }
+        ui.painter()
+            .add(egui::Shape::line(poly, Stroke::new(1.6_f32, *color)));
+    }
+}
+
+/// Where one series lands inside `rect`, against a ceiling of `max`.
+///
+/// Split out of [`lines`] because it is the whole of what that function
+/// promises and the only part of it a test can reach: a `Painter` needs
+/// a live context, arithmetic does not.
+///
+/// Every value is **clamped** into `0..=max`, and anything that is not
+/// a number is read as zero. A series that overshoots the ceiling it was
+/// given is a caller's mistake, and the answer to it is a flat line
+/// along the top of the plot — not a stroke painted across the panel
+/// above, which is what an unclamped `y` would do. `f64::clamp` leaves a
+/// NaN a NaN, so that is caught first: a NaN coordinate handed to
+/// `Shape::line` is a shape nobody can predict.
+fn line_points(rect: egui::Rect, values: &[f64], max: f64) -> Vec<egui::Pos2> {
+    let max = max.max(1e-9);
+    let step = rect.width() / (values.len().max(2) - 1) as f32;
+    values
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let v = if v.is_finite() { *v } else { 0.0 };
+            egui::pos2(
+                rect.left() + i as f32 * step,
+                rect.bottom() - (v.clamp(0.0, max) / max) as f32 * rect.height(),
+            )
+        })
+        .collect()
+}
+
 /// A segmented meter — the Motif way to show a fraction of a quota.
 /// `warn` above 1.0 turns the overflow segments red.
 pub fn meter(ui: &egui::Ui, rect: egui::Rect, fraction: f32, color: Color32) {
@@ -485,6 +548,62 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
 #[cfg(test)]
 mod tests {
     use super::nice_max;
+
+    /// One scale for every series, which is the only reason [`lines`]
+    /// exists beside [`sparkline`].
+    ///
+    /// The case it was written for is the drug card's two half-life
+    /// curves: what is left after the last dose, falling from 100, and
+    /// how far a regular dose has come, rising to 96,9. Drawn by two
+    /// `sparkline` calls each scaled to its own data, the 96,9 plateau
+    /// and the 100 start land on the same pixel and the card says the
+    /// two are equal. Here they cannot.
+    #[test]
+    fn one_ceiling_holds_every_series_and_nothing_escapes_the_plot() {
+        use super::{egui, line_points};
+        let rect = egui::Rect::from_min_size(egui::pos2(10.0, 20.0), egui::vec2(100.0, 40.0));
+
+        // The ceiling is the caller's, not the data's: a series that
+        // stops short of it is drawn short of the top.
+        let full = line_points(rect, &[100.0, 100.0], 100.0);
+        let nearly = line_points(rect, &[96.875, 96.875], 100.0);
+        assert!(
+            (full[0].y - rect.top()).abs() < 0.01,
+            "100 % touche le haut"
+        );
+        assert!(
+            nearly[0].y > full[0].y,
+            "96,9 % doit être dessiné sous 100 %"
+        );
+
+        // Zero is the floor, always: a quantity plotted off a shifted
+        // baseline lies about its own shape.
+        let none = line_points(rect, &[0.0, 0.0], 100.0);
+        assert!((none[0].y - rect.bottom()).abs() < 0.01);
+
+        // The two curves cross where the arithmetic says they cross —
+        // at half the ceiling, one half-life in.
+        let a = line_points(rect, &[50.0, 50.0], 100.0);
+        assert!((a[0].y - rect.center().y).abs() < 0.01);
+
+        // The ends sit on the edges, and the points march across.
+        assert!((full[0].x - rect.left()).abs() < 0.01);
+        assert!((full[1].x - rect.right()).abs() < 0.01);
+
+        // A series that overshoots its ceiling, or dips below zero, is
+        // flattened onto the plot's own edges — never painted across the
+        // panel above or below it.
+        for p in line_points(rect, &[500.0, -80.0, f64::NAN], 100.0) {
+            assert!(
+                p.y >= rect.top() - 0.01 && p.y <= rect.bottom() + 0.01,
+                "{p:?} sort du cadre"
+            );
+        }
+        // And a ceiling of zero divides by nothing.
+        for p in line_points(rect, &[0.0, 1.0], 0.0) {
+            assert!(p.y.is_finite(), "{p:?}");
+        }
+    }
 
     /// The data colours have to stand off the trough they are painted
     /// on, on every palette, and none of them may be another one.

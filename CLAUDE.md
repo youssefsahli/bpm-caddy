@@ -184,6 +184,8 @@ upgrade is decided, the number to defend is the logic one, and
   editable form rather than the monograph
 - `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card
   rather than Eliquis (checking an insulin's action profile, say)
+- `BPM_CADDY_KIN=dci|class` — with `START_VIEW=drug_card`, land with that
+  neighbour list unfolded in the technical pane (its tallest shape)
 - `BPM_CADDY_VITALE_DUMP=<path>` — replay a captured card instead of
   talking to a reader, so `START_VIEW=vitale` exercises the whole path
   (parsing, matching, the picker) with no hardware and nobody's identity

@@ -5,6 +5,49 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.132.0] - 2026-08-29
+
+### Added
+- **Un clic sur la classe donne les fiches de cette classe.** Les deux
+  questions du comptoir, la boîte à la main : « c'est la même chose ? »
+  et « on met quoi à la place ? ». La pastille de la DCI et celle de la
+  classe portent maintenant leur nombre — « AOD (3) » — et l'ouvrent en
+  liste sur place, sous la pastille cliquée, chaque ligne ouvrant sa
+  fiche. Le compte est déjà une réponse avant qu'on ait cliqué.
+  - Les deux listes sont tenues à part parce que ce ne sont pas les
+    mêmes réponses : une autre marque d'apixaban *est* de l'apixaban, un
+    autre AOD ne l'est pas. Une fiche n'est jamais sa propre voisine, ni
+    dans les deux listes à la fois. La casse et les accents sont pliés
+    des deux côtés (« Bêtabloquant » et « betabloquant » sont une classe
+    tapée deux fois), et une DCI ou une classe vide ne rapproche
+    personne — sans quoi toutes les fiches que l'équipe n'a pas finies
+    seraient voisines de tout le monde.
+  - Les étiquettes, elles, continuent de lancer la recherche : une
+    étiquette est un mot lâche, pas une liste.
+  - `fuzzy::eq_folded` compare deux mots pliés sans allouer, parce que
+    la question est posée sur 850 fiches chaque fois qu'on en ouvre une.
+    La liste est calculée à l'ouverture, jamais par image.
+- **La demi-vie répondait à une question sur deux.** La courbe qui
+  descend dit quand c'est parti — ce que demandent une interaction, une
+  opération, un changement de traitement. Il manquait celle qui monte :
+  où en est un traitement régulier de son plein effet. C'est la question
+  de la titration, et personne ne la fait de tête au comptoir.
+  - Cinq demi-vies, quel que soit l'espacement des prises. Pour la
+    lévothyroxine, dont la demi-vie est de sept jours : **cinq
+    semaines** — et une TSH prélevée avant mesure un patient encore en
+    train de monter, ce qui envoie le prescripteur courir après un
+    chiffre qui bouge. Même arithmétique pour le lithium, l'amiodarone,
+    la digoxine, un AVK à l'instauration, un ISRS.
+  - Les deux courbes couvrent les mêmes cinq demi-vies, donc elles sont
+    dans **un** cadre sur **une** échelle, où elles se croisent à 50 %
+    après une demi-vie. `motif::chart::lines` est cette échelle
+    partagée : deux `sparkline` se seraient chacune mise à ses propres
+    données et auraient dessiné un plateau à 96,9 % à la hauteur d'un
+    départ à 100 %.
+  - Le test de `lines` a trouvé son premier trou : `f64::clamp` laisse
+    un NaN passer, et une coordonnée NaN dans un `Shape::line` dessine
+    ce qu'elle veut. Ce qui n'est pas un nombre vaut zéro.
+
 ## [0.131.0] - 2026-08-29
 
 ### Changed

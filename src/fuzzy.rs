@@ -98,6 +98,25 @@ pub fn contains_folded(hay: &str, needle: &str) -> bool {
     false
 }
 
+/// Are these the same word, ignoring case, accents and the space
+/// around them? Without allocating a folded copy of either.
+///
+/// `sort_key(a) == sort_key(b)` is the same answer and two `String`s,
+/// which is the wrong shape for a question asked over eight hundred and
+/// fifty cards — « les autres de la même classe », « les autres marques
+/// de cette molécule » — every time one is opened.
+pub fn eq_folded(a: &str, b: &str) -> bool {
+    let mut a = a.trim().chars().map(fold);
+    let mut b = b.trim().chars().map(fold);
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return true,
+            (x, y) if x == y => {}
+            _ => return false,
+        }
+    }
+}
+
 /// The letter `s` files under in an A–Z index: the first letter,
 /// accent-folded and capitalised, or `#` for a name that starts with a
 /// digit or a symbol.
@@ -188,6 +207,39 @@ mod tests {
         assert_eq!(super::sort_key("Lefèvre"), "lefevre");
         assert!(super::sort_key("Lefèvre") < super::sort_key("Martin"));
         assert!(super::sort_key("Émile") < super::sort_key("Zoé"));
+    }
+
+    /// The same answer as comparing two `sort_key`s, and no allocation.
+    /// That equivalence is the contract, so it is what is asserted.
+    #[test]
+    fn folded_equality_ignores_case_accents_and_the_space_around() {
+        for (a, b) in [
+            ("AOD", "aod"),
+            ("Bêtabloquant", "betabloquant"),
+            ("  IEC ", "iec"),
+            ("acide zolédronique", "ACIDE ZOLEDRONIQUE"),
+            ("", "   "),
+        ] {
+            assert!(super::eq_folded(a, b), "{a:?} = {b:?}");
+        }
+        for (a, b) in [
+            ("AOD", "AVK"),
+            // A prefix is not the word: « statine » must not answer for
+            // « statines », nor « IEC » for « IECA ».
+            ("statine", "statines"),
+            ("IEC", "IECA"),
+            ("", "a"),
+        ] {
+            assert!(!super::eq_folded(a, b), "{a:?} ≠ {b:?}");
+        }
+        // And it agrees with the two-allocation form it replaces.
+        for (a, b) in [("Élugan", "elugan"), ("AOD", "AVK"), ("x", "x")] {
+            assert_eq!(
+                super::eq_folded(a, b),
+                super::sort_key(a.trim()) == super::sort_key(b.trim()),
+                "{a:?} / {b:?}"
+            );
+        }
     }
 
     #[test]
