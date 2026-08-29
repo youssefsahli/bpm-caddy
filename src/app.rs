@@ -1522,6 +1522,22 @@ struct Session {
     /// Narrow the prose search to the open file's own treatments: « which
     /// of *these* say pamplemousse » is the question that gets asked.
     mono_only_patient: bool,
+    /// The map of the base: which card is in the middle, the
+    /// neighbourhood laid out around it, and the question that layout
+    /// answered — the centre and the revision the base is on.
+    ///
+    /// The map is a pass over eight hundred and fifty cards; the view
+    /// that draws it is repainted sixty times a second. It is computed
+    /// when the centre moves and not once more.
+    show_graph: bool,
+    graph_centre: Option<i64>,
+    graph_map: Option<crate::graph::Map>,
+    graph_key: Option<(i64, u64)>,
+    graph_query: String,
+    /// What the map last did, said where the map is — never in the
+    /// error line, which is painted in the alert red: « Eliquis ajouté à
+    /// l'ordonnance » in red reads as a refusal.
+    graph_note: Option<String>,
     /// The codex: the preparations, what is open, and the quantity the
     /// counter actually has to make.
     show_codex: bool,
@@ -1815,6 +1831,12 @@ impl Session {
             drug_patients: Vec::new(),
             show_tables: false,
             table_query: String::new(),
+            show_graph: false,
+            graph_centre: None,
+            graph_map: None,
+            graph_key: None,
+            graph_query: String::new(),
+            graph_note: None,
             show_codex: false,
             preparations: Vec::new(),
             codex_query: String::new(),
@@ -2309,6 +2331,7 @@ impl Session {
         self.show_protocols = false;
         self.show_dispositifs = false;
         self.show_mono = false;
+        self.show_graph = false;
         self.codex_open = None;
         self.dispo_open = None;
         self.protocol_open = None;
@@ -2337,6 +2360,59 @@ impl Session {
         }
         self.drug_hits = self.drug_results(limit);
         self.drug_hits_key = Some(key);
+    }
+
+    /// Put `id` in the middle of the map and open it.
+    ///
+    /// The map is not laid out here — that happens where it is drawn,
+    /// against the memo — so this costs a field and a flag whether the
+    /// view is on screen or not.
+    fn open_graph(&mut self, id: i64) {
+        self.close_drug_lists();
+        self.show_graph = true;
+        self.graph_centre = Some(id);
+        self.graph_query.clear();
+        self.graph_note = None;
+    }
+
+    /// Lay the map out, unless the answer on hand is still the answer.
+    ///
+    /// One pass over the whole base per ring, and three rings. Keyed on
+    /// the centre and the revision [`Self::set_drugs`] moves, so it
+    /// happens when the centre is moved and not on the fifty-nine
+    /// frames that follow.
+    fn refresh_graph(&mut self) {
+        let Some(centre) = self.graph_centre else {
+            self.graph_map = None;
+            self.graph_key = None;
+            return;
+        };
+        let key = (centre, self.drugs_rev);
+        // The key alone, and not « the key and there is a map ». A
+        // centre the base no longer holds — a fiche deleted on the other
+        // post — answers `None`, and asking again for it would be a pass
+        // over eight hundred and fifty cards on every frame. The
+        // revision is in the key, so a reloaded base does ask again.
+        if self.graph_key == Some(key) {
+            return;
+        }
+        let known: Vec<crate::graph::Known> = self
+            .drugs
+            .iter()
+            .map(|d| crate::graph::Known {
+                id: d.id,
+                name: &d.name,
+                dci: &d.dci,
+                class: &d.class,
+                ddi: &d.ddi,
+                narrow: !d.toxicity.trim().is_empty(),
+            })
+            .collect();
+        self.graph_map = known
+            .iter()
+            .find(|k| k.id == centre)
+            .map(|k| crate::graph::around(k, &known, crate::graph::Caps::default()));
+        self.graph_key = Some(key);
     }
 
     /// The open card's neighbourhood, kept between frames.
@@ -4881,6 +4957,24 @@ impl App {
                             session.reload_codex();
                             if v == "codex_open" {
                                 session.codex_open = session.preparations.first().map(|p| p.id);
+                            }
+                            session.view = MainView::Drugs;
+                        }
+                        // The map of the base, centred on a card that
+                        // actually has a neighbourhood — an empty circle
+                        // would exercise none of the drawing. Eliquis by
+                        // default, `BPM_CADDY_DRUG` to choose.
+                        Ok("graph") => {
+                            let want = std::env::var("BPM_CADDY_DRUG")
+                                .unwrap_or_else(|_| "Eliquis".into());
+                            let start = session
+                                .drugs
+                                .iter()
+                                .find(|d| d.name.eq_ignore_ascii_case(want.trim()))
+                                .or(session.drugs.first())
+                                .map(|d| d.id);
+                            if let Some(id) = start {
+                                session.open_graph(id);
                             }
                             session.view = MainView::Drugs;
                         }
@@ -17368,6 +17462,14 @@ impl App {
                     session.mono_query.clear();
                     session.mono_hits.clear();
                 }
+            } else if session.show_graph {
+                // The search that moves the centre is what Escape
+                // clears first; the map itself is one Escape away.
+                if session.graph_query.trim().is_empty() {
+                    session.show_graph = false;
+                } else {
+                    session.graph_query.clear();
+                }
             } else {
                 session.view = MainView::Search;
                 return;
@@ -17394,6 +17496,10 @@ impl App {
             Self::mono_view(ui, ctx, session);
             return;
         }
+        if session.show_graph {
+            Self::graph_view(ui, session);
+            return;
+        }
 
         // The title block belongs to the base's index, not to an open
         // card: the tab already says which drug is on screen, and the
@@ -17413,6 +17519,7 @@ impl App {
                 // the page, so there was never a width that worked.
                 let gap = ui.spacing().item_spacing.x;
                 let doors_width: f32 = [
+                    tr("graph_button"),
                     tr("tables_button"),
                     tr("mono_button"),
                     tr("proto_button"),
@@ -17430,6 +17537,23 @@ impl App {
                 });
                 let roomy = title_width + gap + doors_width <= ui.available_width();
                 let doors = |ui: &mut egui::Ui, session: &mut Session| {
+                    if motif::button(ui, tr("graph_button"))
+                        .on_hover_text(tr("graph_button_tooltip"))
+                        .clicked()
+                    {
+                        // No card open: start the map on whatever the
+                        // list has selected, or on the first fiche —
+                        // never on nothing, which would draw an empty
+                        // frame and look broken.
+                        let start = session
+                            .drug_form
+                            .as_ref()
+                            .map(|d| d.id)
+                            .or_else(|| session.drugs.first().map(|d| d.id));
+                        if let Some(id) = start {
+                            session.open_graph(id);
+                        }
+                    }
                     if motif::button(ui, tr("tables_button")).clicked() {
                         session.show_tables = true;
                     }
@@ -18913,6 +19037,339 @@ impl App {
     /// fiches say pamplemousse », « which ones mention le QT », « which
     /// ones are photosensibilisants ». Each hit is the sentence as the
     /// card has it, and the card's name opens it.
+    /// The base as a map: one card in the middle, its neighbourhood
+    /// around it, and one click to move the middle.
+    ///
+    /// The layout comes from [`crate::graph`], which knows nothing about
+    /// egui and returns points on the unit circle. This scales them into
+    /// the rectangle it was carved and paints them; nothing here walks
+    /// the base, so the map costs a multiplication per node per frame
+    /// and not a pass over eight hundred and fifty fiches.
+    fn graph_view(ui: &mut egui::Ui, session: &mut Session) {
+        use crate::graph::Tie;
+        session.refresh_graph();
+        let work = motif::visible_rect(ui);
+        // The command band's height is measured, never a constant: a
+        // button row that wrapped into two on a narrow window would draw
+        // its second row over the map.
+        let labels = [
+            tr("patient_back"),
+            tr("graph_open_card"),
+            tr("graph_add_treat"),
+            tr("graph_new_card"),
+        ];
+        let search_w = (work.width() * 0.3).clamp(160.0, 320.0);
+        let rows = Self::wrapped_rows_of(
+            ui,
+            work.width() - 32.0,
+            labels
+                .iter()
+                .map(|l| Self::button_width(ui, l))
+                .chain(std::iter::once(search_w)),
+        );
+        let band = rows * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 10.0;
+        // The legend is one line of chips and says what the colours are;
+        // under it, what the rings could not take.
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let foot = line * 2.0 + 12.0;
+        let rows = motif::split_rows(work, &[band, 0.0, foot], 8.0);
+        let (head, plot_rect, foot_rect) = (rows[0], rows[1], rows[2]);
+
+        let mut open_card: Option<i64> = None;
+        let mut recentre: Option<i64> = None;
+        let mut typed_changed = false;
+        let mut add_treat: Option<i64> = None;
+        let mut new_card = false;
+
+        let centre_name = session
+            .graph_map
+            .as_ref()
+            .map(|m| m.centre.1.clone())
+            .unwrap_or_default();
+        motif::inside(ui, head, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_graph = false;
+                }
+                // The centre is moved by typing as well as by clicking:
+                // « et la simvastatine ? » is a question you answer
+                // without going back to a list.
+                let resp = ui.add_sized(
+                    [search_w, Self::button_height(ui)],
+                    egui::TextEdit::singleline(&mut session.graph_query)
+                        .hint_text(tr("graph_hint")),
+                );
+                motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
+                typed_changed = resp.changed();
+                let open = session.graph_centre.is_some();
+                if motif::button_enabled(ui, tr("graph_open_card"), open).clicked() {
+                    open_card = session.graph_centre;
+                }
+                // « Ajouter une association » in the only sense the
+                // application can mean it: this molecule onto the file
+                // that is open. With no file open there is nothing to
+                // add it to, and the button says so by being grey.
+                let has_patient = session.viewing.is_some();
+                if motif::button_enabled(ui, tr("graph_add_treat"), open && has_patient)
+                    .on_hover_text(tr("graph_add_treat_tooltip"))
+                    .clicked()
+                {
+                    add_treat = session.graph_centre;
+                }
+                if motif::button(ui, tr("graph_new_card"))
+                    .on_hover_text(tr("graph_new_card_tooltip"))
+                    .clicked()
+                {
+                    new_card = true;
+                }
+            });
+        });
+
+        // Typing narrows to the best match and centres on it — one
+        // question, one answer, no list to pick from.
+        //
+        // On the keystroke and never on the frame: this scores eight
+        // hundred and fifty names and as many DCI, and the answer cannot
+        // change between two frames of the same word.
+        let typed = session.graph_query.trim().to_owned();
+        if typed_changed && !typed.is_empty() {
+            let best = session
+                .drugs
+                .iter()
+                .filter_map(|d| {
+                    let s = fuzzy::score(&typed, &d.name)
+                        .into_iter()
+                        .chain(fuzzy::score(&typed, &d.dci))
+                        .max()?;
+                    Some((s, d.id))
+                })
+                .max_by_key(|(s, _)| *s)
+                .map(|(_, id)| id);
+            if let Some(id) = best {
+                if session.graph_centre != Some(id) {
+                    recentre = Some(id);
+                }
+            }
+        }
+
+        motif::panel(ui, plot_rect, Some(tr("graph_title")), |ui| {
+            let body = ui.available_rect_before_wrap();
+            let Some(map) = session.graph_map.clone() else {
+                ui.label(
+                    egui::RichText::new(tr("graph_none"))
+                        .size(11.5)
+                        .color(motif::text_dim()),
+                );
+                return;
+            };
+            let field = motif::well(ui, body);
+            // Labels are written beside their node, so the circle has to
+            // stop well short of the edges or a name on the right would
+            // be drawn into the frame. A quarter of the width each side
+            // is what a brand name takes at this size.
+            let radius = (field.width() * 0.30).min(field.height() / 2.0 - 30.0);
+            if radius < 24.0 {
+                // A pane too short to draw a circle in draws nothing
+                // rather than a tangle: the caption still says what the
+                // centre is, and the panel scrolls.
+                return;
+            }
+            let mid = field.center();
+            let at =
+                |n: &crate::graph::Node| egui::pos2(mid.x + n.x * radius, mid.y + n.y * radius);
+            // The rings first, faint, so the three distances read as
+            // three distances and not as scatter.
+            for tie in Tie::ALL {
+                if map.count(tie) == 0 {
+                    continue;
+                }
+                let r = match tie {
+                    Tie::Molecule => 0.38,
+                    Tie::Class => 0.70,
+                    Tie::Interaction => 1.0,
+                } * radius;
+                ui.painter().circle_stroke(
+                    mid,
+                    r,
+                    egui::Stroke::new(1.0_f32, motif::bg_dark().gamma_multiply(0.45)),
+                );
+            }
+            // Then the spokes, each in its tie's colour: the line is
+            // what says « ceci tient à cela », and its colour says how.
+            for n in &map.nodes {
+                ui.painter().line_segment(
+                    [mid, at(n)],
+                    egui::Stroke::new(1.2_f32, motif::chart::series_color(n.tie.series())),
+                );
+            }
+            // The centre last of the frame's own furniture, so nothing
+            // is drawn over it.
+            let half = 7.0;
+            let box_of = |p: egui::Pos2, h: f32| {
+                egui::Rect::from_center_size(p, egui::vec2(h * 2.0, h * 2.0))
+            };
+            for n in &map.nodes {
+                let p = at(n);
+                let node = box_of(p, half);
+                let resp = ui.interact(
+                    node.expand(4.0),
+                    ui.id().with(("graph_node", n.id)),
+                    egui::Sense::click(),
+                );
+                let color = motif::chart::series_color(n.tie.series());
+                ui.painter().rect_filled(node, 0.0, color);
+                motif::bevel(ui.painter(), node, !resp.hovered());
+                // A narrow therapeutic margin gets the alert ring: it is
+                // the one property that changes what you do with a
+                // neighbour you were about to suggest.
+                if n.narrow {
+                    ui.painter().rect_stroke(
+                        node.expand(3.0),
+                        0.0,
+                        egui::Stroke::new(1.5_f32, motif::alert()),
+                    );
+                }
+                // The label goes outward — left of a node on the left,
+                // right of one on the right — so it never crosses the
+                // middle of the picture.
+                let (anchor, x) = if n.x < -0.05 {
+                    (egui::Align2::RIGHT_CENTER, p.x - half - 5.0)
+                } else if n.x > 0.05 {
+                    (egui::Align2::LEFT_CENTER, p.x + half + 5.0)
+                } else {
+                    (egui::Align2::CENTER_BOTTOM, p.x)
+                };
+                let y = if anchor == egui::Align2::CENTER_BOTTOM {
+                    p.y - half - 3.0
+                } else {
+                    p.y
+                };
+                ui.painter().text(
+                    egui::pos2(x, y),
+                    anchor,
+                    &n.name,
+                    egui::FontId::proportional(11.5),
+                    if resp.hovered() {
+                        motif::text()
+                    } else {
+                        motif::text_dim()
+                    },
+                );
+                let tip = if n.dci.is_empty() {
+                    trf("graph_node_tooltip", tr(n.tie.label_key()))
+                } else {
+                    trn("graph_node_tooltip_dci", &[&n.dci, &tr(n.tie.label_key())])
+                };
+                if resp.on_hover_text(tip).clicked() {
+                    recentre = Some(n.id);
+                }
+            }
+            // The middle: bigger, sunken rather than raised, and named
+            // in full. It is where you are, not somewhere to go.
+            let hub = box_of(mid, 11.0);
+            ui.painter().rect_filled(hub, 0.0, motif::accent());
+            motif::bevel(ui.painter(), hub, false);
+            if map.centre.2 {
+                ui.painter().rect_stroke(
+                    hub.expand(3.0),
+                    0.0,
+                    egui::Stroke::new(1.5_f32, motif::alert()),
+                );
+            }
+            // Below the hub and clear of it: the spokes leave the middle
+            // in every direction, and a name written against them is a
+            // name read through three lines.
+            ui.painter().text(
+                egui::pos2(mid.x, mid.y + 24.0),
+                egui::Align2::CENTER_TOP,
+                &map.centre.1,
+                egui::FontId::proportional(13.0),
+                motif::text(),
+            );
+        });
+
+        motif::inside(ui, foot_rect, |ui| {
+            let map = session
+                .graph_map
+                .clone()
+                .unwrap_or_else(|| crate::graph::Map {
+                    centre: (0, String::new(), false),
+                    nodes: Vec::new(),
+                    omitted: Vec::new(),
+                });
+            motif::chart::legend(
+                ui,
+                &Tie::ALL
+                    .iter()
+                    .map(|t| (tr(t.label_key()), motif::chart::series_color(t.series())))
+                    .collect::<Vec<_>>(),
+            );
+            // What the rings could not take, never in silence: twelve of
+            // forty drawn with nothing said would read as « il y en a
+            // douze », a wrong answer that looks complete.
+            let dropped: Vec<String> = Tie::ALL
+                .iter()
+                .filter(|t| map.omitted_for(**t) > 0)
+                .map(|t| trn("graph_omitted", &[&map.omitted_for(*t), &tr(t.label_key())]))
+                .collect();
+            if !dropped.is_empty() {
+                ui.label(
+                    egui::RichText::new(dropped.join(" · "))
+                        .size(11.0)
+                        .color(motif::text_dim()),
+                );
+            } else if let Some(note) = &session.graph_note {
+                ui.label(
+                    egui::RichText::new(note.as_str())
+                        .size(11.0)
+                        .color(motif::accent()),
+                );
+            } else if map.is_empty() && session.graph_centre.is_some() {
+                ui.label(
+                    egui::RichText::new(trf("graph_alone", &centre_name))
+                        .size(11.0)
+                        .color(motif::text_dim()),
+                );
+            }
+        });
+
+        if let Some(id) = recentre {
+            session.graph_centre = Some(id);
+            session.graph_query.clear();
+            // The note was about the card that was in the middle.
+            session.graph_note = None;
+        }
+        if let Some(id) = open_card {
+            if let Some(d) = session.drugs.iter().find(|d| d.id == id).cloned() {
+                session.open_drug_card(d);
+            }
+        }
+        if let Some(id) = add_treat {
+            if let Some(pid) = session.viewing.as_ref().map(|p| p.id) {
+                match session.db.add_patient_drug(pid, id) {
+                    // Idempotent in the base, so a second press is not
+                    // an error and not a second line either.
+                    Ok(()) => {
+                        session.reload_treatments(pid);
+                        session.graph_note = Some(trf("graph_added", &centre_name));
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if new_card {
+            // The base's own « Créer une fiche » path, and not a second
+            // one: the map is a way in, never a second way to write.
+            // What was typed to look for a centre travels with it, so
+            // the name searched for and not found is the name the
+            // create button offers.
+            session.drug_query = std::mem::take(&mut session.graph_query);
+            session.show_graph = false;
+            session.drug_form = None;
+            session.drug_selected = 0;
+        }
+    }
+
     fn mono_view(ui: &mut egui::Ui, ctx: &egui::Context, session: &mut Session) {
         let mut open_drug: Option<Drug> = None;
         motif::page(ui, 900.0, |ui| {

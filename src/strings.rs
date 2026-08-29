@@ -69,6 +69,7 @@ mod tests {
             ("pdf.rs", include_str!("pdf.rs")),
             ("config.rs", include_str!("config.rs")),
             ("maintenance.rs", include_str!("maintenance.rs")),
+            ("graph.rs", include_str!("graph.rs")),
         ];
         let mut missing: Vec<String> = Vec::new();
         for (file, source) in SOURCES {
@@ -120,7 +121,7 @@ mod tests {
         // Any string literal in the sources counts, not only the ones
         // inside `tr(`: some keys are held in tables and looked up
         // through a variable (`MONO_FIELDS`, the section labels, the
-        // steps of `maintenance`).
+        // steps of `maintenance`, the ties of `graph`).
         const SOURCES: &[&str] = &[
             include_str!("app.rs"),
             include_str!("pdf.rs"),
@@ -128,6 +129,7 @@ mod tests {
             include_str!("db.rs"),
             include_str!("bulletin.rs"),
             include_str!("maintenance.rs"),
+            include_str!("graph.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

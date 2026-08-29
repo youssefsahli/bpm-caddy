@@ -19,18 +19,26 @@
 set -uo pipefail
 
 # Lower these never; raise them whenever a batch of tests lands.
-TOTAL_FLOOR=41
-LOGIC_FLOOR=86
+TOTAL_FLOOR=43
+LOGIC_FLOOR=88
 
 # The modules that carry the decisions: pure, or nearly so, and the ones
-# a wrong answer would reach a patient through. app.rs, main.rs, motif
-# and the launcher are the shell around them.
-LOGIC_FILES=(
-    src/biology.rs src/bulletin.rs src/codex.rs src/config.rs src/db.rs
-    src/entretien.rs src/fuzzy.rs src/insulin.rs src/location.rs
-    src/ordonnance.rs src/pdf.rs src/release.rs src/revue.rs
-    src/strings.rs src/tables.rs src/vaccines.rs
-)
+# a wrong answer would reach a patient through.
+#
+# Named by what is **left out**, and not by a list of what is in. The
+# list of what is in had fallen four modules behind — conciliation,
+# surveillance, vitale and graph were logic nobody was counting, which
+# is the one thing this script exists to prevent. Written this way, a
+# module added tomorrow is measured the day it lands and has to be
+# excluded on purpose, in writing, to escape.
+#
+# What is excluded, and why:
+#   app.rs, main.rs   the interface; smoke.sh is what holds it
+#   winscard.rs       the PC/SC library, opened by name at run time —
+#                     there is no reader in CI and there never will be
+# (`motif` and the launcher are separate crates and are excluded by the
+#  path test below.)
+LOGIC_SKIP=(src/app.rs src/main.rs src/winscard.rs)
 
 if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
     echo "cargo-llvm-cov absent : cargo install cargo-llvm-cov" >&2
@@ -47,21 +55,25 @@ trap 'rm -f "$json"' EXIT
 cargo llvm-cov --workspace --json --summary-only >"$json" || exit 1
 
 TOTAL_FLOOR="$TOTAL_FLOOR" LOGIC_FLOOR="$LOGIC_FLOOR" \
-LOGIC_FILES="${LOGIC_FILES[*]}" python3 - "$json" <<'PY'
+LOGIC_SKIP="${LOGIC_SKIP[*]}" python3 - "$json" <<'PY'
 import json, os, sys
 
 data = json.load(open(sys.argv[1]))["data"][0]
 total = data["totals"]["lines"]
-logic_names = set(os.environ["LOGIC_FILES"].split())
+skip = set(os.environ["LOGIC_SKIP"].split())
 
 covered = count = 0
 rows = []
 for f in data["files"]:
     # llvm-cov reports absolute paths; match on the repo-relative tail.
-    name = next((n for n in logic_names if f["filename"].endswith("/" + n)), None)
+    path = f["filename"]
+    # A file of the root crate: /src/… and not /motif/src/… or
+    # /launcher/src/…, which are the shell around the logic.
+    root = "/src/" in path and "/motif/src/" not in path and "/launcher/src/" not in path
+    counted = root and not any(path.endswith("/" + n) for n in skip)
     lines = f["summary"]["lines"]
-    rows.append((name or f["filename"].split("/")[-1], lines["percent"], lines["count"]))
-    if name:
+    rows.append((("src/" if root else "") + path.split("/")[-1], lines["percent"], lines["count"]))
+    if counted:
         covered += lines["covered"]
         count += lines["count"]
 

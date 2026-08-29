@@ -5,6 +5,57 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.133.0] - 2026-08-29
+
+### Added
+- **La base en carte : « Voisinage… ».** Une fiche au centre, son
+  voisinage autour, et un clic déplace le centre. La liste et la
+  recherche répondent à « où est telle fiche » ; elles ne répondent pas
+  à « qu'est-ce qu'il y a autour », qui est la question d'une rupture de
+  stock, d'une contre-indication trouvée au comptoir, et de qui apprend
+  une classe. Une classe s'explore en s'y déplaçant plutôt qu'en tapant
+  un nom, le lisant, revenant en arrière et en tapant un autre.
+  - Trois liens, trois anneaux, trois couleurs : **la molécule** (une
+    autre marque de la même DCI, le seul lien où les deux boîtes
+    contiennent la même chose), **la classe**, et **l'interaction** —
+    une fiche que la monographie du centre nomme elle-même, le seul lien
+    qui ne découle pas de la classification et qui peut traverser toute
+    la base. Une fiche appartient à l'anneau **le plus proche** pour
+    lequel elle est éligible, et à un seul : le même nom deux fois sur
+    une carte, ce sont deux réponses à une question.
+  - Un nom n'est reconnu dans la prose que comme **mot entier**, et
+    jamais en dessous de quatre lettres : « fer » est dans « conférer »,
+    et une carte qui relie deux fiches parce que trois lettres de l'une
+    sont dans une phrase de l'autre est une carte de coïncidences.
+  - Ce que l'anneau n'a pas pu prendre est **dit** : douze AINS dessinés
+    sur quarante sans un mot se liraient « il y en a douze », une
+    mauvaise réponse qui a l'air complète.
+  - Les fiches à marge thérapeutique étroite portent un liseré d'alerte.
+    C'est pour cela que l'interaction est ocre et non rouge : un liseré
+    rouge autour d'un nœud rouge n'est pas un liseré.
+  - Depuis la carte : ouvrir la fiche, ajouter la molécule à
+    l'ordonnance du patient ouvert, ou repartir créer une fiche — avec le
+    nom cherché et non trouvé, qui voyage jusqu'au bouton de création.
+  - `src/graph.rs` est pur et testé, sans base et sans egui : il rend des
+    points sur le cercle unité, la vue les met à l'échelle. C'est ce qui
+    fait qu'une carte de 850 fiches ne coûte rien par image — la
+    disposition est calculée quand le centre bouge, et peinte ensuite.
+    Aucun tirage au sort, aucune simulation de forces : une image qui se
+    range autrement à chaque ouverture ne s'apprend pas.
+
+### Fixed
+- **Le garde-fou de couverture ne regardait plus tout ce qu'il devait.**
+  `coverage.sh` nommait les modules de logique un par un, et la liste
+  avait pris quatre modules de retard : `conciliation`, `surveillance`,
+  `vitale` et `graph` étaient de la logique que personne ne comptait —
+  précisément ce que ce script existe pour empêcher. Elle est maintenant
+  écrite par ce qu'elle **exclut** (`app.rs`, `main.rs`, `winscard.rs`,
+  `motif`, le lanceur), donc un module ajouté demain est mesuré le jour
+  où il arrive et doit être exclu exprès, par écrit, pour y échapper.
+  L'ensemble mesuré passe de 11 861 à 13 353 lignes, et le chiffre monte
+  de 87,6 à **88,4 %** : les modules qui manquaient étaient bien testés.
+  Les deux planchers montent d'autant (88 et 43).
+
 ## [0.132.0] - 2026-08-29
 
 ### Added

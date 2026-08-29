@@ -26,7 +26,13 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/surveillance.rs` (what a treatment asks to have measured and how
   often, read against the dates already in the file — the other half of
   `biology.rs`: that one reads the values that are there, this one names
-  the ones that are not). The
+  the ones that are not),
+  `src/graph.rs` (a card's neighbourhood as points on the unit circle:
+  same molecule, same class, named in its interactions — pure, tested,
+  no egui, so the view only scales and paints),
+  `src/maintenance.rs` (the long passes over the base — synchroniser,
+  compléter, réinitialiser — as named steps run on a thread of their own
+  against a connection of their own). The
   dispositifs médicaux have no module: they are fiches in the base
   (`STARTER_DISPOSITIFS` in `src/db.rs`), like the codex.
   `src/location.rs` (what a rental of material owes and when its
@@ -57,8 +63,12 @@ linted too), `cargo test --workspace`, `./scripts/coverage.sh`, and
 and is the only guard the interface has.
 
 `scripts/coverage.sh` holds two floors that only ever move up: the
-**logic modules** (everything but `app.rs`, `main.rs`, `motif` and the
-launcher) and the workspace as a whole. The workspace figure is low and
+**logic modules** and the workspace as a whole. The logic set is named
+by what it *leaves out* — `app.rs`, `main.rs`, `winscard.rs` (a library
+opened by name at run time, with no reader in CI), `motif` and the
+launcher — and never by a list of what is in: that list had fallen four
+modules behind, and `conciliation`, `surveillance`, `vitale` and `graph`
+were logic nobody was counting. The workspace figure is low and
 will stay low: `src/app.rs` is ~15 000 lines of egui layout, more than
 half the repo, and a view cannot be covered without a UI harness —
 `egui_kittest` needs egui ≥ 0.30 and the project is on 0.29. Until that
@@ -176,7 +186,7 @@ upgrade is decided, the number to defend is the logic one, and
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient`
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

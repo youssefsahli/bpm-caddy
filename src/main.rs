@@ -9,6 +9,7 @@ mod config;
 mod db;
 mod entretien;
 mod fuzzy;
+mod graph;
 mod insulin;
 mod location;
 mod maintenance;
