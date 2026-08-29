@@ -5069,7 +5069,17 @@ impl App {
             session.load_transmissions();
         }
         if let Some(id) = delete {
-            let _ = session.db.delete_note(id);
+            let expected = session
+                .trans_notes
+                .iter()
+                .find(|n| n.id == id)
+                .map(|n| n.body.clone())
+                .unwrap_or_default();
+            match session.db.delete_note(id, &expected) {
+                Ok(true) => {}
+                Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
             session.load_transmissions();
         }
     }
@@ -5109,7 +5119,16 @@ impl App {
                 self.op_note_text.clear();
             }
             if let Some(id) = delete {
-                let _ = session.db.delete_note(id);
+                let expected = self
+                    .op_notes
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.body.clone())
+                    .unwrap_or_default();
+                // The operator's own scratchpad is drawn from `&self`
+                // here, so the notice is left to the reload rather than
+                // written onto a session this branch only borrows.
+                let _ = session.db.delete_note(id, &expected);
                 changed = true;
             }
             if changed {
@@ -5973,7 +5992,13 @@ impl App {
                             self.op_note_text.clear();
                         }
                         if let Some(id) = delete {
-                            let _ = session.db.delete_note(id);
+                            let expected = self
+                                .op_notes
+                                .iter()
+                                .find(|n| n.id == id)
+                                .map(|n| n.body.clone())
+                                .unwrap_or_default();
+                            let _ = session.db.delete_note(id, &expected);
                             changed = true;
                         }
                         if changed {
@@ -11593,8 +11618,16 @@ impl App {
                     .unwrap_or_default();
             }
             if let Some(id) = delete {
-                if let Err(e) = session.db.delete_note(id) {
-                    session.error = Some(e);
+                let expected = session
+                    .patient_notes
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.body.clone())
+                    .unwrap_or_default();
+                match session.db.delete_note(id, &expected) {
+                    Ok(true) => {}
+                    Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                    Err(e) => session.error = Some(e),
                 }
                 session.patient_notes = session
                     .db
@@ -12114,8 +12147,16 @@ impl App {
                 session.load_transmissions();
             }
             if let Some(id) = delete {
-                if let Err(e) = session.db.delete_note(id) {
-                    session.error = Some(e);
+                let expected = session
+                    .trans_notes
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.body.clone())
+                    .unwrap_or_default();
+                match session.db.delete_note(id, &expected) {
+                    Ok(true) => {}
+                    Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                    Err(e) => session.error = Some(e),
                 }
                 session.load_transmissions();
             }
@@ -12870,8 +12911,16 @@ impl App {
             session.load_day();
         }
         if let Some(id) = note_delete {
-            if let Err(e) = session.db.delete_note(id) {
-                session.error = Some(e);
+            let expected = session
+                .day_notes
+                .iter()
+                .find(|n| n.id == id)
+                .map(|n| n.body.clone())
+                .unwrap_or_default();
+            match session.db.delete_note(id, &expected) {
+                Ok(true) => {}
+                Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                Err(e) => session.error = Some(e),
             }
             session.load_day();
         }
@@ -16686,8 +16735,16 @@ impl App {
                 .unwrap_or_default();
         }
         if let Some(id) = delete {
-            if let Err(e) = session.db.delete_note(id) {
-                session.error = Some(e);
+            let expected = session
+                .drug_notes
+                .iter()
+                .find(|n| n.id == id)
+                .map(|n| n.body.clone())
+                .unwrap_or_default();
+            match session.db.delete_note(id, &expected) {
+                Ok(true) => {}
+                Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                Err(e) => session.error = Some(e),
             }
             session.drug_notes = session
                 .db

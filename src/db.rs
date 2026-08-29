@@ -27558,11 +27558,23 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
-    pub fn delete_note(&self, id: i64) -> Result<(), String> {
-        self.conn
-            .execute("DELETE FROM notes WHERE id = ?1", [id])
+    /// Compare-and-set against the text this PC displayed, like every
+    /// other write to a shared row.
+    ///
+    /// It was the one deletion in this file that was not, and a journal
+    /// is exactly where it matters: two posts read the same page, one
+    /// corrects an entry, the other presses the × beside what it still
+    /// believes is there — and a note nobody read is gone. `false` means
+    /// the line has moved, and the caller reloads and says so.
+    pub fn delete_note(&self, id: i64, expected_body: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM notes WHERE id = ?1 AND body = ?2",
+                (id, expected_body),
+            )
             .map_err(|e| e.to_string())?;
-        Ok(())
+        Ok(changed == 1)
     }
 
     /// The posology the team has written for *this* patient, by drug id.
@@ -33379,8 +33391,19 @@ mod tests {
         assert_eq!(db.notes_for_operator("CL").unwrap().len(), 1);
         assert!(db.notes_for_operator("YS").unwrap().is_empty());
 
-        db.delete_note(n2).unwrap();
+        // Compare-and-set, like every other write to a shared row: a
+        // line a colleague has corrected since this post read it is not
+        // deleted on the strength of a stale view.
+        assert!(!db
+            .delete_note(n2, "un texte que personne n'a écrit")
+            .unwrap());
+        assert_eq!(db.notes_for(NoteSubject::Patient, pid).unwrap().len(), 2);
+        assert!(db.delete_note(n2, "Allergie pénicilline ?").unwrap());
         assert_eq!(db.notes_for(NoteSubject::Patient, pid).unwrap().len(), 1);
+        // And a second delete of the same line finds nothing to delete
+        // rather than reporting success: two posts pressing × on the
+        // same entry, and the second is told the list has moved.
+        assert!(!db.delete_note(n2, "Allergie pénicilline ?").unwrap());
 
         // Deleting the patient / drug removes their journals.
         db.delete_patient(pid).unwrap();
@@ -34218,7 +34241,7 @@ mod tests {
             .add_note(NoteSubject::Patient, pid, "CL", "Rappeler la fille.")
             .unwrap();
         assert_eq!(db.notes_for(NoteSubject::Patient, pid).unwrap().len(), 1);
-        db.delete_note(note).unwrap();
+        assert!(db.delete_note(note, "Rappeler la fille.").unwrap());
         assert!(db.notes_for(NoteSubject::Patient, pid).unwrap().is_empty());
 
         // --- A reference cell corrected, then put back ---

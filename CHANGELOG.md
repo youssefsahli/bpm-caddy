@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.124.0] - 2026-08-29
+
+La dernière écriture partagée qui ne se comparait pas.
+
+### Fixed
+- **`delete_note` est en compare-and-set**, comme toutes les autres
+  écritures sur une ligne partagée. Un relevé de tous les `UPDATE` et
+  `DELETE` de `src/db.rs` n'a trouvé qu'elle : le journal était le seul
+  endroit où l'on supprimait sur la foi de ce que l'écran montrait. Et
+  c'est précisément là que cela compte — deux postes lisent la même
+  page, l'un corrige une entrée, l'autre appuie sur le × à côté de ce
+  qu'il croit encore lu, et une note que personne n'a lue disparaît.
+  - Sept appels, sept listes déjà chargées : le texte attendu se relit
+    sur la liste que la vue affiche, sans toucher aux widgets. `false`
+    donne « Note modifiée depuis un autre poste — liste actualisée ».
+  - Le test supprime avec un texte que personne n'a écrit (refusé), avec
+    le bon (accepté), puis une seconde fois avec le bon (refusé aussi) :
+    deux postes qui appuient sur le même × ne peuvent pas tous les deux
+    croire avoir supprimé.
+
 ## [0.123.0] - 2026-08-29
 
 Deux contrats que rien ne tenait : celui du lanceur avec le workflow, et
