@@ -11,6 +11,7 @@ mod entretien;
 mod fuzzy;
 mod insulin;
 mod location;
+mod maintenance;
 mod ordonnance;
 mod pdf;
 mod release;

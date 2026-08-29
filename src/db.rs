@@ -238,6 +238,45 @@ CREATE TABLE IF NOT EXISTS patient_travel (
 );
 ";
 
+/// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
+///
+/// A base an older version created has its tables already, so
+/// `CREATE TABLE IF NOT EXISTS` is a no-op on it and a column added
+/// since lives in `MIGRATIONS` — indexing it before those have run would
+/// be indexing a column that is not there yet. Hence the third pass.
+///
+/// This is not a micro-optimisation. There was no index at all until
+/// v0.131.0, so every `WHERE name = ?1` was a scan of the whole `drugs`
+/// table — 850 rows, each one a page SQLCipher has to decrypt.
+/// `fill_starter_details` alone issues eighteen such statements per
+/// starter card: fifteen thousand scans of eight hundred and fifty rows.
+/// « Synchroniser le contenu de référence » took **four minutes** on a
+/// release build, and it takes seconds now.
+///
+/// The two-column ones are ordered so the equality column comes first,
+/// which is the only order SQLite can seek on.
+const INDEXES: &[&str] = &[
+    // The seeding hot path, and the lookup every other pass makes.
+    "CREATE INDEX IF NOT EXISTS idx_drugs_name ON drugs(name)",
+    "CREATE INDEX IF NOT EXISTS idx_drugs_dci ON drugs(dci)",
+    // « les autres de la même classe » reads this one per card.
+    "CREATE INDEX IF NOT EXISTS idx_drugs_class ON drugs(class)",
+    "CREATE INDEX IF NOT EXISTS idx_posologies_drug ON posologies(drug_id)",
+    "CREATE INDEX IF NOT EXISTS idx_interviews_patient ON interviews(patient_id)",
+    "CREATE INDEX IF NOT EXISTS idx_notes_subject ON notes(subject_kind, subject_id)",
+    "CREATE INDEX IF NOT EXISTS idx_biology_patient ON biology(patient_id)",
+    "CREATE INDEX IF NOT EXISTS idx_vaccinations_patient ON vaccinations(patient_id)",
+    "CREATE INDEX IF NOT EXISTS idx_locations_patient ON locations(patient_id)",
+    // `patient_drugs` has a primary key on (patient_id, drug_id), which
+    // answers « what does this patient take ». The other direction —
+    // « who takes this » — needs its own.
+    "CREATE INDEX IF NOT EXISTS idx_patient_drugs_drug ON patient_drugs(drug_id)",
+    "CREATE INDEX IF NOT EXISTS idx_protocol_nodes_protocol ON protocol_nodes(protocol_id)",
+    "CREATE INDEX IF NOT EXISTS idx_events_day ON events(day)",
+    "CREATE INDEX IF NOT EXISTS idx_preparations_name ON preparations(name)",
+    "CREATE INDEX IF NOT EXISTS idx_dispositifs_name ON dispositifs(name)",
+];
+
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS seed_state (
@@ -27240,6 +27279,12 @@ impl Db {
             // Fails harmlessly when the column already exists.
             let _ = conn.execute(migration, []);
         }
+        // Last, because an index names a column and a column added since
+        // this base was made is only there once the migrations have run.
+        for index in INDEXES {
+            conn.execute(index, [])
+                .map_err(|e| format!("index impossible : {e}"))?;
+        }
         Ok(Self { conn })
     }
 
@@ -27877,6 +27922,24 @@ impl Db {
         if count > 0 {
             return Ok(0);
         }
+        let inserted = self.insert_missing_drugs()?;
+        self.fill_starter_details()?;
+        self.seed_posologies()?;
+        self.seed_preparations()?;
+        self.seed_dispositifs()?;
+        self.seed_conduite()?;
+        self.seed_protocols()?;
+        Ok(inserted)
+    }
+
+    /// Insert the starter cards the base has not got, by brand name,
+    /// and nothing else — no details, no posologies, no conduite.
+    ///
+    /// This is the first half of [`Self::seed_missing_drugs`], split out
+    /// so that [`crate::maintenance`] can run the eight passes one at a
+    /// time and name each one as it starts. Called through the composite
+    /// they would otherwise run twice: once inside it, once after it.
+    pub fn insert_missing_drugs(&self) -> Result<usize, String> {
         let tx = self
             .conn
             .unchecked_transaction()
@@ -27893,12 +27956,6 @@ impl Db {
                 .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
-        self.fill_starter_details()?;
-        self.seed_posologies()?;
-        self.seed_preparations()?;
-        self.seed_dispositifs()?;
-        self.seed_conduite()?;
-        self.seed_protocols()?;
         Ok(inserted)
     }
 
@@ -27958,38 +28015,17 @@ impl Db {
         Ok(filled)
     }
 
-    /// Insert every starter drug the base does not already have (by
-    /// brand name) — completes a base created before the starter list
-    /// existed or grew. Returns how many were added.
-    pub fn seed_missing_drugs(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
-        let mut inserted = 0;
-        for (name, dci, class, antidote) in STARTER_DRUGS {
-            inserted += tx
-                .execute(
-                    "INSERT INTO drugs (name, dci, class, antidote)
-                     SELECT ?1, ?2, ?3, ?4
-                     WHERE NOT EXISTS (SELECT 1 FROM drugs WHERE name = ?1)",
-                    (name, dci, class, antidote),
-                )
-                .map_err(|e| e.to_string())?;
-        }
-        tx.commit().map_err(|e| e.to_string())?;
-        self.fill_starter_details()?;
-        self.seed_posologies()?;
-        self.seed_preparations()?;
-        self.seed_dispositifs()?;
-        self.seed_conduite()?;
-        self.seed_protocols()?;
-        Ok(inserted)
-    }
-
-    /// Debug/demo helper: erase every row of every table, then reseed
-    /// the starter drugs. The schema, password and file stay unchanged.
-    pub fn reset_all_data(&self) -> Result<(), String> {
+    /// Erase every row of every table, and forget the seed marks. The
+    /// schema, the password and the file itself stay as they are.
+    ///
+    /// Half of « Réinitialiser la base… » — the other half is putting
+    /// the shipped content back, and that is
+    /// [`crate::maintenance::Job::Reset`], which runs the wipe and the
+    /// eight reseeding passes as nine named steps rather than one silent
+    /// wait. The seed marks go because a reset is meant to bring the
+    /// shipped content back: without that, the dispositifs — which will
+    /// not re-seed into a base that emptied them on purpose — stay gone.
+    pub fn wipe_all_data(&self) -> Result<usize, String> {
         let tx = self
             .conn
             .unchecked_transaction()
@@ -28017,8 +28053,7 @@ impl Db {
         tx.execute("DELETE FROM seed_state", [])
             .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
-        self.seed_drugs_if_empty()?;
-        Ok(())
+        Ok(0)
     }
 
     pub fn add_drug(&self, name: &str) -> Result<i64, String> {
@@ -30898,15 +30933,13 @@ mod tests {
 
         // A base as a first unlock leaves it.
         db.seed_drugs_if_empty().unwrap();
+        // Through `maintenance`, and not by listing the passes here: a
+        // seed added to the button and not to this list is exactly the
+        // drift this test exists to catch.
         let sync = |db: &Db| -> usize {
-            db.seed_missing_drugs().unwrap()
-                + db.fill_starter_details().unwrap()
-                + db.seed_posologies().unwrap()
-                + db.seed_conduite().unwrap()
-                + db.refresh_toxicity().unwrap()
-                + db.seed_preparations().unwrap()
-                + db.seed_dispositifs().unwrap()
-                + db.seed_protocols().unwrap()
+            let out = crate::maintenance::run_all(db, crate::maintenance::Job::Sync);
+            assert!(out.error.is_none(), "{:?}", out.error);
+            out.total()
         };
 
         // The officine has written on one fiche, in a field the seeds
@@ -31875,6 +31908,90 @@ mod tests {
             db.patient_posologies(pid).unwrap(),
             vec![(did, "5 mg le soir".to_owned())]
         );
+
+        // And the indexes are there too. They are created after the
+        // migrations precisely so that a base of this age gets them:
+        // created with `SCHEMA` they would name columns an old base has
+        // not been given yet.
+        assert_indexes_present(&db);
+    }
+
+    /// Every index in [`INDEXES`] exists on this base, by name.
+    fn assert_indexes_present(db: &Db) {
+        let mut stmt = db
+            .conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .unwrap();
+        let have: std::collections::HashSet<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        for statement in INDEXES {
+            let name = statement
+                .split_whitespace()
+                .nth(5)
+                .expect("CREATE INDEX IF NOT EXISTS <nom> ON …");
+            assert!(have.contains(name), "index absent : {name}");
+        }
+    }
+
+    /// The seeding used to take four minutes, and the reason was that
+    /// there was no index anywhere: `WHERE name = ?1` read all eight
+    /// hundred and fifty cards, and `fill_starter_details` asks it
+    /// fifteen thousand times.
+    ///
+    /// A test on the clock would be a flaky test on whatever else the
+    /// machine is doing. This one asks SQLite what it *intends* to do:
+    /// the plan for the hot statement has to say SEARCH (a seek down an
+    /// index) and never SCAN (reading the table through). Drop the index
+    /// and the word changes, which is exactly when we want to hear about
+    /// it.
+    #[test]
+    fn the_hot_lookups_seek_an_index_instead_of_reading_every_card() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-idx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("idx.db"), "secret").unwrap();
+        assert_indexes_present(&db);
+
+        let plan = |sql: &str| -> String {
+            let mut stmt = db
+                .conn
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .unwrap();
+            let rows: Vec<String> = stmt
+                .query_map([], |r| r.get::<_, String>(3))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            rows.join(" / ")
+        };
+        for sql in [
+            // `fill_starter_details`, the statement issued fifteen
+            // thousand times over.
+            "UPDATE drugs SET indications = '' WHERE name = 'Eliquis'",
+            // `seed_posologies`, once per shipped posology line.
+            "INSERT INTO posologies (drug_id, indication) SELECT d.id, '' FROM drugs d WHERE d.name = 'Eliquis'",
+            // The card's own posologies, read every time one is opened.
+            "SELECT id FROM posologies WHERE drug_id = 1",
+            // « Les autres de la même classe ».
+            "SELECT id FROM drugs WHERE class = 'AOD'",
+            // The patient file, opened all day long.
+            "SELECT id FROM interviews WHERE patient_id = 1",
+            "SELECT id FROM biology WHERE patient_id = 1",
+            "SELECT id FROM vaccinations WHERE patient_id = 1",
+            // « Qui prend ce médicament » — the direction the primary
+            // key of `patient_drugs` does not answer.
+            "SELECT patient_id FROM patient_drugs WHERE drug_id = 1",
+        ] {
+            let plan = plan(sql);
+            assert!(
+                plan.contains("USING INDEX") || plan.contains("USING COVERING INDEX"),
+                "sans index : {sql}\n  → {plan}"
+            );
+        }
     }
 
     /// The backup folder says what it holds, and says nothing it does
@@ -33312,9 +33429,12 @@ mod tests {
             &db.drugs().unwrap()[0].name.clone(),
         )
         .unwrap();
-        assert_eq!(db.seed_missing_drugs().unwrap(), 1);
+        let completed = crate::maintenance::run_all(&db, crate::maintenance::Job::SeedMissing);
+        assert!(completed.error.is_none(), "{:?}", completed.error);
+        assert_eq!(completed.first(), 1, "la fiche supprimée est remise");
 
-        db.reset_all_data().unwrap();
+        let reset = crate::maintenance::run_all(&db, crate::maintenance::Job::Reset);
+        assert!(reset.error.is_none(), "{:?}", reset.error);
         assert!(db.patients().unwrap().is_empty());
         assert!(db.interviews_for(pid).unwrap().is_empty());
         assert!(db.notes_for(NoteSubject::Patient, pid).unwrap().is_empty());

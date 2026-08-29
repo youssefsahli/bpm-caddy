@@ -1306,6 +1306,14 @@ struct Session {
     /// days' notice the officine asked for (`[locations] notice_days`).
     loc_watch: Vec<LocWatch>,
     loc_notice_days: u32,
+    /// The master password, as it was typed to open this base.
+    ///
+    /// Kept so a background pass can open a connection of its own —
+    /// `rusqlite::Connection` is not `Sync`, so the session's cannot be
+    /// lent to a thread. It is not a new secret in a new place: it is
+    /// already the key inside that connection, in this same process, and
+    /// the daily backup has always carried a copy into its own thread.
+    password: String,
     /// The accompaniments whose next entretien is not in the agenda.
     to_schedule: Vec<ToSchedule>,
     /// The patient's biology, and the line being added to it.
@@ -1700,6 +1708,7 @@ impl Session {
             bio_watch: Vec::new(),
             loc_watch: Vec::new(),
             loc_notice_days: 7,
+            password: String::new(),
             to_schedule: Vec::new(),
             bio_results: Vec::new(),
             bio_query: String::new(),
@@ -4398,6 +4407,15 @@ pub struct App {
     /// one answered. `true` marks a failure.
     update_check: Option<std::sync::mpsc::Receiver<crate::release::Checked>>,
     update_note: Option<(bool, String)>,
+    /// A long pass over the base running on its own thread (Options ›
+    /// Base, Options › À propos), and the step it last reported.
+    ///
+    /// These take seconds on a local disk and minutes on the officine's
+    /// share; run where they are pressed they froze the window solid,
+    /// with no way to tell a slow pass from a dead application. One at a
+    /// time: the buttons are disabled while one runs.
+    maint_job: Option<std::sync::mpsc::Receiver<crate::maintenance::Progress>>,
+    maint_step: Option<String>,
 }
 
 /// In-app editor for `config.toml`.
@@ -4554,6 +4572,7 @@ impl App {
                 .and_then(|db| Session::new(db, config.rules.cycle_months))
                 .map(|mut s| {
                     s.loc_notice_days = config.locations.notice_days;
+                    s.password.clone_from(&pw);
                     s.refresh_dashboard();
                     s
                 }) {
@@ -4989,6 +5008,140 @@ impl App {
             db_adopted: adopted_db,
             update_check: None,
             update_note: None,
+            maint_job: None,
+            maint_step: None,
+        }
+    }
+
+    /// Read whatever the background pass has to say, and act on the end
+    /// of it. Polled every frame; costs a `try_recv` when nothing runs.
+    ///
+    /// Draining the channel rather than taking one message per frame
+    /// matters: a step that fills nothing returns in microseconds, and
+    /// at one message a frame the progress line would lag whole seconds
+    /// behind work that was already over.
+    fn poll_maintenance(&mut self, ctx: &egui::Context) {
+        use crate::maintenance::Progress;
+        let Some(rx) = &self.maint_job else {
+            return;
+        };
+        loop {
+            match rx.try_recv() {
+                Ok(Progress::Started { index, total, key }) => {
+                    self.maint_step = Some(trn("maint_running", &[&tr(key), &(index + 1), &total]));
+                }
+                Ok(Progress::Done(outcome)) => {
+                    self.finish_maintenance(&outcome);
+                    self.maint_job = None;
+                    self.maint_step = None;
+                    return;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // An idle session repaints every 30 s, and this is
+                    // the one moment where the operator is watching a
+                    // line change.
+                    ctx.request_repaint_after(Duration::from_millis(120));
+                    return;
+                }
+                // The thread died without saying so — a panic in a seed.
+                // Better a wrong-looking message than a spinner that
+                // never stops.
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.maint_job = None;
+                    self.maint_step = None;
+                    return;
+                }
+            }
+        }
+    }
+
+    /// A finished pass: reload everything it may have changed, then say
+    /// what it did, where the button that started it can be read.
+    fn finish_maintenance(&mut self, outcome: &crate::maintenance::Outcome) {
+        use crate::maintenance::Job;
+        if let State::Unlocked(session) = &mut self.state {
+            // A reset has emptied every table under the open views, so
+            // everything cached is dropped and read again. The other
+            // three only ever add, but they add to the same lists.
+            if let Ok(list) = session.db.patients() {
+                session.set_patients(list);
+            }
+            if let Ok(list) = session.db.drugs() {
+                session.set_drugs(list);
+            }
+            if let Ok(counts) = session.db.pending_counts() {
+                session.pending = counts;
+            }
+            session.reload_codex();
+            session.reload_dispositifs();
+            session.reload_protocols();
+            if outcome.job == Job::Reset {
+                session.viewing = None;
+                session.viewing_interviews.clear();
+                session.patient_treats.clear();
+                session.patient_notes.clear();
+                session.drug_notes.clear();
+                session.drug_patients.clear();
+                session.date_edits.clear();
+                session.made_edits.clear();
+                session.drug_form = None;
+                session.drug_base = None;
+                session.drug_selected = 0;
+                session.selected = 0;
+                session.load_transmissions();
+            }
+            session.refresh_dashboard();
+        }
+        if let Some(e) = &outcome.error {
+            self.report_maintenance(outcome.job, true, e.clone());
+            return;
+        }
+        let (n, msg) = match outcome.job {
+            Job::Sync => {
+                let n = outcome.total();
+                (
+                    n,
+                    if n == 0 {
+                        tr("about_sync_none").to_owned()
+                    } else {
+                        trf("about_sync_done", n)
+                    },
+                )
+            }
+            // The reset always puts the whole starter list back, so the
+            // count it reports is the list, not what happened to be
+            // missing from a base it has just emptied.
+            Job::Reset => (
+                db::STARTER_DRUG_COUNT,
+                trf("opts_db_reset_done", db::STARTER_DRUG_COUNT),
+            ),
+            Job::FillDetails => {
+                let n = outcome.total();
+                (n, trf("opts_db_details_done", n))
+            }
+            // « Compléter les médicaments de départ » counts *cards*,
+            // which is the first step's answer and not the whole.
+            Job::SeedMissing => {
+                let n = outcome.first();
+                (n, trf("opts_db_seed_done", n))
+            }
+        };
+        let msg = if n == 0 && outcome.job != Job::Sync {
+            tr("opts_db_seed_none").to_owned()
+        } else {
+            msg
+        };
+        self.report_maintenance(outcome.job, false, msg);
+    }
+
+    /// Put a maintenance message where the button that started the job
+    /// is: Options › À propos for the sync, Options › Base for the
+    /// other three.
+    fn report_maintenance(&mut self, job: crate::maintenance::Job, is_error: bool, msg: String) {
+        if job == crate::maintenance::Job::Sync {
+            self.update_note = Some((is_error, msg));
+        } else if let Some(editor) = &mut self.options {
+            editor.message = Some((is_error, msg));
         }
     }
 
@@ -6245,6 +6398,7 @@ impl App {
                 .and_then(|db| Session::new(db, self.config.rules.cycle_months))
                 .map(|mut s| {
                     s.loc_notice_days = self.config.locations.notice_days;
+                    s.password.clone_from(&pw);
                     s.refresh_dashboard();
                     s
                 }) {
@@ -19074,6 +19228,11 @@ impl eframe::App for App {
                 }
             }
         }
+        // A long pass over the base, on its own thread. Same shape as
+        // the version check above: polled, never waited on, so the
+        // counter goes on working while eight hundred and fifty cards
+        // are topped up under it.
+        self.poll_maintenance(ctx);
 
         // Auto-lock after inactivity (spec 4.3).
         if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {
@@ -19642,6 +19801,11 @@ impl eframe::App for App {
                             } else {
                                 match session.db.change_password(&form.new1) {
                                     Ok(()) => {
+                                        // The session's own copy — the one a
+                                        // background pass opens its connection
+                                        // with — is now the old key, and would
+                                        // open nothing.
+                                        session.password.clone_from(&form.new1);
                                         // Keep the OS credential manager in sync
                                         // when it holds a remembered copy.
                                         if let Some(entry) = keyring_entry() {
@@ -19894,6 +20058,12 @@ impl eframe::App for App {
             .then(|| self.layout.version.clone());
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
+        // A long pass over the base, in flight. Read before the borrow,
+        // like everything else on this page: the four buttons that start
+        // one go grey while it runs, and the step it is on is written
+        // under whichever of the two pages started it.
+        let maint_running = self.maint_step.clone();
+        let maint_busy = self.maint_job.is_some();
         if let Some(editor) = &mut self.options {
             // Fit the dialog to the window: the options list is long,
             // and a fixed height clipped the last rows on small screens.
@@ -20264,13 +20434,20 @@ impl eframe::App for App {
                                     {
                                         open_releases = true;
                                     }
-                                    if motif::button(ui, tr("about_sync"))
+                                    if motif::button_enabled(ui, tr("about_sync"), !maint_busy)
                                         .on_hover_text(tr("about_sync_tooltip"))
                                         .clicked()
                                     {
                                         sync_content = true;
                                     }
                                 });
+                                if let Some(step) = &maint_running {
+                                    ui.label(
+                                        egui::RichText::new(step.as_str())
+                                            .size(11.0)
+                                            .color(motif::accent()),
+                                    );
+                                }
                                 if about_checking {
                                     ui.label(
                                         egui::RichText::new(tr("about_checking"))
@@ -20678,10 +20855,12 @@ impl eframe::App for App {
                                 // the starter list grew, or wipe everything
                                 // (debug/demo — two clicks, never one).
                                 ui.horizontal(|ui| {
-                                    if motif::button(ui, tr("opts_db_seed")).clicked() {
+                                    if motif::button_enabled(ui, tr("opts_db_seed"), !maint_busy)
+                                        .clicked()
+                                    {
                                         db_seed = true;
                                     }
-                                    if motif::button(ui, tr("opts_db_details"))
+                                    if motif::button_enabled(ui, tr("opts_db_details"), !maint_busy)
                                         .on_hover_text(tr("opts_db_details_tooltip"))
                                         .clicked()
                                     {
@@ -20692,7 +20871,8 @@ impl eframe::App for App {
                                     } else {
                                         tr("opts_db_reset")
                                     };
-                                    let btn = ui.add(
+                                    let btn = ui.add_enabled(
+                                        !maint_busy,
                                         egui::Button::new(
                                             egui::RichText::new(danger)
                                                 .color(egui::Color32::WHITE)
@@ -20709,6 +20889,16 @@ impl eframe::App for App {
                                         }
                                     }
                                 });
+                                // The step a running pass is on. Under
+                                // the buttons that start one, so it is
+                                // read where it was asked for.
+                                if let Some(step) = &maint_running {
+                                    ui.label(
+                                        egui::RichText::new(step.as_str())
+                                            .size(11.0)
+                                            .color(motif::accent()),
+                                    );
+                                }
                                 ui.label(
                                     egui::RichText::new(tr("opts_db_note"))
                                         .size(11.0)
@@ -20982,128 +21172,47 @@ impl eframe::App for App {
                 self.update_note = Some((true, trf("drug_lookup_error", e)));
             }
         }
-        // « Synchroniser le contenu de référence ». The reference
-        // content — fiches, préparations, dispositifs, protocoles,
-        // posologies — travels *inside* the binary, not as a file on the
-        // release page, so bringing a base up to the latest release is
-        // two steps and the second one is this: update the application
-        // (the launcher does it at every start), then pour into the base
-        // whatever this version ships and the base has not got. Every
-        // one of these seeds only ever fills a gap; nothing the team has
-        // written is rewritten.
-        if sync_content {
-            let result = if let State::Unlocked(session) = &self.state {
-                let db = &session.db;
-                let mut n = 0;
-                let mut err: Option<String> = None;
-                for step in [
-                    db.seed_missing_drugs(),
-                    db.fill_starter_details(),
-                    db.seed_posologies(),
-                    db.seed_conduite(),
-                    db.refresh_toxicity(),
-                    db.seed_preparations(),
-                    db.seed_dispositifs(),
-                    db.seed_protocols(),
-                ] {
-                    match step {
-                        Ok(k) => n += k,
-                        // One failing step must not hide the seven that
-                        // worked: the count is still reported, with the
-                        // first error beside it.
-                        Err(e) => err = err.or(Some(e)),
-                    }
-                }
-                match err {
-                    Some(e) => Err(e),
-                    None => Ok(n),
-                }
+        // The four long passes over the base. « Synchroniser le contenu
+        // de référence » pours in what this version ships and the base
+        // has not got — the reference content travels *inside* the
+        // binary, not as a file on the release page, so bringing a base
+        // up to date is two steps: update the application (the launcher
+        // does it at every start), then this. Every seed only ever fills
+        // a gap; nothing the team has written is rewritten.
+        //
+        // All four run on a thread of their own (`crate::maintenance`).
+        // They used to run right here, between two frames, and the
+        // window stopped answering until they were done: seconds on a
+        // local disk, minutes on the officine's share.
+        let asked = if sync_content {
+            Some(crate::maintenance::Job::Sync)
+        } else if db_reset {
+            Some(crate::maintenance::Job::Reset)
+        } else if db_details {
+            Some(crate::maintenance::Job::FillDetails)
+        } else if db_seed {
+            Some(crate::maintenance::Job::SeedMissing)
+        } else {
+            None
+        };
+        if let Some(job) = asked {
+            let note = if self.maint_job.is_some() {
+                // One at a time. The buttons are disabled while a pass
+                // runs, so this is the keyboard or a very fast hand.
+                Some(tr("maint_busy").to_owned())
+            } else if let State::Unlocked(session) = &self.state {
+                self.maint_step = None;
+                self.maint_job = Some(crate::maintenance::spawn(
+                    self.config.db_path(),
+                    session.password.clone(),
+                    job,
+                ));
+                None
             } else {
-                Err(tr("opts_db_locked").to_owned())
+                Some(tr("opts_db_locked").to_owned())
             };
-            match result {
-                Ok(n) => {
-                    if let State::Unlocked(session) = &mut self.state {
-                        if let Ok(list) = session.db.drugs() {
-                            session.set_drugs(list);
-                        }
-                        session.reload_codex();
-                        session.reload_dispositifs();
-                        session.reload_protocols();
-                    }
-                    self.update_note = Some((
-                        false,
-                        if n == 0 {
-                            tr("about_sync_none").to_owned()
-                        } else {
-                            trf("about_sync_done", n)
-                        },
-                    ));
-                }
-                Err(e) => self.update_note = Some((true, e)),
-            }
-        }
-        if db_seed || db_details || db_reset {
-            let result = if let State::Unlocked(session) = &mut self.state {
-                if db_reset {
-                    session
-                        .db
-                        .reset_all_data()
-                        .map(|()| (true, db::STARTER_DRUG_COUNT))
-                } else if db_details {
-                    session.db.fill_starter_details().map(|n| (false, n))
-                } else {
-                    session.db.seed_missing_drugs().map(|n| (false, n))
-                }
-            } else {
-                Err(tr("opts_db_locked").to_owned())
-            };
-            match result {
-                Ok((was_reset, n)) => {
-                    if let State::Unlocked(session) = &mut self.state {
-                        // Everything the views cache may have just been
-                        // deleted — drop it all, then reload.
-                        if let Ok(list) = session.db.patients() {
-                            session.set_patients(list);
-                        }
-                        if let Ok(list) = session.db.drugs() {
-                            session.set_drugs(list);
-                        }
-                        if let Ok(counts) = session.db.pending_counts() {
-                            session.pending = counts;
-                        }
-                        session.viewing = None;
-                        session.viewing_interviews.clear();
-                        session.patient_treats.clear();
-                        session.patient_notes.clear();
-                        session.drug_notes.clear();
-                        session.drug_patients.clear();
-                        session.date_edits.clear();
-                        session.made_edits.clear();
-                        session.drug_form = None;
-                        session.drug_base = None;
-                        session.drug_selected = 0;
-                        session.selected = 0;
-                        session.load_transmissions();
-                        session.refresh_dashboard();
-                    }
-                    if let Some(editor) = &mut self.options {
-                        editor.message = Some(if was_reset {
-                            (false, trf("opts_db_reset_done", n))
-                        } else if n == 0 {
-                            (false, tr("opts_db_seed_none").to_owned())
-                        } else if db_details {
-                            (false, trf("opts_db_details_done", n))
-                        } else {
-                            (false, trf("opts_db_seed_done", n))
-                        });
-                    }
-                }
-                Err(e) => {
-                    if let Some(editor) = &mut self.options {
-                        editor.message = Some((true, e));
-                    }
-                }
+            if let Some(note) = note {
+                self.report_maintenance(job, true, note);
             }
         }
         if let Some((target, point)) = db_export {

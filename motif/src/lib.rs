@@ -659,21 +659,41 @@ pub fn bevel(painter: &egui::Painter, rect: egui::Rect, raised: bool) {
 /// A Motif push button: raised bevel, sinks (and nudges its label) while
 /// pressed.
 pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
+    button_enabled(ui, text, true)
+}
+
+/// The same button, greyed out when `enabled` is false.
+///
+/// A disabled Motif button keeps its raised bevel and takes the same
+/// room — the toolbar must not reflow because a pass is running — but
+/// its label goes to [`text_dim`], it stops answering the pointer, and
+/// its `clicked()` is always false. That last part is the one that
+/// matters: a caller reading `.clicked()` without checking a flag of its
+/// own would otherwise start a second copy of the work.
+pub fn button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Response {
     // Both come from the style: a hardcoded font size ignored the text
     // scale, so every Motif button stayed 14 px while the rest of the
     // interface grew, and a hardcoded padding ignored the density.
     let font = egui::TextStyle::Button.resolve(ui.style());
     let padding = ui.spacing().button_padding + Vec2::new(4.0, 1.0);
-    let galley = ui
-        .painter()
-        .layout_no_wrap(text.to_owned(), font, crate::text());
+    let ink = if enabled {
+        crate::text()
+    } else {
+        crate::text_dim()
+    };
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, ink);
     let size = galley.size() + padding * 2.0;
-    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let sense = if enabled {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(size, sense);
     if ui.is_rect_visible(rect) {
-        let pressed = response.is_pointer_button_down_on();
+        let pressed = enabled && response.is_pointer_button_down_on();
         let fill = if pressed {
             crate::trough()
-        } else if response.hovered() {
+        } else if enabled && response.hovered() {
             crate::bg_hover()
         } else {
             crate::bg()
@@ -686,7 +706,7 @@ pub fn button(ui: &mut egui::Ui, text: &str) -> egui::Response {
             Vec2::ZERO
         };
         let pos = rect.center() - galley.size() / 2.0 + nudge;
-        ui.painter().galley(pos, galley, crate::text());
+        ui.painter().galley(pos, galley, ink);
     }
     response
 }

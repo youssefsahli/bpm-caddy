@@ -722,6 +722,21 @@ about_sync_tooltip = "Verser dans la base ce que cette version apporte et qui ma
 about_sync_none = "Base déjà au niveau de cette version."
 about_sync_done = "{} élément(s) de référence ajouté(s)."
 about_offline = "Hors ligne le reste du temps : les autres boutons « … » passent une adresse au navigateur."
+
+# --- Les passes longues sur la base, sur leur propre fil ---
+# Une ligne par étape de `maintenance::steps`. Une clé sans libellé
+# s'afficherait telle quelle au comptoir : un test le refuse.
+maint_step_wipe = "Effacement des données"
+maint_step_drugs = "Médicaments"
+maint_step_details = "Fiches de référence"
+maint_step_posologies = "Posologies"
+maint_step_conduite = "Conduites à tenir"
+maint_step_toxicity = "Toxicité"
+maint_step_preparations = "Préparations"
+maint_step_dispositifs = "Dispositifs"
+maint_step_protocols = "Protocoles"
+maint_running = "{} — étape {} sur {}"
+maint_busy = "Une mise à jour de la base est déjà en cours."
 lock_db_found = "Base trouvée au démarrage, pas configurée — vérifiez le chemin."
 
 opts_saved = "Options enregistrées."

@@ -5,6 +5,39 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.131.0] - 2026-08-29
+
+### Changed
+- **La mise à jour du contenu de référence ne bloque plus rien, et elle
+  est soixante-huit fois plus rapide.** « Synchroniser le contenu de
+  référence » tournait là où on appuyait, entre deux images : la fenêtre
+  cessait de répondre jusqu'au bout. Mesuré en compilation de release :
+  **250 secondes**. Quatre minutes de comptoir sans curseur, sans moyen
+  de distinguer une passe lente d'une application morte.
+  - La cause n'était pas le chiffrement mais l'absence d'index. Il n'y en
+    avait **aucun** dans le schéma : chaque `WHERE name = ?1` lisait les
+    850 fiches, et `fill_starter_details` en pose dix-huit par fiche —
+    quinze mille parcours de huit cent cinquante lignes, chacune une page
+    que SQLCipher déchiffre. Quatorze index plus tard, la même passe
+    prend **3,7 secondes**. Ils profitent à tout le reste : le dossier
+    patient, les posologies d'une fiche, « qui prend ce médicament ».
+    Ils sont créés **après** les migrations, parce qu'un index nomme une
+    colonne et qu'une colonne ajoutée depuis n'existe pas encore quand le
+    schéma passe.
+  - Et les quatre passes longues — synchroniser, compléter les
+    médicaments, compléter les fiches, réinitialiser — ont leur propre
+    fil (`src/maintenance.rs`), qui ouvre sa propre connexion : la base
+    est déjà partagée entre postes, un deuxième lecteur dans le même
+    processus est le cas pour lequel elle est faite. L'étape en cours
+    s'écrit sous le bouton qui l'a lancée, les quatre boutons grisent
+    pendant ce temps, et une passe dont la fenêtre est partie s'arrête à
+    l'étape suivante au lieu de finir d'écrire dans une base que
+    personne ne lira.
+  - Au passage : `seed_missing_drugs` appelait six des sept passes qui la
+    suivaient dans la liste du bouton, donc chacune tournait deux fois.
+    La liste est maintenant à un seul endroit — `maintenance::steps` —
+    et le test de synchronisation la lit de là plutôt que de la recopier.
+
 ## [0.130.0] - 2026-08-29
 
 ### Fixed
