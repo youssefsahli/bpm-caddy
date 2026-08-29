@@ -105,7 +105,14 @@ upgrade is decided, the number to defend is the logic one, and
 - Keep the Motif look: square corners, `motif::bevel` raised for
   buttons/panels, sunken for inputs/troughs; charts are painted by hand,
   no plotting library — `motif::chart` has bars, hbars, stacked,
-  sparkline, meter, pips, heat strip and legend.
+  sparkline, `lines` (several series on one shared scale), meter, pips,
+  heat strip and legend.
+- **A widget that takes a type must honour it.** `motif::list_row` took
+  a `RichText`, kept its string and threw the rest away: three call
+  sites had been painting an overdue rendez-vous in `alert()` since the
+  day they were written, and it came out in the ordinary ink. Its font
+  was a hardcoded 14 px too, so lists never grew with `[ui] text_scale`.
+  Both now come from egui's own layout and the style.
 - **The application ships no font.** It draws with egui's own faces, and
   the proportional one has no arrows (U+2192 and friends) — the
   monospace one does. So an arrow may appear in a key chip and never in
@@ -127,8 +134,22 @@ upgrade is decided, the number to defend is the logic one, and
   a dock that grew past the width it reserved leaves the central view
   laid out wider than it is visible.
 - A band whose height depends on its content (wrapped buttons, filters)
-  measures it with `Self::wrapped_rows` and is **capped**, scrolling past
-  its share rather than crowding out the panes under it. Every layout
+  measures it with `Self::wrapped_rows` and is **capped** — as a *share
+  of the pane*, not at a constant — scrolling past its share rather than
+  crowding out the panes under it. Measured-and-uncapped is the trap:
+  the scans form asked for its eight rows and got them, and « Pièces au
+  dossier » became a caption over nothing. Cap at half, and let both
+  halves scroll.
+- **When a pane is too short for everything in it, the garnish goes
+  first.** The register's stock curve is dropped below a floor expressed
+  in lines so the register's own *lines* survive; a chart kept at the
+  price of the rows it illustrates is a chart of nothing.
+- `./scripts/eyeball.sh [dir]` captures every view at 1024x700 with
+  `text_scale = 1.25` into a directory. `smoke.sh` proves nothing
+  panicked; it says nothing about a heading that wrapped, a button drawn
+  half off a panel, or eight doors reflowing into three rows. Those are
+  found by looking, and looking is only cheap when the pictures are one
+  command away. Every layout
   must survive 1024x700 with both docks open — `scripts/smoke.sh` opens
   every view **twice**, at 1400x900 and at 1024x700 with
   `text_scale = 1.25`, and a screenshot at that size is the eye check
@@ -216,7 +237,7 @@ upgrade is decided, the number to defend is the logic one, and
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient|graph|stup|scans|
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|scans|
   patient_scans`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.

@@ -237,6 +237,17 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
                     let w = galley.size().x + 24.0 + close_w;
                     let (rect, resp) =
                         ui.allocate_exact_size(Vec2::new(w, height), egui::Sense::click());
+                    // Bring the selected tab into view. Without this the
+                    // strip scrolled but never *to* anything: six tabs
+                    // on a 1024 px screen at `text_scale = 1.25` left the
+                    // sixth cut mid-word with no scrollbar to explain it,
+                    // and a file opened straight onto that tab showed a
+                    // page whose own tab was off-screen. A tab clipped to
+                    // one letter does not read as « il y en a d'autres »,
+                    // it reads as broken.
+                    if is_active {
+                        ui.scroll_to_rect(rect, None);
+                    }
                     if !ui.is_rect_visible(rect) {
                         continue;
                     }

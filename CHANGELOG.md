@@ -5,6 +5,45 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.137.0] - 2026-08-29
+
+### Changed
+- **Une passe sur l'interface, faite en la regardant.** `smoke.sh` prouve
+  que rien n'a paniqué ; il ne dit rien d'un bouton dessiné à moitié hors
+  d'un panneau. `./scripts/eyeball.sh` prend chaque vue à 1024x700 en
+  texte 1,25 et les pose dans un dossier. Voici ce qu'elles montraient.
+- **Les registres quittent la base médicaments.** La page « Base
+  médicaments » portait **huit** portes — trois rangées de rectangles
+  gris indiscernables, au-dessus du champ de recherche pour lequel on
+  ouvre cette page. Deux d'entre elles n'avaient rien à y faire : un
+  registre de stupéfiants et une facture de grossiste ne sont pas de la
+  référence sur le médicament, ce sont les papiers de l'officine. Les y
+  avoir mises était commode à écrire et faux à lire.
+  - « Registres » est une vue de l'espace de travail maintenant, comme
+    l'agenda et le carnet, avec ses deux moitiés en onglets. Son volet de
+    gauche est la liste des patients, et ce n'est pas un choix par
+    défaut : pour inscrire une délivrance il faut le dossier ouvert, et
+    c'est cette liste qui l'ouvre.
+  - Six portes restent sur la base médicaments, toutes sur le
+    médicament, et elles tiennent en deux rangées.
+- **La bande d'onglets se déplace sur celui qui est actif.** Elle
+  défilait, mais jamais *vers* quelque chose : six onglets de fiche
+  patient à 1024 px en texte 1,25 laissaient le sixième coupé à une
+  lettre, sans ascenseur pour l'expliquer, et un dossier ouvert
+  directement dessus affichait une page dont l'onglet était hors écran.
+- **Deux bandes mesurées mais non plafonnées** écrasaient le panneau
+  qu'elles surmontaient : le formulaire des pièces réduisait « Pièces au
+  dossier » à un titre au-dessus de rien, et celui du registre réduisait
+  le registre à une ligne coupée. Plafonnées à la moitié, et les deux
+  moitiés défilent.
+- **La courbe du stock cède avant les lignes du registre.** Sur un volet
+  court elle passe à la trappe : un graphique gardé au prix des lignes
+  qu'il illustre est un graphique de rien. Le plancher est en lignes.
+- **Le libellé d'une pièce cède, jamais ses boutons.** « Corriger » et
+  « × » sortaient du volet sur un panneau étroit : une ligne qu'on ne
+  peut ni corriger ni retirer, sans rien dans le cadre pour dire qu'ils
+  sont là. La place qu'ils prennent est mesurée et retranchée d'abord.
+
 ## [0.136.0] - 2026-08-29
 
 ### Added

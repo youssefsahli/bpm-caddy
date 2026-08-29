@@ -1010,6 +1010,15 @@ enum MainView {
     Transmissions,
     /// The vaccination world map and its country groups (F7).
     VaccineMap,
+    /// Les registres de l'officine : les stupéfiants, et les pièces qui
+    /// n'appartiennent à aucun dossier.
+    ///
+    /// Ils étaient deux portes sur la page « Base médicaments », qui en
+    /// portait huit. Ce n'était pas leur place : un registre de
+    /// stupéfiants et une facture de grossiste ne sont pas de la
+    /// référence sur le médicament, ce sont les papiers de l'officine.
+    /// Les mettre là était commode à écrire et faux à lire.
+    Registres,
 }
 
 impl MainView {
@@ -1028,6 +1037,7 @@ impl MainView {
             MainView::Agenda => "agenda",
             MainView::Transmissions => "transmissions",
             MainView::VaccineMap => "map",
+            MainView::Registres => "registres",
         }
     }
 
@@ -1039,6 +1049,7 @@ impl MainView {
             "agenda" => Some(MainView::Agenda),
             "transmissions" => Some(MainView::Transmissions),
             "map" => Some(MainView::VaccineMap),
+            "registres" => Some(MainView::Registres),
             _ => None,
         }
     }
@@ -1059,6 +1070,8 @@ enum WorkTab {
     Carnet,
     /// The vaccination map.
     Map,
+    /// Les registres de l'officine.
+    Registres,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -1135,6 +1148,14 @@ enum PatientTab {
     /// The paper the file has: the scanned ordonnance, the AT/MP sheet,
     /// the specialist's letter, the laboratory report.
     Scans,
+}
+
+/// Laquelle des deux moitiés des registres est à l'écran.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+enum RegistreTab {
+    #[default]
+    Stupefiants,
+    Pieces,
 }
 
 /// The ordonnance being composed after a positive TROD.
@@ -1561,13 +1582,14 @@ struct Session {
     /// sien en onglet — c'est là qu'on cherche une ordonnance ; la fiche
     /// médicament et l'officine passent par cet écran.
     show_scans: Option<(crate::scans::Subject, i64, String)>,
+    /// Laquelle des deux moitiés des registres est à l'écran.
+    registre_tab: RegistreTab,
     /// Le registre des stupéfiants : les produits suivis avec leur solde
     /// et leur dernier comptage, le produit ouvert, et la ligne en cours
     /// d'écriture.
     ///
     /// Le résumé est une requête sur tout le registre : il est relu
     /// quand une ligne est écrite, jamais par image.
-    show_stup: bool,
     stup_summary: Vec<(db::Stupefiant, f64, String)>,
     stup_open: Option<i64>,
     stup_moves: Vec<db::StupMove>,
@@ -1899,7 +1921,7 @@ impl Session {
             scan_edit: None,
             scan_note: None,
             show_scans: None,
-            show_stup: false,
+            registre_tab: RegistreTab::default(),
             stup_summary: Vec::new(),
             stup_open: None,
             stup_moves: Vec::new(),
@@ -1995,6 +2017,7 @@ impl Session {
                 WorkTab::Agenda,
                 WorkTab::Carnet,
                 WorkTab::Map,
+                WorkTab::Registres,
             ],
             error: None,
         };
@@ -2017,6 +2040,7 @@ impl Session {
             MainView::Agenda => WorkTab::Agenda,
             MainView::Transmissions => WorkTab::Carnet,
             MainView::VaccineMap => WorkTab::Map,
+            MainView::Registres => WorkTab::Registres,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -2067,6 +2091,7 @@ impl Session {
             WorkTab::Map => {
                 self.view = MainView::VaccineMap;
             }
+            WorkTab::Registres => self.open_registres(self.registre_tab),
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
                 self.drug_form = None;
@@ -2189,6 +2214,7 @@ impl Session {
             WorkTab::Agenda,
             WorkTab::Carnet,
             WorkTab::Map,
+            WorkTab::Registres,
         ] {
             let label = self.tab_label(&tab);
             let score = if q.is_empty() {
@@ -2410,7 +2436,6 @@ impl Session {
         self.show_dispositifs = false;
         self.show_mono = false;
         self.show_graph = false;
-        self.show_stup = false;
         self.show_scans = None;
         self.codex_open = None;
         self.dispo_open = None;
@@ -2485,21 +2510,19 @@ impl Session {
         };
     }
 
-    /// Ouvrir le registre, sur le produit donné s'il y en a un.
-    fn open_stup(&mut self, id: Option<i64>) {
-        self.close_drug_lists();
-        self.show_stup = true;
-        self.stup_open = id;
+    /// Ouvrir les registres sur le produit qui demande quelque chose.
+    ///
+    /// Une liste de quarante produits ouverte sur le premier par ordre
+    /// alphabétique n'apprend rien ; celui qui est sous son seuil ou
+    /// qu'on n'a pas recompté, si.
+    fn open_registres(&mut self, tab: RegistreTab) {
+        self.view = MainView::Registres;
+        self.registre_tab = tab;
         self.stup_note = None;
         self.reload_stup();
-        // Le produit à ouvrir par défaut : celui qui demande quelque
-        // chose. Une liste de quarante produits ouverte sur le premier
-        // par ordre alphabétique n'apprend rien.
         if self.stup_open.is_none() {
             self.stup_open = self.stup_to_check().first().map(|c| c.id);
-            if self.stup_open.is_some() {
-                self.reload_stup();
-            }
+            self.reload_stup();
         }
     }
 
@@ -2654,6 +2677,7 @@ impl Session {
             WorkTab::Agenda => tr("tab_agenda").to_owned(),
             WorkTab::Carnet => tr("tab_carnet").to_owned(),
             WorkTab::Map => tr("tab_map").to_owned(),
+            WorkTab::Registres => tr("tab_registres").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -5145,21 +5169,13 @@ impl App {
                         // l'onglet « Pièces » d'un dossier — deux
                         // chemins vers le même volet, donc les deux sont
                         // ouverts par le garde-fou.
-                        Ok("scans") => {
-                            session.open_scans(
-                                crate::scans::Subject::Officine,
-                                0,
-                                tr("scan_officine").to_owned(),
-                            );
-                            session.view = MainView::Drugs;
-                        }
+                        Ok("scans") => session.open_registres(RegistreTab::Pieces),
                         // Le registre des stupéfiants, sur le produit
                         // qui demande quelque chose — une liste ouverte
                         // sur le premier par ordre alphabétique
                         // n'exercerait ni la courbe ni les motifs.
-                        Ok("stup") => {
-                            session.open_stup(None);
-                            session.view = MainView::Drugs;
+                        Ok("stup" | "registres") => {
+                            session.open_registres(RegistreTab::Stupefiants);
                         }
                         // The map of the base, centred on a card that
                         // actually has a neighbourhood — an empty circle
@@ -5878,7 +5894,12 @@ impl App {
                         MainView::Agenda => Self::nav_agenda(ui, session),
                         MainView::Transmissions => Self::nav_carnet(ui, session),
                         MainView::VaccineMap => Self::nav_map(ui, session),
-                        MainView::Dashboard | MainView::Search => {
+                        // Le dock des patients, et pas par défaut : pour
+                        // inscrire une délivrance au registre il faut le
+                        // dossier ouvert, et c'est cette liste qui
+                        // l'ouvre. « Ouvrez d'abord le dossier » est le
+                        // message du formulaire ; voici le moyen.
+                        MainView::Dashboard | MainView::Search | MainView::Registres => {
                             Self::nav_patients(ui, session, focus, &config)
                         }
                     }
@@ -7019,6 +7040,10 @@ impl App {
             }
             if session.view == MainView::VaccineMap {
                 Self::vaccine_map_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Registres {
+                Self::registres_view(ui, session, &operator, &config);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -15437,6 +15462,57 @@ impl App {
     /// « quelle poche » are the questions, and they are answered by the
     /// family before they are answered by the name. The families
     /// themselves are alphabetical, since the team invents its own.
+    /// Les registres de l'officine : les stupéfiants, et les pièces qui
+    /// n'appartiennent à aucun dossier.
+    ///
+    /// Ils vivaient l'un et l'autre derrière une porte de la page « Base
+    /// médicaments », qui en portait huit — trois rangées de rectangles
+    /// gris indiscernables, au-dessus du champ de recherche pour lequel
+    /// on ouvre cette page. Ce n'était pas leur place : un registre de
+    /// stupéfiants et une facture de grossiste ne sont pas de la
+    /// référence sur le médicament. Les mettre là était commode à écrire
+    /// et faux à lire.
+    ///
+    /// Ils sont une vue de l'espace de travail maintenant, comme
+    /// l'agenda et le carnet — ce qu'ils sont : des choses que
+    /// l'officine tient tous les jours.
+    fn registres_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
+        let body = motif::visible_rect(ui);
+        let strip = motif::split_rows(body, &[28.0, 0.0], 4.0);
+        const TABS: [RegistreTab; 2] = [RegistreTab::Stupefiants, RegistreTab::Pieces];
+        let active = TABS
+            .iter()
+            .position(|t| *t == session.registre_tab)
+            .unwrap_or(0);
+        motif::inside(ui, strip[0], |ui| {
+            let tabs = [
+                motif::Tab::new(tr("registre_tab_stup")),
+                motif::Tab::new(tr("registre_tab_scans")),
+            ];
+            if let Some(motif::TabAction::Select(i)) =
+                motif::tab_strip(ui, "registre_tabs", &tabs, active)
+            {
+                session.registre_tab = TABS[i.min(TABS.len() - 1)];
+            }
+        });
+        match session.registre_tab {
+            RegistreTab::Stupefiants => {
+                Self::stup_body(ui, session, config, operator, strip[1]);
+            }
+            RegistreTab::Pieces => {
+                Self::scans_pane(
+                    ui,
+                    session,
+                    crate::scans::Subject::Officine,
+                    0,
+                    strip[1],
+                    operator,
+                    config,
+                );
+            }
+        }
+    }
+
     /// L'écran des pièces d'une fiche médicament ou de l'officine.
     ///
     /// Le dossier patient a le sien en onglet — c'est là qu'on cherche
@@ -15487,7 +15563,15 @@ impl App {
             rect.width() - 24.0,
             DocKind::ALL.iter().map(|k| tr(k.label_key())),
         );
-        let band = (kinds + 2.0) * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 22.0;
+        // Mesurée, **puis plafonnée**. Sur un onglet de dossier à
+        // 1024x700 en texte 1,25, les six genres tiennent sur deux
+        // rangées et la bande demandait tout le volet : « Pièces au
+        // dossier » restait un titre au-dessus de rien. Une bande dont
+        // la hauteur dépend de son contenu défile dans sa part plutôt
+        // que d'écraser le panneau qu'elle surmonte — c'est la règle de
+        // la maison, et c'est celle que j'avais oubliée en l'écrivant.
+        let want = (kinds + 2.0) * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 22.0;
+        let band = want.min(rect.height() * 0.5);
         let rows = motif::split_rows(rect, &[band, 0.0], 6.0);
 
         let mut import = false;
@@ -15499,60 +15583,68 @@ impl App {
         let mut close_edit = false;
 
         motif::panel(ui, rows[0], Some(tr("scan_add")), |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for k in DocKind::ALL {
-                    if motif::toggle(ui, tr(k.label_key()), session.scan_new_kind == k).clicked() {
-                        session.scan_new_kind = k;
-                    }
-                }
-            });
-            ui.horizontal_wrapped(|ui| {
-                let w = (ui.available_width() * 0.4).clamp(120.0, 300.0);
-                ui.add_sized(
-                    [w, Self::button_height(ui)],
-                    egui::TextEdit::singleline(&mut session.scan_new_label)
-                        .hint_text(tr("scan_label_hint")),
-                );
-                // Mesurée sur le texte d'invite : « Date du document »
-                // dans un champ de 110 px se lit « Date du docume », ce
-                // qui est un champ dont personne ne sait ce qu'il veut.
-                ui.add_sized(
-                    [
-                        Self::button_width(ui, tr("scan_day_hint")) + 8.0,
-                        Self::button_height(ui),
-                    ],
-                    egui::TextEdit::singleline(&mut session.scan_new_day)
-                        .hint_text(tr("scan_day_hint")),
-                );
-            });
-            ui.horizontal_wrapped(|ui| {
-                if motif::button(ui, tr("scan_import"))
-                    .on_hover_text(tr("scan_import_tooltip"))
-                    .clicked()
-                {
-                    import = true;
-                }
-                // Le bouton du scanner n'apparaît que si l'officine a
-                // écrit sa commande : proposer un bouton qui ne peut
-                // qu'échouer est pire que ne rien proposer.
-                if !config.scans.command.trim().is_empty()
-                    && motif::button(ui, tr("scan_scan"))
-                        .on_hover_text(tr("scan_scan_tooltip"))
-                        .clicked()
-                {
-                    scan_now = true;
-                }
-                if let Some((is_error, msg)) = &session.scan_note {
-                    ui.label(
-                        egui::RichText::new(msg.as_str())
-                            .size(11.0)
-                            .color(if *is_error {
-                                motif::alert()
-                            } else {
-                                motif::accent()
-                            }),
-                    );
-                }
+            let body = ui.available_rect_before_wrap();
+            motif::inside(ui, body, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("scan_add")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for k in DocKind::ALL {
+                                if motif::toggle(ui, tr(k.label_key()), session.scan_new_kind == k)
+                                    .clicked()
+                                {
+                                    session.scan_new_kind = k;
+                                }
+                            }
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            let w = (ui.available_width() * 0.4).clamp(120.0, 300.0);
+                            ui.add_sized(
+                                [w, Self::button_height(ui)],
+                                egui::TextEdit::singleline(&mut session.scan_new_label)
+                                    .hint_text(tr("scan_label_hint")),
+                            );
+                            // Mesurée sur le texte d'invite : « Date du document »
+                            // dans un champ de 110 px se lit « Date du docume », ce
+                            // qui est un champ dont personne ne sait ce qu'il veut.
+                            ui.add_sized(
+                                [
+                                    Self::button_width(ui, tr("scan_day_hint")) + 8.0,
+                                    Self::button_height(ui),
+                                ],
+                                egui::TextEdit::singleline(&mut session.scan_new_day)
+                                    .hint_text(tr("scan_day_hint")),
+                            );
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("scan_import"))
+                                .on_hover_text(tr("scan_import_tooltip"))
+                                .clicked()
+                            {
+                                import = true;
+                            }
+                            // Le bouton du scanner n'apparaît que si l'officine a
+                            // écrit sa commande : proposer un bouton qui ne peut
+                            // qu'échouer est pire que ne rien proposer.
+                            if !config.scans.command.trim().is_empty()
+                                && motif::button(ui, tr("scan_scan"))
+                                    .on_hover_text(tr("scan_scan_tooltip"))
+                                    .clicked()
+                            {
+                                scan_now = true;
+                            }
+                            if let Some((is_error, msg)) = &session.scan_note {
+                                ui.label(egui::RichText::new(msg.as_str()).size(11.0).color(
+                                    if *is_error {
+                                        motif::alert()
+                                    } else {
+                                        motif::accent()
+                                    },
+                                ));
+                            }
+                        });
+                    });
             });
         });
 
@@ -15594,26 +15686,37 @@ impl App {
                                         .monospace()
                                         .color(motif::text_dim()),
                                 );
-                                if motif::button(ui, &sc.label)
-                                    .on_hover_text(tr("scan_open_tooltip"))
+                                // Le libellé cède, jamais les boutons.
+                                // Une ligne dont « Corriger » et « × »
+                                // sortent du volet est une ligne qu'on
+                                // ne peut ni corriger ni retirer, et
+                                // rien dans le cadre ne dit qu'ils sont
+                                // là. La place qu'ils prennent est
+                                // mesurée et retranchée d'abord ; ce qui
+                                // reste est pour le nom, coupé s'il le
+                                // faut et lisible en entier au survol.
+                                let size = crate::scans::human_size(sc.size.max(0) as u64);
+                                let gap = ui.spacing().item_spacing.x;
+                                let reserved = Self::button_width(ui, tr("scan_edit"))
+                                    + Self::button_width(ui, tr("scan_delete_confirm"))
+                                    + Self::button_width(ui, &size)
+                                    + gap * 4.0;
+                                let room = (ui.available_width() - reserved).max(48.0);
+                                if motif::button(ui, &elide(ui, &sc.label, room, 12.0))
+                                    .on_hover_text(if sc.remark.is_empty() {
+                                        sc.label.clone()
+                                    } else {
+                                        format!("{} — {}", sc.label, sc.remark)
+                                    })
                                     .clicked()
                                 {
                                     open_id = Some(sc.id);
                                 }
                                 ui.label(
-                                    egui::RichText::new(crate::scans::human_size(
-                                        sc.size.max(0) as u64
-                                    ))
-                                    .size(10.5)
-                                    .color(motif::text_dim()),
+                                    egui::RichText::new(size)
+                                        .size(10.5)
+                                        .color(motif::text_dim()),
                                 );
-                                if !sc.remark.is_empty() {
-                                    ui.label(
-                                        egui::RichText::new(sc.remark.as_str())
-                                            .size(10.5)
-                                            .color(motif::text_dim()),
-                                    );
-                                }
                                 if motif::button(ui, tr("scan_edit"))
                                     .on_hover_text(tr("scan_edit_tooltip"))
                                     .clicked()
@@ -15886,20 +15989,27 @@ impl App {
     /// nom se lit en ouvrant le dossier. Un registre est une pièce qu'on
     /// sort, qu'on imprime et qui traîne au comptoir ; ce qu'il doit
     /// permettre, c'est de *remonter* au patient, pas de l'afficher.
-    fn stup_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
+    /// Le registre dans le rectangle qu'on lui donne.
+    fn stup_body(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        config: &Config,
+        operator: &str,
+        body: egui::Rect,
+    ) {
         use crate::ordonnancier::Kind;
-        let body = motif::visible_rect(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
-        let head_h = Self::button_height(ui) + line * 2.0 + 16.0;
+        // Deux rangées de contrôles (les champs enveloppent sur un volet
+        // étroit) plus la ligne de sous-titre et celle du message.
+        let head_h = Self::button_height(ui) * 2.0 + line * 2.0 + 16.0;
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
         let mut open_patient: Option<i64> = None;
 
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.heading(tr("stup_title"));
-                if motif::button(ui, tr("patient_back")).clicked() {
-                    session.show_stup = false;
-                }
+                // Pas de titre : l'onglet au-dessus dit « Stupéfiants ».
+                // Un intitulé répété est une rangée de moins pour le
+                // registre, qui est ce qu'on est venu lire.
                 // Suivre un produit de plus : le libellé est ce qui
                 // s'écrira sur chaque ligne du registre.
                 ui.add_sized(
@@ -15999,10 +16109,15 @@ impl App {
         // de texte : le formulaire est huit rangées de contrôles et une
         // rangée de bouton, et `interact_size.y` n'est pas la hauteur
         // d'un bouton Motif.
+        // Mesurée, **puis plafonnée à la moitié**. À 1024x700 en texte
+        // 1,25 les huit rangées demandaient 284 px sur un volet qui en
+        // fait 290 : le registre — ce pour quoi on ouvre l'écran — se
+        // réduisait à une ligne coupée. Le formulaire défile dans sa
+        // part ; ni lui ni le registre ne prend tout.
         let form_h = if wide {
             0.0
         } else {
-            Self::button_height(ui) * 8.0 + 44.0
+            (Self::button_height(ui) * 8.0 + 44.0).min(work.height() * 0.5)
         };
         let gap = 8.0;
         let cut = |from: f32, w: f32| {
@@ -16177,7 +16292,15 @@ impl App {
                 })
                 .collect();
             let curve = crate::ordonnancier::running(&moves);
-            if curve.len() >= 2 {
+            // La courbe est la garniture, les lignes sont le plat. Sur
+            // un volet court elle passe à la trappe plutôt que de
+            // réduire le registre à une bande vide de quatorze pixels —
+            // ce qu'elle faisait à 1024x700 en texte 1,25. Le plancher
+            // est en **lignes**, donc l'échelle du texte ne le déplace
+            // pas.
+            let room_for_lines = ui.available_rect_before_wrap().height();
+            let floor = line * 4.0 + 12.0;
+            if curve.len() >= 2 && room_for_lines - 52.0 >= floor {
                 let w = ui.available_width();
                 let (plot, resp) =
                     ui.allocate_exact_size(egui::vec2(w, 46.0), egui::Sense::hover());
@@ -16324,9 +16447,11 @@ impl App {
 
         // --- La ligne qu'on écrit ------------------------------------
         Self::stup_form(ui, session, config, operator, form_rect, &open);
+        // Le numéro de dossier ouvre le dossier — la seule façon de lire
+        // l'identité, puisque le registre porte le numéro et pas le nom.
         if let Some(id) = open_patient {
             if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
-                session.show_stup = false;
+                session.view = MainView::Search;
                 session.open_patient(p);
             } else {
                 session.stup_note = Some((true, tr("stup_file_gone").to_owned()));
@@ -18849,8 +18974,6 @@ impl App {
                 } else {
                     session.graph_query.clear();
                 }
-            } else if session.show_stup {
-                session.show_stup = false;
             } else if session.show_scans.is_some() {
                 session.show_scans = None;
             } else {
@@ -18883,10 +19006,6 @@ impl App {
             Self::graph_view(ui, session);
             return;
         }
-        if session.show_stup {
-            Self::stup_view(ui, session, config, operator);
-            return;
-        }
         if session.show_scans.is_some() {
             Self::scans_view(ui, session, operator, config);
             return;
@@ -18910,8 +19029,6 @@ impl App {
                 // the page, so there was never a width that worked.
                 let gap = ui.spacing().item_spacing.x;
                 let doors_width: f32 = [
-                    tr("scan_button"),
-                    tr("stup_button"),
                     tr("graph_button"),
                     tr("tables_button"),
                     tr("mono_button"),
@@ -18930,22 +19047,6 @@ impl App {
                 });
                 let roomy = title_width + gap + doors_width <= ui.available_width();
                 let doors = |ui: &mut egui::Ui, session: &mut Session| {
-                    if motif::button(ui, tr("scan_button"))
-                        .on_hover_text(tr("scan_button_tooltip"))
-                        .clicked()
-                    {
-                        session.open_scans(
-                            crate::scans::Subject::Officine,
-                            0,
-                            tr("scan_officine").to_owned(),
-                        );
-                    }
-                    if motif::button(ui, tr("stup_button"))
-                        .on_hover_text(tr("stup_button_tooltip"))
-                        .clicked()
-                    {
-                        session.open_stup(None);
-                    }
                     if motif::button(ui, tr("graph_button"))
                         .on_hover_text(tr("graph_button_tooltip"))
                         .clicked()
@@ -21954,7 +22055,8 @@ impl eframe::App for App {
                     | MainView::Drugs
                     | MainView::Agenda
                     | MainView::Transmissions
-                    | MainView::VaccineMap => {
+                    | MainView::VaccineMap
+                    | MainView::Registres => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
