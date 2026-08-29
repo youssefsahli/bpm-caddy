@@ -5,6 +5,42 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.134.0] - 2026-08-29
+
+### Added
+- **Le codex passe de 58 à 80 préparations**, sur trois établis que la
+  liste ne couvrait pas.
+  - **La dermatologie du comptoir** : le chlorure d'aluminium à 20 %
+    (l'hyperhidrose, et le rappel qu'il s'applique sur une peau sèche le
+    soir et se rince le matin — appliqué sur une peau humide ou après le
+    rasage, il brûle), l'érythromycine et la clindamycine locales de
+    l'acné, chacune avec la règle qui les tient (jamais en monothérapie
+    prolongée, sous peine de sélectionner des résistances en quelques
+    semaines), l'ichtammol du furoncle, le dermocorticoïde dilué au demi
+    — qui baisse la concentration et **jamais la classe** —, le talc
+    salicylé des pieds, la solution de Burow, l'eau oxygénée à 10
+    volumes et le bleu de méthylène.
+  - **La pédiatrie et la sonde** : hydrochlorothiazide, amlodipine,
+    sildénafil de l'HTAP du nouveau-né, acétazolamide, chlorure de
+    potassium et acide ursodésoxycholique en suspension ou en solution
+    buvable, plus les gélules d'acide folique et de zinc. Chacune porte
+    le piège qui lui est propre — le sel d'amlodipine qui change d'une
+    spécialité à l'autre et change le calcul, le zinc élément qui n'est
+    pas le sulfate de zinc et divise la dose par quatre si on les
+    confond, le potassium dont l'unité est la mmol et non le mg, et les
+    folates qui corrigent l'hémogramme d'une carence en B12 pendant que
+    l'atteinte neurologique avance.
+  - **La bouche et le nez** : le bain de bouche lidocaïne-bicarbonate-
+    nystatine de la mucite (à prendre trente minutes avant un repas et
+    non juste avant : manger sur une bouche anesthésiée est la fausse
+    route), le lavage nasal bicarbonaté avec le geste du nourrisson —
+    allongé, tête tournée, jamais assis tête en arrière —, et l'huile
+    gomenolée, contre-indiquée avant trente mois.
+  - Et les ovules et suppositoires à la glycérine, avec le facteur de
+    déplacement qui n'est pas une formalité : sans lui les ovules sont
+    sous-dosés du volume qu'occupe le principe actif.
+  - Le cliquet suit : le test refuse désormais moins de quatre-vingts.
+
 ## [0.133.0] - 2026-08-29
 
 ### Added

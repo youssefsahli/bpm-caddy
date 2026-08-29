@@ -94,7 +94,11 @@ Deux règles valent partout :
 - **Tests** : toute formule doit se lire, avoir un rendement lisible et
   survivre à une mise à l'échelle sans perdre de ligne ; une « formule
   type » (dont les quantités viennent de l'ordonnance) est la seule
-  exception et le dit dans son nom.
+  exception et le dit dans son nom. Le compte est un **cliquet** : 80
+  préparations aujourd'hui, et le test refuse d'en voir moins — une
+  formule retirée est une formule que le préparatoire doit rouvrir un
+  livre pour retrouver. Deux préparations ne peuvent pas porter le même
+  nom.
 
 ## Les dispositifs médicaux
 
