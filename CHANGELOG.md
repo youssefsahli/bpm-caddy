@@ -5,6 +5,56 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.117.0] - 2026-08-29
+
+La conciliation part chez le prescripteur, et deux recherches de plus
+quittent la boucle d'affichage.
+
+### Added
+- **La fiche de conciliation, pour le prescripteur.** « Imprimer… » sur
+  l'onglet Conciliation écrit une A4 : le patient, sa date de naissance,
+  le médecin nommé sur le dossier, le rapprochement complet en tableau —
+  statut, traitement, ce que portait le dossier, ce que porte
+  l'ordonnance de sortie, la remarque — et un encadré vide pour la
+  réponse.
+  - Elle porte les **reconductions** aussi, et pas seulement les
+    divergences : une feuille qui liste cinq changements ne dit rien des
+    douze lignes qu'elle n'a pas regardées, et le médecin n'a aucun
+    moyen de faire la différence.
+  - L'encadré « Avis du prescripteur » est la raison de l'envoyer : la
+    réponse revient sur la même feuille.
+  - Une mention de plus dans `[disclaimers]` (Options › Mentions), vide
+    par défaut comme les sept autres.
+
+### Changed
+- **La recherche de patients et la boîte « Aller à… » répondent une fois
+  par question.** La première était demandée trois fois par image — le
+  panneau de gauche, la vue de recherche, et la branche qui décide
+  d'ouvrir la création —, chacune un passage sur tout le fichier et une
+  copie de vingt patients. La seconde est une fenêtre egui, donc
+  repeinte avec le reste de l'image : elle classait les vues, tous les
+  patients, les 850 fiches, les tables, les préparations, les
+  dispositifs et les protocoles, et fabriquait un `String` par résultat,
+  pendant qu'on y tape trois lettres.
+  - Il a fallu deux révisions de plus, et la seconde a demandé de faire
+    une fonction de la ligne « recharger les protocoles », écrite neuf
+    fois dans le fichier — neuf endroits où un memo bâti dessus aurait
+    pu vieillir sans que personne le voie.
+  - Les deux memos se reconstruisent aussi quand la liste qu'ils portent
+    est **vide** : les vues les empruntent en les sortant de la session,
+    et un chemin de sortie peut ne pas les rendre. « Prêté » et
+    « vraiment vide » se répondent de la même façon.
+
+### Fixed
+- **Plus aucun `unwrap()` dans `src/app.rs` hors tests.** Les quatre
+  derniers étaient « demander si c'est ouvert, puis déballer » sur la
+  même Option — l'heure d'un rendez-vous, son déplacement, le nœud d'un
+  protocole, la ligne de posologie.
+- Le troisième bouton de l'onglet Conciliation faisait passer sa rangée
+  à deux lignes, et poussait toutes les divergences hors du panneau à
+  1024x700 : la hauteur de cette rangée est maintenant mesurée, et c'est
+  la bande du bas qui cède. Les libellés ont raccourci avec.
+
 ## [0.116.0] - 2026-08-29
 
 La conciliation médicamenteuse, la posologie du patient, et quatre

@@ -115,6 +115,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # calculator = "Modèle à un compartiment : la clinique et le RCP priment."
 # Pied du plan de prise remis au patient.
 # plan = "Ce plan reprend ce que nous avons vu ensemble : il ne remplace pas votre ordonnance."
+# Pied de la fiche de conciliation adressée au prescripteur.
+# conciliation = "Rapprochement établi à l'officine à partir de l'ordonnance de sortie remise par le patient : il ne vaut pas avis médical."
 
 [ordonnance]
 # Les fiches du référentiel médicaments portant cette étiquette sont
@@ -442,6 +444,8 @@ pub struct DisclaimersConfig {
     pub calculator: String,
     /// At the foot of the patient's plan de prise.
     pub plan: String,
+    /// At the foot of the conciliation sheet sent to the prescriber.
+    pub conciliation: String,
 }
 
 /// Convention rules: how many acts of each kind per "année
@@ -1280,6 +1284,7 @@ mod tests {
         ];
         cfg.disclaimers.ordonnance_footer = "Reconsulter si aggravation.".to_owned();
         cfg.disclaimers.plan = "Ce plan ne remplace pas votre ordonnance.".to_owned();
+        cfg.disclaimers.conciliation = "Il ne vaut pas avis médical.".to_owned();
         cfg.ordonnance.adjuvant_tag = "probiotique".to_owned();
         let text = toml::to_string_pretty(&cfg).expect("la configuration doit se sérialiser");
         let back: Config = toml::from_str(&text).expect("et se relire");
@@ -1290,6 +1295,7 @@ mod tests {
             "Reconsulter si aggravation."
         );
         assert_eq!(back.disclaimers.plan, cfg.disclaimers.plan);
+        assert_eq!(back.disclaimers.conciliation, cfg.disclaimers.conciliation);
         assert_eq!(back.billing.bpm, cfg.billing.bpm);
         assert_eq!(back.rules.cycle_months, cfg.rules.cycle_months);
     }

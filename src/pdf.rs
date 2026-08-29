@@ -1127,6 +1127,98 @@ fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
     src
 }
 
+pub struct ConciliationData<'a> {
+    pub patient: &'a Patient,
+    pub today: &'a str,
+    /// The prescriber the file names, so the sheet says who it is for.
+    pub physician: &'a str,
+    /// One row per treatment: (statut, produit, au dossier, à la sortie,
+    /// remarque). Already ordered — loudest first, as on screen.
+    pub rows: Vec<(String, String, String, String, String)>,
+    /// The one-line count under the title.
+    pub summary: &'a str,
+    /// The officine's own mention, empty unless it wrote one.
+    pub mention: &'a str,
+    pub signature: &'a str,
+}
+
+/// The conciliation as a sheet for the prescriber.
+///
+/// It carries the reconductions too, and not only the divergences: a
+/// sheet that lists five changes says nothing about the twelve lines it
+/// did not look at, and the prescriber has no way of telling the two
+/// apart. The blank box at the foot is the point of sending it — the
+/// answer comes back on the same sheet.
+pub fn open_conciliation(
+    data: &ConciliationData,
+    pharmacy: &PharmacyConfig,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        conciliation_source(data, pharmacy),
+        &format!("conciliation_{}", data.patient.id),
+    )
+}
+
+fn conciliation_source(data: &ConciliationData, pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[Conciliation médicamenteuse]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — né(e) le #{} — le #{}]]\n",
+        typst_str(&data.patient.full_name()),
+        typst_str(&crate::db::format_french_date(&data.patient.birth_date)),
+        typst_str(data.today)
+    ));
+    if !data.physician.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(center)[#text(10pt)[À l'attention du #{}]]\n",
+            typst_str(data.physician.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#v(2mm)\n#align(center)[#text(9.5pt, style: \"italic\")[#{}]]\n#v(3mm)\n",
+        typst_str(data.summary)
+    ));
+    let mut rows = String::new();
+    for (status, name, before, after, note) in &data.rows {
+        rows.push_str(&format!(
+            "[#text(8pt, weight: \"bold\")[#{}]], [*#{}*], {}, {}, [#text(8.5pt, style: \"italic\")[#{}]],\n",
+            typst_str(status),
+            typst_str(name),
+            typst_str(before),
+            typst_str(after),
+            typst_str(note)
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("[], [], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, auto, 1fr, 1fr, 1.1fr), inset: 5pt, stroke: 0.5pt,\n  [*Statut*], [*Traitement*], [*Au dossier*], [*Sur l'ordonnance de sortie*], [*Remarque*],\n{rows})\n"
+    ));
+    src.push_str("#v(4mm)\n#text(10pt, weight: \"bold\")[Avis du prescripteur]\n#v(1.5mm)\n#box(width: 100%, height: 3.5cm, stroke: 0.7pt)\n");
+    src.push_str("#v(4mm)\n");
+    src.push_str(&format!(
+        "#text(9.5pt)[#{} — #{}]\n",
+        typst_str(&pharmacy.name),
+        typst_str(&pharmacy.phone)
+    ));
+    if !data.signature.trim().is_empty() {
+        src.push_str(&format!(
+            "\\\n#text(9.5pt)[Rapprochement établi par #{}]\n",
+            typst_str(data.signature.trim())
+        ));
+    }
+    if !data.mention.trim().is_empty() {
+        src.push_str(&format!(
+            "#v(3mm)\n#text(8pt, style: \"italic\")[#{}]\n",
+            typst_str(data.mention.trim())
+        ));
+    }
+    src
+}
+
 /// The fiche de fabrication of a preparation: the formula at the
 /// quantity actually being made, then the blanks the bonnes pratiques
 /// ask to fill in — lot numbers, operator, date, control.
@@ -2776,6 +2868,84 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("mode_emploi.pdf"), &pdf);
         }
+    }
+
+    /// The prescriber's copy of a conciliation: it carries what was
+    /// reconducted as well as what changed, it names who it is for, it
+    /// leaves a box for the answer, and it escapes what was pasted into
+    /// the app from a hospital sheet nobody wrote by hand.
+    #[test]
+    fn the_conciliation_sheet_says_what_did_not_change_too() {
+        let patient = Patient {
+            physician: "Dr Morel".to_owned(),
+            ..sample_patient()
+        };
+        let data = ConciliationData {
+            patient: &patient,
+            today: "29/08/2026",
+            physician: &patient.physician,
+            rows: vec![
+                (
+                    "NON RAPPROCHÉ".to_owned(),
+                    "Zorglub #eval \"x\" lyoc".to_owned(),
+                    String::new(),
+                    String::new(),
+                    "Ligne non retrouvée dans la base : à vérifier à la main.".to_owned(),
+                ),
+                (
+                    "REMPLACÉ".to_owned(),
+                    "Coversyl remplacé par Acuitel".to_owned(),
+                    "5 mg le matin".to_owned(),
+                    "5 mg le matin".to_owned(),
+                    "Même classe (IEC).".to_owned(),
+                ),
+                (
+                    "RECONDUIT".to_owned(),
+                    "Lasilix".to_owned(),
+                    "40 mg le matin".to_owned(),
+                    "40 mg le matin".to_owned(),
+                    String::new(),
+                ),
+            ],
+            summary: "2 divergence(s) sur 3 ligne(s) comparée(s)",
+            mention: "Il ne vaut pas avis médical.",
+            signature: "Claire Leroy",
+        };
+        let source = conciliation_source(&data, &sample_pharmacy());
+        assert!(source.contains("Conciliation médicamenteuse"));
+        assert!(source.contains("Dr Morel"));
+        // The reconduction is on the sheet: a list of changes alone says
+        // nothing about the lines nobody looked at.
+        assert!(source.contains("RECONDUIT"));
+        assert!(source.contains("Avis du prescripteur"));
+        // Pasted text is escaped like everything else.
+        assert!(!source.contains("#eval \"x\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la conciliation doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("conciliation_exemple.pdf"),
+                &pdf,
+            );
+        }
+        // Nothing compared yet still prints a sheet: the officine
+        // sometimes sends the file's own ordonnance to be confirmed.
+        let empty = ConciliationData {
+            patient: &patient,
+            today: "29/08/2026",
+            physician: "",
+            rows: Vec::new(),
+            summary: "",
+            mention: "",
+            signature: "",
+        };
+        let world = PdfWorld::new(conciliation_source(&empty, &sample_pharmacy()));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
     /// The patient's copy: it must carry the missed-dose line, since

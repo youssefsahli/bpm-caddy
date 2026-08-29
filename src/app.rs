@@ -6697,7 +6697,7 @@ impl App {
             return;
         }
         if session.patient_tab == PatientTab::Conciliation {
-            Self::patient_conciliation_pane(ui, session, patient, work, operator);
+            Self::patient_conciliation_pane(ui, session, patient, work, operator, config);
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
@@ -7689,6 +7689,7 @@ impl App {
         patient: &Patient,
         work: egui::Rect,
         operator: &str,
+        config: &Config,
     ) {
         session.refresh_conciliation(patient.id);
         let line = ui.text_style_height(&egui::TextStyle::Body);
@@ -7714,9 +7715,20 @@ impl App {
             // heading — and the cap is raised to the floor rather than
             // trusted to sit above it, because on a short pane they do
             // cross and `f32::clamp` panics when they do.
-            let band = (work.height() * 0.52)
-                .clamp(line * 7.0, line * 22.0)
-                .min((work.height() - line * 6.0).max(line * 7.0));
+            //
+            // What the answer pane needs before it can show an answer is
+            // *measured*, not assumed: its control row wraps, and at
+            // 1024x700 with both docks open it wraps to two lines. The
+            // third button appearing pushed every divergence off the
+            // pane, which is the one thing the tab exists to show.
+            //
+            // Five lines and a half is the paste box's floor: its title,
+            // two lines of text and the button under them. One pastes
+            // into it far more often than one reads it back, and the
+            // answer above is what the tab exists to show.
+            let band = (work.height() * 0.52).clamp(line * 5.5, line * 22.0).min(
+                (work.height() - Self::concil_head(ui, work.width()) - line * 3.0).max(line * 5.5),
+            );
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -7736,9 +7748,42 @@ impl App {
                 egui::Rect::from_min_max(egui::pos2(side.right() - doses_w, side.top()), side.max),
             )
         };
-        Self::concil_result_pane(ui, session, patient, result, operator);
+        Self::concil_result_pane(ui, session, patient, result, operator, config);
         Self::concil_sheet_pane(ui, session, sheet);
         Self::concil_doses_pane(ui, session, patient, doses);
+    }
+
+    /// Ce que le panneau des divergences dépense avant d'en montrer
+    /// une : son titre, la ligne de comptage, et la rangée de boutons —
+    /// qui passe à deux lignes dès que le troisième bouton apparaît.
+    fn concil_head(ui: &egui::Ui, width: f32) -> f32 {
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        // The count sits on the same wrapped row as the buttons, so it
+        // is measured with them.
+        let rows = Self::wrapped_rows_of(
+            ui,
+            width - 24.0,
+            [
+                Self::button_width(ui, tr("concil_journal")),
+                Self::button_width(ui, tr("concil_print")),
+                Self::button_width(ui, tr("concil_adopt")),
+                // The count is a label and not a button: measured as one
+                // it claimed a button's padding it does not use, and the
+                // row was declared to wrap a good sixty pixels early.
+                ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        trn("concil_count", &[&99, &99]),
+                        egui::TextStyle::Body.resolve(ui.style()),
+                        motif::text_dim(),
+                    )
+                    .size()
+                    .x
+                }),
+            ]
+            .into_iter(),
+        );
+        // The panel's own title and rules, then the wrapped rows.
+        line * 2.0 + rows * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 12.0
     }
 
     /// La feuille de sortie, telle qu'elle est collée ou tapée.
@@ -7905,12 +7950,14 @@ impl App {
         patient: &Patient,
         rect: egui::Rect,
         operator: &str,
+        config: &Config,
     ) {
         use crate::conciliation::Change;
         let counts = crate::conciliation::counts(&session.concil_rows);
         let empty_sheet = session.concil_sheet.trim().is_empty();
         let mut journal = false;
         let mut adopt = false;
+        let mut print = false;
         let rows = std::mem::take(&mut session.concil_rows);
         motif::panel(ui, rect, Some(tr("concil_result")), |ui| {
             if empty_sheet {
@@ -7932,6 +7979,12 @@ impl App {
                 );
                 if motif::button(ui, tr("concil_journal")).clicked() {
                     journal = true;
+                }
+                if motif::button(ui, tr("concil_print"))
+                    .on_hover_text(tr("concil_print_tooltip"))
+                    .clicked()
+                {
+                    print = true;
                 }
                 // Only worth offering when the sheet actually says
                 // something the file does not.
@@ -8032,6 +8085,9 @@ impl App {
         if adopt {
             Self::concil_adopt_doses(session, patient);
         }
+        if print {
+            Self::concil_print(session, patient, operator, config);
+        }
     }
 
     /// Le produit dont une ligne parle, écrit pour un lecteur : les
@@ -8042,6 +8098,67 @@ impl App {
             d.label.clone()
         } else {
             trn("concil_switch_label", &[&d.replaces, &d.label])
+        }
+    }
+
+    /// La fiche de conciliation, pour le prescripteur.
+    ///
+    /// Elle porte les reconductions aussi, et pas seulement les
+    /// divergences : une feuille qui liste cinq changements ne dit rien
+    /// des douze lignes qu'elle n'a pas regardées, et le médecin n'a
+    /// aucun moyen de faire la différence. L'encadré vide en bas est la
+    /// raison de l'envoyer — la réponse revient sur la même feuille.
+    fn concil_print(session: &mut Session, patient: &Patient, operator: &str, config: &Config) {
+        use crate::conciliation::Change;
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let counts = crate::conciliation::counts(&session.concil_rows);
+        let rows: Vec<(String, String, String, String, String)> = session
+            .concil_rows
+            .iter()
+            .map(|d| {
+                let status = match d.kind {
+                    Change::Unmatched => tr("concil_kind_unmatched"),
+                    Change::Switched => tr("concil_kind_switched"),
+                    Change::Stopped => tr("concil_kind_stopped"),
+                    Change::DoseChanged => tr("concil_kind_dose"),
+                    Change::Added => tr("concil_kind_added"),
+                    Change::Kept => tr("concil_kind_kept"),
+                };
+                let note = match d.kind {
+                    Change::Unmatched => tr("concil_unmatched_note").to_owned(),
+                    Change::Switched if !d.note.trim().is_empty() => {
+                        trf("concil_switch_note", d.note.clone())
+                    }
+                    _ => String::new(),
+                };
+                (
+                    status.to_owned(),
+                    Self::concil_title(d),
+                    d.before.clone(),
+                    d.after.clone(),
+                    note,
+                )
+            })
+            .collect();
+        let summary = trn(
+            "concil_count",
+            &[&counts.divergences(), &session.concil_rows.len()],
+        );
+        let signature = config.pharmacy.signature_for(operator);
+        let data = crate::pdf::ConciliationData {
+            patient,
+            today: &today,
+            physician: &patient.physician,
+            rows,
+            summary: &summary,
+            mention: &config.disclaimers.conciliation,
+            signature: &signature,
+        };
+        if let Err(e) = crate::pdf::open_conciliation(&data, &config.pharmacy) {
+            session.error = Some(e);
         }
     }
 
@@ -19919,6 +20036,10 @@ impl eframe::App for App {
                                         &mut editor.cfg.disclaimers.calculator,
                                     ),
                                     (tr("opts_mention_plan"), &mut editor.cfg.disclaimers.plan),
+                                    (
+                                        tr("opts_mention_concil"),
+                                        &mut editor.cfg.disclaimers.conciliation,
+                                    ),
                                 ] {
                                     ui.label(dim(label));
                                     ui.add_sized(
