@@ -785,6 +785,10 @@ pub struct BilanData<'a> {
     pub biology: Vec<(String, String, String, String)>,
     /// (niveau, ce que ça change).
     pub findings: Vec<(String, String)>,
+    /// (où en est le dossier, l'analyte, le rythme, depuis quand, ce qui
+    /// le demande) — ce que l'ordonnance réclame de faire vérifier.
+    /// C'est la seule section du bilan qui parle de ce qui *manque*.
+    pub watch: Vec<(String, String, String, String, String)>,
     /// What the calendrier vaccinal still owes.
     pub vaccines: Vec<String>,
     /// (date, acte, thème, état) — the year's accompaniment.
@@ -908,6 +912,26 @@ fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
                 typst_str(text)
             ));
         }
+    }
+
+    // --- What has not been asked for --------------------------------
+    if !data.watch.is_empty() {
+        src.push_str("#sec[À faire vérifier]\n");
+        let mut rows = String::new();
+        for (level, label, rhythm, since, by) in &data.watch {
+            rows.push_str(&format!(
+                "[#text(8pt, weight: \"bold\")[#{}]], [*#{}*], {}, {}, {},\n",
+                typst_str(level),
+                typst_str(label),
+                typst_str(rhythm),
+                typst_str(since),
+                typst_str(by)
+            ));
+        }
+        src.push_str(&format!(
+            "#table(columns: (auto, auto, auto, 1fr, 1fr), inset: 5pt, stroke: 0.5pt,\n  [*État*], [*Analyte*], [*Rythme*], [*Dernier résultat*], [*Demandé par*],\n{rows})\n"
+        ));
+        src.push_str("#text(8.5pt, style: \"italic\")[Rythmes usuels des RCP et des recommandations : l'espacement réel est décidé par le prescripteur.]\n");
     }
 
     // --- Vaccines and acts ------------------------------------------
@@ -3039,6 +3063,22 @@ mod tests {
             )],
             findings: vec![("ALERTE".to_owned(), "Kaliémie élevée sous IEC.".to_owned())],
             vaccines: vec!["dTP — rappel décennal attendu".to_owned()],
+            watch: vec![
+                (
+                    "À REFAIRE".to_owned(),
+                    "LDL-cholestérol".to_owned(),
+                    "une fois par an".to_owned(),
+                    "12/02/2024 (30 mois)".to_owned(),
+                    "Tahor".to_owned(),
+                ),
+                (
+                    "JAMAIS NOTÉ".to_owned(),
+                    "Natrémie".to_owned(),
+                    "tous les six mois".to_owned(),
+                    "Aucun résultat noté au dossier.".to_owned(),
+                    "Lasilix".to_owned(),
+                ),
+            ],
             acts: vec![(
                 "20/08/2026".to_owned(),
                 "BPM".to_owned(),
@@ -3051,6 +3091,10 @@ mod tests {
         assert!(source.contains("Interactions repérées"));
         assert!(source.contains("Revue de l'ordonnance"));
         assert!(source.contains("Plan d'action"));
+        // The only section of the bilan that speaks about what is *not*
+        // on the file.
+        assert!(source.contains("À faire vérifier"));
+        assert!(source.contains("LDL-cholestérol"));
         // Hostile text goes in as a string literal, never as markup.
         assert!(!source.contains("#eval \"x\"]"));
         let world = PdfWorld::new(source);
@@ -3079,6 +3123,7 @@ mod tests {
             biology: Vec::new(),
             findings: Vec::new(),
             vaccines: Vec::new(),
+            watch: Vec::new(),
             acts: Vec::new(),
             signature: "",
         };

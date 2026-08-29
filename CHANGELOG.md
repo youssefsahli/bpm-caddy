@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.119.0] - 2026-08-29
+
+Ce qui n'a pas été fait remonte au tableau de bord, et s'imprime sur le
+bilan.
+
+### Added
+- **La liste d'appel parle aussi des examens qui manquent.** « À revoir »
+  ne connaissait que ce que les chiffres présents disent. Elle porte
+  maintenant les dossiers dont un analyte réclamé par l'ordonnance a un
+  dernier résultat plus vieux que son rythme, avec la ligne qui dit
+  lequel et depuis combien de mois. Un dossier sans alerte ni
+  avertissement peut désormais y figurer pour cette seule raison.
+  - **Seulement « à refaire », jamais « jamais noté ».** Le premier est un
+    fait : on a la date, elle est dépassée. Le second est une absence de
+    donnée, et une liste d'appel qui s'ouvrirait dessus serait la base
+    entière le jour de l'installation.
+- **« À faire vérifier » sur le bilan partagé de médication.** Une
+  section de plus sur la feuille qu'on tient pendant l'entretien : l'état,
+  l'analyte, le rythme, la date du dernier résultat et ce qui le demande.
+  Les lignes déjà à jour n'y sont pas — une feuille tenue pendant un
+  entretien est une liste de choses à faire. C'est la seule section du
+  bilan qui parle de ce qui *manque*.
+
 ## [0.118.0] - 2026-08-29
 
 Ce que l'ordonnance demande de faire vérifier, et depuis combien de temps

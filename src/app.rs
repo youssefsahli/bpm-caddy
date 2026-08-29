@@ -2945,7 +2945,7 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
-        self.bio_watch = bio_watch(&self.db);
+        self.bio_watch = bio_watch(&self.db, &self.today);
         self.loc_watch = loc_watch(&self.db, &self.today, self.loc_notice_days);
         // The sequences waiting for their next rendez-vous, read from
         // the same export the CSV is made of.
@@ -3699,7 +3699,12 @@ struct BioWatch {
     name: String,
     alerts: usize,
     warns: usize,
-    /// The loudest of the two readings, in one line — the reason to
+    /// Analytes the ordonnance asks for whose last result is older than
+    /// the rhythm. Only the ones with a date: « jamais noté » is an
+    /// absence of data and not an absence of care, and a call list that
+    /// opened on it would be the whole base the day it is installed.
+    overdue: usize,
+    /// The loudest of the three readings, in one line — the reason to
     /// open the file.
     first: String,
 }
@@ -3786,7 +3791,7 @@ fn loc_watch(db: &Db, today: &str, notice_days: u32) -> Vec<LocWatch> {
 /// and each ordonnance against itself — and keep the files that have
 /// something to say. Sorted loudest first: the panel is a call list,
 /// not a table.
-fn bio_watch(db: &Db) -> Vec<BioWatch> {
+fn bio_watch(db: &Db, today: &str) -> Vec<BioWatch> {
     let mut out: Vec<BioWatch> = Vec::new();
     for row in db.watchlist().unwrap_or_default() {
         let readings: Vec<crate::biology::Reading> = row
@@ -3814,9 +3819,18 @@ fn bio_watch(db: &Db) -> Vec<BioWatch> {
             findings.iter().filter(|f| f.severity == severity).count()
                 + points.iter().filter(|p| p.severity == severity).count()
         };
+        // And what the ordonnance asks for that nobody has asked for in
+        // too long: a rule can say nothing about an examination that was
+        // not done, so this is the only one of the three that speaks
+        // about an absence.
+        let late: Vec<crate::surveillance::Due> =
+            crate::surveillance::due(&terms, &readings, today)
+                .into_iter()
+                .filter(|d| d.level == crate::surveillance::Level::Overdue)
+                .collect();
         let alerts = count(crate::biology::Severity::Alert);
         let warns = count(crate::biology::Severity::Warn);
-        if alerts == 0 && warns == 0 {
+        if alerts == 0 && warns == 0 && late.is_empty() {
             continue;
         }
         // Whichever of the two speaks loudest is the reason to open the
@@ -3836,19 +3850,30 @@ fn bio_watch(db: &Db) -> Vec<BioWatch> {
             }
             (Some(f), _) => f.text.clone(),
             (None, Some(p)) => format!("{} — {}", p.title, p.detail),
-            (None, None) => String::new(),
+            // Nothing to read is what puts the file here: say which
+            // number is missing and since when.
+            (None, None) => late
+                .first()
+                .map(|d| {
+                    trn(
+                        "dash_watch_overdue",
+                        &[&d.label, &d.months.unwrap_or(0), &d.drugs.join(", ")],
+                    )
+                })
+                .unwrap_or_default(),
         };
         out.push(BioWatch {
             patient_id: row.patient_id,
             name: row.patient_name,
             alerts,
             warns,
+            overdue: late.len(),
             first,
         });
     }
     out.sort_by(|a, b| {
-        (b.alerts, b.warns)
-            .cmp(&(a.alerts, a.warns))
+        (b.alerts, b.warns, b.overdue)
+            .cmp(&(a.alerts, a.warns, a.overdue))
             .then_with(|| a.name.cmp(&b.name))
     });
     out
@@ -9842,6 +9867,36 @@ impl App {
                 )
             })
             .collect();
+        // What the ordonnance asks to have measured — the only part of
+        // the bilan that speaks about what is *not* on the file. The
+        // ones already up to date are left out: a sheet held during an
+        // entretien is a list of things to do.
+        let watch: Vec<(String, String, String, String, String)> = session
+            .surveillance
+            .iter()
+            .filter(|d| d.level != crate::surveillance::Level::Ok)
+            .map(|d| {
+                let level = match d.level {
+                    crate::surveillance::Level::Overdue => tr("watch_overdue"),
+                    crate::surveillance::Level::Never => tr("watch_never"),
+                    crate::surveillance::Level::Soon => tr("watch_soon"),
+                    crate::surveillance::Level::Ok => tr("watch_ok"),
+                };
+                let since = match (&d.last, d.months) {
+                    (Some(day), Some(m)) => {
+                        format!("{} ({} mois)", db::format_french_date(day), m)
+                    }
+                    _ => tr("watch_no_result").to_owned(),
+                };
+                (
+                    level.to_owned(),
+                    d.label.to_owned(),
+                    crate::surveillance::rhythm_text(d.every_months),
+                    since,
+                    d.drugs.join(", "),
+                )
+            })
+            .collect();
         let signature = config.pharmacy.signature_for(operator);
         let data = crate::pdf::BilanData {
             patient,
@@ -9852,6 +9907,7 @@ impl App {
             biology,
             findings,
             vaccines,
+            watch,
             acts,
             signature: &signature,
         };
@@ -18072,13 +18128,19 @@ impl App {
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
                     for w in &session.bio_watch {
+                        // What put the file on the list, in the order
+                        // the counter would read it: an alert first, a
+                        // warning next, and a check nobody has done in
+                        // too long when there is nothing louder.
                         let tag = if w.alerts > 0 {
                             (trf("dash_bio_alerts", w.alerts), motif::alert())
-                        } else {
+                        } else if w.warns > 0 {
                             (
                                 trf("dash_bio_warns", w.warns),
                                 egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
                             )
+                        } else {
+                            (trf("dash_bio_overdue", w.overdue), motif::accent())
                         };
                         ui.horizontal(|ui| {
                             ui.label(
@@ -21813,6 +21875,73 @@ mod tests {
         assert!(!borrowed.is_empty());
         s.refresh_goto_hits(12);
         assert!(!s.goto_hits.is_empty(), "le memo prêté n'est pas revenu");
+    }
+
+    /// The call list speaks about what is *not* on a file too — but only
+    /// about a check that has a date and is past it. « Jamais noté » is
+    /// an absence of data, and a list that opened on it would be the
+    /// whole base the day the application is installed.
+    #[test]
+    fn the_call_list_names_a_check_nobody_has_done_in_too_long() {
+        let (s, _swept) = scratch_session("watchlist");
+        let p = s.patients[0].clone();
+        let tahor =
+            s.db.drugs()
+                .unwrap()
+                .into_iter()
+                .find(|d| d.name == "Tahor")
+                .expect("la base de départ porte une statine");
+        s.db.add_patient_drug(p.id, tahor.id).unwrap();
+        let today = "2026-08-29";
+
+        // A treatment and nothing recorded: the file owes a bilan, but
+        // nobody can say it is late, so it is not a reason to call.
+        assert!(super::bio_watch(&s.db, today).is_empty());
+
+        // Transaminases of thirty months, perfectly normal, under a
+        // statine that asks for them once a year. Nothing in the value
+        // alerts — it is its *date* that puts the file on the list, and
+        // that is the whole point of the panel.
+        s.db.add_bio_result(
+            p.id,
+            &crate::db::BioResult {
+                id: 0,
+                code: "ALAT".to_owned(),
+                label: "ALAT (transaminases)".to_owned(),
+                value: 25.0,
+                unit: "UI/L".to_owned(),
+                taken_on: "2024-02-12".to_owned(),
+                remark: String::new(),
+            },
+        )
+        .unwrap();
+        let list = super::bio_watch(&s.db, today);
+        let row = list
+            .iter()
+            .find(|w| w.patient_id == p.id)
+            .expect("le dossier est sur la liste d'appel");
+        assert_eq!(row.alerts, 0);
+        assert_eq!(row.warns, 0);
+        assert_eq!(row.overdue, 1);
+        // The line says which number is missing and since when.
+        assert!(row.first.contains("ALAT"), "{}", row.first);
+        assert!(row.first.contains("30"), "{}", row.first);
+
+        // Recorded again this month, the reason to call is gone.
+        s.db.add_bio_result(
+            p.id,
+            &crate::db::BioResult {
+                id: 0,
+                code: "ALAT".to_owned(),
+                label: "ALAT (transaminases)".to_owned(),
+                value: 25.0,
+                unit: "UI/L".to_owned(),
+                taken_on: "2026-08-20".to_owned(),
+                remark: String::new(),
+            },
+        )
+        .unwrap();
+        assert!(super::bio_watch(&s.db, today).is_empty());
     }
 
     /// The year is read off the date the session already holds, and the
