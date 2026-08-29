@@ -68,7 +68,9 @@ pub struct Due {
     /// Le rythme retenu : le plus serré de ceux que l'ordonnance
     /// réclame.
     pub every_months: u32,
-    /// Les traitements qui le demandent, dans l'ordre de l'ordonnance.
+    /// Les traitements qui le demandent : dans l'ordre de l'ordonnance
+    /// pour une même surveillance, et par ordre de surveillance quand
+    /// plusieurs se rejoignent sur le même analyte.
     pub drugs: Vec<String>,
     /// La raison, celle de la règle la plus serrée.
     pub why: &'static str,

@@ -1151,6 +1151,63 @@ fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
     src
 }
 
+pub struct CallRow<'a> {
+    pub name: &'a str,
+    pub phone: &'a str,
+    /// Pourquoi ce dossier est sur la liste : « 2 alerte(s) »,
+    /// « 1 à refaire »…
+    pub tag: &'a str,
+    pub reason: &'a str,
+}
+
+/// La liste d'appel sur papier.
+///
+/// Le tableau de bord dit qui rappeler ; il ne dit rien de ce qu'on a
+/// fait de l'appel. Cette feuille se coche et s'annote au téléphone,
+/// avec une case et une colonne vide pour ce qui a été dit — c'est ce
+/// qui permet de reprendre la liste le lendemain sans rappeler deux
+/// fois les mêmes.
+pub fn open_call_list(
+    rows: &[CallRow],
+    today: &str,
+    pharmacy: &PharmacyConfig,
+) -> Result<PathBuf, String> {
+    compile_and_open(call_list_source(rows, today, pharmacy), "liste_appel")
+}
+
+fn call_list_source(rows: &[CallRow], today: &str, pharmacy: &PharmacyConfig) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[Liste d'appel]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n#v(4mm)\n",
+        typst_str(&pharmacy.name),
+        typst_str(today)
+    ));
+    let mut body = String::new();
+    for r in rows {
+        body.push_str(&format!(
+            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], {}, [#text(8pt, weight: \"bold\")[#{}]], {}, [],\n",
+            typst_str(r.name),
+            typst_str(r.phone),
+            typst_str(r.tag),
+            typst_str(r.reason)
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("[], [], [], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, auto, auto, auto, 1.4fr, 1fr), inset: 5pt, stroke: 0.5pt,\n  [], [*Patient*], [*Téléphone*], [*Motif*], [*Ce que dit le dossier*], [*Ce qui a été dit*],\n{body})\n"
+    ));
+    src.push_str(&format!(
+        "#v(4mm)\n#text(9pt, style: \"italic\")[Liste établie le #{} : elle vieillit avec la base, et se réimprime plutôt qu'elle ne se conserve.]\n",
+        typst_str(today)
+    ));
+    src
+}
+
 pub struct ConciliationData<'a> {
     pub patient: &'a Patient,
     pub today: &'a str,
@@ -2892,6 +2949,51 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("mode_emploi.pdf"), &pdf);
         }
+    }
+
+    /// The call list is worked through at the telephone: it must carry
+    /// the number, say why in three words, and leave somewhere to write.
+    #[test]
+    fn the_call_list_can_be_worked_through() {
+        let rows = vec![
+            CallRow {
+                name: "Jean #eval \"x\" Dupont",
+                phone: "06 01 02 03 04",
+                tag: "2 alerte(s)",
+                reason: "Kaliémie élevée sous IEC.",
+            },
+            CallRow {
+                name: "Claire Martin",
+                phone: "",
+                tag: "1 à refaire",
+                reason: "ALAT — dernier résultat il y a 30 mois, demandé par Tahor",
+            },
+        ];
+        let source = call_list_source(&rows, "29/08/2026", &sample_pharmacy());
+        assert!(source.contains("Liste d'appel"));
+        assert!(source.contains("06 01 02 03 04"));
+        // A tick box and a column to write in: without them it is a
+        // list one reads, not a list one works through.
+        assert!(source.contains("Ce qui a été dit"));
+        assert!(source.contains("stroke: 0.6pt"));
+        assert!(!source.contains("#eval \"x\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la liste d'appel doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("liste_appel_exemple.pdf"),
+                &pdf,
+            );
+        }
+        // Nothing to call about still compiles: the button only appears
+        // when there is, but the function must not depend on that.
+        let world = PdfWorld::new(call_list_source(&[], "29/08/2026", &sample_pharmacy()));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
     /// The prescriber's copy of a conciliation: it carries what was

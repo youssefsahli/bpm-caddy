@@ -2785,6 +2785,22 @@ impl Session {
             .unwrap_or_default()
     }
 
+    /// The posology as the base gave it, which is what a write compares
+    /// against.
+    ///
+    /// [`Self::dose_of`] returns the *edit buffer* — what is in the
+    /// field, half-typed included. Passing that as the expected value of
+    /// a compare-and-set makes the write refuse itself the moment
+    /// somebody has touched the field, and the refusal says « modifiée
+    /// depuis un autre poste », which is a lie.
+    fn dose_base_of(&self, drug_id: i64) -> &str {
+        self.patient_doses_base
+            .iter()
+            .find(|(id, _)| *id == drug_id)
+            .map(|(_, p)| p.as_str())
+            .unwrap_or_default()
+    }
+
     /// Compare the file's ordonnance to the sheet that has been pasted,
     /// once per question rather than on each frame that shows it: the
     /// comparison folds every name and every dose on both sides.
@@ -8413,7 +8429,7 @@ impl App {
                 continue;
             };
             let id = drug.id;
-            let expected = session.dose_of(id).to_owned();
+            let expected = session.dose_base_of(id).to_owned();
             match session
                 .db
                 .set_patient_posology(patient.id, id, &dose, &expected)
@@ -17775,6 +17791,58 @@ impl App {
                     Err(e) => session.error = Some(e),
                 }
             }
+            // The call list on paper: the dashboard says who to ring
+            // and says nothing about what came of it. This one is
+            // ticked and annotated at the telephone.
+            if !session.bio_watch.is_empty()
+                && motif::button(ui, tr("dash_call_list"))
+                    .on_hover_text(tr("dash_call_list_tooltip"))
+                    .clicked()
+            {
+                let today = if session.today.is_empty() {
+                    session.db.today_iso().unwrap_or_default()
+                } else {
+                    session.today.clone()
+                };
+                // The phone is on the patient's own record, not on the
+                // watchlist row: a call list without a number is a list
+                // one has to look every name up from.
+                // The chips are owned first, then borrowed: a `CallRow`
+                // holds references, and a `String` built inside the map
+                // would die at the end of it.
+                let owned: Vec<(&str, &str, String, &str)> = session
+                    .bio_watch
+                    .iter()
+                    .map(|w| {
+                        let phone = session
+                            .patients
+                            .iter()
+                            .find(|p| p.id == w.patient_id)
+                            .map(|p| p.phone.trim())
+                            .unwrap_or_default();
+                        let tag = if w.alerts > 0 {
+                            trf("dash_bio_alerts", w.alerts)
+                        } else if w.warns > 0 {
+                            trf("dash_bio_warns", w.warns)
+                        } else {
+                            trf("dash_bio_overdue", w.overdue)
+                        };
+                        (w.name.as_str(), phone, tag, w.first.as_str())
+                    })
+                    .collect();
+                let rows: Vec<crate::pdf::CallRow> = owned
+                    .iter()
+                    .map(|(name, phone, tag, reason)| crate::pdf::CallRow {
+                        name,
+                        phone,
+                        tag,
+                        reason,
+                    })
+                    .collect();
+                if let Err(e) = crate::pdf::open_call_list(&rows, &today, &config.pharmacy) {
+                    session.error = Some(e);
+                }
+            }
             // The paper companion of the export: the acts to invoice,
             // with the code, the step and the amount the memo sets.
             if motif::button(ui, tr("dash_billing_recap"))
@@ -21801,7 +21869,11 @@ mod tests {
         assert_eq!(s.dose_of(id), "5 mg le soir");
 
         // « Reprendre les posologies » takes the sheet's line onto the
-        // file, and the table then says the two agree.
+        // file, and the table then says the two agree — even when the
+        // field has been typed into and not committed, because the write
+        // compares against what the base gave and not against the
+        // buffer.
+        s.patient_doses = vec![(id, "à moitié tap".to_owned())];
         super::App::concil_adopt_doses(&mut s, &p);
         assert_eq!(s.dose_of(id), "10 mg : 1 cp le soir");
         s.refresh_conciliation(p.id);

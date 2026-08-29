@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.121.0] - 2026-08-29
+
+La liste d'appel s'imprime, et une posologie à moitié tapée ne fait plus
+refuser l'écriture.
+
+### Added
+- **« Liste d'appel… »** sur le tableau de bord, à côté de l'export et du
+  récapitulatif. Le tableau dit qui rappeler et ne dit rien de ce qu'on a
+  fait de l'appel : cette feuille porte le nom, le numéro — lu sur la
+  fiche du patient, parce qu'une liste sans numéro oblige à chercher
+  chaque nom —, le motif en trois mots, ce que dit le dossier, une case
+  à cocher et une colonne vide pour ce qui a été dit. Elle se coche au
+  téléphone, et c'est ce qui permet de reprendre la liste le lendemain
+  sans rappeler deux fois les mêmes.
+
+### Fixed
+- **« Reprendre les posologies » se refusait elle-même.** L'écriture
+  comparait la valeur attendue au *tampon de saisie* — ce qu'il y a dans
+  le champ, à moitié tapé compris — et non à ce que la base avait donné.
+  Dès qu'on avait touché un champ sans valider, la reprise échouait sur
+  « posologie modifiée depuis un autre poste », ce qui était faux. Le
+  test tape dans le champ exprès, et échoue si la correction est
+  retirée.
+
 ## [0.120.0] - 2026-08-29
 
 Les moteurs de règles à l'échelle d'une vraie base, et trois carrés
