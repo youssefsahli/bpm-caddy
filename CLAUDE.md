@@ -102,8 +102,10 @@ upgrade is decided, the number to defend is the logic one, and
 - A band whose height depends on its content (wrapped buttons, filters)
   measures it with `Self::wrapped_rows` and is **capped**, scrolling past
   its share rather than crowding out the panes under it. Every layout
-  must survive 1024x700 with both docks open — `scripts/smoke.sh` and a
-  screenshot at that size are the check.
+  must survive 1024x700 with both docks open — `scripts/smoke.sh` opens
+  every view **twice**, at 1400x900 and at 1024x700 with
+  `text_scale = 1.25`, and a screenshot at that size is the eye check
+  the panics test cannot do.
 - A control that must stay visible under a widget that grows (a button
   under a text box) gets its **own carved row**, taken off the bottom
   with `split_rows` before the widget is drawn — not a height reserved
@@ -199,8 +201,13 @@ edge, and crops back — do the same in any new capture script.
 
 Headless runs: `./scripts/screenshots.sh` regenerates the README
 screenshots from a fresh demo seed, and `./scripts/smoke.sh` opens every
-view once and fails on any panic — that is how the Ctrl+N crash (nine
-digit keys for ten acts) was found. Both shoot against a throwaway
+view in two shapes and fails on any panic — that is how the Ctrl+N crash
+(nine digit keys for ten acts) was found. The second shape is the point:
+`f32::clamp` panics when a computed floor crosses a computed cap, and
+floors only cross caps on a short pane at large text. A deliberately
+inverted clamp in the conciliation pane passes at 1400x900 and brings
+the application down at 1024x700 with `text_scale = 1,25` — one pass
+would have shipped it. Both shoot against a throwaway
 `XDG_CONFIG_HOME`, never the operator's own config. For manual runs:
 `xvfb-run` + ImageMagick `import`, and **`unset WAYLAND_DISPLAY` inside
 the xvfb shell** or the window opens on the real desktop instead.

@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.125.0] - 2026-08-29
+
+Le passage de vérification ouvre chaque vue dans deux formes, parce que
+la panique qu'il cherche ne se produit pas dans la première.
+
+### Changed
+- **`scripts/smoke.sh` ouvre les trente-huit vues deux fois** : à
+  1400x900, et à 1024x700 avec `text_scale = 1,25` — la forme qu'a un
+  écran de comptoir et que n'a pas celui d'un développeur. `f32::clamp`
+  fait tomber toute l'application quand un plancher calculé croise un
+  plafond calculé, et les planchers ne croisent les plafonds que sur un
+  panneau court en grand texte. `CLAUDE.md` demandait cette forme comme
+  une vérification manuelle ; elle se fait maintenant à chaque passage.
+  - Vérifié en cassant exprès : un `clamp` inversé dans le panneau de
+    conciliation passe à 1400x900 et fait tomber l'application à
+    1024x700 en texte 1,25. Un seul passage l'aurait laissé partir.
+  - Chaque forme part d'une configuration jetable à elle, pour ne pas
+    hériter des volets et de la fenêtre que la précédente a laissés dans
+    `layout.toml`.
+  - Les soixante-seize ouvertures passent.
+
 ## [0.124.0] - 2026-08-29
 
 La dernière écriture partagée qui ne se comparait pas.
