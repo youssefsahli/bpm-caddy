@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.128.0] - 2026-08-29
+
+### Fixed
+- **Le travail de vérification a de quoi dessiner.** eframe passe par
+  OpenGL, qu'il ouvre à l'exécution plutôt que de le lier : un runner
+  sans carte graphique a besoin du rasteriseur logiciel de Mesa, et il
+  faut le lui dire au lieu de le laisser chercher un matériel qui n'est
+  pas là. Les paquets sont ajoutés et `LIBGL_ALWAYS_SOFTWARE=1` est
+  posé sur l'étape. Le passage complet a été refait localement dans ces
+  conditions.
+  - Et c'est écrit dans le fichier : si ce travail échoue un jour parce
+    que l'application ne démarre pas, les deux réponses honnêtes sont de
+    corriger les paquets ou de retirer le travail. Le faire passer quand
+    même est la seule chose à ne pas faire — la vérification du script
+    est « aucune panique n'est sortie », et un binaire qui n'a jamais
+    tourné n'en sort pas non plus.
+
 ## [0.127.0] - 2026-08-29
 
 Le seul garde-fou de l'interface tourne désormais à chaque poussée, et

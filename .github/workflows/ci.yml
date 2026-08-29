@@ -59,7 +59,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev \
             libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libdbus-1-dev \
-            xvfb
+            xvfb libgl1 libglx-mesa0 libgl1-mesa-dri
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # eframe draws through OpenGL, which it opens at run time rather
+      # than linking: a runner with no GPU needs Mesa's software
+      # rasteriser, and needs to be told to use it rather than probe for
+      # hardware that is not there.
+      #
+      # If this job ever fails because the application will not start,
+      # the two honest answers are to fix the packages or to drop the
+      # job. Making it pass regardless is the one thing not to do: the
+      # script's whole check is « no panic came out », and a binary that
+      # never ran produces no panic either.
       - run: ./scripts/smoke.sh
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
