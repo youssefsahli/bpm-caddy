@@ -705,7 +705,7 @@ mod tests {
     #[test]
     fn the_watch_count_only_grows() {
         assert!(
-            WATCHES.len() >= 47,
+            WATCHES.len() >= 49,
             "{} surveillances : le compte ne baisse pas",
             WATCHES.len()
         );

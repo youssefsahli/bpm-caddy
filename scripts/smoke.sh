@@ -40,6 +40,26 @@ XDG_CONFIG_HOME="$tmp/seed" \
     BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null || exit 1
 cargo build || exit 1
 
+# Prove the application starts before believing seventy-six silent runs.
+#
+# The check below is « no panic line came out », and a binary that dies
+# before it draws anything produces no panic line either: a missing
+# system library, a display that did not come up, a build that did not
+# refresh — every one of them reads as a clean pass. `timeout` returns
+# 124 when it had to kill something that was still alive, and anything
+# else means the process ended on its own.
+mkdir -p "$tmp/alive/bpm-caddy"
+XDG_CONFIG_HOME="$tmp/alive" BPM_CADDY_WINDOW=1400x900 \
+    xvfb-run -a -s "-screen 0 1400x900x24" bash -c '
+        unset WAYLAND_DISPLAY
+        timeout 5 ./target/debug/bpm-caddy >/dev/null 2>&1'
+if [ $? -ne 124 ]; then
+    echo "L'application ne reste pas ouverte cinq secondes : un passage" >&2
+    echo "sans panique ne prouverait rien. Vérifiez l'affichage et les" >&2
+    echo "bibliothèques du système." >&2
+    exit 1
+fi
+
 views=(
     search dashboard patient drugs drug_card drug_edit
     agenda agenda_day agenda_month tables tables_search calc carnet

@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.127.0] - 2026-08-29
+
+Le seul garde-fou de l'interface tourne désormais à chaque poussée, et
+il sait dire qu'il n'a rien vérifié.
+
+### Fixed
+- **Deux comptes corrigés.** Les cliquets disaient 47 surveillances et 94
+  règles de biologie ; il y en a 49 et 95. Le delta annoncé à chaque fois
+  était juste, l'absolu ne l'était pas — un compte de départ mal relevé,
+  recopié ensuite. Les planchers sont remis sur la vérité, qui est ce
+  qu'un lecteur peut vérifier.
+
+### Added
+- **`smoke.sh` est un travail de CI.** L'interface n'a pas de tests
+  unitaires — une vue ne se couvre pas sans harnais, et `egui_kittest`
+  demande egui ≥ 0.30 alors que le projet est sur 0.29 — donc
+  `smoke.sh` est ce qui en tient lieu, et il ne tournait que lorsque
+  quelqu'un y pensait.
+- **Il prouve d'abord que l'application démarre.** Sa vérification est
+  « aucune ligne de panique n'est sortie », et un binaire qui meurt
+  avant de dessiner quoi que ce soit n'en sort pas non plus : une
+  bibliothèque manquante, un affichage qui n'est pas monté, une
+  construction qui n'a pas été refaite — chacun se lisait comme un
+  passage propre. Le script lance donc l'application une fois et exige
+  que `timeout` ait eu à la tuer : autre chose veut dire qu'elle s'est
+  arrêtée toute seule, et les soixante-seize ouvertures qui suivent ne
+  prouveraient rien.
+  - Vérifié en remplaçant le binaire par un `exit 1` : le script
+    s'arrête avec le message et le code 1, au lieu d'annoncer que tout
+    va bien.
+
 ## [0.126.0] - 2026-08-29
 
 La règle des migrations est tenue par un test au lieu d'être demandée
@@ -200,7 +231,7 @@ Les moteurs de règles à l'échelle d'une vraie base, et trois carrés
 creux que personne n'avait vus.
 
 ### Added
-- **49 → 55 analytes, 87 → 94 règles, 46 → 47 surveillances.** Six lignes
+- **49 → 55 analytes, 87 → 95 règles, 48 → 49 surveillances.** Six lignes
   que la ville imprime et que le catalogue n'avait pas, chacune entrant
   avec la règle qui la lit contre un traitement.
   - **Le TCA** est le test de l'héparine non fractionnée et de rien
@@ -326,7 +357,7 @@ Ce que l'ordonnance demande de faire vérifier, et depuis combien de temps
   - Un second onglet dans le panneau de la vue Biologie : pour
     l'ordonnance du dossier, quels analytes elle réclame, tous les
     combien, la date du dernier résultat noté, et depuis combien de mois.
-  - **46 surveillances** sur les classes courantes : l'INR mensuel de
+  - **48 surveillances** sur les classes courantes : l'INR mensuel de
     l'AVK, la clairance annuelle de l'AOD, les plaquettes de l'héparine,
     la kaliémie de l'anti-aldostérone, la natrémie du thiazidique, la
     lithémie trimestrielle, la TSH de l'amiodarone et de la

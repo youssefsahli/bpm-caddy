@@ -42,3 +42,24 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       # The floors are in the script, and they only ever move up.
       - run: ./scripts/coverage.sh
+
+  # The interface has no unit tests — a view cannot be covered without a
+  # harness, and egui_kittest needs egui >= 0.30 while this is on 0.29.
+  # `smoke.sh` is what stands in for them, and it only ever ran when
+  # somebody remembered. It opens every view in two shapes, and the
+  # second one is the point: `f32::clamp` panics when a computed floor
+  # crosses a computed cap, and floors only cross caps on a short pane
+  # at large text.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libdbus-1-dev \
+            xvfb
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: ./scripts/smoke.sh

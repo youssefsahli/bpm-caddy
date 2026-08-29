@@ -1728,7 +1728,7 @@ mod tests {
             CATALOGUE.len()
         );
         assert!(
-            RULES.len() >= 94,
+            RULES.len() >= 95,
             "{} règles de biologie, il y en avait quatre-vingt-sept",
             RULES.len()
         );

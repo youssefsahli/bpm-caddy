@@ -52,7 +52,9 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
 Always build/lint with `--workspace`: plain `cargo build` only builds the
 root package. CI enforces `cargo fmt --all --check`,
 `cargo clippy --workspace --all-targets -- -D warnings` (the tests are
-linted too), `cargo test --workspace`, and `./scripts/coverage.sh`.
+linted too), `cargo test --workspace`, `./scripts/coverage.sh`, and
+`./scripts/smoke.sh` — which used to run only when somebody remembered,
+and is the only guard the interface has.
 
 `scripts/coverage.sh` holds two floors that only ever move up: the
 **logic modules** (everything but `app.rs`, `main.rs`, `motif` and the
