@@ -49,9 +49,18 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   heart-failure drugs. Pure, tested, no egui; the index is built once,
   never in the draw loop),
   `src/ordonnancier.rs` (the register of stupéfiants: the balance — which
-  is **not** a sum, an inventory *sets* it —, the dispensing number,
-  the inventory gap, and what to go and count. Pure, tested, no clock:
-  the day is passed in),
+  is **not** a sum, an inventory *sets* it —, the **cancellation**,
+  which is the only correction there is (a bad line stays written and a
+  further line names it and undoes exactly what it did — never the
+  quantity that line carries, which is the one thing that may have been
+  wrong), the dispensing number, the inventory gap, and what to go and
+  count. Plus the **catalogue**: 106 presentations of the French market
+  in 12 families, each with its dosage, its counting unit, the maximum
+  prescription length in days and the rule its family carries. A rule
+  table, not seeded content — the officine *picks* from it, because a
+  base shipped with 106 followed products is 106 zero balances and a
+  control list nobody opens again. Pure, tested, no clock: the day is
+  passed in),
   `src/scans.rs` (the scanned pieces: what a file **is**, read in its
   bytes and never in its name, what a piece can be, and how the
   officine's own scanner is asked for one — pure, tested, reads no
@@ -242,6 +251,36 @@ upgrade is decided, the number to defend is the logic one, and
   The dispensing number is assigned **inside** the inserting
   transaction, never by the caller: two PCs dispensing at once would ask
   for the same one.
+- **A correction is a `Kind::Annulation` line that names the line it
+  cancels**, carries a mandatory reason, and undoes exactly what that
+  line did to the stock — read off the *cancelled* line, never off the
+  cancelling one, whose own quantity is never looked at. That matters:
+  the day you correct is the day the quantity was wrong, so a
+  hand-typed opposite line gives back what somebody *believed* was
+  taken. Cancelling an inventory restores its stored `expected`, which
+  is the only reason that column is written rather than recomputed. An
+  annulation cannot itself be cancelled, cannot be written twice
+  (checked inside the transaction — two PCs would double the stock),
+  cannot name a line of another product, and never takes a dispensing
+  number: the cancelled delivery keeps its own, and the sequence goes
+  on after it. A cancelled line stays on screen and on paper, struck
+  through — a register with the mistakes removed proves nothing.
+- **The register lives in its own encrypted file** —
+  `<base>_stups.db`, same SQLCipher, same key. Not for size: ten years
+  of register is a few hundred kilobytes. Because it is not the same
+  kind of thing. The base is a working tool — reset, reseeded,
+  compacted, copied from PC to PC; the register is an accounting record
+  that R. 5132-36 asks to be kept ten years and that an inspection asks
+  for *alone*, without the patient files. Consequences, and a test
+  holds each: `change_password` rekeys **three** files now, « Copier la
+  base… » copies three, the daily backup keeps as many copies of the
+  register as of the larger of the other two, and a register written by
+  an older version is **moved** across on first launch — ids preserved
+  (a line names a file number and a product names a drug card:
+  renumbering would make them point at someone else), marked in
+  `seed_state` rather than deduced from « the file is empty », and the
+  original rows are left where they are. One does not delete a register,
+  even to file it elsewhere.
 - **A scanned piece's format is read in its bytes, never in its name.**
   The application keeps it and later hands it back to the OS to open;
   accepting a file because it is called `.pdf` is agreeing to hand back
@@ -283,7 +322,8 @@ upgrade is decided, the number to defend is the logic one, and
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|scans|
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
+  stup_catalogue|ordonnancier|scans|
   patient_scans|explorer|explorer_organ`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.

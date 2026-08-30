@@ -1272,6 +1272,88 @@ fn stock_check_source(
     src
 }
 
+/// L'ordonnancier d'une année : la suite des délivrances, tous produits
+/// confondus, dans l'ordre de leurs numéros.
+///
+/// C'est ce qu'un contrôle demande, et c'est la seule vue où le manque
+/// d'un numéro se voit. Le patient y est **un numéro de dossier** et
+/// jamais un nom : une feuille imprimée sort du logiciel, se pose sur un
+/// comptoir et se garde dix ans ; ce qu'elle doit permettre, c'est de
+/// remonter au dossier, pas d'afficher qui prend de la morphine.
+///
+/// Une ligne annulée est imprimée **annulée**, avec son motif, jamais
+/// retirée : une feuille d'où l'on aurait ôté les erreurs ne serait pas
+/// une copie du registre.
+pub fn open_ordonnancier(
+    rows: &[crate::db::StupMove],
+    labels: &std::collections::HashMap<i64, String>,
+    cancelled: &std::collections::HashSet<i64>,
+    year: i64,
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        ordonnancier_source(rows, labels, cancelled, year, pharmacy, today),
+        &format!("ordonnancier_{year}"),
+    )
+}
+
+fn ordonnancier_source(
+    rows: &[crate::db::StupMove],
+    labels: &std::collections::HashMap<i64, String>,
+    cancelled: &std::collections::HashSet<i64>,
+    year: i64,
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
+         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[Ordonnancier des stupéfiants — #{}]]\n#v(1mm)\n#align(center)[#text(9pt)[#{} — édité le #{}]]\n#v(4mm)\n",
+        typst_str(&year.to_string()),
+        typst_str(&pharmacy.name),
+        typst_str(&crate::db::format_french_date(today))
+    ));
+    let mut body = String::new();
+    for m in rows {
+        let struck = cancelled.contains(&m.id);
+        let cell = |s: &str| {
+            if struck {
+                format!("[#strike[#{}]]", typst_str(s))
+            } else {
+                format!("[#{}]", typst_str(s))
+            }
+        };
+        body.push_str(&format!(
+            "[*#{}*], {}, {}, {}, {}, {}, {}, [#{}],\n",
+            typst_str(&crate::ordonnancier::number_label(
+                m.ordo_year as u32,
+                m.ordo_no as u32
+            )),
+            cell(&crate::db::format_french_date(&m.happened_on)),
+            cell(labels.get(&m.stup_id).map_or("—", String::as_str)),
+            cell(&crate::codex::format_quantity(m.quantity)),
+            cell(&format!("dossier {}", m.patient_id)),
+            cell(&m.prescriber),
+            cell(&m.operator),
+            typst_str(if struck { "annulée" } else { "" }),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("[], [], [], [], [], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, auto, 1.4fr, auto, auto, 1fr, auto, auto), inset: 4pt, stroke: 0.5pt,\n  [*N°*], [*Date*], [*Produit*], [*Quantité*], [*Dossier*], [*Prescripteur*], [*Par*], [*État*],\n{body})\n"
+    ));
+    src.push_str(&format!(
+        "#v(4mm)\n#text(8pt, style: \"italic\")[{} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée garde le sien, et la suite continue après lui. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]\n",
+        rows.len()
+    ));
+    src
+}
+
 pub struct ConciliationData<'a> {
     pub patient: &'a Patient,
     pub today: &'a str,
@@ -2555,6 +2637,97 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(
                 std::path::Path::new(&dir).join("facturation_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
+
+    /// L'ordonnancier imprimé : la suite des numéros, le dossier et
+    /// jamais le nom, et les annulations imprimées **annulées**.
+    ///
+    /// Les trois choses qu'une feuille sortie pour un contrôle doit
+    /// tenir. La troisième surtout : une copie du registre d'où l'on
+    /// aurait ôté les erreurs ne serait pas une copie du registre, et
+    /// c'est précisément ce qu'un logiciel « propre » ferait.
+    #[test]
+    fn the_ordonnancier_prints_the_numbers_the_files_and_the_cancellations() {
+        let line = |id: i64, no: i64, product: i64, qty: f64, patient: i64| crate::db::StupMove {
+            id,
+            stup_id: product,
+            kind: "SORTIE".to_owned(),
+            happened_on: "2026-01-08".to_owned(),
+            quantity: qty,
+            ordo_year: 2026,
+            ordo_no: no,
+            patient_id: patient,
+            // Un nom hostile ne doit pas injecter de balisage dans la
+            // page — un prescripteur se saisit à la main.
+            prescriber: "Dr #eval \"Martin\"".to_owned(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            cancels: 0,
+        };
+        let rows = [line(1, 1, 7, 14.0, 55), line(2, 2, 7, 14.0, 61)];
+        let mut labels = std::collections::HashMap::new();
+        labels.insert(7_i64, "Skenan LP 30 mg".to_owned());
+        let mut cancelled = std::collections::HashSet::new();
+        cancelled.insert(2_i64);
+        let src = ordonnancier_source(
+            &rows,
+            &labels,
+            &cancelled,
+            2026,
+            &PharmacyConfig::default(),
+            "2026-08-30",
+        );
+        assert!(!src.contains("#eval \"Martin\"]"));
+        assert!(src.contains("2026-0001") && src.contains("2026-0002"));
+        assert!(src.contains("Skenan LP 30 mg"));
+        // Le dossier, et **jamais** le nom : une feuille imprimée sort
+        // du logiciel, se pose sur un comptoir et se garde dix ans.
+        assert!(src.contains("dossier 55") && src.contains("dossier 61"));
+        // La ligne annulée est imprimée barrée, et l'état de la colonne
+        // le dit en toutes lettres.
+        assert!(src.contains("#strike["));
+        assert_eq!(src.matches("annulée").count(), 2, "la cellule, et le pied");
+        // Un produit que la table des libellés ne connaît pas n'imprime
+        // pas un identifiant nu.
+        let orphan = ordonnancier_source(
+            &[line(3, 3, 99, 7.0, 55)],
+            &labels,
+            &std::collections::HashSet::new(),
+            2026,
+            &PharmacyConfig::default(),
+            "2026-08-30",
+        );
+        assert!(!orphan.contains("#strike["), "rien n'y est annulé");
+        assert!(orphan.contains("—"));
+        // Une année sans délivrance imprime un tableau vide plutôt que
+        // rien : c'est aussi une réponse.
+        let empty = ordonnancier_source(
+            &[],
+            &labels,
+            &std::collections::HashSet::new(),
+            2025,
+            &PharmacyConfig::default(),
+            "2026-08-30",
+        );
+        let world = PdfWorld::new(empty);
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+
+        let world = PdfWorld::new(src);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("l'ordonnancier doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("ordonnancier_exemple.pdf"),
                 &pdf,
             );
         }

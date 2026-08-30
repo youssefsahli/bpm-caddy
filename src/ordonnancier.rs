@@ -14,6 +14,9 @@
 //! * la **balance**, qui n'est pas une somme — un inventaire *fixe* le
 //!   solde au lieu de s'y ajouter, sans quoi l'écart constaté serait
 //!   compté deux fois ;
+//! * l'**annulation**, qui est la seule façon de corriger : une ligne
+//!   fautive reste, et une ligne de plus la désigne et défait ce qu'elle
+//!   avait fait au stock ;
 //! * le **numéro d'ordonnancier**, séquentiel dans l'année et jamais
 //!   réattribué ;
 //! * l'**écart** d'inventaire, et ce qu'il vaut ;
@@ -21,10 +24,258 @@
 //!   le stock est bas ou parce que personne ne l'a compté depuis
 //!   longtemps.
 //!
+//! Et le **catalogue** : les cent six présentations du marché français
+//! qu'une officine peut avoir à inscrire, avec leur dosage, leur unité
+//! de comptage, la durée maximale de prescription et la règle propre à
+//! leur famille. C'est une table de règles et non un contenu de base :
+//! elle ne se sème pas, on y **choisit**. Une base livrée avec cent six
+//! produits suivis serait cent six soldes à zéro, cent six « jamais
+//! compté » sur la liste de contrôle, et un écran qu'on n'ouvre plus.
+//!
 //! Pur et testé, comme `revue` et `conciliation`. Aucune base ici : la
 //! base est passée en argument. Et aucune horloge : le jour est donné,
 //! parce qu'un registre qui se lit différemment selon l'heure à laquelle
 //! on l'ouvre n'est pas un registre.
+
+/// Une famille du catalogue : ce qui partage la même règle.
+///
+/// La règle est **de la famille** et le dosage est de la présentation,
+/// et c'est pour cela que la table a deux étages. Le fractionnement par
+/// sept jours ne concerne pas le sirop de méthadone à 20 mg plutôt que
+/// celui à 40 : il concerne le sirop. Écrire la règle sur chaque ligne
+/// serait la recopier dix fois, donc la corriger neuf fois sur dix.
+pub struct Family {
+    pub name: &'static str,
+    /// La clé de [`Status`].
+    pub status: &'static str,
+    /// La durée maximale de prescription, en jours.
+    pub max_days: i64,
+    /// La règle que le comptoir doit connaître, en une ou deux phrases.
+    pub note: &'static str,
+    /// Les présentations : le libellé tel qu'il s'écrira sur la ligne du
+    /// registre — **avec son dosage**, puisque c'est la présentation
+    /// qu'on compte et non la molécule — et l'unité de comptage.
+    pub items: &'static [(&'static str, &'static str)],
+}
+
+/// Le catalogue des stupéfiants et assimilés du marché français de
+/// ville, par famille.
+///
+/// Ce qui **n'y est pas**, et volontairement : les produits que seul un
+/// hôpital détient (kétamine, sufentanil, péthidine, remifentanil), qui
+/// ne passeront jamais par le registre d'une officine ; et les
+/// benzodiazépines à ordonnance sécurisée — clonazépam, midazolam,
+/// zolpidem —, qui relèvent de la liste I et d'une ordonnance
+/// particulière, sans aucune obligation de registre. Les faire figurer
+/// ici les rangerait à côté de la morphine, et un catalogue qui range
+/// mal enseigne mal.
+pub const CATALOGUE: &[Family] = &[
+    Family {
+        name: "Morphine LP",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Ordonnance sécurisée, 28 jours. Le relais d'une forme LP à une autre se fait à dose égale. Une gélule LP ouverte garde sa libération prolongée si les microgranules ne sont pas écrasés ; un comprimé LP écrasé délivre la dose entière d'un coup.",
+        items: &[
+            ("Skenan LP 10 mg", "gélule"),
+            ("Skenan LP 30 mg", "gélule"),
+            ("Skenan LP 60 mg", "gélule"),
+            ("Skenan LP 100 mg", "gélule"),
+            ("Skenan LP 200 mg", "gélule"),
+            ("Moscontin LP 10 mg", "comprimé"),
+            ("Moscontin LP 30 mg", "comprimé"),
+            ("Moscontin LP 60 mg", "comprimé"),
+            ("Moscontin LP 100 mg", "comprimé"),
+            ("Moscontin LP 200 mg", "comprimé"),
+        ],
+    },
+    Family {
+        name: "Morphine à libération immédiate",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "L'interdose de l'accès douloureux vaut le dixième au sixième de la dose quotidienne de fond. C'est le nombre d'interdoses prises par jour qui dit qu'il faut réévaluer le fond, et c'est une question à poser au comptoir.",
+        items: &[
+            ("Actiskenan 5 mg", "gélule"),
+            ("Actiskenan 10 mg", "gélule"),
+            ("Actiskenan 20 mg", "gélule"),
+            ("Actiskenan 30 mg", "gélule"),
+            ("Sevredol 10 mg", "comprimé"),
+            ("Sevredol 20 mg", "comprimé"),
+            ("Oramorph 10 mg/5 mL", "récipient unidose"),
+            ("Oramorph 30 mg/5 mL", "récipient unidose"),
+            ("Oramorph 100 mg/5 mL", "récipient unidose"),
+            ("Oramorph 20 mg/mL solution buvable", "flacon"),
+        ],
+    },
+    Family {
+        name: "Opioïdes injectables",
+        status: "STUPEFIANT",
+        max_days: 7,
+        note: "Voie parentérale : prescription limitée à 7 jours, portée à 28 jours lorsque l'administration se fait par un système actif de perfusion. C'est la seule famille où la durée n'est pas de 28 jours, et l'oublier fait délivrer une ordonnance périmée.",
+        items: &[
+            ("Chlorhydrate de morphine 10 mg/mL", "ampoule"),
+            ("Chlorhydrate de morphine 20 mg/mL", "ampoule"),
+            ("Chlorhydrate de morphine 50 mg/5 mL", "ampoule"),
+            ("Oxycodone 10 mg/mL injectable", "ampoule"),
+        ],
+    },
+    Family {
+        name: "Oxycodone",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Équianalgésie orale : 1 mg d'oxycodone vaut environ 2 mg de morphine. Un relais fait à dose égale double la dose, et c'est l'erreur classique de la sortie d'hospitalisation.",
+        items: &[
+            ("Oxycontin LP 5 mg", "comprimé"),
+            ("Oxycontin LP 10 mg", "comprimé"),
+            ("Oxycontin LP 20 mg", "comprimé"),
+            ("Oxycontin LP 40 mg", "comprimé"),
+            ("Oxycontin LP 80 mg", "comprimé"),
+            ("Oxynorm 5 mg", "gélule"),
+            ("Oxynorm 10 mg", "gélule"),
+            ("Oxynorm 20 mg", "gélule"),
+            ("Oxynormoro 5 mg", "comprimé orodispersible"),
+            ("Oxynormoro 10 mg", "comprimé orodispersible"),
+            ("Oxynormoro 20 mg", "comprimé orodispersible"),
+            ("Oxynorm 10 mg/mL solution buvable", "flacon"),
+        ],
+    },
+    Family {
+        name: "Hydromorphone",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Réservée aux douleurs intenses d'origine cancéreuse, en cas de résistance ou d'intolérance à la morphine. Équianalgésie : 4 mg d'hydromorphone valent 30 mg de morphine orale, soit un rapport de 7,5 — le plus facile à se tromper de tous.",
+        items: &[
+            ("Sophidone LP 4 mg", "gélule"),
+            ("Sophidone LP 8 mg", "gélule"),
+            ("Sophidone LP 16 mg", "gélule"),
+            ("Sophidone LP 24 mg", "gélule"),
+        ],
+    },
+    Family {
+        name: "Fentanyl transdermique",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Un patch usagé garde de quoi tuer un enfant : il se replie sur lui-même, adhésif contre adhésif, et se rapporte à l'officine. La chaleur — fièvre, couverture chauffante, bain chaud, soleil — augmente le passage et peut provoquer un surdosage sous un patch qui convenait la veille.",
+        items: &[
+            ("Durogesic 12 µg/h", "dispositif transdermique"),
+            ("Durogesic 25 µg/h", "dispositif transdermique"),
+            ("Durogesic 50 µg/h", "dispositif transdermique"),
+            ("Durogesic 75 µg/h", "dispositif transdermique"),
+            ("Durogesic 100 µg/h", "dispositif transdermique"),
+        ],
+    },
+    Family {
+        name: "Fentanyl transmuqueux",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Réservé aux accès douloureux paroxystiques d'un patient déjà sous morphinique de fond équilibré. La dose efficace se titre à partir du dosage le plus faible et ne se déduit jamais de la dose de fond — c'est la mise en garde qui revient sur toutes les alertes de cette classe.",
+        items: &[
+            ("Abstral 100 µg", "comprimé sublingual"),
+            ("Abstral 200 µg", "comprimé sublingual"),
+            ("Abstral 300 µg", "comprimé sublingual"),
+            ("Abstral 400 µg", "comprimé sublingual"),
+            ("Abstral 600 µg", "comprimé sublingual"),
+            ("Abstral 800 µg", "comprimé sublingual"),
+            ("Effentora 100 µg", "comprimé gingival"),
+            ("Effentora 200 µg", "comprimé gingival"),
+            ("Effentora 400 µg", "comprimé gingival"),
+            ("Effentora 600 µg", "comprimé gingival"),
+            ("Effentora 800 µg", "comprimé gingival"),
+            ("Actiq 200 µg", "comprimé avec applicateur buccal"),
+            ("Actiq 400 µg", "comprimé avec applicateur buccal"),
+            ("Actiq 600 µg", "comprimé avec applicateur buccal"),
+            ("Actiq 800 µg", "comprimé avec applicateur buccal"),
+            ("Actiq 1200 µg", "comprimé avec applicateur buccal"),
+            ("Actiq 1600 µg", "comprimé avec applicateur buccal"),
+            ("Instanyl 50 µg/dose", "flacon pulvérisateur"),
+            ("Instanyl 100 µg/dose", "flacon pulvérisateur"),
+            ("Instanyl 200 µg/dose", "flacon pulvérisateur"),
+            ("Pecfent 100 µg/dose", "flacon pulvérisateur"),
+            ("Pecfent 400 µg/dose", "flacon pulvérisateur"),
+        ],
+    },
+    Family {
+        name: "Méthadone gélule",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Relais du sirop seulement, chez un patient stabilisé depuis au moins un an et suivi. Délivrance fractionnée par 14 jours sauf mention expresse du prescripteur. La gélule n'est jamais une initiation.",
+        items: &[
+            ("Méthadone AP-HP gélule 1 mg", "gélule"),
+            ("Méthadone AP-HP gélule 5 mg", "gélule"),
+            ("Méthadone AP-HP gélule 10 mg", "gélule"),
+            ("Méthadone AP-HP gélule 20 mg", "gélule"),
+            ("Méthadone AP-HP gélule 40 mg", "gélule"),
+        ],
+    },
+    Family {
+        name: "Méthadone sirop",
+        status: "STUPEFIANT",
+        max_days: 14,
+        note: "Prescription limitée à 14 jours et délivrance fractionnée par 7 jours sauf mention expresse. Le nom du pharmacien qui délivre est porté sur l'ordonnance, et le chevauchement est interdit.",
+        items: &[
+            ("Méthadone AP-HP sirop 5 mg", "récipient unidose"),
+            ("Méthadone AP-HP sirop 10 mg", "récipient unidose"),
+            ("Méthadone AP-HP sirop 20 mg", "récipient unidose"),
+            ("Méthadone AP-HP sirop 40 mg", "récipient unidose"),
+            ("Méthadone AP-HP sirop 60 mg", "récipient unidose"),
+        ],
+    },
+    Family {
+        name: "Méthylphénidate",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Prescription initiale annuelle réservée aux spécialistes (psychiatrie, neurologie, pédiatrie) ; les renouvellements de l'année se font par tout médecin. Ordonnance sécurisée, 28 jours. Les formes LP ne sont pas interchangeables entre elles : la part immédiate diffère d'une marque à l'autre.",
+        items: &[
+            ("Ritaline 10 mg", "comprimé"),
+            ("Ritaline LP 10 mg", "gélule"),
+            ("Ritaline LP 20 mg", "gélule"),
+            ("Ritaline LP 30 mg", "gélule"),
+            ("Ritaline LP 40 mg", "gélule"),
+            ("Concerta LP 18 mg", "comprimé"),
+            ("Concerta LP 36 mg", "comprimé"),
+            ("Concerta LP 54 mg", "comprimé"),
+            ("Quasym LP 10 mg", "gélule"),
+            ("Quasym LP 20 mg", "gélule"),
+            ("Quasym LP 30 mg", "gélule"),
+            ("Medikinet 5 mg", "gélule"),
+            ("Medikinet 10 mg", "gélule"),
+            ("Medikinet 20 mg", "gélule"),
+            ("Medikinet LM 10 mg", "gélule"),
+            ("Medikinet LM 20 mg", "gélule"),
+            ("Medikinet LM 30 mg", "gélule"),
+            ("Medikinet LM 40 mg", "gélule"),
+        ],
+    },
+    Family {
+        name: "Oxybate de sodium",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Les deux prises se font déjà couché, la seconde deux heures et demie à quatre heures après la première, et au moins deux heures après le dîner. L'alcool et tout autre dépresseur respiratoire sont formellement contre-indiqués le soir de la prise.",
+        items: &[("Xyrem 500 mg/mL solution buvable", "flacon")],
+    },
+    Family {
+        name: "Buprénorphine haut dosage",
+        status: "ASSIMILE",
+        max_days: 28,
+        note: "Assimilé stupéfiant : ordonnance sécurisée, 28 jours, chevauchement interdit, délivrance fractionnée par 7 jours sauf mention expresse. L'inscription au registre n'est **pas** exigée pour cette classe — l'officine la tient si elle le choisit, et beaucoup le font.",
+        items: &[
+            ("Subutex 0,4 mg", "comprimé sublingual"),
+            ("Subutex 2 mg", "comprimé sublingual"),
+            ("Subutex 8 mg", "comprimé sublingual"),
+            ("Buprénorphine 0,4 mg", "comprimé sublingual"),
+            ("Buprénorphine 2 mg", "comprimé sublingual"),
+            ("Buprénorphine 8 mg", "comprimé sublingual"),
+            ("Orobupré 2 mg", "comprimé orodispersible"),
+            ("Orobupré 8 mg", "comprimé orodispersible"),
+            ("Suboxone 2 mg/0,5 mg", "comprimé sublingual"),
+            ("Suboxone 8 mg/2 mg", "comprimé sublingual"),
+        ],
+    },
+];
+
+/// Combien de présentations le catalogue porte.
+pub fn catalogue_size() -> usize {
+    CATALOGUE.iter().map(|f| f.items.len()).sum()
+}
 
 /// Ce qu'une ligne du registre fait au stock.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -39,6 +290,16 @@ pub enum Kind {
     /// Casse, péremption, retour, vol : le stock descend, hors
     /// délivrance. La ligne porte ce qui s'est passé.
     Perte,
+    /// L'annulation d'une ligne fautive : elle **désigne** la ligne
+    /// qu'elle annule et défait exactement ce que celle-ci avait fait au
+    /// stock. C'est la seule correction que le registre connaisse — la
+    /// ligne fautive reste écrite, et c'est ce qui fait qu'un registre
+    /// prouve quelque chose.
+    ///
+    /// Sa quantité n'est jamais lue : ce qu'elle défait se lit sur la
+    /// ligne annulée, ce qui rend impossible une annulation qui rendrait
+    /// autre chose que ce qui avait été pris.
+    Annulation,
 }
 
 impl Kind {
@@ -49,6 +310,7 @@ impl Kind {
             Kind::Sortie => "SORTIE",
             Kind::Inventaire => "INVENTAIRE",
             Kind::Perte => "PERTE",
+            Kind::Annulation => "ANNULATION",
         }
     }
 
@@ -61,6 +323,7 @@ impl Kind {
             "ENTREE" => Kind::Entree,
             "SORTIE" => Kind::Sortie,
             "INVENTAIRE" => Kind::Inventaire,
+            "ANNULATION" => Kind::Annulation,
             _ => Kind::Perte,
         }
     }
@@ -72,6 +335,7 @@ impl Kind {
             Kind::Sortie => "stup_kind_sortie",
             Kind::Inventaire => "stup_kind_inventaire",
             Kind::Perte => "stup_kind_perte",
+            Kind::Annulation => "stup_kind_annulation",
         }
     }
 
@@ -83,6 +347,7 @@ impl Kind {
             Kind::Sortie => 0,
             Kind::Inventaire => 1,
             Kind::Perte => 3,
+            Kind::Annulation => 5,
         }
     }
 
@@ -93,7 +358,77 @@ impl Kind {
         self == Kind::Sortie
     }
 
+    /// Les quatre natures que l'on **écrit**.
+    ///
+    /// L'annulation n'en est pas : elle ne se choisit pas dans un
+    /// formulaire, elle se demande sur la ligne à annuler. Un
+    /// « annuler » posé à côté de « réception » et de « délivrance »
+    /// serait une cinquième façon d'écrire une ligne, alors que c'est
+    /// une façon d'en corriger une.
     pub const ALL: [Kind; 4] = [Kind::Entree, Kind::Sortie, Kind::Inventaire, Kind::Perte];
+
+    /// Une ligne de cette nature peut-elle être annulée ?
+    ///
+    /// Tout sauf une annulation : annuler une annulation ferait un
+    /// registre où l'on ne sait plus ce qui vaut, et la correction d'une
+    /// annulation fautive est une ligne qui l'explique, pas une
+    /// troisième couche.
+    pub fn can_be_cancelled(self) -> bool {
+        self != Kind::Annulation
+    }
+}
+
+/// Ce que la réglementation demande d'un produit suivi.
+///
+/// Deux régimes, et les confondre serait enseigner une règle fausse. Un
+/// **stupéfiant** s'inscrit au registre : c'est une obligation, et c'est
+/// pour lui que le registre existe. Un **assimilé** — la buprénorphine
+/// haut dosage, par exemple — relève de la réglementation des
+/// stupéfiants pour la prescription et la délivrance (ordonnance
+/// sécurisée, chevauchement interdit, délivrance fractionnée) mais
+/// **pas** pour la comptabilité : l'officine peut le suivre ici, et
+/// beaucoup le font, mais rien ne l'y oblige.
+///
+/// Le champ existe précisément pour que le catalogue livré puisse porter
+/// les seconds sans faire croire aux premiers.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Status {
+    Stupefiant,
+    Assimile,
+}
+
+impl Status {
+    pub fn as_key(self) -> &'static str {
+        match self {
+            Status::Stupefiant => "STUPEFIANT",
+            Status::Assimile => "ASSIMILE",
+        }
+    }
+
+    /// Ce que cette version ne connaît pas est lu comme un stupéfiant :
+    /// le régime le plus exigeant. Se tromper dans ce sens fait tenir un
+    /// registre de trop, dans l'autre il en manque un.
+    pub fn from_key(key: &str) -> Status {
+        match key {
+            "ASSIMILE" => Status::Assimile,
+            _ => Status::Stupefiant,
+        }
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Status::Stupefiant => "stup_status_stupefiant",
+            Status::Assimile => "stup_status_assimile",
+        }
+    }
+
+    /// Ce que ce régime demande, en une phrase, sous la souris.
+    pub fn note_key(self) -> &'static str {
+        match self {
+            Status::Stupefiant => "stup_status_stupefiant_note",
+            Status::Assimile => "stup_status_assimile_note",
+        }
+    }
 }
 
 /// Une ligne du registre, telle que l'arithmétique la lit.
@@ -108,8 +443,15 @@ pub struct Move<'a> {
     /// identifiants : une réception saisie le lendemain n'est pas une
     /// réception du lendemain.
     pub day: &'a str,
-    /// L'ordre de saisie, qui départage deux lignes du même jour.
+    /// L'ordre de saisie, qui départage deux lignes du même jour. C'est
+    /// aussi l'identifiant par lequel une annulation la désigne.
     pub seq: i64,
+    /// Le `seq` de la ligne que celle-ci annule, ou 0.
+    pub cancels: i64,
+    /// Ce que le registre disait avant un inventaire. Lu par une
+    /// annulation d'inventaire, qui n'a que ce nombre pour rendre au
+    /// solde ce que le comptage lui avait pris.
+    pub expected: f64,
 }
 
 /// Le solde après toutes ces lignes.
@@ -123,17 +465,48 @@ pub struct Move<'a> {
 /// que la base rend n'a pas à être dans l'ordre, et un inventaire lu
 /// avant les sorties qui le précèdent donnerait un solde faux.
 pub fn balance(moves: &[Move]) -> f64 {
-    let mut ordered: Vec<&Move> = moves.iter().collect();
-    ordered.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
-    let mut stock = 0.0;
-    for m in ordered {
-        match m.kind {
-            Kind::Entree => stock += m.quantity,
-            Kind::Sortie | Kind::Perte => stock -= m.quantity,
-            Kind::Inventaire => stock = m.quantity,
+    running(moves).last().copied().unwrap_or(0.0)
+}
+
+/// Ce qu'une ligne fait au solde.
+///
+/// Séparé parce que l'annulation ne se lit pas sur elle-même : elle
+/// défait ce que la ligne qu'elle désigne avait fait, et cette ligne
+/// doit donc être retrouvée. Une annulation dont la cible n'est pas dans
+/// la tranche ne fait **rien** — ne rien inventer est le seul choix
+/// honnête quand on ne sait pas ce qu'on annule.
+fn apply(stock: &mut f64, m: &Move, all: &[&Move]) {
+    match m.kind {
+        Kind::Entree => *stock += m.quantity,
+        Kind::Sortie | Kind::Perte => *stock -= m.quantity,
+        Kind::Inventaire => *stock = m.quantity,
+        Kind::Annulation => {
+            let Some(target) = all.iter().find(|t| t.seq == m.cancels) else {
+                return;
+            };
+            match target.kind {
+                Kind::Entree => *stock -= target.quantity,
+                Kind::Sortie | Kind::Perte => *stock += target.quantity,
+                // Rendre au solde ce que le comptage lui avait posé :
+                // le registre redit ce qu'il disait avant. C'est la
+                // seule raison pour laquelle `expected` est écrit dans
+                // la base au lieu d'être recalculé à la lecture.
+                Kind::Inventaire => *stock = target.expected,
+                Kind::Annulation => {}
+            }
         }
     }
-    stock
+}
+
+/// Une ligne a-t-elle été annulée ?
+///
+/// Elle reste au registre et continue de s'y lire — barrée, jamais
+/// retirée. C'est ce que voit celui qui contrôle : la faute, et la
+/// correction qui la nomme.
+pub fn is_cancelled(moves: &[Move], seq: i64) -> bool {
+    moves
+        .iter()
+        .any(|m| m.kind == Kind::Annulation && m.cancels == seq)
 }
 
 /// Le solde jour après jour, pour la courbe : une valeur par ligne, dans
@@ -145,17 +518,12 @@ pub fn running(moves: &[Move]) -> Vec<f64> {
     let mut ordered: Vec<&Move> = moves.iter().collect();
     ordered.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
     let mut stock = 0.0;
-    ordered
-        .into_iter()
-        .map(|m| {
-            match m.kind {
-                Kind::Entree => stock += m.quantity,
-                Kind::Sortie | Kind::Perte => stock -= m.quantity,
-                Kind::Inventaire => stock = m.quantity,
-            }
-            stock
-        })
-        .collect()
+    let mut out = Vec::with_capacity(ordered.len());
+    for m in &ordered {
+        apply(&mut stock, m, &ordered);
+        out.push(stock);
+    }
+    out
 }
 
 /// Le prochain numéro d'ordonnancier de l'année.
@@ -351,6 +719,25 @@ mod tests {
             quantity,
             day,
             seq,
+            cancels: 0,
+            expected: 0.0,
+        }
+    }
+
+    /// Un inventaire tel que la base l'écrit : le comptage, et ce que le
+    /// registre disait avant lui.
+    fn count(counted: f64, expected: f64, day: &str, seq: i64) -> Move<'_> {
+        Move {
+            expected,
+            ..mv(Kind::Inventaire, counted, day, seq)
+        }
+    }
+
+    /// L'annulation de la ligne `target`.
+    fn cancel(target: i64, day: &str, seq: i64) -> Move<'_> {
+        Move {
+            cancels: target,
+            ..mv(Kind::Annulation, 0.0, day, seq)
         }
     }
 
@@ -436,6 +823,119 @@ mod tests {
         assert_eq!(balance(&[]), 0.0);
     }
 
+    /// Une annulation défait ce que la ligne annulée avait fait — et
+    /// **rien d'autre**.
+    ///
+    /// C'est là qu'est la règle. Une correction écrite « à la main »,
+    /// c'est-à-dire une ligne de sens contraire dont on tape la
+    /// quantité, rend ce qu'on a cru avoir pris ; une annulation rend ce
+    /// qui a été pris. Les deux diffèrent précisément le jour où c'est
+    /// la quantité qui était fausse, c'est-à-dire le jour où l'on
+    /// corrige.
+    #[test]
+    fn a_cancellation_undoes_the_line_it_names_and_nothing_else() {
+        // Une réception de 30, une délivrance de 14 saisie deux fois par
+        // deux postes : le registre dit 2, la boîte en contient 16.
+        let doubled = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 3),
+        ];
+        assert!((balance(&doubled) - 2.0).abs() < 1e-9);
+        let fixed = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 3),
+            cancel(3, "2026-01-09", 4),
+        ];
+        assert!((balance(&fixed) - 16.0).abs() < 1e-9, "{}", balance(&fixed));
+        // La quantité portée par l'annulation n'est jamais lue : ce
+        // qu'elle rend se lit sur la ligne annulée. Une annulation à qui
+        // l'on ferait dire 999 rend quand même 14.
+        let lying = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            Move {
+                cancels: 2,
+                ..mv(Kind::Annulation, 999.0, "2026-01-09", 3)
+            },
+        ];
+        assert!((balance(&lying) - 30.0).abs() < 1e-9);
+        // Annuler une réception fait redescendre le stock.
+        let returned = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            cancel(1, "2026-01-06", 2),
+        ];
+        assert_eq!(balance(&returned), 0.0);
+        // Et une perte annulée rend ce qu'elle avait pris.
+        let broken = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Perte, 4.0, "2026-01-06", 2),
+            cancel(2, "2026-01-07", 3),
+        ];
+        assert!((balance(&broken) - 30.0).abs() < 1e-9);
+    }
+
+    /// Annuler un inventaire rend au registre ce qu'il disait avant lui.
+    ///
+    /// Un inventaire **pose** le solde : il n'y a rien à soustraire pour
+    /// le défaire, et le seul nombre qui permette de le faire est celui
+    /// que le registre affichait au moment du comptage. C'est pour cela
+    /// qu'il est écrit dans la base et non recalculé à la lecture — un
+    /// recalcul d'aujourd'hui donnerait le solde d'aujourd'hui.
+    #[test]
+    fn cancelling_a_count_gives_the_register_back_what_it_said() {
+        // 30 entrés, 14 sortis : le registre dit 16. Quelqu'un compte
+        // 5 — il a compté la mauvaise boîte.
+        let wrong = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            count(5.0, 16.0, "2026-01-10", 3),
+        ];
+        assert!((balance(&wrong) - 5.0).abs() < 1e-9);
+        let fixed = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            count(5.0, 16.0, "2026-01-10", 3),
+            cancel(3, "2026-01-10", 4),
+        ];
+        assert!((balance(&fixed) - 16.0).abs() < 1e-9, "{}", balance(&fixed));
+        // Ce que le registre continue de porter, c'est les deux lignes :
+        // le comptage fautif et son annulation. La faute ne disparaît
+        // pas, elle se lit barrée.
+        assert!(is_cancelled(&fixed, 3));
+        assert!(!is_cancelled(&fixed, 2));
+        assert_eq!(fixed.len(), 4);
+    }
+
+    /// Une annulation dont la cible manque ne fait rien.
+    ///
+    /// Le cas arrive si une tranche est lue produit par produit et qu'une
+    /// ligne désigne l'ailleurs. Ne rien faire est le seul choix qui
+    /// n'invente pas un mouvement ; deviner un sens serait déplacer un
+    /// stock sur une hypothèse.
+    #[test]
+    fn a_cancellation_without_its_target_moves_nothing() {
+        let orphan = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            cancel(77, "2026-01-06", 2),
+        ];
+        assert!((balance(&orphan) - 30.0).abs() < 1e-9);
+        // Et une annulation d'annulation ne fait rien non plus : le
+        // registre refuse de l'écrire, et l'arithmétique refuse de la
+        // lire, pour que les deux disent la même chose.
+        let stacked = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            cancel(1, "2026-01-06", 2),
+            cancel(2, "2026-01-07", 3),
+        ];
+        assert_eq!(balance(&stacked), 0.0);
+        assert!(Kind::Entree.can_be_cancelled());
+        assert!(!Kind::Annulation.can_be_cancelled());
+        // La courbe suit le même calcul : elle remonte à l'annulation.
+        assert_eq!(running(&stacked), vec![30.0, 0.0, 0.0]);
+    }
+
     /// Le numéro d'ordonnancier ne revient jamais en arrière et ne
     /// rebouche jamais un trou.
     ///
@@ -465,16 +965,24 @@ mod tests {
     /// une explication, jamais rassurer.
     #[test]
     fn an_unknown_line_lowers_the_stock_rather_than_raising_it() {
-        for k in Kind::ALL {
+        for k in Kind::ALL.into_iter().chain([Kind::Annulation]) {
             assert_eq!(Kind::from_key(k.as_key()), k);
         }
         assert_eq!(Kind::from_key("QUELQUE CHOSE"), Kind::Perte);
         assert_eq!(Kind::from_key(""), Kind::Perte);
         // Et seule la délivrance porte un numéro et un dossier.
         assert!(Kind::Sortie.is_dispensing());
-        for k in [Kind::Entree, Kind::Inventaire, Kind::Perte] {
+        for k in [
+            Kind::Entree,
+            Kind::Inventaire,
+            Kind::Perte,
+            Kind::Annulation,
+        ] {
             assert!(!k.is_dispensing(), "{k:?}");
         }
+        // L'annulation ne se choisit pas dans le formulaire : elle se
+        // demande sur la ligne à annuler.
+        assert!(!Kind::ALL.contains(&Kind::Annulation));
     }
 
     /// La liste de contrôle : un produit, un motif, le plus grave.
@@ -531,6 +1039,108 @@ mod tests {
         // le moment de recommander, pas celui d'être à court.
         let at = [f(9, "Pile au seuil", 10.0, 10.0, "2026-08-25")];
         assert_eq!(to_check(&at, "2026-08-29", 60)[0].why, Why::Low);
+    }
+
+    /// Chaque présentation nomme son dosage.
+    ///
+    /// C'est ce qui distingue un catalogue de registre d'une liste de
+    /// molécules. Ce qu'on compte dans le coffre, ce n'est pas « de la
+    /// morphine », c'est des gélules de 30 mg : une ligne « Skenan LP »
+    /// sans dosage ferait un solde qui mélange cinq boîtes différentes,
+    /// et cette confusion-là ne se rattrape pas — le registre est
+    /// inaltérable.
+    #[test]
+    fn every_presentation_names_its_dosage_and_what_is_counted() {
+        for family in CATALOGUE {
+            assert!(!family.items.is_empty(), "{} est vide", family.name);
+            for (label, unit) in family.items {
+                assert!(
+                    label.chars().any(|c| c.is_ascii_digit()),
+                    "« {label} » ne porte pas de dosage"
+                );
+                assert!(
+                    !unit.trim().is_empty(),
+                    "« {label} » ne dit pas ce qu'on compte"
+                );
+                // Le libellé est ce qui s'écrit sur la ligne du registre :
+                // il tient sur une ligne.
+                assert!(label.chars().count() <= 40, "« {label} » est trop long");
+            }
+        }
+    }
+
+    /// Deux produits ne portent jamais le même libellé.
+    ///
+    /// Deux « Skenan LP 30 mg » dans la liste, ce sont deux soldes pour
+    /// une boîte, et le contrôle trouve un manquant qui n'existe pas.
+    /// La base le refuse déjà ; le catalogue ne doit pas le proposer.
+    #[test]
+    fn the_catalogue_never_offers_the_same_label_twice() {
+        let mut labels: Vec<&str> = CATALOGUE
+            .iter()
+            .flat_map(|f| f.items.iter().map(|(l, _)| *l))
+            .collect();
+        let total = labels.len();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(labels.len(), total, "un libellé apparaît deux fois");
+        // Le cliquet : le catalogue ne perd pas de présentations.
+        assert!(total >= 106, "le catalogue a maigri : {total}");
+        assert_eq!(total, catalogue_size());
+    }
+
+    /// Chaque famille dit sa règle, et la durée qu'elle porte est une
+    /// durée réglementaire et non un chiffre rond.
+    ///
+    /// Les trois qui existent sont 28 jours, 14 pour le sirop de
+    /// méthadone et 7 pour la voie parentérale. Une quatrième valeur
+    /// dans cette table serait une invention, et c'est sur ce nombre
+    /// qu'on refuse une ordonnance à un patient.
+    #[test]
+    fn every_family_carries_its_rule_and_a_lawful_duration() {
+        for family in CATALOGUE {
+            assert!(
+                [7, 14, 28].contains(&family.max_days),
+                "{} : {} jours n'est pas une durée réglementaire",
+                family.name,
+                family.max_days
+            );
+            assert!(
+                family.note.chars().count() >= 80,
+                "{} n'explique pas sa règle",
+                family.name
+            );
+            // Le régime se relit tel qu'il est écrit, et il a de quoi
+            // se dire à l'écran : un libellé et la phrase qui explique
+            // ce qu'il demande.
+            let status = Status::from_key(family.status);
+            assert_eq!(status.as_key(), family.status, "{}", family.name);
+            assert!(!crate::strings::tr(status.label_key()).is_empty());
+            assert!(crate::strings::tr(status.note_key()).len() > 40);
+            // Et un assimilé le dit, dans sa note, en toutes lettres :
+            // le laisser passer pour un stupéfiant ferait tenir un
+            // registre que la loi ne demande pas et croire à une
+            // obligation qui n'existe pas.
+            if status == Status::Assimile {
+                assert!(
+                    family.note.contains("registre"),
+                    "{} ne dit pas ce que son régime demande",
+                    family.name
+                );
+            }
+        }
+        // Les deux régimes sont représentés : une table qui n'aurait que
+        // des stupéfiants n'aurait pas eu besoin du champ.
+        let assimile = CATALOGUE
+            .iter()
+            .filter(|f| Status::from_key(f.status) == Status::Assimile)
+            .count();
+        assert!(assimile >= 1);
+        assert!(assimile < CATALOGUE.len());
+        // Ce que cette version ne connaît pas est lu comme le régime le
+        // plus exigeant : se tromper dans ce sens fait tenir un registre
+        // de trop, dans l'autre il en manque un.
+        assert_eq!(Status::from_key("AUTRE CHOSE"), Status::Stupefiant);
     }
 
     /// Le compte des jours, y compris à travers un 29 février.

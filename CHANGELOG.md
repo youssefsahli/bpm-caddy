@@ -5,6 +5,138 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.143.0] - 2026-08-30
+
+### Added
+- **Le registre des stupéfiants prend son propre fichier, son catalogue
+  et sa façon de se corriger.** C'était la dernière ligne de la feuille
+  de route, et elle en demandait sept.
+  - **`<base>_stups.db`, à côté de la base.** Pas pour la taille : dix
+    ans de registre pèsent quelques centaines de kilo-octets. Parce que
+    ce n'est pas la même nature de chose. La base est un outil de
+    travail — on la réinitialise, on la ressème, on la compacte, on en
+    essaie une copie, on la recopie d'un poste à l'autre. Le registre
+    est une **pièce comptable**, inaltérable, que R. 5132-36 demande de
+    conserver dix ans à compter de sa dernière mention, et qu'un
+    contrôle demande *seule*, sans les dossiers des patients, qui ne le
+    regardent pas. Séparé, l'année close se range en copiant un fichier,
+    et rien de ce que l'application fait à sa base ne peut l'atteindre.
+    Même SQLCipher, même clé : pas une deuxième cryptographie écrite à
+    la main.
+  - Ce que la séparation impose est tenu, et chaque point a son test :
+    `change_password` rechiffre **trois** fichiers, « Copier la base… »
+    en copie trois, la copie quotidienne du registre suit le plus grand
+    des deux autres comptes — il ne pèse rien, et c'est le seul fichier
+    de la maison qu'on ne peut pas reconstituer —, et Options › Base dit
+    combien de lignes il porte, sur combien de produits, et de quand à
+    quand.
+  - **Un registre écrit par une version d'avant est déplacé au premier
+    lancement, identifiants compris.** C'est le point qui comptait : une
+    ligne de délivrance porte un **numéro de dossier** et un produit
+    l'identifiant de sa fiche médicament ; les renuméroter au passage
+    les ferait désigner un autre patient et un autre médicament, ce
+    qu'un registre ne peut pas se permettre. Le déplacement est marqué
+    dans `seed_state` et non déduit de « le fichier est vide » — qui le
+    rejouerait le jour où quelqu'un supprime le fichier, et le rejouerait
+    sur des lignes écrites depuis. Et les lignes d'origine restent où
+    elles sont : on ne supprime pas un registre, même pour le ranger
+    ailleurs.
+  - **Un catalogue de 106 présentations en 12 familles**, avec le
+    dosage, l'unité de comptage, la durée maximale de prescription et la
+    règle de la famille : morphine LP et à libération immédiate,
+    opioïdes injectables, oxycodone, hydromorphone, fentanyl
+    transdermique et transmuqueux, méthadone gélule et sirop,
+    méthylphénidate, oxybate de sodium, buprénorphine haut dosage. Un
+    clic suffit à suivre un produit, et tout arrive avec le nom —
+    personne ne tape « gélue ».
+  - **Le catalogue est une table de règles, pas un contenu semé.** Une
+    base livrée avec 106 produits suivis, ce serait 106 soldes à zéro,
+    106 « jamais compté » sur la liste de contrôle, et un écran qu'on
+    n'ouvre plus. On y choisit. Et il ne ferme rien : quand la recherche
+    ne trouve pas, la dernière ligne propose d'inscrire ce qui a été
+    tapé.
+  - **Le régime est un champ, parce que tout ne s'inscrit pas.** La
+    buprénorphine haut dosage relève de la réglementation des
+    stupéfiants pour la prescription et la délivrance — ordonnance
+    sécurisée, 28 jours, fractionnement par 7 — mais **pas** pour la
+    comptabilité : rien n'oblige à l'inscrire au registre, et beaucoup
+    d'officines le font quand même. La ranger à côté de la morphine sans
+    le dire aurait enseigné une obligation qui n'existe pas. Un test
+    exige de toute famille « assimilé » qu'elle le dise dans sa note.
+  - **La durée maximale est le nombre sur lequel on refuse une
+    ordonnance**, et c'est pour cela qu'elle est sur la fiche du produit
+    et pas dans une note générale : 28 jours pour presque tout, 14 pour
+    le sirop de méthadone, **7 pour la voie parentérale**. Un test
+    refuse toute autre valeur dans la table — un chiffre rond inventé
+    là-dedans se paierait au comptoir.
+  - **La saisie va vite.** Un clic sur le produit, une glissière Motif
+    pour la quantité — la première du projet : cuvette en creux, curseur
+    en relief, rien d'arrondi — et six pastilles pour ce qui revient
+    (1, 2, 3, 7, 14, 28, qui sont ce que porte une boîte et ce que porte
+    une délivrance fractionnée). Le champ reste **maître** : une
+    glissière ne sait pas écrire « 2,5 », et un patch se coupe en deux
+    moins souvent qu'on ne le croit mais cela arrive.
+  - **Un onglet « Ordonnancier »**, qui n'est pas l'écran du stock. À
+    gauche la suite des délivrances de l'année, tous produits confondus,
+    dans l'ordre de leurs numéros — c'est le document qu'un contrôle
+    demande, et la seule vue où le manque d'un numéro se voit ; il
+    s'imprime en A4 paysage, annulations comprises. À droite le journal
+    des quarante dernières lignes, réceptions comprises, du plus récent
+    au plus ancien : c'est là qu'on retrouve ce qu'on vient d'écrire.
+    L'un répond à « qu'a-t-on écrit », l'autre écran à « combien en
+    reste-t-il », et les mélanger obligerait à trier deux fois la même
+    liste dans deux ordres contraires.
+
+### Changed
+- **Corriger une ligne, c'est l'annuler — et c'est la seule façon.** La
+  demande disait « les lignes peuvent être modifiées, mais que tout
+  reste traçable », et c'est le seul point où les deux tiennent
+  ensemble. Une ligne `ANNULATION` désigne la ligne fautive, porte un
+  motif obligatoire, et défait **exactement** ce que celle-ci avait fait
+  au stock — lu sur la ligne annulée et jamais sur l'annulation, dont la
+  quantité n'est même pas regardée.
+  - C'est là qu'est toute la différence avec une correction écrite à la
+    main. Une ligne de sens contraire dont on tape la quantité rend ce
+    qu'on *croit* avoir pris ; une annulation rend ce qui a été pris. Les
+    deux diffèrent précisément le jour où c'est la quantité qui était
+    fausse, c'est-à-dire le jour où l'on corrige.
+  - Annuler un inventaire lui rend son `expected` : un inventaire *pose*
+    le solde, il n'y a rien à en soustraire, et le seul nombre qui
+    permette de le défaire est celui que le registre affichait au moment
+    du comptage. C'est la seule raison pour laquelle cette colonne est
+    écrite dans la base au lieu d'être recalculée à la lecture — un
+    recalcul d'aujourd'hui donnerait le solde d'aujourd'hui.
+  - Quatre refus, chacun avec sa raison : pas de motif, pas
+    d'annulation ; une annulation ne s'annule pas (la correction d'une
+    annulation fautive est une ligne qui l'explique, pas une troisième
+    couche) ; deux fois la même annulation ferait remonter le stock du
+    double, et le refus est **dans la transaction** parce que deux postes
+    peuvent la demander en même temps ; et une ligne d'un autre produit
+    ne s'annule pas depuis celui-ci, le stock qui remonterait n'étant pas
+    le sien.
+  - **Le numéro d'ordonnancier de la délivrance annulée ne revient
+    pas.** Il reste pris, la suite continue après lui, et le trou se
+    lit. Un numéro servi deux fois, lui, ne se lit pas.
+  - Une ligne annulée reste à l'écran et sur le papier, **barrée**, avec
+    « annulée » à côté et le motif sur la ligne d'en face. Un registre
+    d'où l'on aurait ôté les erreurs ne prouverait rien : ce qu'un
+    contrôle doit voir, c'est la faute *et* la correction qui la nomme.
+- La colonne de gauche du registre bascule entre les produits suivis et
+  le catalogue, avec une recherche sur les deux. Les trois champs qui
+  servaient à inscrire un produit à la main ont quitté la bande du
+  haut — c'est là qu'on choisit ce qu'on suit —, ce qui rend une rangée
+  au registre. L'unité de comptage s'y corrige aussi, à côté du seuil :
+  un produit inscrit à la main n'en a pas, et un solde sans unité ne dit
+  pas s'il s'agit de boîtes ou de gélules.
+- Les trois listes qui montrent des lignes du registre — le registre
+  d'un produit, l'ordonnancier, le journal — dessinent la **même**
+  fonction. Une ligne de registre qui ne se lirait pas pareil selon
+  l'écran est une ligne dont on doute, et c'est la seule chose qu'un
+  registre ne peut pas se permettre. Ce qu'un clic demande remonte hors
+  de la boucle d'affichage ; « qui annule cette ligne » et « quel produit
+  porte ce numéro » sont deux mémos refaits à l'écriture, jamais soixante
+  fois par seconde sur quarante lignes.
+
 ## [0.142.0] - 2026-08-30
 
 ### Added

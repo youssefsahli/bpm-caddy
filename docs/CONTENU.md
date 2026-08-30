@@ -306,20 +306,58 @@ Deux règles valent partout :
 
 ## Le registre des stupéfiants
 
-- **Où** : deux tables dans `src/db.rs` — `stupefiants` (les produits
-  suivis, leur unité, leur seuil) et `stup_moves` (le registre). Le
-  calcul est dans `src/ordonnancier.rs` (pur, testé).
-- **Rien n'est livré** : un registre est celui de l'officine, et une
-  ligne semée serait une ligne que personne n'a écrite. L'équipe ajoute
-  les produits qu'elle suit.
+- **Où** : deux tables, et **dans leur propre fichier** —
+  `<base>_stups.db` à côté de la base, même SQLCipher, même clé.
+  `stupefiants` (les produits suivis, leur unité, leur seuil, leur
+  famille, leur régime et leur durée maximale de prescription) et
+  `stup_moves` (le registre). Le calcul est dans `src/ordonnancier.rs`
+  (pur, testé). Le fichier séparé n'est pas une question de taille : dix
+  ans de registre pèsent quelques centaines de kilo-octets. C'est que la
+  base est un outil de travail — on la réinitialise, on la ressème, on
+  la compacte, on l'essaie en copie — alors que le registre est une
+  pièce comptable à conserver dix ans, qu'un contrôle demande seule.
+- **Le catalogue est livré, le registre ne l'est pas.**
+  `ordonnancier::CATALOGUE` porte 106 présentations du marché français
+  en 12 familles, avec le dosage, l'unité de comptage, la durée maximale
+  de prescription et la règle de la famille. On y **choisit** : une base
+  livrée avec 106 produits suivis serait 106 soldes à zéro et 106
+  « jamais compté » sur la liste de contrôle. Un produit qui n'y est pas
+  s'inscrit quand même, sous le libellé qu'on tape.
+  - **Ajouter une présentation** : une ligne dans la famille qui porte
+    déjà sa règle. Le libellé porte le dosage (un test le refuse sans),
+    l'unité dit ce qu'on compte, et le compte total est un cliquet.
+  - **Ajouter une famille** : `name`, `status` (`STUPEFIANT` ou
+    `ASSIMILE`), `max_days` (7, 14 ou 28 — un test refuse toute autre
+    valeur, parce que c'est sur ce nombre qu'on refuse une ordonnance),
+    et `note`, qui est la règle du comptoir en une ou deux phrases. Une
+    famille `ASSIMILE` doit dire dans sa note ce que son régime demande
+    vraiment : la buprénorphine haut dosage relève des stupéfiants pour
+    la prescription et la délivrance, **pas** pour la comptabilité, et
+    la ranger sans le dire enseignerait une obligation qui n'existe pas.
+  - Ce qui n'y est **pas**, volontairement : ce que seul un hôpital
+    détient (kétamine, sufentanil, péthidine) et les benzodiazépines à
+    ordonnance sécurisée (clonazépam, midazolam, zolpidem), qui ne
+    s'inscrivent à aucun registre.
 - **La règle qui décide de tout** : le registre est inaltérable. Pas
   d'`UPDATE`, pas de `DELETE`, pas de méthode qui en proposerait. Une
   erreur se contre-passe. Un test relit `db.rs` et le refuse.
+- **Corriger, c'est annuler** : une ligne `ANNULATION` désigne la ligne
+  fautive, porte un motif obligatoire, et défait exactement ce que
+  celle-ci avait fait au stock — lu sur la ligne annulée et jamais sur
+  l'annulation, dont la quantité n'est jamais regardée. C'est le cœur de
+  la règle : le jour où l'on corrige est le jour où la quantité était
+  fausse. Une annulation ne s'annule pas, ne s'écrit pas deux fois
+  (vérifié dans la transaction), ne désigne pas la ligne d'un autre
+  produit, et ne prend jamais de numéro d'ordonnancier.
 - **La balance n'est pas une somme** : un inventaire *pose* le solde.
   Additionner l'écart et poser le compte le compterait deux fois, et le
   registre dériverait dès le premier comptage qui ne tombe pas juste.
+  Annuler un inventaire rend au registre son `expected` — la seule
+  raison pour laquelle cette colonne est écrite et non recalculée.
 - **Le numéro d'ordonnancier** est séquentiel dans l'année, attribué par
   la base dans la transaction qui écrit la ligne, et jamais réattribué.
+  Une délivrance annulée garde le sien : un trou dans la suite se lit,
+  un numéro servi deux fois ne se lit pas.
 - **Réglages** : `[stock] suppliers` (les grossistes, le premier étant
   celui qu'on propose — c'est pour la vitesse de saisie) et
   `[stock] count_days` (au bout de combien de jours un produit non

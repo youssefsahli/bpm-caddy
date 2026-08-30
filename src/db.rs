@@ -561,6 +561,17 @@ pub fn scans_backup_name(day: &str) -> String {
     format!("bpm_caddy_scans-{day}.db")
 }
 
+/// Le nom d'une copie du registre pour un jour donné.
+///
+/// Son propre préfixe, comme les pièces, et pour une autre raison : le
+/// registre se garde dix ans, et on en veut **plus** de copies que de la
+/// base, pas moins. Un fichier de quelques centaines de kilo-octets ne
+/// coûte rien à recopier, et c'est le seul de la maison qu'on ne peut
+/// pas reconstituer.
+pub fn stups_backup_name(day: &str) -> String {
+    format!("bpm_caddy_stups-{day}.db")
+}
+
 /// What the backup folder actually holds.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct BackupState {
@@ -1288,6 +1299,14 @@ pub struct Stupefiant {
     /// Le plancher que l'officine s'est donné ; 0 = pas de plancher.
     pub threshold: f64,
     pub archived: bool,
+    /// La famille du catalogue, par laquelle la liste se parcourt.
+    pub family: String,
+    /// `STUPEFIANT` ou `ASSIMILE` — voir [`crate::ordonnancier::Status`].
+    pub status: String,
+    /// La durée maximale de prescription en jours ; 0 si non renseignée.
+    pub max_days: i64,
+    /// La règle propre à cette présentation, en une ligne.
+    pub note: String,
 }
 
 /// Une ligne du registre, telle qu'elle est écrite.
@@ -1316,6 +1335,9 @@ pub struct StupMove {
     pub expected: f64,
     pub operator: String,
     pub remark: String,
+    /// L'identifiant de la ligne que celle-ci annule, ou 0. La seule
+    /// correction du registre : la ligne fautive reste écrite.
+    pub cancels: i64,
 }
 
 /// Une pièce numérisée, **sans ses octets**.
@@ -27968,6 +27990,33 @@ pub struct Db {
     /// voit alors quelles pièces existaient et quand, au lieu de perdre
     /// jusqu'à leur trace.
     scans: Connection,
+    /// Le registre des stupéfiants, dans son **propre fichier chiffré**
+    /// — `bpm_caddy_stups.db`.
+    ///
+    /// La raison n'est pas celle des pièces. Un registre ne pèse rien :
+    /// dix ans de délivrances tiennent dans quelques centaines de
+    /// kilo-octets. Ce qui le sépare, c'est qu'il n'est pas de la même
+    /// nature que le reste. La base est un outil de travail : on la
+    /// réinitialise, on la ressème, on la compacte, on la recopie d'un
+    /// poste à l'autre, on en essaie une copie. Le registre est une
+    /// **pièce comptable**, inaltérable, que R. 5132-36 demande de
+    /// conserver dix ans à compter de sa dernière mention, et qu'un
+    /// contrôle demande seule — sans les dossiers des patients, qui ne
+    /// le regardent pas.
+    ///
+    /// Les deux conséquences valent qu'on l'ait fait. L'année close se
+    /// range en copiant un fichier, et rien de ce que l'application fait
+    /// à sa base ne peut atteindre ce fichier-là. Et le jour où
+    /// l'officine change de logiciel, le registre part sur une clé sans
+    /// que rien d'autre ne parte avec lui.
+    ///
+    /// Même SQLCipher, même clé : pas une deuxième cryptographie écrite
+    /// à la main. Un registre écrit par une version d'avant est
+    /// **déplacé** ici au premier lancement, ligne pour ligne et
+    /// identifiant pour identifiant, et les lignes d'origine restent
+    /// dans l'ancienne base — on ne supprime pas un registre, même pour
+    /// le ranger ailleurs.
+    stups: Connection,
 }
 
 /// Le fichier des pièces, à côté de la base. Une seule table, un seul
@@ -27979,6 +28028,76 @@ CREATE TABLE IF NOT EXISTS scan_blobs (
     bytes   BLOB NOT NULL
 );
 ";
+
+/// Le fichier du registre : les produits suivis et leurs mouvements.
+///
+/// C'est la copie exacte des deux tables que la base portait jusqu'à la
+/// 0.142, aux colonnes ajoutées près, et les identifiants sont
+/// conservés au déplacement : un numéro de dossier écrit sur une ligne
+/// de délivrance désigne toujours le même dossier de l'autre côté.
+const STUP_SCHEMA: &str = "
+CREATE TABLE IF NOT EXISTS stupefiants (
+    id          INTEGER PRIMARY KEY,
+    drug_id     INTEGER NOT NULL DEFAULT 0,
+    label       TEXT NOT NULL,
+    unit        TEXT NOT NULL DEFAULT '',
+    threshold   REAL NOT NULL DEFAULT 0,
+    archived    INTEGER NOT NULL DEFAULT 0,
+    -- La famille du catalogue : « Morphine LP », « Fentanyl
+    -- transdermique »… Ce qui rend une liste de cent présentations
+    -- lisible, et ce par quoi on la parcourt.
+    family      TEXT NOT NULL DEFAULT '',
+    -- 'STUPEFIANT' ou 'ASSIMILE'. Tout ce qu'on suit ici n'a pas la
+    -- même obligation, et faire croire le contraire serait enseigner
+    -- une règle fausse.
+    status      TEXT NOT NULL DEFAULT 'STUPEFIANT',
+    -- La durée maximale de prescription, en jours : 28 pour la plupart,
+    -- 14 pour le sirop de méthadone, 7 pour la voie parentérale. Zéro
+    -- quand elle n'est pas renseignée.
+    max_days    INTEGER NOT NULL DEFAULT 0,
+    -- La règle propre à cette présentation, en une ligne : le
+    -- fractionnement, ce qui se rapporte, ce qui se relaie.
+    note        TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS stup_moves (
+    id           INTEGER PRIMARY KEY,
+    stup_id      INTEGER NOT NULL REFERENCES stupefiants(id),
+    kind         TEXT NOT NULL,
+    happened_on  TEXT NOT NULL,
+    quantity     REAL NOT NULL DEFAULT 0,
+    ordo_year    INTEGER NOT NULL DEFAULT 0,
+    ordo_no      INTEGER NOT NULL DEFAULT 0,
+    patient_id   INTEGER NOT NULL DEFAULT 0,
+    prescriber   TEXT NOT NULL DEFAULT '',
+    supplier     TEXT NOT NULL DEFAULT '',
+    reference    TEXT NOT NULL DEFAULT '',
+    expected     REAL NOT NULL DEFAULT 0,
+    operator     TEXT NOT NULL DEFAULT '',
+    remark       TEXT NOT NULL DEFAULT '',
+    -- L'identifiant de la ligne que celle-ci annule, ou 0. **La seule
+    -- correction que le registre connaisse** : la ligne fautive reste
+    -- écrite, et une ligne de plus la désigne et défait ce qu'elle avait
+    -- fait au stock. Rien ici n'est jamais modifié ni supprimé.
+    cancels      INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_stup_moves_stup ON stup_moves(stup_id);
+CREATE INDEX IF NOT EXISTS idx_stup_moves_day ON stup_moves(happened_on);
+CREATE INDEX IF NOT EXISTS idx_stup_moves_ordo ON stup_moves(ordo_year, ordo_no);
+CREATE INDEX IF NOT EXISTS idx_stup_moves_cancels ON stup_moves(cancels);
+";
+
+/// Ce que le fichier du registre ajoute à un fichier déjà créé par une
+/// version d'avant. Même règle que `MIGRATIONS` : idempotent, et un
+/// échec sur une colonne déjà là n'est pas une erreur.
+const STUP_MIGRATIONS: &[&str] = &[
+    "ALTER TABLE stupefiants ADD COLUMN family TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE stupefiants ADD COLUMN status TEXT NOT NULL DEFAULT 'STUPEFIANT'",
+    "ALTER TABLE stupefiants ADD COLUMN max_days INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE stupefiants ADD COLUMN note TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE stup_moves ADD COLUMN cancels INTEGER NOT NULL DEFAULT 0",
+];
 
 /// Où vivent les octets des pièces, pour une base donnée.
 ///
@@ -27992,6 +28111,19 @@ CREATE TABLE IF NOT EXISTS scan_blobs (
 /// Les deux se déplacent ensemble, et « Copier la base… » prend les
 /// deux, en nommant la copie des pièces d'après la destination.
 pub fn scans_path(db_path: &Path) -> PathBuf {
+    side_path(db_path, "scans")
+}
+
+/// Où vit le registre des stupéfiants, pour une base donnée.
+///
+/// Même règle de nommage que les pièces, et pour la même raison : deux
+/// bases posées dans le même dossier ne doivent pas partager un registre.
+pub fn stups_path(db_path: &Path) -> PathBuf {
+    side_path(db_path, "stups")
+}
+
+/// Un fichier à côté de la base, nommé d'après elle.
+fn side_path(db_path: &Path, suffix: &str) -> PathBuf {
     let stem = db_path
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
@@ -27999,7 +28131,7 @@ pub fn scans_path(db_path: &Path) -> PathBuf {
     db_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join(format!("{stem}_scans.db"))
+        .join(format!("{stem}_{suffix}.db"))
 }
 
 /// The database's file name, wherever it lives.
@@ -28087,7 +28219,10 @@ impl Db {
                 .map_err(|e| format!("index impossible : {e}"))?;
         }
         let scans = Self::open_scan_store(path, password)?;
-        Ok(Self { conn, scans })
+        let stups = Self::open_stup_store(path, password)?;
+        let db = Self { conn, scans, stups };
+        db.move_register_beside_the_base()?;
+        Ok(db)
     }
 
     /// Ouvrir (ou créer) le fichier des pièces à côté de la base.
@@ -28111,6 +28246,158 @@ impl Db {
         conn.execute_batch(SCAN_SCHEMA)
             .map_err(|e| format!("schéma des pièces impossible : {e}"))?;
         Ok(conn)
+    }
+
+    /// Ouvrir (ou créer) le fichier du registre à côté de la base.
+    ///
+    /// Même mot de passe, même chiffrement. Un fichier absent est un
+    /// fichier neuf : une officine qui vient de la version d'avant n'a
+    /// rien à faire, son registre est déplacé au premier lancement.
+    fn open_stup_store(db_path: &Path, password: &str) -> Result<Connection, String> {
+        let path = stups_path(db_path);
+        let conn = Connection::open(&path)
+            .map_err(|e| format!("ouverture du registre impossible : {e}"))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| format!("configuration impossible : {e}"))?;
+        conn.pragma_update(None, "key", password)
+            .map_err(|e| format!("chiffrement du registre impossible : {e}"))?;
+        conn.query_row("SELECT count(*) FROM sqlite_master", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .map_err(|_| "Fichier du registre illisible (mot de passe ?).".to_owned())?;
+        conn.execute_batch(STUP_SCHEMA)
+            .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        for migration in STUP_MIGRATIONS {
+            // Sans effet quand la colonne est déjà là.
+            let _ = conn.execute(migration, []);
+        }
+        Ok(conn)
+    }
+
+    /// Déplacer dans son fichier le registre qu'une version d'avant
+    /// avait écrit dans la base.
+    ///
+    /// Une fois, marquée dans `seed_state` — pas « quand le fichier est
+    /// vide », qui rejouerait le déplacement le jour où quelqu'un
+    /// supprime le fichier du registre, et le rejouerait sur des lignes
+    /// qui ont été écrites depuis.
+    ///
+    /// Les identifiants sont **conservés** : une ligne du registre porte
+    /// un numéro de dossier, et un produit porte l'identifiant de sa
+    /// fiche médicament — les deux désignent des lignes de l'autre
+    /// fichier, et les renuméroter au passage les ferait désigner autre
+    /// chose. Et les lignes d'origine restent où elles sont : on ne
+    /// supprime pas un registre, même pour le ranger ailleurs. Elles
+    /// cessent simplement d'être lues.
+    fn move_register_beside_the_base(&self) -> Result<(), String> {
+        if self.seed_mark("registre_deplace")?.is_some() {
+            return Ok(());
+        }
+        // Une base d'avant la 0.109 n'a pas les tables : rien à déplacer,
+        // et la marque est posée quand même pour ne plus regarder.
+        let legacy: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM stupefiants", [], |r| r.get(0))
+            .unwrap_or(0);
+        if legacy > 0 {
+            let products = {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT id, drug_id, label, unit, threshold, archived FROM stupefiants",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, i64>(1)?,
+                            r.get::<_, String>(2)?,
+                            r.get::<_, String>(3)?,
+                            r.get::<_, f64>(4)?,
+                            r.get::<_, i64>(5)?,
+                        ))
+                    })
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())?
+            };
+            let moves = {
+                let mut stmt = self
+                    .conn
+                    .prepare(
+                        "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                                patient_id, prescriber, supplier, reference, expected,
+                                operator, remark
+                         FROM stup_moves",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok(StupMove {
+                            id: r.get(0)?,
+                            stup_id: r.get(1)?,
+                            kind: r.get(2)?,
+                            happened_on: r.get(3)?,
+                            quantity: r.get(4)?,
+                            ordo_year: r.get(5)?,
+                            ordo_no: r.get(6)?,
+                            patient_id: r.get(7)?,
+                            prescriber: r.get(8)?,
+                            supplier: r.get(9)?,
+                            reference: r.get(10)?,
+                            expected: r.get(11)?,
+                            operator: r.get(12)?,
+                            remark: r.get(13)?,
+                            cancels: 0,
+                        })
+                    })
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())?
+            };
+            let tx = self
+                .stups
+                .unchecked_transaction()
+                .map_err(|e| e.to_string())?;
+            for (id, drug_id, label, unit, threshold, archived) in products {
+                tx.execute(
+                    "INSERT OR IGNORE INTO stupefiants
+                         (id, drug_id, label, unit, threshold, archived)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    (id, drug_id, label, unit, threshold, archived),
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            for m in moves {
+                tx.execute(
+                    "INSERT OR IGNORE INTO stup_moves
+                         (id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                          patient_id, prescriber, supplier, reference, expected,
+                          operator, remark, cancels)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0)",
+                    rusqlite::params![
+                        m.id,
+                        m.stup_id,
+                        m.kind,
+                        m.happened_on,
+                        m.quantity,
+                        m.ordo_year,
+                        m.ordo_no,
+                        m.patient_id,
+                        m.prescriber,
+                        m.supplier,
+                        m.reference,
+                        m.expected,
+                        m.operator,
+                        m.remark,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+        }
+        self.set_seed_mark("registre_deplace", "1")
     }
 
     pub fn patients(&self) -> Result<Vec<Patient>, String> {
@@ -28166,15 +28453,21 @@ impl Db {
         if new_password.is_empty() {
             return Err("Le mot de passe ne peut pas être vide.".to_owned());
         }
-        // **Les deux fichiers.** Oublier celui des pièces le laisserait
+        // **Les trois fichiers.** Oublier celui des pièces le laisserait
         // chiffré avec l'ancienne clé : la base rouvrirait, la liste des
         // pièces s'afficherait, et pas une seule ne s'ouvrirait — sans
-        // rien pour dire pourquoi. Le fichier des pièces d'abord : s'il
-        // échoue, la base garde son mot de passe et les deux restent
-        // d'accord, alors que dans l'autre ordre un échec les sépare.
+        // rien pour dire pourquoi. Le registre est pire encore : il ne
+        // s'ouvrirait plus du tout, et c'est une pièce comptable.
+        //
+        // Les fichiers à côté d'abord : s'ils échouent, la base garde
+        // son mot de passe et les trois restent d'accord, alors que dans
+        // l'autre ordre un échec les sépare.
         self.scans
             .pragma_update(None, "rekey", new_password)
             .map_err(|e| format!("changement du mot de passe des pièces impossible : {e}"))?;
+        self.stups
+            .pragma_update(None, "rekey", new_password)
+            .map_err(|e| format!("changement du mot de passe du registre impossible : {e}"))?;
         self.conn
             .pragma_update(None, "rekey", new_password)
             .map_err(|e| format!("changement du mot de passe impossible : {e}"))
@@ -30855,6 +31148,43 @@ impl Db {
         Ok(())
     }
 
+    /// Copier le fichier du registre. C'est aussi ce qui range une année
+    /// close, et ce qui part avec l'officine le jour où elle change de
+    /// logiciel.
+    pub fn backup_stups_to(&self, path: &Path) -> Result<(), String> {
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| "chemin de sauvegarde invalide".to_owned())?;
+        self.stups
+            .execute("VACUUM INTO ?1", [path_str])
+            .map_err(|e| format!("sauvegarde du registre impossible : {e}"))?;
+        Ok(())
+    }
+
+    /// Ce que le registre pèse : combien de produits suivis, combien de
+    /// lignes, et sur quelle étendue de jours.
+    ///
+    /// Affiché dans Options › Base à côté de ce que pèsent les pièces —
+    /// non pas pour la place, qui est négligeable, mais parce qu'une
+    /// officine doit pouvoir vérifier d'un coup d'œil que le fichier
+    /// qu'elle recopie est bien celui qui porte dix ans de registre.
+    pub fn stup_weight(&self) -> Result<(i64, i64, String, String), String> {
+        let products: i64 = self
+            .stups
+            .query_row("SELECT COUNT(*) FROM stupefiants", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let (lines, first, last) = self
+            .stups
+            .query_row(
+                "SELECT COUNT(*), COALESCE(MIN(happened_on), ''), COALESCE(MAX(happened_on), '')
+                 FROM stup_moves",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok((products, lines, first, last))
+    }
+
     // --- Le registre des stupéfiants ---------------------------------
     //
     // Deux tables et **un seul verbe d'écriture sur l'une d'elles**. Les
@@ -30867,9 +31197,10 @@ impl Db {
     /// Les produits suivis, les archivés en dernier, par nom.
     pub fn stupefiants(&self) -> Result<Vec<Stupefiant>, String> {
         let mut stmt = self
-            .conn
+            .stups
             .prepare(
-                "SELECT id, drug_id, label, unit, threshold, archived
+                "SELECT id, drug_id, label, unit, threshold, archived,
+                        family, status, max_days, note
                  FROM stupefiants ORDER BY archived ASC, label COLLATE NOCASE ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -30882,14 +31213,25 @@ impl Db {
                     unit: r.get(3)?,
                     threshold: r.get(4)?,
                     archived: r.get::<_, i64>(5)? != 0,
+                    family: r.get(6)?,
+                    status: r.get(7)?,
+                    max_days: r.get(8)?,
+                    note: r.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
-    /// Suivre un produit de plus. Le libellé est ce qui s'écrit sur la
-    /// ligne du registre, et deux produits ne peuvent pas porter le même.
+    /// Suivre un produit en ne disant que son nom, son unité et son
+    /// seuil : le raccourci des tests et de la base de démonstration.
+    ///
+    /// L'application ne l'emploie pas — elle passe par
+    /// [`Self::follow_stupefiant`], qui porte aussi la famille, le
+    /// régime et la durée maximale de prescription. Laisser deux portes
+    /// ouvertes dont l'une perd la moitié de la fiche serait la garantie
+    /// qu'un jour on prenne la mauvaise.
+    #[cfg(test)]
     pub fn add_stupefiant(
         &self,
         drug_id: i64,
@@ -30897,12 +31239,32 @@ impl Db {
         unit: &str,
         threshold: f64,
     ) -> Result<i64, String> {
-        let label = label.trim();
+        self.follow_stupefiant(&Stupefiant {
+            id: 0,
+            drug_id,
+            label: label.to_owned(),
+            unit: unit.to_owned(),
+            threshold,
+            archived: false,
+            family: String::new(),
+            status: crate::ordonnancier::Status::Stupefiant.as_key().to_owned(),
+            max_days: 0,
+            note: String::new(),
+        })
+    }
+
+    /// Suivre un produit avec tout ce que le catalogue en dit.
+    ///
+    /// Le libellé est ce qui s'écrira sur chaque ligne du registre, et
+    /// deux produits ne peuvent pas porter le même : deux « Skenan LP »
+    /// dans la liste, ce sont deux soldes pour une boîte.
+    pub fn follow_stupefiant(&self, p: &Stupefiant) -> Result<i64, String> {
+        let label = p.label.trim();
         if label.is_empty() {
             return Err(crate::strings::tr("stup_err_no_label").to_owned());
         }
         let taken: i64 = self
-            .conn
+            .stups
             .query_row(
                 "SELECT COUNT(*) FROM stupefiants WHERE label = ?1 COLLATE NOCASE",
                 [label],
@@ -30912,14 +31274,24 @@ impl Db {
         if taken > 0 {
             return Err(crate::strings::tr("stup_err_duplicate").to_owned());
         }
-        self.conn
+        self.stups
             .execute(
-                "INSERT INTO stupefiants (drug_id, label, unit, threshold)
-                 VALUES (?1, ?2, ?3, ?4)",
-                (drug_id, label, unit.trim(), threshold.max(0.0)),
+                "INSERT INTO stupefiants
+                     (drug_id, label, unit, threshold, family, status, max_days, note)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    p.drug_id,
+                    label,
+                    p.unit.trim(),
+                    p.threshold.max(0.0),
+                    p.family.trim(),
+                    crate::ordonnancier::Status::from_key(&p.status).as_key(),
+                    p.max_days.max(0),
+                    p.note.trim(),
+                ],
             )
             .map_err(|e| e.to_string())?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(self.stups.last_insert_rowid())
     }
 
     /// Corriger un produit suivi : compare-and-set sur ce que l'écran
@@ -30937,13 +31309,14 @@ impl Db {
             return Err(crate::strings::tr("stup_err_no_label").to_owned());
         }
         let changed = self
-            .conn
+            .stups
             .execute(
                 "UPDATE stupefiants
-                    SET label = ?2, unit = ?3, threshold = ?4, archived = ?5, drug_id = ?6
+                    SET label = ?2, unit = ?3, threshold = ?4, archived = ?5, drug_id = ?6,
+                        family = ?11, status = ?12, max_days = ?13, note = ?14
                   WHERE id = ?1 AND label = ?7 AND unit = ?8
                     AND threshold = ?9 AND archived = ?10",
-                (
+                rusqlite::params![
                     new.id,
                     label,
                     new.unit.trim(),
@@ -30954,7 +31327,11 @@ impl Db {
                     expected.unit.trim(),
                     expected.threshold,
                     i64::from(expected.archived),
-                ),
+                    new.family.trim(),
+                    crate::ordonnancier::Status::from_key(&new.status).as_key(),
+                    new.max_days.max(0),
+                    new.note.trim(),
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -30967,18 +31344,95 @@ impl Db {
     /// identifiants : une réception saisie le lendemain n'est pas une
     /// réception du lendemain.
     pub fn stup_moves(&self, stup_id: i64) -> Result<Vec<StupMove>, String> {
+        self.stup_rows(
+            "WHERE stup_id = ?1 ORDER BY happened_on ASC, id ASC",
+            rusqlite::params![stup_id],
+        )
+    }
+
+    /// Les dernières lignes du registre, tous produits confondus.
+    ///
+    /// C'est ce qu'on vient vérifier après coup : la délivrance de tout
+    /// à l'heure, la réception de ce matin. Une officine qui suit trente
+    /// produits ne relit pas trente registres pour retrouver la ligne
+    /// qu'elle vient d'écrire — et c'est aussi de là que se demande une
+    /// correction.
+    ///
+    /// Du plus récent au plus ancien, et par identifiant décroissant à
+    /// jour égal : le dernier écrit en tête, ce qui est l'ordre dans
+    /// lequel on le cherche. Ce n'est pas l'ordre du registre, qui est
+    /// celui des jours — c'est l'ordre d'un journal de bord.
+    pub fn stup_recent(&self, limit: usize) -> Result<Vec<StupMove>, String> {
+        self.stup_rows(
+            "ORDER BY happened_on DESC, id DESC LIMIT ?1",
+            rusqlite::params![limit as i64],
+        )
+    }
+
+    /// Les délivrances d'une année, dans l'ordre de l'ordonnancier.
+    ///
+    /// C'est **le** document : la suite des numéros, sans trou visible
+    /// et sans réattribution. Les annulations en font partie — un numéro
+    /// annulé se lit annulé, il ne disparaît pas.
+    pub fn stup_dispensings(&self, year: i64) -> Result<Vec<StupMove>, String> {
+        self.stup_rows(
+            "WHERE ordo_year = ?1 AND ordo_no > 0 ORDER BY ordo_no ASC",
+            rusqlite::params![year],
+        )
+    }
+
+    /// Les lignes que le registre a annulées.
+    ///
+    /// Une requête pour tout le registre, et non une par ligne
+    /// affichée : trois listes montrent des lignes, chacune en montre
+    /// quarante, et chacune est repeinte soixante fois par seconde.
+    pub fn stup_cancelled_ids(&self) -> Result<std::collections::HashSet<i64>, String> {
         let mut stmt = self
-            .conn
+            .stups
+            .prepare("SELECT cancels FROM stup_moves WHERE kind = 'ANNULATION' AND cancels > 0")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les années où le registre porte au moins une délivrance, la plus
+    /// récente d'abord. Ce qu'on peut demander à imprimer, et rien de
+    /// plus : proposer 2019 à une officine installée en 2026 donnerait
+    /// une feuille vide.
+    pub fn stup_years(&self) -> Result<Vec<i64>, String> {
+        let mut stmt = self
+            .stups
             .prepare(
-                "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
-                        patient_id, prescriber, supplier, reference, expected,
-                        operator, remark
-                 FROM stup_moves WHERE stup_id = ?1
-                 ORDER BY happened_on ASC, id ASC",
+                "SELECT DISTINCT ordo_year FROM stup_moves
+                 WHERE ordo_year > 0 ORDER BY ordo_year DESC",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([stup_id], |r| {
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Le corps commun des lectures du registre : la même liste de
+    /// colonnes, dans le même ordre, écrite une fois. Quatre lectures
+    /// qui recopient quinze noms de colonnes, ce sont quatre endroits où
+    /// en oublier un le jour où l'on en ajoute un.
+    fn stup_rows(
+        &self,
+        tail: &str,
+        params: &[&dyn rusqlite::ToSql],
+    ) -> Result<Vec<StupMove>, String> {
+        let sql = format!(
+            "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                    patient_id, prescriber, supplier, reference, expected,
+                    operator, remark, cancels
+             FROM stup_moves {tail}"
+        );
+        let mut stmt = self.stups.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params, |r| {
                 Ok(StupMove {
                     id: r.get(0)?,
                     stup_id: r.get(1)?,
@@ -30994,6 +31448,7 @@ impl Db {
                     expected: r.get(11)?,
                     operator: r.get(12)?,
                     remark: r.get(13)?,
+                    cancels: r.get(14)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -31014,15 +31469,55 @@ impl Db {
         }
         let kind = crate::ordonnancier::Kind::from_key(&m.kind);
         // Un mouvement de zéro n'est pas un mouvement — sauf un
-        // inventaire, où zéro est un comptage et une information.
-        if m.quantity < 0.0 || (m.quantity == 0.0 && kind != crate::ordonnancier::Kind::Inventaire)
-        {
+        // inventaire, où zéro est un comptage et une information, et
+        // sauf une annulation, dont la quantité n'est jamais lue : ce
+        // qu'elle rend se lit sur la ligne qu'elle annule.
+        let zero_is_allowed = matches!(
+            kind,
+            crate::ordonnancier::Kind::Inventaire | crate::ordonnancier::Kind::Annulation
+        );
+        if m.quantity < 0.0 || (m.quantity == 0.0 && !zero_is_allowed) {
             return Err(crate::strings::tr("stup_err_quantity").to_owned());
         }
         let tx = self
-            .conn
+            .stups
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
+        // Une annulation désigne la ligne qu'elle annule, et cette ligne
+        // doit exister, appartenir au même produit, pouvoir être annulée
+        // et ne pas l'être déjà. Vérifié **dans la transaction** : deux
+        // postes qui annulent la même ligne en même temps l'annuleraient
+        // deux fois, et le stock remonterait du double.
+        if kind == crate::ordonnancier::Kind::Annulation {
+            if m.remark.trim().is_empty() {
+                return Err(crate::strings::tr("stup_err_no_reason").to_owned());
+            }
+            let target: Option<(i64, String)> = tx
+                .query_row(
+                    "SELECT stup_id, kind FROM stup_moves WHERE id = ?1",
+                    [m.cancels],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .ok();
+            let Some((owner, target_kind)) = target else {
+                return Err(crate::strings::tr("stup_err_no_target").to_owned());
+            };
+            if owner != m.stup_id
+                || !crate::ordonnancier::Kind::from_key(&target_kind).can_be_cancelled()
+            {
+                return Err(crate::strings::tr("stup_err_no_target").to_owned());
+            }
+            let already: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM stup_moves WHERE kind = 'ANNULATION' AND cancels = ?1",
+                    [m.cancels],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if already > 0 {
+                return Err(crate::strings::tr("stup_err_already_cancelled").to_owned());
+            }
+        }
         let (year, no) = if kind.is_dispensing() {
             let year: i64 = day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
             // Les numéros déjà pris de cette année, et la règle qui en
@@ -31052,8 +31547,8 @@ impl Db {
             "INSERT INTO stup_moves
                  (stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
                   patient_id, prescriber, supplier, reference, expected,
-                  operator, remark)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                  operator, remark, cancels)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             rusqlite::params![
                 m.stup_id,
                 kind.as_key(),
@@ -31075,12 +31570,66 @@ impl Db {
                 m.expected,
                 m.operator.trim(),
                 m.remark.trim(),
+                if kind == crate::ordonnancier::Kind::Annulation {
+                    m.cancels
+                } else {
+                    0
+                },
             ],
         )
         .map_err(|e| e.to_string())?;
         let id = tx.last_insert_rowid();
         tx.commit().map_err(|e| e.to_string())?;
         Ok(id)
+    }
+
+    /// Annuler une ligne du registre — la seule correction qu'il y ait.
+    ///
+    /// Rien n'est modifié et rien n'est supprimé : une ligne de plus est
+    /// écrite, elle désigne la ligne fautive, elle porte le motif, et
+    /// c'est elle qui défait ce que la première avait fait au stock. Le
+    /// contrôleur voit la faute *et* sa correction, ce qui est
+    /// exactement ce qu'un registre doit lui montrer.
+    ///
+    /// Le motif est obligatoire : une annulation sans raison est une
+    /// ligne qui disparaît sans que personne ne sache pourquoi, soit
+    /// précisément ce que l'inaltérabilité interdit.
+    ///
+    /// Le numéro d'ordonnancier de la délivrance annulée **ne revient
+    /// pas** : il reste pris, et la suite continue après lui. Un trou
+    /// dans la suite se lit ; un numéro servi deux fois ne se lit pas.
+    pub fn cancel_stup_move(
+        &self,
+        move_id: i64,
+        day: &str,
+        reason: &str,
+        operator: &str,
+    ) -> Result<i64, String> {
+        let stup_id: i64 = self
+            .stups
+            .query_row(
+                "SELECT stup_id FROM stup_moves WHERE id = ?1",
+                [move_id],
+                |r| r.get(0),
+            )
+            .map_err(|_| crate::strings::tr("stup_err_no_target").to_owned())?;
+        self.add_stup_move(&StupMove {
+            id: 0,
+            stup_id,
+            kind: crate::ordonnancier::Kind::Annulation.as_key().to_owned(),
+            happened_on: day.to_owned(),
+            quantity: 0.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: operator.to_owned(),
+            remark: reason.to_owned(),
+            cancels: move_id,
+        })
     }
 
     /// Ce que le registre dit de chaque produit suivi : le solde et la
@@ -31092,31 +31641,39 @@ impl Db {
     pub fn stup_summary(&self) -> Result<Vec<(Stupefiant, f64, String)>, String> {
         let products = self.stupefiants()?;
         let mut stmt = self
-            .conn
+            .stups
             .prepare(
-                "SELECT stup_id, kind, happened_on, quantity, id
+                "SELECT stup_id, kind, happened_on, quantity, id, cancels, expected
                  FROM stup_moves ORDER BY happened_on ASC, id ASC",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, f64>(3)?,
-                    r.get::<_, i64>(4)?,
-                ))
+                Ok(Line {
+                    stup_id: r.get(0)?,
+                    kind: r.get(1)?,
+                    day: r.get(2)?,
+                    quantity: r.get(3)?,
+                    id: r.get(4)?,
+                    cancels: r.get(5)?,
+                    expected: r.get(6)?,
+                })
             })
             .map_err(|e| e.to_string())?;
-        let mut by_product: std::collections::HashMap<i64, Vec<(String, String, f64, i64)>> =
+        struct Line {
+            stup_id: i64,
+            kind: String,
+            day: String,
+            quantity: f64,
+            id: i64,
+            cancels: i64,
+            expected: f64,
+        }
+        let mut by_product: std::collections::HashMap<i64, Vec<Line>> =
             std::collections::HashMap::new();
         for row in rows {
-            let (stup_id, kind, day, qty, id) = row.map_err(|e| e.to_string())?;
-            by_product
-                .entry(stup_id)
-                .or_default()
-                .push((kind, day, qty, id));
+            let line = row.map_err(|e| e.to_string())?;
+            by_product.entry(line.stup_id).or_default().push(line);
         }
         Ok(products
             .into_iter()
@@ -31124,20 +31681,27 @@ impl Db {
                 let lines = by_product.remove(&p.id).unwrap_or_default();
                 let moves: Vec<crate::ordonnancier::Move> = lines
                     .iter()
-                    .map(|(kind, day, qty, id)| crate::ordonnancier::Move {
-                        kind: crate::ordonnancier::Kind::from_key(kind),
-                        quantity: *qty,
-                        day,
-                        seq: *id,
+                    .map(|l| crate::ordonnancier::Move {
+                        kind: crate::ordonnancier::Kind::from_key(&l.kind),
+                        quantity: l.quantity,
+                        day: &l.day,
+                        seq: l.id,
+                        cancels: l.cancels,
+                        expected: l.expected,
                     })
                     .collect();
                 let stock = crate::ordonnancier::balance(&moves);
                 // Le dernier comptage, qui est ce qui décide de la liste
-                // de contrôle. Les lignes sont déjà dans l'ordre.
+                // de contrôle. Les lignes sont déjà dans l'ordre — et un
+                // comptage annulé n'en est pas un : le prendre pour le
+                // dernier ferait sortir de la liste de contrôle un
+                // produit que personne n'a compté.
                 let last = lines
                     .iter()
-                    .rfind(|(kind, _, _, _)| kind == "INVENTAIRE")
-                    .map(|(_, day, _, _)| day.clone())
+                    .rfind(|l| {
+                        l.kind == "INVENTAIRE" && !crate::ordonnancier::is_cancelled(&moves, l.id)
+                    })
+                    .map(|l| l.day.clone())
                     .unwrap_or_default();
                 (p, stock, last)
             })
@@ -33921,6 +34485,7 @@ mod tests {
                 expected: 0.0,
                 operator: "YS".to_owned(),
                 remark: String::new(),
+                cancels: 0,
             })
             .unwrap()
         };
@@ -33973,6 +34538,7 @@ mod tests {
             expected: 11.0,
             operator: "YS".to_owned(),
             remark: "une gélule manquante".to_owned(),
+            cancels: 0,
         })
         .unwrap();
         let summary = db.stup_summary().unwrap();
@@ -34002,6 +34568,7 @@ mod tests {
             expected: 0.0,
             operator: String::new(),
             remark: String::new(),
+            cancels: 0,
         };
         assert!(db.add_stup_move(&bad("ENTREE", 5.0, "  ")).is_err());
         assert!(db
@@ -34011,6 +34578,248 @@ mod tests {
         assert!(db
             .add_stup_move(&bad("INVENTAIRE", 0.0, "2026-02-01"))
             .is_ok());
+    }
+
+    /// Une ligne se corrige par une annulation, et jamais autrement.
+    ///
+    /// C'est la demande — « les lignes peuvent être corrigées, mais que
+    /// tout reste traçable » — et c'est le seul point où les deux
+    /// exigences peuvent tenir ensemble. La ligne fautive reste écrite,
+    /// une ligne de plus la désigne et porte son motif, et le stock
+    /// revient exactement à ce qu'il aurait été.
+    #[test]
+    fn a_line_is_corrected_by_a_cancellation_that_names_it() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-annul-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("stup.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let sid = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 10.0)
+            .unwrap();
+        let other = db
+            .add_stupefiant(0, "Oxycontin LP 10 mg", "comprimé", 0.0)
+            .unwrap();
+        let write = |stup: i64, kind: &str, qty: f64, day: &str, patient: i64| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: stup,
+                kind: kind.to_owned(),
+                happened_on: day.to_owned(),
+                quantity: qty,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: patient,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+            })
+            .unwrap()
+        };
+        write(sid, "ENTREE", 28.0, "2026-01-05", 0);
+        let first = write(sid, "SORTIE", 14.0, "2026-01-08", pid);
+        // La même délivrance saisie deux fois, par deux postes.
+        let twice = write(sid, "SORTIE", 14.0, "2026-01-08", pid);
+        assert!((db.stup_summary().unwrap()[1].1 - 0.0).abs() < 1e-9);
+
+        // Un motif est obligatoire.
+        assert!(db
+            .cancel_stup_move(twice, "2026-01-09", "   ", "YS")
+            .is_err());
+        // Une ligne qui n'existe pas ne s'annule pas.
+        assert!(db
+            .cancel_stup_move(9999, "2026-01-09", "erreur de saisie", "YS")
+            .is_err());
+        db.cancel_stup_move(twice, "2026-01-09", "saisie en double", "YS")
+            .unwrap();
+        // Le stock est revenu à ce qu'il aurait été, et **la ligne
+        // fautive est toujours là** : quatre lignes, pas trois.
+        let moves = db.stup_moves(sid).unwrap();
+        assert_eq!(moves.len(), 4);
+        assert!((db.stup_summary().unwrap()[1].1 - 14.0).abs() < 1e-9);
+        assert!(db.stup_cancelled_ids().unwrap().contains(&twice));
+        assert!(!db.stup_cancelled_ids().unwrap().contains(&first));
+
+        // Deux fois la même annulation ferait remonter le stock du
+        // double. Refusé — et refusé dans la transaction, parce que deux
+        // postes peuvent la demander en même temps.
+        assert!(db
+            .cancel_stup_move(twice, "2026-01-09", "encore", "YS")
+            .is_err());
+        // Une annulation ne s'annule pas : la correction d'une
+        // annulation fautive est une ligne qui l'explique, pas une
+        // troisième couche.
+        let annul = db.stup_moves(sid).unwrap().pop().unwrap().id;
+        assert!(db
+            .cancel_stup_move(annul, "2026-01-10", "je me suis trompé", "YS")
+            .is_err());
+
+        // Le numéro d'ordonnancier de la délivrance annulée **ne revient
+        // pas** : le suivant est le troisième, et le deuxième reste un
+        // trou qui se lit. Un numéro servi deux fois, lui, ne se lit pas.
+        let next = write(sid, "SORTIE", 7.0, "2026-01-12", pid);
+        let moves = db.stup_moves(sid).unwrap();
+        let numbered: Vec<i64> = moves
+            .iter()
+            .filter(|m| m.ordo_no > 0)
+            .map(|m| m.ordo_no)
+            .collect();
+        assert_eq!(numbered, vec![1, 2, 3]);
+        assert_eq!(
+            moves.iter().find(|m| m.id == next).unwrap().ordo_no,
+            3,
+            "le numéro annulé ne revient pas servir"
+        );
+
+        // Et une ligne d'un autre produit ne s'annule pas depuis
+        // celui-ci : le stock qui remonterait ne serait pas le sien.
+        let elsewhere = write(other, "ENTREE", 10.0, "2026-01-05", 0);
+        assert!(db
+            .add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: "ANNULATION".to_owned(),
+                happened_on: "2026-01-13".to_owned(),
+                quantity: 0.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: "pas le bon produit".to_owned(),
+                cancels: elsewhere,
+            })
+            .is_err());
+
+        // L'ordonnancier de l'année les porte toutes, annulée comprise :
+        // une feuille d'où l'on aurait ôté les erreurs ne serait pas une
+        // copie du registre.
+        let ordo = db.stup_dispensings(2026).unwrap();
+        assert_eq!(ordo.len(), 3);
+        assert!(ordo.windows(2).all(|w| w[0].ordo_no < w[1].ordo_no));
+        assert_eq!(db.stup_years().unwrap(), vec![2026]);
+        // Le journal rend les dernières lignes **tous produits
+        // confondus**, la plus récente en tête : c'est l'ordre dans
+        // lequel on cherche ce qu'on vient d'écrire, et ce n'est pas
+        // celui du registre, qui est celui des jours croissants.
+        let recent = db.stup_recent(3).unwrap();
+        assert_eq!(recent.len(), 3, "le plafond est tenu");
+        assert_eq!(recent[0].happened_on, "2026-01-12");
+        assert!(
+            recent
+                .windows(2)
+                .all(|w| w[0].happened_on >= w[1].happened_on),
+            "du plus récent au plus ancien"
+        );
+        let all = db.stup_recent(40).unwrap();
+        assert!(
+            all.iter().any(|m| m.stup_id == other),
+            "le journal mêle les produits"
+        );
+    }
+
+    /// Le registre vit dans son propre fichier, et un registre écrit par
+    /// une version d'avant y est déplacé au premier lancement.
+    ///
+    /// Ce qui compte ici : les **identifiants sont conservés**. Une ligne
+    /// de délivrance porte un numéro de dossier, et un produit
+    /// l'identifiant de sa fiche médicament ; les renuméroter au passage
+    /// les ferait désigner un autre patient et un autre médicament, ce
+    /// qui est la pire chose qu'un registre puisse faire.
+    #[test]
+    fn the_register_moves_into_its_own_file_keeping_its_identifiers() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-stupmv-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("base.db");
+
+        // Une base d'avant : les deux tables sont dans la base
+        // principale, écrites à la main comme la 0.141 les écrivait.
+        {
+            let db = Db::open(&path, "secret").unwrap();
+            db.conn
+                .execute(
+                    "INSERT INTO stupefiants (id, drug_id, label, unit, threshold, archived)
+                     VALUES (7, 42, 'Skenan LP 30 mg', 'gélule', 10, 0)",
+                    [],
+                )
+                .unwrap();
+            db.conn
+                .execute(
+                    "INSERT INTO stup_moves
+                         (id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                          patient_id, prescriber, supplier, reference, expected, operator, remark)
+                     VALUES (3, 7, 'SORTIE', '2026-01-08', 14, 2026, 1, 55, 'Dr Martin',
+                             '', '', 0, 'YS', '')",
+                    [],
+                )
+                .unwrap();
+            // Et la marque de déplacement est retirée : l'ouverture qui
+            // vient de créer la base l'a déjà posée sur une base vide.
+            db.conn
+                .execute("DELETE FROM seed_state WHERE key = 'registre_deplace'", [])
+                .unwrap();
+        }
+
+        let db = Db::open(&path, "secret").unwrap();
+        let side = stups_path(&path);
+        assert!(side.is_file(), "le registre a son fichier");
+        let products = db.stupefiants().unwrap();
+        assert_eq!(products.len(), 1);
+        assert_eq!(products[0].id, 7, "l'identifiant du produit est conservé");
+        assert_eq!(products[0].drug_id, 42, "la fiche désignée est la même");
+        let moves = db.stup_moves(7).unwrap();
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].id, 3);
+        assert_eq!(moves[0].patient_id, 55, "le dossier désigné est le même");
+        assert_eq!(moves[0].ordo_no, 1, "le numéro d'ordonnancier est conservé");
+
+        // Rejouer l'ouverture ne redouble rien : le déplacement est
+        // marqué, pas déduit de « le fichier est vide » — sans quoi il
+        // rejouerait le jour où quelqu'un supprime le fichier, et
+        // rejouerait sur des lignes écrites depuis.
+        drop(db);
+        let db = Db::open(&path, "secret").unwrap();
+        assert_eq!(db.stup_moves(7).unwrap().len(), 1);
+
+        // Le mot de passe change sur les **trois** fichiers : oublier
+        // celui-là laisserait le registre illisible, et c'est une pièce
+        // comptable.
+        db.change_password("nouveau").unwrap();
+        drop(db);
+        assert!(Db::open(&path, "secret").is_err());
+        let db = Db::open(&path, "nouveau").unwrap();
+        assert_eq!(db.stup_moves(7).unwrap().len(), 1);
+
+        // Et la copie du registre porte son propre préfixe, pour que
+        // l'élagage des trois séries ne se mélange pas : on n'en garde
+        // pas le même nombre.
+        let name = stups_backup_name("2026-08-30");
+        assert!(name.starts_with("bpm_caddy_stups-") && name.ends_with(".db"));
+        assert_ne!(name, scans_backup_name("2026-08-30"));
+        assert_ne!(name, backup_name("2026-08-30"));
+        let copy = dir.join(&name);
+        db.backup_stups_to(&copy).unwrap();
+        assert!(copy.is_file());
+        assert!(
+            db.backup_stups_to(&copy).is_err(),
+            "VACUUM INTO n'écrase pas"
+        );
+        let (products, lines, first, last) = db.stup_weight().unwrap();
+        assert_eq!((products, lines), (1, 1));
+        assert_eq!(
+            (first.as_str(), last.as_str()),
+            ("2026-01-08", "2026-01-08")
+        );
     }
 
     /// L'étiquette du produit se corrige comme toute ligne partagée :
@@ -36433,12 +37242,39 @@ mod tests {
                 expected,
                 operator: "CL".to_owned(),
                 remark: String::new(),
+                cancels: 0,
             })
             .unwrap();
         };
-        let skenan = db
-            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 14.0)
-            .unwrap();
+        // Les produits viennent du **catalogue** et non d'un nom tapé :
+        // la démonstration doit montrer ce que l'écran montre vraiment —
+        // la famille, le régime et la durée maximale de prescription
+        // sous le solde.
+        let follow = |label: &str, threshold: f64| {
+            let (family, unit) = crate::ordonnancier::CATALOGUE
+                .iter()
+                .find_map(|f| {
+                    f.items
+                        .iter()
+                        .find(|(l, _)| *l == label)
+                        .map(|(_, u)| (f, *u))
+                })
+                .expect("le catalogue porte ce produit");
+            db.follow_stupefiant(&Stupefiant {
+                id: 0,
+                drug_id: 0,
+                label: label.to_owned(),
+                unit: unit.to_owned(),
+                threshold,
+                archived: false,
+                family: family.name.to_owned(),
+                status: family.status.to_owned(),
+                max_days: family.max_days,
+                note: family.note.to_owned(),
+            })
+            .unwrap()
+        };
+        let skenan = follow("Skenan LP 30 mg", 14.0);
         write(skenan, "ENTREE", 28.0, day(1, 12), 0, 0.0);
         write(skenan, "SORTIE", 14.0, day(2, 3), pid, 0.0);
         write(skenan, "SORTIE", 14.0, day(3, 9), pid, 0.0);
@@ -36460,15 +37296,14 @@ mod tests {
             expected: 56.0,
             operator: "CL".to_owned(),
             remark: "une gélule non retrouvée — signalée".to_owned(),
+            cancels: 0,
         })
         .unwrap();
         write(skenan, "SORTIE", 14.0, day(4, 18), pid, 0.0);
 
         // Un produit sous son seuil, jamais recompté : la liste de
         // contrôle a de quoi dire.
-        let oxy = db
-            .add_stupefiant(0, "Oxycontin LP 10 mg", "comprimé", 20.0)
-            .unwrap();
+        let oxy = follow("Oxycontin LP 10 mg", 20.0);
         write(oxy, "ENTREE", 28.0, day(2, 6), 0, 0.0);
         write(oxy, "SORTIE", 14.0, day(2, 20), pid, 0.0);
         db.add_stup_move(&StupMove {
@@ -36486,14 +37321,50 @@ mod tests {
             expected: 0.0,
             operator: "YS".to_owned(),
             remark: "blister écrasé à la réception".to_owned(),
+            cancels: 0,
         })
         .unwrap();
 
-        let metha = db
-            .add_stupefiant(0, "Méthadone gélules 40 mg", "gélule", 7.0)
-            .unwrap();
+        // Un assimilé, pour que l'écran montre les deux régimes : la
+        // buprénorphine n'a pas d'obligation de registre, et une
+        // démonstration qui ne porterait que des stupéfiants laisserait
+        // croire que la distinction est décorative.
+        let metha = follow("Méthadone AP-HP gélule 40 mg", 7.0);
         write(metha, "ENTREE", 14.0, day(5, 4), 0, 0.0);
         write(metha, "SORTIE", 7.0, day(5, 11), pid, 0.0);
+        let subutex = follow("Subutex 8 mg", 14.0);
+        write(subutex, "ENTREE", 28.0, day(6, 2), 0, 0.0);
+        write(subutex, "SORTIE", 7.0, day(6, 9), pid, 0.0);
+
+        // Et une correction, parce que c'est la moitié du sujet : la
+        // même délivrance saisie deux fois par deux postes, puis
+        // contre-passée. Les deux lignes restent, la seconde barrée.
+        let doubled = db
+            .add_stup_move(&StupMove {
+                id: 0,
+                stup_id: subutex,
+                kind: "SORTIE".to_owned(),
+                happened_on: day(6, 9),
+                quantity: 7.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: pid,
+                prescriber: "Dr Morel".to_owned(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "CL".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+            })
+            .unwrap();
+        db.cancel_stup_move(
+            doubled,
+            &day(6, 10),
+            "saisie en double sur les deux postes",
+            "YS",
+        )
+        .unwrap();
 
         // Trois pièces au dossier, dont une feuille d'accident du
         // travail : c'est le genre qui se retrouve toujours au mauvais

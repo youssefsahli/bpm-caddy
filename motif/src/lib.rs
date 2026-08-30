@@ -927,6 +927,74 @@ pub fn section(ui: &mut egui::Ui, label: &str) {
     });
 }
 
+/// The Motif *scale*: a sunken trough with a raised sliding thumb.
+///
+/// The one widget of the toolkit this project had not needed until a
+/// quantity had to be set at the counter, and it is the right one for
+/// that: dragging is faster than typing when the number is small and
+/// the range is known, and the raised thumb in a sunken groove is what
+/// a Motif scale has always looked like — no rounded pill, no colour.
+///
+/// The value stays the caller's: this only asks for a change. It is
+/// **not** the only way to set the number — the text field beside it
+/// stays authoritative, because a slider cannot express « 2,5 » and a
+/// counter sometimes dispenses half a patch.
+///
+/// Clicking anywhere in the trough jumps there; dragging follows the
+/// pointer. Values snap to `step`, so a scale over boxes lands on whole
+/// boxes rather than on 6,97.
+pub fn scale(
+    ui: &mut egui::Ui,
+    width: f32,
+    value: f64,
+    max: f64,
+    step: f64,
+) -> (egui::Response, f64) {
+    let h = ui.spacing().interact_size.y.max(18.0);
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(width.max(24.0), h), egui::Sense::click_and_drag());
+    let max = if max > 0.0 { max } else { 1.0 };
+    // The groove: a shallow sunken channel across the middle, the full
+    // height being the thumb's travel.
+    let groove = egui::Rect::from_center_size(rect.center(), Vec2::new(rect.width(), 6.0));
+    ui.painter().rect_filled(groove, 0.0, crate::trough());
+    bevel(ui.painter(), groove, false);
+    let mut out = value.clamp(0.0, max);
+    if let Some(pos) = resp.interact_pointer_pos() {
+        // The thumb has width, so the travel is shorter than the trough:
+        // mapping the pointer to the full width would make the last
+        // value unreachable and the first one sticky.
+        let thumb_w = (h * 0.5).max(10.0);
+        let travel = (rect.width() - thumb_w).max(1.0);
+        let t = ((pos.x - rect.left() - thumb_w / 2.0) / travel).clamp(0.0, 1.0) as f64;
+        let raw = t * max;
+        out = if step > 0.0 {
+            (raw / step).round() * step
+        } else {
+            raw
+        };
+        out = out.clamp(0.0, max);
+    }
+    let thumb_w = (h * 0.5).max(10.0);
+    let travel = (rect.width() - thumb_w).max(1.0);
+    let t = (out / max).clamp(0.0, 1.0) as f32;
+    let thumb = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + travel * t, rect.top()),
+        Vec2::new(thumb_w, rect.height()),
+    );
+    ui.painter().rect_filled(
+        thumb,
+        0.0,
+        if resp.hovered() {
+            crate::bg_hover()
+        } else {
+            crate::bg()
+        },
+    );
+    bevel(ui.painter(), thumb, true);
+    (resp, out)
+}
+
 /// A sunken determinate progress trough with an `crate::accent()` fill.
 pub fn progress_bar(ui: &mut egui::Ui, fraction: f32, width: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 22.0), egui::Sense::hover());
