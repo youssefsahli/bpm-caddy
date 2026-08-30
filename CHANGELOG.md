@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.143.1] - 2026-08-30
+
+### Fixed
+- **La recherche du registre ne trouvait rien.** `fuzzy::contains_folded`
+  attend un foin **déjà plié** par `sort_key` — c'est ce qui lui permet
+  de ne rien allouer pour les moteurs de règles, qui la interrogent des
+  milliers de fois. Les trois recherches du registre lui passaient un
+  libellé pris tel quel sur la ligne : l'aiguille pliée était alors
+  comparée à un « S » brut, et « Skenan » ne trouvait pas « Skenan ». Un
+  champ de recherche qui a l'air d'un champ de recherche et ne rend
+  jamais rien est pire qu'une absence de recherche — on ne sait pas si
+  la base est vide ou si l'écran est cassé.
+  - `fuzzy::contains_loose` répond à la même question sans qu'aucun des
+    deux côtés soit plié, et sans allouer non plus : plier le foin
+    d'abord aurait donné la bonne réponse et une `String` par ligne et
+    par image, ce que cette maison interdit dans un chemin de dessin.
+  - Le piège est maintenant montré plutôt que décrit :
+    `the_loose_search_folds_both_sides_and_the_folded_one_does_not`
+    commence par affirmer que `contains_folded("Skenan LP 30 mg",
+    "skenan")` est **faux**, puis que la nouvelle est vraie. La
+    troisième correspondance rattachait aussi la fiche du médicament au
+    produit suivi, et tombait de la même façon.
+
 ## [0.143.0] - 2026-08-30
 
 ### Added

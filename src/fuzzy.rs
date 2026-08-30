@@ -98,6 +98,31 @@ pub fn contains_folded(hay: &str, needle: &str) -> bool {
     false
 }
 
+/// The same question when **neither** side has been folded.
+///
+/// [`contains_folded`] wants a haystack that has already been through
+/// [`sort_key`], and that is a trap the moment the haystack is a label
+/// read straight off a row: the folded needle is then compared against a
+/// raw « S », and « Skenan » does not find « Skenan ». Folding the
+/// haystack first would answer correctly and allocate a `String` per row
+/// per frame, which is what this house forbids in a draw path — so this
+/// folds both sides as it walks, and allocates nothing either.
+pub fn contains_loose(hay: &str, needle: &str) -> bool {
+    let Some(first) = needle.chars().next().map(fold) else {
+        return true;
+    };
+    for (i, c) in hay.char_indices() {
+        if fold(c) != first {
+            continue;
+        }
+        let mut rest = hay[i..].chars().map(fold);
+        if needle.chars().map(fold).all(|n| rest.next() == Some(n)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Are these the same word, ignoring case, accents and the space
 /// around them? Without allocating a folded copy of either.
 ///
@@ -338,6 +363,40 @@ mod tests {
         // An empty needle is contained in everything, `str::contains`
         // included.
         assert!(super::contains_folded("", ""));
+    }
+
+    /// `contains_loose` answers the same question with **neither** side
+    /// folded — and the trap it exists for is real.
+    ///
+    /// Given a haystack straight off a row, `contains_folded` compares a
+    /// folded needle against a raw « S » and finds nothing: « Skenan »
+    /// does not find « Skenan ». A search field wired that way looks
+    /// like a search field, returns nothing, and nobody can tell whether
+    /// the base is empty or the search is broken.
+    #[test]
+    fn the_loose_search_folds_both_sides_and_the_folded_one_does_not() {
+        // The trap, shown rather than described.
+        assert!(!super::contains_folded("Skenan LP 30 mg", "skenan"));
+        assert!(super::contains_loose("Skenan LP 30 mg", "skenan"));
+        assert!(super::contains_loose("Skenan LP 30 mg", "SKENAN"));
+        // Accents on either side, or on both.
+        assert!(super::contains_loose(
+            "Méthadone AP-HP gélule 40 mg",
+            "methadone"
+        ));
+        assert!(super::contains_loose("Methadone gelule", "gélule"));
+        assert!(super::contains_loose("Oxycodone", "oxy"));
+        assert!(!super::contains_loose("Oxycodone", "oxyz"));
+        // And it agrees with the folded pair wherever both apply.
+        for hay in ["Skenan LP 30 mg", "Fentanyl transmuqueux", "", "Durogesic"] {
+            for n in ["", "z", "trans", "DUROGÉSIC", "30 mg"] {
+                assert_eq!(
+                    super::contains_loose(hay, n),
+                    super::contains_folded(&super::sort_key(hay), n),
+                    "contains_loose(«{hay}», «{n}») diverge"
+                );
+            }
+        }
     }
 
     #[test]

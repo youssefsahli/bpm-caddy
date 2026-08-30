@@ -16948,11 +16948,10 @@ impl App {
                                         .color(motif::text_dim()),
                                 );
                             }
-                            let key = fuzzy::sort_key(&query);
                             for (p, stock, _) in &session.stup_summary {
-                                if !key.is_empty()
-                                    && !fuzzy::contains_folded(&p.label, &query)
-                                    && !fuzzy::contains_folded(&p.family, &query)
+                                if !query.trim().is_empty()
+                                    && !fuzzy::contains_loose(&p.label, &query)
+                                    && !fuzzy::contains_loose(&p.family, &query)
                                 {
                                     continue;
                                 }
@@ -17006,7 +17005,7 @@ impl App {
             p.drug_id = session
                 .drugs
                 .iter()
-                .find(|d| fuzzy::contains_folded(&p.label, &d.name))
+                .find(|d| fuzzy::contains_loose(&p.label, &d.name))
                 .map_or(0, |d| d.id);
             match session.db.follow_stupefiant(&p) {
                 Ok(id) => {
@@ -17625,16 +17624,15 @@ impl App {
         query: &str,
         follow: &mut Option<db::Stupefiant>,
     ) {
-        let key = fuzzy::sort_key(query);
         let mut shown = 0usize;
         for family in crate::ordonnancier::CATALOGUE {
             let matching: Vec<&(&str, &str)> = family
                 .items
                 .iter()
                 .filter(|(label, _)| {
-                    key.is_empty()
-                        || fuzzy::contains_folded(label, query)
-                        || fuzzy::contains_folded(family.name, query)
+                    query.trim().is_empty()
+                        || fuzzy::contains_loose(label, query)
+                        || fuzzy::contains_loose(family.name, query)
                 })
                 .collect();
             if matching.is_empty() {
