@@ -8,6 +8,7 @@ mod conciliation;
 mod config;
 mod db;
 mod entretien;
+mod facets;
 mod fuzzy;
 mod graph;
 mod insulin;

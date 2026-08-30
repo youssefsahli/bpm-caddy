@@ -539,6 +539,78 @@ pub const WATCHES: &[Watch] = &[
         every_months: 12,
         why: "L'albuminurie bouge des années avant le DFG chez le diabétique et l'hypertendu : c'est le marqueur qui permet d'agir tant qu'il reste quelque chose à protéger.",
     },
+    Watch {
+        needs: &["mésalazine", "aminosalicylé", "Pentasa", "Fivasa"],
+        code: "CREAT",
+        every_months: 12,
+        why: "La mésalazine expose à une néphrite interstitielle qui n'a aucun signe d'appel et qui laisse une insuffisance rénale chronique : le traitement se prend pendant des années et c'est la surveillance qu'on oublie parce que la molécule passe pour anodine.",
+    },
+    Watch {
+        needs: &["agomélatine", "Valdoxan"],
+        code: "ALAT",
+        every_months: 3,
+        why: "Les atteintes hépatiques graves sous agomélatine ont fait imposer un calendrier précis — avant, puis à trois, six, douze et vingt-quatre semaines, et après chaque augmentation de dose — que le suivi de routine perd de vue au bout de quelques mois.",
+    },
+    Watch {
+        needs: &["vildagliptine", "Galvus", "Eucreas"],
+        code: "ALAT",
+        every_months: 3,
+        why: "La vildagliptine est la seule gliptine à imposer un contrôle des transaminases, trimestriel la première année : c'est ce qui la distingue des autres et c'est ce que personne ne demande.",
+    },
+    Watch {
+        needs: &["tériflunomide", "Aubagio", "léflunomide"],
+        code: "ALAT",
+        every_months: 3,
+        why: "Hépatotoxicité imposant des transaminases mensuelles les six premiers mois puis régulières : la molécule persiste jusqu'à deux ans dans l'organisme, et une atteinte découverte tard ne se règle pas en arrêtant.",
+    },
+    Watch {
+        needs: &["diméthyl fumarate", "Tecfidera", "fingolimod", "Gilenya"],
+        code: "LYMPHO",
+        every_months: 3,
+        why: "Une lymphopénie profonde et prolongée est ce qui expose à la leucoencéphalopathie multifocale progressive : le chiffre décide de la poursuite du traitement, et c'est le seul moyen de voir venir la complication.",
+    },
+    Watch {
+        needs: &["finérénone", "Kerendia"],
+        code: "K",
+        every_months: 6,
+        why: "L'hyperkaliémie est le facteur limitant, contrôlée quatre semaines après l'instauration puis régulièrement : ces patients reçoivent presque tous un IEC ou un sartan, et les deux tirent dans le même sens.",
+    },
+    Watch {
+        needs: &["cinacalcet", "Mimpara", "ételcalcétide"],
+        code: "CA",
+        every_months: 3,
+        why: "Le calcimimétique abaisse la calcémie, et c'est à la fois son effet et sa toxicité : l'hypocalcémie peut aller jusqu'aux convulsions et à l'allongement du QT, et elle se voit sur un chiffre avant de se voir sur le patient.",
+    },
+    Watch {
+        needs: &["sunitinib", "Sutent"],
+        code: "TSH",
+        every_months: 6,
+        why: "L'hypothyroïdie sous sunitinib est fréquente, souvent tardive, et elle se confond avec la fatigue de la maladie : la doser est ce qui permet de la traiter au lieu de l'attribuer au cancer.",
+    },
+    Watch {
+        needs: &["terbinafine", "Lamisil"],
+        code: "ALAT",
+        every_months: 3,
+        why: "Le traitement d'un ongle dure des mois, et c'est cette durée qui donne à l'hépatotoxicité le temps de s'exprimer : les transaminases se contrôlent avant et pendant, pas seulement au début.",
+    },
+    Watch {
+        needs: &["hydroxycarbamide", "Hydréa"],
+        code: "GB",
+        every_months: 3,
+        why: "La myélosuppression est l'effet attendu et c'est la numération qui règle la dose : une macrocytose sous hydroxycarbamide est normale et ne doit pas être prise pour une carence, mais une leucopénie est un chiffre à corriger.",
+    },
+    Watch {
+        needs: &["sotalol", "Sotalex"],
+        code: "K",
+        every_months: 6,
+        why: "Le sotalol allonge le QT et l'hypokaliémie est ce qui transforme cet allongement en torsade de pointes : la kaliémie compte ici autant que l'électrocardiogramme, en particulier sous diurétique.",
+    },
+    Watch {
+        needs: &["pazopanib", "Votrient"],
+        code: "ALAT",
+        every_months: 3,
+        why: "Des insuffisances hépatiques mortelles ont imposé un contrôle toutes les deux semaines les deux premiers mois puis régulier : c'est la surveillance qui conditionne la poursuite du traitement.",
+    },
 ];
 
 #[cfg(test)]
@@ -704,9 +776,10 @@ mod tests {
     /// does any more, and it goes without anyone seeing it.
     #[test]
     fn the_watch_count_only_grows() {
+        const WATCH_FLOOR: usize = 61;
         assert!(
-            WATCHES.len() >= 49,
-            "{} surveillances : le compte ne baisse pas",
+            WATCHES.len() >= WATCH_FLOOR,
+            "{} surveillances : le compte ne baisse pas, il en faut {WATCH_FLOOR}",
             WATCHES.len()
         );
     }

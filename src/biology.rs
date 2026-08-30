@@ -889,7 +889,7 @@ const RULES: &[Rule] = &[
         code: "K",
         side: Side::Above,
         threshold: 5.0,
-        needs: &["IEC", "sartan", "spironolactone", "éplérénone", "ARA2"],
+        needs: &["IEC", "sartan", "spironolactone", "éplérénone", "ARA2", "finérénone"],
         severity: Severity::Alert,
         text: "Kaliémie élevée sous bloqueur du système rénine-angiotensine ou anti-aldostérone : ne pas renouveler sans avis, et se méfier des sels de régime enrichis en potassium et des AINS ajoutés.",
     },
@@ -969,7 +969,7 @@ const RULES: &[Rule] = &[
         code: "ALAT",
         side: Side::Above,
         threshold: 120.0,
-        needs: &["statine", "méthotrexate", "isoniazide", "amiodarone"],
+        needs: &["statine", "méthotrexate", "isoniazide", "amiodarone", "agomélatine", "vildagliptine", "tériflunomide", "terbinafine", "pazopanib"],
         severity: Severity::Alert,
         text: "Transaminases au-delà de trois fois la normale sous un traitement hépatotoxique : arrêt à discuter avec le prescripteur, contrôle rapproché.",
     },
@@ -1086,6 +1086,22 @@ const RULES: &[Rule] = &[
         text: "Phosphorémie encore haute sous chélateur : le comprimé se prend au milieu du repas, pas avant ni après — pris à distance, il ne chélate rien.",
     },
     Rule {
+        code: "PHOS",
+        side: Side::Below,
+        threshold: 0.8,
+        needs: &["carboxymaltose ferrique", "fer injectable", "fer saccharose"],
+        severity: Severity::Warn,
+        text: "Hypophosphatémie après une perfusion de fer : c'est un effet connu du carboxymaltose ferrique, souvent asymptomatique mais parfois profond et prolongé, qui donne asthénie et douleurs osseuses. Après des perfusions répétées, il peut aller jusqu'à l'ostéomalacie avec fractures de fatigue. La phosphorémie se recontrôle et le choix du sel de fer se rediscute si les cures se répètent.",
+    },
+    Rule {
+        code: "K",
+        side: Side::Below,
+        threshold: 3.5,
+        needs: &["sotalol", "amiodarone", "hydroquinidine", "antiarythmique"],
+        severity: Severity::Alert,
+        text: "Hypokaliémie sous antiarythmique allongeant le QT : c'est l'association qui fait la torsade de pointes, et le chiffre compte ici autant que l'électrocardiogramme. La kaliémie se corrige avant de poursuivre, la cause se cherche du côté des diurétiques, des vomissements ou d'une diarrhée, et la magnésémie se contrôle dans le même mouvement.",
+    },
+    Rule {
         code: "B9",
         side: Side::Below,
         threshold: 7.0,
@@ -1191,7 +1207,7 @@ const RULES: &[Rule] = &[
         code: "CA",
         side: Side::Below,
         threshold: 2.2,
-        needs: &["bisphosphonate", "alendronate", "dénosumab", "acide zolédronique"],
+        needs: &["bisphosphonate", "alendronate", "dénosumab", "acide zolédronique", "cinacalcet"],
         severity: Severity::Alert,
         text: "Hypocalcémie sous bisphosphonate ou dénosumab : la calcémie et la vitamine D se corrigent avant l'injection, jamais après. Sous dénosumab l'hypocalcémie peut être sévère, surtout si le DFG est bas.",
     },
@@ -1429,7 +1445,7 @@ const RULES: &[Rule] = &[
         code: "ALAT",
         side: Side::Above,
         threshold: 150.0,
-        needs: &["statine", "amiodarone", "méthotrexate", "isoniazide", "kétoconazole", "amoxicilline", "clavulanique"],
+        needs: &["statine", "amiodarone", "méthotrexate", "isoniazide", "kétoconazole", "amoxicilline", "clavulanique", "agomélatine", "vildagliptine", "tériflunomide", "terbinafine", "pazopanib"],
         severity: Severity::Alert,
         text: "Transaminases au-delà de trois fois la normale sous un médicament hépatotoxique : arrêter et faire évaluer. Sous amoxicilline-clavulanate, l'atteinte est cholestatique et peut apparaître après la fin du traitement — elle contre-indique l'association à vie, mais pas l'amoxicilline seule.",
     },
@@ -1722,14 +1738,22 @@ mod tests {
         // Both catalogues only ever grow: an analyte withdrawn is a
         // value the counter can no longer read, and a rule withdrawn is
         // a reading nobody does any more.
+        // Both floors are named constants the messages read back. They
+        // were written twice — in figures in the assertion, in words in
+        // the message — and both pairs had drifted, by six and by eight.
+        // The same slip had happened in `revue.rs` and in the toxicity
+        // floor of `db.rs`: a number spelled out twice is a number that
+        // will disagree with itself.
+        const CATALOGUE_FLOOR: usize = 55;
+        const RULES_FLOOR: usize = 97;
         assert!(
-            CATALOGUE.len() >= 55,
-            "{} analytes, il y en avait quarante-neuf",
+            CATALOGUE.len() >= CATALOGUE_FLOOR,
+            "{} analytes, il y en avait {CATALOGUE_FLOOR}",
             CATALOGUE.len()
         );
         assert!(
-            RULES.len() >= 95,
-            "{} règles de biologie, il y en avait quatre-vingt-sept",
+            RULES.len() >= RULES_FLOOR,
+            "{} règles de biologie, il y en avait {RULES_FLOOR}",
             RULES.len()
         );
         let mut codes: Vec<&str> = CATALOGUE.iter().map(|a| a.code).collect();

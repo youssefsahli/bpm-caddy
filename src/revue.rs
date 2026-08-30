@@ -773,6 +773,53 @@ const RULES: &[Rule] = &[
         title: "Calcémie cumulée",
         detail: "Le thiazidique réduit l'élimination urinaire du calcium pendant que la supplémentation en apporte : l'hypercalcémie s'installe lentement et se manifeste par de la soif, des urines abondantes, une constipation, des nausées et une confusion — signes qu'on met volontiers sur le compte de l'âge. Une calcémie suffit à trancher, et la supplémentation se réévalue : elle est souvent prescrite pour une durée que personne n'a rediscutée.",
     },
+    Rule {
+        kind: Kind::Combination(&[
+            &["carbapénème", "méropénème", "imipénème", "ertapénème"],
+            &["valproate", "valproïque", "divalproate"],
+        ]),
+        severity: Severity::Alert,
+        title: "Carbapénème + valproate",
+        detail: "Le carbapénème effondre les concentrations de valproate en quelques jours, de façon massive et sans que rien ne l'annonce : des états de mal épileptiques sont survenus chez des patients jusque-là équilibrés. Augmenter la dose de valproate ne compense pas le phénomène. L'association est à éviter et impose de choisir un autre antibiotique ; si elle est maintenue, la couverture antiépileptique doit être assurée autrement et le patient surveillé.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["miconazole"],
+            &["warfarine", "fluindione", "acénocoumarol", "avk"],
+        ]),
+        severity: Severity::Alert,
+        title: "Miconazole + AVK",
+        detail: "Le miconazole inhibe puissamment le CYP2C9 et fait grimper l'INR jusqu'à l'hémorragie, et cela vaut aussi pour le gel buccal et pour l'ovule gynécologique, dont le passage systémique suffit — c'est ce qui rend l'association traîtresse, personne ne considérant un gel pour la bouche comme un médicament général. L'association est contre-indiquée. Si un traitement local a déjà été commencé, l'INR se contrôle sans attendre.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["miconazole"],
+            &[
+                "sulfamide hypoglycémiant",
+                "glibenclamide",
+                "gliclazide",
+                "glimépiride",
+            ],
+        ]),
+        severity: Severity::Alert,
+        title: "Miconazole + sulfamide hypoglycémiant",
+        detail: "Même mécanisme que pour les AVK : l'inhibition du CYP2C9 majore fortement l'exposition au sulfamide et provoque des hypoglycémies sévères et prolongées, gel buccal et ovule compris. L'association est contre-indiquée. Un antifongique local qui ne passe pas par cette voie est à préférer, et une hypoglycémie inexpliquée chez un patient qui vient de traiter une mycose doit faire chercher ce gel que personne n'a noté sur l'ordonnance.",
+    },
+    Rule {
+        kind: Kind::Combination(&[&["gemfibrozil"], &["répaglinide", "glinide"]]),
+        severity: Severity::Alert,
+        title: "Gemfibrozil + répaglinide",
+        detail: "Le gemfibrozil inhibe le CYP2C8 et multiplie l'exposition au répaglinide dans des proportions considérables, avec des hypoglycémies sévères et prolongées : l'association est contre-indiquée, et non simplement déconseillée. Un autre fibrate ou un autre antidiabétique doit être retenu, et la question se pose au prescripteur avant la délivrance.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["gentamicine", "amikacine"],
+            &["furosémide", "bumétanide", "diurétique de l'anse"],
+        ]),
+        severity: Severity::Warn,
+        title: "Aminoside + diurétique de l'anse",
+        detail: "Les deux sont ototoxiques et leurs effets s'additionnent : l'atteinte cochléaire et vestibulaire de l'aminoside est irréversible, et le diurétique en abaisse le seuil tout en favorisant la déshydratation qui majore la néphrotoxicité. L'association se limite à la durée strictement nécessaire, sous contrôle de la fonction rénale et des concentrations résiduelles, et toute baisse d'audition, tout acouphène ou toute instabilité à la marche se signale sans attendre.",
+    },
 ];
 
 #[cfg(test)]
@@ -826,6 +873,39 @@ mod tests {
         assert!(review(&ordonnance)
             .iter()
             .any(|p| p.title == "Triade néfaste"));
+    }
+
+    /// A local antifungal is not a local medicine: the buccal gel and
+    /// the ovule pass enough miconazole into the blood to send an INR
+    /// through the roof and a sulfamide into hypoglycaemia. Nobody
+    /// writes a gel for the mouth on the list of general treatments,
+    /// which is exactly why the rule has to read it.
+    #[test]
+    fn a_buccal_gel_is_read_as_a_general_treatment() {
+        let avk = [
+            t("Daktarin", "miconazole", "antifongique local et buccal"),
+            t("Previscan", "fluindione", "AVK"),
+        ];
+        let point = review(&avk)
+            .into_iter()
+            .find(|p| p.title == "Miconazole + AVK")
+            .expect("le gel buccal doit être vu face à un AVK");
+        assert_eq!(point.severity, Severity::Alert);
+        assert_eq!(point.drugs.len(), 2);
+
+        let sulfamide = [
+            t("Daktarin", "miconazole", "antifongique local et buccal"),
+            t("Diamicron", "gliclazide", "sulfamide hypoglycémiant"),
+        ];
+        assert!(review(&sulfamide)
+            .iter()
+            .any(|p| p.title == "Miconazole + sulfamide hypoglycémiant"));
+
+        // The gel on its own says nothing.
+        let alone = [t("Daktarin", "miconazole", "antifongique local et buccal")];
+        assert!(!review(&alone)
+            .iter()
+            .any(|p| p.title.starts_with("Miconazole")));
     }
 
     /// The rule that had to be written by molecule and not by class:
@@ -1067,10 +1147,13 @@ mod tests {
     #[test]
     fn every_rule_says_what_to_do_about_it() {
         // The catalogue only ever grows: a rule removed is a reading
-        // nobody does any more.
+        // nobody does any more. The floor is a named constant the
+        // message reads back — written twice, in figures and in words,
+        // the two had already drifted by six.
+        const RULES_FLOOR: usize = 66;
         assert!(
-            RULES.len() >= 61,
-            "{} règles de revue, il y en avait cinquante-cinq",
+            RULES.len() >= RULES_FLOOR,
+            "{} règles de revue, il y en avait {RULES_FLOOR}",
             RULES.len()
         );
         let mut titles: Vec<&str> = RULES.iter().map(|r| r.title).collect();

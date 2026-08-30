@@ -1642,7 +1642,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs puissants du CYP3A4 et de la P-gp (kétoconazole, itraconazole, ritonavir, clarithromycine) : exposition augmentée, association déconseillée. Inducteurs puissants (rifampicine, carbamazépine, phénytoïne, millepertuis) : exposition diminuée, efficacité compromise. AINS, aspirine, antiagrégants, ISRS et IRSNA : risque hémorragique additif.",
         adverse: "Saignements de toutes localisations, le plus souvent mineurs (épistaxis, gingivorragies, ecchymoses, ménorragies) ; anémie ; hématomes. Plus rarement hémorragie digestive ou intracrânienne. Nausées et élévation modérée des transaminases.",
         monitoring: "Aucune surveillance de routine de la coagulation : les tests usuels ne reflètent pas l'effet. Créatininémie et clairance de Cockcroft au moins une fois par an, plus souvent au-delà de 75 ans, en cas de poids faible ou de clairance inférieure à 60 mL/min. Hémogramme si saignement. Réévaluer l'indication et la dose à chaque renouvellement.",
-        iup: "Deux prises par jour à heure fixe, avec ou sans aliments. Oubli : prendre le comprimé dès que possible le jour même, puis reprendre le rythme habituel, jamais deux comprimés à la fois. Ne jamais interrompre le traitement sans avis médical, même quelques jours. Prévenir tout médecin, dentiste ou chirurgien avant un geste. Signaler saignement prolongé, selles noires, urines rouges, hématomes inhabituels, maux de tête violents ou chute avec choc à la tête.",
+        iup: "Ce médicament empêche votre sang de faire des caillots. Il ne se sent pas, il ne soulage rien, et c'est pour cela qu'on l'oublie ou qu'on l'arrête — alors qu'il protège d'un accident vasculaire cérébral ou d'une embolie. Deux prises par jour, matin et soir à heure fixe, avec ou sans aliments. En cas d'oubli, prenez le comprimé dès que vous y pensez le jour même, puis reprenez le rythme habituel : jamais deux comprimés à la fois pour rattraper. Si vous avalez difficilement, le comprimé peut être écrasé et dispersé dans de l'eau ou du jus de pomme, à boire aussitôt. N'arrêtez jamais le traitement de votre propre initiative, même quelques jours et même pour une petite intervention : la protection disparaît en un à deux jours. C'est le médecin qui décide d'une éventuelle pause, et lui seul. Prévenez tout médecin, dentiste, infirmier, kinésithérapeute ou chirurgien que vous prenez un anticoagulant, et gardez sur vous la carte qui le mentionne. N'achetez ni aspirine ni anti-inflammatoire sans demander : ils augmentent le risque de saignement. Pas de millepertuis, qui rend le traitement inefficace. Signalez sans attendre un saignement qui ne s'arrête pas, des selles noires, des urines rouges, des hématomes inhabituels, une fatigue ou un essoufflement nouveaux. Après une chute avec choc à la tête, consultez même si vous vous sentez bien : le saignement peut apparaître plusieurs heures après.",
         half_life: "≈ 12 heures",
         elimination: "Élimination majoritairement biliaire et fécale ; environ 25 % rénale sous forme inchangée. Métabolisme partiel par le CYP3A4, substrat de la P-gp.",
         renal: "Clairance 30 à 50 mL/min : dose habituelle, réduite si les autres critères sont réunis. 15 à 29 mL/min : 2,5 mg deux fois par jour, prudence. Inférieure à 15 mL/min ou dialyse : non recommandé.",
@@ -1663,7 +1663,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs puissants du CYP3A4 et de la P-gp (azolés systémiques, inhibiteurs de protéase) : association déconseillée. Inducteurs puissants : efficacité compromise. AINS, aspirine, antiagrégants, ISRS : risque hémorragique additif. Le millepertuis est à proscrire.",
         adverse: "Saignements de toutes localisations, anémie, hématomes ; les hémorragies digestives sont un peu plus fréquentes qu'avec les AVK et qu'avec l'apixaban, surtout après 75 ans. Vertiges et malaises, qui sont souvent le premier signe d'une anémie installée plutôt qu'un effet propre. Élévation des transaminases, nausées, prurit. Une fatigue inexpliquée fait doser l'hémoglobine.",
         monitoring: "Pas de surveillance biologique de routine : le temps de Quick s'allonge mais n'est pas calibré pour cette molécule et ne dit rien d'utile. Clairance de la créatinine avant l'instauration puis au moins une fois par an, plus souvent au-delà de 75 ans ou en dessous de 60 mL/min. Hémoglobine devant toute fatigue inexpliquée. À chaque renouvellement, revérifier que le comprimé de 15 ou 20 mg est bien pris au cours d'un repas : c'est la première cause de sous-anticoagulation réelle sous rivaroxaban.",
-        iup: "Une prise par jour au cours d'un repas : l'absorption du dosage à 15 et 20 mg en dépend directement, un comprimé pris à jeun est sous-dosé. Oubli : prendre dès que possible le jour même. Ne jamais interrompre sans avis. Prévenir tout praticien avant un geste invasif. Signaler tout saignement anormal, selles noires, maux de tête inhabituels.",
+        iup: "Ce médicament empêche votre sang de faire des caillots ; il ne se sent pas et ne soulage rien, mais il vous protège d'un accident vasculaire cérébral ou d'une embolie. La règle la plus importante tient au repas : les comprimés de 15 et 20 mg se prennent au cours d'un repas, et un comprimé avalé à jeun n'est absorbé qu'à moitié — c'est la première cause de traitement inefficace. Une prise par jour, à heure fixe, au moment d'un vrai repas et pas d'une collation. En cas d'oubli, prenez le comprimé dès que vous y pensez le jour même, puis reprenez le rythme habituel, jamais deux comprimés à la fois. N'interrompez jamais le traitement de vous-même, même quelques jours : la protection disparaît en un à deux jours, et seule une décision médicale peut le suspendre avant une intervention. Prévenez tout médecin, dentiste, infirmier ou chirurgien que vous êtes sous anticoagulant, et gardez la carte correspondante sur vous. Ne prenez ni aspirine ni anti-inflammatoire sans demander conseil, et pas de millepertuis. Signalez tout saignement qui ne s'arrête pas, des selles noires, des urines rouges, des hématomes inhabituels, des maux de tête inhabituels, ou une fatigue et un essoufflement qui s'installent — ils peuvent révéler une anémie. Après une chute avec choc à la tête, consultez même si tout va bien sur le moment.",
         half_life: "5 à 9 heures chez l'adulte jeune, 11 à 13 heures chez le sujet âgé",
         elimination: "Environ un tiers éliminé par voie rénale sous forme inchangée, le reste métabolisé (CYP3A4, CYP2J2) puis éliminé par voies rénale et fécale.",
         renal: "Clairance 15 à 49 mL/min : 15 mg par jour en fibrillation atriale. Inférieure à 15 mL/min : non recommandé.",
@@ -1684,7 +1684,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Substrat de la P-gp sans métabolisme par les cytochromes : dronédarone, kétoconazole, itraconazole et ciclosporine sont contre-indiqués ; vérapamil et amiodarone augmentent l'exposition (réduction de dose) ; rifampicine et millepertuis la diminuent. AINS et antiagrégants majorent le risque hémorragique.",
         adverse: "Saignements de toutes localisations et anémie. La dyspepsie et les douleurs épigastriques sont nettement plus fréquentes qu'avec les autres AOD — l'acide tartrique contenu dans la gélule en est la cause — et restent la première raison d'arrêt : un grand verre d'eau, la prise au cours d'un repas et quelques minutes sans s'allonger suffisent le plus souvent à la rendre supportable. Hémorragies digestives plus fréquentes après 75 ans à la dose de 150 mg deux fois par jour.",
         monitoring: "Clairance de la créatinine avant l'instauration puis au moins une fois par an, et à chaque épisode susceptible d'altérer la fonction rénale (déshydratation, infection, produit de contraste). Hémogramme en cas de saignement.",
-        iup: "Gélules à avaler entières : ne jamais les ouvrir ni les croquer, la biodisponibilité doublerait. Les conserver dans le blister ou le flacon d'origine, jamais dans un pilulier : elles craignent l'humidité ; un flacon entamé se garde quatre mois. Deux prises par jour à heure fixe, avec un grand verre d'eau, de préférence au cours d'un repas pour limiter les brûlures d'estomac. Signaler tout saignement anormal.",
+        iup: "Ce médicament empêche votre sang de faire des caillots et vous protège d'un accident vasculaire cérébral ou d'une embolie, sans que vous en ressentiez quoi que ce soit. Les gélules s'avalent entières, avec un grand verre d'eau, de préférence au cours d'un repas pour limiter les brûlures d'estomac : ne les ouvrez jamais et ne les croquez pas, la dose absorbée doublerait. Elles craignent l'humidité et se conservent dans leur plaquette ou leur flacon d'origine — pas dans un pilulier, pas dans une boîte à compartiments —, et un flacon entamé se garde quatre mois. Deux prises par jour à heure fixe. En cas d'oubli, prenez la gélule dès que vous y pensez si la prise suivante est à plus de six heures, sinon sautez-la : jamais deux gélules à la fois. Les brûlures d'estomac des premières semaines sont fréquentes et ne sont pas une raison d'arrêter — parlez-en, elles se traitent. N'interrompez jamais le traitement de vous-même, même quelques jours ; seule une décision médicale peut le suspendre avant une intervention. Prévenez tout médecin, dentiste, infirmier ou chirurgien, et gardez votre carte d'anticoagulant sur vous. Ni aspirine ni anti-inflammatoire sans demander, pas de millepertuis. Signalez tout saignement prolongé, des selles noires, des urines rouges, des hématomes inhabituels, une fatigue nouvelle, et consultez après toute chute avec choc à la tête.",
         half_life: "12 à 17 heures, allongée en cas d'insuffisance rénale",
         elimination: "Environ 80 % éliminé par voie rénale sous forme inchangée : la fonction rénale conditionne l'exposition.",
         renal: "Clairance 30 à 50 mL/min : envisager 110 mg deux fois par jour. Inférieure à 30 mL/min : contre-indiqué. Dialysable, contrairement aux anti-Xa.",
@@ -1705,7 +1705,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs de la P-gp : réduction de dose à 30 mg. Inducteurs puissants (rifampicine, millepertuis, carbamazépine) : efficacité diminuée. AINS, aspirine, antiagrégants et ISRS : risque hémorragique additif.",
         adverse: "Saignements de toutes localisations, le plus souvent mineurs — épistaxis, gingivorragies, ecchymoses, ménorragies — et anémie, qui les révèle parfois seule. Hémorragies digestives ; hémorragies intracrâniennes plus rares qu'avec les AVK. Éruptions cutanées, prurit, élévation des transaminases. Une fatigue ou un essoufflement inexpliqués chez un patient sous AOD font doser l'hémoglobine avant tout autre examen.",
         monitoring: "Clairance de la créatinine et poids à l'instauration puis au moins une fois par an : les deux commandent la dose. Efficacité moindre décrite lorsque la clairance dépasse 95 mL/min en fibrillation atriale.",
-        iup: "Une prise par jour à heure fixe, avec ou sans aliments. Oubli : prendre dès que possible le jour même, jamais deux doses. Signaler toute variation importante de poids, qui peut faire changer la dose. Prévenir avant tout geste invasif ; ne jamais arrêter de soi-même.",
+        iup: "Ce médicament empêche votre sang de faire des caillots et vous protège d'un accident vasculaire cérébral ou d'une embolie ; il ne procure aucune sensation, ce qui le rend facile à oublier et facile à arrêter à tort. Une prise par jour, à heure fixe, avec ou sans aliments. En cas d'oubli, prenez le comprimé dès que vous y pensez le jour même, puis reprenez le rythme habituel : jamais deux comprimés le même jour. Signalez toute variation importante de poids : la dose dépend du poids, et perdre ou prendre plusieurs kilogrammes peut la faire changer. N'arrêtez jamais le traitement de votre propre initiative, même quelques jours et même pour un soin dentaire : la protection disparaît en un à deux jours et seule une décision médicale peut le suspendre. Prévenez tout médecin, dentiste, infirmier ou chirurgien que vous prenez un anticoagulant, et gardez la carte correspondante sur vous. Ne prenez ni aspirine ni anti-inflammatoire sans demander conseil, et pas de millepertuis, qui rend le traitement inefficace. Signalez un saignement qui ne s'arrête pas, des selles noires, des urines rouges, des hématomes inhabituels, une fatigue ou un essoufflement nouveaux. Après une chute avec choc à la tête, consultez même si vous vous sentez bien.",
         half_life: "10 à 14 heures",
         elimination: "Environ 50 % éliminé par voie rénale sous forme inchangée, le reste par voie biliaire et intestinale.",
         renal: "Clairance 15 à 50 mL/min : 30 mg par jour. Inférieure à 15 mL/min : non recommandé.",
@@ -1798,7 +1798,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "héparine, surveillance biologique",
-        toxicity: "",
+        toxicity: "La seule héparine dont l'effet se mesure et se corrige entièrement. Le TCA cible est de 1,5 à 3 fois le témoin, ou l'activité anti-Xa de 0,3 à 0,7 UI/mL : au-dessus, on diminue le débit de la seringue, l'effet disparaissant en une à deux heures. La protamine neutralise complètement et immédiatement, à raison de 1 mg pour 100 UI d'héparine perfusée dans l'heure précédente, sans dépasser 50 mg par injection — l'excès de protamine est lui-même anticoagulant. Le vrai danger n'est pas le surdosage, qui se voit et se corrige, mais la thrombopénie induite par l'héparine de type II : plaquettes deux fois par semaine, et toute chute de plus de 40 % du chiffre initial fait tout arrêter, y compris une héparine de bas poids moléculaire, qui n'est pas un recours.",
         forms: "",
     },
     StarterDetail {
@@ -1819,7 +1819,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hbpm, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux unités coexistent sur la même boîte et se confondent : 1 mg d'énoxaparine vaut 100 UI anti-Xa, et une prescription rédigée dans l'unité que la seringue n'affiche pas est l'erreur classique de dispensation. La marge tient à trois chiffres qui se vérifient avant de délivrer : le poids réel, sur lequel se calcule la dose curative de 100 UI/kg deux fois par jour, la clairance, qui contre-indique la dose curative au-dessous de 30 mL/min, et la durée. L'antidote est partiel : la protamine ne neutralise qu'environ 60 % de l'activité anti-Xa, et une hémorragie sous héparine de bas poids moléculaire ne se rattrape jamais aussi bien qu'une hémorragie sous héparine non fractionnée. La thrombopénie de type II impose l'arrêt de toute héparine sans attendre confirmation.",
         forms: "",
     },
     StarterDetail {
@@ -1861,7 +1861,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est une prodrogue activée par le CYP2C19, et deux situations rendent le traitement inefficace sans que rien ne le signale. Le métaboliseur lent — fréquence non négligeable, très élevée dans certaines populations d'Asie — n'active pas correctement la molécule. Et l'oméprazole comme l'ésoméprazole inhibent cette même enzyme : lorsqu'un inhibiteur de la pompe à protons est nécessaire, le pantoprazole est celui qu'il faut préférer, et c'est une correction que le comptoir peut proposer. La règle de sécurité majeure est ailleurs : après la pose d'un stent, l'arrêt prématuré de la bithérapie expose à une thrombose de stent souvent mortelle — aucun arrêt avant un geste dentaire ou chirurgical sans l'avis du cardiologue.",
         forms: "",
     },
     StarterDetail {
@@ -1882,7 +1882,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant",
-        toxicity: "",
+        toxicity: "La dyspnée touche environ un patient sur sept, apparaît dans les premiers jours, n'a aucune origine cardiaque ou pulmonaire et régresse le plus souvent spontanément : ne pas l'annoncer conduit à des explorations inutiles et à des arrêts injustifiés d'un antiagrégant qui protège d'une thrombose de stent. Des pauses ventriculaires et une bradycardie sont également décrites. Deux points de dispensation : la prise est biquotidienne alors que les autres antiagrégants sont en une prise, ce qui est une source d'oubli caractéristique ; et la dose d'aspirine associée ne doit pas dépasser 100 mg par jour, au-delà l'efficacité du ticagrélor diminue. Les inhibiteurs puissants du CYP3A4 sont contre-indiqués. Aucun arrêt sans avis cardiologique.",
         forms: "",
     },
     StarterDetail {
@@ -1945,7 +1945,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde faible",
-        toxicity: "",
+        toxicity: "Le plafond est réel et il est bas : 400 mg par jour chez l'adulte, 300 mg au-delà de 75 ans, et il se franchit sans le vouloir quand une forme à libération immédiate est ajoutée à une forme prolongée déjà prescrite. Deux toxicités propres qui ne sont pas celles des autres opioïdes : le seuil épileptogène abaissé, avec des convulsions possibles à dose thérapeutique chez le patient à risque ou sous antidépresseur, et le syndrome sérotoninergique en association aux ISRS, aux IRSNA, aux triptans ou au linézolide. La naloxone lève la dépression respiratoire mais ni les convulsions ni le syndrome sérotoninergique. Le métabolisme par le CYP2D6 fait le reste : un métaboliseur ultrarapide fabrique beaucoup de M1 actif et se retrouve surdosé à dose normale, ce qui a tué des enfants et fait contre-indiquer la molécule avant douze ans.",
         forms: "",
     },
     StarterDetail {
@@ -2092,7 +2092,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine",
-        toxicity: "",
+        toxicity: "Le danger du diazépam n'est pas la première prise, c'est la dixième : demi-vie de trente à quarante-sept heures, métabolite nordazépam actif jusqu'à une centaine d'heures, et davantage chez le sujet âgé. Les concentrations montent pendant une à deux semaines, si bien que la chute, la confusion et la fracture surviennent quinze jours après une instauration jugée bien tolérée le premier jour. Seul, le surdosage donne une somnolence dont on réveille le patient ; associé à l'alcool, à un opioïde ou à un autre sédatif, il tue par dépression respiratoire. Le flumazénil n'est pas un antidote de confort : chez l'usager chronique ou en cas d'intoxication mixte avec un antidépresseur tricyclique, il déclenche des convulsions. L'arrêt brutal après plusieurs semaines expose au sevrage, jusqu'à la crise convulsive.",
         forms: "",
     },
     StarterDetail {
@@ -2113,7 +2113,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine",
-        toxicity: "",
+        toxicity: "L'oxazépam est la benzodiazépine la plus maniable de la liste, et c'est une propriété pharmacocinétique : demi-vie courte, aucun métabolite actif, élimination par simple glucuronoconjugaison sans passer par les cytochromes. D'où sa place chez l'insuffisant hépatique, le cirrhotique en sevrage alcoolique et le sujet âgé, où les autres s'accumulent. Maniable ne veut pas dire anodin : aux doses élevées du sevrage alcoolique la sédation est profonde, la chute reste le risque du sujet âgé, et l'association à l'alcool ou à un opioïde tue par dépression respiratoire comme pour toute la classe. La demi-vie courte rend en revanche le sevrage plus difficile, avec un rebond anxieux entre les prises.",
         forms: "",
     },
     StarterDetail {
@@ -2176,7 +2176,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La rhabdomyolyse est rare mais elle est la seule urgence de cette classe, et elle se reconnaît sur trois éléments qui vont ensemble : douleurs musculaires diffuses, faiblesse, et urines foncées — devant quoi on arrête et on dose les CPK le jour même. Le risque augmente avec la dose et avec tout ce qui élève les concentrations : l'atorvastatine étant métabolisée par le CYP3A4, les macrolides, les azolés, les inhibiteurs de protéase, la ciclosporine et le pamplemousse en quantité sont concernés, et certaines associations imposent un plafond de dose. Une hypothyroïdie non traitée est un facteur de risque musculaire à corriger. À l'inverse, arrêter une statine après un événement cardiovasculaire est plus dangereux que la poursuivre.",
         forms: "",
     },
     StarterDetail {
@@ -2197,7 +2197,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La rosuvastatine est peu métabolisée par les cytochromes, ce qui la protège des interactions habituelles des statines, mais elle dépend de transporteurs hépatiques : la ciclosporine est contre-indiquée et certains antirétroviraux imposent un plafond de dose. Trois situations imposent de débuter à 5 mg et de ne pas dépasser 20 mg : l'insuffisance rénale modérée, l'origine asiatique — l'exposition y est environ doublée — et les facteurs de risque de myopathie. La dose de 40 mg est réservée et jamais initiale, et elle est contre-indiquée en cas de clairance inférieure à 30 mL/min. Une protéinurie et une hématurie peuvent apparaître aux fortes doses. Rhabdomyolyse : douleurs diffuses, faiblesse, urines foncées, CPK le jour même.",
         forms: "",
     },
     StarterDetail {
@@ -2218,7 +2218,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux accidents dominent. L'angio-œdème bradykinique peut survenir après des mois ou des années de traitement sans prodrome : un gonflement des lèvres, de la langue ou de la gorge est une urgence vitale, il ne répond ni aux antihistaminiques ni aux corticoïdes, et il contre-indique définitivement toute la classe. Et l'insuffisance rénale aiguë avec hyperkaliémie, quand un IEC, un diurétique et un AINS se rejoignent sur la même ordonnance — le trio à repérer — ou lors d'une déshydratation. La règle simple à donner : suspendre en cas de gastro-entérite, de fièvre ou de canicule. Créatininémie et kaliémie se contrôlent avant, une à deux semaines après l'instauration et après chaque augmentation. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -2239,7 +2239,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La toux sèche, quinteuse et rebelle touche jusqu'à un patient sur cinq, apparaît parfois plusieurs mois après l'instauration, et ne cède qu'à l'arrêt : la reconnaître évite des explorations et des antitussifs inutiles, et le relais par un sartan la fait disparaître. L'angio-œdème, lui, est rare mais vital, peut survenir à tout moment du traitement, ne répond pas aux antihistaminiques et contre-indique définitivement la classe. Le risque rénal et kaliémique se concentre sur le trio IEC, diurétique et AINS, et sur les situations de déshydratation, où le traitement se suspend. Créatininémie et kaliémie avant, puis après chaque changement de dose. Contre-indiqué pendant la grossesse, à tous les trimestres.",
         forms: "",
     },
     StarterDetail {
@@ -2260,7 +2260,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Les sartans n'ont pas la toux des IEC et exposent beaucoup moins à l'angio-œdème, mais celui-ci existe et reste vital : un antécédent d'angio-œdème sous IEC impose la prudence. Le risque principal est identique : insuffisance rénale aiguë et hyperkaliémie, en particulier lorsque le sartan, un diurétique et un AINS se rejoignent sur la même ordonnance, ou lors d'une déshydratation — la consigne est de suspendre en cas de gastro-entérite, de fièvre ou de canicule. L'association d'un IEC et d'un sartan est à proscrire. Créatininémie et kaliémie avant, une à deux semaines après l'instauration, puis après chaque augmentation. Contre-indiqué à tous les trimestres de la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -2281,7 +2281,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Comme tous les sartans : pas de toux, angio-œdème beaucoup plus rare qu'avec les IEC mais possible et vital, et surtout le même risque rénal et kaliémique. Le trio sartan, diurétique et AINS est la première cause d'insuffisance rénale aiguë médicamenteuse au comptoir, et il se complète le plus souvent par un anti-inflammatoire acheté sans ordonnance : c'est la question à poser. Toute déshydratation — gastro-entérite, fièvre, canicule — impose de suspendre. L'hyperkaliémie est majorée par les diurétiques épargneurs de potassium, les sels de régime et le triméthoprime. Créatininémie et kaliémie avant et après chaque modification. Contre-indiqué pendant toute la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -2302,7 +2302,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Les œdèmes des chevilles sont l'effet indésirable dominant, dose-dépendants, plus fréquents chez la femme, et ils sont la cause d'une erreur fréquente : pris pour une insuffisance cardiaque ou une insuffisance veineuse, ils font prescrire un diurétique — qui ne les corrige pas, le mécanisme étant une vasodilatation artériolaire et non une rétention hydrosodée. Ce qui les améliore est la baisse de dose ou l'association à un inhibiteur de l'enzyme de conversion ou à un sartan. La demi-vie très longue, trente-cinq à cinquante heures, explique que l'effet d'un changement de dose ne se juge qu'après une semaine et qu'un oubli isolé soit sans conséquence. Céphalées, bouffées vasomotrices et hypertrophie gingivale sont fréquentes.",
         forms: "",
     },
     StarterDetail {
@@ -2365,7 +2365,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant, surveillance biologique",
-        toxicity: "Sa toxicité est cumulative et se compte en mois, pas en comprimés : la demi-vie dépasse cinquante jours et le produit s'accumule dans tous les tissus. Dysthyroïdie dans les deux sens, pneumopathie interstitielle, dépôts cornéens, photosensibilisation et hépatite. Un effet apparu après un an peut persister des mois après l'arrêt, et un patient qui a arrêté depuis six mois est toujours exposé — ce que personne n'anticipe.",
+        toxicity: "Bêtabloquant cardiosélectif de l'insuffisance cardiaque : sa marge n'est pas une dose mais une titration. Chaque palier ne se franchit que si la fréquence cardiaque, la pression artérielle et l'état clinique le permettent, et une aggravation transitoire fait revenir au palier précédent plutôt qu'arrêter. L'arrêt brutal est le vrai danger : effet rebond avec tachycardie, poussée hypertensive, crise angineuse et risque d'infarctus, y compris chez un patient qui se croyait stabilisé — un traitement interrompu faute de renouvellement est une situation à rattraper le jour même. Chez le diabétique, il masque les signes adrénergiques de l'hypoglycémie et ne laisse que la sueur. La cardiosélectivité s'estompe à forte dose : l'asthme sévère reste une contre-indication.",
         forms: "",
     },
     StarterDetail {
@@ -2386,7 +2386,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant, surveillance biologique",
-        toxicity: "",
+        toxicity: "C'est le bêtabloquant le plus dépendant du rein : hydrophile, éliminé sous forme inchangée, avec une demi-vie qui passe de six à neuf heures à plus de vingt-quatre en insuffisance rénale. Chez le sujet âgé dont la clairance baisse sans que la dose change, l'accumulation donne bradycardie, asthénie, chutes et bloc auriculoventriculaire, tableau attribué à l'âge plutôt qu'au traitement. La dose se plafonne selon la clairance et il est dialysable, une dose étant redonnée après chaque séance. L'arrêt brutal expose à l'effet rebond, avec crise angineuse et risque d'infarctus. Chez le diabétique, il masque les signes de l'hypoglycémie. En surdosage, glucagon à fortes doses, avant les catécholamines.",
         forms: "",
     },
     StarterDetail {
@@ -2407,7 +2407,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique de l'anse, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La déplétion est sa toxicité, et elle est silencieuse jusqu'à la chute : hypokaliémie, qui devient arythmogène chez le patient sous digoxine ou sous antiarythmique allongeant le QT, hyponatrémie, déshydratation et insuffisance rénale fonctionnelle, particulièrement chez le sujet âgé en période de chaleur ou lors d'une gastro-entérite — situations où la dose se réduit ou se suspend, sur avis. Le poids quotidien est le meilleur indicateur de surveillance dans l'insuffisance cardiaque et vaut mieux que n'importe quelle sensation. Aux fortes doses et en administration intraveineuse rapide, une ototoxicité avec acouphènes et surdité, en règle réversible, est décrite, majorée par l'association aux aminosides. Allergie croisée possible avec les sulfamides.",
         forms: "",
     },
     StarterDetail {
@@ -2428,7 +2428,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique épargneur k+, surveillance biologique",
-        toxicity: "",
+        toxicity: "L'hyperkaliémie est le risque qui tue, et elle est silencieuse jusqu'au trouble du rythme : elle survient d'autant plus que la fonction rénale est altérée, que le patient reçoit déjà un IEC ou un sartan, qu'il consomme des sels de régime — riches en potassium — ou qu'il se déshydrate. Le traitement ne s'instaure pas si la kaliémie dépasse 5 mmol/L ou si la clairance est inférieure à 30 mL/min, et la kaliémie se contrôle avant, à une semaine, à un mois, puis régulièrement et à chaque événement intercurrent. Toute gastro-entérite ou canicule impose de suspendre. La gynécomastie, souvent douloureuse, touche une proportion notable des hommes et fait arrêter le traitement : l'éplérénone en est alors l'alternative.",
         forms: "",
     },
     StarterDetail {
@@ -2512,7 +2512,28 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue glp-1",
-        toxicity: "",
+        toxicity: "Trois points structurent la sécurité de cette classe. La pancréatite aiguë : une douleur épigastrique intense irradiant dans le dos, avec vomissements, impose d'arrêter et de consulter en urgence, et un antécédent de pancréatite fait renoncer. Le ralentissement de la vidange gastrique : il explique les nausées, mais surtout il fait persister des aliments dans l'estomac malgré un jeûne réglementaire, ce qui expose à une inhalation lors d'une anesthésie — toute intervention programmée doit être signalée à l'anesthésiste, qui décide de suspendre. Et la déshydratation par vomissements ou diarrhée, qui peut précipiter une insuffisance rénale aiguë. Une baisse très rapide de l'hémoglobine glyquée peut aggraver transitoirement une rétinopathie diabétique préexistante.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Wegovy",
+        indications: "Contrôle du poids, en complément d'un régime hypocalorique et d'une activité physique accrue, chez l'adulte présentant une obésité, ou un surpoids associé à au moins une comorbidité liée au poids — prédiabète, diabète de type 2, hypertension, dyslipidémie, syndrome d'apnées obstructives du sommeil, maladie cardiovasculaire. Une indication de réduction du risque cardiovasculaire existe chez le patient en surpoids ou obèse avec maladie cardiovasculaire établie et sans diabète. Ce n'est pas la spécialité du diabète de type 2 : le sémaglutide y est prescrit sous un autre nom, à d'autres doses et avec un autre schéma.",
+        mechanism: "Même molécule que le sémaglutide du diabète — analogue du GLP-1 résistant à la DPP-4 — mais à des doses nettement plus élevées, jusqu'à 2,4 mg par semaine. L'effet recherché n'est plus glycémique mais pondéral : action sur les centres hypothalamiques de la satiété et de l'appétit, ralentissement de la vidange gastrique, réduction des prises alimentaires et de l'appétence pour les aliments gras. La stimulation de l'insuline restant glucose-dépendante, le risque d'hypoglycémie est faible chez le sujet non diabétique.",
+        dosage: "Une injection sous-cutanée par semaine, le même jour chaque semaine, indépendamment des repas. La titration est longue et obligatoire : 0,25 mg par semaine pendant quatre semaines, puis 0,5 mg, puis 1 mg, puis 1,7 mg, chaque palier durant quatre semaines, jusqu'à la dose d'entretien de 2,4 mg par semaine atteinte au cinquième mois. Les paliers ne servent pas l'efficacité mais la tolérance digestive et ne se sautent pas. En cas d'intolérance persistante à un palier, celui-ci peut être prolongé ou la dose ramenée au palier précédent. Le traitement est réévalué après plusieurs mois : sans perte de poids significative, il est arrêté.",
+        contraindications: "Hypersensibilité au sémaglutide. Grossesse et allaitement. Le traitement n'est pas indiqué dans le diabète de type 1 ni dans l'acidocétose. Prudence et avis spécialisé en cas d'antécédent de pancréatite, de gastroparésie, de maladie inflammatoire chronique de l'intestin sévère, de rétinopathie diabétique proliférante, et d'antécédent personnel ou familial de cancer médullaire de la thyroïde ou de néoplasie endocrinienne multiple de type 2, où la classe est contre-indiquée.",
+        ddi: "Le ralentissement de la vidange gastrique modifie l'absorption des médicaments oraux : prudence avec les molécules à marge étroite, en particulier la lévothyroxine, dont la TSH se recontrôle. Chez une patiente sous contraception orale, l'efficacité contraceptive n'est pas remise en cause, mais des vomissements répétés le sont — la conduite en cas de vomissement dans les heures suivant la prise doit être rappelée. Chez le diabétique traité, la dose d'insuline ou de sulfamide se réduit avant l'instauration. Aucune interaction significative avec les anticoagulants oraux, l'INR restant contrôlé à l'instauration sous antivitamine K.",
+        adverse: "Troubles digestifs très fréquents et dose-dépendants — nausées, vomissements, diarrhée, constipation, douleurs abdominales, éructations, reflux — maximaux à chaque augmentation puis s'atténuant. Lithiase biliaire et cholécystite, favorisées par la rapidité de la perte de poids. Asthénie, céphalées, vertiges, alopécie. Réactions au point d'injection. Plus rarement pancréatite aiguë, gastroparésie symptomatique, déshydratation avec insuffisance rénale fonctionnelle. La perte de masse musculaire accompagne la perte de poids si l'apport protéique et l'activité physique ne suivent pas.",
+        monitoring: "Poids, tour de taille et pression artérielle à chaque contact, et réévaluation formelle de l'efficacité après plusieurs mois de dose d'entretien : une perte de poids insuffisante fait arrêter, la poursuite indéfinie n'ayant pas de justification. Tolérance digestive à chaque renouvellement, la titration se prolongeant si elle est mauvaise. Créatininémie en cas de vomissements ou de diarrhées prolongés. Chez le diabétique associé, HbA1c et autosurveillance glycémique avec réduction des traitements hypoglycémiants. Apports protéiques et activité physique évalués, la perte musculaire étant la complication silencieuse de cette classe.",
+        iup: "L'injection se fait une fois par semaine, le même jour, sous la peau du ventre, de la cuisse ou du haut du bras, en changeant de point à chaque fois. La montée des doses s'étale sur cinq mois et ce calendrier n'est pas négociable : chaque palier dure quatre semaines, et vouloir aller plus vite provoque des nausées qui font arrêter. En cas d'oubli, injectez dès que possible si l'oubli date de moins de cinq jours, sinon sautez la dose — jamais deux injections pour rattraper. Mangez lentement, en petites quantités, évitez les repas gras : c'est ce qui rend les premières semaines supportables. Gardez un apport en protéines et bougez, sinon le poids perdu est en partie du muscle. Le poids repart à la hausse à l'arrêt, ce n'est pas un échec personnel mais l'effet du médicament qui s'arrête. Signalez toute douleur violente au creux de l'estomac irradiant dans le dos, et prévenez l'anesthésiste avant toute intervention.",
+        half_life: "Environ 1 semaine, ce qui autorise l'injection hebdomadaire et impose d'interrompre le traitement au moins deux mois avant une grossesse programmée",
+        elimination: "Dégradation protéolytique du peptide et bêta-oxydation de la chaîne d'acide gras ; les métabolites sont éliminés par voies urinaire et fécale, sans élimination rénale de la molécule intacte.",
+        renal: "Aucune adaptation posologique en cas d'insuffisance rénale légère, modérée ou sévère. L'expérience est limitée au stade terminal, où l'utilisation n'est pas recommandée. La vigilance porte sur la déshydratation : des vomissements ou une diarrhée prolongés peuvent précipiter une insuffisance rénale aiguë chez un patient dont la fonction était normale.",
+        pregnancy: "Contre-indiqué pendant la grossesse : la perte de poids n'y a pas sa place et les données animales sont défavorables. Du fait de la demi-vie longue, le traitement s'interrompt au moins deux mois avant une conception programmée, et une contraception efficace est recommandée pendant le traitement. Allaitement déconseillé faute de données.",
+        sources: "RCP Wegovy — base de données publique des médicaments (ANSM)\nHAS — avis de la Commission de la transparence, sémaglutide 2,4 mg\nANSM — bon usage des analogues du GLP-1 et tensions d'approvisionnement",
+        status: "",
+        smr: "",
+        tags: "analogue glp-1, obésité, titration longue, mésusage",
+        toxicity: "Le premier risque de cette spécialité est un risque d'usage : la demande d'un amaigrissement sans indication, le détournement à partir d'ordonnances de complaisance, et la confusion avec la spécialité du diabète — même molécule, autres doses, autre schéma —, qui a nourri des tensions d'approvisionnement au détriment des patients diabétiques. La dispensation vérifie l'indication et le palier. Sur le plan pharmacologique, les risques sont ceux de la classe : pancréatite aiguë devant une douleur épigastrique transfixiante, lithiase biliaire favorisée par la rapidité de l'amaigrissement, et ralentissement de la vidange gastrique qui expose à une inhalation lors d'une anesthésie malgré le jeûne — toute intervention se signale à l'anesthésiste. La reprise de poids à l'arrêt est la règle et doit être annoncée avant la première injection, faute de quoi elle sera vécue comme un échec.",
         forms: "",
     },
     StarterDetail {
@@ -2743,7 +2764,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "pénicilline",
-        toxicity: "",
+        toxicity: "L'éruption cutanée sous amoxicilline n'est pas toujours une allergie : au cours d'une mononucléose infectieuse, elle survient chez la grande majorité des patients et n'est pas une contre-indication ultérieure — étiqueter à tort un patient allergique à la pénicilline le prive pour la vie d'antibiotiques de première ligne, et cette distinction mérite d'être portée au dossier. Les vraies allergies immédiates, urticaire, œdème ou anaphylaxie, sont une autre affaire. Aux fortes doses et chez l'insuffisant rénal, l'accumulation donne des myoclonies, une confusion et des convulsions, ainsi qu'une cristallurie : la dose et l'espacement se règlent sur la clairance. La diarrhée est fréquente et peut relever d'un Clostridioides difficile.",
         forms: "",
     },
     StarterDetail {
@@ -2764,7 +2785,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "pénicilline + inhibiteur",
-        toxicity: "",
+        toxicity: "L'acide clavulanique porte deux toxicités que l'amoxicilline seule n'a pas. La diarrhée est très fréquente et peut aller jusqu'à la colite à Clostridioides difficile, à évoquer devant une diarrhée profuse, fébrile ou survenant après la fin du traitement — un antidiarrhéique ralentisseur du transit y serait dangereux. Et l'hépatite cholestatique, qui a la particularité d'être retardée : elle peut apparaître jusqu'à plusieurs semaines après l'arrêt, plus souvent chez l'homme âgé et lors de cures répétées, et un ictère ou des urines foncées à distance d'un traitement doivent y faire penser. La dose et le rythme s'adaptent à la clairance, et le dosage à 1 g pour 125 mg n'est pas adapté sous 30 mL/min.",
         forms: "",
     },
     StarterDetail {
@@ -2806,7 +2827,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde, surveillance biologique",
-        toxicity: "",
+        toxicity: "La toxicité qui tue n'est pas le surdosage mais l'arrêt. Au-delà de trois semaines à dose non négligeable, l'axe corticotrope est freiné et la surrénale ne répond plus : un arrêt brutal, ou simplement une infection, une chirurgie ou une gastro-entérite sans augmentation de la dose, provoque une insuffisance surrénale aiguë avec collapsus. D'où deux consignes qui valent plus que toutes les autres : on ne suspend jamais une corticothérapie prolongée de sa propre initiative, et on double la dose en cas de fièvre ou de stress aigu en prévenant le médecin. Le reste est cumulatif et se compte en dose totale : diabète, hypertension, ostéoporose, fonte musculaire, cataracte, glaucome, fragilité cutanée, troubles du sommeil et de l'humeur.",
         forms: "",
     },
     StarterDetail {
@@ -2827,7 +2848,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde, surveillance biologique",
-        toxicity: "",
+        toxicity: "Même marge que toute corticothérapie générale, et le même danger principal : l'insuffisance surrénale aiguë à l'arrêt d'un traitement prolongé, ou lors d'une infection ou d'une chirurgie sans adaptation de la dose. La forme orodispersible et la forme effervescente en font un produit facile à prendre et donc facile à arrêter seul, ce qui rend la consigne d'autant plus nécessaire. La prise se fait le matin pour respecter le cycle du cortisol et limiter l'insomnie. Le régime pauvre en sel n'est pas systématique et dépend de la dose et de la durée, mais la surveillance du poids, de la tension, de la glycémie et de la kaliémie l'est. Toute fièvre sous corticothérapie mérite un avis : les signes d'infection sont atténués.",
         forms: "",
     },
     StarterDetail {
@@ -2869,7 +2890,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "macrolide, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa demi-vie tissulaire très longue explique les traitements courts, mais aussi que l'exposition — et l'allongement du QT qui l'accompagne — se prolonge plusieurs jours après la dernière prise : une torsade de pointes peut survenir après la fin du traitement, et l'association à un autre allongeant, une hypokaliémie ou une bradycardie sont les circonstances à repérer. Elle inhibe beaucoup moins le CYP3A4 que la clarithromycine, ce qui en fait le macrolide le moins interactif des trois usuels, mais elle n'en est pas dépourvue. Les cations — antiacides à base d'aluminium ou de magnésium — réduisent son absorption et se prennent à distance. Des hépatites cholestatiques sont décrites.",
         forms: "",
     },
     StarterDetail {
@@ -2890,7 +2911,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "macrolide",
-        toxicity: "",
+        toxicity: "C'est le macrolide sans interaction significative par les cytochromes : il n'inhibe pratiquement pas le CYP3A4, ce qui le distingue nettement de la clarithromycine et de l'érythromycine et explique sa place chez le patient polymédiqué et dans la toxoplasmose de la femme enceinte, où il est le traitement de référence. Cette sécurité relative est son intérêt principal et mérite d'être connue au moment où une interaction fait renoncer à un autre macrolide. L'allongement du QT est bien moindre que celui des autres macrolides mais n'est pas nul. Les troubles digestifs sont fréquents. De rares cas de colite pseudomembraneuse et de réactions cutanées graves ont été rapportés.",
         forms: "",
     },
     StarterDetail {
@@ -2911,7 +2932,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "macrolide, surveillance biologique",
-        toxicity: "",
+        toxicity: "Macrolide dont le pouvoir inhibiteur sur le CYP3A4 est intermédiaire, moindre que celui de la clarithromycine mais réel : l'association à la colchicine, aux alcaloïdes de l'ergot et à certaines statines demande la même vigilance, et l'ordonnance complète se relit avant délivrance. L'allongement du QT existe et s'additionne aux autres allongeants, en particulier chez le sujet âgé ou hypokaliémique. Sa bonne tolérance digestive et sa forme en suspension en font un antibiotique fréquemment prescrit chez l'enfant, chez qui la dose se calcule au poids et la reconstitution se vérifie. Des hépatites cholestatiques et de rares réactions cutanées graves ont été décrites.",
         forms: "",
     },
     StarterDetail {
@@ -2974,7 +2995,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fluoroquinolone",
-        toxicity: "",
+        toxicity: "Les restrictions européennes de 2019 sont sa marge : tendinopathies et ruptures du tendon d'Achille, pouvant survenir dès les premiers jours et jusqu'à plusieurs mois après l'arrêt, très majorées par une corticothérapie associée, l'âge au-delà de soixante ans et la transplantation ; anévrisme et dissection de l'aorte ; neuropathies périphériques parfois irréversibles ; troubles neuropsychiatriques. Toute douleur tendineuse impose l'arrêt immédiat, le repos et un avis — c'est la consigne à donner à la délivrance. Cette classe n'a donc pas sa place dans une infection bénigne. Interaction propre à la ciprofloxacine : elle inhibe le CYP1A2 et fait grimper la théophylline et la caféine. Les cations — calcium, fer, magnésium, zinc — la chélatent et se prennent à distance.",
         forms: "",
     },
     StarterDetail {
@@ -2995,7 +3016,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fluoroquinolone",
-        toxicity: "",
+        toxicity: "Mêmes risques de classe que toutes les fluoroquinolones, et ils ont conduit à en restreindre l'usage : tendinopathie et rupture tendineuse, y compris plusieurs semaines après l'arrêt et surtout en cas de corticothérapie associée ou après soixante ans, anévrisme et dissection de l'aorte, neuropathie périphérique parfois définitive, troubles neuropsychiatriques allant de l'insomnie à la confusion et aux idées suicidaires. Toute douleur tendineuse impose d'arrêter et de consulter. Ces molécules ne sont pas des antibiotiques de confort et une angine ou une cystite simple n'en relèvent pas. Photosensibilisation, allongement du QT et chélation par les cations complètent le tableau. La dose se réduit selon la clairance.",
         forms: "",
     },
     StarterDetail {
@@ -3016,7 +3037,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antibiotique urinaire",
-        toxicity: "",
+        toxicity: "Une dose unique, et c'est ce qui fait à la fois sa force et son unique difficulté : les conditions de prise déterminent entièrement l'efficacité. Le sachet se dilue dans un verre d'eau et se prend à distance des repas, de préférence le soir au coucher et après avoir uriné, afin que la concentration urinaire se maintienne toute la nuit — pris au milieu d'un repas ou suivi d'une miction immédiate, le traitement échoue. Il n'y a rien à reprendre le lendemain. Sa place est la cystite simple de la femme ; il n'a aucune activité suffisante dans une pyélonéphrite ou une prostatite, où le prescrire retarde un traitement adéquat. Les troubles digestifs sont fréquents et bénins.",
         forms: "",
     },
     StarterDetail {
@@ -3037,7 +3058,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antibiotique urinaire, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux toxicités en font un antibiotique de traitement court et jamais de prophylaxie prolongée. La toxicité pulmonaire est la plus caractéristique : forme aiguë d'hypersensibilité avec fièvre, toux et dyspnée dans les premiers jours, et surtout forme chronique après des mois de traitement, avec une fibrose pulmonaire parfois irréversible. Toute dyspnée ou toux d'installation progressive chez un patient traité au long cours doit y faire penser. La seconde est hépatique, avec des hépatites chroniques actives. S'y ajoutent une neuropathie périphérique, favorisée par l'insuffisance rénale, et une hémolyse en cas de déficit en G6PD. Contre-indiquée en dessous d'une clairance de 45 mL/min, où elle est à la fois inefficace et toxique.",
         forms: "",
     },
     StarterDetail {
@@ -3100,7 +3121,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "cycline, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux règles de prise conditionnent sa tolérance et se répètent à chaque délivrance. Le comprimé se prend avec un grand verre d'eau, en position assise ou debout, et jamais au moment de se coucher : une gélule restée dans l'œsophage provoque une ulcération douloureuse qui peut faire abandonner le traitement. Et la photosensibilisation est marquée, avec des coups de soleil sévères pour une exposition brève, ce qui compte particulièrement dans les prescriptions estivales et chez le voyageur en prophylaxie du paludisme. Le calcium, le fer, le magnésium et les antiacides la chélatent et se prennent à distance. Contre-indiquée avant huit ans et pendant la grossesse — coloration définitive des dents. L'association à l'isotrétinoïne est contre-indiquée.",
         forms: "",
     },
     StarterDetail {
@@ -3121,7 +3142,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "nitro-imidazolé",
-        toxicity: "",
+        toxicity: "L'effet antabuse est la consigne qui doit être donnée à chaque délivrance : la prise d'alcool, y compris dans un plat cuisiné, un sirop ou une solution buvable, provoque bouffées vasomotrices, nausées, vomissements, tachycardie et malaise, et cette interdiction se prolonge au moins trois jours après la fin du traitement. Le second risque concerne les traitements prolongés : neuropathie périphérique sensitive, souvent des membres inférieurs, parfois incomplètement réversible, et plus rarement encéphalopathie cérébelleuse avec ataxie et dysarthrie — tout fourmillement persistant impose un avis. Il potentialise les antivitamines K et impose un contrôle de l'INR. Goût métallique et coloration brune des urines sont attendus.",
         forms: "",
     },
     StarterDetail {
@@ -3142,7 +3163,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique azolé, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Inhibiteur puissant du CYP2C9 et modéré du CYP3A4, ce qui en fait un déstabilisateur d'ordonnances : il fait bondir l'INR d'un antivitamine K, majore l'exposition aux statines avec risque de rhabdomyolyse, potentialise les sulfamides hypoglycémiants jusqu'à l'hypoglycémie sévère, et augmente la phénytoïne et la ciclosporine. Une dose unique de 150 mg pour une mycose vaginale n'est pas anodine chez un patient sous AVK. Il allonge l'intervalle QT, effet qui s'additionne à celui de tout autre allongeant. L'hépatotoxicité impose un contrôle des transaminases lors des traitements prolongés. À doses élevées et prolongées, il est tératogène ; la dose unique de 150 mg fait exception mais la grossesse se vérifie.",
         forms: "",
     },
     StarterDetail {
@@ -3163,7 +3184,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral, surveillance biologique",
-        toxicity: "",
+        toxicity: "La neurotoxicité est l'accident classique et il est presque toujours iatrogène : chez le sujet âgé ou l'insuffisant rénal dont la dose n'a pas été adaptée à la clairance, l'accumulation provoque confusion, hallucinations, agitation, myoclonies et parfois coma — tableau régulièrement attribué à une démence ou à une encéphalite, alors qu'il régresse à l'arrêt. La dose se calcule donc sur la clairance avant toute délivrance chez un patient âgé, en particulier aux fortes doses du zona. Le second risque est rénal : une cristallisation tubulaire favorisée par la déshydratation, qui impose de boire abondamment pendant tout le traitement. Un zona traité au-delà de soixante-douze heures a perdu l'essentiel de son bénéfice.",
         forms: "",
     },
     StarterDetail {
@@ -3184,7 +3205,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral",
-        toxicity: "",
+        toxicity: "Même marge que le valaciclovir dont il est le principe actif : neurotoxicité par accumulation chez l'insuffisant rénal et le sujet âgé — confusion, hallucinations, myoclonies, parfois coma —, régressive à l'arrêt mais volontiers prise pour une aggravation neurologique ; et néphrotoxicité par cristallisation tubulaire, favorisée par la déshydratation et par l'administration intraveineuse rapide. La dose se calcule sur la clairance et l'hydratation abondante fait partie du traitement. La biodisponibilité orale de l'aciclovir est faible, ce qui impose cinq prises par jour là où le valaciclovir en demande deux ou trois : cette contrainte d'observance est ce qui les distingue en pratique.",
         forms: "",
     },
     StarterDetail {
@@ -3289,7 +3310,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est l'anti-inflammatoire non stéroïdien dont le risque cardiovasculaire est le plus élevé, comparable à celui d'un coxib : il est contre-indiqué en cas de cardiopathie ischémique, d'artériopathie, d'antécédent d'accident vasculaire cérébral et d'insuffisance cardiaque, et c'est la vérification à faire avant toute délivrance, y compris pour une lombalgie. Le risque digestif reste entier et impose un inhibiteur de la pompe à protons chez le sujet à risque. L'association délétère à repérer sur l'ordonnance est le trio inhibiteur de l'enzyme de conversion ou sartan, diurétique et AINS, qui provoque des insuffisances rénales aiguës sur déshydratation. À partir du sixième mois de grossesse, tous les AINS sont contre-indiqués : fermeture du canal artériel et atteinte rénale fœtale.",
         forms: "",
     },
     StarterDetail {
@@ -3310,7 +3331,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Forme à libération prolongée couvrant douze heures : elle ne convient pas à une douleur ponctuelle et son intérêt est l'observance, mais elle ne doit jamais être associée à une autre forme de kétoprofène ni à un autre AINS, ce qui est l'erreur classique quand un patient ajoute un anti-inflammatoire acheté sans ordonnance. Le risque digestif est celui de la classe et impose une protection gastrique chez le sujet à risque, l'ulcère pouvant se révéler d'emblée par une hémorragie sans douleur préalable. Le trio AINS, inhibiteur de l'enzyme de conversion ou sartan, et diurétique fait l'insuffisance rénale aiguë : il se repère sur l'ordonnance complète. Contre-indiqué à partir du sixième mois de grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -3331,7 +3352,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains coxib, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'épargne digestive du coxib est réelle mais partielle, et elle disparaît complètement si de l'aspirine à faible dose est associée — ce qui est la situation de beaucoup de patients coronariens et annule l'argument principal de la classe. Le risque cardiovasculaire est en revanche bien présent : la molécule est contre-indiquée en cas de cardiopathie ischémique, d'artériopathie, d'antécédent d'accident vasculaire cérébral et d'insuffisance cardiaque, et se prescrit à la dose la plus faible et pour la durée la plus courte. Sa structure comporte un noyau sulfonamide, à connaître en cas d'antécédent allergique. Le risque rénal, avec le trio bloqueur du système rénine-angiotensine et diurétique, est identique à celui des AINS classiques.",
         forms: "",
     },
     StarterDetail {
@@ -3352,7 +3373,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique non opioïde",
-        toxicity: "",
+        toxicity: "Ce n'est pas un opioïde et la naloxone n'y fait rien, ce qui rend son surdosage plus embarrassant que celui d'un morphinique. La toxicité est double : anticholinergique — bouche sèche, tachycardie, rétention urinaire, glaucome aigu par fermeture de l'angle — et convulsivante, des crises ayant été décrites à dose élevée et chez le patient épileptique ou sous traitement abaissant le seuil. D'où les contre-indications : antécédent de convulsions, glaucome à angle fermé, obstacle prostatique, et enfant de moins de quinze ans. L'administration orale du contenu de l'ampoule, hors autorisation mais courante, doit se faire lentement et assis, les malaises et les sueurs étant fréquents quand elle est avalée d'un trait.",
         forms: "",
     },
     StarterDetail {
@@ -3646,7 +3667,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antihistaminique h1 sédatif, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Une réévaluation européenne a montré un allongement de l'intervalle QT et des torsades de pointes, et elle a abouti à des règles chiffrées qui sont désormais sa marge : ne pas dépasser 100 mg par jour chez l'adulte, 50 mg chez le sujet âgé chez qui la molécule est à éviter, et 2 mg par kilogramme chez l'enfant. Elle est contre-indiquée en cas d'allongement du QT connu, de bradycardie, d'hypokaliémie ou d'association à un autre médicament allongeant — associations à repérer sur l'ordonnance complète. Les effets anticholinergiques contre-indiquent le glaucome à angle fermé et l'obstacle prostatique. La sédation est importante et se cumule à celle de l'alcool et de tout autre dépresseur.",
         forms: "",
     },
     StarterDetail {
@@ -3814,7 +3835,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa sédation est paradoxalement plus forte aux doses basses qu'aux doses élevées, l'effet antihistaminique étant alors moins contrebalancé : augmenter la dose peut réveiller un patient trop somnolent, et c'est le contraire de ce qu'on attend. La prise se fait le soir. La prise de poids est fréquente, parfois importante, et constitue la première cause d'arrêt : l'annoncer permet de la surveiller plutôt que de la découvrir. Une toxicité rare mais grave impose une consigne explicite : l'agranulocytose, qui se manifeste par une fièvre, une angine ou des aphtes — devant lesquels on arrête et on fait une numération le jour même. Comme tout antidépresseur, le risque suicidaire peut augmenter en début de traitement, période où l'entourage doit être attentif.",
         forms: "",
     },
     StarterDetail {
@@ -3898,7 +3919,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Pas de dosage plasmatique en routine et pas de zone thérapeutique : la molécule n'est pas métabolisée par le foie et n'interagit avec presque rien, ce qui la rend maniable. Sa toxicité est ailleurs et elle est psychique : irritabilité, agressivité, labilité de l'humeur, dépression et idées suicidaires, surtout dans les premières semaines et chez l'enfant, l'adolescent et le patient ayant des antécédents psychiatriques. Elle est dose-dépendante et régresse à la baisse de dose ou à l'arrêt, mais elle passe pour un trait de caractère si personne ne l'a annoncée à l'entourage. C'est la question à poser au renouvellement. L'élimination étant rénale, la dose se réduit selon la clairance, faute de quoi s'ajoutent somnolence et instabilité.",
         forms: "",
     },
     StarterDetail {
@@ -3940,7 +3961,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, douleur neuropathique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Élimination exclusivement rénale et sans métabolisme : la dose se calcule sur la clairance, et c'est la seule adaptation qui compte. Chez l'insuffisant rénal non adapté, l'accumulation donne somnolence, confusion, myoclonies et ataxie, tableau volontiers pris pour une aggravation neurologique. L'association aux opioïdes est le risque sous-estimé de cette molécule : la dépression respiratoire, y compris mortelle, a fait l'objet d'alertes des agences, et l'ordonnance qui associe gabapentine et opioïde chez un sujet âgé ou insuffisant respiratoire mérite un appel. Détournement et mésusage existent, avec recherche d'un effet euphorisant à forte dose. L'arrêt se fait sur au moins une semaine, jamais brutalement chez un épileptique.",
         forms: "",
     },
     StarterDetail {
@@ -3961,7 +3982,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, douleur neuropathique",
-        toxicity: "",
+        toxicity: "Le mésusage est la raison pour laquelle cette molécule est passée sur ordonnance sécurisée, avec une prescription limitée à six mois : effet euphorisant et anxiolytique recherché à forte dose, marché parallèle, et un sevrage qui ressemble à celui des benzodiazépines. Au comptoir, la vigilance porte sur les renouvellements anticipés et sur les quantités. La toxicité propre est dose-dépendante et rénale : élimination exclusivement rénale sans métabolisme, donc accumulation avec somnolence, vertiges, œdèmes et prise de poids si la dose n'est pas adaptée à la clairance. Comme la gabapentine, elle expose à une dépression respiratoire en association aux opioïdes, en particulier chez le sujet âgé ou insuffisant respiratoire. L'arrêt est toujours progressif.",
         forms: "",
     },
     StarterDetail {
@@ -3982,7 +4003,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan",
-        toxicity: "",
+        toxicity: "Le triptan est un vasoconstricteur : il est contre-indiqué en cas de cardiopathie ischémique, d'antécédent d'infarctus, d'angor de Prinzmetal, d'artériopathie, d'antécédent d'accident vasculaire cérébral et d'hypertension non contrôlée, et une douleur thoracique ou une oppression survenant après la prise impose un avis avant toute reprise. La seconde limite est la fréquence : au-delà de dix jours de prise par mois, le traitement de crise entretient lui-même la céphalée, et le patient s'installe dans un cercle qui ne se voit que sur un agenda des crises — c'est ce que le comptoir peut repérer au rythme des renouvellements. Un délai d'au moins vingt-quatre heures sépare un triptan d'un dérivé de l'ergot.",
         forms: "",
     },
     StarterDetail {
@@ -4024,7 +4045,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique thiazidique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'hyponatrémie est l'accident caractéristique des thiazidiques et elle vise une population précise : la femme âgée, de faible poids, en période de forte chaleur, chez qui elle se manifeste par une confusion, des nausées, des chutes ou des malaises plutôt que par une plainte identifiable — devant l'un de ces signes, c'est le ionogramme qu'il faut demander. L'hypokaliémie devient arythmogène en association à la digoxine ou à un allongeant du QT. S'y ajoutent l'hyperuricémie avec crises de goutte, l'hyperglycémie et l'hypercalcémie. Un signal de cancers cutanés lors des expositions cumulées prolongées justifie une protection solaire et une surveillance dermatologique. Allergie croisée possible avec les sulfamides.",
         forms: "",
     },
     StarterDetail {
@@ -4045,7 +4066,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique apparenté thiazidique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Apparenté thiazidique : même profil de déplétion, avec une hyponatrémie qui frappe surtout la femme âgée de faible poids en période de chaleur, révélée par une confusion, des chutes ou des nausées plutôt que par un symptôme spécifique — c'est le ionogramme qu'il faut alors demander, et non un traitement symptomatique. L'hypokaliémie est fréquente et devient dangereuse en association à la digoxine ou à un médicament allongeant le QT, l'indapamide allongeant lui-même modérément le QT. Augmenter la dose n'améliore pas l'effet antihypertenseur et ne fait qu'aggraver ces désordres : c'est une association qu'il faut, pas une dose plus forte. Ionogramme avant, à quelques semaines, puis régulièrement.",
         forms: "",
     },
     StarterDetail {
@@ -4066,7 +4087,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "C'est le plus toxique de la classe en cas de surdosage : non cardiosélectif, très lipophile et doté d'un effet stabilisant de membrane, il donne un tableau qui n'est pas seulement une bradycardie mais un élargissement du QRS, des convulsions et un coma, avec un pronostic qui tient à la précocité du traitement — glucagon à fortes doses, bicarbonate molaire pour l'effet membranaire, réanimation. Non cardiosélectif signifie aussi bronchoconstriction : l'asthme est une contre-indication absolue, la BPCO une contre-indication relative. Chez le diabétique il ne se contente pas de masquer l'hypoglycémie, il en retarde la correction en bloquant la glycogénolyse. Cauchemars, insomnie et humeur dépressive sont des effets propres à sa lipophilie.",
         forms: "",
     },
     StarterDetail {
@@ -4087,7 +4108,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux règles issues d'essais qui ont fait des morts. La première : les antiarythmiques de classe Ic augmentent la mortalité chez le patient coronarien ou porteur d'une cardiopathie structurelle, ce qui les réserve au cœur sain — une ordonnance de flécaïnide après un infarctus est une erreur à signaler. La seconde : dans le flutter, la molécule ralentit l'oreillette au point que le nœud auriculoventriculaire conduit un battement sur un, transformant une arythmie supportée en tachycardie à 200 par minute ; c'est pourquoi elle s'associe presque toujours à un bêtabloquant ou à un inhibiteur calcique bradycardisant, et une prescription isolée se vérifie. L'élargissement du QRS signe le surdosage, favorisé par l'insuffisance rénale.",
         forms: "",
     },
     StarterDetail {
@@ -4129,7 +4150,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "idpp-4",
-        toxicity: "",
+        toxicity: "Classe bien tolérée, dont deux effets méritent d'être connus parce qu'ils sont rarement rattachés au traitement. La pemphigoïde bulleuse : une éruption bulleuse prurigineuse, souvent des membres, qui peut apparaître après des mois voire des années de traitement et qui régresse à l'arrêt — devant des bulles chez un patient sous gliptine, on y pense avant tout autre diagnostic. Et la pancréatite aiguë, devant une douleur épigastrique transfixiante avec vomissements, qui impose l'arrêt et un avis urgent. Des arthralgies sévères et invalidantes, réversibles à l'arrêt, sont également décrites. L'élimination étant rénale, la dose se réduit par paliers selon le débit de filtration glomérulaire.",
         forms: "",
     },
     StarterDetail {
@@ -4150,7 +4171,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "isglt2, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le danger propre à cette classe est une acidocétose survenant à glycémie normale ou peu élevée, ce qui la rend invisible à l'autosurveillance habituelle : le patient contrôle son sucre, le trouve correct, et s'aggrave. Nausées, vomissements, douleurs abdominales, dyspnée ou fatigue inhabituelle chez un patient sous gliflozine imposent de mesurer les corps cétoniques et non la seule glycémie. Les circonstances déclenchantes sont connues et doivent être expliquées à l'avance : jeûne, régime très pauvre en glucides, chirurgie, infection aiguë, déshydratation, forte consommation d'alcool — dans toutes, le traitement se suspend. Second risque, rare mais fulgurant : la gangrène de Fournier, dont une douleur ou un gonflement du périnée est le premier signe et une urgence.",
         forms: "",
     },
     StarterDetail {
@@ -4171,7 +4192,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "isglt2, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Comme toutes les gliflozines, elle expose à une acidocétose à glycémie normale, que l'autosurveillance glycémique ne détecte pas : devant des nausées, des douleurs abdominales, une dyspnée ou une asthénie inhabituelles, ce sont les corps cétoniques qu'il faut mesurer. Les règles des jours de maladie sont la vraie prévention et se donnent à l'avance : on suspend le traitement en cas de jeûne, d'infection aiguë, de vomissements, de déshydratation et avant toute chirurgie. La gangrène de Fournier, exceptionnelle, se manifeste par une douleur ou un gonflement périnéal et constitue une urgence. Les mycoses génitales et les infections urinaires basses sont fréquentes et se préviennent par l'hygiène locale ; elles ne justifient pas d'arrêter.",
         forms: "",
     },
     StarterDetail {
@@ -4192,7 +4213,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue glp-1",
-        toxicity: "",
+        toxicity: "Mêmes risques de classe que les autres analogues du GLP-1 : pancréatite aiguë, devant laquelle une douleur épigastrique transfixiante impose l'arrêt et un avis en urgence ; lithiase biliaire, favorisée par la perte de poids rapide ; et ralentissement de la vidange gastrique, qui expose à une inhalation lors d'une anesthésie malgré le jeûne — toute chirurgie ou endoscopie programmée se signale à l'anesthésiste. La déshydratation liée aux troubles digestifs peut précipiter une insuffisance rénale aiguë. La titration par paliers n'a pas pour but l'efficacité mais la tolérance digestive : la sauter fait abandonner le traitement. En association à un sulfamide ou à l'insuline, la dose de ceux-ci se réduit.",
         forms: "",
     },
     StarterDetail {
@@ -4213,7 +4234,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue glp-1, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Injection quotidienne, ce qui rend la titration plus lisible mais l'oubli plus fréquent : la dose de 0,6 mg n'a aucune efficacité glycémique et n'existe que pour la tolérance digestive, et rester à ce palier revient à ne pas être traité. Les risques de classe s'appliquent : pancréatite aiguë devant une douleur épigastrique transfixiante, lithiase biliaire, ralentissement de la vidange gastrique exposant à une inhalation lors d'une anesthésie — toute intervention se signale. La déshydratation par vomissements peut précipiter une insuffisance rénale aiguë. Les tumeurs thyroïdiennes à cellules C observées chez le rongeur ont conduit à contre-indiquer la classe en cas d'antécédent familial de cancer médullaire de la thyroïde ou de NEM de type 2.",
         forms: "",
     },
     StarterDetail {
@@ -4234,7 +4255,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline rapide, surveillance biologique",
-        toxicity: "",
+        toxicity: "L'insuline n'a pas de dose toxique dans l'absolu : sa toxicité est l'hypoglycémie, et sa gravité se lit dans la durée d'action. Ici elle est courte — trois à cinq heures — donc violente mais bornée, et le resucrage suivi d'un sucre lent suffit le plus souvent. Deux erreurs font les hypoglycémies sévères de cette forme : l'injection faite alors que le repas ne vient pas, et surtout la confusion de stylos, une dose de basale injectée comme une rapide, ou l'inverse. Les stylos se ressemblent et se rangent côte à côte ; les distinguer physiquement est une mesure de sécurité, pas une coquetterie. Antidote glucagon, inefficace si les réserves hépatiques de glycogène sont vides — alcool, jeûne, insuffisance hépatique.",
         forms: "",
     },
     StarterDetail {
@@ -4507,7 +4528,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La marge n'est pas dans la dose mais dans l'observance et dans les interactions. En leucémie myéloïde chronique, la réponse moléculaire se dégrade dès que l'observance passe sous les neuf dixièmes des prises : une boîte qui dure cinq semaines au lieu de quatre est une information clinique, et le comptoir est le seul endroit où elle se voit. Substrat du CYP3A4 : le millepertuis est contre-indiqué, les azolés et la clarithromycine augmentent l'exposition, la rifampicine et les antiépileptiques inducteurs l'effondrent. Le comprimé se prend au milieu d'un repas avec un grand verre d'eau, la tolérance digestive en dépend. Les œdèmes, périorbitaires puis déclives, sont fréquents et parfois révélateurs d'une rétention hydrique sévère. Numération et bilan hépatique réguliers.",
         forms: "",
     },
     StarterDetail {
@@ -4528,7 +4549,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, inhibiteur cdk4, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La neutropénie est la toxicité limitante et elle est quasi constante, mais elle est réversible et non cumulative : elle se surveille par une numération au premier et au quinzième jour des deux premiers cycles, puis avant chaque cycle, et elle se gère par un report ou une réduction décidés par l'oncologue — jamais par un arrêt du patient. Le rythme est trois semaines de prise puis une semaine sans : la semaine d'arrêt fait partie du traitement, et le patient qui continue par crainte de mal faire est l'erreur à repérer au renouvellement. La forme gélule se prend impérativement au cours d'un repas, la forme comprimé non : les deux ne sont pas interchangeables sans le redire. Substrat du CYP3A4, pamplemousse proscrit.",
         forms: "",
     },
     StarterDetail {
@@ -4549,7 +4570,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, inhibiteur cdk4, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La diarrhée est la toxicité dominante, précoce — souvent dans les premiers jours — et c'est elle qui fait arrêter les traitements. Elle se gère si elle est anticipée : le lopéramide doit être à la maison avant la première prise, se commence dès la première selle molle sans attendre, et s'accompagne d'une réhydratation. Une diarrhée qui persiste malgré cela relève d'un appel, pas d'une réduction décidée seul. Le traitement est continu, sans semaine d'arrêt, contrairement au palbociclib : transposer le rythme de l'un à l'autre est une erreur à repérer. L'élévation de la créatininémie est constante et traduit une inhibition du transport tubulaire, non une atteinte rénale. Événements thromboemboliques et pneumopathie interstitielle à connaître.",
         forms: "",
     },
     StarterDetail {
@@ -4570,7 +4591,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, hormonothérapie, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La prise à jeun n'est pas un conseil de confort : avec un repas, l'exposition peut être multipliée par un facteur considérable, jusqu'à dix fois avec un repas riche, et la toxicité suit. Deux heures après le repas précédent, une heure avant le suivant, et cette règle se répète à chaque délivrance. La corticothérapie associée fait partie du traitement et ne s'arrête jamais seule : sans elle, l'excès de minéralocorticoïdes donne hypertension, hypokaliémie et rétention hydrosodée, et son arrêt brutal expose à l'insuffisance surrénale. La toxicité hépatique impose un contrôle des transaminases toutes les deux semaines pendant trois mois puis mensuel. Kaliémie et pression artérielle surveillées à chaque contact.",
         forms: "",
     },
     StarterDetail {
@@ -4591,7 +4612,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, hormonothérapie, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Il abaisse le seuil épileptogène de façon dose-dépendante, et des convulsions sont survenues chez des patients sans antécédent : l'association à tout autre médicament abaissant ce seuil — tramadol, bupropion, certains antidépresseurs et antipsychotiques — est à repérer sur l'ordonnance, et une crise impose l'arrêt définitif. La fatigue est majeure et s'accompagne de chutes et de fractures chez le sujet âgé, ce qui justifie une évaluation du risque de chute. C'est aussi un inducteur enzymatique puissant, du CYP3A4, du 2C9 et du 2C19 : il effondre l'effet d'un antivitamine K, d'un antiépileptique, de nombreux traitements cardiovasculaires, et l'induction persiste plusieurs semaines après l'arrêt. Rare syndrome d'encéphalopathie postérieure réversible.",
         forms: "",
     },
     StarterDetail {
@@ -4612,7 +4633,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormonothérapie, serm, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Prodrogue : elle n'agit qu'après transformation par le CYP2D6 en endoxifène, et les inhibiteurs puissants de cette enzyme réduisent l'efficacité d'un traitement dont l'enjeu est la récidive d'un cancer. La paroxétine et la fluoxétine sont les plus concernées, souvent prescrites pour les bouffées de chaleur du tamoxifène lui-même : c'est l'interaction à repérer, et la venlafaxine ou l'escitalopram sont les alternatives usuelles. Deux risques propres imposent une consigne explicite : tout saignement génital après la ménopause doit faire consulter sans délai, le tamoxifène augmentant le risque de cancer de l'endomètre ; et le risque thromboembolique veineux fait signaler toute douleur de mollet ou tout essoufflement, et se réévalue avant une immobilisation ou une chirurgie.",
         forms: "",
     },
     StarterDetail {
@@ -4633,7 +4654,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormonothérapie, anti-aromatase, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux points commandent la délivrance. Le premier est une erreur d'indication qui rend le traitement inopérant : un anti-aromatase ne convient qu'à la femme ménopausée, l'ovaire non freiné compensant le blocage périphérique — chez une femme non ménopausée, il faut une suppression ovarienne associée, et une ordonnance sans elle mérite un appel. Le second est le coût osseux : la suppression estrogénique est quasi totale, la perte osseuse rapide, et le traitement dure des années — d'où une ostéodensitométrie avant puis en cours, du calcium et de la vitamine D, et parfois un anti-résorbeur. Les arthralgies et la raideur matinale sont la première cause d'abandon : elles se disent, s'anticipent et se traitent plutôt que de faire arrêter en silence.",
         forms: "",
     },
     StarterDetail {
@@ -4654,7 +4675,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormonothérapie, anti-aromatase, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Comme tous les anti-aromatases, il ne convient qu'à la femme ménopausée : prescrit sans suppression ovarienne à une femme qui ne l'est pas, il est inefficace et peut même stimuler l'ovaire. La toxicité principale est osseuse et silencieuse : perte de densité rapide sur un traitement de plusieurs années, avec fractures, ce qui impose une ostéodensitométrie de référence, une supplémentation calcique et vitaminique D, et une réévaluation régulière. Les arthralgies touchent près d'une patiente sur deux et sont la première cause d'arrêt prématuré : les nommer avant qu'elles n'apparaissent change la façon dont elles sont vécues. L'élévation du cholestérol et la sécheresse vaginale se surveillent également.",
         forms: "",
     },
     StarterDetail {
@@ -4675,7 +4696,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormonothérapie, anti-aromatase, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Anti-aromatase stéroïdien, à la différence des deux autres : sa structure proche de l'androstènedione lui donne un versant androgénique léger — acné, hirsutisme, prise de poids — que les non stéroïdiens n'ont pas, et permet parfois de le poursuivre après échec de tolérance de ceux-ci. Il se prend après un repas, la biodisponibilité étant améliorée par l'alimentation, ce qui le distingue également. Le reste est commun à la classe : réservé à la femme ménopausée, perte osseuse rapide sur plusieurs années imposant ostéodensitométrie et supplémentation, arthralgies fréquentes et première cause d'abandon. Le millepertuis et la rifampicine, inducteurs, réduisent son exposition.",
         forms: "",
     },
     StarterDetail {
@@ -4696,7 +4717,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, immunomodulateur, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Même famille et mêmes obligations réglementaires que le lénalidomide : tératogène majeur, programme de prévention des grossesses, contraception et tests chez la femme en âge de procréer, préservatif chez l'homme, durée d'ordonnance encadrée, aucune gélule partagée ni donnée, retour des gélules inutilisées à l'officine. La gélule ne s'ouvre pas et ne s'écrase pas, le contenu étant cytotoxique. Le risque thromboembolique impose une prophylaxie associée, et tout mollet douloureux ou essoufflement s'évalue sans délai. La neutropénie sévère est la toxicité limitante, avec une numération à chaque cycle et toute fièvre traitée comme une urgence. Le tabac, inducteur du CYP1A2, diminue l'exposition.",
         forms: "",
     },
     StarterDetail {
@@ -4717,7 +4738,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, immunomodulateur, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Analogue du thalidomide : la tératogénicité commande toute la dispensation. Programme de prévention des grossesses, contraception efficace et tests de grossesse chez la femme en âge de procréer, préservatif chez l'homme y compris vasectomisé, ordonnance dont la durée est réglementairement limitée, et interdiction absolue de partager ou de donner les gélules — les capsules non utilisées se rapportent à l'officine. Deuxième risque, thrombotique : l'association aux corticoïdes et à la maladie fait un risque veineux élevé, et une prophylaxie antithrombotique fait partie du schéma ; toute douleur de mollet ou tout essoufflement s'évalue le jour même. La neutropénie et la thrombopénie sont dose-limitantes et la dose se réduit selon la clairance.",
         forms: "",
     },
     StarterDetail {
@@ -4738,7 +4759,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hbpm, surveillance biologique",
-        toxicity: "",
+        toxicity: "C'est l'héparine de bas poids moléculaire dont l'absence d'accumulation en insuffisance rénale modérée est la mieux documentée, sa part d'élimination rénale étant plus faible : le RCP la mentionne jusqu'à une clairance basse, mais la pratique française maintient le seuil de 30 mL/min pour toute HBPM à dose curative, et c'est le prescripteur qui tranche — pas le comptoir. Le reste de la marge ne bouge pas : dose calculée sur le poids réel et redéterminée si le poids change, activité anti-Xa mesurée quatre heures après l'injection dans les situations limites, et protamine qui ne neutralise qu'une partie de l'effet. La thrombopénie induite par l'héparine de type II reste ce qui tue, et elle interdit ensuite toute la classe.",
         forms: "",
     },
     StarterDetail {
@@ -4759,7 +4780,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hbpm",
-        toxicity: "",
+        toxicity: "Dosée en unités internationales anti-Xa et en millilitres, avec des seringues préremplies de volumes proches qui se ressemblent en rayon : la vérification porte sur le volume autant que sur le nombre d'unités. La dose curative se calcule sur le poids réel et se donne en deux injections par jour ; la prophylaxie chirurgicale suit un schéma horaire précis autour de l'intervention, et une injection avancée est un hématome périmédullaire quand une rachianesthésie suit. Contre-indiquée à dose curative au-dessous de 30 mL/min de clairance. La protamine ne neutralise qu'environ 60 % de l'activité anti-Xa. Plaquettes surveillées : une chute de plus de 40 % fait tout arrêter.",
         forms: "",
     },
     StarterDetail {
@@ -4780,7 +4801,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hbpm",
-        toxicity: "",
+        toxicity: "Dosée exclusivement en unités internationales anti-Xa, sans équivalence en milligrammes : une prescription en milligrammes est une prescription à faire corriger avant délivrance, jamais à convertir au comptoir. La dose curative se calcule sur le poids réel et la clairance en décide la possibilité, la dose curative étant contre-indiquée au-dessous de 30 mL/min. En cancérologie, où elle est largement utilisée, le schéma comporte une réduction de dose après le premier mois qu'un renouvellement ne doit pas reconduire à l'identique sans vérification. La protamine ne neutralise qu'une partie de l'activité anti-Xa, et la thrombopénie de type II impose l'arrêt de toute héparine.",
         forms: "",
     },
     StarterDetail {
@@ -4822,7 +4843,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, ara2, insuffisance cardiaque, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux règles absolues. Le relais depuis un inhibiteur de l'enzyme de conversion impose une fenêtre de trente-six heures sans traitement : administrer les deux à moins de trente-six heures d'intervalle expose à un angio-œdème par accumulation de bradykinine, et cette fenêtre est le point que le comptoir doit vérifier sur une ordonnance d'instauration. L'association à un IEC est définitivement contre-indiquée, de même que chez un patient ayant un antécédent d'angio-œdème sous IEC ou sous sartan. L'hypotension symptomatique et l'hyperkaliémie sont les effets limitants de la titration, avec une créatininémie et une kaliémie contrôlées avant, à chaque palier et lors de toute déshydratation. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -4864,7 +4885,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique",
-        toxicity: "",
+        toxicity: "Dihydropyridine sans effet bradycardisant : contrairement au vérapamil et au diltiazem, elle ne déprime pas la conduction et peut s'associer à un bêtabloquant, ce qui est la distinction utile de la classe. En contrepartie, la vasodilatation provoque une tachycardie réflexe, des céphalées, des bouffées vasomotrices et des œdèmes des membres inférieurs, ces derniers ne répondant pas aux diurétiques. La forme à libération immédiate expose à des à-coups tensionnels et n'a pas sa place dans le traitement de fond de l'hypertension ; la forme à libération prolongée s'avale entière. Le métabolisme passe par le CYP3A4 : le pamplemousse augmente l'exposition. L'instauration se fait à dose réduite chez le sujet âgé et l'insuffisant hépatique.",
         forms: "",
     },
     StarterDetail {
@@ -4885,7 +4906,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant antihypertenseur",
-        toxicity: "",
+        toxicity: "Alpha-bloquant : le risque tient au premier comprimé et à chaque augmentation, avec une hypotension orthostatique pouvant aller jusqu'à la syncope, surtout chez le sujet âgé, déshydraté, déjà sous diurétique ou sous un autre antihypertenseur. La règle est d'instaurer à la dose la plus faible, le soir, et de prévenir le patient de se lever en deux temps les premiers jours. La somnolence et les vertiges sont fréquents à l'instauration et comptent pour la conduite. La dose se réduit chez l'insuffisant rénal et l'insuffisant hépatique, où l'effet hypotenseur est majoré. L'arrêt brutal d'un traitement antihypertenseur expose à un rebond tensionnel.",
         forms: "",
     },
     StarterDetail {
@@ -4906,7 +4927,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est la statine dont les plafonds de dose imposés par les interactions sont les plus nombreux et les plus stricts, parce qu'elle est fortement métabolisée par le CYP3A4 : l'amlodipine, l'amiodarone, le vérapamil et le diltiazem limitent la dose à 20 mg, et les inhibiteurs puissants — macrolides, azolés, inhibiteurs de protéase — sont contre-indiqués. Le dosage à 80 mg n'est plus recommandé du fait du risque musculaire. Ces plafonds sont vérifiables sur l'ordonnance complète et c'est là que le comptoir a un rôle réel : une association amlodipine et simvastatine 40 mg est une ordonnance à corriger. Le pamplemousse est à éviter. Rhabdomyolyse : douleurs diffuses, faiblesse, urines foncées.",
         forms: "",
     },
     StarterDetail {
@@ -4927,7 +4948,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La pravastatine n'est pas métabolisée par les cytochromes, ce qui en fait la statine de choix chez un patient polymédiqué, sous antirétroviraux, sous azolé ou sous macrolide : c'est son intérêt principal et il se raisonne au moment où une interaction se présente. Elle reste soumise à la toxicité musculaire de la classe, dose-dépendante et majorée par l'insuffisance rénale, l'âge avancé, l'hypothyroïdie non traitée et l'association aux fibrates. La ciclosporine impose une réduction de dose. Devant des douleurs musculaires diffuses avec faiblesse et urines foncées, on arrête et on dose les CPK le jour même. Une gêne musculaire isolée, sans faiblesse ni CPK élevées, n'est le plus souvent pas imputable à la statine.",
         forms: "",
     },
     StarterDetail {
@@ -4990,7 +5011,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline lente, surveillance biologique",
-        toxicity: "",
+        toxicity: "Trois cents unités par millilitre, contre cent pour les autres glargines : c'est la concentration qui fait le danger, et elle fait partie du nom du médicament. Le stylo compte des unités et non des millilitres, ce qui protège le patient tant qu'il l'utilise — mais prélever à la seringue dans ce stylo triple la dose et a tué. Le passage depuis une glargine à cent unités ne se fait jamais unité pour unité : la dose est recalculée par le prescripteur et la surveillance renforcée plusieurs semaines. La durée d'action dépasse vingt-quatre heures, souvent trente-six : une hypoglycémie sous cette insuline dure des heures, récidive après le resucrage, et impose un sucre lent puis un contrôle prolongé. Antidote glucagon, inopérant si le glycogène hépatique est épuisé.",
         forms: "",
     },
     StarterDetail {
@@ -5011,7 +5032,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline lente, surveillance biologique",
-        toxicity: "",
+        toxicity: "Toxicité = hypoglycémie, et la durée d'action d'environ vingt-quatre heures la rend prolongée : elle récidive après un resucrage isolé, et impose un sucre lent puis une surveillance sur plusieurs heures. La confusion de concentration est le risque de la classe : cette glargine est à cent unités par millilitre, une autre spécialité de la même molécule est à trois cents, et les deux ne se remplacent pas unité pour unité sans recalcul par le prescripteur. Ne jamais prélever à la seringue dans une cartouche de stylo. Ne jamais mélanger dans la même seringue avec une autre insuline : le pH acide précipiterait. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -5032,7 +5053,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline rapide, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Toxicité = hypoglycémie, de durée brève, deux à cinq heures. Le piège propre à cette molécule est la concentration : il existe une forme à 200 unités par millilitre à côté de la forme à 100, et les deux stylos se ressemblent. Elles ne sont pas interchangeables volume pour volume, et le nombre affiché sur le stylo reste un nombre d'unités — ce qui protège tant que le patient utilise le stylo, et devient mortel si quelqu'un prélève à la seringue dans une cartouche à 200. Jamais de seringue standard dans une cartouche de stylo. Le reste est commun à la classe : injection sans repas, confusion rapide-basale, bêtabloquant qui masque les signes. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -5053,7 +5074,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "sulfamide hypoglycémiant, surveillance biologique, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "L'hypoglycémie d'un sulfamide n'est pas celle d'une insuline rapide : elle dure, elle récidive après le resucrage, et elle se prolonge d'autant que la molécule couvre vingt-quatre heures et que ses métabolites restent actifs. Une hypoglycémie sévère sous glimépiride s'hospitalise et se surveille au moins vingt-quatre heures, quel que soit le retour à la conscience — la rechute à la sixième heure est la règle, pas l'exception. Le glucagon y est un mauvais recours, puisqu'il stimule aussi la sécrétion d'insuline. Les facteurs déclenchants se cherchent avant de blâmer le patient : repas sauté, dégradation de la fonction rénale, amaigrissement, ajout d'un potentialisateur — miconazole, y compris le gel buccal, sulfamides antibactériens, fluconazole, AINS.",
         forms: "",
     },
     StarterDetail {
@@ -5074,7 +5095,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparkinsonien, l-dopa, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'arrêt brutal est le danger principal et il est méconnu : il peut provoquer un syndrome akinéto-hyperthermique, proche du syndrome malin des neuroleptiques, avec rigidité, fièvre et rhabdomyolyse, dont l'issue peut être fatale. Une rupture de délivrance, un patient hospitalisé à jeun ou une chirurgie sont donc des situations à traiter comme des urgences thérapeutiques, et jamais comme un simple report de prise. Le second point est nutritionnel : la lévodopa et les acides aminés alimentaires empruntent le même transporteur, si bien qu'un repas riche en protéines pris au moment de la prise bloque l'absorption — les prises se décalent d'une demi-heure avant ou d'une heure après. Dyskinésies et fluctuations motrices sont dose- et durée-dépendantes.",
         forms: "",
     },
     StarterDetail {
@@ -5095,7 +5116,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparkinsonien, l-dopa, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Comme toute lévodopa, l'interruption brutale expose au syndrome akinéto-hyperthermique, avec rigidité, hyperthermie et rhabdomyolyse, potentiellement mortel : une rupture d'approvisionnement, un jeûne préopératoire ou une hospitalisation sont des situations qui se gèrent en urgence et non en reportant la prise. Les acides aminés alimentaires entrent en compétition avec l'absorption de la lévodopa : les prises se placent une demi-heure avant ou une heure après un repas riche en protéines. Un piège de dispensation lui est propre : le passage à la forme à libération prolongée impose de recalculer la dose totale, sa biodisponibilité étant moindre — les deux formes ne se substituent pas comprimé pour comprimé.",
         forms: "",
     },
     StarterDetail {
@@ -5116,7 +5137,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Deux effets dominent et aucun des deux n'est spontanément rapporté par le patient. Les troubles du contrôle des impulsions — jeu pathologique, achats compulsifs, hypersexualité, hyperphagie — surviennent chez une proportion notable des patients, y compris aux faibles doses du syndrome des jambes sans repos, et ils ruinent des situations familiales et financières avant qu'on ne fasse le lien : la question se pose directement, au patient et à l'entourage, à chaque renouvellement. Et les accès de sommeil d'apparition brutale, sans somnolence annonciatrice, qui interdisent la conduite tant que la tolérance n'est pas établie. L'élimination étant rénale, la dose se réduit selon la clairance. L'arrêt est toujours progressif, un sevrage dopaminergique étant possible.",
         forms: "",
     },
     StarterDetail {
@@ -5137,7 +5158,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Comme tout agoniste dopaminergique : troubles du contrôle des impulsions — jeu, achats, sexualité, alimentation — qui ne sont presque jamais rapportés spontanément et qui doivent faire l'objet d'une question directe au patient et à son entourage, y compris aux faibles doses prescrites dans le syndrome des jambes sans repos ; et accès de sommeil soudains, sans prodrome, qui posent la question de la conduite automobile. Dans les jambes sans repos, un phénomène d'augmentation peut survenir au long cours : les symptômes apparaissent plus tôt dans la journée et s'étendent, et la réponse n'est pas d'augmenter la dose mais de reconsidérer le traitement. Métabolisé par le CYP1A2 : le tabac diminue l'exposition, la ciprofloxacine l'augmente.",
         forms: "",
     },
     StarterDetail {
@@ -5179,7 +5200,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Agoniste partiel de la dopamine et non antagoniste, ce qui déplace toute sa toxicité. Peu de prise de poids, peu de prolactine, mais une akathisie fréquente et souvent méconnue : une agitation intérieure, une impossibilité de rester assis, que le patient et l'entourage prennent pour une aggravation de la maladie alors qu'elle est du traitement et qu'elle cède à la baisse de dose. Second effet propre à la classe des agonistes partiels, sous-déclaré parce que le patient n'en parle pas spontanément : les troubles du contrôle des impulsions — jeu pathologique, achats compulsifs, hypersexualité, hyperphagie —, qui imposent une question directe au renouvellement et l'arrêt s'ils apparaissent. Demi-vies de 75 et 94 heures pour la molécule et son métabolite actif : tout ajustement met deux semaines à se voir, et un effet indésirable autant à disparaître.",
         forms: "",
     },
     StarterDetail {
@@ -5200,7 +5221,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
-        toxicity: "",
+        toxicity: "C'est l'antipsychotique dont le coût métabolique est le plus lourd : prise de poids rapide et massive, souvent plusieurs kilogrammes dès les premières semaines, dyslipidémie et diabète de novo, y compris des acidocétoses inaugurales chez des patients jeunes. La surveillance est donc chiffrée et non impressionniste : poids et tour de taille à chaque contact, glycémie à jeun et bilan lipidique avant, à trois mois puis annuellement. La sédation et l'hypotension orthostatique dominent l'instauration. Point pharmacocinétique que l'on oublie : la molécule est métabolisée par le CYP1A2, que la fumée du tabac induit — un patient hospitalisé qui arrête brutalement de fumer voit ses concentrations grimper et se retrouve surdosé sans qu'aucune dose ait changé.",
         forms: "",
     },
     StarterDetail {
@@ -5221,7 +5242,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa marge est une affaire de dose : au-delà de 6 mg par jour, l'occupation des récepteurs dopaminergiques devient telle que la molécule se comporte comme un neuroleptique classique, avec syndrome extrapyramidal, akathisie et risque de dyskinésie tardive — le bénéfice n'augmente plus, les effets si. C'est aussi l'antipsychotique qui élève le plus la prolactine, avec galactorrhée, aménorrhée, gynécomastie, troubles sexuels et, au long cours, perte osseuse : effets dont le patient ne parle pas et qu'il faut aller chercher, car ils font arrêter le traitement en silence. L'élimination du métabolite actif est rénale, ce qui impose de réduire la dose chez l'insuffisant rénal et le sujet âgé.",
         forms: "",
     },
     StarterDetail {
@@ -5263,7 +5284,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique typique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Antipsychotique de première génération à forte affinité dopaminergique : les effets extrapyramidaux sont sa toxicité dominante, depuis la dystonie aiguë des premières heures — crise oculogyre, torticolis, trismus, spectaculaire et angoissante, corrigée par un anticholinergique injectable — jusqu'à la dyskinésie tardive des traitements prolongés, elle souvent définitive. Il allonge l'intervalle QT de façon dose-dépendante, davantage par voie injectable, et se cumule avec tout autre allongeur : un électrocardiogramme et une kaliémie s'imposent avant les fortes doses. Chez le sujet âgé dément, comme toute la classe, il augmente la mortalité, ce qui limite l'indication dans l'agitation à la durée la plus courte possible.",
         forms: "",
     },
     StarterDetail {
@@ -5284,7 +5305,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
-        toxicity: "",
+        toxicity: "Prodrogue : le prazépam n'agit qu'après transformation en nordazépam, dont la demi-vie va de trente à cent cinquante heures. Deux conséquences pratiques. L'effet ne s'installe pas le premier soir, ce qui pousse à augmenter la dose alors qu'il suffisait d'attendre. Et l'équilibre n'est atteint qu'au bout d'une à deux semaines, si bien que la somnolence, la confusion et les chutes apparaissent longtemps après l'instauration, chez un patient que l'on croyait stabilisé. Chez le sujet âgé, cette accumulation est la règle et la molécule figure sur les listes de médicaments à éviter. Seul, le surdosage endort ; avec de l'alcool ou un opioïde, il tue.",
         forms: "",
     },
     StarterDetail {
@@ -5305,7 +5326,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
-        toxicity: "",
+        toxicity: "Son métabolite N-desméthylé est actif et beaucoup plus persistant que la molécule mère, soixante-dix à quatre-vingts heures, et il s'accumule fortement chez le métaboliseur lent du CYP2C19 : deux patients à la même dose n'ont pas la même exposition. Utilisé comme antiépileptique, il pose un problème que n'ont pas les benzodiazépines de l'anxiété : la tolérance à l'effet anticonvulsivant s'installe en quelques semaines à quelques mois, et l'échappement n'est pas une aggravation de la maladie. Surtout, l'arrêt brutal chez un patient épileptique peut déclencher un état de mal : la décroissance est toujours lente et jamais décidée au comptoir, même en cas de rupture d'approvisionnement.",
         forms: "",
     },
     StarterDetail {
@@ -5326,7 +5347,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur tétracyclique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Sa toxicité caractéristique est hématologique et impose une consigne donnée dès la première délivrance : l'agranulocytose et la leucopénie surviennent le plus souvent dans les premières semaines, et toute fièvre, angine, aphtose ou infection inhabituelle doit conduire à arrêter et à faire une numération le jour même, sans attendre le rendez-vous. Une numération de référence est utile avant l'instauration, surtout chez le sujet âgé. En contrepartie, elle est nettement moins cardiotoxique en surdosage que les tricycliques, ce qui a fondé sa place. La sédation est marquée et justifie la prise du soir ; l'hypotension orthostatique et les chutes comptent chez le sujet âgé. Risque suicidaire à surveiller en début de traitement.",
         forms: "",
     },
     StarterDetail {
@@ -5347,7 +5368,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fluoroquinolone, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Fluoroquinolone soumise aux mêmes restrictions que sa classe : tendinopathie et rupture, jusqu'à plusieurs mois après l'arrêt et très majorées par une corticothérapie ou un âge avancé, anévrisme et dissection de l'aorte, neuropathie périphérique parfois irréversible, effets neuropsychiatriques. Toute douleur tendineuse impose l'arrêt immédiat. Deux points lui sont propres : l'élimination est presque entièrement rénale, si bien que la dose se calcule sur la clairance et qu'une insuffisance rénale non prise en compte donne des confusions et des convulsions chez le sujet âgé ; et des hypoglycémies, parfois sévères, sont décrites chez le diabétique traité par sulfamide ou insuline. Photosensibilisation et allongement du QT.",
         forms: "",
     },
     StarterDetail {
@@ -5389,7 +5410,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant, hbp",
-        toxicity: "",
+        toxicity: "Le risque qui compte n'est pas tensionnel mais chirurgical : le syndrome de l'iris flasque peropératoire complique la chirurgie de la cataracte chez les patients traités, y compris ceux qui ont arrêté depuis des mois, et il expose à des complications graves si le chirurgien n'a pas été prévenu. Signaler la prise de tamsulosine avant toute chirurgie oculaire est donc une consigne à donner à la délivrance, pas au moment de l'opération — l'arrêt préalable ne supprime pas le risque. L'hypotension orthostatique existe malgré l'uro-sélectivité, surtout à l'instauration et chez le sujet âgé. L'association aux inhibiteurs de la phosphodiestérase de type 5 majore la vasodilatation.",
         forms: "",
     },
     StarterDetail {
@@ -5410,7 +5431,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant, hbp",
-        toxicity: "",
+        toxicity: "Moins uro-sélectif que la tamsulosine, il expose davantage à l'hypotension orthostatique, avec vertiges et syncopes à l'instauration et à chaque augmentation, en particulier chez le sujet âgé et le patient déjà sous antihypertenseur : la première prise se fait le soir au coucher. Comme tous les alpha-bloquants de l'hypertrophie prostatique, il expose au syndrome de l'iris flasque peropératoire, ce qui impose de prévenir l'ophtalmologiste avant une chirurgie de la cataracte, même en cas d'arrêt ancien. L'association aux inhibiteurs de la phosphodiestérase de type 5 additionne les vasodilatations. La forme à libération prolongée s'avale entière.",
         forms: "",
     },
     StarterDetail {
@@ -5473,7 +5494,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception microprogestative, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Microprogestatif au désogestrel : il n'expose ni au risque artériel ni au risque thromboembolique des estroprogestatifs, ce qui en fait la contraception utilisable après trente-cinq ans chez la fumeuse, en cas de migraine avec aura, d'antécédent thromboembolique et pendant l'allaitement — c'est son intérêt principal et il se raisonne au moment où un estroprogestatif est contre-indiqué. Sa fenêtre d'oubli est de douze heures, plus large que les trois heures des microprogestatifs au lévonorgestrel : la distinction compte et se dit. Les saignements irréguliers, ou au contraire l'aménorrhée, sont très fréquents et constituent la première cause d'abandon : les annoncer permet de les traverser. Une douleur pelvienne unilatérale fait évoquer une grossesse extra-utérine.",
         forms: "",
     },
     StarterDetail {
@@ -5494,7 +5515,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception estroprogestative, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le risque thromboembolique veineux est le risque qui structure toute la classe, et il est maximal la première année d'utilisation ainsi qu'à la reprise après une interruption d'au moins un mois — une pause estivale n'est donc pas neutre. Le lévonorgestrel étant un progestatif de deuxième génération, ce risque est le plus faible des estroprogestatifs, ce qui en fait un premier choix. Trois situations le contre-indiquent et se vérifient au comptoir : le tabac après trente-cinq ans, la migraine avec aura — contre-indication absolue en raison du risque d'accident vasculaire cérébral —, et un antécédent thromboembolique personnel ou familial. Tout mollet douloureux, essoufflement ou céphalée inhabituelle impose un avis. Oubli au-delà de douze heures : préservatif sept jours.",
         forms: "",
     },
     StarterDetail {
@@ -5515,7 +5536,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception d'urgence",
-        toxicity: "",
+        toxicity: "Sa marge est une question d'heures et de circonstances, pas de dose. L'efficacité diminue rapidement avec le délai — elle est maximale dans les douze premières heures et faible au-delà de soixante-douze —, et elle est nulle si l'ovulation a déjà eu lieu, puisque le lévonorgestrel agit en la retardant. Deux situations imposent d'orienter autrement : un indice de masse corporelle élevé, où l'efficacité est nettement réduite et où l'ulipristal ou un dispositif intra-utérin au cuivre sont préférables ; et un traitement inducteur enzymatique — rifampicine, millepertuis, certains antiépileptiques —, qui impose une dose doublée ou un dispositif au cuivre. Le dispositif intra-utérin au cuivre reste la méthode d'urgence la plus efficace, jusqu'à cinq jours.",
         forms: "",
     },
     StarterDetail {
@@ -5620,7 +5641,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur",
-        toxicity: "",
+        toxicity: "Une interaction domine tout et elle est mortelle : l'azathioprine est dégradée par la xanthine oxydase, que l'allopurinol et le fébuxostat bloquent. Associer les deux sans réduire l'azathioprine au quart de sa dose provoque une aplasie médullaire, et c'est l'ordonnance à arrêter au comptoir — un patient sous Imurel à qui l'on ajoute un hypo-uricémiant est une urgence de dispensation. Deuxième point, génétique : les déficits en TPMT et en NUDT15 exposent à une myélotoxicité sévère dès les premières semaines et se recherchent avant l'instauration. La numération est donc rapprochée au début puis régulière à vie. Au long cours, le risque de cancers cutanés et de lymphome impose protection solaire et examen dermatologique annuel.",
         forms: "",
     },
     StarterDetail {
@@ -5683,7 +5704,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antithyroïdien de synthèse, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa toxicité est hématologique, brutale et indépendante de la dose : l'agranulocytose survient le plus souvent dans les trois premiers mois, sans prévenir, et se révèle par une fièvre, une angine ou une aphtose. La consigne est donc explicite et se donne à la première délivrance : devant l'un de ces signes, on arrête le médicament et on fait une numération le jour même, sans attendre le rendez-vous. Une numération de référence est faite avant l'instauration. Deux autres risques : l'hépatite cholestatique, et la tératogénicité au premier trimestre, avec des malformations caractéristiques, qui fait préférer le propylthiouracile en début de grossesse. La surveillance porte sur la T4 libre, la TSH restant longtemps freinée et donc trompeuse.",
         forms: "",
     },
     StarterDetail {
@@ -5746,7 +5767,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde, surveillance biologique",
-        toxicity: "",
+        toxicity: "Corticoïde très puissant et à effet prolongé — l'équivalence est de l'ordre de 0,75 mg pour 5 mg de prednisone —, ce qui rend l'erreur de conversion facile et lourde de conséquences lors d'un relais entre spécialités : c'est le calcul à vérifier. Sa longue durée d'action freine plus durablement l'axe corticotrope que la prednisone à dose équivalente, et l'insuffisance surrénale à l'arrêt en est d'autant plus probable. La solution buvable en gouttes chez l'enfant se dose au nombre de gouttes par kilogramme, et une confusion entre gouttes et millilitres est un surdosage important. Effet minéralocorticoïde faible, donc peu de rétention sodée, mais tous les autres effets de la classe restent.",
         forms: "",
     },
     StarterDetail {
@@ -5767,7 +5788,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde, surveillance biologique",
-        toxicity: "",
+        toxicity: "Équivalence de 4 mg pour 5 mg de prednisone : proche mais pas identique, et c'est précisément ce qui rend l'erreur possible lors d'un changement de spécialité, un comprimé de 16 mg n'étant pas un comprimé de 20 mg de prednisone. Le calcul se refait plutôt que de se transposer. Comme pour toute corticothérapie générale, l'arrêt d'un traitement prolongé expose à l'insuffisance surrénale aiguë et ne se décide jamais seul, et une infection ou une chirurgie impose d'augmenter la dose. Effet minéralocorticoïde plus faible que celui de la prednisone, ce qui en fait une option en cas de rétention hydrosodée gênante, sans rien changer aux effets métaboliques, osseux et oculaires.",
         forms: "",
     },
     StarterDetail {
@@ -5851,7 +5872,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk egfr, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Trois surveillances portent ce traitement. La pneumopathie interstitielle est rare mais grave : toute toux nouvelle, tout essoufflement, toute fièvre inexpliquée impose d'arrêter et d'appeler le jour même, et c'est la consigne à donner explicitement. L'allongement de l'intervalle QT est dose-dépendant et impose un électrocardiogramme et une kaliémie avant l'instauration puis en cours, avec vigilance sur toute association allongeante. La baisse de la fraction d'éjection ventriculaire gauche justifie une échographie de référence et un suivi. Le profil cutané et digestif est plus léger que celui des inhibiteurs de première génération, mais la diarrhée et la paronychie restent fréquentes. Substrat du CYP3A4 : millepertuis et rifampicine à proscrire.",
         forms: "",
     },
     StarterDetail {
@@ -5872,7 +5893,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk egfr, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux paramètres modifient l'exposition et se vérifient au comptoir. Le tabac induit le CYP1A2 et divise l'exposition à peu près par deux : un patient qui fume est sous-dosé, et un patient qui arrête en cours de traitement voit ses concentrations remonter — le statut tabagique est une question de posologie, pas de morale. Et l'absorption dépend du pH : les inhibiteurs de la pompe à protons réduisent nettement l'exposition et sont à éviter, les antiacides et les anti-H2 se prennent à distance. Le comprimé se prend à jeun, une heure avant ou deux heures après un repas. L'éruption acnéiforme est corrélée à l'efficacité et se traite plutôt que de faire arrêter. Toute dyspnée nouvelle fait évoquer une pneumopathie interstitielle.",
         forms: "",
     },
     StarterDetail {
@@ -5893,7 +5914,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk multicible, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le rythme de quatre semaines de prise suivies de deux semaines d'arrêt fait partie du traitement, et un patient qui poursuit sans interruption accumule les toxicités : c'est ce qu'il faut vérifier au renouvellement. Quatre surveillances sont chiffrées et non impressionnistes. La pression artérielle, qui monte chez la majorité des patients et se traite sans arrêter le traitement. La TSH, l'hypothyroïdie étant fréquente, souvent tardive, et prise pour la fatigue de la maladie. La fraction d'éjection ventriculaire gauche, une insuffisance cardiaque étant possible. Et la numération. Le syndrome main-pied est plus localisé et plus douloureux que celui des fluoropyrimidines ; la dépigmentation des cheveux et le teint jaune sont attendus et sans gravité.",
         forms: "",
     },
     StarterDetail {
@@ -5914,7 +5935,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk multicible, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le syndrome main-pied est la toxicité qui fait arrêter : hyperkératose douloureuse des zones d'appui, paume et plante, survenant dans les premières semaines. Il s'anticipe — pédicurie avant l'instauration, chaussures larges, émollients urée dès le premier jour, éviter l'eau chaude et les frottements — et il se signale au premier stade plutôt qu'au troisième, une réduction de dose précoce évitant l'arrêt définitif. L'hypertension artérielle apparaît chez une majorité de patients dans les six premières semaines et se surveille à domicile. La diarrhée est fréquente. Le comprimé se prend à distance des repas ou avec un repas pauvre en graisses, un repas riche réduisant l'absorption. Substrat et inducteur : millepertuis proscrit.",
         forms: "",
     },
     StarterDetail {
@@ -5935,7 +5956,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk bcr-abl, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'épanchement pleural est la toxicité caractéristique de cette molécule et elle peut survenir à tout moment, même après des années : tout essoufflement, toute toux sèche, toute douleur thoracique impose un appel et une radiographie, sans attendre le rendez-vous prévu. Plus rarement, une hypertension artérielle pulmonaire, également réversible à l'arrêt. Second point, pharmacocinétique et fréquent : l'absorption dépend de l'acidité gastrique, si bien qu'un inhibiteur de la pompe à protons diminue fortement l'exposition et compromet la réponse — l'association est à éviter, et les antiacides se prennent à deux heures d'écart. Thrombopénie et saignements sont dose-limitants. Numération régulière et observance stricte, comme pour tout traitement de leucémie myéloïde chronique.",
         forms: "",
     },
     StarterDetail {
@@ -5956,7 +5977,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk bcr-abl, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux règles à ne jamais assouplir. La prise se fait strictement à jeun, deux heures après le repas précédent et une heure avant le suivant : un repas double l'exposition, et comme la molécule allonge l'intervalle QT de façon concentration-dépendante, cette erreur d'horaire est directement arythmogène. Et l'électrocardiogramme, avec la kaliémie et la magnésémie, se contrôle avant l'instauration, à sept jours, puis après chaque changement de dose — toute association allongeante étant à repérer. Le second risque est vasculaire et tardif : événements occlusifs artériels périphériques, coronariens et cérébraux, qui imposent le contrôle des facteurs de risque et la vigilance sur une claudication nouvelle. Millepertuis et pamplemousse proscrits.",
         forms: "",
     },
     StarterDetail {
@@ -5977,7 +5998,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, inhibiteur parp, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La myélosuppression est la toxicité dominante : anémie surtout, souvent profonde et parfois transfusionnelle, mais aussi neutropénie et thrombopénie, ce qui impose une numération mensuelle. Une cytopénie qui persiste malgré l'interruption fait chercher, à distance, un syndrome myélodysplasique ou une leucémie aiguë secondaire, complication rare mais bien décrite d'un inhibiteur de PARP. Toute dyspnée ou toux nouvelle fait évoquer une pneumopathie interstitielle et arrêter. Les nausées et la fatigue sont précoces, souvent maximales le premier mois puis s'atténuent : le dire évite l'abandon. Substrat du CYP3A4 : inhibiteurs puissants et pamplemousse proscrits, inducteurs contre-indiqués.",
         forms: "",
     },
     StarterDetail {
@@ -5998,7 +6019,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, alkylant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Les gélules ne s'ouvrent jamais et ne se croquent pas : le contenu est cytotoxique, irritant pour les muqueuses, et une gélule ouverte contamine l'entourage autant que le patient. Elles se prennent à jeun, souvent le soir au coucher, avec l'antiémétique prescrit une demi-heure avant, et se manipulent sans les écraser. Pendant la phase concomitante à la radiothérapie, la lymphopénie profonde impose une prophylaxie de la pneumocystose, qui n'est pas facultative et se poursuit tant que les lymphocytes ne sont pas remontés. La numération conditionne chaque cycle : thrombopénie et neutropénie sont dose-limitantes et retardent souvent la reprise. Toute fièvre pendant une aplasie est une urgence.",
         forms: "",
     },
     StarterDetail {
@@ -6019,7 +6040,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, antimétabolite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Cytotoxique en gélule au domicile : elle ne s'ouvre pas, ne s'écrase pas, et l'entourage qui manipule les gélules — notamment pour préparer un pilulier — porte des gants et se lave les mains. La macrocytose est constante et attendue sous traitement : c'est un effet du médicament et non une carence en vitamine B12 ou en folates, et la confondre conduit à une supplémentation inutile et à un examen manquant. Deux toxicités tardives font arrêter : les ulcères de jambe, typiquement malléolaires, douloureux et très longs à cicatriser, qui ne guérissent qu'à l'arrêt ; et les cancers cutanés, qui justifient une protection solaire et un examen dermatologique régulier. Numération régulière, tératogénicité, contraception nécessaire.",
         forms: "",
     },
     StarterDetail {
@@ -6040,7 +6061,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant",
-        toxicity: "",
+        toxicity: "C'est l'antiagrégant le plus puissant de sa classe, donc le plus hémorragique, et ses restrictions en découlent. Il est contre-indiqué en cas d'antécédent d'accident vasculaire cérébral ou d'accident ischémique transitoire, un essai ayant montré un excès d'hémorragies intracrâniennes — c'est la contre-indication à vérifier sur l'histoire du patient et non sur l'ordonnance. Au-delà de soixante-quinze ans et en dessous de soixante kilogrammes, il est déconseillé ou impose une dose réduite. Comme pour tout antiagrégant après pose de stent, l'arrêt prématuré expose à une thrombose de stent souvent mortelle, et aucun geste dentaire ou chirurgical ne justifie un arrêt décidé sans le cardiologue.",
         forms: "",
     },
     StarterDetail {
@@ -6082,7 +6103,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêta-bloquant antiarythmique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Ce n'est pas un bêtabloquant ordinaire : son effet de classe III allonge l'intervalle QT de façon dose-dépendante et expose aux torsades de pointes, ce qui en fait un antiarythmique à part entière. Trois chiffres commandent la délivrance : le QT corrigé, la kaliémie et la magnésémie, et la clairance de la créatinine, la molécule étant éliminée par le rein sans métabolisme — l'insuffisance rénale est la première cause de torsade sous sotalol. L'instauration se fait sous surveillance électrocardiographique. Toute association allongeante, tout diurétique hypokaliémiant, toute diarrhée ou tout vomissement prolongés deviennent des situations à risque. Arrêt jamais brutal.",
         forms: "",
     },
     StarterDetail {
@@ -6103,7 +6124,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêta-bloquant, surveillance biologique",
-        toxicity: "",
+        toxicity: "Bêtabloquant cardiosélectif doté d'une activité sympathomimétique intrinsèque, ce qui en fait l'un des moins bradycardisants — avantage relatif qui ne le rend pas anodin. Sa particularité toxicologique est immunologique : un syndrome lupique induit, avec anticorps antinucléaires, arthralgies et éruption, régressif à l'arrêt mais qui se reconnaît d'autant plus tard qu'on n'y pense pas. Son métabolite actif, le diacétolol, est éliminé par le rein et s'accumule en cas d'insuffisance rénale, imposant une réduction de dose chez le sujet âgé. Comme toute la classe : arrêt jamais brutal du fait de l'effet rebond, masquage de l'hypoglycémie, prudence dans l'asthme. Glucagon en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -6124,7 +6145,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Ses contre-indications viennent d'essais interrompus pour surmortalité, et elles ne se discutent pas : fibrillation atriale permanente, insuffisance cardiaque décompensée ou de classe NYHA III et IV, où la dronédarone augmente la mortalité. Une ordonnance chez un patient dont la fibrillation est devenue permanente est donc à signaler, ce que le comptoir peut repérer au fil des renouvellements. Une hépatotoxicité sévère, jusqu'à l'insuffisance hépatique ayant conduit à des transplantations, impose un contrôle des transaminases avant, puis mensuel les six premiers mois. Elle augmente fortement la digoxine et les anticoagulants oraux directs. L'élévation de la créatininémie à l'instauration traduit une inhibition de sa sécrétion tubulaire, non une atteinte rénale.",
         forms: "",
     },
     StarterDetail {
@@ -6292,7 +6313,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste gip, glp-1, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Agoniste double GIP et GLP-1 : l'efficacité est supérieure et les effets digestifs le sont aussi, nausées, vomissements et diarrhée étant plus fréquents, ce qui rend la titration lente encore plus déterminante — chaque palier dure au moins quatre semaines et il ne se saute pas. Les risques de classe s'appliquent intégralement : pancréatite aiguë devant une douleur épigastrique transfixiante, lithiase biliaire favorisée par une perte de poids rapide, et surtout ralentissement marqué de la vidange gastrique, qui expose à une inhalation lors d'une anesthésie malgré le jeûne — toute intervention programmée se signale à l'anesthésiste. La déshydratation peut précipiter une insuffisance rénale aiguë. En association à l'insuline ou à un sulfamide, réduire ces derniers.",
         forms: "",
     },
     StarterDetail {
@@ -6313,7 +6334,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline ultralente, surveillance biologique",
-        toxicity: "",
+        toxicity: "Durée d'action supérieure à quarante-deux heures : c'est le point qui change tout. Une hypoglycémie sous dégludec ne se règle pas au domicile en une demi-heure, elle dure et récidive sur plus d'un jour, et une hypoglycémie sévère relève de l'hôpital et d'une perfusion de glucose prolongée. Symétriquement, une augmentation de dose ne se juge pas avant trois à quatre jours, le temps que l'équilibre s'établisse : titrer plus vite empile les doses. Deux concentrations existent, cent et deux cents unités par millilitre, non interchangeables volume pour volume ; le stylo affiche des unités, une seringue ne doit jamais y être introduite. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -6334,7 +6355,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline lente, surveillance biologique",
-        toxicity: "",
+        toxicity: "Durée d'action intermédiaire entre une NPH et une glargine, douze à vingt heures selon la dose, ce qui impose fréquemment deux injections par jour : une seule injection chez un patient qui en demandait deux laisse une fin de nuit sans couverture, et deux injections chez un patient équilibré avec une seule provoquent un chevauchement hypoglycémiant. L'hypoglycémie est donc prolongée et le resucrage isolé insuffisant. La molécule est liée à l'albumine, ce qui la rend plus reproductible d'un jour à l'autre que la NPH, mais ne la dispense d'aucune des règles : jamais de seringue dans une cartouche de stylo, jamais de mélange avec une autre insuline. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -6355,7 +6376,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline rapide, surveillance biologique",
-        toxicity: "",
+        toxicity: "Hypoglycémie de durée courte, trois à cinq heures, corrigée par un resucrage suivi d'un sucre lent. La marge se joue au moment de l'injection : faite trop tôt avant un repas qui tarde, ou maintenue alors que le patient ne mangera pas, elle produit une hypoglycémie que rien n'a compensée. La dose se calcule sur les glucides du repas et la glycémie du moment selon le schéma appris au patient, jamais estimée à l'aveugle. Confusion de stylos rapide et basale : cause classique d'hypoglycémie sévère. Antidote glucagon, sans effet si les réserves de glycogène sont épuisées.",
         forms: "",
     },
     StarterDetail {
@@ -6376,7 +6397,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline intermédiaire, surveillance biologique",
-        toxicity: "",
+        toxicity: "Suspension et non solution : le flacon ou le stylo doit être remis en suspension avant chaque injection, une vingtaine de retournements lents jusqu'à ce que le liquide soit uniformément laiteux. Un stylo mal homogénéisé délivre une dose imprévisible, tantôt trop faible tantôt trop forte, et c'est la première cause de glycémies inexplicables sous NPH. Le profil comporte un pic à quatre ou six heures, contrairement aux analogues lents : l'hypoglycémie nocturne est le risque caractéristique, et une collation au coucher est parfois nécessaire. La durée d'action de douze à seize heures rend l'hypoglycémie prolongée. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -6397,7 +6418,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde substitutif, surveillance biologique",
-        toxicity: "",
+        toxicity: "Ce n'est pas un anti-inflammatoire mais un traitement substitutif, et sa marge est inverse de celle des autres corticoïdes : le danger n'est pas l'excès, c'est le manque. Un patient insuffisant surrénalien qui vomit, qui a de la fièvre, qui subit une chirurgie ou un accident, et qui ne double ou ne triple pas sa dose, fait une insuffisance surrénale aiguë mortelle en quelques heures. Trois choses doivent être en sa possession et se vérifient à la délivrance : la carte d'insuffisant surrénalien, la consigne écrite d'adaptation des doses, et l'ampoule d'hydrocortisone injectable pour l'urgence, avec quelqu'un de l'entourage sachant l'utiliser. Ce traitement ne s'interrompt jamais, aucun jour, pour aucune raison.",
         forms: "",
     },
     StarterDetail {
@@ -6418,7 +6439,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Tératogène, et la mesure de ce risque a changé : aux fentes orales connues de longue date se sont ajoutés un retard de croissance et un signal de troubles neurodéveloppementaux, qui ont conduit à un programme de prévention des grossesses comparable à celui du valproate, avec contraception efficace et information annuelle. Chez la femme en âge de procréer, une ordonnance de topiramate se vérifie sous cet angle. Les autres toxicités sont propres à la molécule : acidose métabolique hyperchlorémique, lithiase rénale, perte de poids, et un ralentissement cognitif avec manque du mot qui est la première cause d'arrêt. Deux urgences : la myopie aiguë avec glaucome par fermeture de l'angle dans le premier mois, et l'anhidrose avec hyperthermie chez l'enfant l'été.",
         forms: "",
     },
     StarterDetail {
@@ -6439,7 +6460,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Sa toxicité propre est cardiaque et dose-dépendante : allongement de l'intervalle PR, avec des blocs auriculoventriculaires décrits, ce qui impose un électrocardiogramme avant l'instauration chez le patient à conduction fragile — sujet âgé, cardiopathie connue, traitement par antiarythmique de classe I ou par bêtabloquant bradycardisant. Les effets neurologiques — vertiges, diplopie, ataxie, nausées — sont eux aussi dose-dépendants et surviennent surtout après un palier de titration, ce qui les distingue d'une aggravation de la maladie. Il n'y a pas de suivi plasmatique en routine. Un mésusage a été rapporté et la molécule est surveillée à ce titre. L'arrêt se fait progressivement, sur au moins une semaine.",
         forms: "",
     },
     StarterDetail {
@@ -6460,7 +6481,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Molécule à part dans la classe par ses règles de prescription : ordonnance sécurisée, prescription initiale annuelle réservée à certains spécialistes, délivrance limitée — un encadrement décidé après un mésusage massif hors épilepsie. La demi-vie de trente à quarante heures fait une accumulation lente et une sédation qui s'installe sur la durée. Chez le patient épileptique, l'arrêt brutal expose à un état de mal, et la décroissance se compte en semaines. L'hypersécrétion bronchique et salivaire est un effet propre au clonazépam, gênant chez le nourrisson et le patient neurologique encombré. Seul, le surdosage endort ; associé à un opioïde ou à l'alcool, il tue par dépression respiratoire.",
         forms: "",
     },
     StarterDetail {
@@ -6481,7 +6502,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Sa forte affinité histaminergique explique à la fois son usage et son mésusage : très sédatif à faible dose, il est largement prescrit hors autorisation comme hypnotique ou anxiolytique, situation qui expose un patient sans indication psychiatrique aux risques métaboliques et cardiaques d'un antipsychotique. Une ordonnance de quétiapine à 25 ou 50 mg le soir mérite d'être comprise avant d'être renouvelée sans fin. L'hypotension orthostatique domine la titration, avec chutes chez le sujet âgé, ce qui impose la montée progressive prévue. Prise de poids et dyslipidémie sont fréquentes, moins qu'avec l'olanzapine. Les formes à libération immédiate et prolongée ne sont pas interchangeables milligramme pour milligramme.",
         forms: "",
     },
     StarterDetail {
@@ -6502,7 +6523,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux caractéristiques commandent tout. L'élimination est presque exclusivement rénale et sans métabolisme : la dose se réduit dès l'insuffisance rénale modérée et la molécule est contre-indiquée au stade sévère, faute de quoi l'accumulation donne sédation, syndrome extrapyramidal et allongement du QT. Et c'est l'antipsychotique qui élève le plus la prolactine, souvent à des taux considérables, avec aménorrhée, galactorrhée, gynécomastie et troubles sexuels au premier plan — motif d'arrêt fréquent et rarement exprimé spontanément. L'allongement du QT est notable et dose-dépendant, ce qui impose un électrocardiogramme avant l'instauration et la vigilance sur toute association allongeante ou hypokaliémiante.",
         forms: "",
     },
     StarterDetail {
@@ -6628,7 +6649,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aminosalicylé, mici",
-        toxicity: "",
+        toxicity: "Sa toxicité principale est rénale et silencieuse : une néphrite interstitielle, rare mais pouvant évoluer vers une insuffisance rénale chronique, justifie un contrôle de la créatininémie avant l'instauration, puis régulièrement pendant tout le traitement — c'est la surveillance que l'on oublie parce que la molécule passe pour anodine. Un piège diagnostique lui est propre : la mésalazine peut provoquer une exacerbation paradoxale de la colite, avec diarrhée sanglante et douleurs, tableau strictement superposable à une poussée de la maladie ; y penser évite d'augmenter la dose d'un médicament qui est la cause. De rares myocardites et péricardites imposent d'explorer toute douleur thoracique. Les granulés ne se croquent pas.",
         forms: "",
     },
     StarterDetail {
@@ -6649,7 +6670,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde à action locale, surveillance biologique",
-        toxicity: "",
+        toxicity: "Son intérêt est un fort effet de premier passage hépatique, qui limite l'exposition générale et donc les effets d'une corticothérapie classique — mais il ne les supprime pas : aux doses et aux durées habituelles, une freination de l'axe corticotrope existe, et un arrêt brutal après plusieurs mois expose à une insuffisance surrénale. La décroissance reste progressive et ne se décide pas seule. Le métabolisme passe par le CYP3A4 : le pamplemousse et les inhibiteurs puissants — azolés, macrolides, inhibiteurs de protéase — augmentent nettement l'exposition et lui font perdre son avantage. Les gélules à libération contrôlée s'avalent entières, la libération iléale conditionnant l'effet local.",
         forms: "",
     },
     StarterDetail {
@@ -6817,7 +6838,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue de la gnrh, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'effet flare-up est le danger des premières semaines et il est contre-intuitif : un agoniste de la GnRH stimule d'abord l'axe avant de le freiner, si bien que la testostérone monte pendant une à deux semaines et que le cancer de la prostate peut s'aggraver transitoirement — douleurs osseuses, rétention urinaire, et surtout compression médullaire en cas de métastases rachidiennes. C'est pourquoi un anti-androgène est associé avant et pendant les premières semaines, et une ordonnance qui l'omet est à signaler. Au long cours, la castration entraîne bouffées de chaleur, perte osseuse imposant calcium, vitamine D et ostéodensitométrie, syndrome métabolique et allongement du QT.",
         forms: "",
     },
     StarterDetail {
@@ -6859,7 +6880,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "dermocorticoïde très fort",
-        toxicity: "",
+        toxicity: "Dermocorticoïde de classe très forte : la quantité et la surface font toute la marge. Appliqué sur une grande surface, sous occlusion, sur les plis ou chez l'enfant — dont le rapport surface sur poids est bien plus élevé —, le passage systémique suffit à freiner l'axe corticotrope, avec insuffisance surrénale au sevrage et retard de croissance. Une consommation supérieure à une trentaine de grammes par semaine chez l'adulte justifie un avis. Localement : atrophie cutanée, vergetures définitives, télangiectasies, retard de cicatrisation et infections favorisées. Il ne s'applique jamais sur le visage, les paupières ni les plis. Sur une lésion infectée ou une dermatose non diagnostiquée, il masque et aggrave. L'arrêt se fait par espacement, un arrêt brutal provoquant un effet rebond.",
         forms: "",
     },
     StarterDetail {
@@ -6943,7 +6964,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Traitement long — plusieurs mois pour un ongle —, ce qui donne à ses toxicités le temps de s'exprimer. L'hépatotoxicité est la plus grave : hépatites cholestatiques et quelques insuffisances hépatiques, imposant un contrôle des transaminases avant l'instauration puis en cours, et l'arrêt devant une asthénie inhabituelle, des nausées, un ictère ou des urines foncées. L'agueusie et la dysgueusie sont caractéristiques : la perte du goût peut persister plusieurs mois après l'arrêt et retentir sur l'appétit et le poids, ce qui justifie de l'annoncer. Inhibiteur du CYP2D6 : il augmente le métoprolol, les antidépresseurs tricycliques, la paroxétine et le tamoxifène — cette dernière association réduisant l'efficacité du tamoxifène.",
         forms: "",
     },
     StarterDetail {
@@ -7195,7 +7216,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "collyre bêta-bloquant",
-        toxicity: "",
+        toxicity: "Un collyre bêtabloquant n'est pas un traitement local : la voie lacrymonasale conduit le produit directement dans la circulation générale, sans premier passage hépatique, et les concentrations obtenues suffisent à provoquer un bronchospasme mortel chez l'asthmatique et une bradycardie sévère chez le sujet âgé ou déjà bêtabloqué. Les contre-indications sont donc celles d'un bêtabloquant par voie générale — asthme, BPCO sévère, bradycardie, bloc, insuffisance cardiaque décompensée —, et l'ordonnance complète se lit pour repérer l'addition avec un comprimé ou avec le vérapamil. L'occlusion du point lacrymal pendant deux minutes après l'instillation réduit nettement ce passage : c'est le geste à montrer, et presque personne ne le connaît.",
         forms: "",
     },
     StarterDetail {
@@ -7216,7 +7237,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral, grippe",
-        toxicity: "",
+        toxicity: "Sa marge est d'abord temporelle : au-delà de quarante-huit heures après le début des symptômes, le bénéfice est négligeable, et une délivrance tardive n'apporte que les effets indésirables. Les troubles neuropsychiatriques — confusion, délire, agitation, comportements anormaux — ont été rapportés surtout chez l'enfant et l'adolescent, dans les premiers jours : ils justifient de prévenir l'entourage de surveiller le comportement, sans que le lien de causalité avec la grippe elle-même soit toujours tranché. Les nausées et vomissements sont fréquents et se réduisent en prenant les gélules au cours d'un repas. La dose se réduit selon la clairance, et la suspension buvable se reconstitue avec précision chez l'enfant.",
         forms: "",
     },
     StarterDetail {
@@ -7237,7 +7258,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antirétroviral, prep, surveillance biologique",
-        toxicity: "",
+        toxicity: "En prophylaxie pré-exposition, la première règle n'est pas une dose mais un test : l'infection par le VIH doit être écartée avant l'instauration et contrôlée régulièrement, une prophylaxie donnée à un patient déjà infecté sélectionnant des résistances qui compromettent son traitement futur. La toxicité du ténofovir disoproxil est rénale et osseuse : tubulopathie avec syndrome de Fanconi, baisse du débit de filtration, perte de densité minérale, ce qui impose créatininémie, phosphatémie et recherche d'une protéinurie avant puis régulièrement, et rend la molécule inadaptée en dessous d'une certaine clairance. Chez le porteur du virus de l'hépatite B, l'arrêt expose à une réactivation sévère.",
         forms: "",
     },
     StarterDetail {
@@ -7258,7 +7279,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antirétroviral",
-        toxicity: "",
+        toxicity: "Une interaction simple et fréquente compromet l'efficacité : les cations divalents et trivalents — magnésium, aluminium, calcium, fer, zinc — chélatent l'inhibiteur d'intégrase et effondrent son absorption. Un antiacide, un pansement gastrique, une supplémentation en fer ou en calcium achetés sans ordonnance suffisent, ce qui fait de la question sur l'automédication une part de la délivrance : les prises se séparent selon le schéma du RCP, ou se font au cours d'un repas selon le cation en cause. Chez le patient co-infecté par le virus de l'hépatite B, l'arrêt expose à une réactivation sévère. La prise de poids sous inhibiteur d'intégrase est réelle et se surveille. Créatininémie et protéinurie régulières.",
         forms: "",
     },
     StarterDetail {
@@ -7279,7 +7300,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral, hépatite b",
-        toxicity: "",
+        toxicity: "Deux règles commandent cette molécule. La prise se fait strictement à jeun, au moins deux heures avant et deux heures après un repas : l'alimentation réduit fortement l'absorption, et un comprimé pris au petit-déjeuner est un traitement sous-dosé qui laisse la réplication virale reprendre. Et l'arrêt, même bref, expose à une exacerbation sévère de l'hépatite B, parfois avec décompensation hépatique : une rupture de délivrance est une urgence, pas un report. Chez un patient déjà exposé à la lamivudine, la résistance croisée est fréquente et la dose usuelle peut être insuffisante. L'élimination est rénale et la dose se calcule sur la clairance. Acidose lactique et hépatomégalie stéatosique sont décrites.",
         forms: "",
     },
     StarterDetail {
@@ -7342,7 +7363,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparasitaire, surveillance biologique",
-        toxicity: "",
+        toxicity: "En usage courant — gale, ascaridiose, anguillulose — la tolérance est bonne et la marge large. Le danger est géographique et se cherche à l'interrogatoire : chez un patient ayant séjourné en zone d'endémie de la loase, en Afrique centrale, une microfilarémie élevée à Loa loa expose à une encéphalopathie grave, parfois mortelle, après la première prise. Un séjour en Afrique centrale doit donc être signalé avant traitement. Dans la gale, l'échec vient presque toujours du protocole et non du médicament : la seconde prise à quinze jours couvre les larves écloses depuis, le traitement simultané de l'entourage et la décontamination du linge sont indispensables, et un prurit persistant deux à quatre semaines après la guérison est normal.",
         forms: "",
     },
     StarterDetail {
@@ -7363,7 +7384,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-tnf alpha, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le risque qui structure toute la prise en charge est infectieux : réactivation d'une tuberculose latente, infections opportunistes, réactivation d'une hépatite B, d'où un dépistage complet avant la première injection qui n'est pas une formalité administrative mais la condition du traitement. Ensuite, la règle du comptoir tient en une phrase : toute fièvre, toute infection en cours fait décaler l'injection et appeler. Les vaccins vivants sont contre-indiqués pendant le traitement, et chez un nourrisson exposé au troisième trimestre de grossesse, ils sont décalés d'au moins six mois, le passage transplacentaire étant important. Le risque de cancers cutanés justifie un examen dermatologique annuel. Aggravation possible d'une insuffisance cardiaque et atteintes démyélinisantes.",
         forms: "",
     },
     StarterDetail {
@@ -7384,7 +7405,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-tnf alpha, surveillance biologique",
-        toxicity: "",
+        toxicity: "Même exigence infectieuse que les autres anti-TNF — dépistage de la tuberculose latente et des hépatites avant, vigilance permanente ensuite, injection décalée devant toute infection, vaccins vivants contre-indiqués. La différence à connaître est thérapeutique et non toxicologique : l'étanercept n'a pas d'efficacité dans la maladie de Crohn ni dans la rectocolite hémorragique, faute de se lier durablement au TNF transmembranaire. Une ordonnance d'étanercept pour une maladie inflammatoire de l'intestin n'est donc pas une simple préférence de prescripteur, c'est une indication à vérifier. Le passage transplacentaire est moindre que celui des anticorps entiers, ce qui en fait une option en fin de grossesse. Syndrome lupique réversible et cytopénies sont décrits.",
         forms: "",
     },
     StarterDetail {
@@ -7426,7 +7447,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Comme tout inhibiteur de l'enzyme de conversion : toux sèche persistante chez une proportion notable des patients, cédant seulement à l'arrêt, et angio-œdème rare mais potentiellement mortel, sans prodrome, pouvant survenir après des années, ne répondant ni aux antihistaminiques ni aux corticoïdes et contre-indiquant définitivement la classe. Le risque rénal se concentre sur le trio avec un diurétique et un AINS et sur les déshydratations : la consigne est de suspendre en cas de gastro-entérite, de fièvre ou de forte chaleur. L'hyperkaliémie est majorée par les diurétiques épargneurs de potassium, les sels de régime et le triméthoprime. Créatininémie et kaliémie avant et après chaque modification. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7447,7 +7468,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le captopril a une demi-vie courte et impose plusieurs prises par jour, ce qui rend l'hypotension de première dose plus marquée que celle des IEC à action prolongée : la première prise se fait de préférence en position assise ou couchée, surtout chez le patient déplété, sous diurétique ou insuffisant cardiaque. Il contient un groupement thiol, à l'origine d'effets qui lui sont propres : dysgueusie avec goût métallique ou perte du goût, éruptions cutanées et, plus rarement, neutropénie et protéinurie. Pour le reste, les risques de la classe s'appliquent : angio-œdème contre-indiquant définitivement les IEC, insuffisance rénale et hyperkaliémie du trio avec diurétique et AINS, contre-indication absolue pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7468,7 +7489,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Éliminé sous forme inchangée par le rein, sans métabolisme hépatique : la dose se règle sur la clairance, et l'accumulation chez un patient dont la fonction rénale se dégrade donne hypotension et hyperkaliémie. Les risques de classe s'appliquent : toux sèche rebelle cédant à l'arrêt, angio-œdème rare mais vital et contre-indiquant définitivement la classe, insuffisance rénale aiguë et hyperkaliémie lorsque l'IEC, un diurétique et un AINS se rejoignent, ou lors d'une déshydratation — d'où la consigne de suspendre en cas de gastro-entérite, de fièvre ou de canicule. Créatininémie et kaliémie avant, une à deux semaines après l'instauration, et après chaque augmentation. Contre-indiqué pendant toute la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7480,7 +7501,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Épargneurs de potassium, sels de potassium, antialdostérones, ARA II et triméthoprime : hyperkaliémie. AINS : insuffisance rénale fonctionnelle. Lithium : surdosage. Antiacides et sels de fer, calcium ou magnésium : absorption diminuée, respecter un intervalle de deux heures. Diurétiques : hypotension de première dose.",
         adverse: "Toux sèche, sensations vertigineuses, céphalées, hypotension. Hyperkaliémie, élévation de la créatininémie. Angio-œdème. Nausées, douleurs abdominales, éruptions cutanées, élévation des transaminases.",
         monitoring: "Créatininémie et kaliémie avant l'instauration, une à deux semaines après le début et après chaque augmentation, puis au moins annuellement. Transaminases en cas d'ictère ou d'élévation confirmée. Pression artérielle debout et couché.",
-        iup: "Une prise par jour à heure fixe, avec ou sans repas. Espacer d'au moins deux heures la prise d'un pansement gastrique ou d'un comprimé de fer, de calcium ou de magnésium, qui empêcheraient l'absorption. Se relever lentement les premiers jours et après chaque augmentation de dose. Une toux sèche et persistante est un effet connu de cette famille et doit être rapportée au médecin. Un gonflement brutal du visage, des lèvres, de la langue ou de la gorge impose l'arrêt et l'appel du 15. Le contrôle sanguin du rein et du potassium après l'instauration ne doit pas être oublié.",
+        iup: "Ce médicament fait baisser la tension et protège le cœur et les reins ; il se prend tous les jours à heure fixe, y compris les jours où vous vous sentez bien, une tension élevée ne se sentant pas. Une toux sèche, quinteuse, qui ne passe pas et qui vient parfois après plusieurs mois de traitement, est un effet connu de cette famille : elle n'est pas due à une infection, elle ne cède à aucun sirop, et elle disparaît en changeant de médicament — parlez-en plutôt que de la supporter. Le signe à connaître absolument est rare mais grave : un gonflement des lèvres, de la langue, du visage ou de la gorge, ou une gêne à respirer, impose d'appeler le 15 immédiatement et de ne plus jamais reprendre ce médicament ni un autre de la même famille. Cela peut survenir après des années de traitement sans problème. Ne prenez pas d'anti-inflammatoire — ibuprofène et autres — sans demander conseil : associé à ce traitement et à un diurétique, il peut abîmer les reins. En cas de gastro-entérite, de forte fièvre ou de canicule, buvez et appelez : le traitement se suspend parfois quelques jours. Évitez les sels de régime, riches en potassium. Prévenez sans attendre en cas de grossesse ou de projet de grossesse : ce médicament est interdit pendant toute la grossesse.",
         half_life: "Demi-vie effective du fosinoprilate d'environ 12 heures",
         elimination: "Hydrolyse en fosinoprilate, éliminé de façon équilibrée par voies rénale et hépatobiliaire, chaque voie compensant la défaillance de l'autre.",
         renal: "La double élimination rend l'adaptation posologique moins impérative que pour les autres inhibiteurs de l'enzyme de conversion, mais la surveillance de la kaliémie et de la créatininémie reste indispensable.",
@@ -7489,7 +7510,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa double élimination, rénale et hépatique, le rend un peu moins dépendant de la fonction rénale que les IEC exclusivement rénaux, ce qui peut orienter le choix chez un insuffisant rénal — sans supprimer la surveillance. Les risques de la classe demeurent entiers : toux sèche persistante ne cédant qu'à l'arrêt, angio-œdème rare mais vital, sans prodrome, ne répondant pas aux antihistaminiques et contre-indiquant définitivement les IEC. Le trio IEC, diurétique et AINS reste la cause principale des insuffisances rénales aiguës médicamenteuses, et toute déshydratation impose de suspendre. Créatininémie et kaliémie avant et après chaque modification de dose. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7510,7 +7531,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Risques communs à la classe, et ils commandent la surveillance : toux sèche rebelle chez une proportion notable des patients, ne cédant qu'à l'arrêt et souvent explorée à tort ; angio-œdème rare mais potentiellement mortel, pouvant survenir après des années, ne répondant ni aux antihistaminiques ni aux corticoïdes, et contre-indiquant définitivement toute la classe. L'insuffisance rénale aiguë avec hyperkaliémie survient sur le trio IEC, diurétique et AINS ou lors d'une déshydratation : la consigne est de suspendre en cas de gastro-entérite, de fièvre ou de canicule. Créatininémie et kaliémie avant, puis après chaque modification. Contre-indiqué à tous les trimestres de la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7531,7 +7552,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec + diurétique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association fixe d'un IEC et d'un diurétique thiazidique : elle rassemble sur un comprimé deux des trois éléments du trio délétère, et il suffit qu'un AINS s'y ajoute — souvent acheté sans ordonnance — pour créer une insuffisance rénale aiguë. C'est la vérification à faire lors de toute demande d'anti-inflammatoire chez un patient ainsi traité. Le diurétique apporte en outre l'hyponatrémie et l'hypokaliémie, particulièrement chez le sujet âgé et en cas de forte chaleur, tandis que l'IEC tire la kaliémie dans l'autre sens : le ionogramme se contrôle. La consigne de suspendre en cas de gastro-entérite, de fièvre ou de canicule vaut ici plus qu'ailleurs. Angio-œdème et contre-indication de la grossesse comme pour tout IEC.",
         forms: "",
     },
     StarterDetail {
@@ -7552,7 +7573,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec + inhibiteur calcique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association d'un IEC et d'un inhibiteur calcique. L'IEC apporte l'angio-œdème, rare mais vital et contre-indiquant définitivement la classe, la toux sèche rebelle, et le risque rénal et kaliémique qui se concrétise surtout lorsqu'un diurétique et un AINS s'ajoutent. L'amlodipine apporte les œdèmes des membres inférieurs, très fréquents, dose-dépendants et souvent confondus avec une insuffisance cardiaque ou une insuffisance veineuse — ils ne répondent pas aux diurétiques, et c'est la baisse de dose qui les corrige : le savoir évite la prescription en cascade d'un diurétique inutile. Créatininémie et kaliémie avant et après chaque modification. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7573,7 +7594,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "iec + diurétique + inhibiteur calcique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Trois principes actifs en un comprimé, donc trois surveillances, et une ordonnance dont le contenu réel se perd de vue : IEC, diurétique thiazidique et inhibiteur calcique. Le couple IEC-diurétique constitue déjà deux tiers du trio responsable des insuffisances rénales aiguës, et l'ajout d'un AINS acheté sans ordonnance suffit à le compléter. Le diurétique expose à l'hyponatrémie et à l'hypokaliémie, surtout chez le sujet âgé et en période de chaleur ; l'IEC à l'hyperkaliémie et à l'angio-œdème, rare mais vital et contre-indiquant définitivement la classe ; l'inhibiteur calcique aux œdèmes des chevilles, souvent pris à tort pour une insuffisance cardiaque. Ionogramme et créatininémie régulièrement. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7594,7 +7615,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Risques de la classe : angio-œdème rare mais vital, insuffisance rénale aiguë et hyperkaliémie, ces dernières surtout lorsqu'un diurétique et un AINS s'ajoutent au sartan ou lors d'une déshydratation, d'où la consigne de suspendre en cas de gastro-entérite, de fièvre ou de canicule. Dans l'insuffisance cardiaque, où il est largement utilisé, la titration est progressive et une élévation modérée de la créatininémie à l'instauration est attendue et ne fait pas arrêter — c'est son ampleur et la kaliémie qui décident, et cette nuance évite des arrêts injustifiés. L'association d'un IEC et d'un sartan est à proscrire. Contre-indiqué à tous les trimestres de la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7615,7 +7636,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa demi-vie est la plus longue de la classe, ce qui donne une couverture tensionnelle sur vingt-quatre heures particulièrement stable — et fait qu'un oubli isolé se rattrape sans à-coup, mais aussi qu'un surdosage met plus longtemps à se dissiper. Les risques sont ceux des sartans : angio-œdème rare mais vital, insuffisance rénale aiguë et hyperkaliémie, surtout sur le trio avec un diurétique et un AINS ou lors d'une déshydratation, où le traitement se suspend. L'association d'un IEC et d'un sartan est à proscrire. Créatininémie et kaliémie avant et après chaque modification de dose. Contre-indiqué à tous les trimestres de la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7636,7 +7657,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Risques communs aux sartans : angio-œdème rare mais potentiellement mortel, insuffisance rénale aiguë et hyperkaliémie. Le trio sartan, diurétique et AINS est la configuration à repérer, d'autant que l'anti-inflammatoire vient souvent de l'automédication, et toute déshydratation impose de suspendre le traitement. Dans l'insuffisance cardiaque et après infarctus, la titration est progressive et surveillée sur la pression artérielle, la créatininémie et la kaliémie ; une élévation modérée de la créatininémie à l'instauration est attendue. L'association d'un IEC et d'un sartan est à proscrire. Contre-indiqué à tous les trimestres de la grossesse, la fœtotoxicité étant établie.",
         forms: "",
     },
     StarterDetail {
@@ -7657,7 +7678,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii + diurétique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association fixe d'un sartan et d'un diurétique thiazidique, soit deux des trois éléments du trio délétère réunis dans un comprimé : l'ajout d'un AINS, souvent acheté sans ordonnance, suffit à provoquer une insuffisance rénale aiguë, et c'est la question à poser à toute demande d'anti-inflammatoire. Le thiazidique apporte l'hyponatrémie, particulièrement chez la femme âgée et en période de chaleur, où elle se révèle par une confusion ou des chutes, et l'hypokaliémie, que le sartan corrige partiellement. Le ionogramme se contrôle avant et régulièrement. Suspendre en cas de gastro-entérite, de fièvre ou de canicule. Contre-indiqué pendant toute la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7678,7 +7699,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii + diurétique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sartan et diurétique thiazidique réunis : deux tiers du trio responsable des insuffisances rénales aiguës médicamenteuses, qu'un AINS d'automédication suffit à compléter. La vigilance porte donc sur toute demande d'anti-inflammatoire chez un patient ainsi traité. Le thiazidique expose à l'hyponatrémie, dont les signes chez le sujet âgé sont la confusion, les chutes et les nausées plutôt qu'une plainte spécifique, et à l'hypokaliémie, l'hyperuricémie et l'hyperglycémie. Le sartan tire la kaliémie en sens inverse et expose à l'hyperkaliémie et à l'angio-œdème. Ionogramme et créatininémie avant puis régulièrement, et suspension du traitement en cas de gastro-entérite, de fièvre ou de canicule. Contre-indiqué pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7699,7 +7720,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ara ii + inhibiteur calcique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association d'un sartan et d'un inhibiteur calcique. Le sartan apporte le risque rénal et kaliémique, qui se concrétise surtout si un diurétique et un AINS s'y ajoutent, et l'angio-œdème, rare mais vital. L'amlodipine apporte les œdèmes des chevilles, très fréquents et dose-dépendants : ils ne sont ni une insuffisance cardiaque ni une insuffisance veineuse, ils ne répondent pas aux diurétiques, et c'est la réduction de dose ou l'association à un bloqueur du système rénine-angiotensine qui les améliore — reconnaître ce mécanisme évite une prescription de diurétique en cascade. Créatininémie et kaliémie avant puis après chaque modification. Contre-indiqué à tous les trimestres de la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -7720,7 +7741,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "Bloque à la fois les récepteurs alpha et bêta, ce qui ajoute à la bradycardie une vasodilatation : l'hypotension orthostatique domine l'instauration et les augmentations de dose, avec chutes chez le sujet âgé. Elle se limite en prenant le comprimé au cours d'un repas, qui ralentit l'absorption, et en se levant lentement les premiers jours — ce n'est pas un conseil de confort mais la façon dont la titration se tient. Dans l'insuffisance cardiaque, la dose double toutes les deux semaines au plus vite, et une aggravation transitoire fait revenir au palier précédent plutôt qu'arrêter. L'arrêt brutal expose à l'effet rebond. Masque l'hypoglycémie du diabétique. Glucagon en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -7741,7 +7762,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "Le plus cardiosélectif de la classe, avec en plus une vasodilatation médiée par le monoxyde d'azote : mieux toléré sur le plan respiratoire et métabolique, mais la cardiosélectivité s'estompe à forte dose et l'asthme sévère reste une contre-indication. Sa particularité est pharmacogénétique : le métabolisme dépend du CYP2D6, et le métaboliseur lent — environ un Européen sur dix — a une exposition très supérieure, avec bradycardie et asthénie à dose usuelle ; l'association à la paroxétine, à la fluoxétine ou au bupropion, tous inhibiteurs du CYP2D6, produit le même effet chez n'importe qui. Arrêt jamais brutal, masquage de l'hypoglycémie, glucagon en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -7762,7 +7783,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "Métabolisé par le CYP2D6, ce qui en fait le bêtabloquant le plus exposé aux interactions psychotropes : la paroxétine, la fluoxétine, le bupropion et la duloxétine multiplient son exposition et provoquent bradycardie, asthénie et hypotension chez un patient dont aucune dose n'a changé — c'est l'association à repérer sur l'ordonnance. Le métaboliseur lent du CYP2D6 est dans la même situation en permanence. Les formes à libération immédiate et à libération prolongée ne sont pas interchangeables milligramme pour milligramme et ne se substituent pas l'une à l'autre. Arrêt jamais brutal du fait de l'effet rebond ; masquage de l'hypoglycémie ; glucagon à fortes doses en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -7783,7 +7804,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "Molécule atypique de la classe : bêta-1 bloquant mais bêta-2 agoniste, d'où un profil respiratoire et métabolique plus favorable et une moindre bradycardie. Cette originalité ne supprime aucune des règles de la classe — arrêt jamais brutal sous peine d'effet rebond angineux, masquage de l'hypoglycémie chez le diabétique, prudence en cas de trouble conductif. Elle a une place particulière dans le syndrome d'Ehlers-Danlos vasculaire, où elle réduit les accidents artériels : une ordonnance de céliprolol chez un sujet jeune sans hypertension n'est pas une erreur et ne se questionne pas comme telle. La prise se fait à jeun, l'alimentation réduisant nettement l'absorption. Glucagon en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -7804,7 +7825,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "Non cardiosélectif, hydrophile, éliminé par le rein sous forme inchangée, avec la demi-vie la plus longue de la classe : vingt à vingt-quatre heures chez le sujet sain, bien davantage dès que la clairance baisse. L'accumulation chez le sujet âgé insuffisant rénal donne une bradycardie profonde et prolongée, et la correction est lente puisque la molécule met des jours à s'éliminer. La dose se réduit selon la clairance. Non cardiosélectif signifie bronchoconstriction : asthme contre-indiqué. Chez le diabétique, il masque l'hypoglycémie et en retarde la correction. Arrêt jamais brutal. En cas de surdosage, glucagon à fortes doses, l'effet se prolongeant sur plusieurs jours.",
         forms: "",
     },
     StarterDetail {
@@ -7825,7 +7846,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant, alpha et bêta, surveillance biologique",
-        toxicity: "",
+        toxicity: "Bloqueur alpha et bêta, c'est le bêtabloquant de référence de l'hypertension de la grossesse et de la prééclampsie, ce qui en fait un cas où l'on cherche l'indication plutôt que la contre-indication : une ordonnance de labétalol chez une femme enceinte est attendue, pas suspecte. Le versant alpha donne une hypotension orthostatique marquée à l'instauration, avec vertiges et chutes, qui impose la montée progressive. Une hépatotoxicité rare mais parfois grave a été décrite : ictère, nausées, asthénie inhabituelle imposent un contrôle des transaminases. Chez le nouveau-né d'une mère traitée, la surveillance de la glycémie et de la fréquence cardiaque est la règle. Glucagon en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -7846,7 +7867,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant",
-        toxicity: "",
+        toxicity: "Bêtabloquant cardiosélectif à demi-vie longue, autorisant une prise unique quotidienne — et une accumulation d'autant plus lente à se manifester chez le sujet âgé ou insuffisant rénal, chez qui la dose se réduit. Le point à connaître au comptoir est la confusion possible avec le collyre au bétaxolol prescrit dans le glaucome : le collyre est absorbé par la voie lacrymonasale et se comporte comme un bêtabloquant général, si bien que l'addition d'un comprimé et d'un collyre de la même famille produit bradycardie et bronchospasme. Cette addition se repère sur l'ordonnance complète, pas sur une ligne. Arrêt jamais brutal, masquage de l'hypoglycémie, glucagon en cas de surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -7867,7 +7888,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique bradycardisant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Inhibiteur calcique bradycardisant : il déprime la conduction auriculoventriculaire et la contractilité, ce qui le contre-indique en cas de bloc, de dysfonction sinusale et d'insuffisance cardiaque systolique, et rend son association à un bêtabloquant dangereuse — bradycardie sévère, bloc complet — sauf sous surveillance spécialisée. C'est l'association à repérer sur l'ordonnance. C'est en outre un inhibiteur du CYP3A4 : il augmente la simvastatine, dont la dose est alors plafonnée, ainsi que la ciclosporine, le tacrolimus et certains anticoagulants oraux directs. Les formes à libération immédiate et prolongée ne sont pas interchangeables. L'arrêt brutal d'un traitement antiangineux expose à un rebond.",
         forms: "",
     },
     StarterDetail {
@@ -7909,7 +7930,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique, générique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Dihydropyridine de troisième génération, dont la lipophilie et la fixation membranaire donnent un effet progressif : la tachycardie réflexe et les œdèmes des chevilles y sont moins marqués qu'avec les dihydropyridines plus anciennes, ce qui en fait une option lorsque ces effets ont fait renoncer à l'amlodipine. Ils ne sont pas absents pour autant et restent dose-dépendants. Un point galénique commande son efficacité : le comprimé se prend à jeun, au moins quinze minutes avant un repas, un repas riche en graisses multipliant fortement son absorption. Le pamplemousse est proscrit et les inhibiteurs puissants du CYP3A4 sont contre-indiqués. La ciclosporine est contre-indiquée, chacune augmentant les concentrations de l'autre.",
         forms: "",
     },
     StarterDetail {
@@ -7930,7 +7951,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Dihydropyridine à action prolongée dont les effets indésirables sont ceux de la vasodilatation : œdèmes des chevilles dose-dépendants, qui ne relèvent ni d'une insuffisance cardiaque ni d'un diurétique mais d'une baisse de dose ou de l'association à un bloqueur du système rénine-angiotensine ; céphalées et bouffées vasomotrices des premières semaines, qui s'atténuent ; hypertrophie gingivale au long cours, qui impose une hygiène dentaire soigneuse. Le comprimé à libération prolongée s'avale entier et ne se croque pas. Le métabolisme dépend fortement du CYP3A4 : le pamplemousse augmente nettement l'exposition et est à proscrire, tandis que les inducteurs annulent l'effet antihypertenseur.",
         forms: "",
     },
     StarterDetail {
@@ -7951,7 +7972,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur calcique, vasospasme cérébral, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Son indication est étroite — la prévention des déficits ischémiques après hémorragie méningée par rupture d'anévrisme — et il n'a aucune place comme antihypertenseur ou comme vasodilatateur cérébral du sujet âgé, où le prescrire ne fait qu'exposer à l'hypotension. La marge est tensionnelle : l'hypotension induite peut aggraver l'ischémie cérébrale même qu'il vise à prévenir, ce qui impose une surveillance continue de la pression artérielle. La voie orale ne se remplace pas par la voie intraveineuse sans protocole, et la solution injectable est incompatible avec le PVC. Le métabolisme dépend du CYP3A4 : le pamplemousse est proscrit et la rifampicine contre-indiquée, car elle annule l'effet.",
         forms: "",
     },
     StarterDetail {
@@ -8035,7 +8056,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'effet de première dose est la marque de cette molécule : une hypotension orthostatique brutale avec syncope peut survenir dans les heures suivant la première prise ou toute augmentation, d'où l'instauration à dose minimale, le soir au coucher, et l'avertissement explicite au patient. Le risque est majoré chez le sujet âgé, en cas de déplétion sodée, de diurétique associé ou de jeûne. L'association à un inhibiteur de la phosphodiestérase de type 5 additionne les vasodilatations et impose un délai entre les prises. Une rétention hydrosodée peut apparaître au long cours. Comme pour tout alpha-bloquant, prévenir l'ophtalmologiste avant une chirurgie de la cataracte.",
         forms: "",
     },
     StarterDetail {
@@ -8056,7 +8077,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique de l'anse, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Diurétique de l'anse plus puissant à dose égale que le furosémide — un milligramme équivaut à une quarantaine de milligrammes de furosémide —, ce qui rend l'erreur de conversion lourde de conséquences lors d'un relais entre les deux : c'est le calcul à vérifier. Les risques sont ceux de la classe : hypokaliémie arythmogène, surtout sous digoxine, hyponatrémie, déshydratation et insuffisance rénale fonctionnelle chez le sujet âgé, en particulier lors d'une gastro-entérite ou d'une canicule, où la dose se réduit ou se suspend sur avis. Le poids quotidien reste le meilleur outil de surveillance. Ototoxicité aux fortes doses et en injection rapide. Ionogramme et créatininémie régulièrement.",
         forms: "",
     },
     StarterDetail {
@@ -8077,7 +8098,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique épargneur k+, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Diurétique épargneur de potassium : son risque est exactement inverse de celui des thiazidiques, et c'est l'hyperkaliémie, silencieuse jusqu'au trouble du rythme. Elle est majorée par l'insuffisance rénale, par l'association à un IEC, à un sartan, à un AINS ou au triméthoprime, et par les sels de régime, que les patients croient inoffensifs alors qu'ils sont des sels de potassium — la question se pose explicitement. Toute supplémentation potassique est contre-indiquée. La kaliémie et la créatininémie se contrôlent avant l'instauration, peu après, puis régulièrement, et à chaque déshydratation, où le traitement se suspend. Contre-indiqué si la kaliémie dépasse 5 mmol/L ou en insuffisance rénale sévère.",
         forms: "",
     },
     StarterDetail {
@@ -8098,7 +8119,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique épargneur k+ + thiazidique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association d'un thiazidique et d'un épargneur de potassium : les deux effets opposés sur la kaliémie ne s'annulent pas de façon prévisible, et le patient peut basculer dans un sens comme dans l'autre — hypokaliémie si le thiazidique domine, hyperkaliémie si l'insuffisance rénale s'installe ou si un IEC, un sartan ou un AINS s'ajoutent. Le ionogramme n'est donc pas facultatif : avant, peu après l'instauration, puis régulièrement. L'hyponatrémie du thiazidique frappe la femme âgée en période de chaleur et se révèle par une confusion ou des chutes. Les sels de régime, riches en potassium, sont à proscrire. Suspendre en cas de gastro-entérite, de fièvre ou de canicule.",
         forms: "",
     },
     StarterDetail {
@@ -8119,7 +8140,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "diurétique épargneur k+ + thiazidique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association d'un thiazidique et de la spironolactone : la kaliémie peut évoluer dans les deux sens et le ionogramme est la seule façon de le savoir — avant l'instauration, peu après, puis régulièrement et à chaque événement intercurrent. L'hyperkaliémie devient le risque dominant dès que la fonction rénale se dégrade ou qu'un IEC, un sartan, un AINS ou le triméthoprime s'ajoutent, et les sels de régime, riches en potassium, sont à proscrire. L'hyponatrémie du thiazidique vise la femme âgée en période de chaleur et se manifeste par une confusion ou des chutes. La gynécomastie de la spironolactone est fréquente chez l'homme. Suspendre en cas de gastro-entérite, de fièvre ou de canicule.",
         forms: "",
     },
     StarterDetail {
@@ -8182,7 +8203,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique classe ic",
-        toxicity: "",
+        toxicity: "Mêmes règles que le flécaïnide, dont il partage la classe : contre-indiqué en cas de cardiopathie ischémique ou structurelle, et à ne pas prescrire seul dans le flutter, où le ralentissement auriculaire expose à une conduction un pour un et à une tachycardie rapide. Il possède en outre une activité bêtabloquante propre, qui ajoute bradycardie et bronchoconstriction et rend l'asthme une contre-indication. Le métabolisme dépend du CYP2D6 : le métaboliseur lent, ou le patient sous paroxétine, fluoxétine ou quinidine, a une exposition très augmentée. Le goût métallique et les troubles visuels sont fréquents et souvent le premier signe d'un surdosage. Élargissement du QRS à surveiller.",
         forms: "",
     },
     StarterDetail {
@@ -8203,7 +8224,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique classe ia",
-        toxicity: "",
+        toxicity: "Antiarythmique de classe Ia éliminé principalement par le rein, ce qui conditionne tout : chez le sujet âgé dont la clairance baisse, l'accumulation donne des troubles de la conduction avec élargissement du QRS et allongement du QT. Sa particularité, qui surprend et qui est bien documentée, est de provoquer des hypoglycémies sévères par stimulation de la sécrétion d'insuline, surtout chez le sujet âgé insuffisant rénal et chez le diabétique traité : une hypoglycémie inexpliquée chez un patient sous cibenzoline n'est pas une coïncidence. La dose se réduit selon la clairance, et une dégradation aiguë de la fonction rénale impose une réévaluation immédiate.",
         forms: "",
     },
     StarterDetail {
@@ -8224,7 +8245,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique classe ia, surveillance biologique",
-        toxicity: "",
+        toxicity: "Antiarythmique de classe Ia à marge étroite : allongement du QT et torsades de pointes, favorisés par l'hypokaliémie, la bradycardie et toute association allongeante, ce qui impose électrocardiogramme et ionogramme avant et pendant. Le cinchonisme est le tableau caractéristique du surdosage et il est reconnaissable : acouphènes, baisse d'audition, vertiges, vision trouble, céphalées, nausées — il précède les troubles du rythme et doit faire arrêter. Une thrombopénie immunoallergique brutale, indépendante de la dose, est décrite et impose l'arrêt définitif. Elle augmente les concentrations de digoxine, association fréquente et à surveiller.",
         forms: "",
     },
     StarterDetail {
@@ -8245,7 +8266,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique, tachycardie jonctionnelle",
-        toxicity: "",
+        toxicity: "Produit d'urgence à demi-vie de quelques secondes, administré en bolus intraveineux rapide suivi d'un rinçage, sous scope et jamais autrement : il provoque une asystolie de quelques secondes qui est le mécanisme même de son effet, avec une sensation d'oppression thoracique et de mort imminente qu'il faut avoir annoncée au patient. Contre-indiqué dans l'asthme, où il déclenche un bronchospasme sévère. Deux interactions inversent son maniement : les méthylxanthines, théophylline et caféine, l'antagonisent et le rendent inefficace ; le dipyridamole en potentialise fortement l'effet et impose une réduction de dose. Il ne convertit pas une fibrillation atriale, il démasque son rythme.",
         forms: "",
     },
     StarterDetail {
@@ -8266,7 +8287,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiarythmique, réduction de bouveret",
-        toxicity: "",
+        toxicity: "Même principe et mêmes dangers que l'adénosine dont il est le précurseur : bolus intraveineux strict, sous surveillance électrocardiographique continue, avec une pause sinusale de quelques secondes qui fait partie de l'effet attendu et qui est angoissante si elle n'a pas été annoncée. L'asthme est une contre-indication, le bronchospasme pouvant être sévère. La théophylline et la caféine l'antagonisent, le dipyridamole le potentialise. Ce n'est jamais un produit d'automédication ni de délivrance en ville pour un usage domestique : sa place est celle d'un service d'urgence disposant du matériel de réanimation.",
         forms: "",
     },
     StarterDetail {
@@ -8413,7 +8434,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant, association, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Les céphalées sont l'effet dominant à l'instauration : intenses, pulsatiles, liées à la vasodilatation du dipyridamole, elles touchent une forte proportion des patients, s'atténuent en une à deux semaines et font pourtant abandonner le traitement quand elles n'ont pas été annoncées — une prise progressive et un antalgique simple les rendent supportables. La vasodilatation impose la prudence en cas d'angor instable ou de sténose aortique serrée, où elle peut aggraver l'ischémie. L'aspirine associée apporte le risque hémorragique digestif, qui se cumule à tout AINS, anticoagulant ou ISRS. Les gélules à libération prolongée s'avalent entières.",
         forms: "",
     },
     StarterDetail {
@@ -8434,7 +8455,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiagrégant, thiénopyridine, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa toxicité hématologique explique qu'elle ait été supplantée par le clopidogrel et qu'elle ne se rencontre plus guère : neutropénie et agranulocytose, survenant surtout dans les trois premiers mois, et purpura thrombotique thrombocytopénique, de pronostic grave. La surveillance qui en découle est lourde et non négociable : numération formule sanguine avec plaquettes toutes les deux semaines pendant les trois premiers mois, et arrêt immédiat devant une fièvre, une angine, des aphtes, un purpura ou des ecchymoses inexpliquées. Une ordonnance de ticlopidine mérite d'être discutée avec le prescripteur, une alternative mieux tolérée existant dans presque toutes les situations.",
         forms: "",
     },
     StarterDetail {
@@ -8455,7 +8476,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "héparine, voie sous-cutanée, surveillance biologique",
-        toxicity: "",
+        toxicity: "Héparine non fractionnée par voie sous-cutanée, dosée en unités internationales et jamais en millilitres : la seringue est graduée en UI et une erreur de lecture est une erreur de dose. L'effet se surveille sur le TCA prélevé à mi-chemin entre deux injections, ce qui suppose de connaître l'heure exacte de la précédente — l'information manque souvent, et c'est la première cause de résultat ininterprétable. La protamine neutralise complètement, 1 mg pour 100 UI, mais l'absorption sous-cutanée étant prolongée, la neutralisation doit être fractionnée et répétée. Comme pour toute héparine, la thrombopénie de type II entre le cinquième et le vingt et unième jour est ce qui tue, pas l'hémorragie du premier jour.",
         forms: "",
     },
     StarterDetail {
@@ -8476,7 +8497,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticoagulant, alternative en tih",
-        toxicity: "",
+        toxicity: "Son indication même est une situation d'urgence immunologique : le relais d'une héparine chez un patient ayant développé une thrombopénie induite de type II, où toute héparine est désormais interdite. La difficulté est qu'une réactivité croisée in vitro avec les anticorps anti-PF4 existe dans une minorité de cas, ce qui impose de surveiller les plaquettes sous danaparoïde et de ne pas considérer le problème comme réglé par le changement de molécule. L'élimination est rénale et la demi-vie de l'activité anti-Xa est longue : l'accumulation chez l'insuffisant rénal est la principale cause d'hémorragie, et il n'existe pas d'antidote — la protamine est inefficace. La surveillance se fait par l'activité anti-Xa avec un étalon spécifique.",
         forms: "",
     },
     StarterDetail {
@@ -8518,7 +8539,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidote des avk, vitamine k, surveillance biologique",
-        toxicity: "",
+        toxicity: "Antidote dont le mauvais usage crée le problème suivant : administrée à dose trop forte pour corriger un INR élevé sous antivitamine K, elle rend le patient résistant à son anticoagulant pendant une à deux semaines, ce qui expose à la thrombose qu'on cherchait à prévenir. Dans un surdosage sans saignement, une faible dose par voie orale suffit, et la voie orale est préférée. La voie intraveineuse, réservée aux saignements graves, doit être lente : des réactions anaphylactoïdes graves ont été décrites lors d'injections rapides. Chez le nouveau-né, la prophylaxie de la maladie hémorragique suit un schéma précis en trois doses dont l'oubli expose à une hémorragie intracrânienne.",
         forms: "",
     },
     StarterDetail {
@@ -8623,7 +8644,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Même molécule et mêmes propriétés que l'autre spécialité de pravastatine : absence de métabolisme par les cytochromes, donc peu d'interactions, ce qui en fait un choix raisonné chez le patient polymédiqué plutôt qu'un choix par défaut. La toxicité musculaire de la classe demeure, majorée par l'âge, l'insuffisance rénale, l'hypothyroïdie non traitée, l'association à un fibrate et les fortes doses. La ciclosporine impose une réduction de dose. La conduite devant des douleurs musculaires diffuses avec faiblesse et urines foncées est l'arrêt et un dosage des CPK le jour même. Arrêter une statine après un infarctus ou un accident vasculaire cérébral expose à un surrisque supérieur à celui du médicament.",
         forms: "",
     },
     StarterDetail {
@@ -8644,7 +8665,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, générique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Métabolisée par le CYP2C9, elle échappe aux interactions du CYP3A4 qui concernent la simvastatine et l'atorvastatine, mais elle est sensible à d'autres : le fluconazole augmente nettement son exposition, et elle peut elle-même majorer l'effet des antivitamines K, ce qui impose un contrôle de l'INR à l'instauration et à l'arrêt. Sa puissance hypolipémiante est modeste, ce qui limite son emploi aux objectifs peu ambitieux ou aux patients intolérants. La toxicité musculaire de la classe demeure, majorée par l'âge, l'insuffisance rénale et l'association aux fibrates : devant des douleurs musculaires diffuses, une faiblesse et des urines foncées, on arrête et on dose les CPK.",
         forms: "",
     },
     StarterDetail {
@@ -8728,7 +8749,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine + inhibiteur de l'absorption, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association fixe de simvastatine et d'ézétimibe : tous les plafonds de dose de la simvastatine s'y appliquent intégralement, et c'est ce que masque le nom de la spécialité. Avec l'amlodipine, l'amiodarone, le vérapamil ou le diltiazem, la fraction simvastatine ne doit pas dépasser 20 mg, et les inhibiteurs puissants du CYP3A4 — macrolides, azolés, inhibiteurs de protéase — sont contre-indiqués. Vérifier l'ordonnance complète revient donc à vérifier une statine, pas un hypolipémiant anodin. L'association à un fibrate majore le risque musculaire. Devant des douleurs musculaires diffuses avec faiblesse et urines foncées, on arrête et on dose les CPK le jour même.",
         forms: "",
     },
     StarterDetail {
@@ -8791,7 +8812,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "biguanide",
-        toxicity: "",
+        toxicity: "L'acidose lactique est rare mais mortelle une fois sur deux, et elle ne survient pratiquement jamais sans une cause d'accumulation : insuffisance rénale aiguë, déshydratation par vomissements ou diarrhée, sepsis, insuffisance cardiaque ou respiratoire décompensée, alcoolisation aiguë, injection de produit de contraste iodé. Elle se prévient donc par une règle et non par une surveillance biologique : le traitement se suspend dans toutes ces situations, et cette consigne des jours de maladie se donne à l'avance, pas au moment où elle sert. Les signes sont trompeurs — crampes musculaires, douleurs abdominales, hyperventilation, asthénie profonde — et imposent d'appeler. Contre-indiqué en dessous de 30 mL/min de débit de filtration glomérulaire.",
         forms: "",
     },
     StarterDetail {
@@ -8812,7 +8833,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "sulfamide hypoglycémiant, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est le sulfamide dont les hypoglycémies sont les plus longues et les plus graves : sa durée d'action hypoglycémiante dépasse largement sa demi-vie plasmatique, ses métabolites gardent une activité et s'éliminent par le rein, si bien que l'accumulation commence dès que la clairance baisse. Une hypoglycémie sous glibenclamide se compte en dizaines d'heures, récidive systématiquement après un resucrage, impose l'hospitalisation et une perfusion de glucose prolongée, et le glucagon n'y a pas sa place puisqu'il relance la sécrétion d'insuline. Pour cette raison, la molécule figure sur les listes de médicaments à éviter chez le sujet âgé, et une ordonnance qui l'associe à une fonction rénale dégradée ou à un âge avancé mérite un appel au prescripteur. Miconazole, y compris en gel buccal, association contre-indiquée.",
         forms: "",
     },
     StarterDetail {
@@ -8833,7 +8854,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "sulfamide hypoglycémiant, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Hypoglycémie prolongée et récidivante, comme pour tous les sulfamides : un resucrage isolé ne suffit pas, la surveillance se compte en heures, et une hypoglycémie sévère s'hospitalise. Le glucagon est un mauvais antidote ici, stimulant lui-même la sécrétion d'insuline. Le comprimé se prend juste avant un repas, et une prise sans repas se saute au lieu d'être rattrapée. Les circonstances qui font basculer sont toujours les mêmes : jeûne, gastro-entérite, amaigrissement, dégradation de la fonction rénale, ou ajout d'un potentialisateur — miconazole y compris en gel buccal, fluconazole, sulfamides antibactériens, AINS. Chez le sujet âgé, la dose la plus faible reste la règle.",
         forms: "",
     },
     StarterDetail {
@@ -8854,7 +8875,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "glinide, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Sa demi-vie courte est sa sécurité et sa contrainte : l'hypoglycémie est plus brève que celle d'un sulfamide, mais chaque comprimé appelle un repas. Pas de repas, pas de comprimé — c'est la règle qui prévient l'essentiel des hypoglycémies, et elle se répète à chaque délivrance. L'interaction majeure est pharmacocinétique et brutale : le gemfibrozil multiplie l'exposition au répaglinide par un facteur considérable et l'association est contre-indiquée ; le clopidogrel, le triméthoprime et les inhibiteurs du CYP2C8 l'augmentent également. Une hypoglycémie sévère sous répaglinide se surveille malgré tout plusieurs heures, la reprise alimentaire pouvant relancer la sécrétion.",
         forms: "",
     },
     StarterDetail {
@@ -8875,7 +8896,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "gliptine, inhibiteur dpp-4",
-        toxicity: "",
+        toxicity: "Une surveillance lui est propre parmi les gliptines : des atteintes hépatiques, parfois sévères, imposent un dosage des transaminases avant l'instauration puis tous les trois mois la première année, et le traitement est contre-indiqué en cas d'insuffisance hépatique — c'est le contrôle que l'on oublie le plus souvent. Toute asthénie inhabituelle, nausée, urine foncée ou coloration jaune des yeux impose l'arrêt et un dosage. Comme les autres gliptines, elle expose à la pemphigoïde bulleuse, éruption bulleuse pouvant survenir après des mois de traitement et régressant à l'arrêt, et à la pancréatite aiguë. La dose se réduit selon le débit de filtration glomérulaire.",
         forms: "",
     },
     StarterDetail {
@@ -8896,7 +8917,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "gliptine, inhibiteur dpp-4",
-        toxicity: "",
+        toxicity: "Une particularité l'a distinguée dans sa classe : un essai a montré une augmentation des hospitalisations pour insuffisance cardiaque, ce qui impose la prudence et une surveillance chez le patient insuffisant cardiaque ou à risque, et fait signaler une aggravation de la dyspnée, une prise de poids rapide ou des œdèmes. Les effets communs aux gliptines s'appliquent : pemphigoïde bulleuse, éruption bulleuse pouvant apparaître après des mois de traitement et régressant à l'arrêt, pancréatite aiguë devant une douleur épigastrique transfixiante, et arthralgies sévères réversibles. La dose se réduit selon le débit de filtration glomérulaire, et l'association à un inhibiteur puissant du CYP3A4 impose également une réduction.",
         forms: "",
     },
     StarterDetail {
@@ -8917,7 +8938,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "gliptine + biguanide",
-        toxicity: "",
+        toxicity: "Association fixe : les deux marges se cumulent. Celle de la metformine, l'acidose lactique, survient quand la molécule s'accumule — insuffisance rénale aiguë, déshydratation, sepsis, alcoolisation aiguë, produit de contraste iodé — et se manifeste par des crampes, des douleurs abdominales, une hyperventilation et une asthénie profonde : c'est une urgence. D'où la règle des jours de maladie, à donner avant qu'elle ne serve : on suspend en cas de vomissements, de diarrhée, de fièvre, de jeûne, avant une chirurgie et avant toute injection d'iode. Celle de la gliptine y ajoute la pemphigoïde bulleuse et la pancréatite aiguë. La dose s'adapte au débit de filtration glomérulaire, la metformine étant contre-indiquée sous 30 mL/min.",
         forms: "",
     },
     StarterDetail {
@@ -8938,7 +8959,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "gliptine + biguanide",
-        toxicity: "",
+        toxicity: "Association fixe cumulant trois surveillances. La metformine impose la règle des jours de maladie — suspendre en cas de vomissements, de diarrhée, de fièvre, de jeûne, avant une chirurgie et avant toute injection de produit de contraste iodé —, l'acidose lactique se manifestant par des crampes, des douleurs abdominales, une hyperventilation et une asthénie profonde. La vildagliptine impose un contrôle des transaminases avant l'instauration puis tous les trois mois la première année, et l'arrêt devant tout signe d'hépatite. S'y ajoute la pemphigoïde bulleuse, éruption bulleuse pouvant apparaître après des mois de traitement. La dose s'adapte au débit de filtration glomérulaire.",
         forms: "",
     },
     StarterDetail {
@@ -8959,7 +8980,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur sglt2 + biguanide, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association fixe : elle cumule les deux marges et les deux situations d'arrêt, qui heureusement coïncident. La gliflozine expose à l'acidocétose à glycémie normale — nausées, douleurs abdominales, dyspnée ou asthénie imposent de doser les corps cétoniques et non la seule glycémie — et la metformine à l'acidose lactique en cas d'insuffisance rénale aiguë. Les deux commandent la même conduite : suspendre en cas de jeûne, de vomissements, de diarrhée, d'infection aiguë, de déshydratation, avant une chirurgie et avant toute injection de produit de contraste iodé. C'est la règle des jours de maladie, et elle se donne avant qu'elle ne serve. Gangrène de Fournier et mycoses génitales complètent le tableau.",
         forms: "",
     },
     StarterDetail {
@@ -9001,7 +9022,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue glp-1, voie orale, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Les conditions de prise sont si strictes qu'elles conditionnent entièrement l'efficacité, et ce sont elles que le comptoir doit répéter : le comprimé se prend à jeun au réveil, avec au maximum une demi-tasse d'eau, et rien d'autre — ni aliment, ni boisson, ni aucun autre médicament — pendant au moins trente minutes. Pris autrement, l'absorption est pratiquement nulle et le patient n'est pas traité. Le comprimé ne se coupe ni ne s'écrase. Pour le reste, les risques de la classe s'appliquent : pancréatite aiguë devant une douleur épigastrique transfixiante, lithiase biliaire, ralentissement de la vidange gastrique à signaler avant toute anesthésie, et déshydratation pouvant précipiter une insuffisance rénale aiguë.",
         forms: "",
     },
     StarterDetail {
@@ -9022,7 +9043,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline ultra-rapide, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le délai d'action est encore plus court que celui de l'asparte ordinaire : l'effet démarre en quelques minutes, ce qui autorise l'injection au début du repas voire juste après. C'est un avantage et un risque : l'hypoglycémie survient plus tôt et plus brutalement si le repas est retardé ou incomplet, et un patient qui transpose l'habitude d'injecter vingt minutes avant se retrouve en hypoglycémie avant la première bouchée. Fiasp et NovoRapid contiennent la même insuline mais ne s'utilisent pas au même moment : le changement de l'un à l'autre se réexplique. Durée d'action courte, donc hypoglycémie violente mais bornée. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -9043,7 +9064,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline rapide",
-        toxicity: "",
+        toxicity: "Insuline humaine et non analogue : le délai d'action est plus long, une demi-heure, et la durée bien plus étalée, six à huit heures. L'hypoglycémie qu'elle provoque est donc plus tardive et plus prolongée que celle d'un analogue rapide, et un resucrage isolé ne suffit pas — il faut un sucre lent et un contrôle à distance. Elle s'injecte une demi-heure avant le repas, et l'injection juste avant de passer à table, transposée d'un analogue, expose à une hyperglycémie puis à une hypoglycémie décalée. Antidote glucagon, sans effet en cas de réserves hépatiques vides.",
         forms: "",
     },
     StarterDetail {
@@ -9064,7 +9085,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline intermédiaire, surveillance biologique",
-        toxicity: "",
+        toxicity: "Comme toute insuline en suspension, elle doit être remise en suspension avant chaque injection par une vingtaine de retournements lents : un stylo injecté sans être homogénéisé délivre une dose fausse dans un sens ou dans l'autre, et c'est ce qui explique la plupart des déséquilibres attribués à tort au patient. Le pic d'action à quatre ou six heures fait le danger propre de cette classe : hypoglycémie nocturne quand l'injection du soir est trop précoce ou trop forte, souvent silencieuse et reconnue seulement sur des sueurs nocturnes ou une hyperglycémie de rebond au réveil. Durée d'action longue, donc hypoglycémie prolongée. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -9085,7 +9106,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline prémélangée, surveillance biologique",
-        toxicity: "",
+        toxicity: "Une insuline prémélangée impose les repas au lieu de s'y adapter : les proportions de rapide et d'intermédiaire sont fixes, si bien qu'un repas sauté après l'injection provoque une hypoglycémie qu'aucun ajustement de dose ne pouvait prévenir. Elle ne sert jamais à corriger une hyperglycémie ponctuelle, la fraction lente s'ajoutant alors à celle déjà en place. Elle doit être remise en suspension avant chaque injection, une vingtaine de retournements, faute de quoi le rapport entre les deux fractions n'est plus celui du nom sur la boîte. Le chiffre du nom désigne le pourcentage de fraction rapide : deux spécialités de la même gamme ne s'échangent pas. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -9106,7 +9127,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormone hyperglycémiante, hypoglycémie sévère, surveillance biologique",
-        toxicity: "",
+        toxicity: "Antidote dont la limite doit être comprise avant qu'il ne serve : le glucagon agit en libérant le glycogène du foie, et il ne fait rien si ces réserves sont vides — après un jeûne prolongé, chez un patient dénutri, en cas d'insuffisance hépatique, et surtout après une alcoolisation, situation pourtant fréquente lors des hypoglycémies sévères. Il est également d'un intérêt limité dans l'hypoglycémie d'un sulfamide, dont il relance la sécrétion d'insuline. Dans tous ces cas, seul le glucose intraveineux corrige : le 15 s'appelle dans le même mouvement que l'injection. La personne se met sur le côté, les vomissements au réveil étant fréquents, et un resucrage oral suit dès qu'elle peut avaler, l'effet du glucagon étant bref.",
         forms: "",
     },
     StarterDetail {
@@ -9127,7 +9148,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormone thyroïdienne, surveillance biologique",
-        toxicity: "",
+        toxicity: "La marge est étroite et se lit sur la TSH, jamais sur le ressenti. Le surdosage donne une thyrotoxicose iatrogène dont les conséquences sont cardiaques et osseuses : fibrillation atriale chez le sujet âgé, aggravation d'une coronaropathie, perte de densité osseuse chez la femme ménopausée — et il est fréquent, la tentation étant d'augmenter la dose devant une fatigue qui n'est pas thyroïdienne. Toute modification se juge six à huit semaines plus tard, la demi-vie étant de sept jours. Le comprimé se prend à jeun, une demi-heure avant le petit-déjeuner, à distance du calcium, du fer, des inhibiteurs de la pompe à protons et du café, qui réduisent tous l'absorption. Un changement de spécialité impose un contrôle de la TSH.",
         forms: "",
     },
     StarterDetail {
@@ -9148,7 +9169,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormone thyroïdienne t3, surveillance biologique",
-        toxicity: "",
+        toxicity: "La triiodothyronine agit en quelques heures là où la lévothyroxine met des semaines : demi-vie courte, pas d'effet tampon, et des à-coups de concentration qui exposent directement le cœur. Les palpitations, la tachycardie et le trouble du rythme apparaissent pour des écarts de dose qui passeraient inaperçus sous T4, ce qui la rend inadaptée au sujet âgé et au coronarien, et impose un fractionnement des prises. Elle ne se substitue jamais à la lévothyroxine microgramme pour microgramme : le rapport d'équivalence est de l'ordre de un pour quatre. La TSH n'est pas un bon guide sous T3 seule, et la surveillance relève de l'endocrinologue.",
         forms: "",
     },
     StarterDetail {
@@ -9169,7 +9190,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hormone thyroïdienne t4 + t3, surveillance biologique",
-        toxicity: "",
+        toxicity: "Association fixe de T4 et de T3 : la fraction de T3 lui donne une action plus rapide et plus marquée sur le cœur qu'une lévothyroxine seule, avec palpitations et troubles du rythme pour des écarts de dose modestes, ce qui limite son emploi chez le sujet âgé et le coronarien. Le piège de dispensation est l'équivalence : un comprimé n'apporte pas la même chose qu'un comprimé de lévothyroxine du même chiffre, et tout passage de l'un à l'autre se recalcule par le prescripteur puis se contrôle par une TSH six à huit semaines plus tard. Les règles d'absorption sont celles de la lévothyroxine : à jeun, à distance du calcium, du fer et des inhibiteurs de la pompe à protons.",
         forms: "",
     },
     StarterDetail {
@@ -9190,7 +9211,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antithyroïdien de synthèse, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Même risque dominant que le carbimazole et même consigne, qui prime sur tout le reste : l'agranulocytose est brutale, imprévisible, indépendante de la dose, et se manifeste par une fièvre, une angine ou des aphtes — devant lesquels on arrête et on fait une numération le jour même. Une numération de référence précède l'instauration. Le benzylthiouracile expose en outre à une hépatite, parfois sévère, imposant un contrôle des transaminases et l'arrêt devant un ictère ou des urines foncées. Comme pour tout antithyroïdien, la surveillance de l'efficacité se fait sur la T4 libre et non sur la TSH, qui reste freinée pendant des mois et donnerait à tort l'impression d'un surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -9421,7 +9442,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "calcimimétique, hyperparathyroïdie",
-        toxicity: "",
+        toxicity: "Le calcimimétique abaisse la calcémie, et c'est à la fois son effet et sa toxicité : l'hypocalcémie est fréquente, parfois sévère, et elle se manifeste par des paresthésies péribuccales, des crampes, des myalgies, et à l'extrême par des convulsions et un allongement du QT avec troubles du rythme. Elle impose une calcémie avant l'instauration, une semaine après chaque changement de dose, puis régulièrement, et le traitement n'est pas débuté si la calcémie est basse. Les signes d'alerte se disent au patient afin qu'il consulte plutôt que d'attendre. Les nausées et vomissements, très fréquents, sont limités par une prise au cours du repas. Inhibiteur du CYP2D6, il augmente notamment le métoprolol et certains antidépresseurs.",
         forms: "",
     },
     StarterDetail {
@@ -9484,7 +9505,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fer injectable",
-        toxicity: "",
+        toxicity: "Le fer injectable expose à des réactions d'hypersensibilité, jusqu'au choc anaphylactique, ce qui impose une administration en milieu disposant du matériel de réanimation et une surveillance d'au moins trente minutes après la fin de la perfusion — ce n'est pas un produit que l'on administre au domicile sans ce cadre. Les réactions dites de Fishbane, avec bouffée vasomotrice et douleurs thoraciques ou dorsales transitoires, ne sont pas allergiques et cèdent à l'arrêt de la perfusion, mais elles se distinguent d'une anaphylaxie vraie. L'extravasation laisse une coloration cutanée brune définitive. La supplémentation ne se prolonge pas à l'aveugle : ferritine et coefficient de saturation guident l'arrêt, la surcharge en fer étant toxique.",
         forms: "",
     },
     StarterDetail {
@@ -9505,7 +9526,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fer injectable",
-        toxicity: "",
+        toxicity: "Deux risques distincts. Le premier est commun au fer injectable : hypersensibilité pouvant aller au choc, imposant une administration en milieu équipé et une surveillance d'au moins trente minutes après la perfusion. Le second lui est propre et il est souvent méconnu : une hypophosphatémie, fréquente, parfois profonde et prolongée, qui provoque asthénie et douleurs osseuses, et qui après des perfusions répétées peut aboutir à une ostéomalacie avec fractures de fatigue. La phosphatémie doit donc être contrôlée en cas d'administrations répétées ou de symptômes évocateurs. L'extravasation laisse une coloration brune définitive de la peau. Le suivi de la ferritine et de la saturation borne le traitement.",
         forms: "",
     },
     StarterDetail {
@@ -9547,7 +9568,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antagoniste non stéroïdien des récepteurs minéralocorticoïdes",
-        toxicity: "",
+        toxicity: "L'hyperkaliémie est le risque qui commande la prescription et la surveillance : le traitement n'est pas instauré si la kaliémie dépasse le seuil fixé, elle est contrôlée avant, quatre semaines après l'instauration et après chaque adaptation, puis régulièrement — ce calendrier est la condition d'usage de la molécule. Le risque est majoré par l'association à un inhibiteur de l'enzyme de conversion ou à un sartan, situation qui est pourtant la règle chez ces patients, ainsi que par les AINS, le triméthoprime et les sels de régime riches en potassium. Une baisse initiale du débit de filtration glomérulaire est attendue et n'impose pas l'arrêt. Les inhibiteurs puissants du CYP3A4 sont contre-indiqués et le pamplemousse est à éviter.",
         forms: "",
     },
     StarterDetail {
@@ -9589,7 +9610,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "minéralocorticoïde, surveillance biologique",
-        toxicity: "",
+        toxicity: "Minéralocorticoïde presque pur : il ne remplace pas l'hydrocortisone et ne la double pas non plus, il complète la substitution sur le versant sodé. Sa marge se lit sur trois chiffres et non sur des symptômes : la pression artérielle couchée et debout, la kaliémie et la natrémie. Trop peu, et l'hypotension orthostatique, l'hyperkaliémie et l'envie de sel persistent ; trop, et apparaissent hypertension, œdèmes et hypokaliémie. Les besoins augmentent l'été et avec la sudation. Comme pour toute substitution surrénalienne, le traitement ne s'interrompt jamais, et une maladie intercurrente impose d'augmenter l'hydrocortisone associée — pas ce médicament-ci, dont la dose ne se module pas de la même façon.",
         forms: "",
     },
     StarterDetail {
@@ -9631,7 +9652,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "pénicilline retard im",
-        toxicity: "",
+        toxicity: "Une règle absolue commande cette molécule : l'injection est strictement intramusculaire profonde, jamais intraveineuse, même partiellement. Une injection intravasculaire accidentelle de cette suspension provoque une embolie de cristaux avec arrêt cardiorespiratoire, et des décès sont survenus ainsi ; l'aspiration avant injection n'est donc pas facultative. Deux autres accidents sont décrits : le syndrome de Hoigné, réaction psychosensorielle brutale et angoissante mais non allergique, et le syndrome de Nicolau, nécrose cutanée extensive par injection intra-artérielle. L'injection est douloureuse et se fait lentement, le produit étant sorti à température ambiante. Le patient reste surveillé après l'injection du fait du risque anaphylactique.",
         forms: "",
     },
     StarterDetail {
@@ -9694,7 +9715,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "céphalosporine de 1re génération injectable",
-        toxicity: "",
+        toxicity: "Céphalosporine de première génération dont l'emploi principal est l'antibioprophylaxie chirurgicale, et sa marge y est entièrement une question de temps : l'injection doit précéder l'incision de trente à soixante minutes pour que la concentration tissulaire soit efficace au moment du geste, et elle est réinjectée si l'intervention se prolonge — administrée trop tôt ou trop tard, elle expose le patient aux effets sans le bénéfice. La prophylaxie ne se prolonge pas au-delà de vingt-quatre heures. L'allergie croisée avec les pénicillines existe mais elle est bien plus faible qu'on ne l'a longtemps cru, et un antécédent mal documenté ne doit pas priver un patient d'une prophylaxie adaptée. La dose s'adapte à la clairance et au poids.",
         forms: "",
     },
     StarterDetail {
@@ -9736,7 +9757,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "céphalosporine de 3e génération injectable",
-        toxicity: "",
+        toxicity: "Une incompatibilité peut tuer et elle est absolue chez le nouveau-né : la ceftriaxone précipite avec le calcium, et des décès par précipités pulmonaires et rénaux ont conduit à interdire toute administration concomitante de solution calcique chez le nourrisson de moins de vingt-huit jours, quelle que soit la voie. Chez l'enfant plus grand et l'adulte, les deux ne se mélangent pas dans la même ligne. Elle est en outre contre-indiquée chez le nouveau-né ictérique, dont elle déplace la bilirubine. Une pseudolithiase biliaire, réversible à l'arrêt, peut simuler une cholécystite lors des traitements prolongés. L'anémie hémolytique immunoallergique est rare mais grave.",
         forms: "",
     },
     StarterDetail {
@@ -9757,7 +9778,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "carbapénème",
-        toxicity: "",
+        toxicity: "Une interaction est particulièrement dangereuse et elle est méconnue : les carbapénèmes effondrent les concentrations de valproate, de façon rapide et massive, au point de provoquer des états de mal épileptiques chez un patient jusque-là équilibré — l'association est à proscrire, et une augmentation de la dose de valproate ne compense pas le phénomène. C'est une vérification à faire sur l'ordonnance complète d'un patient épileptique. La seconde toxicité est convulsivante et propre à la classe : elle est dose-dépendante et survient surtout chez l'insuffisant rénal dont la posologie n'a pas été adaptée à la clairance, ou en cas de lésion cérébrale préexistante. Le méropénème est moins épileptogène que l'imipénème, mais pas exempt.",
         forms: "",
     },
     StarterDetail {
@@ -9778,7 +9799,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "macrolide, surveillance biologique",
-        toxicity: "",
+        toxicity: "C'est le macrolide le plus fortement inhibiteur du CYP3A4, et cela en fait une source d'accidents graves par interaction. L'association à la colchicine peut être mortelle et elle est contre-indiquée chez l'insuffisant rénal ou hépatique ; avec la simvastatine et l'atorvastatine, elle expose à la rhabdomyolyse et l'association est contre-indiquée ; elle augmente aussi les anticoagulants oraux directs, la ciclosporine, le tacrolimus, l'amiodarone et de nombreux autres. Une ordonnance de clarithromycine se lit contre l'ordonnance complète du patient, y compris ce qu'il prend au long cours. À cela s'ajoutent l'allongement du QT et un goût métallique fréquent. La dose se réduit en cas d'insuffisance rénale sévère.",
         forms: "",
     },
     StarterDetail {
@@ -9799,7 +9820,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "macrolide, surveillance biologique",
-        toxicity: "",
+        toxicity: "Macrolide inhibiteur modéré du CYP3A4 : les associations à surveiller sont celles de la classe — colchicine, statines métabolisées par cette voie, alcaloïdes de l'ergot, ciclosporine — et l'ordonnance complète du patient se relit, l'interaction ne se voyant pas sur la ligne de l'antibiotique. Il allonge l'intervalle QT, effet qui s'additionne à celui de tout autre allongeant et qui compte particulièrement chez le sujet âgé, hypokaliémique ou bradycarde. La prise se fait à jeun, une quinzaine de minutes avant un repas, l'alimentation réduisant l'absorption. Des hépatites et de rares réactions cutanées sévères sont rapportées.",
         forms: "",
     },
     StarterDetail {
@@ -9841,7 +9862,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "cycline, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est la cycline dont le profil de sécurité est le moins bon, et elle n'est plus un premier choix dans l'acné pour cette raison. Trois toxicités lui sont propres : des réactions d'hypersensibilité systémique de type DRESS, parfois sévères et retardées de plusieurs semaines ; des syndromes lupiques et des hépatites auto-immunes lors des traitements prolongés ; et une pigmentation ardoisée de la peau, des muqueuses, des cicatrices et parfois des dents, qui peut être définitive. Elle expose en outre à l'hypertension intracrânienne bénigne, ce qui contre-indique l'association à l'isotrétinoïne — céphalées et troubles visuels imposent l'arrêt. Photosensibilisation, contre-indication avant huit ans et pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -9862,7 +9883,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "cycline, acné, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Utilisée plusieurs mois dans l'acné, ce qui donne du temps à ses toxicités. L'hypertension intracrânienne bénigne est le risque à connaître : céphalées persistantes, nausées, troubles visuels imposent l'arrêt et un avis — et c'est pourquoi l'association à l'isotrétinoïne, qui expose au même risque, est contre-indiquée. La photosensibilisation est marquée et impose une protection solaire pendant toute la durée du traitement. Le comprimé se prend avec un grand verre d'eau, assis ou debout, à distance du coucher, sous peine d'ulcération œsophagienne. Le calcium, le fer et les antiacides la chélatent. Contre-indiquée avant huit ans et pendant la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -9883,7 +9904,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fluoroquinolone, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est la fluoroquinolone dont l'usage est le plus restreint, et pour deux raisons qui lui sont propres : l'allongement du QT est le plus marqué de la classe, avec des torsades de pointes, et des hépatites fulminantes ont été rapportées. Elle est donc réservée aux situations où aucune alternative n'est possible, et son ordonnance mérite une lecture attentive des associations allongeantes et de la kaliémie. À cela s'ajoutent les risques communs à la classe : tendinopathie et rupture, anévrisme et dissection de l'aorte, neuropathie périphérique parfois définitive, troubles neuropsychiatriques. Particularité pratique : elle n'est pas éliminée sous forme active dans les urines et n'a aucune place dans une infection urinaire.",
         forms: "",
     },
     StarterDetail {
@@ -9904,7 +9925,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fluoroquinolone urinaire, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Fluoroquinolone soumise aux restrictions de sa classe — tendinopathie et rupture du tendon, y compris à distance de l'arrêt et surtout sous corticothérapie ou après soixante ans, anévrisme et dissection de l'aorte, neuropathie périphérique parfois irréversible, effets neuropsychiatriques — ce qui l'exclut des infections urinaires simples, où des alternatives existent et doivent être préférées. Toute douleur tendineuse impose l'arrêt. Sa diffusion tissulaire est faible et elle n'a pas sa place dans une pyélonéphrite ni dans une prostatite. Photosensibilisation marquée, chélation par le calcium, le fer et les antiacides qui impose de séparer les prises, et réduction de dose selon la clairance.",
         forms: "",
     },
     StarterDetail {
@@ -9925,7 +9946,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aminoside, surveillance biologique",
-        toxicity: "Toxicité de classe des aminosides, et elle est cumulative : néphrotoxicité réversible, ototoxicité et atteinte vestibulaire qui ne le sont pas. C'est la durée qui compte plus que le pic — d'où les schémas en une injection quotidienne et les traitements les plus courts possibles. Le dosage résiduel est ce qui décide, et une surdité qui s'installe sous aminoside ne revient pas.",
+        toxicity: "Aminoside : néphrotoxicité tubulaire réversible et ototoxicité irréversible, cochléaire et vestibulaire. La toxicité est cumulative et c'est la durée d'exposition qui compte plus que le pic — d'où les schémas en une injection quotidienne unique, avec un pic élevé et une résiduelle basse, et des traitements aussi courts que possible, de l'ordre de quelques jours. C'est la concentration résiduelle qui décide, et non le pic. L'atteinte vestibulaire est particulièrement sournoise : elle se révèle à la reprise de la marche, longtemps après la sortie, sous forme d'une instabilité définitive, et une surdité installée sous aminoside ne revient pas. Fonction rénale contrôlée avant et pendant, risque majoré par les diurétiques de l'anse et les autres néphrotoxiques. Contre-indiqué en cas de myasthénie.",
         forms: "",
     },
     StarterDetail {
@@ -9946,7 +9967,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aminoside, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux toxicités, dont l'une est définitive. La néphrotoxicité est tubulaire, dose-dépendante et le plus souvent réversible. L'ototoxicité ne l'est pas : l'atteinte cochléaire et vestibulaire est irréversible, elle commence par les fréquences aiguës et par des troubles de l'équilibre que le patient alité ne remarque pas, et elle peut apparaître ou s'aggraver après la fin du traitement. C'est ce qui impose des traitements courts, quelques jours et non quelques semaines. L'administration en une injection quotidienne unique, avec un pic élevé et une concentration résiduelle basse, réduit la toxicité sans réduire l'efficacité : c'est la résiduelle qui est surveillée. Contre-indiqué en cas de myasthénie, où il aggrave le bloc neuromusculaire.",
         forms: "",
     },
     StarterDetail {
@@ -9967,7 +9988,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "glycopeptide",
-        toxicity: "Marge étroite avec dosage : la zone résiduelle est fixée par le prescripteur et l'infection traitée. Au-dessus, néphrotoxicité et ototoxicité, la seconde étant souvent définitive. Le débit de perfusion compte autant que la dose : injectée trop vite, elle donne le syndrome de l'homme rouge, qui est une histaminolibération et non une allergie — il se prévient en ralentissant.",
+        toxicity: "Marge étroite avec dosage : la zone résiduelle, ou l'aire sous la courbe, est fixée par le prescripteur selon l'infection traitée, et au-dessus apparaissent la néphrotoxicité, dose-dépendante et majorée par l'association à la pipéracilline-tazobactam ou à un aminoside, et l'ototoxicité, plus rare mais souvent définitive. Créatininémie et concentrations se surveillent. Le débit de perfusion compte autant que la dose : injectée trop vite, elle provoque le syndrome de l'homme rouge — érythème du visage et du tronc, prurit, parfois hypotension —, qui est une histaminolibération et non une allergie, et qui se prévient en perfusant sur au moins une heure ; l'étiqueter comme une allergie prive le patient d'un antibiotique parfois irremplaçable. Par voie orale, dans la colite à Clostridioides difficile, elle n'est pas absorbée et n'a aucune de ces toxicités.",
         forms: "",
     },
     StarterDetail {
@@ -10009,7 +10030,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "nitro-imidazolé, surveillance biologique",
-        toxicity: "",
+        toxicity: "Nitro-imidazolé comme le métronidazole, mais avec une différence utile à connaître : l'ornidazole n'a pas d'effet antabuse cliniquement significatif, ce qui en fait une alternative lorsque l'interdiction absolue de l'alcool pose problème — encore faut-il le savoir, car la consigne se transmet souvent par habitude à toute la classe. Sa demi-vie plus longue permet des schémas plus courts. Les risques communs à la classe demeurent : neuropathie périphérique lors des traitements prolongés, imposant un avis devant tout fourmillement persistant, troubles digestifs, goût métallique, et potentialisation des antivitamines K avec contrôle de l'INR. Contre-indiqué en cas d'antécédent de trouble neurologique central ou périphérique.",
         forms: "",
     },
     StarterDetail {
@@ -10030,7 +10051,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antituberculeux, inducteur enzymatique",
-        toxicity: "",
+        toxicity: "C'est l'inducteur enzymatique le plus puissant de la pratique courante, et cette induction est sa principale toxicité : elle fait échouer une contraception hormonale — une méthode non hormonale est indispensable pendant le traitement et un mois après —, effondre l'INR d'un antivitamine K, fait rejeter un greffon en abaissant les immunosuppresseurs, et compromet un traitement antirétroviral. L'ordonnance complète se relit ligne par ligne à l'instauration et à l'arrêt, l'induction persistant deux à trois semaines. La coloration orangée des urines, des larmes et de la sueur est attendue et sans gravité, mais elle tache définitivement les lentilles souples. Hépatite et, en prise intermittente, réactions immunoallergiques avec fièvre et thrombopénie.",
         forms: "",
     },
     StarterDetail {
@@ -10051,7 +10072,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antituberculeux",
-        toxicity: "",
+        toxicity: "Deux toxicités, et l'une des deux se prévient entièrement. La neuropathie périphérique, par antagonisme de la vitamine B6, se prévient par une supplémentation en pyridoxine qui doit figurer sur l'ordonnance : son absence chez un patient dénutri, alcoolique, diabétique, insuffisant rénal ou enceinte est un oubli à signaler. L'hépatite est l'autre risque, d'autant plus fréquente que le patient est âgé, consommateur d'alcool ou traité simultanément par rifampicine : les transaminases se contrôlent avant puis régulièrement, et nausées, asthénie, ictère ou urines foncées imposent l'arrêt immédiat et un avis. Le métabolisme dépend d'un polymorphisme d'acétylation, les acétyleurs lents étant plus exposés.",
         forms: "",
     },
     StarterDetail {
@@ -10072,7 +10093,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antituberculeux",
-        toxicity: "",
+        toxicity: "Une seule toxicité domine et elle est potentiellement définitive : la névrite optique rétrobulbaire, dose-dépendante et favorisée par l'insuffisance rénale, qui débute par une baisse de la vision des couleurs — le rouge et le vert — avant l'acuité, et qui régresse si l'on arrête tôt. D'où le protocole : acuité visuelle et vision des couleurs mesurées avant l'instauration, contrôlées mensuellement, et consigne donnée au patient d'arrêter et d'appeler devant toute modification de la vue, sans attendre le rendez-vous. L'élimination étant rénale, la dose se calcule sur la clairance : c'est chez l'insuffisant rénal non adapté que surviennent les atteintes sévères. Chez l'enfant trop jeune pour l'examen, la molécule est évitée.",
         forms: "",
     },
     StarterDetail {
@@ -10093,7 +10114,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antituberculeux",
-        toxicity: "",
+        toxicity: "C'est l'antituberculeux le plus hépatotoxique, et l'hépatite qu'il provoque peut être sévère : transaminases avant l'instauration puis régulièrement, et arrêt devant des nausées, une asthénie inhabituelle, un ictère ou des urines foncées. L'insuffisance hépatique est une contre-indication. L'hyperuricémie est constante et n'est pas un effet indésirable à traiter en soi : elle se traduit souvent par des arthralgies bénignes qui ne sont pas une crise de goutte et qui ne justifient pas d'arrêter le traitement, la distinction étant à faire avant de rassurer ou d'alerter. L'élimination est rénale, ce qui impose une réduction de dose en cas d'insuffisance rénale.",
         forms: "",
     },
     StarterDetail {
@@ -10114,7 +10135,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antituberculeux, association",
-        toxicity: "",
+        toxicity: "Association fixe : son intérêt est l'observance, son inconvénient est qu'aucune des deux doses ne peut être ajustée séparément — devant une toxicité imputable à l'un des deux composants, il faut repasser aux molécules séparées, ce qui est la conduite et non une réduction du nombre de comprimés. Les deux composants sont hépatotoxiques et leur association l'est davantage que chacun isolément : transaminases avant puis régulièrement, arrêt devant tout signe d'hépatite. La rifampicine apporte son induction enzymatique majeure, qui fait échouer une contraception hormonale et impose une méthode non hormonale, et la coloration orangée des sécrétions. L'isoniazide impose la supplémentation en vitamine B6 chez le patient à risque de neuropathie.",
         forms: "",
     },
     StarterDetail {
@@ -10135,7 +10156,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique azolé, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux contre-indications lui sont propres. Il a un effet inotrope négatif et ne doit pas être donné en cas d'insuffisance cardiaque ou d'antécédent, des décompensations ayant été décrites. Et c'est un inhibiteur très puissant du CYP3A4 : l'association à la simvastatine et à l'atorvastatine, aux alcaloïdes de l'ergot, à certains antiarythmiques et à plusieurs autres est contre-indiquée, avec un risque de rhabdomyolyse ou de trouble du rythme. L'ordonnance entière se relit avant délivrance. Point galénique piégeant : les gélules ont besoin d'acidité et se prennent au cours d'un repas, la solution buvable au contraire à jeun — les deux formes ne se substituent pas l'une à l'autre. Un inhibiteur de la pompe à protons compromet l'absorption des gélules.",
         forms: "",
     },
     StarterDetail {
@@ -10156,7 +10177,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique azolé, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Trois particularités en font une molécule à surveiller de près. Les troubles visuels — vision brouillée, altération des couleurs, photophobie — sont très fréquents, précoces et réversibles, mais ils comptent pour la conduite et doivent être annoncés. La phototoxicité est sévère et, au long cours, elle expose à des carcinomes cutanés : la protection solaire stricte et l'éviction du soleil ne sont pas des conseils accessoires mais une partie du traitement, avec un examen dermatologique en cas de traitement prolongé. Enfin la cinétique est non linéaire et dépend d'un polymorphisme du CYP2C19, ce qui rend le dosage plasmatique nécessaire. Hépatotoxicité, allongement du QT et interactions majeures par le CYP3A4 complètent le tableau.",
         forms: "",
     },
     StarterDetail {
@@ -10177,7 +10198,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique azolé",
-        toxicity: "",
+        toxicity: "L'erreur de dispensation la plus dangereuse est de traiter le comprimé et la suspension buvable comme équivalents : ils n'ont ni la même biodisponibilité, ni la même posologie, ni les mêmes conditions de prise, et une substitution de l'un par l'autre à dose identique donne soit un sous-dosage qui laisse évoluer une infection fongique invasive, soit un surdosage. La suspension exige un repas riche en graisses ou une boisson acide pour être absorbée ; le comprimé est moins dépendant de l'alimentation et ne se croque pas. Inhibiteur puissant du CYP3A4 : statines, immunosuppresseurs, alcaloïdes de l'ergot et antiarythmiques sont concernés. Allongement du QT et hépatotoxicité justifient un suivi.",
         forms: "",
     },
     StarterDetail {
@@ -10219,7 +10240,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique systémique, teignes, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Inducteur enzymatique : il fait échouer une contraception hormonale, ce qui impose une méthode complémentaire non hormonale pendant le traitement et le mois qui suit, et il diminue l'effet des antivitamines K. C'est le point à vérifier chez une adolescente ou une femme jeune traitée pour une teigne. Il est tératogène : contraception nécessaire chez la femme pendant le traitement et un mois après, et chez l'homme pendant le traitement et six mois après, la molécule étant retrouvée dans le sperme. La photosensibilisation est marquée et impose une protection solaire. Il aggrave un lupus et une porphyrie, qui sont des contre-indications. L'absorption exige une prise au cours d'un repas riche en graisses.",
         forms: "",
     },
     StarterDetail {
@@ -10345,7 +10366,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral anti-cmv, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est un cytotoxique et il se manipule comme tel : les comprimés ne se coupent ni ne s'écrasent, et la poudre pour solution buvable se prépare avec des gants, la molécule étant tératogène et cancérogène chez l'animal. Une contraception efficace est requise chez la femme pendant le traitement, et chez l'homme pendant le traitement et quatre-vingt-dix jours après. La toxicité hématologique est dose-limitante : neutropénie, anémie et thrombopénie imposent une numération régulière, souvent hebdomadaire au début, et toute fièvre en période de neutropénie est une urgence. L'élimination étant rénale, la dose se calcule sur la clairance, une adaptation manquée étant la cause habituelle des aplasies.",
         forms: "",
     },
     StarterDetail {
@@ -10366,7 +10387,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antirétroviral inti",
-        toxicity: "",
+        toxicity: "Sa toxicité est rénale et osseuse et elle est silencieuse : tubulopathie proximale pouvant aller au syndrome de Fanconi, avec hypophosphatémie, glycosurie sans hyperglycémie et protéinurie, et perte de densité minérale osseuse au long cours. La surveillance est donc biologique et non clinique — créatininémie, phosphatémie, protéinurie et glycosurie avant puis régulièrement —, et la forme alafénamide a précisément été développée pour réduire cette exposition. Second risque, propre à l'hépatite B : l'arrêt du traitement, même quelques jours pour une rupture d'approvisionnement, provoque une réactivation virale parfois sévère. La molécule ne s'interrompt jamais sans avis, et une délivrance sans rupture fait partie du traitement.",
         forms: "",
     },
     StarterDetail {
@@ -10408,7 +10429,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "trithérapie antirétrovirale, surveillance biologique",
-        toxicity: "",
+        toxicity: "L'abacavir qu'il contient expose au syndrome d'hypersensibilité, lié à l'allèle HLA-B 57:01, dont la recherche est obligatoire avant toute première prescription : fièvre, éruption, troubles digestifs et respiratoires dans les six premières semaines. La règle qui prime sur tout : devant une suspicion, on arrête définitivement et on ne réintroduit jamais, une réintroduction pouvant être mortelle en quelques heures. Le patient doit porter la carte d'alerte remise avec le traitement. Second point : chez un patient co-infecté par le virus de l'hépatite B, l'arrêt de la lamivudine provoque une réactivation sévère, ce qui fait de toute interruption — y compris une rupture de délivrance — une situation à traiter en urgence.",
         forms: "",
     },
     StarterDetail {
@@ -10429,7 +10450,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antirétroviral, inhibiteur d'intégrase, surveillance biologique",
-        toxicity: "",
+        toxicity: "La chélation par les cations est la difficulté quotidienne de cette molécule : antiacides, pansements gastriques, calcium, fer, zinc et multivitamines réduisent fortement son absorption et peuvent faire échouer le traitement. Le schéma est précis — deux heures avant ou six heures après le cation, ou en même temps qu'un repas selon le cas — et il se répète à chaque délivrance, d'autant que ces produits s'achètent sans ordonnance. Il augmente la metformine, dont la dose est à réévaluer. Chez le co-infecté par le virus de l'hépatite B, toute interruption expose à une réactivation. La prise de poids sous inhibiteur d'intégrase est fréquente et se surveille, de même que le retentissement métabolique.",
         forms: "",
     },
     StarterDetail {
@@ -10450,7 +10471,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antirétroviral, inhibiteur d'intégrase",
-        toxicity: "",
+        toxicity: "Deux formes coexistent, à une et à deux prises par jour, et elles ne sont pas interchangeables comprimé pour comprimé : administrer la forme d'un schéma avec la fréquence de l'autre expose soit au surdosage, soit à un traitement inefficace et à l'émergence de résistances. La vérification porte sur le dosage et sur le rythme ensemble. Comme les autres inhibiteurs d'intégrase, il est chélaté par le magnésium, l'aluminium, le calcium et le fer : les antiacides contenant ces cations sont à éviter et les autres se prennent à distance. Des rhabdomyolyses et des réactions cutanées sévères, dont des DRESS, ont été décrites. Chez le co-infecté par le virus de l'hépatite B, toute interruption expose à une réactivation.",
         forms: "",
     },
     StarterDetail {
@@ -10471,7 +10492,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antirétroviral, antiprotéase, surveillance biologique",
-        toxicity: "",
+        toxicity: "Toute sa marge tient au potentialisateur qui l'accompagne, ritonavir ou cobicistat, dont le rôle est précisément d'inhiber le CYP3A4 : l'ordonnance entière devient une ordonnance à interactions, et le nombre de médicaments concernés est considérable — statines, corticoïdes inhalés ou infiltrés, anticoagulants oraux directs, antiarythmiques, benzodiazépines, alcaloïdes de l'ergot, millepertuis. Chaque nouvelle ligne, y compris une automédication ou un produit de phytothérapie, se vérifie avant délivrance. Deux autres points : la prise se fait obligatoirement au cours d'un repas, sans quoi les concentrations s'effondrent ; et la molécule contient un noyau sulfonamide, à connaître en cas d'antécédent allergique. Éruptions parfois sévères dans les premières semaines.",
         forms: "",
     },
     StarterDetail {
@@ -10492,7 +10513,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral à action directe, hépatite c, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux vérifications précèdent toute délivrance d'antiviral à action directe. La sérologie de l'hépatite B : chez un patient co-infecté, l'éradication du virus C peut déclencher une réactivation B fulminante, ce qui a conduit à imposer ce dépistage avant traitement et une surveillance pendant. Et l'amiodarone : son association au sofosbuvir provoque des bradycardies sévères, parfois mortelles, et elle est à proscrire — c'est une interaction que rien dans la ligne de prescription ne signale. Les inhibiteurs de la pompe à protons réduisent l'absorption du velpatasvir et doivent être évités ou espacés selon un schéma précis. Le millepertuis, la rifampicine et les antiépileptiques inducteurs sont contre-indiqués.",
         forms: "",
     },
     StarterDetail {
@@ -10513,7 +10534,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral à action directe, hépatite c, surveillance biologique",
-        toxicity: "",
+        toxicity: "La sérologie de l'hépatite B se contrôle avant l'instauration : chez un patient co-infecté, l'élimination du virus C peut déclencher une réactivation B sévère, et cette vérification est devenue une obligation de la classe. La prise se fait obligatoirement au cours d'un repas — les trois comprimés ensemble —, l'absorption chutant fortement à jeun, et c'est la consigne qui décide du succès d'un traitement de huit semaines. L'association à l'atazanavir et à la rifampicine est contre-indiquée, de même que le millepertuis ; l'éthinylestradiol est à éviter du fait d'élévations des transaminases. Le traitement est contre-indiqué en cas d'insuffisance hépatique modérée à sévère.",
         forms: "",
     },
     StarterDetail {
@@ -10534,7 +10555,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral, hépatite b, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le risque principal n'est pas un effet indésirable mais une interruption : l'arrêt du traitement, y compris de quelques jours pour une rupture d'approvisionnement ou un oubli de renouvellement, expose à une réactivation sévère de l'hépatite B avec décompensation possible — la continuité de la délivrance fait partie du traitement, et une fin de boîte se anticipe. La forme alafénamide a été développée pour réduire la toxicité rénale et osseuse du ténofovir disoproxil, et elle y parvient largement, mais la créatininémie et la protéinurie restent surveillées. La prise se fait au cours d'un repas. Une élévation des lipides est plus marquée qu'avec la forme disoproxil et se surveille.",
         forms: "",
     },
     StarterDetail {
@@ -10555,7 +10576,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral, covid-19, surveillance biologique",
-        toxicity: "",
+        toxicity: "Toute sa dangerosité tient au ritonavir, dont le rôle est d'inhiber puissamment le CYP3A4 : l'ordonnance entière du patient devient une ordonnance à interactions, et certaines associations sont contre-indiquées avec un risque vital — alcaloïdes de l'ergot, certains antiarythmiques, la colchicine chez l'insuffisant rénal, plusieurs statines, des immunosuppresseurs dont les concentrations explosent. D'autres traitements se suspendent pendant les cinq jours de cure et les deux jours suivants, sur avis. La vérification ligne par ligne est le vrai acte de dispensation de ce médicament. La fenêtre est étroite : débuter dans les cinq jours suivant les premiers symptômes. La dose se réduit entre 30 et 60 mL/min et il est contre-indiqué en dessous.",
         forms: "",
     },
     StarterDetail {
@@ -10597,7 +10618,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipaludique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa marge n'est pas toxicologique mais logistique, et c'est le comptoir qui la tient : une chimioprophylaxie ne protège que si elle est prise chaque jour, au cours d'un repas ou avec une boisson lactée — l'atovaquone n'étant pratiquement pas absorbée à jeun —, et poursuivie sept jours après le retour. C'est cette dernière semaine que les voyageurs abandonnent, et c'est elle qui couvre la période où le parasite achève son cycle hépatique. Un vomissement dans l'heure suivant la prise impose de reprendre une dose. Aucune prophylaxie n'étant efficace à cent pour cent, toute fièvre survenant pendant le séjour ou dans les mois qui suivent le retour est un accès palustre jusqu'à preuve du contraire, et une urgence.",
         forms: "",
     },
     StarterDetail {
@@ -10618,7 +10639,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipaludique",
-        toxicity: "",
+        toxicity: "Sa toxicité est neuropsychiatrique et elle est la raison pour laquelle il n'est plus un premier choix : anxiété, cauchemars, insomnie, dépression, hallucinations, crises convulsives et états psychotiques, parfois durables après l'arrêt du fait d'une demi-vie de deux à trois semaines. Les antécédents psychiatriques, la dépression, l'anxiété généralisée et l'épilepsie sont des contre-indications, et elles se recherchent activement avant de délivrer. Lorsque le traitement est retenu, il est utile de commencer trois semaines avant le départ, afin de pouvoir changer si la tolérance est mauvaise. Tout trouble du sommeil, toute anxiété inhabituelle ou tout changement d'humeur impose d'arrêter et de consulter, y compris en voyage.",
         forms: "",
     },
     StarterDetail {
@@ -10639,7 +10660,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipaludique",
-        toxicity: "",
+        toxicity: "C'est l'un des médicaments les plus dangereux d'une armoire à pharmacie familiale : chez un jeune enfant, l'ingestion de quelques comprimés suffit à provoquer un arrêt cardiaque, par effet stabilisant de membrane, avec élargissement du QRS et un tableau réfractaire aux manœuvres habituelles. Le rangement hors de portée n'est pas une formule mais la principale mesure de sécurité, et toute ingestion accidentelle est une urgence vitale, y compris chez un enfant asymptomatique. Au long cours, dans les indications rhumatologiques, la rétinopathie est cumulative et irréversible : elle impose un examen ophtalmologique de référence puis un dépistage régulier, la dose quotidienne étant rapportée au poids.",
         forms: "",
     },
     StarterDetail {
@@ -10660,7 +10681,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipaludique",
-        toxicity: "",
+        toxicity: "L'absorption de la luméfantrine dépend étroitement des graisses : pris à jeun, le traitement est sous-dosé et l'accès palustre peut échouer à guérir — d'où l'obligation de prendre chaque dose avec un aliment gras ou une boisson lactée, y compris chez un patient nauséeux, chez qui il faut au moins un peu de lait. C'est la consigne qui décide du succès. Le schéma comporte six prises réparties sur trois jours, dont la deuxième huit heures après la première : ce calendrier se note avec le patient, car il ne suit aucun rythme intuitif. La molécule allonge l'intervalle QT et se cumule avec les autres allongeants. Un vomissement dans les deux heures impose de reprendre la dose.",
         forms: "",
     },
     StarterDetail {
@@ -10786,7 +10807,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparasitaire, toxoplasmose, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Antifolique : il bloque la dihydrofolate réductase, et sa toxicité hématologique — anémie mégaloblastique, neutropénie, thrombopénie — est la conséquence directe de son mécanisme. Elle se prévient par l'acide folinique, jamais par l'acide folique, qui ne franchit pas le blocage enzymatique et qui, de surcroît, réduirait l'efficacité antiparasitaire : cette distinction est la règle de dispensation de cette molécule. La numération se contrôle régulièrement pendant tout le traitement. L'association au cotrimoxazole, lui aussi antifolique, additionne le risque. Des réactions cutanées sévères, dont des syndromes de Lyell, ont été décrites et imposent l'arrêt devant toute éruption.",
         forms: "",
     },
     StarterDetail {
@@ -11353,7 +11374,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-ige, asthme sévère",
-        toxicity: "",
+        toxicity: "L'anaphylaxie est le risque qui commande les modalités d'administration : elle peut survenir non seulement dans les minutes suivant l'injection mais jusqu'à plusieurs heures après, et parfois après des mois de traitement bien toléré. D'où une surveillance après chaque injection, plus longue au début, et la nécessité que le patient sache reconnaître les signes et dispose de la conduite à tenir. Le traitement de fond inhalé se poursuit intégralement : le biologique ne remplace ni le corticoïde inhalé ni le plan d'action. La dose se calcule sur le poids et le taux d'immunoglobulines E avant traitement, et n'est donc transposable d'aucun patient à un autre. Une helminthiase préexistante se traite avant l'instauration.",
         forms: "",
     },
     StarterDetail {
@@ -11374,7 +11395,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-5, asthme sévère",
-        toxicity: "",
+        toxicity: "La règle qui prime : le traitement de fond inhalé se poursuit intégralement, un biologique de l'asthme sévère ne remplaçant ni le corticoïde inhalé ni le plan d'action, et son arrêt brutal exposerait à l'exacerbation. La molécule agit sur les éosinophiles, dont le rôle est aussi antiparasitaire : une helminthiase préexistante doit être traitée avant l'instauration, et un séjour en zone d'endémie mérite d'être signalé. Les réactions d'hypersensibilité, immédiates ou retardées, imposent une surveillance après les premières injections. Le rythme mensuel se note sur un calendrier, un retard de quelques jours ne se rattrapant pas par une double dose. Conservation au réfrigérateur, seringue sortie trente minutes avant.",
         forms: "",
     },
     StarterDetail {
@@ -11395,7 +11416,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-5r, asthme sévère",
-        toxicity: "",
+        toxicity: "Le schéma est ce qui se vérifie à chaque délivrance : les trois premières injections sont espacées de quatre semaines, puis le rythme passe à huit semaines — l'écart plus long n'est pas un oubli du prescripteur, et il inquiète les patients à qui on ne l'a pas expliqué. Comme pour tout biologique de l'asthme sévère, le traitement de fond inhalé se poursuit sans changement : c'est lui qui protège de la crise. La déplétion des éosinophiles étant ici quasi complète, une parasitose préexistante se traite avant l'instauration et un séjour en zone d'endémie se signale. Réactions d'hypersensibilité possibles, y compris retardées. Conservation au réfrigérateur, seringue sortie trente minutes avant l'injection.",
         forms: "",
     },
     StarterDetail {
@@ -11416,7 +11437,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-4, il-13, vigilance conduite",
-        toxicity: "",
+        toxicity: "Deux points qui lui sont propres. La conjonctivite est fréquente, surtout dans la dermatite atopique, parfois sévère avec kératite : tout œil rouge, douloureux ou une baisse de vision impose un avis ophtalmologique et non un collyre de comptoir. Et l'hyperéosinophilie, en règle transitoire et asymptomatique, mais qui peut dans de rares cas s'accompagner d'une vascularite à éosinophiles : une éruption, une neuropathie ou une aggravation respiratoire inexpliquées imposent un avis. La règle de sécurité majeure est ailleurs : le corticoïde inhalé ne s'arrête jamais parce que le biologique fonctionne, et c'est lui seul qui protège de la crise d'asthme. Le stylo se sort du réfrigérateur trente à quarante-cinq minutes avant.",
         forms: "",
     },
     StarterDetail {
@@ -11521,7 +11542,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antitussif opiacé, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La codéine n'agit qu'après transformation en morphine par le CYP2D6, et c'est là qu'est le danger : un métaboliseur ultrarapide, soit environ un Européen sur vingt, en fabrique beaucoup trop et se retrouve en surdosage morphinique à dose normale. Des décès d'enfants après amygdalectomie ont conduit à la contre-indiquer avant douze ans et chez la femme qui allaite, le nourrisson recevant la morphine par le lait. Chez l'adulte, la marge tient au respect des doses et à l'absence de tout autre dépresseur : alcool, benzodiazépine, autre opioïde. La forme sirop et la présentation en comprimés sont détournées, ce qui a motivé le passage à l'ordonnance obligatoire : une demande répétée sans prescription est une conversation à avoir, pas un refus sec.",
         forms: "",
     },
     StarterDetail {
@@ -11668,7 +11689,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "vasoconstricteur nasal, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Association d'un vasoconstricteur et d'un corticoïde : elle cumule les deux marges et la durée est ce qui les tient. Au-delà de quelques jours, la naphazoline provoque une rhinite médicamenteuse — le nez se rebouche dès la fin de l'effet, le patient augmente les pulvérisations, et le cercle s'installe ; c'est la principale raison pour laquelle ces produits se délivrent sur une durée courte et non renouvelable sans avis. Le passage systémique du vasoconstricteur n'est pas nul : palpitations, poussée tensionnelle et céphalées sont possibles, et l'association à un décongestionnant oral additionne les deux. Les contre-indications sont celles de la classe — glaucome à angle fermé, obstacle prostatique, hypertension sévère, antécédent d'accident vasculaire cérébral, IMAO, grossesse, enfant. Le corticoïde associé impose en outre d'écarter une infection locale, qu'il masquerait.",
         forms: "",
     },
     StarterDetail {
@@ -11983,7 +12004,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "gel ophtalmique, antiviral",
-        toxicity: "",
+        toxicity: "Gel ophtalmique de ganciclovir : le passage systémique est négligeable et la toxicité hématologique de la voie générale ne s'applique pas ici, ce qui est le point rassurant à connaître. La marge est locale et pratique : le gel s'applique dans le cul-de-sac conjonctival sans que l'embout touche l'œil ou les cils, un flacon est strictement personnel et se jette après le traitement, et les lentilles de contact sont retirées pendant toute la durée. Une vision trouble transitoire suit chaque application et compte pour la conduite. Une kératite herpétique traitée qui ne s'améliore pas en quelques jours, ou qui s'accompagne d'une baisse de vision ou d'une douleur intense, relève d'un avis ophtalmologique urgent.",
         forms: "",
     },
     StarterDetail {
@@ -12004,7 +12025,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-vegf intravitréen, dmla",
-        toxicity: "",
+        toxicity: "Comme pour tout anti-VEGF intravitréen, l'endophtalmie est la complication redoutée : douleur, rougeur, photophobie ou baisse de vision dans les jours suivant l'injection imposent un avis ophtalmologique en urgence le jour même, sans attendre le rendez-vous prévu. C'est la consigne à répéter à chaque injection. Une hypertonie oculaire transitoire est habituelle après le geste, et une déchirure ou un décollement de rétine se manifestent par des mouches volantes ou des éclairs lumineux. L'administration est exclusivement intravitréenne et en asepsie chirurgicale. L'espacement progressif des injections fait partie du protocole et un patient qui se croit guéri parce que les injections s'espacent doit être détrompé : l'arrêt fait rechuter.",
         forms: "",
     },
     StarterDetail {
@@ -12046,7 +12067,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "L'hyponatrémie est plus fréquente qu'avec la carbamazépine et peut atteindre un patient traité sur quatre, le plus souvent asymptomatique mais parfois révélée par une confusion, des nausées, des céphalées ou une recrudescence des crises — tableau que l'on attribue à l'épilepsie alors qu'il s'agit du traitement. Le natrémie se contrôle avant, puis dans les premiers mois, et à chaque signe d'appel, surtout chez le sujet âgé ou sous diurétique. Second point : l'allergie croisée avec la carbamazépine concerne environ un quart à un tiers des patients, si bien qu'un antécédent d'éruption sous carbamazépine n'autorise pas le passage à l'oxcarbazépine sans précaution. L'allèle HLA-B 15:02 expose au syndrome de Lyell chez les patients d'origine asiatique.",
         forms: "",
     },
     StarterDetail {
@@ -12067,7 +12088,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Dérivé sulfamidé : il expose aux réactions cutanées graves de cette famille et se contre-indique en cas d'allergie aux sulfamides. Demi-vie très longue, une soixantaine d'heures, si bien que l'équilibre n'est atteint qu'après deux semaines et qu'une toxicité apparue tardivement met autant de temps à disparaître. Trois toxicités propres : la lithiase rénale, qui impose de boire abondamment ; l'acidose métabolique par inhibition de l'anhydrase carbonique ; et l'oligohidrose avec coup de chaleur chez l'enfant, qui a motivé des alertes et impose une vigilance l'été. La perte de poids est constante et parfois problématique. Les troubles cognitifs et l'irritabilité sont dose-dépendants.",
         forms: "",
     },
     StarterDetail {
@@ -12088,7 +12109,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Même famille que le lévétiracétam et même toxicité psychique — irritabilité, agressivité, dépression, idées suicidaires — mais à une fréquence moindre, ce qui en fait l'option quand ces effets ont fait échouer le lévétiracétam. Le passage de l'un à l'autre se fait sans titration, à dose équivalente calculée par le neurologue. Contrairement au lévétiracétam, la molécule est métabolisée par le foie : la dose se réduit en cas d'insuffisance hépatique à tous les stades, alors qu'aucune adaptation n'est requise pour le rein. Elle augmente les concentrations du métabolite époxyde de la carbamazépine, ce qui peut faire apparaître une toxicité de celle-ci à dose inchangée. Arrêt progressif.",
         forms: "",
     },
     StarterDetail {
@@ -12109,7 +12130,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "La toxicité qui définit cette molécule est comportementale et grave : agressivité, hostilité, colère, idées et actes hétéro-agressifs, décrits jusqu'à des passages à l'acte, dose-dépendants et plus fréquents chez l'adolescent et en cas d'antécédent psychiatrique. Elle justifie une information explicite du patient et de l'entourage, à qui l'on demande de signaler tout changement de comportement, et elle impose l'arrêt. L'alcool majore nettement ces réactions et son association est à proscrire. La demi-vie de plus de cent heures commande le reste : la prise se fait le soir au coucher, la titration ne s'accélère jamais à moins de deux semaines par palier, et un effet indésirable met des semaines à disparaître après l'arrêt.",
         forms: "",
     },
     StarterDetail {
@@ -12130,7 +12151,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Une seule toxicité domine et elle est irréversible : un rétrécissement concentrique et définitif du champ visuel, qui atteint environ un tiers des patients traités au long cours, s'installe sans que le patient s'en aperçoive puisque la vision centrale est conservée, et ne régresse jamais à l'arrêt. C'est ce qui réserve la molécule aux épilepsies qui ont résisté à tout le reste et aux spasmes infantiles, où le bénéfice l'emporte. Elle impose un champ visuel avant l'instauration puis tous les six mois, et chez l'enfant trop jeune pour l'examen, une évaluation spécialisée adaptée. La prescription est restreinte et le suivi ophtalmologique n'est pas une formalité : c'est la condition de la poursuite du traitement.",
         forms: "",
     },
     StarterDetail {
@@ -12151,7 +12172,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, absences",
-        toxicity: "",
+        toxicity: "Molécule des absences et d'elles seules : elle ne couvre pas les crises tonicocloniques généralisées et peut même les favoriser, si bien qu'un patient qui en présente sous éthosuximide seul n'est pas en échec mais mal couvert, et relève d'une association. La toxicité propre est hématologique : leucopénie, agranulocytose et aplasie médullaire ont été décrites, ce qui impose une numération avant l'instauration puis régulièrement, et fait de toute fièvre, angine ou aphtose une raison de contrôler la numération avant tout le reste. Un syndrome lupique médicamenteux est possible. L'intolérance digestive et la somnolence sont fréquentes et dose-dépendantes, et se réduisent en fractionnant les prises.",
         forms: "",
     },
     StarterDetail {
@@ -12172,7 +12193,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "barbiturique antiépileptique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Zone thérapeutique étroite, de l'ordre de 15 à 40 mg/L, et demi-vie de 80 à 120 heures : l'équilibre n'est atteint qu'après deux à trois semaines et l'accumulation est lente, si bien qu'une sédation apparue tardivement n'est pas une intolérance mais un surdosage qui monte. C'est aussi l'inducteur enzymatique le plus puissant de la pharmacopée courante : il fait échouer une contraception orale — un dispositif intra-utérin ou une méthode non hormonale s'imposent —, effondre l'INR d'un antivitamine K puis le fait remonter dangereusement à l'arrêt, et diminue l'exposition d'un très grand nombre de traitements. Chez l'épileptique, l'arrêt brutal provoque un état de mal. Au long cours : ostéomalacie, anémie par carence en folates, maladie de Dupuytren.",
         forms: "",
     },
     StarterDetail {
@@ -12193,7 +12214,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique",
-        toxicity: "",
+        toxicity: "C'est le médicament type de la cinétique non linéaire : au-delà d'un certain seuil, les enzymes qui l'éliminent sont saturées et une petite augmentation de dose fait bondir la concentration de façon disproportionnée. Passer de 300 à 350 mg peut faire basculer un patient équilibré en surdosage. La zone thérapeutique est de 10 à 20 mg/L, et la clinique se lit dans l'ordre : nystagmus vers 20, ataxie et dysarthrie vers 30, somnolence puis coma au-delà de 40. Fortement lié à l'albumine, il a une fraction libre augmentée en cas d'hypoalbuminémie, d'insuffisance rénale ou de grossesse, si bien que la concentration totale rassure à tort. Inducteur enzymatique puissant. Au long cours : hypertrophie gingivale, hirsutisme, neuropathie, ostéomalacie.",
         forms: "",
     },
     StarterDetail {
@@ -12214,7 +12235,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, syndrome de dravet",
-        toxicity: "",
+        toxicity: "Toute sa toxicité passe par les autres médicaments : c'est un inhibiteur enzymatique puissant, et il est prescrit précisément avec les molécules qu'il inhibe. Il fait grimper le norclobazam, métabolite actif du clobazam, et le valproate, si bien que l'instauration s'accompagne d'une réduction programmée de leurs doses. La somnolence, l'ataxie et l'anorexie apparues après l'introduction du stiripentol ne sont donc en règle pas les siennes mais celles du clobazam devenu trop dosé, et la conduite est de réduire ce dernier, pas d'arrêter le stiripentol. La perte de poids chez un enfant déjà fragile impose une surveillance pondérale rapprochée, et la numération se contrôle, des neutropénies ayant été décrites.",
         forms: "",
     },
     StarterDetail {
@@ -12235,7 +12256,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique",
-        toxicity: "",
+        toxicity: "Toxicité hépatique dose-dépendante, nettement majorée en cas d'association au valproate, qui est la situation habituelle : les transaminases se contrôlent avant l'instauration, puis à un, trois et six mois, et après chaque augmentation de dose ; une élévation au-delà de trois fois la normale impose un avis. Deuxième point, mécanique et sous-estimé : la molécule augmente fortement le norclobazam, et la somnolence qui suit l'instauration est le plus souvent celle du clobazam devenu trop dosé, ce qui se corrige en réduisant celui-ci. Le reste est digestif — diarrhée, perte d'appétit, perte de poids — et dose-dépendant. La solution contient de l'huile de sésame, à connaître en cas d'allergie.",
         forms: "",
     },
     StarterDetail {
@@ -12256,7 +12277,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, crise convulsive",
-        toxicity: "",
+        toxicity: "La marge tient au choix de la seringue : les dosages sont préremplis par tranche d'âge et la couleur de l'étiquette est ce qui les distingue. Donner à un enfant de deux ans la seringue prévue pour un enfant de dix est un surdosage majeur chez un patient déjà en train de convulser. La dose se dépose entre la joue et la gencive, jamais avalée, et une seule dose est administrée : une seconde ne se donne que si le protocole écrit remis à la famille le prévoit. Le risque est la dépression respiratoire, majorée chez le nourrisson, l'obèse et l'enfant sous autre sédatif. Les secours s'appellent dans le même mouvement que l'administration, pas après avoir attendu de voir.",
         forms: "",
     },
     StarterDetail {
@@ -12277,7 +12298,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Toute la sécurité de cette molécule tient à la lenteur de sa titration : les réactions d'hypersensibilité médicamenteuse avec éosinophilie et atteinte systémique, dont un DRESS mortel au cours du développement, sont survenues avec des montées rapides, et le schéma actuel — début à 12,5 mg par jour et paliers espacés de deux semaines — a été construit pour les éviter. Il ne se raccourcit sous aucun prétexte, et une reprise après une interruption recommence la titration. Elle raccourcit l'intervalle QT, ce qui contre-indique la molécule en cas de syndrome du QT court. Elle augmente la phénytoïne et le phénobarbital, diminue la carbamazépine et la lamotrigine, et induit le CYP3A4 au point de faire échouer une contraception orale.",
         forms: "",
     },
     StarterDetail {
@@ -12298,7 +12319,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparkinsonien, l-dopa, vigilance conduite",
-        toxicity: "",
+        toxicity: "Association fixe de lévodopa, de carbidopa et d'entacapone : les trois doses varient ensemble, si bien qu'aucun composant ne s'ajuste séparément et qu'un changement de dosage change tout à la fois. L'entacapone augmente l'exposition à la lévodopa, ce qui peut démasquer ou aggraver des dyskinésies au moment du passage depuis une lévodopa seule. Elle provoque en outre une diarrhée parfois sévère et volontiers retardée de plusieurs semaines à plusieurs mois, qui n'est pas rattachée au traitement si l'on ne la connaît pas, et une coloration brun orangé des urines, attendue et sans gravité. L'arrêt brutal de l'ensemble expose au syndrome akinéto-hyperthermique. Prises à distance des repas riches en protéines.",
         forms: "",
     },
     StarterDetail {
@@ -12319,7 +12340,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparkinsonien, gel intestinal",
-        toxicity: "",
+        toxicity: "Le gel n'est qu'une partie du traitement : l'autre est un dispositif — sonde de gastrostomie prolongée dans le jéjunum et pompe portable — dont les complications font l'essentiel des incidents, obstruction, déplacement, arrachement, infection du site. Une interruption de la perfusion est une interruption de lévodopa et expose au syndrome akinéto-hyperthermique : c'est une urgence, pas une panne. La seconde toxicité est neurologique et propre à ce mode d'administration continu à forte dose : des polyneuropathies, liées à des carences en vitamines B12, B6 et en folates, imposent un dosage vitaminique avant l'instauration puis régulièrement, et toute paresthésie ou perte de force est à explorer sans attendre.",
         forms: "",
     },
     StarterDetail {
@@ -12382,7 +12403,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique, patch, vigilance conduite",
-        toxicity: "",
+        toxicity: "Les risques de la classe s'appliquent — troubles du contrôle des impulsions à rechercher par une question directe, accès de sommeil soudains, hypotension orthostatique, hallucinations chez le sujet âgé — avec deux particularités liées au dispositif. La chaleur augmente l'absorption transdermique : bain chaud, sauna, couverture chauffante, exposition solaire directe sur le patch ou fièvre élevée peuvent provoquer un surdosage. Et le support du patch contient de l'aluminium : il doit être retiré avant une IRM ou une cardioversion, sous peine de brûlure. Le site se change chaque jour et un patch n'est jamais coupé. L'arrêt se fait progressivement, un syndrome de sevrage dopaminergique étant possible.",
         forms: "",
     },
     StarterDetail {
@@ -12403,7 +12424,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique injectable, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Malgré son nom, il ne s'agit ni d'un opiacé ni d'un dérivé de la morphine, et l'ambiguïté doit être levée auprès du patient. Sa marge tient à deux choses. Les vomissements sont quasi constants sans prémédication : un antiémétique dopaminergique périphérique est prescrit avant l'instauration et doit être en place — le métoclopramide et les autres antiémétiques centraux sont à proscrire, ils antagoniseraient l'effet. Et l'hypotension orthostatique sévère à l'instauration impose une première administration surveillée. Les nodules et l'induration aux points d'injection sont fréquents et imposent une rotation rigoureuse des sites. Troubles du contrôle des impulsions et accès de sommeil, comme pour toute la classe.",
         forms: "",
     },
     StarterDetail {
@@ -12424,7 +12445,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique",
-        toxicity: "",
+        toxicity: "Agoniste dopaminergique : troubles du contrôle des impulsions et accès de sommeil brutaux sont les deux effets à rechercher activement, le premier par une question directe au patient et à l'entourage, le second parce qu'il conditionne l'aptitude à conduire. Chez le sujet âgé, chez qui il est souvent prescrit pour des indications vasculaires ou cognitives, les hallucinations, la confusion et l'hypotension orthostatique avec chutes sont fréquentes et doivent faire reconsidérer l'indication elle-même, le service rendu dans ces situations étant faible. Les troubles digestifs sont fréquents et la prise se fait en fin de repas. L'arrêt est progressif.",
         forms: "",
     },
     StarterDetail {
@@ -12445,7 +12466,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Dérivé de l'ergot de seigle, ce qui lui ajoute une toxicité que les agonistes non ergotés n'ont pas : valvulopathies cardiaques et fibroses pleuropulmonaires ou rétropéritonéales lors des traitements prolongés à forte dose, imposant une échocardiographie de référence et une surveillance. Second point, historique et important : l'indication d'inhibition de la lactation a été retirée après des accidents vasculaires graves du post-partum — infarctus, accidents vasculaires cérébraux, hypertension sévère —, et une ordonnance de bromocriptine pour couper la montée de lait est à signaler. Troubles du contrôle des impulsions et accès de sommeil, comme pour la classe. Hypotension orthostatique marquée à l'instauration.",
         forms: "",
     },
     StarterDetail {
@@ -12508,7 +12529,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiparkinsonien, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Élimination rénale sans métabolisme : chez le sujet âgé dont la clairance baisse, l'accumulation provoque confusion, hallucinations, insomnie et myoclonies, tableau volontiers pris pour une aggravation de la maladie ou une démence. La dose se calcule sur la clairance et la molécule est contre-indiquée en insuffisance rénale sévère. Le livédo réticulaire des membres inférieurs et les œdèmes malléolaires sont caractéristiques, bénins mais inquiétants s'ils ne sont pas annoncés, et réversibles à l'arrêt. Comme pour la lévodopa, l'arrêt brutal peut provoquer une aggravation sévère avec syndrome akinéto-hyperthermique. Des kératites et des opacités cornéennes imposent d'explorer tout trouble visuel.",
         forms: "",
     },
     StarterDetail {
@@ -12529,7 +12550,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticholinergique antiparkinsonien",
-        toxicity: "",
+        toxicity: "Anticholinergique central : ses effets contre-indiquent le glaucome à angle fermé et l'obstacle prostatique, et chez le sujet âgé la confusion, les troubles de mémoire, la rétention urinaire et la constipation sévère surviennent à des doses considérées comme faibles — il figure sur les listes de médicaments à éviter après soixante-quinze ans. Sa seconde particularité est addictologique : recherché pour ses effets psychodysleptiques et euphorisants à forte dose, il fait l'objet d'un mésusage et d'un trafic, ce qui rend les demandes anticipées, les ordonnances multiples et les quantités inhabituelles significatives au comptoir. L'arrêt brutal provoque un syndrome de sevrage cholinergique et une aggravation motrice : la décroissance est progressive.",
         forms: "",
     },
     StarterDetail {
@@ -12571,7 +12592,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan, vigilance conduite",
-        toxicity: "",
+        toxicity: "Mêmes contre-indications vasculaires que toute la classe — cardiopathie ischémique, angor de Prinzmetal, artériopathie, antécédent d'accident vasculaire cérébral, hypertension non contrôlée — et la même limite de fréquence : au-delà de dix jours de prise par mois, le traitement de crise devient la cause de la céphalée. Une particularité pratique : les formes orodispersible et pulvérisation nasale ne dispensent pas de l'absorption digestive pour la première et se distinguent par un délai d'action pour la seconde, utile en cas de vomissements ; elles ne se cumulent pas au cours d'une même crise. Vingt-quatre heures au moins entre un triptan et un dérivé de l'ergot, et pas deux triptans différents le même jour.",
         forms: "",
     },
     StarterDetail {
@@ -12592,7 +12613,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan",
-        toxicity: "",
+        toxicity: "Une interaction lui est propre et elle est fréquente : le propranolol, souvent prescrit en traitement de fond de la migraine, augmente nettement l'exposition au rizatriptan, ce qui impose de réduire la dose et de respecter un intervalle entre les deux prises — l'association migraineuse par excellence est donc précisément celle qu'il faut vérifier. Les contre-indications vasculaires sont celles de la classe : cardiopathie ischémique, angor de Prinzmetal, artériopathie, antécédent d'accident vasculaire cérébral, hypertension non contrôlée. La limite de dix jours de prise par mois vaut ici comme ailleurs, sous peine de céphalée par abus médicamenteux. Vingt-quatre heures au moins entre un triptan et un dérivé de l'ergot.",
         forms: "",
     },
     StarterDetail {
@@ -12613,7 +12634,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan",
-        toxicity: "",
+        toxicity: "Métabolisé par le CYP3A4, ce qui le distingue des autres triptans : les inhibiteurs puissants — kétoconazole, itraconazole, clarithromycine, ritonavir, néfazodone — sont contre-indiqués, et une ordonnance associant l'un d'eux à l'élétriptan est à corriger. Un délai d'au moins soixante-douze heures est requis après un tel traitement. Pour le reste, les contre-indications vasculaires sont celles de la classe : cardiopathie ischémique, angor de Prinzmetal, artériopathie, antécédent d'accident vasculaire cérébral, hypertension non contrôlée. Et la même règle de fréquence : au-delà de dix jours de prise par mois, le traitement de crise entretient la céphalée qu'il soulage.",
         forms: "",
     },
     StarterDetail {
@@ -12634,7 +12655,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan",
-        toxicity: "",
+        toxicity: "Triptan à demi-vie longue, environ six heures, ce qui lui donne un délai d'action plus lent mais un taux de récidive de la crise plus faible : il convient aux migraines longues et récidivantes plutôt qu'aux crises brutales, et cette différence explique qu'un patient déçu par sa lenteur ne soit pas forcément en échec. Les contre-indications vasculaires sont celles de la classe — cardiopathie ischémique, angor de Prinzmetal, artériopathie, antécédent d'accident vasculaire cérébral, hypertension non contrôlée. La dose est plafonnée et la limite de dix jours de prise par mois s'applique, au-delà de laquelle la céphalée par abus médicamenteux s'installe. La dose se réduit en cas d'insuffisance rénale ou hépatique.",
         forms: "",
     },
     StarterDetail {
@@ -12655,7 +12676,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan, vigilance conduite",
-        toxicity: "",
+        toxicity: "Profil de tolérance parmi les meilleurs de la classe, avec peu de sensations d'oppression ou de picotements, ce qui en fait une option chez un patient que ces effets ont fait renoncer à un autre triptan — mais la tolérance subjective ne modifie pas les contre-indications, qui restent vasculaires : cardiopathie ischémique, angor de Prinzmetal, artériopathie, antécédent d'accident vasculaire cérébral, hypertension non contrôlée. La limite de dix jours de prise par mois s'applique, au-delà de laquelle le traitement de crise entretient la céphalée. La dose se réduit en cas d'insuffisance rénale ou hépatique sévère. Vingt-quatre heures au moins entre un triptan et un dérivé de l'ergot.",
         forms: "",
     },
     StarterDetail {
@@ -12676,7 +12697,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan, générique, vigilance conduite",
-        toxicity: "",
+        toxicity: "C'est le triptan dont la demi-vie est de loin la plus longue, environ vingt-six heures : l'action s'installe lentement mais la protection dure, ce qui explique son emploi dans la migraine cataméniale en prise courte et programmée autour des règles plutôt qu'en traitement de crise classique. Un patient qui en attend un soulagement en une demi-heure sera déçu à tort. Les contre-indications vasculaires sont celles de la classe : cardiopathie ischémique, angor de Prinzmetal, artériopathie, antécédent d'accident vasculaire cérébral, hypertension non contrôlée. La longue demi-vie n'exempte pas de la règle des dix jours de prise par mois. Vingt-quatre heures au moins avec un dérivé de l'ergot.",
         forms: "",
     },
     StarterDetail {
@@ -12865,7 +12886,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunomodulateur, sep",
-        toxicity: "",
+        toxicity: "Une réaction très particulière doit être annoncée avant la première injection, faute de quoi elle sera vécue comme un accident cardiaque : dans les minutes qui suivent une injection, chez environ un patient sur six, surviennent oppression thoracique, bouffée vasomotrice, palpitations, angoisse et essoufflement, qui cèdent spontanément en quelques minutes et sont sans gravité. Elle peut survenir à n'importe quel moment du traitement, même après des années. La lipoatrophie aux points d'injection est en revanche définitive, ce qui rend l'alternance rigoureuse des sites essentielle et non cosmétique. La molécule n'est pas immunosuppressive : elle n'expose ni aux infections opportunistes ni à la LEMP, ce qui la distingue du reste de la liste.",
         forms: "",
     },
     StarterDetail {
@@ -12886,7 +12907,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunomodulateur, sep, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le syndrome pseudo-grippal des premières semaines — fièvre, frissons, courbatures dans les heures suivant l'injection — est la première cause d'abandon, et il se prévient : injection le soir au coucher, paracétamol ou ibuprofène pris avant, titration progressive des doses les premières semaines. L'annoncer et l'organiser change tout. Les toxicités à surveiller sont biologiques et silencieuses : cytolyse hépatique, parfois sévère, et cytopénies, imposant transaminases et numération avant, à un et trois mois, puis régulièrement. La dépression et les idées suicidaires justifient une question directe au renouvellement, la sclérose en plaques y exposant déjà. Réactions et nécroses aux points d'injection.",
         forms: "",
     },
     StarterDetail {
@@ -12907,7 +12928,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunomodulateur, sep, surveillance biologique",
-        toxicity: "",
+        toxicity: "Injection intramusculaire hebdomadaire : le syndrome pseudo-grippal est plus marqué qu'avec les formes sous-cutanées plus fréquentes, mais il ne survient qu'une fois par semaine, ce qui permet de l'organiser — injection le soir, antipyrétique pris avant, et un lendemain sans obligations les premières semaines. Il s'atténue en quelques mois. La surveillance est biologique : transaminases et numération avant l'instauration puis régulièrement, des cytolyses sévères et des cytopénies ayant été décrites. La dépression se recherche activement à chaque renouvellement. La voie étant intramusculaire, la technique diffère de celle des autres interférons et se remontre à tout changement de spécialité.",
         forms: "",
     },
     StarterDetail {
@@ -12928,7 +12949,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunomodulateur, sep, surveillance biologique",
-        toxicity: "",
+        toxicity: "Injection sous-cutanée un jour sur deux, ce qui donne à deux problèmes le temps de s'installer. Le syndrome pseudo-grippal, d'abord, plus fréquent du fait du rythme : il se prévient par une injection le soir, un antipyrétique avant et une titration progressive. Les réactions aux points d'injection ensuite, qui vont ici jusqu'à la nécrose cutanée, complication propre à cette forme : l'alternance rigoureuse des sites, la sortie du produit du réfrigérateur avant l'injection et l'inspection régulière de la peau ne sont pas des détails, et toute lésion qui ne cicatrise pas se montre au médecin. Transaminases et numération se surveillent, la dépression se recherche à chaque renouvellement.",
         forms: "",
     },
     StarterDetail {
@@ -12949,7 +12970,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunomodulateur, sep",
-        toxicity: "",
+        toxicity: "La lymphopénie est la toxicité qui compte : profonde et prolongée, elle expose à la leucoencéphalopathie multifocale progressive, décrite chez des patients dont les lymphocytes étaient restés bas longtemps. La numération se contrôle avant l'instauration puis tous les trois mois, et une lymphopénie persistante impose de reconsidérer le traitement — c'est une surveillance chiffrée qui ne se saute pas. Les bouffées vasomotrices et les troubles digestifs des premières semaines ne sont pas graves mais font arrêter beaucoup de patients : ils s'atténuent après un mois, se réduisent en prenant les gélules au cours d'un repas, et l'aspirine à faible dose avant la prise limite les bouffées. Les gélules ne s'ouvrent pas.",
         forms: "",
     },
     StarterDetail {
@@ -12970,7 +12991,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunomodulateur, sep, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Tératogène, et avec une difficulté que les autres n'ont pas : le cycle entérohépatique fait persister la molécule jusqu'à deux ans après l'arrêt, si bien qu'un simple arrêt ne suffit pas à autoriser une grossesse. Il existe une procédure d'élimination accélérée par cholestyramine ou charbon activé sur onze jours, suivie d'un contrôle des concentrations, et elle s'applique aussi en cas de grossesse imprévue ou d'effet indésirable grave — c'est l'information essentielle de cette fiche, y compris pour l'homme. L'hépatotoxicité impose des transaminases avant puis mensuellement les six premiers mois. L'hypertension artérielle, l'alopécie diffuse et la diarrhée sont fréquentes ; la numération se surveille.",
         forms: "",
     },
     StarterDetail {
@@ -12991,7 +13012,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "modulateur s1p, sep, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La première dose est un acte médical surveillé et non une prise à domicile : bradycardie et blocs auriculoventriculaires surviennent dans les heures qui suivent, imposant un électrocardiogramme avant, six heures de surveillance avec contrôle horaire du pouls et de la pression, et une prolongation si la fréquence reste basse. La même surveillance s'applique après toute interruption dépassant le délai prévu — un patient qui reprend après une rupture n'est pas un patient en cours de traitement. Ensuite : lymphopénie et infections, œdème maculaire à dépister par un examen ophtalmologique vers le troisième mois, LEMP décrite, et sérologie varicelle avec vaccination préalable si négative. Tératogène, contraception impérative, rebond sévère à l'arrêt.",
         forms: "",
     },
     StarterDetail {
@@ -13012,7 +13033,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, sep, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Traitement par cures courtes réparties sur deux années, dont l'effet dure ensuite plusieurs années : la logique n'est pas celle d'un traitement continu, et un patient qui ne prend rien n'est pas un patient qui a arrêté — le comprendre évite les reprises inappropriées. La lymphopénie est profonde et attendue, maximale quelques mois après chaque cure : la numération conditionne le déclenchement de la cure suivante et sa poursuite. Le zona est fréquent, une prophylaxie étant discutée en cas de lymphopénie sévère, et la sérologie varicelle se vérifie avant. Un signal de cancers a conduit à recommander un dépistage à jour. Contraception impérative pendant le traitement et six mois après, chez la femme comme chez l'homme.",
         forms: "",
     },
     StarterDetail {
@@ -13033,7 +13054,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticorps monoclonal, sep",
-        toxicity: "",
+        toxicity: "Une seule complication commande toute la conduite : la leucoencéphalopathie multifocale progressive, infection cérébrale par le virus JC, souvent mortelle ou lourdement séquellaire. Le risque se stratifie sur trois éléments — sérologie JC et indice, durée de traitement au-delà de deux ans, immunosuppression antérieure — et cette stratification décide de la poursuite. La surveillance repose sur des IRM régulières et sur la sérologie répétée. Tout signe neurologique nouveau, en particulier cognitif, visuel ou comportemental, est une LEMP jusqu'à preuve du contraire et non une poussée : la distinction se fait en urgence. À l'arrêt, un rebond sévère de la maladie est possible et impose d'organiser le relais.",
         forms: "",
     },
     StarterDetail {
@@ -13054,7 +13075,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-cd20, sep, surveillance biologique",
-        toxicity: "",
+        toxicity: "Les réactions liées à la perfusion sont fréquentes et concentrées sur la première administration, ce qui impose la prémédication et une surveillance prolongée après la fin. Au long cours, la déplétion des lymphocytes B entraîne une hypogammaglobulinémie progressive qui explique les infections répétées : le dosage des immunoglobulines fait partie du suivi, et un taux effondré fait reconsidérer la poursuite. La sérologie de l'hépatite B est contrôlée avant l'instauration, une réactivation pouvant être fulminante, et le calendrier vaccinal doit être à jour au moins six semaines avant, les vaccins vivants étant ensuite contre-indiqués. Un signal de cancer du sein justifie de maintenir le dépistage.",
         forms: "",
     },
     StarterDetail {
@@ -13075,7 +13096,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-cd20, sep, surveillance biologique",
-        toxicity: "",
+        toxicity: "Même classe que l'ocrélizumab et mêmes conséquences immunologiques, mais en injection sous-cutanée mensuelle faite par le patient, ce qui déplace la vigilance vers l'officine : la sérologie de l'hépatite B doit avoir été contrôlée avant l'instauration, le calendrier vaccinal mis à jour avant, et les vaccins vivants sont ensuite contre-indiqués. L'hypogammaglobulinémie s'installe progressivement et se surveille par le dosage des immunoglobulines, les infections répétées en étant la traduction clinique. Les réactions systémiques après injection sont surtout marquées lors des premières administrations. Toute infection en cours fait décaler l'injection, et une fièvre inexpliquée s'évalue plutôt que de s'attendre.",
         forms: "",
     },
     StarterDetail {
@@ -13096,7 +13117,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "amélioration de la marche, sep",
-        toxicity: "",
+        toxicity: "Sa marge est étroite et le mécanisme du danger est simple : le blocage des canaux potassiques abaisse le seuil épileptogène, et les crises convulsives sont dose-dépendantes. Deux conséquences absolues. La dose ne se double jamais et un comprimé oublié ne se rattrape pas — deux comprimés pris ensemble sont un surdosage, et le rythme est de un comprimé toutes les douze heures, sans exception. Et l'élimination étant rénale, la molécule est contre-indiquée dès l'insuffisance rénale légère : la clairance se calcule avant l'instauration et se recontrôle, une dégradation faisant basculer un patient stable en zone toxique. Antécédent de convulsions : contre-indication. Le comprimé à libération prolongée s'avale entier.",
         forms: "",
     },
     StarterDetail {
@@ -13180,7 +13201,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "narcolepsie, cataplexie",
-        toxicity: "",
+        toxicity: "C'est un dépresseur respiratoire central puissant, et sa marge se joue sur une seule association : l'alcool et tout autre dépresseur du système nerveux central — benzodiazépines, opioïdes, hypnotiques — pris le soir de la prise peuvent provoquer une dépression respiratoire mortelle. L'interdiction est absolue et se répète à chaque délivrance. La molécule est par ailleurs identique au produit détourné sous le nom d'acide gamma-hydroxybutyrique, d'où son statut de stupéfiant, l'ordonnance sécurisée, la délivrance limitée à vingt-huit jours et l'inscription au registre. Les deux prises se font au lit, l'endormissement survenant en quelques minutes. Un syndrome d'apnées du sommeil non traité et une insuffisance respiratoire majorent le risque.",
         forms: "",
     },
     StarterDetail {
@@ -13306,7 +13327,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur multimodal",
-        toxicity: "",
+        toxicity: "Les nausées sont l'effet indésirable dominant, précoces, dose-dépendantes et souvent maximales la première ou la deuxième semaine avant de s'atténuer : les annoncer et proposer la prise au cours d'un repas évite un arrêt prématuré chez un patient qui aurait répondu. Le profil sérotoninergique impose les précautions de la classe : risque de syndrome sérotoninergique en association aux triptans, au tramadol, au linézolide ou au millepertuis, risque hémorragique majoré en association aux anticoagulants, aux antiagrégants et aux AINS, et hyponatrémie chez le sujet âgé. Comme tout antidépresseur, le risque suicidaire justifie une vigilance renforcée les premières semaines et à chaque changement de dose.",
         forms: "",
     },
     StarterDetail {
@@ -13327,7 +13348,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur mélatoninergique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa surveillance hépatique n'est pas une précaution parmi d'autres, c'est la condition de la prescription : des atteintes hépatiques graves, dont des insuffisances hépatiques, ont conduit à imposer un dosage des transaminases avant l'instauration, puis à trois, six, douze et vingt-quatre semaines, et après chaque augmentation de dose. Ce calendrier est souvent perdu de vue et le comptoir est bien placé pour le rappeler. Le traitement est contre-indiqué en cas d'insuffisance hépatique et chez le patient de plus de soixante-quinze ans. Toute asthénie inhabituelle, nausée, douleur abdominale, urine foncée ou coloration jaune des yeux impose l'arrêt et un dosage immédiat. L'absence de syndrome de sevrage à l'arrêt est en revanche un avantage réel de cette molécule.",
         forms: "",
     },
     StarterDetail {
@@ -13348,7 +13369,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa marge n'est pas pharmacologique mais addictologique : un mésusage massif, avec dépendance et prises à des doses très supérieures aux doses thérapeutiques, a conduit à l'inscrire sur ordonnance sécurisée avec une délivrance limitée à vingt-huit jours et sans chevauchement. Au comptoir, ce sont les demandes anticipées, les ordonnances multiples et les quantités qui font le repérage, et une dépendance installée ne se règle pas par un refus sec mais par un contact avec le prescripteur. L'arrêt brutal après usage prolongé provoque un syndrome de sevrage. Des hépatites ont été décrites. Comme tout antidépresseur, la surveillance du risque suicidaire est renforcée en début de traitement.",
         forms: "",
     },
     StarterDetail {
@@ -13390,7 +13411,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur tricyclique",
-        toxicity: "",
+        toxicity: "La marge d'un antidépresseur tricyclique se mesure au fait qu'une intoxication volontaire est souvent mortelle, et qu'elle survient précisément dans la population traitée : l'effet stabilisant de membrane provoque un élargissement du QRS, des troubles du rythme, des convulsions et un coma, et la dose létale est de l'ordre de quelques jours de traitement. La quantité délivrée est donc un paramètre de sécurité, et les périodes de risque suicidaire justifient des délivrances fractionnées. En usage normal, les effets anticholinergiques dominent — bouche sèche, constipation, rétention urinaire, confusion chez le sujet âgé — et contre-indiquent la molécule en cas de glaucome à angle fermé ou d'obstacle prostatique. Hypotension orthostatique et troubles de conduction imposent un électrocardiogramme avant.",
         forms: "",
     },
     StarterDetail {
@@ -13432,7 +13453,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidépresseur tricyclique",
-        toxicity: "",
+        toxicity: "Tricyclique parmi les plus sédatifs et les plus anticholinergiques, ce qui déplace ses risques vers le sujet âgé : confusion, rétention urinaire, constipation sévère, glaucome aigu par fermeture de l'angle, chutes — il figure sur les listes de médicaments à éviter après soixante-quinze ans. Comme tous les tricycliques, il est cardiotoxique en surdosage, avec effet stabilisant de membrane, élargissement du QRS, convulsions et troubles du rythme : la quantité délivrée est un paramètre de sécurité chez un patient à risque suicidaire. Un électrocardiogramme précède l'instauration chez le sujet âgé ou cardiaque. L'arrêt se fait progressivement, un arrêt brutal provoquant un syndrome de sevrage cholinergique.",
         forms: "",
     },
     StarterDetail {
@@ -13453,7 +13474,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique typique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Phénothiazine aliphatique : peu d'effets extrapyramidaux comparée aux butyrophénones, mais tout le reste. La photosensibilisation est sévère et immédiate, avec coups de soleil majeurs sur exposition brève, et au long cours une pigmentation ardoisée de la peau exposée et des dépôts cornéens et cristalliniens. La protection solaire n'est donc pas un conseil de confort mais une consigne du traitement. L'hypotension orthostatique et la sédation dominent l'instauration, les effets anticholinergiques exposent le sujet âgé au glaucome aigu, à la rétention urinaire et à la confusion, et le seuil épileptogène est abaissé. Des hépatites cholestatiques sont décrites. Allongement du QT dose-dépendant.",
         forms: "",
     },
     StarterDetail {
@@ -13474,7 +13495,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique sédatif, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "C'est le plus hypotenseur des neuroleptiques, et c'est ce qui limite sa dose bien avant tout effet psychiatrique : hypotension orthostatique marquée dès les premières prises, avec syncopes et chutes, majorée chez le sujet âgé, déshydraté ou déjà sous antihypertenseur. La montée est donc lente et le lever prudent, expliqué au patient et à l'entourage. La sédation est profonde et recherchée dans certaines indications, notamment en soins palliatifs, mais elle s'additionne à celle de tout opioïde ou benzodiazépine associés. Effets anticholinergiques marqués — rétention urinaire, glaucome aigu, constipation, confusion — et allongement du QT. Photosensibilisation comme pour toute phénothiazine.",
         forms: "",
     },
     StarterDetail {
@@ -13495,7 +13516,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique sédatif, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Un piège tient à sa place dans les habitudes de prescription : très employée à faible dose comme anxiolytique ou sédatif, la cyamémazine reste un neuroleptique, et le patient ignore souvent qu'il en prend un. Elle expose donc, même à petite dose et même chez quelqu'un qui n'a aucune maladie psychiatrique, au syndrome extrapyramidal, à la dyskinésie tardive du traitement prolongé, à l'allongement du QT et, chez le sujet âgé dément, à la surmortalité de la classe. La sédation et l'hypotension orthostatique dominent. Comme pour toute phénothiazine, la photosensibilisation est réelle. Un renouvellement au long cours mérite la question de l'indication et de la durée.",
         forms: "",
     },
     StarterDetail {
@@ -13516,7 +13537,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Abaisse le seuil épileptogène plus nettement que la plupart des antipsychotiques, ce qui impose la prudence chez l'épileptique, l'alcoolique en sevrage et le patient sous autre molécule convulsivante. La solution buvable se dose en gouttes et c'est là que se font les erreurs : la correspondance gouttes-milligrammes se vérifie à chaque délivrance, une confusion entre gouttes et millilitres multipliant la dose. Les effets extrapyramidaux sont fréquents et la sédation marquée, avec hypotension orthostatique à l'instauration. Comme toute la classe, il expose au syndrome malin des neuroleptiques, dont la fièvre inexpliquée avec rigidité et sueurs est le signal, et à la surmortalité chez le sujet âgé dément.",
         forms: "",
     },
     StarterDetail {
@@ -13537,7 +13558,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux formes qui n'ont pas la même temporalité et qu'il ne faut pas confondre : la forme orale, ajustable au jour le jour, et la forme retard injectable, dont l'effet — bénéfique comme indésirable — s'étale sur deux à quatre semaines et ne se retire pas. Un syndrome extrapyramidal apparu après une injection retard ne se corrige donc pas en arrêtant : il se traite et se subit jusqu'à l'élimination. À faible dose, la molécule a un effet désinhibiteur qui peut réactiver une anxiété ou une agitation chez certains patients. Le reste est celui de la classe : dyskinésie tardive au long cours, allongement du QT, syndrome malin, surmortalité chez le sujet âgé dément.",
         forms: "",
     },
     StarterDetail {
@@ -13558,7 +13579,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique, vigilance conduite",
-        toxicity: "",
+        toxicity: "La gamme comporte trois présentations dont la durée d'action va de quelques jours à plusieurs semaines, et les confondre est l'erreur grave de cette molécule : la forme orale s'ajuste au quotidien, la forme à action semi-prolongée couvre deux à trois jours et sert à la crise, la forme retard couvre deux à quatre semaines. Administrer une forme retard là où une semi-prolongée était prévue expose le patient à des semaines d'un effet dont on ne peut plus rien retirer. La vérification porte donc sur le nom complet de la spécialité, jamais sur la seule dénomination. Sédation marquée, effets extrapyramidaux fréquents, hypotension orthostatique. Syndrome malin, dyskinésie tardive et allongement du QT comme pour la classe.",
         forms: "",
     },
     StarterDetail {
@@ -13579,7 +13600,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Molécule à double visage selon la dose : à faible dose elle désinhibe et est prescrite comme antidépresseur d'appoint, à forte dose elle devient antipsychotique. Un patient traité pour une somatisation ignore donc souvent qu'il prend un neuroleptique, et s'expose pourtant au syndrome extrapyramidal et à la dyskinésie tardive. L'hyperprolactinémie est constante et marquée — aménorrhée, galactorrhée, gynécomastie, troubles sexuels — et c'est un motif d'arrêt fréquent que le patient n'évoque pas de lui-même. L'élimination est rénale, ce qui impose une réduction de dose chez l'insuffisant rénal et le sujet âgé, où l'accumulation donne sédation et syndrome parkinsonien. Allongement du QT dose-dépendant.",
         forms: "",
     },
     StarterDetail {
@@ -13600,7 +13621,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Prescrit surtout chez le sujet âgé agité et dans le sevrage alcoolique, c'est-à-dire précisément dans les populations les plus exposées à sa toxicité. L'élimination est rénale et non métabolique : la dose se réduit selon la clairance, et l'accumulation chez un insuffisant rénal âgé donne un syndrome parkinsonien qui sera pris pour une maladie neurodégénérative si personne ne fait le lien. Les effets extrapyramidaux surviennent à des doses considérées comme faibles chez ces patients. L'allongement du QT est réel et se cumule avec les hypokaliémies fréquentes du sevrage alcoolique. Chez le sujet âgé dément, la surmortalité de la classe s'applique : la durée doit être la plus courte possible et réévaluée.",
         forms: "",
     },
     StarterDetail {
@@ -13621,7 +13642,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique retard, surveillance biologique",
-        toxicity: "",
+        toxicity: "Forme retard mensuelle : ce qui est injecté ne se retire pas, et un effet indésirable — syndrome extrapyramidal, akathisie, hyperprolactinémie — dure des semaines quoi qu'on fasse. D'où la règle de ne l'instaurer qu'après avoir vérifié la tolérance de la forme orale. L'initiation est un schéma particulier, deux doses de charge dans le deltoïde à une semaine d'intervalle, et non deux injections mensuelles rapprochées : c'est l'erreur à repérer sur une ordonnance de mise en route. L'injection est strictement intramusculaire, jamais intraveineuse. Le métabolite étant éliminé par le rein, la forme retard n'est pas utilisable en dessous d'une clairance de 50 mL/min. L'hyperprolactinémie est marquée.",
         forms: "",
     },
     StarterDetail {
@@ -13642,7 +13663,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa marge est alimentaire avant d'être psychiatrique : l'absorption chute de plus de moitié à jeun, si bien qu'un comprimé pris sans repas d'au moins 350 kilocalories est un comprimé sous-dosé, et qu'une rechute sous lurasidone est d'abord une question de prise alimentaire avant d'être un échec thérapeutique. C'est le point à répéter à chaque délivrance. Le métabolisme passe par le CYP3A4 : les inhibiteurs puissants et les inducteurs puissants sont contre-indiqués, et le pamplemousse est à proscrire. L'akathisie et les effets extrapyramidaux sont les effets dose-dépendants dominants, le profil métabolique étant en revanche parmi les plus favorables de la classe. Dose réduite en cas d'insuffisance rénale ou hépatique.",
         forms: "",
     },
     StarterDetail {
@@ -13663,7 +13684,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique atypique, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa pharmacocinétique est unique dans la classe et change la lecture de tout : les métabolites actifs ont une demi-vie de une à trois semaines, si bien que l'état d'équilibre n'est atteint qu'après plusieurs semaines. Conséquences pratiques : un effet indésirable peut apparaître longtemps après l'instauration ou après une augmentation, une adaptation de dose ne se juge pas avant plusieurs semaines, et l'arrêt ne fait pas disparaître le produit avant un mois ou davantage. L'akathisie est l'effet le plus fréquent et souvent retardé, ce qui la fait attribuer à la maladie plutôt qu'au traitement. Comme pour les autres agonistes partiels, les troubles du contrôle des impulsions se recherchent par une question directe.",
         forms: "",
     },
     StarterDetail {
@@ -13705,7 +13726,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
-        toxicity: "",
+        toxicity: "Prodrogue transformée en nordazépam, dont la demi-vie très longue commande tout : l'équilibre n'est atteint qu'après une à deux semaines, et les concentrations continuent de monter bien après que la dose a été jugée bien tolérée. La sédation, la confusion et les chutes du sujet âgé apparaissent donc à retardement. La transformation en nordazépam dépend de l'acidité gastrique : sous inhibiteur de la pompe à protons, elle est ralentie. Seul, le surdosage donne une somnolence réveillable ; avec de l'alcool, un opioïde ou un autre sédatif, il tue par dépression respiratoire. Arrêt toujours progressif, le sevrage brutal pouvant aller jusqu'à la convulsion.",
         forms: "",
     },
     StarterDetail {
@@ -13726,7 +13747,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine",
-        toxicity: "",
+        toxicity: "C'est le métabolite actif commun à plusieurs benzodiazépines, administré directement : demi-vie de trente à cent heures, davantage chez le sujet âgé et l'insuffisant hépatique. L'accumulation est donc la règle et non l'exception, et l'effet indésirable typique n'est pas la somnolence du premier soir mais la confusion et la chute de la troisième semaine. Prescrire ou renouveler cette molécule chez une personne âgée revient à accepter cette accumulation. Comme pour toute la classe, l'association à l'alcool, à un opioïde ou à un autre dépresseur est ce qui tue, et l'arrêt brutal après plusieurs semaines expose au syndrome de sevrage.",
         forms: "",
     },
     StarterDetail {
@@ -13747,7 +13768,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
-        toxicity: "",
+        toxicity: "Son métabolite actif a l'une des demi-vies les plus longues de la classe, de l'ordre de trois jours, ce qui donne un effet très étalé et une accumulation certaine en traitement continu. L'avantage apparent — pas de rebond entre les prises — se paie par une sédation résiduelle diurne et par des chutes chez le sujet âgé, plusieurs semaines après une instauration bien supportée. La longue demi-vie rend aussi le sevrage trompeusement facile au début et retarde les signes de manque de plusieurs jours après l'arrêt. Seul, le surdosage endort ; associé à l'alcool ou à un opioïde, il tue par dépression respiratoire.",
         forms: "",
     },
     StarterDetail {
@@ -13768,7 +13789,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, vigilance conduite",
-        toxicity: "",
+        toxicity: "Demi-vie courte, de l'ordre de quatre heures, sans métabolite actif significatif : peu d'accumulation, ce qui en fait une des benzodiazépines les moins mal tolérées chez le sujet âgé. Le revers est constant : l'effet s'épuise entre deux prises, avec un rebond anxieux de fin de dose que le patient interprète comme une aggravation de son anxiété et qui le conduit à rapprocher les prises. C'est le mécanisme d'installation de la dépendance sur les molécules courtes, et il se repère à la fréquence des renouvellements. L'arrêt, malgré la demi-vie courte, se fait par paliers étalés. Association à l'alcool ou à un opioïde : dépression respiratoire.",
         forms: "",
     },
     StarterDetail {
@@ -13810,7 +13831,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypnotique benzodiazépinique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Hypnotique dont la durée d'action déborde la nuit : demi-vie d'environ huit heures et métabolite actif, d'où une sédation résiduelle au réveil, avec un temps de réaction allongé qui compte pour la conduite du lendemain matin et pour le risque de chute au lever chez le sujet âgé. Le patient, lui, attribue cette lourdeur au mauvais sommeil qu'il vient de passer. Comme tout hypnotique, la durée de prescription est limitée à quatre semaines, décroissance comprise, et cette limite est la marge de sécurité de la molécule. Association à l'alcool ou à un opioïde : dépression respiratoire. L'arrêt après usage prolongé provoque une insomnie de rebond qui n'est pas la rechute de l'insomnie initiale.",
         forms: "",
     },
     StarterDetail {
@@ -13831,7 +13852,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypnotique benzodiazépinique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Demi-vie d'environ dix heures et absence de métabolite actif : le profil le plus propre des hypnotiques benzodiazépiniques, mais dix heures couvrent encore le début de matinée, et la vigilance résiduelle au réveil reste un risque pour la conduite et pour la chute au lever du sujet âgé. La limite de quatre semaines, décroissance comprise, est ce qui tient la molécule ; au-delà, la tolérance à l'effet hypnotique s'installe et l'insomnie de rebond à l'arrêt entretient la prescription. Seul, le surdosage donne une somnolence réveillable ; avec de l'alcool ou un opioïde, il tue par dépression respiratoire.",
         forms: "",
     },
     StarterDetail {
@@ -13852,7 +13873,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypnotique benzodiazépinique",
-        toxicity: "",
+        toxicity: "La demi-vie très courte, deux à quatre heures, produit deux effets caractéristiques et sévères. L'amnésie antérograde y est plus marquée qu'avec toute autre benzodiazépine : le patient agit, parle, se lève, et n'en garde aucun souvenir. Et l'effet s'épuise avant la fin de la nuit, d'où un réveil précoce avec anxiété de rebond, que le patient corrige en reprenant un comprimé — mécanisme direct d'installation de la dépendance. La dose maximale est basse et ne se dépasse pas, la durée est limitée à deux semaines dans l'insomnie transitoire, et ces limites sont la seule marge dont dispose la molécule. Association à l'alcool : amnésie et désinhibition majorées.",
         forms: "",
     },
     StarterDetail {
@@ -13873,7 +13894,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypnotique antihistaminique, vigilance conduite",
-        toxicity: "",
+        toxicity: "Vendu sans ordonnance, ce qui fait de l'officine le seul filtre. Ce n'est pas une benzodiazépine mais un antihistaminique de première génération, et sa toxicité est anticholinergique : bouche sèche, rétention urinaire, constipation, confusion, et surtout glaucome aigu par fermeture de l'angle et rétention aiguë sur obstacle prostatique, deux urgences qui contre-indiquent la molécule. Le surdosage a une particularité que la classe des hypnotiques n'a pas : au-delà de la sédation et du délire anticholinergique, la doxylamine provoque une rhabdomyolyse, avec insuffisance rénale aiguë, y compris chez un patient qui ne paraît pas gravement atteint. Chez le sujet âgé, elle figure sur les listes de médicaments à éviter.",
         forms: "",
     },
     StarterDetail {
@@ -13894,7 +13915,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antihistaminique h1 sédatif, vigilance conduite",
-        toxicity: "",
+        toxicity: "Phénothiazine antihistaminique, souvent perçue comme un sirop anodin pour faire dormir un enfant, ce qu'elle n'est pas : elle est contre-indiquée avant deux ans, des apnées et des morts subites ayant été rapportées dans cette tranche d'âge, et son usage comme sédatif de confort chez l'enfant n'a pas de justification. Chez l'adulte, la sédation est profonde et se cumule à l'alcool et à tout dépresseur. Les effets anticholinergiques contre-indiquent le glaucome à angle fermé et l'obstacle prostatique, et exposent le sujet âgé à la confusion, à la rétention urinaire et aux chutes. Photosensibilisation et allongement du QT propres aux phénothiazines. Le compte-gouttes se lit avec attention : une confusion entre gouttes et millilitres est un surdosage.",
         forms: "",
     },
     StarterDetail {
@@ -13915,7 +13936,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "traitement de substitution aux opiacés, vigilance conduite",
-        toxicity: "",
+        toxicity: "Agoniste partiel : l'effet dépresseur respiratoire plafonne, et c'est ce qui rend la buprénorphine plus sûre qu'un agoniste complet en monothérapie. Le plafond disparaît en association, et la quasi-totalité des décès sous buprénorphine sont des associations à une benzodiazépine ou à l'alcool, souvent par voie intraveineuse détournée. Deuxième particularité : son affinité pour le récepteur est telle qu'elle déloge un agoniste complet et précipite un syndrome de sevrage brutal si la prise est trop rapprochée de la dernière héroïne ou méthadone — d'où le délai imposé avant la première prise. Pour la même raison, la naloxone y est peu efficace et impose des doses répétées et bien plus élevées qu'après une overdose de morphine.",
         forms: "",
     },
     StarterDetail {
@@ -13936,7 +13957,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "traitement de substitution aux opiacés, vigilance conduite",
-        toxicity: "",
+        toxicity: "La naloxone associée n'est pas un antidote pour le patient : par voie sublinguale elle n'est quasiment pas absorbée et ne fait rien. Elle n'existe que pour dissuader l'injection, où elle précipite un syndrome de sevrage immédiat et sévère. La marge est donc celle de la buprénorphine seule : un effet plafond respiratoire qui protège en monothérapie et disparaît dès qu'une benzodiazépine ou de l'alcool s'y ajoutent, ce qui est le mécanisme de presque tous les décès de la classe. Comme pour toute buprénorphine, une prise trop précoce après un agoniste complet précipite un sevrage, et une naloxone administrée en urgence doit être répétée à doses élevées pour être efficace.",
         forms: "",
     },
     StarterDetail {
@@ -13978,7 +13999,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidote des opiacés, kit d'urgence, vigilance conduite",
-        toxicity: "",
+        toxicity: "Ce kit est un antidote destiné à l'entourage, et la seule chose qui compte est qu'il soit compris avant d'être nécessaire : la naloxone s'injecte dans la cuisse, à travers les vêtements si besoin, devant une personne inconsciente à la respiration lente avec des pupilles en tête d'épingle, et l'appel au 15 se fait dans le même mouvement. Le point qui doit être dit et qui l'est rarement : la durée d'action de la naloxone est plus courte que celle de la plupart des opioïdes, si bien que la personne peut se réendormir et cesser de respirer une demi-heure après avoir repris connaissance — elle ne doit jamais être laissée seule et le transport n'est pas facultatif. Le réveil s'accompagne d'un syndrome de sevrage désagréable, qui n'est pas une raison de ne pas injecter.",
         forms: "",
     },
     StarterDetail {
@@ -14020,7 +14041,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "sevrage alcoolique et opiacés, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux dangers symétriques, et tous deux se jouent sur la présence d'opioïdes. Instaurée chez un patient non sevré, la naltrexone précipite un syndrome de sevrage brutal et sévère : un délai sans opioïde d'au moins sept à dix jours, vérifié au besoin par un test à la naloxone, est impératif avant la première prise. Et pendant le traitement, elle bloque l'effet de tout opioïde : une analgésie morphinique devient inefficace en cas d'accident ou de chirurgie, ce qui impose que le patient porte une carte et le signale. Le risque inverse suit l'arrêt : la tolérance aux opioïdes s'est perdue, et une reprise à la dose antérieure est une surdose. Hépatotoxicité dose-dépendante justifiant un contrôle des transaminases.",
         forms: "",
     },
     StarterDetail {
@@ -14230,7 +14251,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde, solution buvable",
-        toxicity: "",
+        toxicity: "La forme buvable est celle où l'erreur de dose se fait le plus facilement : le flacon compte-gouttes et les récipients unidoses de plusieurs dosages se ressemblent, et quatre gouttes valent 5 mg. Confondre gouttes et millilitres, ou un unidose fort avec un faible, multiplie la dose sans que rien ne le signale. La dose juste reste celle qui soulage, sans maximum absolu, mais toute augmentation rapide ou toute association à un dépresseur expose à la dépression respiratoire : somnolence qu'on ne peut pas interrompre, pupilles en tête d'épingle, respiration lente. Chez l'insuffisant rénal, le métabolite M6G s'accumule et le surdosage survient à distance de la dernière prise. La naloxone est l'antidote et l'entourage doit savoir appeler le 15.",
         forms: "",
     },
     StarterDetail {
@@ -14251,7 +14272,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde à libération immédiate",
-        toxicity: "",
+        toxicity: "La forme à libération immédiate est celle des interdoses, et sa marge tient à l'arithmétique : chaque interdose vaut un dixième à un sixième de la dose quotidienne de fond, quatre à six par jour au maximum, et l'on totalise ce qui a été consommé sur vingt-quatre à quarante-huit heures pour ajuster la dose de fond au lieu de laisser les interdoses s'empiler. Un patient qui en prend huit par jour n'est pas un patient à qui il faut délivrer davantage : c'est un traitement de fond sous-dosé, et c'est au prescripteur de le revoir. Chez le sujet naïf, âgé, insuffisant rénal ou hépatique, la dose de départ est basse et l'intervalle allongé. Antidote naloxone.",
         forms: "",
     },
     StarterDetail {
@@ -14272,7 +14293,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "La naloxone de l'association n'est pas un antidote : avalée, elle reste dans l'intestin où elle bloque les récepteurs opioïdes digestifs et limite la constipation, puis le foie la détruit avant qu'elle n'atteigne la circulation. Deux conséquences. Croquer ou écraser le comprimé libère d'un coup l'oxycodone de douze heures, avec le risque mortel de toute forme à libération prolongée. Et en cas d'insuffisance hépatique modérée à sévère, la naloxone n'est plus détruite, passe dans le sang, annule l'analgésie et peut précipiter un syndrome de sevrage — ce qui fait de l'atteinte hépatique une contre-indication propre à cette association et non à l'oxycodone seule. La dose totale est plafonnée par la naloxone, contrairement à l'oxycodone seule qui n'a pas de plafond.",
         forms: "",
     },
     StarterDetail {
@@ -14293,7 +14314,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde, vigilance conduite",
-        toxicity: "",
+        toxicity: "Toute la marge est dans la conversion : l'hydromorphone orale est environ sept fois et demie plus puissante que la morphine orale, si bien qu'une erreur de rapport ne se solde pas par un inconfort mais par une dépression respiratoire. Le calcul appartient au prescripteur et se revérifie à la délivrance quand l'ordonnance vient d'un relais : un patient qui passait de 120 mg de morphine par jour ne prend pas 120 mg d'hydromorphone. Comme toute forme à libération prolongée, la gélule s'avale entière, la dose de douze heures passant d'un coup si elle est croquée. Chez l'insuffisant rénal et le sujet âgé, l'exposition augmente et la titration repart plus bas. Antidote naloxone.",
         forms: "",
     },
     StarterDetail {
@@ -14314,7 +14335,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde transmuqueux, accès douloureux",
-        toxicity: "",
+        toxicity: "C'est la forme d'opioïde qui tue les patients à qui elle n'était pas destinée. Elle est réservée aux accès douloureux d'un patient déjà sous opioïde fort à dose stable et suffisante ; chez un sujet non tolérant, un seul applicateur peut suffire à provoquer une dépression respiratoire mortelle. La dose efficace ne se déduit jamais de la dose de fond : elle se titre à partir du dosage le plus faible, chez chaque patient, quel que soit le morphinique de base. Les fentanyls transmuqueux ne sont pas interchangeables entre eux microgramme pour microgramme, et un changement de spécialité impose de reprendre la titration à zéro. L'applicateur usagé contient encore du produit : il se remet dans son emballage inviolable et se rapporte à l'officine, un dispositif trouvé par un enfant étant un décès.",
         forms: "",
     },
     StarterDetail {
@@ -14335,7 +14356,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde antalgique",
-        toxicity: "",
+        toxicity: "Agoniste partiel à très forte affinité, ce qui a deux conséquences que l'on n'attend pas d'un antalgique. La dépression respiratoire plafonne, mais ce plafond tombe dès qu'une benzodiazépine ou de l'alcool s'y ajoutent, et la naloxone y est peu efficace : la lever demande des doses répétées et bien supérieures à celles d'une overdose de morphine. Surtout, elle bloque les récepteurs et antagonise un agoniste complet : elle annule l'effet d'une morphine donnée ensuite et précipite un sevrage chez un patient déjà sous opioïde fort. Ce n'est donc pas un antalgique que l'on ajoute à un traitement morphinique, et c'est l'erreur à repérer sur l'ordonnance.",
         forms: "",
     },
     StarterDetail {
@@ -14356,7 +14377,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde agoniste-antagoniste",
-        toxicity: "",
+        toxicity: "Agoniste-antagoniste : l'effet plafonne, pour la dépression respiratoire comme pour l'analgésie. Augmenter la dose au-delà du plafond n'apporte plus de soulagement et n'ajoute que des effets indésirables, ce qui la disqualifie dans une douleur qui s'aggrave. Son versant antagoniste est ce qui compte au comptoir : chez un patient sous opioïde fort, elle précipite un syndrome de sevrage aigu, et elle bloque l'analgésie d'une morphine administrée ensuite. Elle ne s'ajoute donc jamais à un morphinique en cours. Antidote naloxone, à doses habituelles.",
         forms: "",
     },
     StarterDetail {
@@ -14377,7 +14398,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antalgique opioïde faible, surveillance biologique, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Deux toxicités dans le même comprimé, et c'est la seconde qui piège. La poudre d'opium apporte la marge d'un opioïde faible : somnolence, dépression respiratoire chez le sujet fragile ou en association à un autre dépresseur, dépendance à l'usage prolongé. Mais chaque comprimé apporte aussi 500 mg de paracétamol, et le plafond hépatique de 3 g par jour se franchit sans que personne y pense dès qu'un Doliprane est ajouté par-dessus pour une douleur mal calmée. C'est la vérification à faire à chaque délivrance : additionner tous les paracétamols de l'ordonnance et de l'armoire à pharmacie, y compris ceux qui ne portent pas ce nom.",
         forms: "",
     },
     StarterDetail {
@@ -14398,7 +14419,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "patch, douleur neuropathique",
-        toxicity: "",
+        toxicity: "Ce n'est pas un patch que l'on remet au patient : la concentration à 8 % impose une pose par un professionnel formé, en local ventilé, avec des gants nitrile, pour une durée précise selon la localisation, et jamais à proximité des yeux ni d'une muqueuse. La brûlure pendant et après l'application est intense et attendue, elle justifie un anesthésique local préalable et du froid ensuite, et elle s'accompagne d'une élévation de la pression artérielle qui se surveille chez le patient hypertendu ou coronarien. Le produit vaporisé irrite les voies aériennes de l'entourage et provoque toux et larmoiement. Le patch usagé et le matériel sont des déchets à risque : ils ne repartent pas au domicile.",
         forms: "",
     },
     StarterDetail {
@@ -14419,7 +14440,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "emplâtre, douleur neuropathique",
-        toxicity: "",
+        toxicity: "Le passage systémique est faible mais il n'est pas nul, et il augmente si l'emplâtre est posé sur une peau lésée, inflammatoire ou sur une surface trop étendue : trois emplâtres au maximum, douze heures posés puis douze heures sans, jamais en continu. La marge se joue surtout chez l'insuffisant hépatique et chez le patient déjà sous antiarythmique de classe I ou sous un autre anesthésique local, où les effets systémiques s'additionnent. Point pratique qui compte autant : un emplâtre usagé contient encore la majeure partie de sa lidocaïne ; il se replie face collante contre elle-même et se jette hors de portée, un enfant ou un animal l'ayant appliqué ou mâché étant une intoxication.",
         forms: "",
     },
     StarterDetail {
@@ -14461,7 +14482,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anesthésique local, crème, patch",
-        toxicity: "",
+        toxicity: "La prilocaïne qu'elle contient produit un métabolite oxydant l'hémoglobine : la méthémoglobinémie est le risque propre de cette crème, et elle concerne surtout le nourrisson, dont la protection enzymatique est immature, ainsi que le patient déficitaire en G6PD ou traité par un autre inducteur de méthémoglobine. Elle se manifeste par une cyanose grise qui ne s'améliore pas sous oxygène, et son antidote est le bleu de méthylène. Les conséquences pratiques sont des règles à respecter et non des recommandations : surface, quantité et durée d'application sont limitées selon l'âge et se vérifient à la délivrance. La crème ne s'applique ni sur une plaie, ni sur une muqueuse, ni sur un œil, l'absorption y étant tout autre.",
         forms: "",
     },
     StarterDetail {
@@ -14482,7 +14503,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anesthésique local",
-        toxicity: "",
+        toxicity: "La toxicité systémique des anesthésiques locaux survient par injection intravasculaire accidentelle ou par résorption d'une dose excessive, et elle se déroule en deux temps : d'abord neurologique — goût métallique, engourdissement péribuccal, acouphènes, agitation, convulsions —, puis cardiaque, avec troubles de conduction et arrêt. Les signes neurologiques sont l'avertissement et imposent d'arrêter immédiatement l'injection. La ropivacaïne a été développée pour être moins cardiotoxique que la bupivacaïne, ce qui est son intérêt principal, mais la marge reste dose-dépendante et se calcule en milligrammes par kilogramme. L'émulsion lipidique à 20 % doit être disponible partout où l'on injecte.",
         forms: "",
     },
     StarterDetail {
@@ -14503,7 +14524,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anesthésique local, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est l'anesthésique local le plus cardiotoxique de la liste, et cette réputation vient d'arrêts cardiaques survenus après injection intravasculaire accidentelle : la bupivacaïne se fixe durablement aux canaux sodiques du myocarde, si bien que l'arrêt est réfractaire et que la réanimation doit être prolongée. Les signes neurologiques précèdent — goût métallique, engourdissement de la bouche, acouphènes, convulsions — et imposent d'arrêter l'injection sur-le-champ. L'aspiration avant injection, le fractionnement des doses et le respect strict des milligrammes par kilogramme sont les mesures qui protègent. L'émulsion lipidique à 20 % est l'antidote et doit être immédiatement disponible. La forme hyperbare ne s'utilise que par voie intrathécale.",
         forms: "",
     },
     StarterDetail {
@@ -14524,7 +14545,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anesthésique local, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Énantiomère lévogyre de la bupivacaïne, développé précisément pour réduire la cardiotoxicité de celle-ci : à dose égale, la marge est meilleure, mais elle n'est pas supprimée et une injection intravasculaire accidentelle donne le même déroulé — signes neurologiques d'alerte, goût métallique, engourdissement péribuccal, acouphènes, convulsions, puis troubles de conduction et arrêt cardiaque. Les signes neurologiques imposent d'interrompre immédiatement l'injection. Les doses maximales s'expriment en milligrammes par kilogramme et se calculent, aspiration avant injection et fractionnement des doses restant la règle. L'émulsion lipidique à 20 % doit être disponible sur le lieu d'injection.",
         forms: "",
     },
     StarterDetail {
@@ -14545,7 +14566,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anesthésique local, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Même toxicité systémique que les autres anesthésiques locaux, en deux temps : neurologique d'abord — goût métallique, engourdissement autour de la bouche, acouphènes, agitation, convulsions —, puis cardiaque. Ces premiers signes sont l'avertissement et commandent l'arrêt immédiat de l'injection. La mépivacaïne a une durée d'action intermédiaire et un effet vasoconstricteur propre, ce qui la fait souvent employer sans adrénaline ; sa marge se calcule néanmoins en milligrammes par kilogramme, et les surdosages surviennent lors d'infiltrations étendues ou répétées. Chez le nouveau-né et le nourrisson, l'élimination est plus lente. L'émulsion lipidique à 20 % est l'antidote.",
         forms: "",
     },
     StarterDetail {
@@ -14566,7 +14587,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Toxicité digestive de la classe, avec des hémorragies qui surviennent sans douleur préalable, en particulier chez le sujet âgé, sous anticoagulant, sous antiagrégant ou sous corticoïde : chez ces patients, l'inhibiteur de la pompe à protons n'est pas facultatif. Le trio AINS, bloqueur du système rénine-angiotensine et diurétique provoque des insuffisances rénales aiguës, surtout à l'occasion d'une déshydratation, d'une gastro-entérite ou d'une canicule — la règle simple à donner au patient est de suspendre l'AINS en cas de fièvre ou de diarrhée. La forme gel expose à des photoallergies parfois sévères, imposant de ne pas s'exposer au soleil pendant l'application et deux semaines après. Contre-indiqué dès le sixième mois de grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -14587,7 +14608,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est l'anti-inflammatoire non stéroïdien dont le profil cardiovasculaire est le plus favorable, ce qui en fait celui que l'on retient lorsqu'un AINS est indispensable chez un patient coronarien — le choix de la molécule est ici un acte de sécurité, pas une préférence. Cela ne supprime ni le risque digestif, qui reste celui de la classe et impose une protection gastrique chez le sujet à risque, ni le risque rénal du trio AINS, bloqueur du système rénine-angiotensine et diurétique. Sa demi-vie longue autorise deux prises par jour mais prolonge l'exposition en cas d'insuffisance rénale. Contre-indiqué à partir du sixième mois de grossesse, et déconseillé avant en automédication prolongée.",
         forms: "",
     },
     StarterDetail {
@@ -14608,7 +14629,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'AINS dont la balance est la moins favorable, et ses restrictions le disent : indications limitées, jamais en première intention, jamais dans une douleur aiguë ou une fièvre, dose plafonnée à 20 mg par jour et protection gastrique systématique. Deux raisons à cela. Sa demi-vie très longue, environ cinquante heures, fait que l'exposition se prolonge bien après l'arrêt et que la toxicité digestive s'accumule. Et le risque de réactions cutanées graves, syndrome de Stevens-Johnson et syndrome de Lyell, est plus élevé qu'avec les autres AINS : toute éruption survenant sous piroxicam impose l'arrêt immédiat et un avis, sans attendre. Contre-indiqué dès le sixième mois de grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -14629,7 +14650,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La forme suppositoire a fait l'objet d'alertes pour des atteintes anorectales sévères — ulcérations, rectites, nécroses — en particulier chez l'enfant et lors d'usages répétés, ce qui a conduit à restreindre son emploi : la voie rectale n'est pas une voie douce, et elle n'évite en rien la toxicité générale de l'AINS, qui passe entièrement dans le sang. Le risque digestif haut, rénal et cardiovasculaire est celui de la classe, de même que le trio délétère avec un bloqueur du système rénine-angiotensine et un diurétique. Chez l'enfant fébrile, un AINS n'est jamais le premier choix, et il est formellement à éviter en cas de varicelle ou d'infection cutanée, où il favorise les fasciites nécrosantes.",
         forms: "",
     },
     StarterDetail {
@@ -14650,7 +14671,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "C'est l'AINS le plus puissant de la liste et celui dont la toxicité neurologique est la plus marquée : céphalées quasi constantes, vertiges, confusion chez le sujet âgé, tableaux parfois pris pour une atteinte neurologique propre. La toxicité digestive est également au premier rang de la classe et impose une protection gastrique. Il n'a pas sa place dans une douleur banale et ses indications sont restreintes. Comme pour tous les AINS, le trio avec un inhibiteur de l'enzyme de conversion ou un sartan et un diurétique expose à l'insuffisance rénale aiguë lors de toute déshydratation, et la contre-indication à partir du sixième mois de grossesse est absolue.",
         forms: "",
     },
     StarterDetail {
@@ -14671,7 +14692,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Une toxicité lui est propre et elle est méconnue : des cystites et des atteintes vésicales, avec pollakiurie, brûlures mictionnelles et hématurie, parfois sévères, qui font penser à une infection urinaire et conduisent à des antibiothérapies inutiles pendant que le médicament continue. Devant des signes urinaires apparaissant sous acide tiaprofénique, la conduite est d'arrêter le médicament, et cela suffit le plus souvent. Pour le reste, la toxicité digestive, rénale et cardiovasculaire est celle de la classe, avec le même trio délétère AINS, bloqueur du système rénine-angiotensine et diurétique. Contre-indiqué à partir du sixième mois de grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -14692,7 +14713,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains coxib, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Contrairement aux autres AINS, l'hypertension artérielle est ici l'effet limitant : l'élévation tensionnelle est plus fréquente et plus marquée, ce qui contre-indique la molécule en cas d'hypertension non contrôlée et impose de mesurer la pression avant l'instauration puis dans les deux semaines qui suivent. Le risque cardiovasculaire de la classe s'y ajoute : contre-indication en cas de cardiopathie ischémique, d'artériopathie, d'antécédent d'accident vasculaire cérébral et d'insuffisance cardiaque. L'épargne digestive est annulée par une aspirine à faible dose associée. Le risque rénal, notamment avec le trio bloqueur du système rénine-angiotensine et diurétique, reste entier, de même que la contre-indication de la grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -14797,7 +14818,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "biphosphonate, perfusion annuelle, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Trois vérifications précèdent la perfusion et elles évitent l'essentiel des accidents. La calcémie et la vitamine D : une hypovitaminose D non corrigée expose à une hypocalcémie symptomatique après la perfusion, parfois sévère, et la supplémentation doit précéder l'injection. La fonction rénale : la perfusion doit durer au moins quinze minutes et le patient être bien hydraté, une administration rapide ou chez un déshydraté pouvant provoquer une insuffisance rénale aiguë, et la molécule est contre-indiquée en dessous de 35 mL/min. Et l'état dentaire : l'ostéonécrose de la mâchoire impose de faire les soins invasifs avant. Le syndrome pseudo-grippal des trois jours suivant la première perfusion est fréquent et ne se reproduit pas.",
         forms: "",
     },
     StarterDetail {
@@ -14839,7 +14860,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "serm, ostéoporose, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa marge est thromboembolique et elle se raisonne en situations, pas en doses : le risque veineux est multiplié par un facteur comparable à celui d'un traitement hormonal de la ménopause, maximal dans les premiers mois, et il contre-indique la molécule en cas d'antécédent thromboembolique. Toute immobilisation prolongée — chirurgie, plâtre, alitement, long voyage — impose de suspendre le traitement et de le reprendre à la remise en mobilité, ce qui est la consigne que le patient doit connaître avant d'en avoir besoin. Il aggrave les bouffées de chaleur au lieu de les soulager, et n'a pas l'effet protecteur du tamoxifène sur rien d'autre que la colonne : il ne réduit pas le risque de fracture de hanche.",
         forms: "",
     },
     StarterDetail {
@@ -14902,7 +14923,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur jak, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Les restrictions européennes de 2022 sont sa marge et elles se lisent sur le patient plus que sur la dose : au-delà de 65 ans, chez le fumeur ou l'ancien fumeur, en cas de facteur de risque cardiovasculaire ou d'antécédent de cancer, la molécule ne s'utilise qu'en l'absence d'alternative — un essai a montré un excès d'événements cardiovasculaires majeurs, de cancers, de thromboses et de mortalité par rapport à un anti-TNF. Toute douleur de mollet, tout essoufflement, toute douleur thoracique s'évalue le jour même. Le zona est fréquent et parfois disséminé, ce qui justifie une vaccination avant l'instauration. Dépistage de la tuberculose avant, numération, transaminases et bilan lipidique en cours.",
         forms: "",
     },
     StarterDetail {
@@ -14923,7 +14944,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur jak, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Même cadre restrictif que les autres inhibiteurs de JAK depuis la réévaluation européenne : prudence particulière après 65 ans, chez le fumeur ou l'ancien fumeur, en cas de risque cardiovasculaire ou d'antécédent de cancer, où l'on ne l'utilise qu'à défaut d'alternative, en raison d'un excès d'événements cardiovasculaires, de cancers et de thromboses veineuses. Le risque thromboembolique justifie d'expliquer les signes à surveiller. L'élimination est rénale : la dose se réduit selon la clairance et la molécule est contre-indiquée en insuffisance rénale sévère. Zona fréquent, vaccination souhaitable avant. Dépistage de la tuberculose et des hépatites avant, numération, transaminases et lipides en cours.",
         forms: "",
     },
     StarterDetail {
@@ -14944,7 +14965,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur jak, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Soumis aux mêmes restrictions que la classe : après 65 ans, chez le fumeur ou l'ancien fumeur, en cas de risque cardiovasculaire ou d'antécédent de cancer, l'usage n'est retenu qu'en l'absence d'alternative, du fait de l'excès d'événements cardiovasculaires majeurs, de cancers, de thromboses et de mortalité observé dans la classe. Le comprimé à libération prolongée s'avale entier, sans être coupé ni écrasé. Substrat du CYP3A4 : les inhibiteurs puissants augmentent l'exposition et le pamplemousse est à éviter. Zona fréquent, vaccination recommandée avant l'instauration, vaccins vivants exclus pendant. Dépistage de la tuberculose et des hépatites avant, numération, transaminases et bilan lipidique en cours.",
         forms: "",
     },
     StarterDetail {
@@ -14965,7 +14986,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-tnf, surveillance biologique",
-        toxicity: "",
+        toxicity: "Anticorps chimérique administré par perfusion : deux problèmes lui sont propres. Les réactions à la perfusion, immédiates, imposent une administration en milieu équipé avec prémédication selon le protocole. Et l'immunogénicité : des anticorps anti-médicament apparaissent, expliquent les pertes d'efficacité et rendent dangereuse la réintroduction après une interruption prolongée, avec des réactions d'hypersensibilité retardées — un traitement interrompu ne se reprend jamais comme s'il n'y avait pas eu de pause. C'est pourquoi un immunomodulateur y est souvent associé. Le reste est celui des anti-TNF : dépistage tuberculose et hépatites avant, vigilance infectieuse permanente, vaccins vivants exclus, examen cutané annuel.",
         forms: "",
     },
     StarterDetail {
@@ -14986,7 +15007,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-tnf, surveillance biologique",
-        toxicity: "",
+        toxicity: "Une injection par mois : le rythme le plus facile à oublier de toute la classe, et un retard répété fait perdre l'efficacité sans que personne l'attribue à l'observance — la date se note sur un calendrier et le renouvellement se suit. Le risque infectieux est celui des anti-TNF : dépistage de la tuberculose latente et des hépatites B et C avant la première injection, vigilance permanente ensuite, toute fièvre ou infection en cours faisant décaler l'injection, vaccins vivants contre-indiqués. La chaîne du froid se respecte jusqu'au domicile et le stylo se sort trente minutes avant l'injection. Examen dermatologique annuel, surveillance d'une insuffisance cardiaque et vigilance devant tout signe neurologique nouveau.",
         forms: "",
     },
     StarterDetail {
@@ -15007,7 +15028,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-tnf, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa structure explique sa place particulière : fragment Fab pégylé, sans fragment Fc, il ne franchit pratiquement pas le placenta au troisième trimestre — ce qui en fait l'anti-TNF de la grossesse et permet au nourrisson exposé de recevoir ses vaccins vivants au calendrier normal, contrairement aux anticorps entiers. C'est l'information à connaître quand une patiente traitée envisage une grossesse. Pour le reste, le risque infectieux est celui de la classe : dépistage de la tuberculose latente et des hépatites avant la première injection, vigilance permanente, injection décalée devant toute infection, vaccins vivants contre-indiqués chez le patient traité. La pégylation peut fausser certains tests de coagulation au temps de céphaline activée.",
         forms: "",
     },
     StarterDetail {
@@ -15028,7 +15049,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-6, surveillance biologique",
-        toxicity: "",
+        toxicity: "Sa particularité est de rendre une infection grave silencieuse : en bloquant l'interleukine 6, il supprime la fièvre et effondre la CRP, si bien qu'une pneumopathie ou une infection profonde peut évoluer sans les signes qui alertent d'ordinaire. La consigne est donc plus large qu'ailleurs — toute altération de l'état général, toute douleur inhabituelle, toute toux traînante s'évaluent, sans attendre une fièvre qui ne viendra pas. Second risque propre : la perforation digestive, surtout en cas de diverticulose ou de corticothérapie associée, dont une douleur abdominale est le seul signe. La surveillance est chiffrée : numération pour la neutropénie, transaminases pour la cytolyse, bilan lipidique. Dépistage de la tuberculose avant.",
         forms: "",
     },
     StarterDetail {
@@ -15049,7 +15070,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-17, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le blocage de l'interleukine 17 a deux conséquences caractéristiques. Les candidoses cutanéomuqueuses sont fréquentes — buccales, génitales, cutanées —, en règle bénignes et traitables sans arrêter le biologique, mais elles surprennent le patient si elles n'ont pas été annoncées. Et l'aggravation ou la révélation d'une maladie inflammatoire chronique de l'intestin : la molécule est déconseillée en cas de maladie de Crohn ou de rectocolite, et toute diarrhée persistante ou glairo-sanglante sous traitement impose un avis plutôt qu'un antidiarrhéique. Le dépistage de la tuberculose latente précède l'instauration et les vaccins vivants sont contre-indiqués pendant le traitement.",
         forms: "",
     },
     StarterDetail {
@@ -15070,7 +15091,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-12, surveillance biologique",
-        toxicity: "",
+        toxicity: "Injection toutes les douze semaines en entretien : l'espacement est tel que rien ne rappelle l'échéance au patient, et la date est ce qui se note et se vérifie à chaque délivrance. Le profil infectieux est plus favorable que celui des anti-TNF, mais le dépistage de la tuberculose latente reste requis avant l'instauration et la vigilance demeure, avec un décalage de l'injection devant toute infection évolutive et des vaccins vivants contre-indiqués. La conservation est au réfrigérateur, sans congélation ni agitation, et la seringue se sort une demi-heure avant. Des cas de pneumopathie d'hypersensibilité et de dermatoses exfoliatives ont été rapportés et imposent un avis.",
         forms: "",
     },
     StarterDetail {
@@ -15091,7 +15112,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "modulateur de la costimulation, surveillance biologique",
-        toxicity: "",
+        toxicity: "Le risque infectieux est celui d'un immunomodulateur, avec dépistage de la tuberculose latente et mise à jour du calendrier vaccinal avant l'instauration, vaccins vivants contre-indiqués pendant le traitement et dans les trois mois qui suivent, et injection décalée devant toute infection évolutive. Un point lui est propre et se cherche à l'interrogatoire : chez le patient atteint de bronchopneumopathie chronique obstructive, les exacerbations et les infections respiratoires sont plus fréquentes sous abatacept, ce qui impose une surveillance respiratoire particulière et parfois de préférer une autre molécule. Le passage de la forme intraveineuse à la forme sous-cutanée modifie le schéma et ne se fait pas dose pour dose.",
         forms: "",
     },
     StarterDetail {
@@ -15196,7 +15217,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "myorelaxant, spasticité, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux règles absolues. Les unités ne sont pas interchangeables d'une spécialité de toxine botulique à une autre : une équivalence appliquée entre marques est un surdosage ou un sous-dosage, et la spécialité fait partie de la prescription. Et la diffusion à distance du site d'injection peut provoquer des effets généraux — dysphagie, dysphonie, faiblesse musculaire, difficulté respiratoire — survenant de quelques jours à quelques semaines après l'injection, y compris pour des indications esthétiques ou de spasticité localisée : ces signes constituent une urgence et se disent au patient avant l'injection. Le risque est majoré en cas de trouble de la jonction neuromusculaire, la myasthénie étant une contre-indication, et par les aminosides.",
         forms: "",
     },
     StarterDetail {
@@ -15469,7 +15490,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "laxatif stimulant",
-        toxicity: "",
+        toxicity: "Laxatif stimulant : son usage est ponctuel et sa toxicité est celle de l'usage chronique, qui s'installe insidieusement. La prise quotidienne prolongée entraîne une hypokaliémie — dangereuse chez le patient sous digoxine ou sous diurétique —, une déshydratation et une dépendance, l'intestin ne répondant plus sans stimulation. Il est un support fréquent de mésusage dans les troubles du comportement alimentaire, et des achats répétés sont une information à ne pas ignorer. Le comprimé gastro-résistant ne se prend ni avec du lait ni avec un antiacide, qui dissoudraient l'enrobage trop haut et provoqueraient des crampes gastriques. Toute douleur abdominale non expliquée contre-indique un laxatif stimulant.",
         forms: "",
     },
     StarterDetail {
@@ -15532,7 +15553,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "laxatif lubrifiant",
-        toxicity: "",
+        toxicity: "L'huile de paraffine expose à une complication rare et grave qui justifie à elle seule de ne pas la prescrire au long cours : la pneumopathie lipidique par inhalation, souvent silencieuse au début et de traitement difficile. Elle vise le patient âgé, le patient dysphagique, alité ou neurologique — chez qui elle est à proscrire — et elle explique la consigne de ne jamais la prendre au coucher ni en position allongée. L'usage prolongé réduit par ailleurs l'absorption des vitamines liposolubles A, D, E et K, ce qui compte chez un patient sous antivitamine K. Le suintement anal est fréquent et gênant. Comme tout laxatif, l'usage chronique entretient la constipation qu'il soulage.",
         forms: "",
     },
     StarterDetail {
@@ -15595,7 +15616,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "préparation colique",
-        toxicity: "",
+        toxicity: "La préparation colique est un acte à risque chez le sujet fragile, et l'accident est hydroélectrolytique : déshydratation, hyponatrémie parfois convulsivante, hypokaliémie et insuffisance rénale aiguë, surtout chez le sujet âgé, l'insuffisant cardiaque ou rénal, et sous diurétique, IEC, sartan ou AINS — traitements qu'il est souvent prudent de suspendre la veille sur avis. La consigne qui prévient l'essentiel est simple et mal suivie : les litres d'eau claire supplémentaires prévus par le protocole ne sont pas facultatifs, ils font partie de la préparation. Une occlusion, une sténose ou une perforation suspectées la contre-indiquent. Chez le patient dysphagique ou alité, le risque d'inhalation est réel.",
         forms: "",
     },
     StarterDetail {
@@ -15616,7 +15637,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antagoniste opioïde périphérique",
-        toxicity: "",
+        toxicity: "La marge n'est pas une question de dose mais d'indication : l'antagoniste lève le frein opioïde sur l'intestin, et si un obstacle mécanique existe, la reprise du péristaltisme contre cet obstacle perfore. L'occlusion connue ou seulement suspectée est donc une contre-indication absolue, et toute douleur abdominale intense, tout arrêt des gaz, tout ventre tendu avant ou pendant le traitement fait suspendre l'injection et consulter le jour même. La molécule ne franchit pas la barrière hémato-encéphalique et n'annule donc pas l'analgésie ; un patient chez qui la douleur réapparaît après une injection doit faire chercher autre chose.",
         forms: "",
     },
     StarterDetail {
@@ -15700,7 +15721,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aminosalicylé, mici, surveillance biologique",
-        toxicity: "",
+        toxicity: "Comme toute mésalazine, la surveillance qui compte est rénale : néphrite interstitielle rare mais potentiellement chronique, imposant une créatininémie avant l'instauration puis régulièrement — surveillance souvent négligée pour un traitement perçu comme bénin et pris pendant des années. L'exacerbation paradoxale de la colite est l'autre point : diarrhée sanglante et douleurs abdominales sous mésalazine peuvent être dues au traitement lui-même et non à la maladie, et l'augmentation de dose aggrave alors le tableau. Myocardite et péricardite, rares, imposent d'explorer toute douleur thoracique. Les comprimés gastro-résistants s'avalent entiers, l'enrobage déterminant le site de libération.",
         forms: "",
     },
     StarterDetail {
@@ -15721,7 +15742,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "corticoïde à action locale, mici, surveillance biologique",
-        toxicity: "",
+        toxicity: "Budésonide à libération colique : la galénique cible le côlon et le fort effet de premier passage hépatique limite l'exposition générale, ce qui en fait un corticoïde mieux toléré — sans être exempt. Une freination de l'axe corticotrope reste possible avec les traitements prolongés, et l'arrêt après plusieurs mois se fait progressivement. Le comprimé s'avale entier, sans être coupé ni écrasé, faute de quoi la libération se fait trop haut et l'effet local est perdu. Le CYP3A4 gouverne son métabolisme : pamplemousse et inhibiteurs puissants augmentent l'exposition et annulent l'avantage de tolérance. Les effets locaux d'une corticothérapie — glaucome, cataracte, hyperglycémie — restent à surveiller au long cours.",
         forms: "",
     },
     StarterDetail {
@@ -15742,7 +15763,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-intégrine, mici",
-        toxicity: "",
+        toxicity: "Son action est limitée au tube digestif, ce qui en fait le biologique des maladies inflammatoires de l'intestin dont le risque infectieux systémique est le plus faible : pas de réactivation tuberculeuse comparable à celle des anti-TNF, et aucun cas de leucoencéphalopathie multifocale progressive rapporté, contrairement au natalizumab dont il partage la cible générale. Cette sécurité relative a une contrepartie qui compte au comptoir : l'effet met du temps à s'installer, et juger l'échec avant plusieurs mois conduit à abandonner un traitement qui aurait marché. Le dépistage de la tuberculose reste requis avant l'instauration. Le passage de la forme intraveineuse à la forme sous-cutanée suit un schéma précis.",
         forms: "",
     },
     StarterDetail {
@@ -16015,7 +16036,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "dermocorticoïde très fort",
-        toxicity: "",
+        toxicity: "Même corticoïde très fort que le clobétasol en crème, mais en mousse destinée au cuir chevelu, ce qui change deux choses. La galénique facilite l'application sur de grandes surfaces sans que la quantité soit perçue, et le passage systémique — freination de l'axe corticotrope, insuffisance surrénale au sevrage — dépend précisément de cette quantité : la durée et le nombre de flacons se surveillent. Et le solvant est alcoolique et inflammable : pas de flamme ni de cigarette pendant l'application, et pas de contact avec les yeux ni les muqueuses. Localement, atrophie cutanée, folliculite et aggravation d'une dermatose infectieuse. L'arrêt se fait par espacement progressif pour éviter l'effet rebond.",
         forms: "",
     },
     StarterDetail {
@@ -16519,7 +16540,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-17, surveillance biologique",
-        toxicity: "",
+        toxicity: "Comme tout anti-interleukine 17 : candidoses cutanéomuqueuses fréquentes, bénignes et à annoncer pour qu'elles ne fassent pas arrêter le traitement, et surtout risque d'aggraver ou de révéler une maladie inflammatoire chronique de l'intestin — la molécule est déconseillée dans la maladie de Crohn et la rectocolite, et une diarrhée persistante ou sanglante sous traitement impose un avis spécialisé et non un traitement symptomatique. Les réactions au point d'injection sont plus fréquentes qu'avec les autres biologiques du psoriasis. Dépistage de la tuberculose latente avant l'instauration, vigilance infectieuse ensuite, vaccins vivants contre-indiqués. La chaîne du froid se respecte et le stylo se sort trente minutes avant.",
         forms: "",
     },
     StarterDetail {
@@ -16540,7 +16561,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-23, surveillance biologique",
-        toxicity: "",
+        toxicity: "Profil de tolérance parmi les plus favorables des biologiques du psoriasis, ce qui ne supprime aucune des précautions de fond : dépistage de la tuberculose latente avant l'instauration, avec traitement préalable d'une infection latente, vigilance infectieuse ensuite, injection décalée devant toute infection évolutive, et vaccins vivants contre-indiqués pendant le traitement. À la différence des anti-interleukine 17, il n'aggrave pas les maladies inflammatoires de l'intestin, ce qui en fait une option chez le patient qui en souffre. L'espacement des injections en entretien, tous les trois mois, fait que la date doit être notée : rien d'autre ne la rappellera. Conservation au réfrigérateur, sans congélation.",
         forms: "",
     },
     StarterDetail {
@@ -16561,7 +16582,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-23, surveillance biologique",
-        toxicity: "",
+        toxicity: "Comme les autres anti-interleukine 23, il est bien toléré et n'aggrave pas les maladies inflammatoires chroniques de l'intestin, contrairement aux anti-interleukine 17. Les précautions restent celles de tout biologique immunomodulateur : dépistage de la tuberculose latente avant l'instauration et traitement préalable si elle est présente, vigilance infectieuse permanente, injection décalée devant toute infection évolutive, vaccins vivants contre-indiqués pendant le traitement et calendrier vaccinal mis à jour avant. Le rythme d'entretien tous les deux mois se note sur un calendrier. Conservation au réfrigérateur sans congélation, stylo sorti une demi-heure avant l'injection, sites alternés.",
         forms: "",
     },
     StarterDetail {
@@ -16729,7 +16750,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception estroprogestative, contre-indiqué grossesse, vigilance conduite",
-        toxicity: "",
+        toxicity: "Estroprogestatif au lévonorgestrel, donc au risque thromboembolique veineux le plus bas de la classe, ce qui en fait une prescription de première intention. Ce risque reste néanmoins réel, maximal la première année et lors de toute reprise après une interruption d'un mois ou plus. Les contre-indications à vérifier sont surtout des éléments d'histoire et non de biologie : tabagisme après trente-cinq ans, migraine avec aura — contre-indication absolue —, antécédent thromboembolique, hypertension non contrôlée, immobilisation prolongée à venir. Un mollet douloureux, une dyspnée brutale ou une céphalée inhabituelle imposent un avis le jour même. Un oubli de plus de douze heures impose la poursuite de la plaquette et un préservatif pendant sept jours.",
         forms: "",
     },
     StarterDetail {
@@ -16750,7 +16771,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception estroprogestative triphasique",
-        toxicity: "",
+        toxicity: "Pilule triphasique : les comprimés n'ont pas tous la même composition, et l'ordre de prise fait partie du traitement. Trois conséquences que le comptoir doit rappeler. Les comprimés ne se prennent jamais dans le désordre et un comprimé oublié ne se remplace pas par n'importe quel autre de la plaquette. L'enchaînement de deux plaquettes pour décaler ou supprimer les règles n'est pas possible comme avec une pilule monophasique. Et le repérage d'un oubli est plus difficile pour la patiente. Pour le reste, il s'agit d'un estroprogestatif au lévonorgestrel, dont le risque thromboembolique est le plus bas de la classe, avec les contre-indications habituelles : tabac après trente-cinq ans, migraine avec aura, antécédent thromboembolique.",
         forms: "",
     },
     StarterDetail {
@@ -16771,7 +16792,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception estroprogestative",
-        toxicity: "",
+        toxicity: "Le désogestrel est un progestatif de troisième génération : le risque de thrombose veineuse y est environ deux fois supérieur à celui des pilules au lévonorgestrel, ce qui a conduit à ne plus les recommander en première intention. Une primo-prescription de cette pilule chez une femme qui n'en a jamais pris mérite donc d'être interrogée, tandis qu'une utilisatrice ancienne et bien tolérée n'a pas de raison d'être changée — le risque étant maximal la première année, un changement inutile le recrée. Les contre-indications sont celles de la classe : tabac après trente-cinq ans, migraine avec aura, antécédent thromboembolique, hypertension non contrôlée. Un mollet douloureux ou un essoufflement imposent un avis le jour même.",
         forms: "",
     },
     StarterDetail {
@@ -16792,7 +16813,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception estroprogestative",
-        toxicity: "",
+        toxicity: "La drospirénone est un progestatif de quatrième génération, dont le risque thromboembolique veineux est supérieur à celui des pilules au lévonorgestrel : la prescription n'est pas de première intention, et le risque est maximal la première année et à toute reprise après une interruption. Une particularité pharmacologique lui est propre : la drospirénone a une activité antiminéralocorticoïde, ce qui l'expose à l'hyperkaliémie en association aux inhibiteurs de l'enzyme de conversion, aux sartans, aux diurétiques épargneurs de potassium, aux AINS au long cours et au triméthoprime — association à repérer sur l'ordonnance complète. Contre-indications de classe : tabac après trente-cinq ans, migraine avec aura, antécédent thromboembolique.",
         forms: "",
     },
     StarterDetail {
@@ -16813,7 +16834,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception progestative seule",
-        toxicity: "",
+        toxicity: "Contraception progestative seule : elle échappe aux contre-indications vasculaires des estroprogestatifs et reste utilisable chez la fumeuse de plus de trente-cinq ans, en cas de migraine avec aura, d'antécédent thromboembolique, d'hypertension et pendant l'allaitement. La fenêtre d'oubli est de douze heures, à ne pas confondre avec les trois heures des microprogestatifs au lévonorgestrel. Les troubles du saignement — spotting prolongé, règles irrégulières ou aménorrhée — touchent la majorité des utilisatrices et font arrêter le traitement quand elles n'ont pas été annoncées ; elles ne traduisent pas une perte d'efficacité. Les inducteurs enzymatiques compromettent l'efficacité. Une douleur pelvienne unilatérale fait évoquer une grossesse extra-utérine.",
         forms: "",
     },
     StarterDetail {
@@ -16834,7 +16855,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception, anneau vaginal",
-        toxicity: "",
+        toxicity: "L'anneau délivre un estroprogestatif et il en partage tous les risques : thrombose veineuse, maximale la première année et à toute reprise après une interruption, et risque artériel qui contre-indique le tabac après trente-cinq ans et la migraine avec aura. Le progestatif étant l'étonogestrel, apparenté à la troisième génération, ce risque n'est pas inférieur à celui d'une pilule et l'anneau n'est pas une option plus sûre. Sa marge propre est pratique : s'il est expulsé ou retiré plus de trois heures, la protection contraceptive n'est plus assurée et un préservatif s'impose sept jours. Les vomissements et les diarrhées, en revanche, ne l'affectent pas, ce qui constitue un avantage réel sur la voie orale.",
         forms: "",
     },
     StarterDetail {
@@ -16855,7 +16876,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception, patch",
-        toxicity: "",
+        toxicity: "Le patch expose à une quantité d'éthinylestradiol supérieure à celle d'une pilule, et le risque thromboembolique veineux y est au moins équivalent, voire supérieur : ce n'est donc pas une option plus douce, et les contre-indications de la classe s'appliquent entièrement — tabac après trente-cinq ans, migraine avec aura, antécédent thromboembolique, hypertension non contrôlée. Deux points pratiques lui sont propres : au-delà d'un poids d'environ quatre-vingt-dix kilogrammes, l'efficacité contraceptive diminue et une autre méthode est préférable ; et un décollement de plus de vingt-quatre heures impose de recommencer un cycle avec un préservatif pendant sept jours. Le site se change à chaque patch et jamais sur le sein.",
         forms: "",
     },
     StarterDetail {
@@ -16876,7 +16897,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception, implant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le point de sécurité principal concerne la pose et non le produit : l'implant doit être inséré en sous-cutané superficiel et rester palpable. Une insertion trop profonde entraîne une migration, parfois vasculaire jusqu'à l'artère pulmonaire, et rend le retrait chirurgical difficile — un implant non palpable impose une localisation par imagerie et un retrait spécialisé, jamais une tentative à l'aveugle. La patiente doit apprendre à le palper elle-même. Les troubles du saignement, spotting prolongé ou aménorrhée, sont la première cause de retrait anticipé et s'annoncent. Les inducteurs enzymatiques — rifampicine, millepertuis, certains antiépileptiques — compromettent l'efficacité et imposent une méthode complémentaire.",
         forms: "",
     },
     StarterDetail {
@@ -16897,7 +16918,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception, diu hormonal, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'aménorrhée, qui survient chez une proportion importante des utilisatrices après quelques mois, est un effet attendu et non un signe d'échec ou de danger : ne pas l'annoncer conduit à des retraits et à des tests de grossesse répétés. Les complications propres au dispositif se concentrent sur la pose et les semaines qui suivent : perforation utérine, plus fréquente en post-partum et pendant l'allaitement, expulsion, et infection génitale haute dans les trois premières semaines. Une douleur pelvienne fébrile ou des pertes anormales imposent un avis. En cas d'échec, exceptionnel, le risque relatif de grossesse extra-utérine est augmenté : toute douleur pelvienne unilatérale avec retard de règles est une urgence.",
         forms: "",
     },
     StarterDetail {
@@ -16918,7 +16939,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "contraception d'urgence, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Une interaction méconnue est la plus importante à connaître, et elle est réciproque : l'ulipristal et les progestatifs s'antagonisent. Une contraception progestative prise dans les cinq jours qui suivent réduit l'efficacité de l'ulipristal, et l'ulipristal réduit celle de la contraception reprise — la conduite est d'attendre cinq jours avant de reprendre ou de débuter une contraception hormonale, en utilisant un préservatif jusqu'à la fin du cycle. C'est le conseil que la délivrance doit porter, et il est régulièrement omis. L'ulipristal reste efficace plus tard que le lévonorgestrel, jusqu'à cinq jours, et son efficacité est moins réduite par le poids. L'allaitement se suspend une semaine. Les inducteurs enzymatiques le rendent inopérant.",
         forms: "",
     },
     StarterDetail {
@@ -17191,7 +17212,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "agoniste dopaminergique, hyperprolactinémie, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Dérivé ergoté à demi-vie très longue, ce qui explique la prise hebdomadaire mais aussi la persistance des effets. Le risque qui commande la surveillance est valvulaire : des valvulopathies fibrosantes ont été décrites, surtout aux doses élevées et prolongées de la maladie de Parkinson, ce qui impose une échocardiographie avant l'instauration puis périodique, et rend cette indication marginale ; aux doses faibles de l'hyperprolactinémie, le risque est bien moindre mais la surveillance reste recommandée. Fibroses pleuropulmonaires et rétropéritonéales également décrites. Troubles du contrôle des impulsions à rechercher, y compris à ces faibles doses. Hypotension orthostatique à l'instauration, prise le soir au cours d'un repas.",
         forms: "",
     },
     StarterDetail {
@@ -17275,7 +17296,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antagoniste de la gnrh, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Antagoniste de la GnRH : contrairement aux agonistes, il freine l'axe immédiatement et ne provoque aucun effet flare-up, ce qui est précisément sa raison d'être dans les protocoles de fécondation in vitro — il empêche le pic prématuré de LH sans phase de stimulation initiale. Sa marge est donc essentiellement pratique : l'injection se fait à heure fixe, chaque jour, aux dates exactes fixées par le centre, et un décalage compromet le cycle entier. La reconstitution se fait juste avant l'injection et la solution s'utilise immédiatement. Les réactions locales sont fréquentes et bénignes. Le risque du protocole dans son ensemble reste l'hyperstimulation ovarienne, dont les signes se surveillent.",
         forms: "",
     },
     StarterDetail {
@@ -17296,7 +17317,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ocytocique",
-        toxicity: "",
+        toxicity: "Deux toxicités que sa banalité apparente fait oublier. L'hyperstimulation utérine, lors d'un déclenchement mal conduit, expose à la souffrance fœtale aiguë et à la rupture utérine, ce qui impose une perfusion titrée sous surveillance continue du rythme cardiaque fœtal et de la contractilité, et jamais en bolus intraveineux rapide. Et l'intoxication par l'eau : l'ocytocine a un effet antidiurétique, si bien qu'une perfusion prolongée à fortes doses avec des solutés hypotoniques provoque une hyponatrémie sévère avec convulsions, chez la mère comme chez le nouveau-né. Le choix du soluté et la surveillance de la natrémie en découlent. Des hypotensions et des troubles du rythme suivent les injections intraveineuses rapides.",
         forms: "",
     },
     StarterDetail {
@@ -17317,7 +17338,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "utérotonique, hémorragie de la délivrance, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Dérivé de l'ergot de seigle : sa vasoconstriction n'est pas limitée à l'utérus et elle expose à des poussées hypertensives sévères, à des accidents coronariens et à des accidents vasculaires cérébraux — l'hypertension artérielle, la prééclampsie, la coronaropathie et la toxémie sont des contre-indications, ce qui restreint fortement son emploi dans l'hémorragie de la délivrance au profit de l'ocytocine. L'injection intraveineuse rapide majore ce risque et n'est pas la voie recommandée. L'association aux inhibiteurs puissants du CYP3A4, notamment les macrolides et les antifongiques azolés, est contre-indiquée : elle provoque un ergotisme avec ischémie des extrémités. L'allaitement est déconseillé pendant le traitement.",
         forms: "",
     },
     StarterDetail {
@@ -17338,7 +17359,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "prostaglandine, hémorragie de la délivrance",
-        toxicity: "",
+        toxicity: "Prostaglandine réservée à l'hémorragie de la délivrance résistante à l'ocytocine, et son administration est encadrée parce qu'elle tue quand elle est mal conduite : la perfusion doit être intraveineuse lente à la seringue électrique, jamais en bolus ni en intramusculaire, sous surveillance continue de la pression artérielle et de l'électrocardiogramme, avec un matériel de réanimation immédiatement disponible. Des accidents cardiovasculaires graves, dont des infarctus et des arrêts cardiaques, sont survenus lors d'administrations rapides ou chez des patientes à risque. Le tabagisme, l'âge, l'obésité et les antécédents cardiovasculaires majorent le risque. L'asthme sévère est une contre-indication, la molécule étant bronchoconstrictrice.",
         forms: "",
     },
     StarterDetail {
@@ -17359,7 +17380,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "tocolytique",
-        toxicity: "",
+        toxicity: "Antagoniste de l'ocytocine utilisé comme tocolytique, dont l'intérêt principal est précisément la tolérance maternelle : contrairement aux bêta-mimétiques, il n'expose ni à la tachycardie, ni aux palpitations, ni à l'œdème pulmonaire, ce qui en fait le tocolytique de choix chez la femme cardiaque ou diabétique. Sa marge est donc moins toxicologique qu'obstétricale : la tocolyse ne prolonge la grossesse que de quelques jours, et son objectif réel est de permettre la corticothérapie de maturation pulmonaire fœtale et le transfert vers une maternité adaptée — la considérer comme un traitement de fond de la menace d'accouchement prématuré serait un contresens. Réactions au point d'injection, nausées et céphalées sont fréquentes.",
         forms: "",
     },
     StarterDetail {
@@ -17401,7 +17422,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant",
-        toxicity: "",
+        toxicity: "L'effet indésirable dominant n'est pas dangereux mais il fait arrêter le traitement lorsqu'il n'a pas été annoncé : les troubles de l'éjaculation, avec éjaculation rétrograde ou absence d'éjaculat, touchent une forte proportion des patients, sont réversibles à l'arrêt et n'ont aucune conséquence sur la santé. Le dire avant est ce qui permet au patient de poursuivre. Comme tous les alpha-bloquants de la prostate, il expose au syndrome de l'iris flasque peropératoire et impose de prévenir l'ophtalmologiste avant une chirurgie de la cataracte. L'hypotension orthostatique reste possible à l'instauration. La dose se réduit en cas d'insuffisance rénale modérée.",
         forms: "",
     },
     StarterDetail {
@@ -17422,7 +17443,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant + 5-alpha-réductase, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux toxicités indépendantes dans la même gélule. Le dutastéride abaisse le PSA d'environ la moitié après six mois : un résultat interprété sans le savoir fait manquer un cancer de la prostate, et la valeur doit être doublée pour être comparée aux normes — c'est l'information la plus importante de cette fiche. Il est en outre tératogène pour un fœtus masculin : la gélule ne se manipule pas par une femme enceinte, le don du sang est interdit pendant le traitement et six mois après, et la molécule passe dans le sperme. Le versant tamsulosine apporte le syndrome de l'iris flasque peropératoire, à signaler avant toute chirurgie de la cataracte, et l'hypotension orthostatique de l'instauration.",
         forms: "",
     },
     StarterDetail {
@@ -17590,7 +17611,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue de la gnrh, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Comme tout agoniste de la GnRH, il provoque une stimulation initiale de l'axe avant de le freiner : la montée de testostérone des premières semaines peut aggraver un cancer de la prostate métastatique, jusqu'à la compression médullaire, ce qui rend indispensable la couverture par un anti-androgène débutée avant la première injection. Chez la femme traitée pour endométriose ou fibrome, cette phase initiale se traduit par une recrudescence des symptômes, qu'il faut annoncer. Au long cours, la privation hormonale entraîne une perte osseuse rapide qui impose calcium, vitamine D et ostéodensitométrie, des bouffées de chaleur, un retentissement métabolique et un allongement du QT. Les formes retard existent en plusieurs durées, à ne pas confondre.",
         forms: "",
     },
     StarterDetail {
@@ -17611,7 +17632,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antagoniste de la gnrh",
-        toxicity: "",
+        toxicity: "Antagoniste de la GnRH, ce qui constitue son avantage décisif sur les agonistes : la testostérone s'effondre en quelques jours sans phase de montée initiale, si bien qu'aucune couverture par anti-androgène n'est nécessaire et qu'il n'y a pas de risque de compression médullaire à l'instauration — c'est l'option retenue quand une castration rapide est nécessaire. Le prix à payer est local : les réactions au point d'injection, douleur, induration et érythème, sont très fréquentes après la dose de charge et s'atténuent ensuite. L'injection est strictement sous-cutanée abdominale. Au long cours, la privation androgénique impose la même vigilance osseuse et métabolique, avec allongement du QT.",
         forms: "",
     },
     StarterDetail {
@@ -17653,7 +17674,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antihistaminique h1 sédatif, vigilance conduite",
-        toxicity: "",
+        toxicity: "Antihistaminique de première génération : sa sédation n'est pas un effet secondaire accessoire mais l'effet dominant, avec un retentissement mesurable sur la vigilance et la conduite le lendemain matin d'une prise du soir. Chez le sujet âgé, elle figure sur les listes de médicaments à éviter, les effets anticholinergiques provoquant confusion, rétention urinaire, constipation et chutes, et pouvant déclencher un glaucome aigu par fermeture de l'angle. Ces mêmes effets la contre-indiquent en cas d'obstacle prostatique. Chez le jeune enfant, une excitation paradoxale est fréquente. L'association à l'alcool et à tout autre dépresseur du système nerveux central majore nettement la sédation.",
         forms: "",
     },
     StarterDetail {
@@ -17968,7 +17989,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-vegf intravitréen, vigilance conduite",
-        toxicity: "",
+        toxicity: "Le risque qui domine est l'endophtalmie, infection intraoculaire pouvant détruire la vision en quelques jours : toute douleur oculaire, rougeur, photophobie ou baisse de vision dans les jours suivant une injection est une urgence ophtalmologique le jour même, et cette consigne se donne à chaque injection — un patient qui attend son rendez-vous suivant perd son œil. Une élévation transitoire de la pression intraoculaire suit l'injection, et un décollement de rétine ou une déchirure sont possibles, avec apparition de mouches volantes ou d'éclairs. La molécule est administrée exclusivement par voie intravitréenne, en conditions d'asepsie chirurgicale. Le passage systémique est faible mais des événements thromboemboliques ont été discutés.",
         forms: "",
     },
     StarterDetail {
@@ -17989,7 +18010,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fer, surveillance biologique",
-        toxicity: "",
+        toxicity: "L'intoxication accidentelle par le fer est l'une des premières causes de mort toxique du jeune enfant : les comprimés ressemblent à des bonbons, quelques-uns suffisent, et le tableau évolue en plusieurs temps — gastro-entérite hémorragique, puis une accalmie trompeuse de quelques heures, puis un choc avec nécrose hépatique. Toute ingestion, même d'un enfant qui va bien, est une urgence et l'accalmie ne doit jamais rassurer. Le rangement hors de portée est la consigne principale de cette délivrance. L'antidote est la déféroxamine. En usage normal, la toxicité est digestive et le fer chélate de nombreux médicaments — lévothyroxine, cyclines, quinolones, biphosphonates —, qui se prennent à distance.",
         forms: "",
     },
     StarterDetail {
@@ -18010,7 +18031,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "fer + vitamine c",
-        toxicity: "",
+        toxicity: "Même risque majeur que tout sel de fer oral : chez le jeune enfant, l'ingestion accidentelle de quelques gélules peut être mortelle, avec une phase d'accalmie trompeuse entre les troubles digestifs initiaux et le choc avec atteinte hépatique — toute ingestion est une urgence, y compris chez un enfant asymptomatique, et le rangement hors de portée est la première consigne. La vitamine C associée améliore l'absorption du fer mais n'atténue en rien cette toxicité. En usage normal, l'intolérance digestive et la coloration noire des selles sont attendues, cette dernière ne devant pas être confondue avec un méléna. Le fer chélate lévothyroxine, cyclines, quinolones et biphosphonates, à prendre à distance.",
         forms: "",
     },
     StarterDetail {
@@ -18094,7 +18115,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidote du méthotrexate, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La confusion entre acide folinique et acide folique est l'erreur de dispensation à ne jamais commettre : seul l'acide folinique, déjà réduit, court-circuite le blocage enzymatique et sauve les cellules après du méthotrexate — l'acide folique ordinaire n'a pas cet effet dans cette situation. Le second paramètre est le délai : le sauvetage est efficace s'il est administré à l'heure prévue par le protocole, et chaque heure de retard réduit son efficacité, ce qui fait d'une rupture de délivrance une urgence. Attention au sens inverse dans une autre indication : associé au 5-fluoro-uracile, l'acide folinique ne protège pas, il potentialise volontairement l'effet et la toxicité du cytotoxique.",
         forms: "",
     },
     StarterDetail {
@@ -18136,7 +18157,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidote des cyanures",
-        toxicity: "",
+        toxicity: "Antidote d'urgence dont les effets gênants sont surtout analytiques et cosmétiques, et ils doivent être anticipés plutôt que subis : il colore en rouge foncé la peau, les muqueuses et les urines pendant plusieurs jours, et il fausse un grand nombre de dosages colorimétriques du laboratoire ainsi que la lecture de l'oxymétrie de pouls — l'équipe qui prend le relais doit en être informée. Il rend également impossible la détection colorimétrique des fuites sur un générateur d'hémodialyse. Des réactions d'hypersensibilité et une élévation transitoire de la pression artérielle sont décrites. Dans une intoxication par les fumées d'incendie, il ne dispense pas du traitement de l'intoxication au monoxyde de carbone associée.",
         forms: "",
     },
     StarterDetail {
@@ -18241,7 +18262,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Tératogène majeur : avortements précoces et malformations caractéristiques, ce qui a conduit à un programme de prévention des grossesses — deux tests négatifs avant l'instauration, contraception efficace chez la femme, préservatif chez l'homme, et information formalisée. Une grossesse sous mycophénolate est une urgence d'avis spécialisé. La conséquence pratique la plus oubliée : les gélules ne s'ouvrent pas et les comprimés ne s'écrasent pas, la poussière étant tératogène pour qui la manipule — ni le patient, ni l'aidant, ni le préparateur. La toxicité propre est hématologique et infectieuse : neutropénie imposant une numération régulière, réactivations virales, et leucoencéphalopathie multifocale progressive devant tout signe neurologique nouveau.",
         forms: "",
     },
     StarterDetail {
@@ -18262,7 +18283,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, inhibiteur mtor, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux toxicités qui ne ressemblent pas à celles des autres immunosuppresseurs. Le retard de cicatrisation est constant et impose de suspendre le traitement avant une chirurgie programmée et de ne le reprendre qu'après cicatrisation, faute de quoi lâchages de suture, lymphocèles et infections de paroi. Et la pneumopathie interstitielle non infectieuse, qui se manifeste par une toux sèche et une dyspnée d'installation progressive, prises à tort pour une infection : elle impose l'arrêt. Le traitement se conduit sur les concentrations résiduelles, prélevées avant la prise, et toute modification d'un inhibiteur ou d'un inducteur du CYP3A4 les fait varier fortement — le pamplemousse est proscrit. Hyperlipidémie, protéinurie et aphtes buccaux sont fréquents.",
         forms: "",
     },
     StarterDetail {
@@ -18283,7 +18304,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunosuppresseur, inhibiteur mtor, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le retard de cicatrisation et la pneumopathie interstitielle non infectieuse sont les toxicités de classe, et elles imposent respectivement de suspendre avant une chirurgie et d'arrêter devant une toux sèche avec dyspnée. Deux contre-indications lui sont propres et viennent d'accidents : en transplantation pulmonaire, des déhiscences mortelles de l'anastomose bronchique ; en transplantation hépatique récente, des thromboses de l'artère hépatique — la molécule n'a pas sa place dans ces situations précoces. Le suivi se fait sur les concentrations résiduelles, très sensibles aux inhibiteurs et inducteurs du CYP3A4, et le pamplemousse est proscrit. Hyperlipidémie majeure, protéinurie et cytopénies complètent le tableau.",
         forms: "",
     },
     StarterDetail {
@@ -18304,7 +18325,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-cd20, surveillance biologique",
-        toxicity: "",
+        toxicity: "Deux risques dominent. La réactivation d'une hépatite B peut être fulminante et mortelle, y compris chez un patient seulement porteur d'anticorps anti-HBc sans antigène HBs : la sérologie complète est obligatoire avant la première perfusion, et une prophylaxie antivirale est mise en place si elle est positive, poursuivie longtemps après la fin du traitement. Et la leucoencéphalopathie multifocale progressive, devant tout signe neurologique, cognitif ou visuel nouveau. Les réactions à la perfusion, liées au relargage cytokinique, sont surtout marquées lors de la première administration et imposent prémédication et surveillance. Au long cours, l'hypogammaglobulinémie explique les infections répétées et se dose.",
         forms: "",
     },
     StarterDetail {
@@ -18325,7 +18346,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-her2, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa toxicité est cardiaque et elle conditionne tout le suivi : baisse de la fraction d'éjection ventriculaire gauche et insuffisance cardiaque, d'autant plus fréquentes qu'une anthracycline a été reçue auparavant ou est administrée en même temps — association à éviter. Une échographie cardiaque avec mesure de la fraction d'éjection précède l'instauration puis se répète environ tous les trois mois pendant le traitement et après son arrêt. Contrairement à celle des anthracyclines, cette atteinte est le plus souvent réversible à l'arrêt, ce qui justifie de la dépister tôt : essoufflement, œdèmes, prise de poids rapide ou orthopnée imposent un avis. Les réactions à la perfusion sont surtout marquées lors de la première administration.",
         forms: "",
     },
     StarterDetail {
@@ -18346,7 +18367,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunothérapie anti-pd-1, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'immunothérapie change le raisonnement toxicologique : les effets indésirables ne sont pas dose-dépendants mais auto-immuns, ils peuvent toucher n'importe quel organe, et ils surviennent parfois plusieurs mois après la dernière perfusion. Colite avec diarrhée, hépatite, pneumopathie, thyroïdite hypo ou hyperfonctionnelle, hypophysite, insuffisance surrénale, diabète de type 1 inaugural, atteintes cutanées et neurologiques. La conduite est à l'opposé de celle d'une allergie : le traitement est la corticothérapie, parfois prolongée, et non un antihistaminique. Toute diarrhée, toute dyspnée, toute asthénie inhabituelle chez un patient traité ou l'ayant été impose un avis oncologique, et la carte de surveillance doit être portée en permanence.",
         forms: "",
     },
     StarterDetail {
@@ -18367,7 +18388,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "immunothérapie anti-pd-1, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Comme tout inhibiteur de point de contrôle immunitaire, ses effets indésirables sont auto-immuns et non dose-dépendants, peuvent atteindre n'importe quel organe et apparaître des mois après l'arrêt : colite, hépatite, pneumopathie interstitielle, dysthyroïdie, hypophysite, insuffisance surrénale, diabète de type 1, néphrite, myocardite et myosite. Deux d'entre eux tuent vite et se cherchent devant des signes banals : la myocardite, devant une douleur thoracique, une dyspnée ou une asthénie brutale, et la colite, devant une diarrhée qui s'installe. Le traitement est la corticothérapie et non un symptomatique — un antidiarrhéique ralentisseur serait dangereux. La carte de surveillance se porte en permanence, y compris après la fin du traitement.",
         forms: "",
     },
     StarterDetail {
@@ -18388,7 +18409,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-vegf, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Le blocage de l'angiogenèse produit des toxicités qui ne ressemblent pas à celles d'une chimiothérapie. La perforation digestive est la plus grave : une douleur abdominale intense chez un patient traité est une urgence chirurgicale jusqu'à preuve du contraire. Le retard de cicatrisation impose d'interrompre le traitement plusieurs semaines avant une chirurgie programmée et de ne le reprendre qu'après cicatrisation complète — une intervention sous bévacizumab expose au lâchage de suture. S'y ajoutent l'hypertension artérielle, très fréquente et à traiter sans arrêter, la protéinurie à surveiller par bandelette, les hémorragies, les événements thromboemboliques artériels et l'ostéonécrose de la mâchoire, qui impose un bilan dentaire préalable.",
         forms: "",
     },
     StarterDetail {
@@ -18409,7 +18430,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alkylant, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Sa toxicité caractéristique est vésicale : l'acroléine, métabolite éliminé dans les urines, provoque une cystite hémorragique parfois sévère, et à long terme un risque de cancer de la vessie. Elle se prévient et cette prévention conditionne l'administration : hyperhydratation, mictions fréquentes y compris la nuit, et mesna aux fortes doses. Toute hématurie, même tardive, se signale. La toxicité gonadique est l'autre point à aborder avant et non après : la stérilité est fréquente et dose-dépendante, ce qui impose de proposer une conservation de gamètes avant l'instauration chez un patient jeune. S'y ajoutent la myélosuppression, l'alopécie, une hyponatrémie par sécrétion inappropriée d'hormone antidiurétique et un risque de leucémie secondaire.",
         forms: "",
     },
     StarterDetail {
@@ -18451,7 +18472,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alkylant, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Alkylant dont la myélosuppression est profonde, prolongée et retardée : le nadir survient tardivement et la récupération est lente, si bien qu'une numération normale quelques jours après la cure ne rassure en rien. La surveillance hématologique conditionne chaque administration et toute fièvre en période d'aplasie est une urgence absolue. L'élimination étant en partie rénale, la dose se réduit en cas d'insuffisance rénale, faute de quoi l'aplasie est majeure. Le risque de leucémie aiguë secondaire et de syndrome myélodysplasique est établi et dépend de la dose cumulée, ce qui pèse dans la décision chez un patient jeune. La toxicité gonadique impose d'aborder la préservation de la fertilité avant l'instauration.",
         forms: "",
     },
     StarterDetail {
@@ -18472,7 +18493,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alcaloïde de la pervenche, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Alcaloïde de la pervenche : administré par voie intrathécale, il est mortel, et cette erreur a tué — la voie est strictement intraveineuse, et les précautions d'étiquetage et de circuit qui l'entourent en découlent. Par voie veineuse, c'est un vésicant : une extravasation provoque une nécrose tissulaire étendue et impose un protocole immédiat. La forme orale a ses propres pièges : les capsules ne se croquent, ne s'ouvrent ni ne se coupent, le contenu liquide étant irritant pour les muqueuses et l'œil, et une capsule endommagée ne se manipule pas à mains nues. La neutropénie est dose-limitante et impose une numération avant chaque administration ; toute fièvre en aplasie est une urgence. Constipation et iléus par neurotoxicité végétative.",
         forms: "",
     },
     StarterDetail {
@@ -18514,7 +18535,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "analogue de la gnrh, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Implant sous-cutané à libération prolongée : ce qui est posé ne se retire pas, et un effet indésirable dure jusqu'à l'épuisement de l'implant. L'effet flare-up des premières semaines impose, dans le cancer de la prostate métastatique, une couverture par anti-androgène débutée avant la pose, faute de quoi la montée initiale de testostérone peut provoquer douleurs, rétention urinaire et compression médullaire. Les implants existent en plusieurs durées et ne se substituent pas l'un à l'autre. Au long cours : perte osseuse rapide justifiant calcium, vitamine D et ostéodensitométrie, bouffées de chaleur, troubles métaboliques et allongement du QT. Chez la femme, la privation estrogénique impose la même vigilance osseuse.",
         forms: "",
     },
     StarterDetail {
@@ -18577,7 +18598,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur de tyrosine kinase egfr, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "La pneumopathie interstitielle est la toxicité grave de cette molécule, survenant le plus souvent dans les premiers mois, avec une incidence nettement plus élevée dans certaines populations d'Asie de l'Est : toute dyspnée nouvelle, toute toux sèche, toute fièvre inexpliquée impose d'arrêter le traitement et d'appeler le jour même, et cette consigne se donne à la première délivrance. L'hépatotoxicité impose un contrôle régulier des transaminases. L'absorption dépend du pH gastrique : un inhibiteur de la pompe à protons réduit l'exposition et compromet l'efficacité, les antiacides se prenant à distance. L'éruption acnéiforme et la diarrhée sont fréquentes, corrélées à la réponse, et se traitent plutôt que de faire arrêter.",
         forms: "",
     },
     StarterDetail {
@@ -18598,7 +18619,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur de tyrosine kinase, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "L'hépatotoxicité domine et elle a été mortelle : des insuffisances hépatiques aiguës ont conduit à une surveillance rapprochée et non négociable des transaminases et de la bilirubine, avant l'instauration, puis toutes les deux semaines pendant les deux premiers mois, puis régulièrement. Une élévation impose une conduite codifiée et parfois l'arrêt définitif. La prise se fait à jeun, une heure avant ou deux heures après un repas, un repas augmentant fortement l'exposition et donc cette toxicité. L'allongement du QT justifie un électrocardiogramme et le contrôle du potassium et du magnésium. L'hypertension artérielle apparaît tôt et se surveille à domicile. La dépigmentation des cheveux est attendue et sans gravité.",
         forms: "",
     },
     StarterDetail {
@@ -18619,7 +18640,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "inhibiteur du protéasome, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Deux règles absolues. La voie d'administration : l'injection intrathécale est mortelle et des décès sont survenus par cette erreur — le produit est strictement intraveineux ou sous-cutané. Et le choix de la voie sous-cutanée réduit nettement la neuropathie périphérique, qui est la toxicité limitante : douloureuse, sensitive, elle s'installe progressivement et devient irréversible si l'on n'adapte pas la dose à temps, d'où la nécessité d'interroger le patient sur les fourmillements et les douleurs à chaque cycle plutôt que d'attendre qu'il en parle. Une prophylaxie antivirale contre le zona est systématique, la réactivation étant fréquente et parfois disséminée. Thrombopénie cyclique et hypotension orthostatique complètent le tableau.",
         forms: "",
     },
     StarterDetail {
@@ -18640,7 +18661,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "biphosphonate injectable, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "",
+        toxicity: "Aux doses de l'oncologie, répétées toutes les trois à quatre semaines, le risque d'ostéonécrose de la mâchoire est nettement plus élevé qu'aux doses de l'ostéoporose : un bilan dentaire et la remise en état de la denture doivent précéder la première perfusion, tout geste invasif ultérieur se discute avec l'oncologue, et une douleur dentaire, une mobilité ou une gencive qui ne cicatrise pas se signalent sans attendre. La fonction rénale conditionne chaque perfusion : créatininémie avant chaque administration, adaptation de la dose et hydratation, la durée de perfusion ne devant jamais être raccourcie. L'hypocalcémie impose une supplémentation en calcium et en vitamine D pendant toute la durée du traitement.",
         forms: "",
     },
     StarterDetail {
@@ -18766,7 +18787,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antihistaminique, sédatif, phénothiazine, insomnie, anticholinergique",
-        toxicity: "",
+        toxicity: "La forme injectable expose à un accident dont la gravité est disproportionnée : en cas d'injection intra-artérielle accidentelle ou d'extravasation, la prométhazine provoque des nécroses tissulaires étendues pouvant conduire à l'amputation — l'injection est strictement intramusculaire profonde, ou intraveineuse très diluée et lente selon le protocole, et toute douleur ou brûlure pendant l'administration impose d'arrêter immédiatement. Elle est contre-indiquée avant deux ans, des dépressions respiratoires mortelles ayant été rapportées. Chez l'adulte, sédation profonde, effets anticholinergiques contre-indiquant le glaucome à angle fermé et l'obstacle prostatique, photosensibilisation et allongement du QT.",
         forms: "",
     },
     StarterDetail {
@@ -18778,7 +18799,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Alcool et dépresseurs centraux : sédation majorée. Autres anticholinergiques : effets additionnés. Le comprimé masque les vertiges d'une autre origine et peut fausser un examen vestibulaire.",
         adverse: "Somnolence, sécheresse buccale, constipation, troubles de l'accommodation, rétention urinaire. Excitation paradoxale chez l'enfant.",
         monitoring: "Vigilance, surtout chez le conducteur : le passager peut le prendre, le conducteur non. Signes anticholinergiques chez le sujet âgé.",
-        iup: "Il se prend une demi-heure avant le départ et non quand la nausée est déjà là : c'est un préventif. Le conducteur ne le prend pas. Chez l'enfant, la place à l'avant, le regard sur l'horizon et l'aération font autant que le comprimé. Pas d'alcool.",
+        iup: "C'est un préventif : il se prend une demi-heure avant le départ, et il ne fera pas grand-chose si la nausée est déjà installée. Le conducteur ne le prend pas — la somnolence est l'effet principal, pas un effet secondaire. Elle se prolonge plusieurs heures et se cumule avec l'alcool, à éviter complètement. Chez l'enfant à partir de deux ans, la dose se calcule sur le poids ; avant deux ans, ce médicament est interdit. Une excitation au lieu d'un endormissement est fréquente chez l'enfant et n'est pas inquiétante. Les mesures non médicamenteuses font au moins autant : la place à l'avant, le regard porté loin sur l'horizon plutôt que sur un écran ou un livre, l'aération, et un estomac ni vide ni trop plein. Ne le prenez pas si vous avez un glaucome ou des difficultés à uriner. Chez la personne âgée, il peut provoquer une confusion, une constipation ou une rétention d'urines : il vaut mieux l'éviter.",
         half_life: "4 à 8 heures.",
         elimination: "Hépatique, puis rénale.",
         renal: "Espacer les prises en cas d'insuffisance rénale.",
@@ -18820,7 +18841,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Alcool et dépresseurs centraux : sédation majorée. Neuroleptiques : effets extrapyramidaux additionnés.",
         adverse: "Somnolence et prise de poids, très fréquentes et principales causes d'arrêt. Syndrome extrapyramidal et dépression, surtout chez le sujet âgé et lors des traitements prolongés — c'est ce qui limite la durée à six mois.",
         monitoring: "Poids à chaque renouvellement. Humeur, et apparition d'un tremblement ou d'une lenteur : ces signes imposent l'arrêt. Efficacité jugée à deux mois, durée plafonnée à six.",
-        iup: "La prise se fait le soir : la somnolence est l'effet le plus constant. La prise de poids est fréquente et se surveille dès le début. Signaler tout tremblement, toute lenteur inhabituelle ou toute tristesse durable : ce ne sont pas des effets à supporter, ce sont des raisons d'arrêter.",
+        iup: "Ce médicament prévient les crises de migraine, il ne les soigne pas : il ne sert à rien pendant une crise et son effet ne se juge pas avant deux mois. La prise se fait le soir, la somnolence étant l'effet le plus constant, et elle peut gêner la conduite le lendemain matin les premières semaines. La prise de poids est fréquente et parfois importante : pesez-vous régulièrement dès le début plutôt que de la découvrir dans six mois. Trois signes doivent être signalés sans attendre, parce qu'ils ne sont pas des effets à supporter mais des raisons d'arrêter : un tremblement, une lenteur ou une raideur inhabituelles — surtout après 65 ans —, et une tristesse durable ou une perte d'élan. Ils régressent à l'arrêt s'il est fait tôt. Le traitement a une durée limitée, de l'ordre de six mois, et se réévalue : ce n'est pas un médicament que l'on renouvelle indéfiniment. Tenez un agenda des crises, c'est lui qui dira si le traitement sert. Pas d'alcool, qui majore la somnolence.",
         half_life: "18 jours environ, ce qui explique l'installation lente de l'effet comme des effets indésirables.",
         elimination: "Hépatique, puis fécale.",
         renal: "Pas d'adaptation particulière.",
@@ -18925,7 +18946,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Autres vasoconstricteurs, quelle que soit la voie — cumuler un comprimé et un spray est l'erreur la plus fréquente. IMAO, y compris le linézolide : crise hypertensive. Alcaloïdes de l'ergot de seigle. Autres sources de paracétamol : le cumul est le second piège de cette boîte.",
         adverse: "Nervosité, insomnie, palpitations, poussée hypertensive, sécheresse buccale, rétention urinaire, somnolence par l'antihistaminique. Accidents vasculaires cérébraux et cardiaques rapportés, rares mais graves et parfois chez des sujets jeunes sans antécédent.",
         monitoring: "Durée : cinq jours au maximum, et l'ANSM rappelle que le rapport bénéfice-risque de cette classe est défavorable dans un rhume, qui guérit seul en une semaine. Tension artérielle chez tout patient qui en demande régulièrement.",
-        iup: "Cinq jours au plus, et jamais avec un spray décongestionnant en même temps : c'est le cumul qui fait l'accident. Le lavage de nez au sérum physiologique fait le même travail sans le risque, et c'est ce qu'il faut proposer d'abord. Toute douleur thoracique, tout mal de tête violent ou tout trouble de la parole après une prise est une urgence.",
+        iup: "Ce médicament ne soigne pas le rhume : il débouche le nez pendant quelques jours, et le rhume guérit tout seul en une semaine. C'est un vasoconstricteur, il resserre les vaisseaux de tout le corps et pas seulement ceux du nez, et c'est pour cela qu'il n'est pas anodin. Cinq jours au maximum, jamais plus, et jamais en même temps qu'un spray décongestionnant pour le nez : les effets s'additionnent. Il contient aussi du paracétamol : n'en prenez aucun autre à côté, ni Doliprane, ni Dafalgan, ni aucun médicament pour le rhume ou la douleur sans vérifier sa composition — c'est ainsi qu'on dépasse la dose sans le vouloir. Arrêtez et appelez le 15 devant un mal de tête brutal et violent, des troubles de la vue, une faiblesse d'un côté du corps, des difficultés à parler ou une douleur dans la poitrine : ce sont des signes rares mais graves, décrits chez des personnes jeunes et en bonne santé. Ne le prenez pas si vous avez de la tension, même traitée, une maladie du cœur, un glaucome, des difficultés à uriner, ou si vous êtes enceinte. Il peut empêcher de dormir et rendre nerveux : évitez la prise du soir. Le lavage de nez au sérum physiologique fait une bonne partie du travail sans aucun de ces risques.",
         half_life: "2 à 3 heures pour le paracétamol ; 5 à 8 heures pour la pseudoéphédrine.",
         elimination: "Hépatique pour le paracétamol, rénale pour la pseudoéphédrine.",
         renal: "À éviter en cas d'insuffisance rénale : la pseudoéphédrine s'accumule.",
@@ -18934,7 +18955,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "rhume, vasoconstricteur, pseudoéphédrine, paracétamol, conseil",
-        toxicity: "",
+        toxicity: "Vendu sans ordonnance pour un rhume qui guérit seul en une semaine, et porteur d'un risque vasculaire disproportionné à ce bénéfice : la pseudoéphédrine a été associée à des accidents vasculaires cérébraux, des infarctus du myocarde et des syndromes de vasoconstriction cérébrale réversible chez des adultes jeunes et sans facteur de risque, ce qui a conduit les agences à en restreindre l'usage et à renforcer l'information. Les contre-indications se vérifient à la délivrance et non sur l'emballage : hypertension même traitée, coronaropathie, antécédent d'accident vasculaire cérébral, glaucome à angle fermé, obstacle prostatique, épilepsie, grossesse, moins de quinze ans, association aux IMAO ou à un autre vasoconstricteur, oral ou nasal. Céphalées violentes et brutales, troubles visuels, déficit neurologique ou douleur thoracique imposent l'arrêt et le 15. S'y ajoute le paracétamol de l'association, qui se cumule avec tout autre paracétamol pris à côté.",
         forms: "",
     },
     StarterDetail {
@@ -18946,7 +18967,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Tout autre vasoconstricteur, oral ou nasal : les effets s'additionnent et le passage systémique n'est pas nul. IMAO, linézolide. Alcaloïdes de l'ergot.",
         adverse: "Sécheresse et irritation nasales, éternuements, céphalées, insomnie, palpitations. Rhinite médicamenteuse après cinq jours : le nez se rebouche dès la fin de l'effet, et le patient augmente les pulvérisations, ce qui entretient le cercle.",
         monitoring: "Durée avant tout : cinq jours, et l'officine est le dernier filtre avant l'usage chronique. Un patient qui rachète le même spray tous les mois est un patient en rhinite médicamenteuse, et le sevrage se fait narine par narine avec un lavage et un corticoïde nasal.",
-        iup: "Cinq jours et pas un de plus. Se moucher avant, orienter l'embout vers l'extérieur de la narine et non vers la cloison. Un seul flacon par personne — il se contamine — et jamais en même temps qu'un comprimé décongestionnant.",
+        iup: "Cinq jours au maximum, et pas un de plus : au-delà, le nez se rebouche dès que l'effet s'arrête, vous pulvérisez davantage, et vous entrez dans un cercle dont on ne sort qu'avec un sevrage — c'est le seul vrai danger de ce produit et il est fréquent. Mouchez-vous avant, orientez l'embout vers l'extérieur de la narine et non vers la cloison, et n'inclinez pas la tête en arrière. Un flacon par personne, jamais partagé : il se contamine. Ne l'associez jamais à un comprimé décongestionnant pour le rhume, ni à un autre spray du même type : les effets s'additionnent dans tout le corps et pas seulement dans le nez. Interdit avant quinze ans, en cas de glaucome, de difficultés à uriner, d'hypertension sévère, d'antécédent d'accident vasculaire cérébral, et pendant la grossesse. Arrêtez et consultez devant des palpitations, un mal de tête inhabituel ou une agitation. Un lavage de nez au sérum physiologique, plusieurs fois par jour, fait une grande partie du travail et peut se poursuivre sans limite de durée.",
         half_life: "5 à 8 heures.",
         elimination: "Rénale et hépatique après le passage systémique, qui est faible mais réel.",
         renal: "Prudence en cas d'insuffisance rénale.",
@@ -18967,7 +18988,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Autres AINS et aspirine à dose anti-inflammatoire. Anticoagulants et antiagrégants : risque hémorragique digestif. IEC, sartans et diurétiques : c'est la triade de l'insuffisance rénale aiguë. Lithium et méthotrexate : concentrations augmentées.",
         adverse: "Épigastralgies, nausées, diarrhée — plus fréquente qu'avec les autres AINS et propre aux fénamates —, céphalées, vertiges. Ulcère et hémorragie digestive, insuffisance rénale fonctionnelle, réactions cutanées.",
         monitoring: "Durée la plus courte possible et dose la plus faible. Chez le sujet âgé ou sous bloqueur du système rénine-angiotensine, la fonction rénale. Toute selle noire ou tout vomissement sanglant fait arrêter et consulter.",
-        iup: "Au cours du repas, avec un grand verre d'eau. Dans les règles douloureuses, il agit mieux commencé tôt qu'attendu : pris quand la douleur est installée, il en fait moins. La diarrhée est l'effet particulier de cette molécule et fait souvent changer d'AINS.",
+        iup: "Un comprimé au cours du repas, avec un grand verre d'eau. Dans les règles douloureuses, il agit bien mieux s'il est commencé dès les premiers signes plutôt qu'une fois la douleur installée : anticiper d'une demi-journée change le résultat. La diarrhée est l'effet particulier de cette molécule et c'est souvent elle qui fait changer d'anti-inflammatoire : signalez-la plutôt que de la supporter. Comme tous les anti-inflammatoires, il peut abîmer l'estomac sans prévenir : ne le prenez jamais à jeun, jamais plus de quelques jours sans avis, et jamais en même temps qu'un autre anti-inflammatoire — y compris l'ibuprofène acheté sans ordonnance, qui en est un. Signalez-le si vous prenez un anticoagulant, de l'aspirine, un antidépresseur ou de la cortisone : le risque de saignement s'additionne. Arrêtez-le en cas de gastro-entérite, de forte fièvre ou de canicule si vous prenez aussi un traitement pour la tension : c'est dans ces moments que les reins souffrent. Consultez sans attendre devant des douleurs d'estomac intenses, des selles noires, des vomissements noirâtres, ou beaucoup moins d'urines. Interdit à partir du sixième mois de grossesse, et déconseillé avant sans avis.",
         half_life: "2 à 4 heures.",
         elimination: "Hépatique, puis rénale et biliaire.",
         renal: "À éviter en cas d'insuffisance rénale ; contre-indiqué si elle est sévère.",
@@ -18976,7 +18997,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "AINS, dysménorrhée, fénamate, diarrhée",
-        toxicity: "",
+        toxicity: "En surdosage, l'acide méfénamique se distingue des autres AINS par des convulsions, qui peuvent survenir pour des quantités relativement modestes et qui font de son ingestion accidentelle ou volontaire une urgence particulière. La toxicité digestive habituelle de la classe s'y ajoute, avec des diarrhées plus fréquentes qu'avec les autres AINS, parfois révélatrices d'une colite. Sa place est limitée dans le temps, notamment dans les dysménorrhées, et un usage prolongé n'a pas de justification. Comme pour toute la classe : trio délétère avec un bloqueur du système rénine-angiotensine et un diurétique, suspension en cas de fièvre ou de diarrhée, contre-indication dès le sixième mois de grossesse.",
         forms: "",
     },
     StarterDetail {
@@ -19093,7 +19114,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Iode et produits de contraste iodés : ils réduisent l'efficacité. AVK : l'effet anticoagulant est modifié dans les deux sens selon l'état thyroïdien, et l'INR se recontrôle à chaque palier. Digoxine et bêtabloquants : leur clairance change avec la fonction thyroïdienne.",
         adverse: "Éruption cutanée et prurit, arthralgies, troubles digestifs, altération du goût. Deux effets graves et rares : l'agranulocytose, qui survient le plus souvent dans les trois premiers mois, et l'hépatite cholestatique. Hypothyroïdie iatrogène si la décroissance tarde.",
         monitoring: "NFS avant traitement, et à la moindre fièvre ou angine ensuite. Transaminases et bilirubine avant et pendant les premiers mois. T4 libre toutes les quatre à six semaines pendant l'ajustement — la TSH retarde de six semaines et ne sert à rien pour cet ajustement.",
-        iup: "La consigne qui compte tient en une phrase : toute fièvre, toute angine, tout aphte impose d'arrêter le comprimé et de faire une NFS le jour même, sans attendre un rendez-vous. C'est l'agranulocytose, elle est rare, et c'est elle qui tue quand personne ne l'a dite. L'amélioration met deux à quatre semaines : ce n'est pas un échec au bout de huit jours.",
+        iup: "La consigne qui compte tient en une phrase, et elle prime sur tout le reste : toute fièvre, toute angine, tout aphte impose d'arrêter le comprimé et de faire une prise de sang avec numération le jour même, sans attendre un rendez-vous. C'est l'agranulocytose — une chute brutale des globules blancs qui défendent contre l'infection. Elle est rare, elle survient surtout dans les trois premiers mois, elle ne prévient pas, et c'est elle qui tue quand personne ne l'a annoncée. Notez cette phrase quelque part si besoin. Pour le reste : l'amélioration met deux à quatre semaines à venir, parce que le médicament empêche de fabriquer de nouvelles hormones mais n'agit pas sur celles déjà stockées — ce n'est donc pas un échec au bout de huit jours, et il ne faut pas augmenter la dose de soi-même. Le traitement se prend tous les jours à heure fixe, et il se poursuit souvent des mois après que vous vous sentez mieux. Signalez également des urines foncées, un jaunissement des yeux ou de la peau, ou une fatigue inhabituelle, qui feraient contrôler le foie. Si vous êtes enceinte ou envisagez de l'être, dites-le sans attendre : le choix du médicament change au premier trimestre.",
         half_life: "3 à 6 heures dans le plasma, mais l'effet intrathyroïdien dure plus de 24 heures, ce qui autorise la prise unique.",
         elimination: "Hépatique, puis rénale.",
         renal: "Pas d'adaptation nécessaire dans l'insuffisance rénale.",
@@ -19110,14 +19131,14 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         indications: "Mêmes indications que l'adalimumab de référence : polyarthrite rhumatoïde, rhumatisme psoriasique, spondyloarthrite axiale, psoriasis en plaques, maladie de Crohn, rectocolite hémorragique, hidradénite suppurée, uvéite.",
         mechanism: "Anticorps monoclonal anti-TNF alpha, biosimilaire de l'adalimumab : même séquence d'acides aminés, même mécanisme, efficacité et sécurité démontrées équivalentes par un dossier de comparabilité. Un biosimilaire n'est pas un générique — c'est une protéine produite par une lignée cellulaire, et la copie exacte n'existe pas.",
         dosage: "40 mg par voie sous-cutanée toutes les deux semaines dans la plupart des indications ; schémas d'induction plus élevés dans les MICI et l'hidradénite, selon la prescription.",
-        contraindications: "Infection évolutive, tuberculose active ou latente non traitée, infection opportuniste ; insuffisance cardiaque modérée à sévère ; hypersensibilité.",
+        contraindications: "Infection évolutive, chronique ou localisée. Tuberculose active ou latente non traitée, infection opportuniste. Insuffisance cardiaque modérée à sévère. Hépatite B active. Hypersensibilité à la substance active ou à un excipient.",
         ddi: "Anakinra et abatacept : association déconseillée, le risque infectieux s'additionne sans bénéfice. Vaccins vivants contre-indiqués pendant le traitement. Un vaccin inactivé reste possible et se programme plutôt avant l'instauration.",
-        adverse: "Réactions au point d'injection, infections des voies aériennes supérieures, céphalées. Infections graves et réactivation d'une tuberculose latente, d'où le dépistage avant l'instauration. Réactions d'hypersensibilité.",
-        monitoring: "Dépistage de la tuberculose et des hépatites B et C avant la première injection. Toute fièvre, toute infection en cours fait décaler l'injection. Calendrier vaccinal mis à jour avant, vaccins vivants exclus pendant.",
-        iup: "Le stylo sort du réfrigérateur trente minutes avant : injecté froid, il fait mal, et c'est la première cause d'abandon. Alterner cuisse et abdomen à cinq centimètres du nombril. Le dispositif d'injection n'est pas le même d'une marque d'adalimumab à l'autre : à chaque changement de spécialité, la technique se remontre, même à un patient qui s'injecte depuis des années.",
-        half_life: "Environ 14 jours.",
+        adverse: "Réactions au point d'injection, infections des voies aériennes supérieures, céphalées. Infections graves, bactériennes, fongiques ou opportunistes, et réactivation d'une tuberculose latente, d'où le dépistage avant l'instauration. Réactivation d'une hépatite B. Cytopénies. Atteintes démyélinisantes. Aggravation d'une insuffisance cardiaque. Syndrome lupique médicamenteux réversible à l'arrêt. Réactions d'hypersensibilité. Cancers cutanés, dont le mélanome, justifiant un examen dermatologique annuel.",
+        monitoring: "Dépistage de la tuberculose et des hépatites B et C, radiographie thoracique, numération et bilan hépatique avant la première injection. Toute fièvre, toute infection en cours fait décaler l'injection. Calendrier vaccinal mis à jour avant, vaccins vivants exclus pendant. Ensuite, numération et transaminases périodiques, examen cutané annuel, évaluation devant tout signe neurologique nouveau. Spécialité et numéro de lot notés à chaque délivrance.",
+        iup: "Ce traitement diminue vos défenses immunitaires en même temps qu'il calme l'inflammation : c'est ce qui le rend efficace et c'est ce qui impose les précautions qui suivent. Le stylo sort du réfrigérateur trente minutes avant l'injection et se réchauffe tout seul, sans le passer sous l'eau chaude ni au micro-ondes : injecté froid, il fait mal, et c'est la première raison pour laquelle les gens arrêtent. Alternez cuisse et ventre, en restant à cinq centimètres du nombril, et changez de point à chaque fois. Le dispositif n'est pas le même d'une marque d'adalimumab à l'autre : si votre pharmacie vous délivre une autre spécialité, faites-vous remontrer le geste, même si vous vous injectez depuis des années. Toute fièvre, tout mal de gorge qui traîne, toute infection en cours fait décaler l'injection et appeler le médecin : une infection banale peut prendre de l'ampleur sous ce traitement. Signalez ce traitement avant tout vaccin — les vaccins vivants sont interdits pendant —, avant tout soin dentaire et avant toute chirurgie. Faites examiner votre peau une fois par an. Respectez la chaîne du froid jusqu'à la maison, un sac isotherme n'est pas un luxe, et ne congelez jamais le stylo. Notez la date de chaque injection : le rythme de toutes les deux semaines est celui qu'on perd le plus facilement de vue.",
+        half_life: "Environ 14 jours, ce qui justifie une injection toutes les deux semaines et explique que l'effet persiste plusieurs semaines après l'arrêt",
         elimination: "Catabolisme protéique, comme toute immunoglobuline ; pas de métabolisme hépatique ni rénal.",
-        renal: "Pas d'adaptation.",
+        renal: "Aucune adaptation de la dose quel que soit le stade d'insuffisance rénale, y compris chez le dialysé, l'élimination étant protéique et non rénale.",
         pregnancy: "Utilisable si nécessaire ; le passage transplacentaire est important au troisième trimestre, ce qui décale les vaccins vivants du nourrisson d'au moins six mois après la naissance.",
         sources: "RCP Amgevita — base de données publique des médicaments (ANSM)\nANSM — état des lieux sur les médicaments biosimilaires\nEMA — Biosimilars in the EU, information guide for healthcare professionals",
         status: "",
@@ -19128,18 +19149,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Hyrimoz",
-        indications: "Biosimilaire de l'adalimumab, mêmes indications que le médicament de référence en rhumatologie, dermatologie, gastro-entérologie et ophtalmologie.",
-        mechanism: "Anticorps monoclonal anti-TNF alpha. La comparabilité avec le médicament de référence est établie sur la qualité, la pharmacocinétique et la clinique — c'est ce dossier qui remplace, pour un biosimilaire, la simple bioéquivalence d'un générique.",
-        dosage: "40 mg par voie sous-cutanée toutes les deux semaines dans la plupart des indications ; doses d'induction propres aux MICI et à l'hidradénite suppurée.",
-        contraindications: "Infection évolutive, tuberculose non traitée, insuffisance cardiaque modérée à sévère, hypersensibilité.",
-        ddi: "Anakinra, abatacept : déconseillés. Vaccins vivants contre-indiqués pendant le traitement.",
-        adverse: "Réactions au point d'injection, infections respiratoires, céphalées, infections graves, réactivation tuberculeuse.",
-        monitoring: "Bilan pré-thérapeutique complet, puis vigilance infectieuse. La spécialité délivrée et le numéro de lot se notent à chaque délivrance : un biologique se trace par son nom de marque et son lot, jamais par sa DCI seule.",
-        iup: "Trente minutes hors du réfrigérateur avant l'injection. Le stylo et sa gestuelle diffèrent d'une marque à l'autre : si la spécialité change, la technique se remontre. Toute fièvre ou infection fait décaler l'injection et appeler.",
-        half_life: "Environ 14 jours.",
-        elimination: "Catabolisme protéique.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "Utilisable si nécessaire ; décaler les vaccins vivants du nourrisson exposé in utero.",
+        indications: "Biosimilaire de l'adalimumab : polyarthrite rhumatoïde, arthrite juvénile idiopathique, rhumatisme psoriasique, spondyloarthrite axiale, psoriasis en plaques, maladie de Crohn, rectocolite hémorragique, hidradénite suppurée et uvéite non infectieuse, selon l'indication retenue.",
+        mechanism: "Anticorps monoclonal humain anti-TNF alpha, actif sur le TNF soluble comme sur le TNF transmembranaire. La comparabilité avec le médicament de référence est établie sur la qualité, la pharmacocinétique et la clinique — c'est ce dossier qui remplace, pour un biosimilaire, la simple bioéquivalence d'un générique. Il existe des présentations avec et sans citrate, la formulation sans citrate étant nettement moins douloureuse à l'injection, ce qui compte dans le choix d'une spécialité pour un patient qui s'injecte pendant des années.",
+        dosage: "Quarante milligrammes par voie sous-cutanée toutes les deux semaines dans la plupart des indications ; doses d'induction plus élevées dans les maladies inflammatoires chroniques de l'intestin et dans l'hidradénite suppurée, selon le schéma prescrit. Intensification hebdomadaire possible en cas de réponse insuffisante dans certaines indications. Dose pédiatrique calculée sur le poids. Conservation entre deux et huit degrés, à l'abri de la lumière, sans congélation.",
+        contraindications: "Infection évolutive, chronique ou localisée. Tuberculose active ou latente non traitée. Infection opportuniste. Insuffisance cardiaque modérée à sévère. Hypersensibilité à la substance active ou à un excipient. Hépatite B active.",
+        ddi: "Anakinra et abatacept : association déconseillée. Vaccins vivants contre-indiqués pendant le traitement ; les vaccins inactivés sont recommandés et se programment de préférence avant l'instauration. Le méthotrexate associé réduit l'apparition d'anticorps anti-médicament et la perte d'efficacité qui s'ensuit. Aucune interaction avec les cytochromes ni avec les inducteurs enzymatiques.",
+        adverse: "Réactions au point d'injection, infections respiratoires, céphalées. Infections graves et réactivation d'une tuberculose latente ou d'une hépatite B. Cytopénies. Atteintes démyélinisantes centrales ou périphériques. Aggravation d'une insuffisance cardiaque. Syndrome lupique médicamenteux réversible. Réactions d'hypersensibilité. Cancers cutanés, dont le mélanome, imposant un examen dermatologique annuel.",
+        monitoring: "Bilan pré-thérapeutique complet : tuberculose latente, sérologies des hépatites B et C, radiographie thoracique, numération, transaminases, calendrier vaccinal. Puis vigilance infectieuse permanente, numération et bilan hépatique périodiques, examen cutané annuel. La spécialité délivrée et le numéro de lot se notent à chaque délivrance : un biologique se trace par son nom de marque et son lot, jamais par sa dénomination commune seule.",
+        iup: "Ce traitement calme l'inflammation en diminuant vos défenses immunitaires : les précautions qui suivent découlent toutes de là. Sortez le stylo du réfrigérateur trente minutes avant, sans le réchauffer autrement — injecté froid, il fait mal, et c'est la première cause d'abandon. Alternez cuisse et ventre, à distance du nombril, en changeant de point à chaque injection. Le stylo et sa gestuelle diffèrent d'une marque d'adalimumab à l'autre : si la spécialité délivrée change, faites-vous remontrer la technique entièrement. Toute fièvre, toute infection en cours fait décaler l'injection et appeler : ce qui serait un rhume banal peut s'aggraver sous ce traitement. Signalez-le avant tout vaccin — aucun vaccin vivant pendant le traitement —, avant tout soin dentaire et avant toute intervention. Un examen de la peau une fois par an fait partie du suivi. Chaîne du froid respectée jusqu'au domicile, jamais de congélation, et le stylo se jette dans le collecteur remis par la pharmacie. Notez chaque injection sur un calendrier : une injection toutes les deux semaines est un rythme qui se perd, et un traitement irrégulier finit par ne plus agir du tout.",
+        half_life: "Environ 14 jours, ce qui justifie une injection toutes les deux semaines et explique la persistance de l'effet après l'arrêt",
+        elimination: "Catabolisme protéique, comme toute immunoglobuline ; pas de métabolisme hépatique ni d'élimination rénale sous forme active.",
+        renal: "Aucune adaptation de la dose, quel que soit le stade d'insuffisance rénale et y compris chez le dialysé.",
+        pregnancy: "Utilisable si l'activité de la maladie le justifie ; passage transplacentaire important au troisième trimestre, d'où le décalage des vaccins vivants du nourrisson exposé in utero d'au moins six mois. Allaitement possible.",
         sources: "RCP Hyrimoz — base de données publique des médicaments (ANSM)\nEMA — Biosimilars in the EU, information guide for healthcare professionals",
         status: "",
         smr: "",
@@ -19149,18 +19170,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Imraldi",
-        indications: "Biosimilaire de l'adalimumab, mêmes indications que le médicament de référence.",
-        mechanism: "Anticorps monoclonal anti-TNF alpha, dont la comparabilité au médicament de référence a été établie par un dossier complet de qualité, de pharmacocinétique et de clinique.",
-        dosage: "40 mg par voie sous-cutanée toutes les deux semaines, avec les schémas d'induction propres aux indications digestives et à l'hidradénite.",
-        contraindications: "Infection évolutive, tuberculose non traitée, insuffisance cardiaque modérée à sévère, hypersensibilité.",
-        ddi: "Anakinra, abatacept : déconseillés. Vaccins vivants contre-indiqués pendant le traitement.",
-        adverse: "Réactions au point d'injection, infections, céphalées ; infections graves et réactivation tuberculeuse.",
-        monitoring: "Dépistage tuberculose et hépatites avant l'instauration ; nom de marque et numéro de lot notés à chaque délivrance.",
-        iup: "Sortir le stylo trente minutes avant. Le dispositif diffère des autres adalimumabs : une technique apprise sur une marque ne se transpose pas telle quelle. Fièvre ou infection : on décale et on appelle.",
-        half_life: "Environ 14 jours.",
-        elimination: "Catabolisme protéique.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "Utilisable si nécessaire ; vaccins vivants du nourrisson décalés.",
+        indications: "Biosimilaire de l'adalimumab : polyarthrite rhumatoïde, arthrite juvénile idiopathique, rhumatisme psoriasique, spondyloarthrite axiale, psoriasis en plaques, maladie de Crohn, rectocolite hémorragique, hidradénite suppurée et uvéite non infectieuse, selon l'indication retenue.",
+        mechanism: "Anticorps monoclonal humain anti-TNF alpha, qui neutralise le TNF soluble et le TNF transmembranaire et induit l'apoptose des cellules inflammatoires qui le portent — d'où, à la différence de l'étanercept, son efficacité dans les maladies inflammatoires chroniques de l'intestin. La comparabilité au médicament de référence a été établie par un dossier complet de qualité, de pharmacocinétique et de clinique : c'est ce dossier qui tient lieu, pour un biosimilaire, de la bioéquivalence d'un générique, une protéine produite par une lignée cellulaire n'étant jamais une copie à l'identique.",
+        dosage: "Quarante milligrammes par voie sous-cutanée toutes les deux semaines dans la plupart des indications rhumatologiques et dermatologiques. Les indications digestives et l'hidradénite suppurée comportent une induction à dose nettement plus élevée avant l'entretien, selon le schéma de la prescription. Une intensification à quarante milligrammes par semaine est possible en cas de réponse insuffisante dans certaines indications. Chez l'enfant, la dose est calculée sur le poids. Conservation entre deux et huit degrés, sans congélation.",
+        contraindications: "Infection évolutive, y compris une infection chronique ou localisée. Tuberculose active, ou tuberculose latente non traitée. Infection opportuniste. Insuffisance cardiaque modérée à sévère. Hypersensibilité à la substance active ou à un excipient. Hépatite B active.",
+        ddi: "Anakinra et abatacept : association déconseillée, le risque infectieux s'additionnant sans bénéfice. Vaccins vivants contre-indiqués pendant le traitement et pendant le délai fixé après son arrêt ; les vaccins inactivés restent indiqués et se programment de préférence avant l'instauration. Le méthotrexate associé réduit l'immunisation contre l'anticorps et fait souvent partie du schéma. Aucune interaction avec les cytochromes.",
+        adverse: "Réactions au point d'injection, infections des voies aériennes supérieures, céphalées, douleurs abdominales. Infections graves, bactériennes, fongiques ou opportunistes, et réactivation d'une tuberculose latente. Réactivation d'une hépatite B. Cytopénies. Atteintes démyélinisantes. Aggravation d'une insuffisance cardiaque. Syndrome lupique médicamenteux. Réactions d'hypersensibilité. Cancers cutanés, dont le mélanome, justifiant un examen dermatologique régulier.",
+        monitoring: "Avant l'instauration : dépistage de la tuberculose latente, sérologies des hépatites B et C, radiographie thoracique, numération formule sanguine, bilan hépatique, calendrier vaccinal à jour. Pendant : vigilance infectieuse permanente, numération et transaminases périodiques, examen cutané annuel. Toute fièvre fait décaler l'injection. La spécialité et le numéro de lot se notent à chaque délivrance, la traçabilité d'un biologique passant par la marque et le lot et non par la dénomination commune.",
+        iup: "Ce traitement calme l'inflammation en diminuant vos défenses immunitaires : les précautions qui suivent viennent toutes de là. Le stylo sort du réfrigérateur trente minutes avant l'injection et se réchauffe seul, sans eau chaude : injecté froid, il fait mal, et c'est la première cause d'abandon. Alternez cuisse et ventre, à cinq centimètres du nombril, en changeant de point chaque fois. Le dispositif diffère des autres adalimumabs : une technique apprise sur une marque ne se transpose pas telle quelle, et la gestuelle se remontre à chaque changement de spécialité. Toute fièvre, toute infection en cours fait décaler l'injection et appeler. Signalez ce traitement avant tout vaccin — aucun vaccin vivant pendant —, avant tout soin dentaire et avant toute chirurgie programmée. Si vous êtes enceinte ou l'avez été sous traitement, dites-le : les vaccins vivants de votre bébé seront décalés d'au moins six mois après la naissance. Faites examiner votre peau une fois par an. Chaîne du froid jusqu'au domicile, jamais de congélation, collecteur rapporté à la pharmacie, et la date de chaque injection notée : le rythme de deux semaines se perd vite.",
+        half_life: "Environ 14 jours, ce qui explique le rythme des injections toutes les deux semaines et la persistance de l'effet plusieurs semaines après l'arrêt",
+        elimination: "Catabolisme protéique, comme toute immunoglobuline ; ni métabolisme hépatique, ni élimination rénale sous forme active.",
+        renal: "Aucune adaptation de la dose quel que soit le stade d'insuffisance rénale, y compris chez le dialysé, l'élimination étant protéique et non rénale.",
+        pregnancy: "Utilisable si l'activité de la maladie le justifie ; le passage transplacentaire est important au troisième trimestre, ce qui impose de décaler les vaccins vivants du nourrisson d'au moins six mois après la naissance. Allaitement possible, la molécule étant digérée par le nourrisson.",
         sources: "RCP Imraldi — base de données publique des médicaments (ANSM)\nANSM — état des lieux sur les médicaments biosimilaires",
         status: "",
         smr: "",
@@ -19170,18 +19191,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Benepali",
-        indications: "Biosimilaire de l'étanercept : polyarthrite rhumatoïde, rhumatisme psoriasique, spondyloarthrite axiale, psoriasis en plaques de l'adulte et de l'enfant selon l'indication.",
-        mechanism: "Protéine de fusion récepteur soluble du TNF — Fc, qui neutralise le TNF alpha circulant. Contrairement aux anticorps anti-TNF, elle n'a pas d'efficacité démontrée dans les MICI, et c'est la différence à connaître.",
-        dosage: "50 mg par voie sous-cutanée une fois par semaine, ou 25 mg deux fois par semaine selon la prescription.",
-        contraindications: "Septicémie ou risque de septicémie ; infection évolutive ; tuberculose non traitée ; hypersensibilité.",
-        ddi: "Anakinra et abatacept : association déconseillée. Vaccins vivants contre-indiqués pendant le traitement.",
-        adverse: "Réactions au point d'injection, très fréquentes dans les premières semaines et qui s'atténuent ; infections des voies aériennes ; infections graves ; réactivation tuberculeuse.",
-        monitoring: "Dépistage de la tuberculose et des hépatites avant. Toute infection fait décaler l'injection. Nom de marque et lot notés à chaque délivrance.",
-        iup: "Une injection par semaine, le même jour, noté sur un calendrier : c'est le rythme le plus facile à perdre. Rougeur au point d'injection les premières semaines, attendue. Chaîne du froid respectée jusqu'à la maison, sans jamais congeler.",
-        half_life: "Environ 70 heures.",
-        elimination: "Catabolisme protéique.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "Utilisable si nécessaire, après évaluation ; passage transplacentaire moindre que celui des anticorps entiers.",
+        indications: "Biosimilaire de l'étanercept : polyarthrite rhumatoïde, rhumatisme psoriasique, spondyloarthrite axiale radiographique et non radiographique, psoriasis en plaques de l'adulte et de l'enfant, selon l'indication retenue. Comme tout étanercept, il n'a pas de place dans la maladie de Crohn ni dans la rectocolite hémorragique.",
+        mechanism: "Protéine de fusion associant le récepteur soluble du TNF à un fragment Fc, qui neutralise le TNF alpha circulant. Contrairement aux anticorps anti-TNF, elle n'a pas d'efficacité démontrée dans les maladies inflammatoires chroniques de l'intestin, faute de se lier durablement au TNF transmembranaire : c'est la différence à connaître quand une ordonnance passe d'une classe à l'autre.",
+        dosage: "Cinquante milligrammes par voie sous-cutanée une fois par semaine, ou vingt-cinq milligrammes deux fois par semaine, selon la prescription. Dans le psoriasis, l'attaque peut se faire à dose plus élevée avant le retour à l'entretien hebdomadaire. Chez l'enfant, la dose est calculée sur le poids. Conservation entre deux et huit degrés, à l'abri de la lumière ; le séjour à température ambiante est unique, limité en durée, et sans retour au réfrigérateur.",
+        contraindications: "Septicémie ou risque de septicémie. Infection évolutive, chronique ou localisée. Tuberculose active ou latente non traitée. Hypersensibilité à la substance active ou à un excipient. Hépatite B active. L'insuffisance cardiaque sévère impose un avis cardiologique préalable.",
+        ddi: "Anakinra et abatacept : association déconseillée, le risque infectieux et hématologique s'additionne. Vaccins vivants contre-indiqués pendant le traitement ; les vaccins inactivés, grippe et pneumocoque en particulier, se programment de préférence avant l'instauration et restent recommandés pendant. Sulfasalazine : baisse des leucocytes décrite. Aucune interaction avec les inducteurs ou inhibiteurs enzymatiques.",
+        adverse: "Réactions au point d'injection, très fréquentes dans les premières semaines et qui s'atténuent. Infections des voies aériennes, urinaires et cutanées. Infections graves et réactivation d'une tuberculose latente ou d'une hépatite B. Cytopénies, rarement aplasie médullaire. Atteintes démyélinisantes. Aggravation d'une insuffisance cardiaque. Syndrome lupique médicamenteux réversible à l'arrêt. Surveillance cutanée justifiée par le risque de cancers cutanés.",
+        monitoring: "Dépistage de la tuberculose et des hépatites B et C, radiographie thoracique, numération et bilan hépatique avant la première injection, calendrier vaccinal mis à jour. Ensuite, vigilance infectieuse permanente : toute infection fait décaler l'injection. Numération et transaminases périodiques, examen cutané annuel, évaluation neurologique devant tout signe nouveau. Nom de marque et numéro de lot notés à chaque délivrance.",
+        iup: "Ce traitement calme l'inflammation en diminuant vos défenses immunitaires, et tout ce qui suit en découle. Une injection par semaine, le même jour, noté sur un calendrier : c'est le rythme le plus facile à perdre de vue. Le stylo sort du réfrigérateur une demi-heure avant l'injection et ne se réchauffe pas autrement ; il ne se congèle jamais, et la chaîne du froid se respecte jusqu'à la maison — demandez un sac isotherme. Alternez cuisse, ventre et bras en changeant de point à chaque fois. Une rougeur au point d'injection pendant les premières semaines est attendue et s'estompe : ce n'est pas une allergie et ce n'est pas une raison d'arrêter. Toute fièvre, tout mal de gorge persistant, toute infection en cours fait décaler l'injection et appeler le médecin. Signalez ce traitement avant tout vaccin — les vaccins vivants sont interdits pendant —, avant tout soin dentaire et avant toute chirurgie. Prévenez également si vous êtes essoufflé, si vos chevilles gonflent, ou si vous ressentez des fourmillements ou des troubles de la vue : ce sont des signes qui se vérifient. Le stylo usagé se jette dans le collecteur rapporté à la pharmacie.",
+        half_life: "Environ 70 heures, soit près de trois jours, ce qui justifie le rythme hebdomadaire",
+        elimination: "Catabolisme protéique ; ni métabolisme par les cytochromes, ni élimination rénale sous forme active.",
+        renal: "Aucune adaptation de la dose quel que soit le stade d'insuffisance rénale, y compris chez le dialysé, l'élimination étant protéique.",
+        pregnancy: "Utilisable si nécessaire, après évaluation ; le passage transplacentaire est moindre que celui des anticorps entiers mais devient significatif au troisième trimestre, ce qui conduit à décaler les vaccins vivants du nourrisson exposé. Allaitement possible.",
         sources: "RCP Benepali — base de données publique des médicaments (ANSM)\nEMA — Biosimilars in the EU, information guide for healthcare professionals",
         status: "",
         smr: "",
@@ -19191,18 +19212,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Erelzi",
-        indications: "Biosimilaire de l'étanercept, mêmes indications rhumatologiques et dermatologiques que le médicament de référence.",
-        mechanism: "Récepteur soluble du TNF fusionné à un fragment Fc. Comme tout étanercept, il n'a pas de place dans les maladies inflammatoires chroniques de l'intestin.",
-        dosage: "50 mg par voie sous-cutanée une fois par semaine, ou 25 mg deux fois par semaine.",
-        contraindications: "Septicémie ou risque de septicémie, infection évolutive, tuberculose non traitée, hypersensibilité.",
-        ddi: "Anakinra, abatacept : déconseillés. Vaccins vivants contre-indiqués.",
-        adverse: "Réactions locales, infections respiratoires, infections graves, réactivation tuberculeuse.",
-        monitoring: "Bilan pré-thérapeutique, vigilance infectieuse, traçabilité par marque et par lot.",
-        iup: "Une fois par semaine à jour fixe. Le stylo n'est pas celui des autres étanercepts : la gestuelle se remontre si la spécialité change. Ne jamais congeler.",
-        half_life: "Environ 70 heures.",
-        elimination: "Catabolisme protéique.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "Utilisable si nécessaire, après évaluation.",
+        indications: "Biosimilaire de l'étanercept : polyarthrite rhumatoïde, arthrite juvénile idiopathique, rhumatisme psoriasique, spondyloarthrite axiale radiographique et non radiographique, psoriasis en plaques de l'adulte et de l'enfant. Les indications sont celles du médicament de référence, à l'exception notable des maladies inflammatoires chroniques de l'intestin, où aucun étanercept n'a sa place.",
+        mechanism: "Protéine de fusion associant le récepteur soluble p75 du TNF à un fragment Fc d'immunoglobuline humaine. Elle capte le TNF alpha circulant comme un leurre et le neutralise avant qu'il n'atteigne ses récepteurs membranaires. À la différence des anticorps anti-TNF entiers, elle ne se fixe pas de façon stable au TNF transmembranaire et n'induit pas d'apoptose des cellules qui le portent : c'est l'explication admise de son inefficacité dans la maladie de Crohn et la rectocolite, et c'est la distinction à garder en tête quand une ordonnance change d'anti-TNF.",
+        dosage: "Cinquante milligrammes par voie sous-cutanée une fois par semaine, ou vingt-cinq milligrammes deux fois par semaine à intervalle de trois à quatre jours, selon la prescription. Dans le psoriasis, une phase d'attaque à dose plus élevée peut précéder l'entretien. Chez l'enfant, la dose est calculée sur le poids par le prescripteur. Conservation entre deux et huit degrés, à l'abri de la lumière ; le stylo supporte un séjour unique et limité à température ambiante, dont la durée est fixée par le résumé des caractéristiques du produit, sans retour possible au réfrigérateur ensuite.",
+        contraindications: "Septicémie ou risque de septicémie. Infection évolutive, y compris une infection chronique ou localisée active. Tuberculose active, ou tuberculose latente non traitée. Hypersensibilité à la substance active ou à un excipient. Le traitement n'est pas instauré en cas d'hépatite B active, et l'insuffisance cardiaque sévère impose une évaluation cardiologique préalable.",
+        ddi: "Anakinra et abatacept : association déconseillée, le risque d'infection grave et de neutropénie s'additionne sans bénéfice démontré. Vaccins vivants contre-indiqués pendant le traitement et jusqu'au délai fixé après son arrêt ; les vaccins inactivés restent possibles et se programment de préférence avant l'instauration. Sulfasalazine : baisse des leucocytes décrite en association, sans conséquence clinique établie. Ni le millepertuis ni les inducteurs enzymatiques n'interfèrent, la molécule étant une protéine.",
+        adverse: "Réactions au point d'injection, très fréquentes dans les premières semaines et s'atténuant ensuite. Infections des voies aériennes supérieures, infections urinaires et cutanées. Infections graves, bactériennes, fongiques ou opportunistes, et réactivation d'une tuberculose latente. Réactivation d'une hépatite B. Cytopénies, exceptionnellement aplasie médullaire. Atteintes démyélinisantes centrales ou périphériques. Aggravation d'une insuffisance cardiaque. Réactions lupiques avec apparition d'anticorps, en règle réversibles à l'arrêt. Le risque de lymphome reste débattu et justifie une surveillance cutanée régulière.",
+        monitoring: "Avant l'instauration : recherche d'une tuberculose latente par interrogatoire, radiographie thoracique et test immunologique, sérologies des hépatites B et C, numération formule sanguine, bilan hépatique, mise à jour du calendrier vaccinal. Pendant le traitement : vigilance infectieuse permanente, toute fièvre faisant décaler l'injection et consulter. Numération et transaminases périodiques. Examen cutané annuel. Surveillance neurologique devant tout trouble sensitif ou visuel nouveau. La spécialité délivrée et le numéro de lot se notent à chaque délivrance : un biologique se trace par sa marque et son lot, jamais par sa dénomination commune seule.",
+        iup: "Une injection par semaine, le même jour, noté sur un calendrier : c'est le rythme le plus facile à perdre de vue. Le stylo se sort du réfrigérateur une trentaine de minutes avant, sans être réchauffé autrement, et ne se congèle jamais. Le dispositif n'est pas celui des autres étanercepts : si la spécialité change, la gestuelle se remontre entièrement, même à un patient qui s'injecte depuis des années. La rougeur au point d'injection des premières semaines est attendue et s'estompe. Toute fièvre, tout mal de gorge traînant, toute infection en cours fait décaler l'injection et appeler le médecin. Ce traitement diminue les défenses : il ne se poursuit pas en silence pendant une infection, et aucun vaccin vivant ne se fait sans en parler.",
+        half_life: "Environ 70 heures, soit près de trois jours, ce qui autorise une injection hebdomadaire",
+        elimination: "Catabolisme protéique, comme toute protéine de fusion à fragment Fc ; ni métabolisme hépatique par les cytochromes, ni élimination rénale sous forme active.",
+        renal: "Aucune adaptation de la dose, quel que soit le degré d'insuffisance rénale, l'élimination ne passant pas par le rein. La fonction rénale reste surveillée dans le cadre du suivi de la maladie inflammatoire elle-même.",
+        pregnancy: "Utilisable si l'état de la maladie le justifie, après évaluation du rapport bénéfice risque : le passage transplacentaire est moindre que celui des anticorps monoclonaux entiers mais devient significatif au troisième trimestre. En cas d'exposition tardive, les vaccins vivants du nourrisson sont décalés. Allaitement possible, les quantités passant dans le lait étant négligeables et la protéine étant digérée.",
         sources: "RCP Erelzi — base de données publique des médicaments (ANSM)\nANSM — état des lieux sur les médicaments biosimilaires",
         status: "",
         smr: "",
@@ -19212,18 +19233,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Zarzio",
-        indications: "Biosimilaire du filgrastim : réduction de la durée des neutropénies et de l'incidence des neutropénies fébriles après chimiothérapie, mobilisation des cellules souches, neutropénies chroniques sévères.",
-        mechanism: "Facteur de croissance granulocytaire recombinant : il raccourcit la maturation des précurseurs et fait sortir les neutrophiles de la moelle. L'effet se mesure sur la NFS et non sur les symptômes.",
-        dosage: "5 µg/kg par jour par voie sous-cutanée, débuté au moins 24 heures après la fin de la cure et poursuivi jusqu'à sortie de l'aplasie, selon le protocole.",
-        contraindications: "Hypersensibilité au filgrastim ou à l'un des excipients.",
-        ddi: "Ne pas administrer dans les 24 heures qui précèdent ou qui suivent une chimiothérapie cytotoxique : les cellules mises en division sont plus sensibles au cytotoxique.",
-        adverse: "Douleurs osseuses, très fréquentes et signant l'efficacité — os longs, bassin, sternum —, calmées par le paracétamol. Réactions locales, élévation des LDH et des phosphatases alcalines. Rarement rupture splénique et syndrome de fuite capillaire.",
-        monitoring: "NFS régulière selon le protocole. Une douleur de l'hypochondre gauche ou de l'épaule gauche fait évoquer la rate et consulter le jour même.",
-        iup: "Les douleurs osseuses des premiers jours sont attendues et cèdent au paracétamol : les annoncer évite l'arrêt. Seringue à sortir du réfrigérateur quinze à trente minutes avant, sans la réchauffer autrement. Le filgrastim et le pegfilgrastim ne s'échangent pas : l'un est quotidien, l'autre unique par cure.",
-        half_life: "3 à 4 heures.",
-        elimination: "Rénale et catabolisme cellulaire.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "À n'utiliser qu'en cas de nécessité.",
+        indications: "Biosimilaire du filgrastim : réduction de la durée des neutropénies et de l'incidence des neutropénies fébriles après chimiothérapie cytotoxique ; neutropénies sévères chroniques congénitales, cycliques ou idiopathiques ; neutropénie persistante de l'infection par le VIH ; mobilisation des cellules souches hématopoïétiques périphériques, chez le patient comme chez le donneur sain.",
+        mechanism: "Facteur de croissance granulocytaire recombinant : il raccourcit la maturation des précurseurs médullaires, fait sortir les neutrophiles de la moelle et augmente leur activité fonctionnelle. L'effet se mesure sur la numération et non sur les symptômes, et le traitement s'arrête sur un chiffre, pas sur une impression clinique.",
+        dosage: "Cinq microgrammes par kilogramme et par jour par voie sous-cutanée après chimiothérapie, débutés au moins vingt-quatre heures après la fin de la cure et poursuivis jusqu'à la sortie d'aplasie, selon le protocole. Les doses de mobilisation des cellules souches sont plus élevées et suivent le calendrier du recueil. Conservation entre deux et huit degrés, à l'abri de la lumière, sans congélation.",
+        contraindications: "Hypersensibilité au filgrastim ou à l'un des excipients. Le produit ne doit pas servir à intensifier une chimiothérapie au-delà des schémas établis. Évaluation spécialisée préalable en cas de drépanocytose, de syndrome myélodysplasique ou d'antécédent de leucémie myéloïde.",
+        ddi: "Ne pas administrer dans les vingt-quatre heures qui précèdent ou qui suivent une chimiothérapie cytotoxique : les cellules mises en division sont plus sensibles au cytotoxique. Lithium : effet additif sur la libération des neutrophiles, à prendre en compte dans la lecture de la numération. L'hyperplasie médullaire peut fausser l'interprétation d'une imagerie osseuse.",
+        adverse: "Douleurs osseuses, très fréquentes et signant l'efficacité — os longs, bassin, sternum —, calmées par le paracétamol. Réactions locales, céphalées, fièvre, asthénie. Élévation des lacticodéshydrogénases, des phosphatases alcalines et de l'uricémie. Splénomégalie et, rarement, rupture splénique. Exceptionnellement, syndrome de fuite capillaire, syndrome de détresse respiratoire aiguë, syndrome de Sweet, vascularite cutanée et glomérulonéphrite.",
+        monitoring: "Numération formule sanguine régulière selon le protocole, plaquettes comprises : c'est elle qui décide de la poursuite et de l'arrêt. Une douleur de l'hypochondre gauche ou de l'épaule gauche fait évoquer la rate et consulter le jour même. Toute dyspnée ou toux nouvelle est évaluée sans délai. Bilan hépatique, uricémie et recherche d'une protéinurie au long cours. Nom de marque et numéro de lot notés à chaque délivrance, la traçabilité d'un biologique passant par la spécialité et non par la dénomination commune.",
+        iup: "Les douleurs osseuses des premiers jours sont attendues et cèdent au paracétamol : les annoncer évite l'arrêt du traitement. La seringue se sort du réfrigérateur quinze à trente minutes avant, sans être réchauffée autrement, et l'on change de point d'injection à chaque fois — ventre, cuisse ou bras. Le filgrastim et le pegfilgrastim ne s'échangent pas : l'un est quotidien, l'autre unique par cure, et confondre les deux rythmes est l'erreur classique. Jamais d'injection le jour de la perfusion de chimiothérapie. Fièvre au-dessus de trente-huit degrés, frissons, essoufflement, douleur du ventre à gauche ou de l'épaule gauche : appeler le jour même.",
+        half_life: "Environ 3 à 4 heures par voie sous-cutanée, la clairance s'accélérant avec la remontée des polynucléaires",
+        elimination: "Catabolisme protéique et clairance médiée par les récepteurs des neutrophiles, autorégulée par la numération elle-même ; part rénale accessoire.",
+        renal: "Pas d'adaptation posologique, quel que soit le degré d'insuffisance rénale, l'élimination n'étant pas principalement rénale. La surveillance garde en revanche la créatininémie et la protéinurie, une glomérulonéphrite ayant été décrite sous facteur de croissance granulocytaire.",
+        pregnancy: "Données limitées : réservé aux situations où le bénéfice attendu l'emporte, la question se posant surtout dans le contexte de la chimiothérapie. Allaitement déconseillé pendant le traitement.",
         sources: "RCP Zarzio — base de données publique des médicaments (ANSM)\nANSM — groupes biologiques similaires substituables\nEMA — Biosimilars in the EU",
         status: "",
         smr: "",
@@ -19233,18 +19254,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Nivestim",
-        indications: "Biosimilaire du filgrastim, mêmes indications hématologiques que le médicament de référence.",
-        mechanism: "Facteur de croissance granulocytaire recombinant, dont la comparabilité au filgrastim de référence a été établie sur la qualité, la pharmacocinétique et la clinique.",
-        dosage: "5 µg/kg par jour par voie sous-cutanée selon le protocole, débuté au moins 24 heures après la cure.",
-        contraindications: "Hypersensibilité.",
-        ddi: "Pas d'administration dans les 24 heures encadrant une chimiothérapie cytotoxique.",
-        adverse: "Douleurs osseuses, réactions locales, céphalées ; rarement rupture splénique.",
-        monitoring: "NFS selon le protocole ; douleur de l'hypochondre gauche à faire évaluer.",
-        iup: "Douleurs osseuses attendues et calmées par le paracétamol. Sortir la seringue du réfrigérateur un quart d'heure avant. Une injection par jour tant que le protocole le prévoit — ce n'est pas la forme à injection unique.",
-        half_life: "3 à 4 heures.",
-        elimination: "Rénale et catabolisme cellulaire.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "À n'utiliser qu'en cas de nécessité.",
+        indications: "Biosimilaire du filgrastim : réduction de la durée des neutropénies et de l'incidence des neutropénies fébriles après une chimiothérapie cytotoxique ; neutropénies sévères chroniques congénitales, cycliques ou idiopathiques ; neutropénie persistante au cours de l'infection par le VIH ; mobilisation des cellules souches hématopoïétiques périphériques en vue d'un recueil, chez le patient comme chez le donneur sain. Les indications sont celles du médicament de référence, la comparabilité ayant été démontrée pour l'ensemble d'entre elles.",
+        mechanism: "Facteur de croissance granulocytaire humain recombinant, non glycosylé. Il se fixe sur les récepteurs des précurseurs de la lignée granuleuse dans la moelle, accélère leur prolifération et leur différenciation, raccourcit le temps de maturation et fait sortir plus tôt les polynucléaires matures dans le sang, dont il augmente aussi l'activité fonctionnelle. La comparabilité au filgrastim de référence a été établie par un dossier complet de qualité, de pharmacocinétique et de clinique : c'est ce dossier qui tient lieu, pour un biosimilaire, de la bioéquivalence d'un générique.",
+        dosage: "Voie sous-cutanée, en règle 5 microgrammes par kilogramme et par jour après chimiothérapie, la dose et la durée étant fixées par le protocole. La première injection n'est jamais faite dans les vingt-quatre heures qui suivent la perfusion cytotoxique, et le traitement est poursuivi jusqu'à la remontée des polynucléaires neutrophiles au-dessus du seuil retenu par le service. En mobilisation de cellules souches, les doses sont plus élevées et le calendrier est celui du protocole de recueil. Les seringues se conservent entre deux et huit degrés, à l'abri de la lumière, sans jamais être congelées.",
+        contraindications: "Hypersensibilité au filgrastim ou à l'un des excipients. Le produit ne doit jamais servir à augmenter les doses de chimiothérapie au-delà des schémas validés. Prudence, et évaluation spécialisée préalable, en cas de drépanocytose, où des crises vaso-occlusives sévères ont été décrites, ainsi qu'en cas d'antécédent de syndrome myélodysplasique ou de leucémie myéloïde.",
+        ddi: "Chimiothérapie cytotoxique : ne pas administrer dans les vingt-quatre heures qui précèdent ou qui suivent la perfusion, les précurseurs mis en division par le facteur de croissance étant plus vulnérables au cytotoxique. Lithium : stimulation additive de la libération des neutrophiles, sans conséquence clinique majeure mais imposant de suivre la numération. L'hyperplasie médullaire induite peut modifier l'interprétation d'une scintigraphie osseuse.",
+        adverse: "Douleurs osseuses et musculaires, très fréquentes, siégeant au bassin, au sternum et au rachis, liées à l'expansion médullaire et bien soulagées par le paracétamol. Réactions au point d'injection, céphalées, fièvre, asthénie. Élévation des phosphatases alcalines, des lacticodéshydrogénases et de l'uricémie. Splénomégalie et, rarement, rupture splénique révélée par une douleur de l'hypochondre gauche ou de l'épaule gauche. Plus rarement encore, syndrome de détresse respiratoire aiguë, syndrome de fuite capillaire, syndrome de Sweet, vascularite cutanée, glomérulonéphrite et réactions d'hypersensibilité.",
+        monitoring: "Numération formule sanguine régulière, souvent deux fois par semaine, pour guider la poursuite et fixer le jour de l'arrêt. Examen de la rate, complété d'une échographie en cas de traitement prolongé ou de douleur abdominale gauche. Toute toux, dyspnée ou fièvre nouvelle impose une évaluation rapide. Bilan hépatique, uricémie, créatininémie avec recherche d'une protéinurie et d'une hématurie. Dans les neutropénies chroniques, la surveillance hématologique est prolongée et cherche une évolution myélodysplasique. La spécialité délivrée et le numéro de lot se notent à chaque délivrance : un médicament biologique se trace par son nom de marque et son lot, jamais par sa dénomination commune seule.",
+        iup: "L'injection se fait sous la peau du ventre, de la cuisse ou du bras, une fois par jour à la même heure, en changeant de point de piqûre à chaque fois. Les seringues se gardent au réfrigérateur, jamais au congélateur ni dans la porte, et se sortent un quart d'heure avant pour que le produit ne soit pas glacé et que la piqûre fasse moins mal. Les douleurs dans les os, le bassin, le sternum ou le dos sont fréquentes et signent l'action du médicament sur la moelle : le paracétamol les calme et elles disparaissent à l'arrêt. Il ne faut jamais injecter le jour de la perfusion de chimiothérapie, mais respecter le délai indiqué par le service. Ce filgrastim s'injecte tous les jours : ce n'est pas la forme à injection unique par cure, et le rythme de l'un ne se transpose jamais à l'autre. Il faut appeler sans attendre en cas de fièvre au-dessus de trente-huit degrés, de frissons, d'essoufflement, de toux nouvelle, ou de douleur du côté gauche du ventre ou de l'épaule gauche.",
+        half_life: "Environ 3 à 4 heures après administration sous-cutanée, la clairance augmentant à mesure que le nombre de polynucléaires circulants s'élève",
+        elimination: "Élimination par catabolisme protéique et par une clairance médiée par les récepteurs des neutrophiles, qui s'accélère avec la remontée de la numération ; la voie rénale n'intervient qu'accessoirement.",
+        renal: "Aucune adaptation posologique, y compris en cas d'insuffisance rénale sévère, l'élimination étant essentiellement protéique et médiée par les récepteurs. La créatininémie et la recherche d'une protéinurie gardent leur place dans la surveillance, une glomérulonéphrite ayant été rapportée.",
+        pregnancy: "Données limitées : l'utilisation pendant la grossesse est réservée aux situations où le bénéfice l'emporte clairement, question qui se pose en pratique dans le cadre de la chimiothérapie associée. Allaitement déconseillé pendant le traitement faute de données suffisantes.",
         sources: "RCP Nivestim — base de données publique des médicaments (ANSM)\nANSM — groupes biologiques similaires substituables",
         status: "",
         smr: "",
@@ -19254,18 +19275,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Ziextenzo",
-        indications: "Biosimilaire du pegfilgrastim : réduction de la durée des neutropénies et de l'incidence des neutropénies fébriles après chimiothérapie cytotoxique.",
-        mechanism: "Filgrastim pégylé : la pégylation ralentit l'élimination rénale et allonge la demi-vie, ce qui permet une injection unique par cure au lieu d'une par jour.",
-        dosage: "6 mg par voie sous-cutanée en une injection unique, au moins 24 heures après la fin de chaque cure de chimiothérapie.",
-        contraindications: "Hypersensibilité au pegfilgrastim ou au filgrastim.",
-        ddi: "Pas d'administration dans les 24 heures qui suivent la fin de la cure.",
-        adverse: "Douleurs osseuses, fréquentes et calmées par le paracétamol ; nausées, céphalées, réactions locales. Rarement rupture splénique, syndrome de fuite capillaire, syndrome de détresse respiratoire.",
-        monitoring: "NFS selon le protocole. Douleur de l'hypochondre gauche ou de l'épaule gauche, essoufflement nouveau : évaluation le jour même.",
-        iup: "Une seule injection par cure, et c'est là toute la différence avec le filgrastim quotidien : un patient qui a connu l'un ne doit pas transposer le rythme à l'autre. Vingt-quatre heures au moins après la fin de la chimiothérapie, jamais avant. Sortir la seringue du réfrigérateur trente minutes avant.",
-        half_life: "15 à 80 heures, variable avec le nombre de neutrophiles — l'élimination se fait par les cellules qu'il produit.",
-        elimination: "Auto-régulée par les neutrophiles, faible part rénale.",
-        renal: "Pas d'adaptation.",
-        pregnancy: "À n'utiliser qu'en cas de nécessité.",
+        indications: "Biosimilaire du pegfilgrastim : réduction de la durée des neutropénies et de l'incidence des neutropénies fébriles chez l'adulte traité par une chimiothérapie cytotoxique, en dehors des leucémies myéloïdes chroniques et des syndromes myélodysplasiques.",
+        mechanism: "Filgrastim pégylé : la pégylation ralentit l'élimination rénale et allonge considérablement la demi-vie, ce qui permet une injection unique par cure au lieu d'une par jour. L'élimination restant assurée par les neutrophiles produits, la molécule s'épure d'elle-même à mesure que la numération remonte, ce qui explique une exposition longue tant que le patient est en aplasie et brève dès qu'il en sort.",
+        dosage: "Six milligrammes par voie sous-cutanée, en une injection unique par cure, au moins vingt-quatre heures après la fin de la perfusion de chimiothérapie et jamais avant. La dose est fixe et ne s'adapte ni au poids ni à l'âge chez l'adulte. Conservation entre deux et huit degrés, à l'abri de la lumière, sans congélation ; une seringue congelée par mégarde ne se rattrape pas.",
+        contraindications: "Hypersensibilité au pegfilgrastim, au filgrastim ou à l'un des excipients. Ne doit pas servir à intensifier une chimiothérapie au-delà des schémas validés. Prudence et avis spécialisé en cas de drépanocytose, de syndrome myélodysplasique ou de leucémie myéloïde.",
+        ddi: "Pas d'administration dans les vingt-quatre heures qui suivent la fin de la cure, ni dans celles qui la précèdent : le cytotoxique frappe d'autant plus fort que les précurseurs sont en division. Lithium : effet additif sur la libération des neutrophiles. L'hyperplasie médullaire peut modifier l'interprétation d'une imagerie osseuse.",
+        adverse: "Douleurs osseuses, fréquentes, plus marquées et plus prolongées qu'avec le filgrastim quotidien du fait de l'exposition soutenue, et calmées par le paracétamol. Nausées, céphalées, asthénie, réactions au point d'injection. Élévation des lacticodéshydrogénases, des phosphatases alcalines et de l'uricémie. Rarement rupture splénique, syndrome de fuite capillaire, syndrome de détresse respiratoire aiguë, syndrome de Sweet, vascularite cutanée et glomérulonéphrite.",
+        monitoring: "Numération formule sanguine selon le protocole, sans qu'il soit utile de la répéter quotidiennement, la dose étant unique. Une douleur de l'hypochondre gauche ou de l'épaule gauche, un essoufflement nouveau ou une prise de poids brutale avec œdèmes imposent une évaluation le jour même. Bilan hépatique, uricémie et recherche d'une protéinurie au long cours. Spécialité et numéro de lot notés à chaque délivrance.",
+        iup: "Une seule injection par cure, et c'est là toute la différence avec le filgrastim quotidien : un patient qui a connu l'un ne doit pas transposer le rythme à l'autre, et il vaut mieux le lui dire deux fois. Vingt-quatre heures au moins après la fin de la chimiothérapie, jamais avant. La seringue se sort du réfrigérateur une trentaine de minutes avant, et l'injection se fait dans le ventre ou la cuisse. Les douleurs osseuses des jours suivants sont attendues et cèdent au paracétamol. Appeler sans attendre en cas de fièvre au-dessus de trente-huit degrés, de frissons, d'essoufflement, ou de douleur du côté gauche du ventre ou de l'épaule gauche.",
+        half_life: "15 à 80 heures, très variable d'un patient à l'autre et selon le nombre de neutrophiles, l'élimination étant assurée par les cellules mêmes que le produit fait fabriquer",
+        elimination: "Clairance autorégulée, médiée par les récepteurs des neutrophiles : elle s'accélère à mesure que la numération remonte. La pégylation ayant fortement réduit la filtration glomérulaire, la part rénale est faible.",
+        renal: "Pas d'adaptation de la dose, y compris en insuffisance rénale sévère et chez le dialysé, l'élimination n'étant plus rénale une fois la molécule pégylée. La créatininémie et la protéinurie restent surveillées au long cours.",
+        pregnancy: "Données limitées : réservé aux situations où le bénéfice l'emporte clairement, en pratique dans le contexte de la chimiothérapie elle-même. Allaitement déconseillé pendant le traitement.",
         sources: "RCP Ziextenzo — base de données publique des médicaments (ANSM)\nANSM — groupes biologiques similaires substituables",
         status: "",
         smr: "",
@@ -19275,39 +19296,39 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Semglee",
-        indications: "Biosimilaire de l'insuline glargine 100 unités/mL : diabète de type 1 et de type 2 nécessitant une insuline basale.",
-        mechanism: "Analogue lent de l'insuline humaine, qui précipite au pH physiologique et se libère lentement du dépôt sous-cutané : profil plat, sans pic marqué, sur environ vingt-quatre heures.",
-        dosage: "Une injection par jour à heure fixe, dose titrée sur la glycémie à jeun selon le schéma du prescripteur.",
-        contraindications: "Hypoglycémie ; hypersensibilité.",
-        ddi: "Tout ce qui modifie la glycémie : bêtabloquants (qui masquent en plus les signes de l'hypoglycémie), corticoïdes, thiazidiques, alcool, sport inhabituel.",
-        adverse: "Hypoglycémie, réactions au point d'injection, lipodystrophie si les sites ne sont pas alternés, prise de poids.",
-        monitoring: "Glycémie à jeun pour la titration, HbA1c tous les trois mois. Sites d'injection inspectés à chaque consultation : une lipodystrophie fait varier l'absorption sans que la dose ait changé.",
-        iup: "Une insuline glargine à 100 unités/mL et une à 300 unités/mL ne se remplacent pas dose pour dose : la concentration fait partie du nom du médicament. Le stylo est personnel, l'aiguille change à chaque injection, et les sites s'alternent. Une hypoglycémie sous insuline lente dure des heures : le resucrage seul ne suffit pas.",
-        half_life: "Durée d'action d'environ 24 heures, sans pic marqué.",
-        elimination: "Dégradation tissulaire, comme l'insuline endogène.",
-        renal: "Les besoins baissent quand la fonction rénale se dégrade : la dose se réévalue.",
-        pregnancy: "Utilisable ; les besoins changent beaucoup au cours de la grossesse et se réajustent souvent.",
+        indications: "Biosimilaire de l'insuline glargine à 100 unités par millilitre : diabète de type 1 et diabète de type 2 de l'adulte, de l'adolescent et de l'enfant à partir de deux ans, lorsqu'une insuline basale est nécessaire.",
+        mechanism: "Analogue lent de l'insuline humaine, soluble en milieu acide, qui précipite en microcristaux au pH physiologique du tissu sous-cutané et se redissout ensuite lentement. Il en résulte une libération étalée, sans pic marqué, sur environ vingt-quatre heures, qui couvre les besoins de base entre les repas et la nuit. Le profil est plus plat que celui d'une NPH, ce qui réduit les hypoglycémies nocturnes, mais il ne couvre pas les repas, qui relèvent d'une insuline rapide quand le schéma en comporte une.",
+        dosage: "Une injection par jour par voie sous-cutanée, à heure fixe, matin ou soir selon le choix du patient, la régularité comptant plus que le moment. Dans le diabète de type 2, l'instauration se fait à faible dose, de l'ordre de 0,2 unité par kilogramme et par jour ou une dizaine d'unités, puis la dose est titrée par paliers de quelques unités tous les deux à trois jours sur la glycémie à jeun jusqu'à l'objectif fixé. Dans le diabète de type 1, la basale représente environ la moitié des besoins quotidiens, complétée par les bolus prandiaux. La dose est réduite en cas d'insuffisance rénale ou hépatique, d'amaigrissement, d'activité physique accrue ou de diminution d'une corticothérapie.",
+        contraindications: "Hypersensibilité à l'insuline glargine ou à un excipient. Toute hypoglycémie en cours contre-indique l'injection tant qu'elle n'est pas corrigée. Ce n'est pas une insuline de l'acidocétose ni du coma hyperosmolaire, qui relèvent d'une insuline rapide par voie intraveineuse.",
+        ddi: "Tout ce qui modifie la glycémie : les bêtabloquants, qui majorent le risque et masquent en outre les signes adrénergiques de l'hypoglycémie, ne laissant que la sueur ; les corticoïdes, les thiazidiques, les diurétiques de l'anse, les hormones thyroïdiennes et les sympathomimétiques, qui élèvent la glycémie ; les inhibiteurs de l'enzyme de conversion, les fibrates, la pentamidine et l'alcool, qui l'abaissent. Un sport inhabituel, un jeûne, une gastro-entérite ou une modification de la corticothérapie valent une interaction et se compensent par un ajustement des doses.",
+        adverse: "Hypoglycémie, effet indésirable principal et dose-dépendant, volontiers nocturne et prolongée du fait de la durée d'action. Réactions au point d'injection, lipodystrophie et amylose cutanée lorsque les sites ne sont pas alternés, avec pour conséquence une absorption erratique. Prise de poids modérée à l'instauration. Œdèmes transitoires en début de traitement intensif. Rarement réactions allergiques généralisées. Une hypokaliémie peut accompagner l'instauration à fortes doses.",
+        monitoring: "Glycémie capillaire ou mesure continue pour la titration, la glycémie à jeun étant la valeur qui commande la dose de basale. Hémoglobine glyquée tous les trois mois jusqu'à l'objectif, puis tous les six mois. Inspection et palpation des sites d'injection à chaque consultation : une lipodystrophie fait varier l'absorption sans que la dose ait changé, et c'est une cause classique de déséquilibre inexpliqué. Poids, pression artérielle, et surveillance annuelle des complications du diabète. Vérifier à chaque délivrance la concordance entre la concentration prescrite et celle du stylo remis.",
+        iup: "Une insuline glargine à 100 unités par millilitre et une à 300 unités par millilitre ne se remplacent pas dose pour dose : la concentration fait partie du nom du médicament, et l'erreur se paie en hypoglycémies. Le stylo est strictement personnel, l'aiguille change à chaque injection, et les sites s'alternent — ventre, cuisses, bras — pour éviter les boules sous la peau qui déséquilibrent l'absorption. Le stylo en cours se garde à température ambiante et se jette au bout du nombre de jours indiqué ; les stylos de réserve restent au réfrigérateur, jamais au congélateur. Une hypoglycémie sous insuline lente dure des heures : le resucrage seul ne suffit pas, il faut un sucre lent derrière et un contrôle à distance. Ne jamais arrêter l'insuline parce qu'on ne mange pas : c'est en cas de maladie qu'il faut au contraire contrôler plus souvent et appeler.",
+        half_life: "Notion peu opérante en clinique : la durée d'action est d'environ vingt-quatre heures, sans pic marqué, ce qui permet une injection quotidienne unique",
+        elimination: "Dégradation tissulaire et hépatique après clivage en métabolites actifs, comme l'insuline endogène ; une part est éliminée par le rein, dont la défaillance ralentit la clairance de l'insuline.",
+        renal: "Aucune règle chiffrée, mais les besoins en insuline diminuent à mesure que la fonction rénale se dégrade, la clairance de l'insuline étant réduite : la dose se réévalue à la baisse et la surveillance glycémique se rapproche. Même précaution en cas d'insuffisance hépatique.",
+        pregnancy: "Utilisable pendant la grossesse, l'insuline restant le traitement de référence du diabète gestationnel comme du diabète préexistant. Les besoins baissent au premier trimestre, augmentent fortement ensuite et chutent brutalement après l'accouchement : les doses se réajustent souvent et la surveillance est rapprochée. Allaitement possible, avec un risque d'hypoglycémie qui peut imposer de réduire les doses.",
         sources: "RCP Semglee — base de données publique des médicaments (ANSM)\nANSM — état des lieux sur les médicaments biosimilaires\nSFD — référentiel de bonnes pratiques de l'insulinothérapie",
         status: "",
         smr: "",
         tags: "biosimilaire, insuline glargine, basale, concentration, lipodystrophie",
-        toxicity: "",
+        toxicity: "Hypoglycémie prolongée, la durée d'action couvrant vingt-quatre heures : le resucrage seul ne suffit jamais, il faut un sucre lent derrière et un contrôle à distance, car le creux revient. Deux erreurs propres à la molécule : la concentration, cette glargine étant à cent unités par millilitre quand une autre spécialité est à trois cents, sans équivalence dose pour dose ; et le prélèvement à la seringue dans une cartouche de stylo, qui n'a jamais de raison d'être. Les besoins baissent avec la fonction rénale, l'amaigrissement, l'activité physique et l'arrêt d'une corticothérapie — quatre situations où la dose de la veille devient une dose de trop. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
         name: "Retacrit",
-        indications: "Biosimilaire de l'époétine : anémie de l'insuffisance rénale chronique, anémie chimio-induite des tumeurs solides et hémopathies, et don de sang autologue programmé.",
-        mechanism: "Érythropoïétine recombinante qui stimule la production des globules rouges dans la moelle. Sans réserves de fer suffisantes, elle ne produit rien — c'est la première cause d'échec.",
-        dosage: "Selon l'indication et le poids, une à trois injections par semaine, ajustées sur l'hémoglobine et sa vitesse de montée.",
-        contraindications: "Hypertension artérielle non contrôlée ; antécédent d'érythroblastopénie sous érythropoïétine ; hypersensibilité.",
-        ddi: "Pas d'interaction pharmacocinétique notable ; c'est la carence martiale qui limite l'effet.",
-        adverse: "Hypertension artérielle, céphalées, thromboses, syndrome pseudo-grippal en début de traitement. Érythroblastopénie par anticorps anti-érythropoïétine, exceptionnelle mais grave.",
-        monitoring: "Hémoglobine régulière, fer et coefficient de saturation avant et pendant. Tension artérielle à chaque contrôle : c'est l'effet indésirable le plus fréquent et le plus silencieux.",
-        iup: "L'objectif n'est pas de normaliser l'hémoglobine : au-dessus de la cible, le risque de thrombose augmente, et c'est pourquoi la dose baisse parfois alors que le patient se sent mieux. Chaîne du froid respectée, jamais de congélation, seringue sortie un quart d'heure avant. Maux de tête inhabituels ou tension qui monte se signalent.",
-        half_life: "4 à 12 heures selon la voie.",
-        elimination: "Catabolisme protéique.",
-        renal: "C'est l'indication principale ; pas d'adaptation pour l'insuffisance rénale elle-même.",
-        pregnancy: "Utilisable si nécessaire.",
+        indications: "Biosimilaire de l'époétine zêta : anémie symptomatique de l'insuffisance rénale chronique, chez le dialysé comme chez le patient non encore dialysé ; anémie chimio-induite des tumeurs solides, des lymphomes et des myélomes chez l'adulte traité ; augmentation des dons de sang autologue dans un programme de transfusion différée.",
+        mechanism: "Érythropoïétine recombinante, qui se fixe sur les récepteurs des précurseurs érythroïdes de la moelle et stimule la production des globules rouges. Elle ne fabrique rien sans substrat : une carence martiale, même sans anémie ferriprive franche, bloque la réponse et c'est la première cause d'échec apparent du traitement. La correction de l'anémie est lente, de l'ordre de un à deux grammes par décilitre par mois, et la vitesse de montée compte autant que la cible.",
+        dosage: "Dose initiale et rythme fixés par l'indication, le poids et la voie, à raison d'une à trois injections par semaine par voie sous-cutanée ou intraveineuse. La posologie est ensuite ajustée sur l'hémoglobine et sur sa vitesse d'ascension, par paliers espacés d'au moins quatre semaines, la cible retenue dans l'insuffisance rénale chronique étant volontairement basse et comprise entre dix et douze grammes par décilitre. Une montée trop rapide ou un dépassement de la cible font réduire ou suspendre la dose. Conservation entre deux et huit degrés, sans congélation ni agitation.",
+        contraindications: "Hypertension artérielle non contrôlée. Antécédent d'érythroblastopénie survenue sous une érythropoïétine, quelle qu'elle soit. Hypersensibilité à la substance active ou à un excipient. Impossibilité de recevoir une prophylaxie antithrombotique dans le cadre du don autologue programmé. En cancérologie, l'indication se limite à l'anémie chimio-induite et ne couvre pas l'anémie du cancer non traité.",
+        ddi: "Pas d'interaction pharmacocinétique notable. C'est la disponibilité du fer qui conditionne l'effet, et une supplémentation martiale est presque toujours nécessaire pour accompagner la réponse. La ciclosporine, fortement liée aux hématies, peut voir ses concentrations varier quand l'hématocrite remonte, ce qui justifie de rapprocher ses dosages.",
+        adverse: "Hypertension artérielle, parfois inaugurale et volontiers silencieuse, jusqu'à l'encéphalopathie hypertensive avec convulsions dans les formes sévères. Céphalées, syndrome pseudo-grippal en début de traitement, réactions au point d'injection. Événements thromboemboliques veineux et thrombose des abords vasculaires de dialyse, dont le risque croît avec l'hémoglobine atteinte et avec la vitesse à laquelle elle monte. Érythroblastopénie par anticorps anti-érythropoïétine, exceptionnelle mais grave et définitive pour toute la classe.",
+        monitoring: "Hémoglobine avant l'instauration puis toutes les une à deux semaines pendant la phase de titration, plus espacée ensuite : c'est elle qui commande la dose. Bilan martial complet, ferritine et coefficient de saturation de la transferrine, avant le traitement puis régulièrement, la carence étant la cause habituelle d'une réponse insuffisante. Pression artérielle à chaque contact, l'hypertension étant l'effet indésirable le plus fréquent et le plus muet. Numération plaquettaire les premières semaines. Devant une perte d'efficacité brutale avec chute de l'hémoglobine et réticulocytes effondrés, évoquer une érythroblastopénie et arrêter sans relais par une autre érythropoïétine. Spécialité et numéro de lot notés à chaque délivrance.",
+        iup: "L'objectif n'est pas de normaliser l'hémoglobine : au-dessus de la cible, le risque de thrombose augmente, et c'est pourquoi la dose baisse parfois alors que le patient se sent mieux. Le traitement ne fait effet qu'avec des réserves de fer suffisantes, ce qui explique le fer prescrit à côté et les prises de sang de contrôle. La chaîne du froid se respecte jusqu'à la maison, sans congélation, et la seringue se sort un quart d'heure avant l'injection. Les maux de tête inhabituels, une tension qui monte, un mollet douloureux ou un essoufflement se signalent le jour même. Une fatigue qui réapparaît alors que le traitement est bien suivi n'est pas une fatalité et doit conduire à consulter plutôt qu'à augmenter la dose soi-même.",
+        half_life: "Environ 4 à 12 heures selon la voie, plus longue par voie sous-cutanée que par voie intraveineuse, sans rapport avec la durée de l'effet érythropoïétique qui se compte en semaines",
+        elimination: "Catabolisme protéique et clairance médiée par les récepteurs de la moelle ; l'élimination rénale sous forme intacte est négligeable.",
+        renal: "L'insuffisance rénale chronique est l'indication principale et n'impose aucune réduction de dose : les besoins y sont au contraire plus élevés, la production endogène d'érythropoïétine étant effondrée. Chez le dialysé, l'injection se fait volontiers en fin de séance, et la surveillance porte sur la perméabilité de l'abord vasculaire autant que sur l'hémoglobine.",
+        pregnancy: "Utilisable pendant la grossesse lorsque l'anémie le justifie, l'expérience étant surtout celle de l'insuffisance rénale chronique ; les besoins en fer y sont majorés. Allaitement possible, la molécule étant une protéine digérée par le nourrisson.",
         sources: "RCP Retacrit — base de données publique des médicaments (ANSM)\nEMA — Biosimilars in the EU\nHAS — prise en charge de l'anémie de l'insuffisance rénale chronique",
         status: "",
         smr: "",
@@ -19317,18 +19338,18 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Terrosa",
-        indications: "Biosimilaire du tériparatide : ostéoporose sévère avec fractures chez la femme ménopausée et chez l'homme, et ostéoporose cortisonique.",
-        mechanism: "Fragment 1-34 de la parathormone humaine. Administré une fois par jour, il stimule les ostéoblastes plus que les ostéoclastes : c'est le seul traitement de l'ostéoporose qui fabrique de l'os plutôt que d'en freiner la perte.",
-        dosage: "20 µg par voie sous-cutanée une fois par jour, dans la cuisse ou l'abdomen, pour vingt-quatre mois au maximum sur la vie entière.",
-        contraindications: "Hypercalcémie, insuffisance rénale sévère, maladie osseuse métabolique autre que l'ostéoporose, antécédent d'irradiation du squelette, tumeur osseuse, phosphatases alcalines inexpliquées élevées.",
-        ddi: "Digoxine : l'hypercalcémie transitoire peut majorer la sensibilité aux digitaliques.",
-        adverse: "Nausées, douleurs des membres, céphalées, vertiges. Malaise avec hypotension orthostatique après les premières injections. Hypercalcémie transitoire, hyperuricémie.",
-        monitoring: "Calcémie avant l'instauration, puis en cas de signe d'appel. Durée : vingt-quatre mois au maximum, qui est une limite de vie entière et non de cure — un relais par un anti-résorbeur est nécessaire ensuite, sans quoi l'os gagné se reperd.",
-        iup: "Le stylo se garde au réfrigérateur, ne se congèle jamais, et se jette vingt-huit jours après la première utilisation même s'il reste du produit. S'asseoir ou s'allonger pour les premières injections : le malaise est fréquent au début et cède ensuite. Vingt-quatre mois est une limite définitive.",
-        half_life: "1 heure environ après injection sous-cutanée.",
-        elimination: "Catabolisme hépatique et rénal.",
-        renal: "Contre-indiqué en cas d'insuffisance rénale sévère.",
-        pregnancy: "Contre-indiqué.",
+        indications: "Biosimilaire du tériparatide : traitement de l'ostéoporose post-ménopausique et de l'ostéoporose masculine à risque élevé de fracture, et de l'ostéoporose cortico-induite chez la femme et chez l'homme à risque élevé, en particulier après fractures vertébrales.",
+        mechanism: "Fragment 1-34 de la parathormone humaine, obtenu par recombinaison. Administré une fois par jour, il expose l'os à un pic bref de parathormone, ce qui stimule les ostéoblastes davantage que les ostéoclastes et aboutit à une formation osseuse nette — l'inverse exact de ce que produit une hyperparathyroïdie chronique, où l'exposition continue détruit l'os. C'est le seul traitement de l'ostéoporose qui fabrique de l'os au lieu d'en freiner la perte, et cette différence explique à la fois la limite de durée et l'obligation d'un relais.",
+        dosage: "Vingt microgrammes par voie sous-cutanée une fois par jour, dans la cuisse ou l'abdomen, pour vingt-quatre mois au maximum sur la vie entière. Cette durée est un plafond définitif et non une durée de cure : elle ne se recommence pas. Un traitement anti-résorbeur doit prendre le relais à l'arrêt, sans quoi l'os gagné se reperd en quelques mois. Le stylo se conserve entre deux et huit degrés, y compris pendant la période d'utilisation.",
+        contraindications: "Hypercalcémie préexistante. Insuffisance rénale sévère. Maladie osseuse métabolique autre que l'ostéoporose, dont la maladie de Paget et l'hyperparathyroïdie. Antécédent d'irradiation du squelette, externe ou par implants. Tumeur osseuse ou métastase osseuse. Élévation inexpliquée des phosphatases alcalines. Hypersensibilité à la substance active ou à un excipient. Grossesse et allaitement.",
+        ddi: "Digoxine : l'hypercalcémie transitoire induite par chaque injection peut majorer la sensibilité aux digitaliques et favoriser un trouble du rythme, ce qui impose la prudence et une surveillance clinique. Les diurétiques thiazidiques et les apports calciques élevés majorent le risque d'hypercalcémie. La supplémentation en calcium et en vitamine D reste en revanche nécessaire au traitement et n'est pas une interaction à éviter.",
+        adverse: "Nausées, douleurs des membres, céphalées, vertiges. Malaise avec hypotension orthostatique dans les heures suivant les premières injections, transitoire et cédant ensuite. Hypercalcémie transitoire après chaque injection, hypercalciurie, hyperuricémie. Crampes, asthénie, réactions au point d'injection. Rarement lithiase urinaire favorisée par l'hypercalciurie.",
+        monitoring: "Calcémie avant l'instauration, puis en cas de signe d'appel ou de traitement associé susceptible de l'élever ; le prélèvement ne doit pas être fait juste après une injection, l'hypercalcémie post-dose étant physiologique et transitoire. Créatininémie et uricémie avant le traitement. Apports en calcium et en vitamine D vérifiés et corrigés, sans lesquels l'effet ostéoformateur ne s'exprime pas. Surveillance de la durée : vingt-quatre mois au maximum sur la vie entière, et programmation du relais anti-résorbeur dès avant l'arrêt. Spécialité et numéro de lot notés à chaque délivrance.",
+        iup: "Le stylo se garde au réfrigérateur, ne se congèle jamais, et se jette vingt-huit jours après la première utilisation même s'il reste du produit dedans. Il vaut mieux s'asseoir ou s'allonger pour les premières injections et se relever doucement ensuite : le malaise est fréquent au début et cède au bout de quelques jours. L'injection se fait le soir chez beaucoup de patients, pour cette raison. Vingt-quatre mois est une limite définitive, valable pour la vie entière : ce traitement ne se reprend pas, et un autre médicament doit prendre le relais à l'arrêt, faute de quoi l'os regagné se reperd. Le calcium et la vitamine D prescrits à côté ne sont pas accessoires, ce sont les matériaux du traitement. Signaler des nausées persistantes, des malaises répétés ou des coliques néphrétiques.",
+        half_life: "Environ 1 heure après injection sous-cutanée, la brièveté de l'exposition étant précisément ce qui conditionne l'effet ostéoformateur",
+        elimination: "Catabolisme hépatique puis élimination rénale des fragments peptidiques ; aucun métabolisme par les cytochromes.",
+        renal: "Contre-indiqué en cas d'insuffisance rénale sévère. En cas d'insuffisance rénale légère à modérée, la dose est inchangée mais la surveillance de la calcémie et de la calciurie est renforcée, l'exposition étant augmentée.",
+        pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement. Chez la femme en âge de procréer, une contraception efficace est nécessaire pendant toute la durée du traitement.",
         sources: "RCP Terrosa — base de données publique des médicaments (ANSM)\nHAS — traitements médicamenteux de l'ostéoporose\nEMA — Biosimilars in the EU",
         status: "",
         smr: "",
@@ -19338,23 +19359,23 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Inhixa",
-        indications: "Biosimilaire de l'énoxaparine : traitement et prévention de la maladie thromboembolique veineuse, syndrome coronarien aigu, prévention de la coagulation du circuit d'épuration extrarénale.",
-        mechanism: "Héparine de bas poids moléculaire : elle potentialise l'antithrombine et inhibe surtout le facteur Xa. L'effet se mesure, quand il faut le mesurer, par l'activité anti-Xa et non par le TCA.",
-        dosage: "Prophylaxie : 4 000 UI une fois par jour en sous-cutané, selon le risque. Curatif : 100 UI/kg deux fois par jour, ou 150 UI/kg une fois par jour selon l'indication.",
-        contraindications: "Saignement actif ; antécédent de thrombopénie induite par l'héparine de type II ; endocardite infectieuse ; insuffisance rénale sévère pour la dose curative ; anesthésie péridurale ou rachidienne dans les délais prévus.",
-        ddi: "AINS, aspirine, antiagrégants, anticoagulants oraux : risque hémorragique additionné. Le millepertuis et les inducteurs n'ont pas d'effet ici.",
-        adverse: "Hématome au point d'injection, saignements, élévation des transaminases, hyperkaliémie. Thrombopénie induite par l'héparine, rare mais grave, entre le cinquième et le vingt et unième jour.",
-        monitoring: "Plaquettes selon le contexte : une chute de plus de 40 % ou un chiffre sous 100 G/L fait suspecter une TIH et arrêter toute héparine. Fonction rénale avant et pendant : c'est elle qui décide de la dose et de la possibilité même du traitement.",
-        iup: "L'injection se fait dans le pli abdominal, perpendiculairement, sans purger la bulle d'air — elle chasse le produit et évite l'hématome — et sans masser après. Alterner les côtés. Un hématome au point d'injection est banal ; une douleur de mollet, un essoufflement ou un saignement qui ne s'arrête pas ne le sont pas.",
-        half_life: "4 à 5 heures, allongée en cas d'insuffisance rénale.",
-        elimination: "Rénale.",
-        renal: "Dose réduite entre 15 et 30 mL/min ; contre-indiqué en curatif en dessous de 15 mL/min. C'est l'accumulation qui fait le saignement.",
-        pregnancy: "Utilisable ; c'est l'anticoagulant de la grossesse, les AVK et les AOD y étant exclus.",
+        indications: "Biosimilaire de l'énoxaparine : traitement curatif de la thrombose veineuse profonde et de l'embolie pulmonaire, prophylaxie de la maladie thromboembolique veineuse en milieu chirurgical et chez le patient médical alité, traitement de l'angor instable et de l'infarctus du myocarde, et prévention de la coagulation du circuit de circulation extracorporelle au cours de l'hémodialyse.",
+        mechanism: "Héparine de bas poids moléculaire obtenue par dépolymérisation : elle potentialise l'antithrombine et inhibe surtout le facteur Xa, avec une activité anti-IIa faible. Il en résulte un effet anticoagulant plus prévisible que celui de l'héparine non fractionnée, une biodisponibilité sous-cutanée proche de la totalité et une absence de surveillance biologique de routine. L'effet se mesure, quand il faut le mesurer, par l'activité anti-Xa et jamais par le temps de céphaline activée.",
+        dosage: "Voie sous-cutanée. Prophylaxie en situation à risque modéré : 2 000 unités anti-Xa une fois par jour ; en risque élevé, notamment en chirurgie orthopédique majeure et chez le patient médical alité : 4 000 unités une fois par jour. Traitement curatif de la maladie thromboembolique veineuse : 100 unités par kilogramme toutes les douze heures, ou 150 unités par kilogramme en une injection quotidienne selon le schéma retenu, la dose étant calculée sur le poids réel. Syndrome coronarien aigu : schéma spécifique, avec réduction de dose au-delà de soixante-quinze ans dans l'infarctus avec sus-décalage. Les seringues préremplies sont graduées, ce qui permet l'ajustement au poids.",
+        contraindications: "Saignement actif ou lésion à risque hémorragique. Antécédent de thrombopénie induite par l'héparine de type II, y compris ancien. Endocardite infectieuse aiguë. Insuffisance rénale sévère pour les doses curatives. Anesthésie péridurale ou rachidienne pratiquée en dehors des délais de sécurité, le risque étant celui d'un hématome périmédullaire. Hypersensibilité à l'énoxaparine, à l'héparine ou à un dérivé.",
+        ddi: "Anti-inflammatoires non stéroïdiens, aspirine, antiagrégants plaquettaires, anticoagulants oraux, thrombolytiques : risque hémorragique additionné, associations à éviter ou à encadrer. Les inhibiteurs de l'enzyme de conversion, les sartans, les diurétiques épargneurs de potassium et le triméthoprime majorent l'hyperkaliémie que l'héparine induit par hypoaldostéronisme. Ni le millepertuis ni les inducteurs enzymatiques n'ont d'effet ici, la molécule n'étant pas métabolisée par les cytochromes.",
+        adverse: "Hématome et douleur au point d'injection, très fréquents et sans gravité. Saignements de toutes localisations, favorisés par l'insuffisance rénale, l'âge et le faible poids. Élévation des transaminases, en règle réversible. Hyperkaliémie par hypoaldostéronisme, surtout chez le diabétique et l'insuffisant rénal. Thrombopénie induite par l'héparine de type II, rare mais grave et paradoxalement thrombosante, survenant entre le cinquième et le vingt et unième jour. Ostéoporose lors des traitements très prolongés. Exceptionnellement nécrose cutanée au point d'injection.",
+        monitoring: "Fonction rénale avant l'instauration et pendant le traitement : c'est elle qui décide de la dose et parfois de la possibilité même du traitement, l'accumulation étant la cause des hémorragies graves. Numération plaquettaire selon le contexte et le terrain : une chute de plus de quarante pour cent par rapport au chiffre initial, ou un chiffre inférieur à 100 giga par litre, fait suspecter une thrombopénie induite par l'héparine et arrêter toute héparine sans attendre la confirmation. Activité anti-Xa réservée aux situations particulières — insuffisance rénale modérée, poids extrême, grossesse — et prélevée quatre heures après l'injection. Kaliémie en cas de traitement prolongé sur terrain à risque. Hémoglobine devant tout saignement ou toute asthénie inexpliquée.",
+        iup: "L'injection se fait dans le pli abdominal, perpendiculairement à la peau, sans purger la bulle d'air — elle chasse le produit et limite l'hématome — et sans masser après coup. On alterne les côtés, droite et gauche, en changeant de point à chaque fois. Un bleu au point d'injection est banal ; une douleur de mollet, un essoufflement, un saignement qui ne s'arrête pas, des selles noires ou des urines rouges ne le sont pas et se signalent le jour même. Les seringues se gardent à température ambiante et se jettent dans le collecteur remis à la pharmacie, jamais à la poubelle. Prévenir tout médecin, dentiste, kinésithérapeute ou anesthésiste de ce traitement, en particulier avant une péridurale ou une rachianesthésie.",
+        half_life: "4 à 5 heures sur l'activité anti-Xa après une dose unique, jusqu'à 7 heures en administration répétée, et nettement allongée en cas d'insuffisance rénale",
+        elimination: "Élimination principalement rénale sous forme active, ce qui explique l'accumulation et le risque hémorragique dès que la clairance baisse ; désulfatation et dépolymérisation hépatiques accessoires.",
+        renal: "Clairance de 30 à 50 millilitres par minute : surveillance clinique renforcée et réduction de dose à envisager selon l'indication. Clairance de 15 à 30 millilitres par minute : doses curatives contre-indiquées, prophylaxie possible à posologie réduite. Clairance inférieure à 15 millilitres par minute : non recommandé en dehors de l'hémodialyse. C'est l'accumulation qui fait le saignement, et la clairance se calcule avant la première injection, pas après.",
+        pregnancy: "Utilisable pendant toute la grossesse : c'est l'anticoagulant de référence de la femme enceinte, les antivitamines K étant tératogènes et les anticoagulants oraux directs contre-indiqués faute de données. Les doses se réévaluent avec la prise de poids et l'accouchement impose une fenêtre d'arrêt avant toute anesthésie périmédullaire. Allaitement possible, l'absorption digestive étant nulle.",
         sources: "RCP Inhixa — base de données publique des médicaments (ANSM)\nEMA — Biosimilars in the EU\nSFMV — traitement anticoagulant de la maladie thromboembolique veineuse",
         status: "",
         smr: "",
         tags: "biosimilaire, énoxaparine, HBPM, TIH, fonction rénale",
-        toxicity: "",
+        toxicity: "Mêmes marges que l'énoxaparine de référence, et une erreur de plus qui lui est propre : la présentation et le graduage des seringues diffèrent d'une spécialité d'énoxaparine à l'autre, si bien qu'un patient qui change de marque doit revoir la lecture de sa seringue. 1 mg vaut 100 UI anti-Xa, la dose curative se calcule sur le poids réel, et la clairance décide de la possibilité même du traitement : dose curative contre-indiquée au-dessous de 30 mL/min, prophylaxie réduite entre 15 et 30. La protamine ne neutralise qu'environ 60 % de l'activité anti-Xa. Toute chute des plaquettes de plus de 40 % entre le cinquième et le vingt et unième jour fait arrêter toute héparine.",
         forms: "",
     },
     StarterDetail {
@@ -19509,7 +19530,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Lixiana", "Traitement de la thrombose veineuse profonde et de l'embolie pulmonaire", "60 mg une fois par jour, après au moins 5 jours d'héparine parentérale", "Le relais héparinique initial est obligatoire, l'héparine étant arrêtée le jour de la première prise."),
     ("Lixiana", "Maladie thromboembolique veineuse associée au cancer", "60 mg une fois par jour, après 5 jours d'héparine de bas poids moléculaire", "Alternative reconnue aux héparines dans les recommandations, sauf tumeur digestive ou urogénitale non réséquée où le risque hémorragique est majoré."),
     ("Lixiana", "Relais d'un antivitamine K", "Débuter l'édoxaban lorsque l'INR est inférieur ou égal à 2,5", "La prise est indifférente par rapport aux repas, à la différence du rivaroxaban."),
-    ("Coumadine", "Fibrillation atriale, y compris valvulaire", "Dose initiale usuelle 5 mg par jour, adaptée à l'INR, cible 2 à 3", "Débuter à 2,5 mg ou moins chez le sujet âgé ou de faible poids. Premier INR à 48 à 72 heures."),
+    ("Coumadine", "Fibrillation atriale, y compris valvulaire", "Dose initiale usuelle 5 mg par jour, adaptée à l'INR, cible 2 à 3", "Débuter à 4 mg chez le sujet âgé, de faible poids ou insuffisant hépatique, plus bas encore s'il est très âgé ou dénutri, et jamais de dose de charge. Premier INR à 48 à 72 heures."),
     ("Coumadine", "Maladie thromboembolique veineuse, traitement et prévention des récidives", "Dose adaptée pour un INR cible de 2 à 3, en une prise quotidienne", "Chevauchement avec l'héparine pendant au moins 5 jours et jusqu'à deux INR consécutifs dans la cible."),
     ("Coumadine", "Prothèse valvulaire mécanique", "Dose adaptée à un INR cible de 2,5 à 3,5 selon le type et la position de la valve", "Seuls les antivitamines K sont utilisables : les anticoagulants oraux directs sont formellement contre-indiqués."),
     ("Coumadine", "Rétrécissement mitral serré ou valvulopathie rhumatismale avec fibrillation atriale", "Dose adaptée à l'INR, cible 2 à 3", "Autre situation où l'antivitamine K reste incontournable."),
@@ -19983,6 +20004,12 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Ozempic", "Association à l'insuline ou à un sulfamide", "Réduction préalable de la dose d'insuline ou de sulfamide sur prescription", "Le sémaglutide seul expose peu à l'hypoglycémie, l'association beaucoup plus."),
     ("Ozempic", "Effets indésirables digestifs et surveillance", "Fractionner les repas, réduire les graisses, maintenir une bonne hydratation", "Nausées et vomissements surtout en début et à chaque augmentation. Consulter en cas de douleur abdominale intense et persistante irradiant dans le dos. Ralentissement de la vidange gastrique à signaler avant une anesthésie."),
     ("Ozempic", "Demande d'utilisation à visée d'amaigrissement", "Aucune : Ozempic n'a pas d'indication dans l'obésité", "Le sémaglutide dans l'obésité relève d'une autre spécialité et d'un autre schéma de doses. Délivrance encadrée, détournements fréquents et tensions d'approvisionnement."),
+    ("Wegovy", "Contrôle du poids dans l'obésité ou le surpoids avec comorbidité", "0,25 mg par semaine pendant 4 semaines, puis 0,5, 1, 1,7 et enfin 2,4 mg par semaine, chaque palier durant 4 semaines", "Cinq mois pour atteindre la dose d'entretien : la titration sert la tolérance digestive et non l'efficacité, et vouloir l'accélérer provoque les nausées qui font arrêter."),
+    ("Wegovy", "Intolérance digestive à un palier", "Prolonger le palier en cours de quatre semaines, ou revenir au palier précédent", "C'est prévu par le schéma et ce n'est pas un échec. Un patient qui abandonne au deuxième palier abandonne avant d'avoir été traité."),
+    ("Wegovy", "Modalités d'injection", "Une injection sous-cutanée hebdomadaire, le même jour, abdomen, cuisse ou haut du bras, indépendamment des repas", "Rotation des points. Le jour peut être changé si au moins trois jours séparent deux injections. Stylo au réfrigérateur avant première utilisation, puis selon la notice."),
+    ("Wegovy", "Oubli d'une injection", "Injecter dès que possible si l'oubli date de moins de 5 jours, sinon sauter la dose et reprendre au jour habituel", "Jamais deux injections pour rattraper. Après plus de trois semaines sans injection, la reprise se rediscute avec le prescripteur, la titration pouvant être à reprendre."),
+    ("Wegovy", "Réévaluation et arrêt", "Réévaluation de la perte de poids après plusieurs mois à la dose d'entretien", "Sans perte de poids significative, le traitement s'arrête : le poursuivre indéfiniment n'a pas de justification. Et la reprise de poids à l'arrêt est la règle — le dire avant la première injection évite qu'elle soit vécue comme un échec personnel."),
+    ("Wegovy", "Ce qui accompagne le traitement", "Apport protéique suffisant et activité physique maintenue pendant toute la perte de poids", "Sans cela, une part de ce qui est perdu est du muscle, et c'est la complication silencieuse de cette classe. Signaler toute intervention programmée à l'anesthésiste : la vidange gastrique est ralentie malgré le jeûne."),
     ("Lantus", "Instauration d'une insuline basale dans le diabète de type 2", "Environ 10 unités par jour, ou 0,1 à 0,2 unité par kg et par jour, en une injection sous-cutanée quotidienne", "Les antidiabétiques oraux sont habituellement poursuivis, la metformine notamment."),
     ("Lantus", "Titration sur la glycémie à jeun", "Augmentation de 2 unités environ tous les 3 jours tant que la glycémie à jeun reste au-dessus de l'objectif fixé", "La titration se fait sur la glycémie du matin, jamais sur celle de la journée. Toute hypoglycémie impose de redescendre."),
     ("Lantus", "Schéma basal-bolus du diabète de type 1", "La basale représente habituellement environ la moitié de la dose quotidienne totale d'insuline, complétée par une insuline rapide aux repas", "Répartition ajustée par le diabétologue sur les profils glycémiques."),
@@ -21215,6 +21242,57 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Nilemdo", "Hypercholestérolémie en complément d'une statine", "180 mg une fois par jour, avec ou sans aliments", "Pas de titration. Avec la simvastatine, ne pas dépasser 40 mg par jour ; avec la pravastatine non plus."),
     ("Nilemdo", "Intolérance avérée aux statines", "180 mg une fois par jour, seul ou avec l'ézétimibe", "La molécule n'est activée que dans le foie et pas dans le muscle : c'est ce qui fonde sa place ici."),
     ("Nilemdo", "Surveillance propre à la classe", "Uricémie avant le traitement, puis à la moindre douleur articulaire", "L'hyperuricémie et la crise de goutte sont l'effet caractéristique, souvent dans les premières semaines."),
+    ("Fémara", "Cancer du sein hormonodépendant de la femme ménopausée", "2,5 mg une fois par jour, à heure fixe, avec ou sans aliments", "Une seule dose pour tout le monde : il n'y a rien à titrer, et c'est ce qui rend l'observance sur plusieurs années la seule variable qui compte."),
+    ("Fémara", "Durée du traitement adjuvant", "Plusieurs années, la durée étant fixée par l'oncologue", "Les arthralgies et la raideur matinale sont la première cause d'arrêt prématuré : les annoncer et les traiter vaut mieux que de les découvrir sur un patient qui a déjà abandonné."),
+    ("Fémara", "Ce qui se met en place à côté", "Calcium, vitamine D et ostéodensitométrie de référence", "La suppression estrogénique est quasi totale et la perte osseuse rapide : l'os se surveille dès le début et pas au premier tassement."),
+    ("Arimidex", "Cancer du sein hormonodépendant de la femme ménopausée", "1 mg une fois par jour, à heure fixe, avec ou sans aliments", "Dose unique, aucune titration. Réservé à la femme ménopausée : sans suppression ovarienne, il est inefficace chez une femme qui ne l'est pas."),
+    ("Arimidex", "Suivi osseux et articulaire", "Ostéodensitométrie de référence, calcium et vitamine D, réévaluation régulière", "Près d'une patiente sur deux souffre d'arthralgies : c'est la première cause d'abandon d'un traitement qui dure des années."),
+    ("Aromasine", "Cancer du sein hormonodépendant de la femme ménopausée", "25 mg une fois par jour, après un repas", "Après le repas, la biodisponibilité en dépend — c'est ce qui le distingue des deux autres anti-aromatases, qui se prennent indifféremment."),
+    ("Aromasine", "Relais après intolérance à un anti-aromatase non stéroïdien", "25 mg par jour, en relais du létrozole ou de l'anastrozole", "Sa structure stéroïdienne lui donne un profil un peu différent : un échec de tolérance sur l'un ne condamne pas forcément la classe entière."),
+    ("Tecfidera", "Sclérose en plaques récurrente-rémittente", "120 mg deux fois par jour pendant 7 jours, puis 240 mg deux fois par jour", "La semaine à demi-dose sert la tolérance digestive, pas l'efficacité. Gélules avalées entières, au cours d'un repas, ce qui limite nettement bouffées de chaleur et troubles digestifs."),
+    ("Tecfidera", "Surveillance obligatoire", "Numération avec compte des lymphocytes avant, puis tous les 3 mois", "Une lymphopénie profonde et prolongée est ce qui expose à la LEMP : le chiffre décide de la poursuite, et c'est un contrôle qui ne se saute pas."),
+    ("Aubagio", "Sclérose en plaques récurrente-rémittente", "14 mg une fois par jour, avec ou sans aliments", "Transaminases avant, puis tous les mois pendant six mois. Tératogène et persistant jusqu'à deux ans après l'arrêt : la contraception fait partie du traitement, chez l'homme comme chez la femme."),
+    ("Copaxone", "Sclérose en plaques récurrente-rémittente", "40 mg trois fois par semaine à au moins 48 heures d'intervalle, ou 20 mg par jour selon la présentation", "Les deux schémas ne sont pas interchangeables. Sortir la seringue du réfrigérateur trente minutes avant et alterner rigoureusement les sites : la lipoatrophie, elle, est définitive."),
+    ("Copaxone", "Réaction immédiate post-injection", "Aucune conduite médicamenteuse : la réaction cède seule en quelques minutes", "Oppression thoracique, bouffée de chaleur, palpitations et angoisse dans les minutes suivant une injection, chez environ un patient sur six : bénin, possible à tout moment même après des années, et terrifiant si personne ne l'a annoncé."),
+    ("Rebif", "Sclérose en plaques récurrente-rémittente", "44 µg trois fois par semaine par voie sous-cutanée, après une titration progressive sur les premières semaines", "Injection le soir et antipyrétique pris avant : le syndrome pseudo-grippal est la première cause d'abandon et il s'organise au lieu de se subir."),
+    ("Avonex", "Sclérose en plaques récurrente-rémittente", "30 µg une fois par semaine par voie intramusculaire", "Voie intramusculaire, contrairement aux autres interférons : la technique se remontre à tout changement de spécialité. Une seule injection par semaine, à programmer un soir sans obligation le lendemain."),
+    ("Betaferon", "Sclérose en plaques récurrente-rémittente", "250 µg un jour sur deux par voie sous-cutanée, après titration progressive", "Alternance rigoureuse des sites et inspection régulière de la peau : les nécroses au point d'injection sont propres à cette forme, et une lésion qui ne cicatrise pas se montre."),
+    ("Gilenya", "Sclérose en plaques récurrente-rémittente", "0,5 mg une fois par jour, avec ou sans aliments", "Dose unique, aucune titration. La première prise se fait sous surveillance médicale de six heures avec électrocardiogramme : bradycardie et blocs surviennent dans les heures qui suivent."),
+    ("Gilenya", "Reprise après une interruption", "Même surveillance de six heures que pour la première dose", "C'est le point que l'on oublie : un patient qui reprend après une rupture de délivrance n'est pas un patient en cours de traitement, et la surveillance initiale s'applique de nouveau."),
+    ("Xeljanz", "Polyarthrite rhumatoïde et rhumatisme psoriasique", "5 mg deux fois par jour", "Dose fixe. Dose réduite en cas d'insuffisance rénale ou hépatique modérée, ou d'association à un inhibiteur du CYP3A4 ou du CYP2C19."),
+    ("Xeljanz", "Précautions liées aux restrictions européennes", "Réservé à l'absence d'alternative après 65 ans, chez le fumeur ou l'ancien fumeur, en cas de risque cardiovasculaire ou d'antécédent de cancer", "Ce n'est pas une précaution d'emploi mais une restriction d'indication : excès d'événements cardiovasculaires, de cancers et de thromboses dans ces populations."),
+    ("Olumiant", "Polyarthrite rhumatoïde, dermatite atopique et pelade", "4 mg une fois par jour, réduits à 2 mg selon le terrain et la réponse", "2 mg chez le patient de plus de 75 ans, en cas d'infections récurrentes, ou d'insuffisance rénale modérée. Contre-indiqué en insuffisance rénale sévère, l'élimination étant rénale."),
+    ("Rinvoq", "Polyarthrite rhumatoïde, rhumatisme psoriasique, MICI et dermatite atopique", "15 mg une fois par jour, 30 mg dans certaines indications digestives ou dermatologiques", "Comprimé à libération prolongée avalé entier, sans être coupé ni écrasé. Zona fréquent : la vaccination se programme avant l'instauration."),
+    ("RoActemra", "Polyarthrite rhumatoïde, en relais ou d'emblée par voie sous-cutanée", "162 mg par voie sous-cutanée une fois par semaine", "Une injection hebdomadaire à jour fixe, notée sur un calendrier. Sortir le stylo du réfrigérateur trente minutes avant. Toute fièvre fait décaler l'injection et appeler : l'anti-IL-6 éteint la fièvre et la CRP, si bien qu'une infection grave peut évoluer sans les signes qui la trahissent d'habitude."),
+    ("RoActemra", "Artérite à cellules géantes", "162 mg par voie sous-cutanée une fois par semaine, en association à une corticothérapie dégressive", "Le tocilizumab permet de descendre la cortisone plus vite, il ne la remplace pas : l'arrêt brutal du corticoïde expose à la rechute et à l'insuffisance surrénale."),
+    ("RoActemra", "Surveillance propre à la classe", "Numération, transaminases et bilan lipidique avant l'instauration, puis selon le rythme prescrit", "Neutropénie, cytolyse et élévation du LDL sont les trois anomalies attendues. Une douleur abdominale fébrile sous tocilizumab fait éliminer une perforation digestive, dont le risque est majoré, surtout en cas de diverticulose."),
+    ("Orencia", "Polyarthrite rhumatoïde de l'adulte", "125 mg par voie sous-cutanée une fois par semaine", "Par voie sous-cutanée, aucune dose de charge n'est nécessaire, contrairement à la voie intraveineuse. Injection hebdomadaire à jour fixe, stylo sorti du réfrigérateur trente minutes avant, sites alternés."),
+    ("Orencia", "Arthrite juvénile idiopathique polyarticulaire", "Dose hebdomadaire sous-cutanée calculée sur le poids de l'enfant", "La dose change quand l'enfant grandit : elle se revérifie à chaque renouvellement plutôt qu'une fois pour toutes."),
+    ("Orencia", "Précautions avant et pendant le traitement", "Dépistage de la tuberculose et mise à jour vaccinale avant la première injection", "Vaccins vivants contre-indiqués pendant le traitement et dans les trois mois qui suivent. Toute infection en cours fait suspendre. Chez le patient BPCO, surveiller l'aggravation respiratoire, plus fréquente sous abatacept."),
+    ("Entyvio", "Entretien de la maladie de Crohn et de la rectocolite hémorragique", "108 mg par voie sous-cutanée toutes les deux semaines, en relais de l'induction intraveineuse", "Le passage à la forme sous-cutanée se fait après l'induction à l'hôpital, jamais d'emblée. Une injection toutes les deux semaines, à date fixe ; le stylo se conserve au réfrigérateur et se sort trente minutes avant."),
+    ("Entyvio", "Ce qui distingue cette molécule des anti-TNF", "Même rythme d'entretien, mais action limitée au tube digestif", "L'action est sélective de l'intestin : le risque infectieux systémique est moindre qu'avec un anti-TNF, mais l'effet met plus longtemps à s'installer, et une réponse jugée à six semaines est jugée trop tôt."),
+    ("Neupogen", "Neutropénie après chimiothérapie cytotoxique", "5 microgrammes par kilogramme et par jour par voie sous-cutanée, jusqu'à sortie de l'aplasie", "La première injection n'est jamais faite dans les vingt-quatre heures qui suivent la perfusion : les précurseurs mis en division sont plus vulnérables au cytotoxique. Les douleurs osseuses sont attendues et cèdent au paracétamol."),
+    ("Neupogen", "Mobilisation des cellules souches périphériques", "10 microgrammes par kilogramme et par jour, selon le calendrier du recueil", "Les doses de mobilisation sont plus élevées que celles de la neutropénie : ne pas transposer un schéma à l'autre. Le calendrier est celui du centre de prélèvement."),
+    ("Neupogen", "Conservation et conduite à tenir", "Seringues conservées entre 2 et 8 degrés, sorties un quart d'heure avant l'injection", "Jamais de congélation ni de rangement dans la porte du réfrigérateur. Fièvre au-dessus de 38 degrés, essoufflement, ou douleur du ventre à gauche ou de l'épaule gauche : appeler le jour même."),
+    ("Akynzeo", "Prévention des nausées et vomissements de la chimiothérapie hautement émétisante", "Une gélule une heure avant le début de la perfusion, le premier jour de la cure uniquement", "Une seule gélule par cure : il n'y a rien à reprendre les jours suivants, et c'est la question posée à chaque délivrance. La dexaméthasone associée est prescrite à part et se poursuit, elle, plusieurs jours."),
+    ("Akynzeo", "Prévention retardée sur les cures suivantes", "Une gélule au premier jour de chaque nouvelle cure", "L'antiémétique se prend avant que la nausée n'apparaisse : pris après, il ne rattrape rien. Une nausée qui survient malgré le traitement se signale au service, elle fait changer le protocole et non doubler la dose."),
+    ("Aclasta", "Ostéoporose post-ménopausique et masculine à risque de fracture", "5 mg en perfusion intraveineuse de quinze minutes au minimum, une fois par an", "Une perfusion par an, dont la date se note : c'est un traitement qu'on oublie parce que rien ne le rappelle au quotidien. Vitamine D corrigée et hydratation abondante avant la perfusion, sans quoi l'hypocalcémie guette."),
+    ("Aclasta", "Maladie osseuse de Paget", "5 mg en perfusion intraveineuse unique", "Une seule perfusion suffit le plus souvent, la rémission se comptant en années. Le suivi se fait sur les phosphatases alcalines."),
+    ("Aclasta", "Ce qui se dit avant la première perfusion", "Bilan dentaire préalable et hydratation le jour même", "Le syndrome pseudo-grippal des trois jours suivant la première perfusion est fréquent, banal, et ne se reproduit presque jamais aux perfusions suivantes : le paracétamol suffit. Tout soin dentaire invasif se fait avant, pas après."),
+    ("Zometa", "Hypercalcémie maligne et prévention des complications osseuses des cancers", "4 mg en perfusion intraveineuse d'au moins quinze minutes, toutes les trois à quatre semaines", "La dose et l'espacement s'adaptent à la clairance de la créatinine, qui se contrôle avant chaque perfusion : c'est la surveillance qui commande le traitement."),
+    ("Zometa", "Prévention de l'ostéonécrose de la mâchoire", "Bilan et remise en état dentaires avant la première perfusion", "Le risque d'ostéonécrose est nettement plus élevé qu'aux doses de l'ostéoporose. Tout geste dentaire invasif se programme avant l'instauration, et une douleur dentaire ou une gencive qui ne cicatrise pas se signale sans attendre."),
+    ("Rhophylac", "Prévention de l'allo-immunisation Rhésus au cours de la grossesse", "Une injection intramusculaire ou intraveineuse de 200 microgrammes vers la 28e semaine d'aménorrhée chez la femme Rhésus négatif", "Ne concerne que la femme Rhésus négatif dont le fœtus est ou peut être Rhésus positif. L'injection ne traite rien chez la mère : elle protège la grossesse suivante, et c'est ce qui la fait oublier."),
+    ("Rhophylac", "Prévention après l'accouchement", "Une injection dans les 72 heures suivant la naissance si le nouveau-né est Rhésus positif", "Les 72 heures sont un délai à ne pas dépasser. La même conduite vaut après une fausse couche, une interruption de grossesse, une amniocentèse ou un traumatisme abdominal."),
+    ("Mifégyne", "Interruption volontaire de grossesse par voie médicamenteuse", "600 mg en une prise unique par voie orale, suivis d'une prostaglandine 36 à 48 heures plus tard", "Le protocole comporte deux médicaments et deux temps : la mifépristone seule n'interrompt pas la grossesse dans la majorité des cas. La prise de la prostaglandine au bon délai fait tout le résultat, et la date se note avec la patiente."),
+    ("Mifégyne", "Ce qui doit être dit et vérifié", "Groupe sanguin et Rhésus connus avant la prise", "Une femme Rhésus négatif reçoit une injection d'immunoglobuline anti-D. Un saignement abondant — plus de deux garnitures par heure pendant deux heures — ou une fièvre au-delà de vingt-quatre heures impose un appel immédiat. L'absence de saignement dans les jours qui suivent est également une raison de reconsulter."),
+    ("MisoOne", "Interruption volontaire de grossesse, second temps du protocole", "400 microgrammes par voie orale, 36 à 48 heures après la mifépristone", "Le délai entre les deux prises n'est pas indicatif : trop tôt, l'efficacité chute. Les douleurs et les saignements commencent en règle dans les trois heures. Un antalgique est prescrit à côté et se prend sans attendre la douleur."),
+    ("MisoOne", "Suivi obligatoire après le protocole", "Consultation de contrôle prévue entre le 14e et le 21e jour", "Cette visite n'est pas facultative : elle vérifie que la grossesse est bien interrompue, une grossesse évolutive après échec exposant à un risque malformatif. La contraception se met en place dès ce moment."),
+    ("Ovitrelle", "Déclenchement de l'ovulation en assistance médicale à la procréation", "250 microgrammes par voie sous-cutanée en une injection unique, 24 à 48 heures après la dernière dose de gonadotrophine", "L'heure de l'injection est fixée par le centre au quart d'heure près : tout le calendrier du prélèvement en dépend, et une injection décalée fait perdre le cycle. Il n'y a qu'une seule injection, jamais de reprise le lendemain."),
+    ("Ovitrelle", "Ce qui doit faire appeler après le déclenchement", "Surveillance des signes d'hyperstimulation dans les jours suivants", "Ballonnement important, prise de poids rapide, douleur abdominale, nausées ou diminution des urines dans la semaine qui suit imposent un appel au centre le jour même."),
+    ("Gonal-f", "Stimulation ovarienne en assistance médicale à la procréation", "Dose quotidienne sous-cutanée fixée par le centre, en règle entre 75 et 225 unités, ajustée sur le suivi échographique et hormonal", "La dose change en cours de cycle sur décision du centre : le stylo se règle à chaque injection et la dose de la veille ne se reconduit pas d'office. Injection à heure fixe, sites alternés, stylo entamé conservé selon la notice."),
+    ("Gonal-f", "Stimulation chez l'homme en cas d'hypogonadisme hypogonadotrope", "Injections sous-cutanées trois fois par semaine, en association à la gonadotrophine chorionique", "Le traitement se compte en mois avant tout résultat sur le spermogramme : l'annoncer évite l'abandon à six semaines."),
+    ("Xyrem", "Narcolepsie avec cataplexie de l'adulte", "4,5 g par nuit répartis en deux prises, augmentés par paliers de 1,5 g par semaine jusqu'à 9 g au maximum", "Les deux prises se font au lit : la première au coucher, la seconde deux heures et demie à quatre heures plus tard, réveil programmé. Le produit endort en quelques minutes et une chute est vite arrivée."),
+    ("Xyrem", "Précautions de délivrance et de conservation", "Solution buvable à diluer dans l'eau, préparée au moment du coucher", "Stupéfiant : ordonnance sécurisée, délivrance pour vingt-huit jours au maximum, inscription au registre. Aucun alcool ni dépresseur du système nerveux central le soir de la prise — l'association est ce qui provoque les dépressions respiratoires."),
     // GENERATED-POSOLOGIES-END
 ];
 
@@ -25387,6 +25465,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Glucophage", "metformine", "biguanide", ""),
     ("Diamicron", "gliclazide", "sulfamide hypoglycémiant", ""),
     ("Ozempic", "sémaglutide", "analogue GLP-1", ""),
+    ("Wegovy", "sémaglutide", "analogue GLP-1 — obésité", ""),
     ("Lantus", "insuline glargine", "insuline", ""),
     // Respiratoire
     ("Ventoline", "salbutamol", "bêta-2 mimétique", ""),
@@ -32572,9 +32651,10 @@ mod tests {
     fn every_starter_card_carries_a_sourced_monograph() {
         // The reference base only ever grows: a fiche removed is a
         // question the counter can no longer answer from the app.
+        const DRUGS_FLOOR: usize = 851;
         assert!(
-            STARTER_DRUGS.len() >= 850,
-            "{} fiches livrées, il y en avait huit cent cinquante",
+            STARTER_DRUGS.len() >= DRUGS_FLOOR,
+            "{} fiches livrées, il y en avait {DRUGS_FLOOR}",
             STARTER_DRUGS.len()
         );
         let names: std::collections::HashSet<&str> =
@@ -32593,13 +32673,18 @@ mod tests {
         // the ones where a dose, a duration or an exposure kills, and
         // that list only grows. A section too short to act on is worse
         // than none.
+        //
+        // The floor is a single constant the message reads back: it was
+        // spelled out in words beside the figure, and the two drifted
+        // apart the third time the batch was raised.
+        const TOXIC_FLOOR: usize = 473;
         let toxic: Vec<&StarterDetail> = STARTER_DETAILS
             .iter()
             .filter(|d| !d.toxicity.trim().is_empty())
             .collect();
         assert!(
-            toxic.len() >= 65,
-            "{} fiches portent une section toxicité, il y en avait soixante-cinq",
+            toxic.len() >= TOXIC_FLOOR,
+            "{} fiches portent une section toxicité, il y en avait {TOXIC_FLOOR}",
             toxic.len()
         );
         for d in &toxic {
@@ -32609,6 +32694,27 @@ mod tests {
                 d.name
             );
         }
+
+        // Nommer un antidote, c'est affirmer qu'il existe une dose à
+        // partir de laquelle il faut le donner. La fiche doit alors
+        // dire laquelle, et à quoi on la reconnaît : un antidote sans
+        // sa marge est une colonne remplie qui n'apprend rien à qui
+        // tient la boîte. C'est le seul recoupement de cette passe qui
+        // soit assez net pour devenir un test — ceux sur les demi-vies
+        // et les voies d'élimination restent des relectures, faute de
+        // pouvoir distinguer « demi-vie de trois jours » de « trois
+        // prises par jour » sans crier au loup.
+        let toxic_names: std::collections::HashSet<&str> = toxic.iter().map(|d| d.name).collect();
+        let unarmed: Vec<&str> = STARTER_DRUGS
+            .iter()
+            .filter(|(_, _, _, antidote)| !antidote.trim().is_empty())
+            .map(|(name, ..)| *name)
+            .filter(|name| !toxic_names.contains(name))
+            .collect();
+        assert!(
+            unarmed.is_empty(),
+            "antidote nommé sans section « toxicité / marge thérapeutique » : {unarmed:?}"
+        );
 
         // The clinical body of a monograph, and the sources behind it.
         // `status`, `smr` and `forms` are deliberately not in this list:
@@ -32643,6 +32749,46 @@ mod tests {
                 "{} : aucune étiquette",
                 detail.name
             );
+        }
+
+        // A biosimilar's card is the one the counter has in hand: the
+        // patient was switched to it, and the reference product's card
+        // is not the one that will be opened. Ten of the twelve
+        // thinnest monographs of the base were biosimilars — a
+        // systemic biologic whose whole « contre-indications » section
+        // read « Hypersensibilité. » and whose « rein » read « Pas
+        // d'adaptation. », beside a reference product carrying a full
+        // page. Non-empty was true of every one of them, which is why
+        // the check above never saw it. The floors are ratchets like
+        // the rest: they only move up.
+        let biosimilars: Vec<&StarterDetail> = STARTER_DETAILS
+            .iter()
+            .filter(|d| d.tags.split(',').any(|t| t.trim() == "biosimilaire"))
+            .collect();
+        assert!(
+            biosimilars.len() >= 12,
+            "{} fiches de biosimilaire, il y en avait douze",
+            biosimilars.len()
+        );
+        for d in &biosimilars {
+            let body: usize = required
+                .iter()
+                .filter(|(label, _)| *label != "sources")
+                .map(|(_, get)| get(d).chars().count())
+                .sum();
+            assert!(
+                body >= 3000,
+                "{} : monographie de biosimilaire trop maigre ({body} caractères) — \
+                 la fiche du médicament de référence est le niveau à tenir",
+                d.name
+            );
+            for (label, get) in required {
+                assert!(
+                    get(d).chars().count() >= 80,
+                    "{} : le champ « {label} » tient en une étiquette et pas en une phrase",
+                    d.name
+                );
+            }
         }
     }
 
@@ -34289,21 +34435,29 @@ mod tests {
     fn the_posology_coverage_only_improves() {
         // Titrated by the specialist, or scheduled elsewhere: no
         // counter posology exists to write.
+        //
+        // An exemption is a claim about the molecule, and four of them
+        // were false. « Titrée par le spécialiste » does not describe
+        // le létrozole à 2,5 mg, l'anastrozole à 1 mg, le fingolimod à
+        // 0,5 mg ni le tofacitinib à 5 mg deux fois par jour: one dose,
+        // for everyone, for years — and the counter advice on those is
+        // precisely what carries the treatment (les arthralgies qui
+        // font tout arrêter, les six heures de surveillance à la
+        // reprise, la lymphopénie qui annonce la LEMP). The
+        // anti-aromatases, les immunomodulateurs de la SEP, le
+        // modulateur S1P et les inhibiteurs JAK ont donc quitté cette
+        // liste, avec leurs posologies écrites.
         const NO_POSOLOGY: &[&str] = &[
             "antiépileptique",
             "antipsychotique",
             "immunosuppresseur",
-            "inhibiteur JAK",
-            "immunomodulateur — SEP",
             "anticorps monoclonal — SEP",
-            "modulateur S1P — SEP",
             "anti-CD20",
             "anticancéreux oral",
             "alkylant",
             "anti-HER2",
             "anti-VEGF",
             "anti-estrogène",
-            "hormonothérapie — anti-aromatase",
             "analogue de la GnRH",
             "antagoniste de la GnRH",
             "inhibiteur CDK4/6",
@@ -34315,16 +34469,25 @@ mod tests {
         ];
         // Lower this as batches are written. It may never rise.
         //
-        // At 34 the remainder is no longer a debt of writing: what is
-        // left is injected or perfused by someone else — anesthésiques
-        // locaux injectables, aminosides, carbapénèmes, glycopeptides,
-        // biologiques intraveineux, gonadotrophines de FIV, produits de
-        // l'urgence obstétricale, toxine botulique. There is no counter
-        // posology to write for them, and inventing one would be worse
-        // than the blank. They are deliberately *not* added to
-        // `NO_POSOLOGY`: an exemption list would whitewash the debt,
-        // and the point of this ratchet is that it stays visible.
-        const CEILING: usize = 34;
+        // The 34 that stood here claimed the remainder was all injected
+        // or perfused by someone else. That had stopped being true:
+        // thirteen of those classes were dispensed at the counter — le
+        // tocilizumab et l'abatacept sous-cutanés, le védolizumab
+        // d'entretien, le filgrastim, les gonadotrophines de FIV, le
+        // protocole d'IVG médicamenteuse, l'immunoglobuline anti-D,
+        // l'oxybate, l'antiémétique de cure, les perfusions annuelles de
+        // zolédronate — and the blank on each was a question the counter
+        // could not answer. They are written; the ceiling follows.
+        //
+        // At 16 the claim holds again: anesthésiques locaux
+        // injectables, aminosides, carbapénèmes, glycopeptides,
+        // biologiques intraveineux, produits de l'urgence obstétricale,
+        // toxine botulique. There is no counter posology to write for
+        // them, and inventing one would be worse than the blank. They
+        // are deliberately *not* added to `NO_POSOLOGY`: an exemption
+        // list would whitewash the debt, and the point of this ratchet
+        // is that it stays visible.
+        const CEILING: usize = 16;
 
         let with: std::collections::HashSet<&str> = STARTER_POSOLOGIES
             .iter()

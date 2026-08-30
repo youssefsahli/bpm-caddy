@@ -5,6 +5,374 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.142.0] - 2026-08-30
+
+### Added
+- **Un explorateur de facettes, et les données qui le nourrissent.** Les
+  851 monographies répondent toutes à la même question, « que sais-je de
+  ce médicament » ; il manquait l'inverse, « quels médicaments ont telle
+  propriété » — la plus longue demi-vie, ce qui pèse sur la thyroïde. Un
+  paragraphe ne répond pas à ça : on ne trie pas des phrases.
+  - `src/facets.rs` porte la **demi-vie plasmatique des 851 fiches**, en
+    heures : 658 chiffrées, 193 explicitement non chiffrées avec leur
+    raison. Plus `IMPACTS`, **2 073 lignes sur douze axes d'organe
+    couvrant 733 des 851 fiches**, chacune avec un **sens** (`Traite` /
+    `Altere`), un **degré** et la clause qui le justifie : neurologique
+    288, cœur 274, foie 265, œil 208, digestif 207, peau 187, moelle
+    186, poumon 185, rein 138, os 84, oreille 32, thyroïde 19 — dont
+    1 674 « altère » et 399 « traite ».
+  - **Le sens et le degré sont ce qui distingue ces données d'un comptage
+    de mots.** Compter « thyroïde » dans les monographies met Levothyrox
+    et Euthyrox en tête des médicaments qui touchent la thyroïde — ils la
+    remplacent — et laisse l'amiodarone derrière la Betadine. La bonne
+    réponse à « qu'est-ce qui abîme le plus la thyroïde » est Cordarone,
+    et il faut un champ pour le dire.
+  - **Ce qu'une extraction automatique aurait produit était faux, et faux
+    en tête.** Lue au premier nombre venu, la prose donne un classement
+    dont les vingt premiers sont majoritairement erronés : « demi-vie
+    d'environ 5 jours, l'effet persistant plusieurs semaines » devient
+    quatre-vingt-quatre jours ; la demi-vie *osseuse* d'un bisphosphonate
+    met Fosamax en tête à dix ans ; le stérilet met sa durée de
+    libération, quatre ans, à la place des vingt-quatre heures du
+    lévonorgestrel ; « 5,8 jours » se lit « 5 à 8 ». Les tables ont donc
+    été **amorcées** par un analyseur puis relues à la main, et les
+    trente-huit fiches dont le chiffre venait d'une lecture (« quelques
+    heures », « plusieurs mois ») et non de la fiche sont marquées non
+    chiffrées plutôt que devinées — c'est ce qui met enfin Cordarone
+    (20 à 100 jours) en tête, à sa place.
+  - **Une facette est adossée à ce que la fiche écrit** : là où la
+    monographie ne donne pas de nombre, la facette le dit. On corrige une
+    facette en corrigeant la fiche, et non deux contenus qui dérivent.
+    C'est désormais un test et non une intention :
+    `every_impact_is_backed_by_its_own_card` relit chaque monographie et
+    exige que le vocabulaire de l'organe y figure. Il a trouvé des
+    impacts écrits de mémoire — deux sur la thyroïde, quatre sur l'œil
+    où « trouble visuel » désignait le signe d'alerte d'une thrombose
+    sous contraceptif et non une lésion oculaire — et il les a fait
+    retirer.
+  - **Un impact décrit ce que le médicament fait, jamais le terrain qui
+    l'interdit.** La même phrase change de sens selon le champ qui la
+    porte : « insuffisance rénale » dans les contre-indications décrit un
+    rein déjà malade dont dépend la dose, dans les effets indésirables un
+    rein que le médicament abîme. Le premier n'est pas un impact. Sur
+    l'axe rein, presque tout le « surveiller la créatininémie » du
+    référentiel tombe pour cette raison, et ce qui reste — insuffisance
+    rénale fonctionnelle sous diurétique, néphrite interstitielle sous
+    céphalosporine, lithiase sous topiramate — est ce qu'on voulait.
+  - **La règle a été repassée sur les lignes déjà écrites, et 212
+    étaient dans ce cas.** L'axe digestif s'était rempli de « antécédent
+    d'ulcère gastro-duodénal évolutif » sous AINS — un estomac déjà
+    malade qui interdit le médicament, alors que l'impact existe et est
+    écrit deux champs plus bas. 106 clauses ont été réécrites depuis le
+    bon champ, 35 lignes retirées faute d'y trouver quoi que ce soit, et
+    deux disaient l'inverse de ce qu'on leur faisait dire : Spasfon et
+    Duspatalin précisent qu'ils n'ont *pas* de contre-indication au
+    glaucome, et un mot-clé y avait lu une atteinte oculaire. Au passage,
+    treize hémorragies digestives sous anticoagulant ou AINS étaient
+    classées « mineur » : c'est ce qui tue dans ces classes, et le degré
+    le dit maintenant. `an_impact_describes_what_the_drug_does_not_who_may_not_take_it`
+    tient la règle — et elle vaut pour les deux façons d'écrire autre
+    chose qu'un effet, car la seconde était plus répandue encore :
+    cinquante-huit clauses commençaient par le *geste* de surveillance
+    (« transaminases avant l'instauration puis périodiquement »), qui dit
+    ce qu'on fait et jamais ce que le médicament fait. Quarante-sept ont
+    été redessinées depuis les effets indésirables de la fiche, onze
+    retirées : celles-là ne disaient rien du foie ailleurs que dans leur
+    consigne de prise de sang.
+  - **Le versant « traite » passe de 64 lignes à 399, et les douze axes
+    sont peuplés.** Il était resté une esquisse pendant que « altère » se
+    remplissait, avec deux axes à **zéro** — la peau et le digestif, là
+    où l'officine pose la question le plus souvent : « qu'est-ce qu'on a
+    pour le psoriasis, pour l'acné, pour le reflux ». Le grade n'y veut
+    pas dire la même chose : du côté « altère » il dit la gravité, du
+    côté « traite » il dit la **centralité**. Majeur quand l'organe est
+    la raison d'être du produit, mineur quand il ne fait que le protéger
+    de loin — sans quoi soixante antihypertenseurs noieraient les six
+    médicaments de l'insuffisance cardiaque sur l'axe du cœur.
+    `every_treatment_is_backed_by_its_own_indication` relit chaque ligne
+    sur le vocabulaire de l'indication, qui n'est pas celui de la
+    lésion : la lévothyroxine ne dit jamais « dysthyroïdie », elle dit
+    « hypothyroïdie », et l'inhalateur dit « asthme » et non
+    « bronchospasme ». Sans cette seconde table de mots, les 399 lignes
+    n'auraient été relues par rien.
+  - **La négation est le piège que le mot-clé ne voit jamais**, et il
+    s'est présenté cinq fois : le fondaparinux dont la fiche dit qu'il ne
+    provoque *pas* de thrombopénie induite par l'héparine ; l'étanercept
+    dont trois fiches disent qu'il n'a *pas* de place dans la maladie de
+    Crohn ; Vastarel, dont les indications ORL et vertigineuses ont été
+    *supprimées* ; Spasfon et Duspatalin, qui précisent qu'ils n'ont
+    *pas* de contre-indication au glaucome. Toutes auraient été publiées
+    à l'envers par une table produite à la machine.
+  - **Une fiche peut traiter un organe et l'abîmer**, et c'est la ligne
+    la plus utile de la table : le bisphosphonate traite l'os et nécrose
+    la mâchoire, l'anti-VEGF sauve la rétine et la décolle parfois en y
+    entrant, le bêta-2 de secours lève le bronchospasme et en provoque
+    parfois un. **178 fiches sont dans ce cas** — c'était vingt-trois
+    avant que le versant « traite » soit rempli, et cette croissance est
+    l'argument le plus net pour l'avoir fait : la moitié de ce que la
+    table dit d'intéressant est dans la superposition des deux versants,
+    pas dans l'un ou dans l'autre.
+  - **« Ce qui dure au-delà » passe de 37 entrées à 91.** C'est le
+    troisième axe et il se comptait moins bien que les deux autres :
+    cinquante-quatre fiches disaient en toutes lettres que leur effet
+    survit à leur demi-vie sans qu'aucune facette le note — l'inhibition
+    plaquettaire irréversible qui dure le renouvellement des plaquettes,
+    le métabolite intracellulaire d'un antirétroviral, la terbinafine
+    dans la kératine, la charge iodée de la Betadine, les métabolites
+    actifs du diazépam chez le sujet âgé. La question derrière est
+    toujours la même au comptoir : *quand puis-je opérer, relayer,
+    arrêter*, et la demi-vie plasmatique seule y répond faux. Un
+    plancher tient maintenant ce compte comme les autres.
+  - **La monographie nomme ses axes.** La fiche médicament porte une
+    section « Retentissement organique » qui liste ses impacts, le plus
+    lourd d'abord. C'est la même donnée lue dans l'autre sens :
+    l'explorateur part de l'organe et arrive sur la fiche, la fiche part
+    d'elle-même et nomme ses axes — sans quoi on lirait une monographie
+    sans savoir que le référentiel sait la ranger.
+  - **Le référentiel est indexé une fois, pas soixante fois par
+    seconde.** Un classement construit dans la boucle de dessin coûtait,
+    à 2 073 impacts, un million et demi de comparaisons de chaînes par
+    image — ce que la maison interdit précisément dans un chemin de
+    dessin. Les tables sont statiques : l'index se construit au premier
+    accès et prête ensuite des tranches.
+  - **Deux zones défilantes sans nom dans une même vue se marchent
+    dessus.** egui leur dérive le même identifiant et peint « First use
+    of ScrollArea ID … / Second use of … » en rouge en travers de
+    l'écran. Cela ne provoque aucune panique : `smoke.sh` a ouvert
+    l'explorateur deux fois, dans les deux formes, avec les bandeaux
+    dessus, et seule la capture d'écran les a montrés. Les deux zones
+    portent maintenant un `id_salt`.
+  - La vue **Explorateur** trie tout cela : un axe par onglet portant son
+    effectif — « Foie · 265 », la première question qu'on pose à un axe,
+    et il serait absurde de devoir l'ouvrir pour l'apprendre —, la
+    couverture affichée en toutes lettres — un axe partiel ne doit pas se
+    lire « aucun médicament ne touche cet organe » —, le degré en couleur,
+    et un clic sur un nom qui ouvre la fiche. Deux crochets
+    `BPM_CADDY_START_VIEW=explorer|explorer_organ` la mettent sous
+    `smoke.sh` et `eyeball.sh`, les deux axes se peignant tout autrement.
+
+### Changed
+- **« Toxicité / marge thérapeutique » passe de 65 fiches à 473.** La
+  section n'est pas due à toute fiche — un antifongique local n'a pas
+  de marge dont parler — mais elle l'était à toutes celles où une dose,
+  une durée ou une exposition tue, et elle manquait à la quasi-totalité
+  d'entre elles : 160 fiches portaient un antidote nommé dans
+  `STARTER_DRUGS` sans une ligne sur ce qui justifie cet antidote. Les
+  classes ont été reprises une par une, au comptoir plutôt qu'au RCP :
+  - **Ce qui tue par la dose** : opioïdes (14), insulines et
+    sulfamides (17), benzodiazépines et hypnotiques (14), digitaliques
+    et antiarythmiques, héparines (7).
+  - **Ce qui tue par l'interaction** : l'allopurinol ajouté sur une
+    azathioprine, la clarithromycine sur une colchicine, le gemfibrozil
+    sur un répaglinide, un carbapénème sur un valproate, le miconazole
+    en gel buccal sur un sulfamide, l'oméprazole sur un clopidogrel.
+  - **Ce qui tue par la voie ou le geste** : le bortézomib et la
+    vinorelbine par voie intrathécale, l'Extencilline par voie
+    intraveineuse, la ceftriaxone avec du calcium chez le nouveau-né,
+    la prométhazine hors de la veine.
+  - **Ce qui tue parce que personne n'y pense** : l'acidocétose à
+    glycémie normale sous gliflozine, l'insuffisance surrénale à
+    l'arrêt d'une corticothérapie, le syndrome akinéto-hyperthermique à
+    l'arrêt d'une L-dopa, la réactivation d'une hépatite B à l'arrêt
+    d'un antiviral, la LEMP sous natalizumab, l'ingestion de quelques
+    comprimés de fer ou de Nivaquine par un enfant.
+  - **Ce que le patient ne dira jamais spontanément** : les troubles du
+    contrôle des impulsions sous agoniste dopaminergique ou sous
+    aripiprazole, l'agueusie de la terbinafine, l'éjaculation
+    rétrograde de la silodosine, la gynécomastie de la spironolactone.
+- **Les quatre anticoagulants oraux directs avaient le conseil patient
+  le plus court de la base.** Même classement que pour les
+  biosimilaires, appliqué cette fois au champ « informations utiles au
+  patient » : médiane de la base 1 065 caractères, Lixiana 266, Xarelto
+  342, Pradaxa 411, Eliquis 457 — les quatre derniers, sur la classe où
+  ce que le patient sait décide de ce qui lui arrive. Rien n'y était
+  faux, tout y était bref. Les quatre passent à ~1 300 caractères, avec
+  ce qui manquait : à quoi sert un médicament qui ne se sent pas et
+  pourquoi on l'oublie, ce que coûtent deux jours d'arrêt, la carte
+  d'anticoagulant, l'aspirine et les anti-inflammatoires qu'on achète
+  sans y penser, le millepertuis, la fatigue et l'essoufflement qui
+  révèlent une anémie, et la chute avec choc à la tête où l'on consulte
+  même en se sentant bien. Thyrozol, cinquième plus court, a suivi :
+  sa consigne d'agranulocytose est une consigne *au patient*. Quatre
+  biosimilaires anti-TNF auto-injectés et un IEC ont suivi pour la même
+  raison — le geste, la chaîne du froid, le stylo qui change avec la
+  marque, la fièvre qui fait décaler l'injection ; et pour l'IEC, la
+  toux sèche qu'on explore à tort et l'angio-œdème qui fait appeler le
+  15 et ne jamais reprendre la classe.
+- **Une fiche décrivait la mauvaise molécule.** La section toxicité de
+  **Cardensiel** (bisoprolol) décrivait l'amiodarone : demi-vie de plus
+  de cinquante jours, dysthyroïdie, pneumopathie interstitielle, dépôts
+  cornéens — sur une fiche dont le champ `half_life`, deux lignes plus
+  haut, annonce 10 à 12 heures. Trouvée en confrontant chaque section
+  toxicité qui cite une demi-vie au champ `half_life` de sa propre
+  fiche ; le même passage a corrigé trois formulations trop lâches
+  (Abilify, Gardénal, Daonil). Une recherche de sections copiées d'une
+  fiche à l'autre n'aurait rien vu : le texte était paraphrasé.
+- **Les biosimilaires avaient des fiches de troisième ordre.** En
+  classant les 850 monographies par la taille de leur corps clinique,
+  les douze fiches de biosimilaire occupaient dix des douze dernières
+  places : médiane de la base 4 688 caractères, Nivestim 921. Les
+  champs n'étaient pas vides — le test ne voyait donc rien — mais
+  « Hypersensibilité. » tenait lieu de contre-indications à un
+  biologique injectable, « Pas d'adaptation. » de conduite rénale, et
+  « À n'utiliser qu'en cas de nécessité. » de conduite pendant la
+  grossesse, quand le médicament de référence posé à côté portait une
+  page entière. C'est pourtant la fiche du biosimilaire que le comptoir
+  a en main : le patient a été substitué, il n'ouvrira pas celle de la
+  référence.
+  - Les douze sont réécrites au niveau de la maison : Nivestim, Zarzio
+    et Ziextenzo (filgrastim et pegfilgrastim), Retacrit (époétine),
+    Erelzi et Benepali (étanercept), Imraldi, Hyrimoz et Amgevita
+    (adalimumab), Semglee (insuline glargine), Terrosa (tériparatide),
+    Inhixa (énoxaparine). Le corps clinique passe de 921–2 200 à
+    3 000–5 700 caractères.
+  - **Où ce texte arrive, et où il n'arrive pas** : `fill_starter_details`
+    ne remplit qu'une colonne **vide** (`AND {column} = ''`), pour ne
+    jamais réécrire par-dessus l'équipe. Les douze fiches réécrites
+    n'étaient pas vides : une base ouverte avant aujourd'hui gardera
+    donc les anciens textes, et seules une base neuve et
+    « Réinitialiser la base… » verront les nouveaux. Le comportement est
+    volontaire et n'a pas été touché ici — le changer pour rattraper les
+    bases existantes est une décision sur le semis d'une base clinique
+    partagée, pas un effet de bord d'une passe de contenu.
+  - Ce qui manquait n'était pas de la longueur : le dépistage de la
+    tuberculose et des hépatites avant un anti-TNF, la réactivation de
+    l'hépatite B, la thrombopénie induite par l'héparine entre le
+    cinquième et le vingt et unième jour, la carence martiale qui fait
+    échouer une époétine, les vingt-quatre mois de tériparatide qui sont
+    une limite de vie entière et non de cure, les deux concentrations
+    d'insuline glargine qui ne se remplacent pas dose pour dose.
+- **`the_posology_coverage_only_improves` : le plafond passe de 34 à
+  16.** Le commentaire affirmait qu'à 34 le reste était « injecté ou
+  perfusé par quelqu'un d'autre ». Ce n'était plus vrai : treize de ces
+  classes se délivrent au comptoir. Trente lignes de posologie écrites
+  pour le tocilizumab et l'abatacept sous-cutanés, le védolizumab
+  d'entretien, le filgrastim, les gonadotrophines de FIV, le protocole
+  d'IVG médicamenteuse en deux temps, l'immunoglobuline anti-D, l'oxybate
+  de sodium, l'antiémétique de cure et les perfusions de zolédronate. À
+  16, l'affirmation redevient vraie et le plafond la reflète.
+- **Quatre exemptions de posologie étaient des affirmations fausses.**
+  `NO_POSOLOGY` dispense une classe d'avoir une posologie au motif
+  qu'elle est « titrée par le spécialiste, ou planifiée ailleurs ».
+  Cela ne décrit ni le létrozole à 2,5 mg, ni l'anastrozole à 1 mg, ni
+  le fingolimod à 0,5 mg, ni le tofacitinib à 5 mg deux fois par jour :
+  une dose, la même pour tout le monde, pendant des années. Et c'est
+  précisément sur ces molécules que le conseil de comptoir porte le
+  traitement — les arthralgies qui font arrêter un anti-aromatase avant
+  la fin, les six heures de surveillance à la reprise du fingolimod
+  après une rupture de délivrance, la lymphopénie sous diméthyl
+  fumarate qui annonce la LEMP. Vingt et une lignes écrites pour les
+  anti-aromatases, les immunomodulateurs de la SEP, le modulateur S1P
+  et les inhibiteurs JAK ; les quatre exemptions retirées. Le plafond
+  de classes sans posologie reste à 16, et les 751 fiches sur 851 qui
+  portent maintenant une posologie ne doivent rien à un assouplissement
+  du critère.
+- **Sept héparines gagnent leur section « toxicité / marge
+  thérapeutique ».** Tous les AOD et tous les AVK en portaient une ; la
+  classe posée entre les deux, la seule dont la dose se calcule au poids
+  et dont l'antidote n'est que partiel, n'en avait aucune. Héparine
+  sodique, Calciparine, Lovenox, Inhixa, Innohep, Fraxiparine, Fragmine.
+  Ce qui s'y dit : les deux unités de l'énoxaparine qui se confondent
+  sur la même boîte (1 mg = 100 UI anti-Xa), la protamine qui ne
+  neutralise qu'environ 60 % de l'activité anti-Xa d'une HBPM contre la
+  totalité d'une héparine non fractionnée, la tinzaparine dont la
+  non-accumulation est la mieux documentée sans que cela déplace le
+  seuil de 30 mL/min, et la daltéparine qui ne se dose qu'en unités et
+  jamais en milligrammes. Le cliquet des fiches à section toxicité passe
+  de 65 à 72.
+
+### Fixed
+- **Coumadine disait deux choses de la dose initiale du sujet âgé** :
+  4 mg dans la monographie, « 2,5 mg ou moins » dans la remarque de la
+  ligne de posologie, à deux centimètres l'une de l'autre sur la même
+  fiche. Les deux se lisent côte à côte au comptoir. La remarque suit
+  désormais la monographie, en gardant la nuance du sujet très âgé ou
+  dénutri.
+
+### Added
+- **La fiche Wegovy**, 851e du référentiel. La fiche Ozempic disait déjà
+  que « le sémaglutide dans l'obésité relève d'une autre spécialité et
+  d'un autre schéma de doses » — et cette spécialité n'existait pas dans
+  la base : le comptoir était renvoyé vers une fiche absente. Elle porte
+  ce que la confusion entre les deux coûte, la titration de cinq mois
+  qui ne s'accélère pas, la réévaluation qui décide de l'arrêt, la
+  reprise de poids à l'annoncer avant la première injection, et la perte
+  de masse musculaire quand les protéines et l'activité ne suivent pas.
+  Le cliquet des posologies a fait son travail au passage : la fiche
+  ajoutée sans ses lignes a fait tomber le test.
+- **Un antidote nommé oblige la fiche à dire pourquoi.** `STARTER_DRUGS`
+  porte une colonne « antidote », et la remplir revient à affirmer qu'il
+  existe une dose à partir de laquelle il faut le donner : la fiche doit
+  alors dire laquelle et à quoi on la reconnaît, sans quoi c'est une
+  colonne remplie qui n'apprend rien à qui tient la boîte. Cent soixante
+  fiches étaient dans ce cas au début de la passe, aucune ne l'est plus,
+  et le test le tient désormais — vérifié en vidant la section de
+  Tramadol : il tombe en le nommant. C'est le seul des trois
+  recoupements de cette relecture assez net pour devenir un test ; ceux
+  sur les demi-vies et sur les voies d'élimination restent des
+  techniques de relecture, faute de savoir distinguer « demi-vie de
+  trois jours » de « trois prises par jour » sans crier au loup.
+- **Un plancher sur les fiches de biosimilaire**, dans
+  `every_starter_card_carries_a_sourced_monograph` : trois mille
+  caractères de corps clinique et quatre-vingts par champ — de quoi
+  faire une phrase et pas une étiquette. Le test ne savait vérifier que
+  le vide, et c'est exactement ce que douze fiches exploitaient sans que
+  personne l'ait voulu. Vérifié en réintroduisant « Pas d'adaptation. »
+  sur Hyrimoz : le test tombe. Le nombre de biosimilaires livrés est un
+  cliquet comme les autres.
+- **Deux règles de biologie et cinq listes élargies.** L'hypophosphatémie
+  après une perfusion de carboxymaltose ferrique — effet connu, souvent
+  profond, qui va jusqu'à l'ostéomalacie sur cures répétées — n'était
+  lue par rien : la phosphorémie n'avait qu'une règle, et elle regardait
+  vers le haut. L'hypokaliémie sous antiarythmique allongeant le QT non
+  plus. Et la finérénone a rejoint la règle d'hyperkaliémie, le
+  cinacalcet celle d'hypocalcémie, l'agomélatine, la vildagliptine, le
+  tériflunomide, la terbinafine et le pazopanib celles de cytolyse.
+- **Trois planchers écrits deux fois disaient deux choses.** Le même
+  défaut dans trois fichiers : le chiffre dans l'assertion, les lettres
+  dans le message, et les deux qui divergent au premier relèvement que
+  personne ne relit en entier — `revue.rs` exigeait 61 en annonçant
+  cinquante-cinq, `biology.rs` 55 en annonçant quarante-neuf et 95 en
+  annonçant quatre-vingt-sept. Tous sont désormais des constantes
+  nommées que le message relit. Les vrais chiffres, au passage,
+  n'étaient pas ceux que je croyais : le cliquet a refusé deux fois un
+  compte fait de tête.
+- **Douze surveillances biologiques**, tirées elles aussi des sections
+  toxicité, pour des traitements que `surveillance.rs` ne réclamait
+  pour rien : la **créatininémie sous mésalazine** — une néphrite
+  interstitielle sans signe d'appel, sous un traitement pris pendant des
+  années et réputé anodin —, les transaminases sous agomélatine,
+  vildagliptine, tériflunomide, terbinafine et pazopanib, les
+  lymphocytes sous diméthyl fumarate et fingolimod (c'est le chiffre qui
+  annonce la LEMP), la kaliémie sous finérénone et sous sotalol, la
+  calcémie sous cinacalcet, la TSH sous sunitinib et la numération sous
+  hydroxycarbamide. Le plancher passe de 49 à 61 et devient une
+  constante nommée.
+- **Cinq règles de revue d'ordonnance**, écrites à partir des
+  interactions que la passe sur les sections toxicité a fait remonter et
+  que `revue.rs` ne voyait pas : carbapénème sur valproate (état de
+  mal), miconazole sur AVK et miconazole sur sulfamide hypoglycémiant —
+  gel buccal et ovule compris, ce qui est tout l'intérêt de la règle,
+  personne ne portant un gel pour la bouche sur la liste des
+  traitements généraux —, gemfibrozil sur répaglinide, et aminoside
+  avec diurétique de l'anse. Une sixième, inducteur enzymatique sur
+  contraception, a été écrite puis **retirée** : la règle existait déjà
+  sous un autre titre et plus complète, et un deuxième point disant la
+  même chose sur la même ordonnance est du bruit. Le test
+  `a_buccal_gel_is_read_as_a_general_treatment` tient les deux règles du
+  miconazole, vérifié en cassant la règle : il tombe.
+- **Le plancher des règles de revue est devenu une constante nommée**
+  (`RULES_FLOOR`) et passe à 66 : l'assertion exigeait 61 quand le
+  message parlait de cinquante-cinq. Même défaut, même correction que
+  pour les sections toxicité.
+- **Le plancher des sections toxicité est devenu une constante nommée**
+  (`TOXIC_FLOOR`), que le message d'erreur relit. Il était écrit deux
+  fois — en chiffres dans l'assertion, en toutes lettres dans le
+  message — et les deux avaient divergé dès le troisième relèvement.
+  Le cliquet a par ailleurs fait son travail deux fois pendant cette
+  passe, en refusant un chiffre calculé de tête qui dépassait d'une
+  unité le nombre réel de fiches.
+
 ## [0.141.0] - 2026-08-29
 
 ### Changed

@@ -30,6 +30,24 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints),
+  `src/facets.rs` (what each card says about itself, **as data rather
+  than sentences**: the plasma half-life in hours, and what the card
+  *treats* or *alters*, by organ and by grade. The monographs answer
+  « que sais-je de ce médicament » ; this answers the other half,
+  « quels médicaments ont telle propriété », which no paragraph can. A
+  facet is backed by what the fiche writes: where the monograph gives no
+  number, the facet says « non chiffrée » rather than invent one, so a
+  facet is corrected by correcting the fiche — two tests enforce that,
+  one per side, on *different* vocabularies, because a lesion and an
+  indication do not speak the same language. Two rules the whole module
+  turns on: **the field a sentence comes from decides whether it is an
+  impact** (« insuffisance rénale » in the contraindications is a kidney
+  that governs the dose, in the adverse effects a kidney the drug
+  harms — a drug cleared by the kidney is not a nephrotoxic drug), and
+  **the grade means severity when harming but centrality when
+  treating**, without which sixty antihypertensives would bury the six
+  heart-failure drugs. Pure, tested, no egui; the index is built once,
+  never in the draw loop),
   `src/ordonnancier.rs` (the register of stupéfiants: the balance — which
   is **not** a sum, an inventory *sets* it —, the dispensing number,
   the inventory gap, and what to go and count. Pure, tested, no clock:
@@ -154,6 +172,15 @@ upgrade is decided, the number to defend is the logic one, and
   every view **twice**, at 1400x900 and at 1024x700 with
   `text_scale = 1.25`, and a screenshot at that size is the eye check
   the panics test cannot do.
+- **Two unnamed `ScrollArea` in one view collide.** egui derives their id
+  from position, gives both the same one, and paints « First use of
+  ScrollArea ID … / Second use of … » in red across the screen. It does
+  not panic: `smoke.sh` passed the explorer twice, in both shapes, with
+  the banners on it — only the screenshot showed them. Any second
+  scrolling region in a view takes an `.id_salt("…")`, like the
+  `id_salt` already threaded through `motif`. And the moral is wider
+  than the bug: capturing the pictures is not the eye check, **looking
+  at them** is.
 - A control that must stay visible under a widget that grows (a button
   under a text box) gets its **own carved row**, taken off the bottom
   with `split_rows` before the widget is drawn — not a height reserved
@@ -257,7 +284,7 @@ upgrade is decided, the number to defend is the logic one, and
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|scans|
-  patient_scans`
+  patient_scans|explorer|explorer_organ`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

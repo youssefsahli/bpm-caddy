@@ -45,7 +45,7 @@ views=(
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio watch revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
-    graph stup scans patient_scans registres
+    graph stup scans patient_scans registres explorer explorer_organ
     template options about base keys act_picker
     goto goto_jump mono_search mono_patient
 )

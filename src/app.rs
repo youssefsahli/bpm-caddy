@@ -798,6 +798,67 @@ fn drug_monograph(
                         }
                     });
             }
+            // Les organes que cette fiche touche, tels que l'explorateur
+            // les classe. C'est la même donnée lue dans l'autre sens : la
+            // vue Explorateur part de l'organe et arrive sur la fiche,
+            // celle-ci part de la fiche et nomme ses axes. Sans ce
+            // rappel, on ne saurait pas, en lisant une monographie, que
+            // le référentiel sait la ranger.
+            if let Some(f) = crate::facets::facets(&d.name) {
+                if !f.impacts.is_empty() {
+                    mono_heading(ui, width, tr("drug_sec_facets"));
+                    let mut sorted: Vec<&crate::facets::Impact> = f.impacts.iter().collect();
+                    sorted.sort_by_key(|i| {
+                        (
+                            !matches!(i.effect, crate::facets::Effect::Altere),
+                            std::cmp::Reverse(i.grade),
+                        )
+                    });
+                    egui::Grid::new(("mono_facets", d.id))
+                        .num_columns(2)
+                        .spacing([14.0, 5.0])
+                        .show(ui, |ui| {
+                            for im in sorted {
+                                let tint = match im.grade {
+                                    crate::facets::Grade::Majeur => motif::alert(),
+                                    crate::facets::Grade::Notable => motif::ink(),
+                                    crate::facets::Grade::Mineur => motif::ink_light(),
+                                };
+                                let sense = if matches!(im.effect, crate::facets::Effect::Altere) {
+                                    tr("facet_harms")
+                                } else {
+                                    tr("facet_treats")
+                                };
+                                ui.scope(|ui| {
+                                    ui.set_max_width(130.0);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(trn(
+                                                "facet_axis",
+                                                &[&sense, &im.organ.label()],
+                                            ))
+                                            .size(12.0)
+                                            .color(tint),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                                ui.scope(|ui| {
+                                    ui.set_max_width(width - 150.0);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(im.why)
+                                                .size(13.0)
+                                                .color(motif::ink()),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                                ui.end_row();
+                            }
+                        });
+                }
+            }
             if let Some(id) = mono_section_linked(
                 ui,
                 width,
@@ -1073,6 +1134,14 @@ enum MainView {
     /// référence sur le médicament, ce sont les papiers de l'officine.
     /// Les mettre là était commode à écrire et faux à lire.
     Registres,
+    /// L'explorateur de facettes : le référentiel trié par ce qu'il
+    /// contient, plutôt que cherché par son nom.
+    ///
+    /// Les monographies répondent à « que sais-je de ce médicament » ; il
+    /// manquait la question inverse, « quels médicaments ont telle
+    /// propriété », à laquelle un paragraphe ne sait pas répondre. On ne
+    /// trie pas des phrases, on trie des nombres.
+    Explorer,
 }
 
 impl MainView {
@@ -1092,6 +1161,7 @@ impl MainView {
             MainView::Transmissions => "transmissions",
             MainView::VaccineMap => "map",
             MainView::Registres => "registres",
+            MainView::Explorer => "explorer",
         }
     }
 
@@ -1104,6 +1174,7 @@ impl MainView {
             "transmissions" => Some(MainView::Transmissions),
             "map" => Some(MainView::VaccineMap),
             "registres" => Some(MainView::Registres),
+            "explorer" => Some(MainView::Explorer),
             _ => None,
         }
     }
@@ -1126,6 +1197,8 @@ enum WorkTab {
     Map,
     /// Les registres de l'officine.
     Registres,
+    /// L'explorateur de facettes.
+    Explorer,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -1638,6 +1711,9 @@ struct Session {
     show_scans: Option<(crate::scans::Subject, i64, String)>,
     /// Laquelle des deux moitiés des registres est à l'écran.
     registre_tab: RegistreTab,
+    /// Quel axe l'explorateur de facettes montre : 0 = la demi-vie,
+    /// puis les organes renseignés dans l'ordre de `Organ::ALL`.
+    explorer_axis: usize,
     /// Le registre des stupéfiants : les produits suivis avec leur solde
     /// et leur dernier comptage, le produit ouvert, et la ligne en cours
     /// d'écriture.
@@ -1976,6 +2052,7 @@ impl Session {
             scan_note: None,
             show_scans: None,
             registre_tab: RegistreTab::default(),
+            explorer_axis: 0,
             stup_summary: Vec::new(),
             stup_open: None,
             stup_moves: Vec::new(),
@@ -2095,6 +2172,7 @@ impl Session {
             MainView::Transmissions => WorkTab::Carnet,
             MainView::VaccineMap => WorkTab::Map,
             MainView::Registres => WorkTab::Registres,
+            MainView::Explorer => WorkTab::Explorer,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -2146,6 +2224,9 @@ impl Session {
                 self.view = MainView::VaccineMap;
             }
             WorkTab::Registres => self.open_registres(self.registre_tab),
+            WorkTab::Explorer => {
+                self.view = MainView::Explorer;
+            }
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
                 self.drug_form = None;
@@ -2269,6 +2350,7 @@ impl Session {
             WorkTab::Carnet,
             WorkTab::Map,
             WorkTab::Registres,
+            WorkTab::Explorer,
         ] {
             let label = self.tab_label(&tab);
             let score = if q.is_empty() {
@@ -2732,6 +2814,7 @@ impl Session {
             WorkTab::Carnet => tr("tab_carnet").to_owned(),
             WorkTab::Map => tr("tab_map").to_owned(),
             WorkTab::Registres => tr("tab_registres").to_owned(),
+            WorkTab::Explorer => tr("tab_explorer").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -5236,6 +5319,19 @@ impl App {
                         Ok("stup" | "registres") => {
                             session.open_registres(RegistreTab::Stupefiants);
                         }
+                        // L'explorateur, sur l'axe demandé : « explorer »
+                        // pour la demi-vie, « explorer_organ » pour un
+                        // axe d'organe — les deux se peignent tout
+                        // autrement, l'un en trois colonnes serrées,
+                        // l'autre en sections avec une colonne de prose
+                        // qui se replie.
+                        Ok("explorer") => {
+                            session.view = MainView::Explorer;
+                        }
+                        Ok("explorer_organ") => {
+                            session.view = MainView::Explorer;
+                            session.explorer_axis = 1;
+                        }
                         // The map of the base, centred on a card that
                         // actually has a neighbourhood — an empty circle
                         // would exercise none of the drawing. Eliquis by
@@ -5972,6 +6068,10 @@ impl App {
                             // dossier ouvert, et c'est cette liste qui
                             // l'ouvre. « Ouvrez d'abord le dossier » est le
                             // message du formulaire ; voici le moyen.
+                            // L'explorateur trie le référentiel : c'est le
+                            // dock des médicaments qui l'accompagne, pas
+                            // celui des patients.
+                            MainView::Explorer => Self::nav_drugs(ui, session, focus),
                             MainView::Dashboard | MainView::Search | MainView::Registres => {
                                 Self::nav_patients(ui, session, focus, &config)
                             }
@@ -7119,6 +7219,10 @@ impl App {
             }
             if session.view == MainView::Registres {
                 Self::registres_view(ui, session, &operator, &config);
+                return;
+            }
+            if session.view == MainView::Explorer {
+                Self::explorer_view(ui, session, &config);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -15722,6 +15826,263 @@ impl App {
         }
     }
 
+    /// L'explorateur de facettes : le référentiel trié par ce qu'il
+    /// contient.
+    ///
+    /// Toutes les autres vues partent du nom — on cherche « Cordarone »
+    /// et on lit sa fiche. Celle-ci part de la propriété : quelle est la
+    /// plus longue demi-vie, qu'est-ce qui pèse sur la thyroïde. Un
+    /// paragraphe ne répond pas à ça, et compter les mots d'une
+    /// monographie répond faux : « lévothyroxine » et « amiodarone »
+    /// parlent toutes deux de la thyroïde, l'une la remplace et l'autre
+    /// la détruit. C'est pourquoi les données de `facets` portent un
+    /// sens et un degré, et pas une fréquence.
+    ///
+    /// La couverture est affichée en toutes lettres sous l'axe : un
+    /// classement vide se lirait « aucun médicament ne touche cet
+    /// organe », ce qui serait faux et invisible.
+    fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        use crate::facets::{Effect, Grade, Organ};
+        let body = motif::visible_rect(ui);
+        let gap = ui.spacing().item_spacing.x;
+
+        // Les axes : la demi-vie d'abord, puis les organes renseignés.
+        // Un axe vide n'est pas proposé — une porte qui ouvre sur rien
+        // est pire qu'une porte de moins.
+        let mut axes: Vec<Option<Organ>> = vec![None];
+        axes.extend(
+            Organ::ALL
+                .iter()
+                .filter(|o| crate::facets::coverage(**o) > 0)
+                .map(|o| Some(*o)),
+        );
+        // Chaque porte porte son effectif : c'est la première question
+        // qu'on pose à un axe (« combien de fiches parlent du foie ? »)
+        // et il serait absurde de devoir l'ouvrir pour l'apprendre.
+        let label_of = |a: &Option<Organ>| -> String {
+            match a {
+                None => tr("explorer_axis_half_life").to_owned(),
+                Some(o) => trn(
+                    "explorer_axis_count",
+                    &[&o.label(), &crate::facets::coverage(*o)],
+                ),
+            }
+        };
+        let labels: Vec<String> = axes.iter().map(label_of).collect();
+
+        // La bande des axes est mesurée puis plafonnée à une part du
+        // volet : dix axes se replient en trois lignes au comptoir, et
+        // une bande mesurée sans plafond mange le tableau qu'elle titre.
+        let rows = Self::wrapped_rows(ui, body.width(), labels.iter().map(|s| s.as_str()));
+        let row_h = Self::row_height(ui);
+        let head = (rows * row_h + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y)
+            .min(body.height() * 0.4);
+        let axis = axes.get(session.explorer_axis).copied().flatten();
+        // La note de couverture est une phrase entière : sa hauteur se
+        // mesure sur le galley qu'elle produira à cette largeur, jamais
+        // sur « une ligne de corps ». Elle en fait deux au comptoir, et
+        // une bande d'une ligne la coupait au milieu.
+        let note = match axis {
+            None => trf(
+                "explorer_cover_half_life",
+                crate::facets::all().len().to_string(),
+            ),
+            Some(o) => trf(
+                "explorer_cover_organ",
+                crate::facets::coverage(o).to_string(),
+            ),
+        };
+        let note_h = ui
+            .fonts(|f| {
+                f.layout(
+                    note.clone(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    motif::text_dim(),
+                    body.width() - 8.0,
+                )
+                .size()
+                .y
+            })
+            .min(body.height() * 0.2)
+            + 4.0;
+        let strip = motif::split_rows(body, &[head, note_h, 0.0], 6.0);
+
+        // La bande défile au-delà de sa part plutôt que de se faire
+        // couper : treize portes tiennent en quatre lignes ici et en
+        // cinq sur un poste plus étroit, et une cinquième ligne rognée
+        // est un axe que personne ne pourra plus ouvrir.
+        motif::inside(ui, strip[0], |ui| {
+            // Deux zones défilantes dans une même vue, et aucune nommée :
+            // egui leur dérive le même identifiant et se plaint à
+            // l'écran. Le nom n'est pas décoratif.
+            egui::ScrollArea::vertical()
+                .id_salt("explorer_axes")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, label) in labels.iter().enumerate() {
+                            let on = session.explorer_axis == i;
+                            if motif::toggle(ui, label, on).clicked() {
+                                session.explorer_axis = i;
+                            }
+                        }
+                    });
+                });
+        });
+
+        // Ce que l'axe couvre, dit avant le tableau.
+        motif::inside(ui, strip[1], |ui| {
+            ui.add(egui::Label::new(egui::RichText::new(note).color(motif::text_dim())).wrap());
+        });
+
+        let mut open: Option<String> = None;
+        motif::panel(ui, strip[2], None, |ui| {
+            egui::ScrollArea::both()
+                .id_salt("explorer_body")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.visuals_mut().faint_bg_color = motif::bg_dark();
+                    match axis {
+                        None => {
+                            egui::Grid::new("explorer_hl")
+                                .num_columns(3)
+                                .spacing([gap * 2.0, 6.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.label(egui::RichText::new(tr("explorer_col_card")).strong());
+                                    ui.label(
+                                        egui::RichText::new(tr("explorer_col_half_life")).strong(),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(tr("explorer_col_organs")).strong(),
+                                    );
+                                    ui.end_row();
+                                    for f in crate::facets::by_half_life_desc() {
+                                        if ui
+                                            .add(
+                                                egui::Label::new(f.name)
+                                                    .sense(egui::Sense::click()),
+                                            )
+                                            .clicked()
+                                        {
+                                            open = Some(f.name.to_owned());
+                                        }
+                                        let value = f.half_life.label();
+                                        let colour = match f.half_life.sort_key() {
+                                            Some(_) => motif::text(),
+                                            None => motif::text_faint(),
+                                        };
+                                        // « Ce qui dure au-delà » qualifie la
+                                        // demi-vie : sa place est sous elle, et
+                                        // non dans une quatrième colonne que le
+                                        // volet ne peut pas montrer.
+                                        ui.vertical(|ui| {
+                                            ui.label(egui::RichText::new(value).color(colour));
+                                            if !f.beyond.is_empty() {
+                                                let small =
+                                                    egui::TextStyle::Body.resolve(ui.style()).size
+                                                        * 0.85;
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(f.beyond)
+                                                            .size(small)
+                                                            .color(motif::text_dim()),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                        });
+                                        // Les organes que la fiche altère,
+                                        // le plus lourd en tête : c'est ce
+                                        // qui fait le lien entre les deux
+                                        // façons de lire la même donnée.
+                                        let mut harms: Vec<&crate::facets::Impact> = f
+                                            .impacts
+                                            .iter()
+                                            .filter(|i| i.effect == Effect::Altere)
+                                            .collect();
+                                        harms.sort_by_key(|i| std::cmp::Reverse(i.grade));
+                                        let organs: Vec<&str> =
+                                            harms.iter().map(|i| i.organ.label()).collect();
+                                        let tint = if harms.iter().any(|i| i.grade == Grade::Majeur)
+                                        {
+                                            motif::alert()
+                                        } else {
+                                            motif::text_dim()
+                                        };
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(organs.join(", ")).color(tint),
+                                            )
+                                            .wrap(),
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                        Some(organ) => {
+                            for effect in [Effect::Altere, Effect::Traite] {
+                                let rows = crate::facets::on_organ(organ, effect);
+                                if rows.is_empty() {
+                                    continue;
+                                }
+                                motif::section(
+                                    ui,
+                                    &trf(
+                                        if effect == Effect::Altere {
+                                            "explorer_section_harms"
+                                        } else {
+                                            "explorer_section_treats"
+                                        },
+                                        organ.label(),
+                                    ),
+                                );
+                                egui::Grid::new(("explorer_organ", organ.label(), effect.label()))
+                                    .num_columns(3)
+                                    .spacing([gap * 2.0, 6.0])
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        for (f, im) in rows {
+                                            let tint = match im.grade {
+                                                Grade::Majeur => motif::alert(),
+                                                Grade::Notable => motif::text(),
+                                                Grade::Mineur => motif::text_dim(),
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(im.grade.label()).color(tint),
+                                            );
+                                            if ui
+                                                .add(
+                                                    egui::Label::new(f.name)
+                                                        .sense(egui::Sense::click()),
+                                                )
+                                                .clicked()
+                                            {
+                                                open = Some(f.name.to_owned());
+                                            }
+                                            ui.add(egui::Label::new(im.why).wrap());
+                                            ui.end_row();
+                                        }
+                                    });
+                                ui.add_space(8.0);
+                            }
+                        }
+                    }
+                });
+        });
+        let _ = config;
+        // Cliquer un nom ouvre la fiche : l'explorateur sert à trouver
+        // quoi lire, pas à remplacer la lecture.
+        if let Some(name) = open {
+            if let Ok(list) = session.db.drugs() {
+                if let Some(d) = list.iter().find(|d| d.name == name).cloned() {
+                    session.set_drugs(list);
+                    session.open_drug_card(d);
+                }
+            }
+        }
+    }
+
     /// L'écran des pièces d'une fiche médicament ou de l'officine.
     ///
     /// Le dossier patient a le sien en onglet — c'est là qu'on cherche
@@ -22341,7 +22702,8 @@ impl eframe::App for App {
                     | MainView::Agenda
                     | MainView::Transmissions
                     | MainView::VaccineMap
-                    | MainView::Registres => {
+                    | MainView::Registres
+                    | MainView::Explorer => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
