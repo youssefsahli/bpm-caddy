@@ -5,6 +5,86 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.144.0] - 2026-08-31
+
+### Added
+- **Les classes thérapeutiques deviennent un référentiel, et une vue.**
+  Le champ « classe » d'une fiche est du texte libre, et il avait dérivé
+  : **495 libellés distincts pour 851 fiches, dont 331 sur une seule
+  fiche**. Ce n'est plus une classification, c'est une étiquette.
+  - **La dérive n'était pas cosmétique.** `anti-TNF` et `anti-TNF alpha`
+    étaient deux classes : la pastille de Humira annonçait sept voisins
+    au lieu de dix, et Remicade n'était nulle part. La question derrière
+    est celle du comptoir un jour de rupture — *qu'est-ce qu'il y a
+    d'autre dans cette classe* — et une réponse incomplète y est pire
+    qu'une absence de réponse, parce que rien n'a l'air cassé. Deux
+    autres du même genre : `bêtabloquant` / `bêta-bloquant`, un trait
+    d'union ; `biphosphonate` / `bisphosphonate`, une lettre.
+  - `src/classes.rs` porte **seize familles et 383 classes canoniques**,
+    chacune avec les libellés qu'on rencontre réellement dans les
+    fiches. `canonical` les y ramène, `same` est ce sur quoi l'anneau
+    « même classe » et la pastille comparent désormais — et non plus la
+    chaîne brute.
+  - **Le référentiel lit les fiches, il ne les réécrit pas.** Réécrire
+    la classe de 851 fiches écraserait ce que l'équipe a écrit, ce que
+    cette maison ne fait nulle part. Une classe inconnue reste lisible
+    et se range sous « hors référentiel », où elle se **voit** : une
+    fiche qu'aucune colonne n'affiche est une fiche perdue, et c'est
+    exactement le défaut qu'on corrige.
+  - **Une vue « Classes… »** depuis la base médicaments ou Ctrl+K :
+    l'appareil, puis la classe, puis les fiches. C'est le seul ordre qui
+    rende 383 classes consultables — à plat elles sont une liste qu'on
+    referme, ce qu'étaient déjà les 495 libellés. Chaque ligne dit son
+    compte avant qu'on clique, et une classe qui replie plusieurs
+    graphies le dit en toutes lettres, sinon trouver Remicade sous
+    « anti-TNF alpha » ressemblerait à une erreur.
+  - **Quatre tests le tiennent** : chaque classe écrite sur une fiche
+    livrée est dans le référentiel ; un libellé ne désigne qu'une classe
+    (un alias qui serait le nom canonique d'une autre ferait tomber la
+    fiche dans l'une ou l'autre selon l'ordre de la table — juste, puis
+    faux, sans que rien n'ait changé) ; les trois dérives mesurées se
+    replient ; et le référentiel porte **au moins 112 classes de moins**
+    que la base n'écrit de libellés, sans quoi il n'aurait rien replié
+    et serait la même liste avec une colonne de plus.
+  - Le relevé a d'abord été fait à l'expression régulière et donnait 274
+    libellés sur 528 fiches. Elle ne voyait que les entrées tenant sur
+    une ligne, et la moitié de la base en fait cinq — **le piège est
+    écrit dans le journal de la v0.109 et j'y suis retombé**. C'est le
+    test qui l'a dit : 268 fiches hors référentiel d'un coup.
+
+### Fixed
+- **Un titre de panneau se peignait hors de son panneau.** `motif::panel`
+  posait sa légende avec `layout_no_wrap` et sans limite de largeur :
+  « PATIENTS SOUS CE TRAITEMENT » sur un volet étroit débordait la
+  gouttière et se peignait sur le panneau d'à côté. Rien ne l'arrêtait —
+  un `Painter` peint où on lui dit — et c'est la même famille que
+  `ui.columns` qui ne découpe pas et que `list_row` qui jetait son
+  `RichText` : le débordement ne casse rien, il se lit faux. Élidé sur
+  une ligne désormais, dans le seul endroit qui dessine les légendes,
+  donc partout à la fois.
+- **L'onglet Conciliation n'affichait plus une seule divergence** à
+  1024x700 les deux docks ouverts. Mesuré : la tête du panneau coûtait
+  136 px, la bande de saisie en réclamait 110 au titre de son plancher,
+  et il restait **un pixel** pour le tableau — c'est-à-dire pour ce que
+  l'onglet existe pour montrer.
+  - La cause n'était pas le partage mais la tête : le compte
+    « 3 divergence(s) sur 5 ligne(s) comparée(s) » fait deux cent
+    cinquante pixels, plus que le plus large des trois boutons, et
+    c'est lui qui faisait passer la rangée à deux lignes. Sur sa propre
+    ligne sous le titre il coûte seize pixels au lieu de quarante-deux,
+    et il se lit mieux : un compte n'est pas une commande.
+  - Et la gouttière de huit pixels n'était pas comptée dans la réserve,
+    ce qui retirait encore une ligne au tableau.
+- **`motif::list_row_count`**, la rangée à chiffre calé à droite. Ajoutée
+  parce que la liste des classes en avait besoin et que la faire à la
+  main l'aurait cassée : un compte ajouté après le libellé est la *fin*
+  de la ligne, donc la première chose que l'élision mange —
+  « Cardiologie et vaisseaux · … » est une ligne dont le seul contenu
+  chiffré a disparu. Le libellé est mesuré après le chiffre et la rangée
+  grandit avec lui : une classe peut s'appeler « antagoniste non
+  stéroïdien des récepteurs minéralocorticoïdes », et allouer une ligne
+  pour en peindre deux centrerait le texte hors de sa propre rangée.
+
 ## [0.143.1] - 2026-08-30
 
 ### Fixed

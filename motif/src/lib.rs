@@ -857,6 +857,87 @@ pub fn list_row_pair(
     response
 }
 
+/// [`list_row`] with a figure held against the right edge.
+///
+/// The count is the half a narrow column must not lose. Appended after
+/// the label — as [`list_row_pair`] does — it is the *end* of the line,
+/// so it is the first thing elision eats: « Cardiologie et vaisseaux ·
+/// … » is a row whose only quantitative content has gone, and a list of
+/// them says nothing at all. Here the figure is measured first, reserved,
+/// and the label is elided into what is left.
+///
+/// Which is the right thing to lose: a truncated label is still
+/// recognisable and the selection says which row it is, whereas a
+/// missing number is simply absent.
+pub fn list_row_count(
+    ui: &mut egui::Ui,
+    label: &str,
+    count: &str,
+    selected: bool,
+    dim: bool,
+) -> egui::Response {
+    let width = ui.available_width();
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let row = ui.fonts(|f| f.row_height(&font));
+    let ink = if selected {
+        Color32::WHITE
+    } else if dim {
+        crate::text_faint()
+    } else {
+        crate::text()
+    };
+    // The figure keeps its own quieter ink, except on the selection blue
+    // where a grey would be unreadable.
+    let quiet = if selected {
+        Color32::WHITE
+    } else {
+        crate::text_dim()
+    };
+    // **Laid out before the row is allocated**, because the row's height
+    // depends on it: a therapeutic class can be « antagoniste non
+    // stéroïdien des récepteurs minéralocorticoïdes », which wraps to two
+    // lines in any column narrow enough to need this widget. Allocating
+    // one line and painting two centres the text *outside* its own row
+    // and into the neighbours — the label wraps, so the row grows.
+    let num = ui
+        .painter()
+        .layout_no_wrap(count.to_owned(), font.clone(), quiet);
+    let reserved = num.size().x + 16.0;
+    let text = ui.painter().layout(
+        label.to_owned(),
+        font,
+        ink,
+        (width - 8.0 - reserved).max(8.0),
+    );
+    let height = (ui.spacing().interact_size.y + 2.0)
+        .max(row + 4.0)
+        .max(text.size().y + 6.0)
+        .max(18.0);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
+    if !ui.is_rect_visible(rect) {
+        return response;
+    }
+    if selected {
+        ui.painter().rect_filled(rect, 0.0, crate::accent());
+    } else if response.hovered() {
+        ui.painter().rect_filled(rect, 0.0, crate::bg_hover());
+    }
+    ui.painter().galley(
+        egui::pos2(rect.left() + 8.0, rect.center().y - text.size().y / 2.0),
+        text,
+        ink,
+    );
+    ui.painter().galley(
+        egui::pos2(
+            rect.right() - 8.0 - num.size().x,
+            rect.center().y - num.size().y / 2.0,
+        ),
+        num,
+        quiet,
+    );
+    response
+}
+
 /// [`list_row`] variant taking a prebuilt layout job, for rows with
 /// per-character styling (fuzzy-match highlighting).
 pub fn list_row_job(

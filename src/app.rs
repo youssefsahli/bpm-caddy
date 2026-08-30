@@ -1192,6 +1192,16 @@ enum MainView {
     /// propriété », à laquelle un paragraphe ne sait pas répondre. On ne
     /// trie pas des phrases, on trie des nombres.
     Explorer,
+    /// Les classes thérapeutiques : les seize familles, leurs classes,
+    /// et les fiches de chacune.
+    ///
+    /// Le champ `class` d'une fiche est du texte libre et il a dérivé —
+    /// 495 libellés pour 851 fiches, dont 331 pour une seule. Une liste
+    /// à plat de 495 lignes n'apprend rien ; `crate::classes` les replie
+    /// en 383 classes rangées sous seize familles, et cette vue est ce
+    /// qui rend le rangement consultable. On descend de l'appareil à la
+    /// classe, puis de la classe aux fiches.
+    Classes,
 }
 
 impl MainView {
@@ -1212,6 +1222,7 @@ impl MainView {
             MainView::VaccineMap => "map",
             MainView::Registres => "registres",
             MainView::Explorer => "explorer",
+            MainView::Classes => "classes",
         }
     }
 
@@ -1225,6 +1236,7 @@ impl MainView {
             "map" => Some(MainView::VaccineMap),
             "registres" => Some(MainView::Registres),
             "explorer" => Some(MainView::Explorer),
+            "classes" => Some(MainView::Classes),
             _ => None,
         }
     }
@@ -1249,6 +1261,8 @@ enum WorkTab {
     Registres,
     /// L'explorateur de facettes.
     Explorer,
+    /// Les classes thérapeutiques, par famille.
+    Classes,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -1822,6 +1836,24 @@ struct Session {
     /// Quel axe l'explorateur de facettes montre : 0 = la demi-vie,
     /// puis les organes renseignés dans l'ordre de `Organ::ALL`.
     explorer_axis: usize,
+    /// La famille ouverte dans la vue des classes, et la classe ouverte
+    /// dedans — des **indices** dans `crate::classes`, jamais des
+    /// copies : la table est statique et vit aussi longtemps que le
+    /// programme.
+    class_family: usize,
+    class_open: Option<usize>,
+    /// Combien de fiches chaque classe canonique porte, et lesquelles.
+    ///
+    /// Refait quand la base des médicaments change (`drugs_rev`) et
+    /// jamais par image : le compte demande de résoudre la classe des
+    /// 851 fiches, ce qui est une passe sur toute la base et pas un
+    /// travail d'affichage.
+    class_counts: std::collections::HashMap<&'static str, Vec<usize>>,
+    class_counts_rev: u64,
+    /// Les fiches dont la classe n'est d'aucune classe du référentiel :
+    /// ce que l'officine a écrit elle-même, et qui doit se voir plutôt
+    /// que de disparaître entre les mailles.
+    class_orphans: Vec<usize>,
     /// Le registre des stupéfiants : les produits suivis avec leur solde
     /// et leur dernier comptage, le produit ouvert, et la ligne en cours
     /// d'écriture.
@@ -2185,6 +2217,11 @@ impl Session {
             show_scans: None,
             registre_tab: RegistreTab::default(),
             explorer_axis: 0,
+            class_family: 0,
+            class_open: None,
+            class_counts: std::collections::HashMap::new(),
+            class_counts_rev: u64::MAX,
+            class_orphans: Vec::new(),
             stup_summary: Vec::new(),
             stup_open: None,
             stup_moves: Vec::new(),
@@ -2312,6 +2349,7 @@ impl Session {
             MainView::VaccineMap => WorkTab::Map,
             MainView::Registres => WorkTab::Registres,
             MainView::Explorer => WorkTab::Explorer,
+            MainView::Classes => WorkTab::Classes,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -2365,6 +2403,10 @@ impl Session {
             WorkTab::Registres => self.open_registres(self.registre_tab),
             WorkTab::Explorer => {
                 self.view = MainView::Explorer;
+            }
+            WorkTab::Classes => {
+                self.view = MainView::Classes;
+                self.refresh_class_counts();
             }
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
@@ -2490,6 +2532,7 @@ impl Session {
             WorkTab::Map,
             WorkTab::Registres,
             WorkTab::Explorer,
+            WorkTab::Classes,
         ] {
             let label = self.tab_label(&tab);
             let score = if q.is_empty() {
@@ -2771,6 +2814,53 @@ impl Session {
         self.scan_confirm = None;
     }
 
+    /// Ranger les fiches sous leur classe canonique.
+    ///
+    /// Une passe sur les 851 fiches, gardée contre `drugs_rev` : la vue
+    /// la redemande à chaque image et la base ne bouge qu'aux douze
+    /// endroits qui appellent `set_drugs`. Une ligne porte un **indice**
+    /// dans `self.drugs` et jamais une copie de la fiche.
+    fn refresh_class_counts(&mut self) {
+        if self.class_counts_rev == self.drugs_rev {
+            return;
+        }
+        let mut counts: std::collections::HashMap<&'static str, Vec<usize>> =
+            std::collections::HashMap::new();
+        let mut orphans: Vec<usize> = Vec::new();
+        for (i, d) in self.drugs.iter().enumerate() {
+            let label = d.class.trim();
+            if label.is_empty() {
+                continue;
+            }
+            match crate::classes::canonical(label) {
+                Some(c) => counts.entry(c.name).or_default().push(i),
+                // Ce que l'officine a écrit elle-même : rangé à part et
+                // montré, plutôt que passé entre les mailles. Une fiche
+                // qu'aucune colonne n'affiche est une fiche perdue.
+                None => orphans.push(i),
+            }
+        }
+        for list in counts.values_mut() {
+            list.sort_by_key(|i| fuzzy::sort_key(&self.drugs[*i].name));
+        }
+        orphans.sort_by_key(|i| {
+            (
+                fuzzy::sort_key(&self.drugs[*i].class),
+                fuzzy::sort_key(&self.drugs[*i].name),
+            )
+        });
+        self.class_counts = counts;
+        self.class_orphans = orphans;
+        self.class_counts_rev = self.drugs_rev;
+        // « Hors référentiel » n'est une ligne que s'il y a quelque
+        // chose dedans. Rester dessus quand elle disparaît laisserait
+        // une famille ouverte que la liste ne montre plus — sélection
+        // invisible, colonne vide, et rien pour dire pourquoi.
+        if self.class_family >= crate::classes::FAMILIES.len() && self.class_orphans.is_empty() {
+            self.class_family = 0;
+        }
+    }
+
     /// Relire le registre : le résumé de tous les produits, et les
     /// lignes de celui qui est ouvert.
     ///
@@ -3002,6 +3092,7 @@ impl Session {
             WorkTab::Map => tr("tab_map").to_owned(),
             WorkTab::Registres => tr("tab_registres").to_owned(),
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
+            WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -4105,7 +4196,11 @@ impl DrugKin {
                 .iter()
                 .filter(|d| {
                     d.id != card.id
-                        && fuzzy::eq_folded(&d.class, class)
+                        // Sur la classe **canonique** : « anti-TNF » et
+                        // « anti-TNF alpha » sont la même, et les
+                        // comparer comme deux chaînes cachait Remicade
+                        // à la fiche de Humira.
+                        && crate::classes::same(&d.class, class)
                         // …and not already listed above. Guarded on a
                         // card that has no DCI of its own: without it,
                         // every class-mate whose DCI is also blank would
@@ -5533,6 +5628,30 @@ impl App {
                             session.view = MainView::Explorer;
                             session.explorer_axis = 1;
                         }
+                        // Les classes, sur une famille qui en porte
+                        // assez pour que les trois colonnes aient
+                        // quelque chose à montrer, et sur une classe
+                        // ouverte : la vue vide ne dirait rien de sa
+                        // mise en page.
+                        Ok("classes") => {
+                            session.view = MainView::Classes;
+                            session.refresh_class_counts();
+                            session.class_open = crate::classes::CLASSES
+                                .iter()
+                                .position(|c| c.name == "bêtabloquant");
+                            session.class_family = crate::classes::FAMILIES
+                                .iter()
+                                .position(|f| f.key == "cardio")
+                                .unwrap_or(0);
+                        }
+                        // Et la famille qui n'en est pas une : les
+                        // fiches dont la classe est écrite par
+                        // l'officine, qui se peint autrement.
+                        Ok("classes_outside") => {
+                            session.view = MainView::Classes;
+                            session.refresh_class_counts();
+                            session.class_family = crate::classes::FAMILIES.len();
+                        }
                         // The map of the base, centred on a card that
                         // actually has a neighbourhood — an empty circle
                         // would exercise none of the drawing. Eliquis by
@@ -6272,7 +6391,11 @@ impl App {
                             // L'explorateur trie le référentiel : c'est le
                             // dock des médicaments qui l'accompagne, pas
                             // celui des patients.
-                            MainView::Explorer => Self::nav_drugs(ui, session, focus),
+                            // Les classes trient elles aussi le
+                            // référentiel : même dock que l'explorateur.
+                            MainView::Explorer | MainView::Classes => {
+                                Self::nav_drugs(ui, session, focus)
+                            }
                             MainView::Dashboard | MainView::Search | MainView::Registres => {
                                 Self::nav_patients(ui, session, focus, &config)
                             }
@@ -7424,6 +7547,10 @@ impl App {
             }
             if session.view == MainView::Explorer {
                 Self::explorer_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Classes {
+                Self::classes_view(ui, session);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -9067,9 +9194,29 @@ impl App {
             // two lines of text and the button under them. One pastes
             // into it far more often than one reads it back, and the
             // answer above is what the tab exists to show.
-            let band = (work.height() * 0.52).clamp(line * 5.5, line * 22.0).min(
-                (work.height() - Self::concil_head(ui, work.width()) - line * 3.0).max(line * 5.5),
-            );
+            //
+            // Mesuré à 1024x700 les deux docks ouverts, et le compte ne
+            // tombait pas : la tête du panneau des réponses coûtait
+            // 136 px, la bande en réclamait 110 au titre de son
+            // plancher, et il restait **un pixel** pour les divergences.
+            // Le plancher de la bande gagnait contre le sien, si bien
+            // que l'onglet n'affichait jamais ce pour quoi il existe.
+            //
+            // Ce qui a changé : la réponse garde sa tête **et deux
+            // lignes**, et c'est la boîte de collage qui cède — elle
+            // défile d'elle-même, on y colle cent fois pour une fois
+            // qu'on l'y relit, et trois lignes et demie suffisent à
+            // coller. Une table à zéro ligne ne sert à rien ; une boîte
+            // de texte courte sert encore.
+            let answer_min = Self::concil_head(ui, work.width()) + line * 2.0;
+            let band_min = line * 5.5;
+            let band = (work.height() * 0.52)
+                .clamp(band_min, line * 22.0)
+                // La gouttière comprise : sans elle la réponse recevait
+                // huit pixels de moins que son plancher, soit une
+                // divergence de moins — le genre d'écart qu'un calcul
+                // juste à huit pixels près produit tout seul.
+                .min((work.height() - answer_min - 8.0).max(band_min));
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -9099,8 +9246,9 @@ impl App {
     /// qui passe à deux lignes dès que le troisième bouton apparaît.
     fn concil_head(ui: &egui::Ui, width: f32) -> f32 {
         let line = ui.text_style_height(&egui::TextStyle::Body);
-        // The count sits on the same wrapped row as the buttons, so it
-        // is measured with them.
+        // Le compte a sa propre ligne sous le titre : il n'entre plus
+        // dans la mesure de la rangée, et c'est précisément ce qui la
+        // ramène à une seule ligne.
         let rows = Self::wrapped_rows_of(
             ui,
             width - 24.0,
@@ -9108,23 +9256,12 @@ impl App {
                 Self::button_width(ui, tr("concil_journal")),
                 Self::button_width(ui, tr("concil_print")),
                 Self::button_width(ui, tr("concil_adopt")),
-                // The count is a label and not a button: measured as one
-                // it claimed a button's padding it does not use, and the
-                // row was declared to wrap a good sixty pixels early.
-                ui.fonts(|f| {
-                    f.layout_no_wrap(
-                        trn("concil_count", &[&99, &99]),
-                        egui::TextStyle::Body.resolve(ui.style()),
-                        motif::text_dim(),
-                    )
-                    .size()
-                    .x
-                }),
             ]
             .into_iter(),
         );
-        // The panel's own title and rules, then the wrapped rows.
-        line * 2.0 + rows * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 12.0
+        // Le titre du panneau et son filet, la ligne du compte, puis les
+        // rangées de boutons.
+        line * 3.0 + rows * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 12.0
     }
 
     /// La feuille de sortie, telle qu'elle est collée ou tapée.
@@ -9312,12 +9449,27 @@ impl App {
                 );
                 return;
             }
+            // Le compte **sous** le titre, et non dans la rangée des
+            // boutons.
+            //
+            // Mesuré : « 3 divergence(s) sur 5 ligne(s) comparée(s) »
+            // fait deux cent cinquante pixels, plus que le plus large
+            // des trois boutons, et c'est lui qui faisait passer la
+            // rangée à deux lignes. Deux lignes de boutons coûtent
+            // quarante-deux pixels de plus au panneau, et à 1024x700 les
+            // deux docks ouverts ce panneau n'en a pas quarante-deux à
+            // donner : il n'affichait plus une seule divergence, c'est-à-
+            // dire plus rien de ce pour quoi l'onglet existe.
+            //
+            // Sur sa propre ligne il coûte seize pixels au lieu de
+            // quarante-deux, et il se lit mieux — un compte n'est pas une
+            // commande, il n'avait rien à faire au milieu des boutons.
+            ui.label(
+                egui::RichText::new(trn("concil_count", &[&counts.divergences(), &rows.len()]))
+                    .size(11.0)
+                    .color(motif::text_dim()),
+            );
             ui.horizontal_wrapped(|ui| {
-                ui.label(
-                    egui::RichText::new(trn("concil_count", &[&counts.divergences(), &rows.len()]))
-                        .size(11.5)
-                        .color(motif::text_dim()),
-                );
                 if motif::button(ui, tr("concil_journal")).clicked() {
                     journal = true;
                 }
@@ -16050,6 +16202,315 @@ impl App {
     /// La couverture est affichée en toutes lettres sous l'axe : un
     /// classement vide se lirait « aucun médicament ne touche cet
     /// organe », ce qui serait faux et invisible.
+    /// Les classes thérapeutiques : les familles, leurs classes, et les
+    /// fiches de chacune.
+    ///
+    /// Trois colonnes qui descendent : l'appareil, la classe, la fiche.
+    /// C'est le seul ordre qui rende 383 classes consultables — à plat
+    /// elles sont une liste qu'on referme, et c'était déjà le cas des
+    /// 495 libellés qu'elles remplacent.
+    ///
+    /// Chaque classe dit **combien de fiches** elle porte avant qu'on
+    /// clique : la question de la rupture est « qu'est-ce qu'il y a
+    /// d'autre », et le compte y répond à moitié tout seul. Une classe
+    /// qui replie plusieurs graphies le dit aussi, sous la liste : sans
+    /// cela, trouver Remicade sous « anti-TNF alpha » ressemblerait à
+    /// une erreur.
+    ///
+    /// La dernière famille n'en est pas une : « hors référentiel »
+    /// rassemble les fiches dont la classe est écrite par l'officine.
+    /// Elles doivent se voir. Une fiche qu'aucune colonne n'affiche est
+    /// une fiche perdue, et c'est précisément ce qu'on est en train de
+    /// corriger.
+    fn classes_view(ui: &mut egui::Ui, session: &mut Session) {
+        session.refresh_class_counts();
+        let body = motif::visible_rect(ui);
+        let gap = ui.spacing().item_spacing.x;
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [Self::heading_width(ui, tr("classes_title"))].into_iter(),
+            tr("classes_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("classes_title"));
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(trn(
+                        "classes_subtitle_count",
+                        &[
+                            &crate::classes::CLASSES.len(),
+                            &crate::classes::FAMILIES.len(),
+                        ],
+                    ))
+                    .size(11.5)
+                    .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+
+        // Trois colonnes, et la troisième — les fiches — est celle qui
+        // cède quand la fenêtre ne peut pas les tenir : on descend
+        // toujours de la famille à la classe, jamais l'inverse, donc
+        // c'est la dernière qui peut passer dessous.
+        let work = rows[1];
+        let wide = work.width() >= 860.0;
+        let fam_w = (work.width() * 0.26).clamp(190.0, 300.0);
+        let cls_w = if wide {
+            (work.width() * 0.30).clamp(220.0, 360.0)
+        } else {
+            (work.width() - fam_w - gap).max(160.0)
+        };
+        let cut = |from: f32, w: f32, h: f32| {
+            egui::Rect::from_min_size(
+                egui::pos2(work.left() + from, work.top()),
+                egui::vec2(w.max(1.0), h),
+            )
+        };
+        let top_h = if wide {
+            work.height()
+        } else {
+            work.height() * 0.55
+        };
+        let fam_rect = cut(0.0, fam_w, top_h);
+        let cls_rect = cut(fam_w + gap, cls_w, top_h);
+        let card_rect = if wide {
+            cut(
+                fam_w + cls_w + 2.0 * gap,
+                work.width() - fam_w - cls_w - 2.0 * gap,
+                work.height(),
+            )
+        } else {
+            egui::Rect::from_min_max(egui::pos2(work.left(), work.top() + top_h + gap), work.max)
+        };
+
+        // --- Les familles --------------------------------------------
+        //
+        // Le compte est celui des **fiches** et non des classes : une
+        // famille de trente classes qui ne porte que trente fiches et
+        // une de dix qui en porte quatre-vingt-dix ne se valent pas, et
+        // c'est la seconde qu'on ouvre.
+        let mut pick_family: Option<usize> = None;
+        motif::panel(ui, fam_rect, Some(tr("classes_families")), |ui| {
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 24.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("classes_families")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for (i, f) in crate::classes::FAMILIES.iter().enumerate() {
+                            let cards: usize = crate::classes::classes_of(f.key)
+                                .map(|c| session.class_counts.get(c.name).map_or(0, Vec::len))
+                                .sum();
+                            let row = motif::list_row_count(
+                                ui,
+                                f.label,
+                                &cards.to_string(),
+                                session.class_family == i,
+                                false,
+                            );
+                            if row.clicked() {
+                                pick_family = Some(i);
+                            }
+                        }
+                        // La famille qui n'en est pas une, en dernier et
+                        // dite pour ce qu'elle est.
+                        if !session.class_orphans.is_empty() {
+                            let row = motif::list_row_count(
+                                ui,
+                                tr("classes_outside"),
+                                &session.class_orphans.len().to_string(),
+                                session.class_family == crate::classes::FAMILIES.len(),
+                                true,
+                            )
+                            .on_hover_text(tr("classes_outside_tooltip"));
+                            if row.clicked() {
+                                pick_family = Some(crate::classes::FAMILIES.len());
+                            }
+                        }
+                    });
+            });
+        });
+        if let Some(i) = pick_family {
+            session.class_family = i;
+            session.class_open = None;
+        }
+
+        // --- Les classes de la famille ouverte ------------------------
+        let outside = session.class_family >= crate::classes::FAMILIES.len();
+        let family_key = crate::classes::FAMILIES
+            .get(session.class_family)
+            .map(|f| f.key)
+            .unwrap_or("");
+        let mut pick_class: Option<usize> = None;
+        // Le titre du panneau est la famille ouverte, et non le mot
+        // « Classes » : la colonne du milieu dit alors de quoi elle est
+        // la liste, ce qui est la seule chose qu'un titre a à faire.
+        let cls_title = crate::classes::family(family_key)
+            .map(|f| f.label)
+            .unwrap_or(tr("classes_classes"));
+        motif::panel(ui, cls_rect, Some(cls_title), |ui| {
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 24.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("classes_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if outside {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("classes_outside_note"))
+                                        .size(11.0)
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            return;
+                        }
+                        for (i, c) in crate::classes::CLASSES.iter().enumerate() {
+                            if c.family != family_key {
+                                continue;
+                            }
+                            let n = session.class_counts.get(c.name).map_or(0, Vec::len);
+                            // Une classe que la base ne peuple pas se lit
+                            // en gris : le référentiel connaît des
+                            // classes que cette base n'a pas encore, et
+                            // le taire ferait douter du compte.
+                            let row = motif::list_row_count(
+                                ui,
+                                c.name,
+                                &n.to_string(),
+                                session.class_open == Some(i),
+                                n == 0,
+                            );
+                            let row = if c.aliases.is_empty() {
+                                row
+                            } else {
+                                row.on_hover_text(trf("classes_also", c.aliases.join(", ")))
+                            };
+                            if row.clicked() {
+                                pick_class = Some(i);
+                            }
+                        }
+                    });
+            });
+        });
+        if let Some(i) = pick_class {
+            session.class_open = Some(i);
+        }
+
+        // --- Les fiches de la classe ouverte --------------------------
+        let mut open_card: Option<i64> = None;
+        let title = match (outside, session.class_open) {
+            (true, _) => tr("classes_outside_title").to_owned(),
+            (false, Some(i)) => crate::classes::CLASSES[i].name.to_owned(),
+            (false, None) => tr("classes_cards").to_owned(),
+        };
+        motif::panel(ui, card_rect, Some(&title), |ui| {
+            let rows: &[usize] = if outside {
+                &session.class_orphans
+            } else {
+                match session.class_open {
+                    Some(i) => session
+                        .class_counts
+                        .get(crate::classes::CLASSES[i].name)
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
+                    None => &[],
+                }
+            };
+            if !outside && session.class_open.is_none() {
+                ui.label(
+                    egui::RichText::new(tr("classes_pick"))
+                        .size(11.5)
+                        .color(motif::text_dim()),
+                );
+                return;
+            }
+            // Ce que la classe replie, écrit et non seulement sous la
+            // souris : c'est ici qu'on lit la liste, et « pourquoi
+            // Remicade est-il là » se pose à ce moment-là.
+            if let (false, Some(i)) = (outside, session.class_open) {
+                let c = &crate::classes::CLASSES[i];
+                if !c.aliases.is_empty() {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(trf("classes_also", c.aliases.join(", ")))
+                                .size(10.5)
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                }
+            }
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < line * 2.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("classes_cards")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if rows.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("classes_empty"))
+                                    .size(11.5)
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for i in rows {
+                            let Some(d) = session.drugs.get(*i) else {
+                                continue;
+                            };
+                            // Le nom, la DCI en second — et, hors
+                            // référentiel, ce que la fiche a écrit comme
+                            // classe : c'est la seule colonne où ce
+                            // libellé se lit, et c'est ce qu'on vient y
+                            // chercher.
+                            let mut label = d.name.trim().to_owned();
+                            if !d.dci.trim().is_empty() {
+                                label.push_str("  ·  ");
+                                label.push_str(d.dci.trim());
+                            }
+                            if outside && !d.class.trim().is_empty() {
+                                label.push_str("  —  ");
+                                label.push_str(d.class.trim());
+                            }
+                            if motif::list_row(ui, egui::RichText::new(label).size(11.5), false)
+                                .clicked()
+                            {
+                                open_card = Some(d.id);
+                            }
+                        }
+                    });
+            });
+        });
+        // La fiche s'ouvre par `open_drug_card`, qui range d'abord les
+        // écrans qui prennent tout le panneau central — sans quoi un
+        // clic ici ne montrerait rien tant que le codex ou les
+        // protocoles seraient ouverts. C'est la leçon de la v0.108.
+        if let Some(id) = open_card {
+            if let Some(d) = session.drugs.iter().find(|d| d.id == id).cloned() {
+                session.open_drug_card(d);
+            }
+        }
+    }
+
     fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         use crate::facets::{Effect, Grade, Organ};
         let body = motif::visible_rect(ui);
@@ -20087,7 +20548,18 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         for (text, list, which) in [
                             (d.dci.trim(), &kin.same_dci, KinList::Dci),
-                            (d.class.trim(), &kin.same_class, KinList::Class),
+                            // Le nom **canonique** de la classe : sur la
+                            // fiche de Remicade, la pastille annonce
+                            // « anti-TNF alpha (9) » et non « anti-TNF »,
+                            // qui est ce que cette fiche-là avait écrit.
+                            // C'est sous ce nom que les dix se
+                            // rassemblent, et le dire est plus honnête
+                            // que d'afficher chaque graphie tour à tour.
+                            (
+                                crate::classes::display_name(&d.class),
+                                &kin.same_class,
+                                KinList::Class,
+                            ),
                         ] {
                             if text.is_empty() {
                                 continue;
@@ -20495,6 +20967,7 @@ impl App {
                 let gap = ui.spacing().item_spacing.x;
                 let doors_width: f32 = [
                     tr("graph_button"),
+                    tr("drugs_classes"),
                     tr("tables_button"),
                     tr("mono_button"),
                     tr("proto_button"),
@@ -20512,6 +20985,17 @@ impl App {
                 });
                 let roomy = title_width + gap + doors_width <= ui.available_width();
                 let doors = |ui: &mut egui::Ui, session: &mut Session| {
+                    // Le référentiel rangé par classe : la porte est ici
+                    // parce que c'est la page du référentiel, et que la
+                    // question « qu'est-ce qu'il y a d'autre dans cette
+                    // classe » se pose en le parcourant.
+                    if motif::button(ui, tr("drugs_classes"))
+                        .on_hover_text(tr("drugs_classes_tooltip"))
+                        .clicked()
+                    {
+                        session.view = MainView::Classes;
+                        session.refresh_class_counts();
+                    }
                     if motif::button(ui, tr("graph_button"))
                         .on_hover_text(tr("graph_button_tooltip"))
                         .clicked()
@@ -23575,7 +24059,8 @@ impl eframe::App for App {
                     | MainView::Transmissions
                     | MainView::VaccineMap
                     | MainView::Registres
-                    | MainView::Explorer => {
+                    | MainView::Explorer
+                    | MainView::Classes => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard

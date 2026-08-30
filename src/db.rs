@@ -25437,6 +25437,18 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
 /// How many drugs a fresh base starts with.
 pub const STARTER_DRUG_COUNT: usize = STARTER_DRUGS.len();
 
+/// Les fiches livrées, telles qu'elles sont écrites : nom, DCI, classe,
+/// antidote.
+///
+/// Ouvert à `crate::classes`, qui doit pouvoir vérifier que chaque
+/// classe écrite ici est dans son référentiel — l'invariant se teste sur
+/// le **contenu livré**, pas sur une base, parce que c'est le contenu
+/// livré que le projet tient.
+#[cfg(test)]
+pub fn starter_drugs() -> &'static [(&'static str, &'static str, &'static str, &'static str)] {
+    STARTER_DRUGS
+}
+
 /// (brand name, DCI, therapeutic class, textbook antidote or ""). See
 /// [`Db::seed_drugs_if_empty`].
 pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[

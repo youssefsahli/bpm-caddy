@@ -3,6 +3,7 @@
 mod app;
 mod biology;
 mod bulletin;
+mod classes;
 mod codex;
 mod conciliation;
 mod config;

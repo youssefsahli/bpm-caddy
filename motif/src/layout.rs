@@ -118,9 +118,37 @@ pub fn panel<R>(
             .chars()
             .flat_map(|c| [c, '\u{2009}'])
             .collect();
-        let galley =
-            ui.painter()
-                .layout_no_wrap(caption.trim_end().to_owned(), font, crate::text_dim());
+        // Élidé sur la largeur du panneau, et **jamais** `layout_no_wrap`.
+        //
+        // Le titre était posé sans limite de largeur : « PATIENTS SOUS CE
+        // TRAITEMENT » sur un volet de cent quatre-vingts pixels se
+        // peignait par-dessus la gouttière et sur le panneau d'à côté.
+        // Rien ne l'arrêtait — un `Painter` peint où on lui dit —, et
+        // c'est la même famille de défaut que `ui.columns` qui ne découpe
+        // pas et que `list_row` qui jetait son `RichText` : le
+        // débordement ne casse rien, il se lit juste faux.
+        //
+        // La capitale espacée coûte cher en largeur, ce qui rend le cas
+        // fréquent plutôt que rare.
+        // Sur **une** ligne : un titre replié en deux repousserait le
+        // filet et volerait au contenu une ligne que personne n'a
+        // demandée. Un titre coupé se lit encore ; un panneau plus court
+        // se remarque moins et coûte plus.
+        let mut job = egui::text::LayoutJob::single_section(
+            caption.trim_end().to_owned(),
+            egui::TextFormat {
+                font_id: font,
+                color: crate::text_dim(),
+                ..Default::default()
+            },
+        );
+        job.wrap = egui::text::TextWrapping {
+            max_width: (inner.width() - 4.0).max(8.0),
+            max_rows: 1,
+            break_anywhere: false,
+            overflow_character: Some('…'),
+        };
+        let galley = ui.fonts(|f| f.layout_job(job));
         ui.painter().galley(
             egui::pos2(inner.left() + 2.0, inner.top()),
             galley.clone(),

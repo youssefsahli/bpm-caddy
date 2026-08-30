@@ -213,6 +213,36 @@ Deux règles valent partout :
   rester plus large que ce qui est peuplé : l'explorateur ne propose que
   les axes renseignés, et le plancher exige que les douze le soient.
 
+## Les classes thérapeutiques
+
+- **Où** : `src/classes.rs` (pur, testé). Seize familles, 383 classes
+  canoniques, et pour chacune les libellés qu'on rencontre réellement
+  dans le champ `class` des fiches.
+- **Pourquoi un référentiel plutôt qu'une réécriture** : le champ d'une
+  fiche est du texte libre et il a dérivé — 495 libellés pour 851
+  fiches, dont 331 sur une seule. Réécrire les 851 fiches écraserait ce
+  que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
+  connaît pas reste lisible et se range sous « hors référentiel », où
+  elle se voit.
+- **Ce que la dérive coûtait** : `anti-TNF` et `anti-TNF alpha` étaient
+  deux classes. La pastille de Humira annonçait sept voisins au lieu de
+  dix, et Remicade n'était nulle part — sans que rien n'ait l'air cassé.
+  C'est la question du comptoir un jour de rupture, et une réponse
+  incomplète y est pire qu'une absence de réponse.
+- **Ajouter une classe** : une ligne dans la famille qui convient, avec
+  son nom canonique et, s'il y a lieu, les graphies qu'elle replie. Un
+  alias n'est jamais le nom canonique d'une autre classe — un test le
+  refuse, sans quoi une fiche tomberait dans deux classes selon l'ordre
+  de la table.
+- **Ajouter une famille** : une ligne dans `FAMILIES`, et au moins une
+  classe dessous — une famille vide est une ligne cliquable qui n'ouvre
+  rien, et le test la refuse.
+- **Les tests** : chaque classe écrite sur une fiche livrée est dans le
+  référentiel ; un libellé ne désigne qu'une classe ; les trois dérives
+  mesurées se replient ; et le référentiel porte **au moins 112 classes
+  de moins** que la base n'écrit de libellés — sans quoi il n'aurait
+  rien replié.
+
 ## Les posologies par indication
 
 - **Où** : `src/db.rs`, `STARTER_POSOLOGIES` : `(spécialité, indication,

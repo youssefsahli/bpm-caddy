@@ -48,6 +48,24 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   treating**, without which sixty antihypertensives would bury the six
   heart-failure drugs. Pure, tested, no egui; the index is built once,
   never in the draw loop),
+  `src/classes.rs` (the therapeutic classes: what they are and which of
+  sixteen families they sit under. The `class` field of a card is free
+  text and it drifted — **495 distinct labels over 851 cards, 331 of
+  them on a single card** — and the drift was not cosmetic: `anti-TNF`
+  and `anti-TNF alpha` were two classes, so Humira's chip said seven
+  neighbours instead of ten and Remicade was nowhere, with nothing
+  visibly broken. Also `bêtabloquant`/`bêta-bloquant` (a hyphen) and
+  `biphosphonate`/`bisphosphonate` (a letter). **The fix does not
+  rewrite the cards**: a referential reads them, each canonical class
+  carrying the labels actually met, and `canonical` folds them. A class
+  the referential does not know stays readable rather than overwritten —
+  the same rule as everywhere here. `same()` is what the neighbourhood
+  and the chip compare on, never the raw string. Pure, tested, no egui;
+  the index is built once. Four tests hold it: every shipped card's
+  class resolves, a label names exactly one class, the three measured
+  drifts fold, and the referential must carry **at least 112 fewer**
+  classes than the base has labels — otherwise it would be the same list
+  with one more column),
   `src/ordonnancier.rs` (the register of stupéfiants: the balance — which
   is **not** a sum, an inventory *sets* it —, the **cancellation**,
   which is the only correction there is (a bad line stays written and a
@@ -201,6 +219,28 @@ upgrade is decided, the number to defend is the logic one, and
   27.5 px where a button is 38, so a band reserving rows with it and
   then drawing buttons is **ten pixels short per row**.
   `Self::row_height` is the number every band that carves rows uses.
+- **A `Painter` paints where it is told — nothing clips it.**
+  `motif::panel` laid its caption out with `layout_no_wrap` and no width
+  limit, so « PATIENTS SOUS CE TRAITEMENT » on a narrow pane painted
+  across the gutter and onto the next panel. Same family as the two
+  below: the overflow breaks nothing, it just reads wrong. Any text laid
+  out for a carved rectangle takes a `max_width` and, if it must stay on
+  one line, `max_rows: 1` with an overflow character.
+- **A row that wraps must be measured before it is allocated.**
+  `motif::list_row_count` lays out its label first and sizes the row to
+  the galley: allocating one line and painting two centres the text
+  outside its own row and into its neighbours. And the figure is
+  reserved *before* the label, because a count appended after it is the
+  end of the line and therefore the first thing elision eats — a row
+  reading « Cardiologie et vaisseaux · … » has lost the only thing it
+  was there to say.
+- **A band's floor can starve the pane it shares with.** The conciliation
+  showed **no divergence at all** at 1024x700: the answer panel's head
+  cost 136 px, the paste band claimed 110 as its floor, and one pixel
+  was left for the table the tab exists to show. The fix was not the
+  share but the head — a 250 px count label sitting in the wrapped
+  button row forced it to two lines. Measure what a head *costs* before
+  tuning what the panes get, and count the gutter in the reserve.
 - **`ui.columns` does not clip.** Each column gets a rect and content
   wider than it paints straight into the neighbour: the two counter
   calculators drew « 1050 mg par prise » over « Clairance estimée ».
@@ -324,7 +364,7 @@ upgrade is decided, the number to defend is the logic one, and
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|scans|
-  patient_scans|explorer|explorer_organ`
+  patient_scans|explorer|explorer_organ|classes|classes_outside`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
