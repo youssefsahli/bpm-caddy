@@ -5,6 +5,43 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.146.0] - 2026-08-31
+
+### Changed
+- **Les pièces numérisées : le volet refait.** Trois défauts, dont deux
+  se voyaient et un se serait vu à la dixième pièce rangée.
+  - **La liste n'était pas une liste.** Chaque ligne se dessinait dans
+    son propre `horizontal`, donc chaque colonne commençait où la
+    précédente avait fini : « Ordonnance » et « Biologie » n'ont pas la
+    même largeur, si bien que les dates ne tombaient pas l'une sous
+    l'autre, ni les tailles, ni les boutons. Cela se lit comme une pile
+    de bouts de phrases, et le défaut empire avec chaque pièce ajoutée.
+    C'est une `Grid` maintenant, avec ses en-têtes — genre, date,
+    libellé, taille — et elle défile aussi latéralement, parce qu'une
+    ligne finit par des boutons et qu'un bouton tombé hors du volet est
+    un bouton que personne ne presse.
+  - **Le formulaire cachait son propre bouton.** Sur l'onglet d'un
+    dossier à 1024x700 — où le bandeau du patient prend déjà la moitié
+    de l'espace — la bande plafonnée à la moitié du volet ne montrait
+    que les six pastilles de genre : le champ « Libellé » et
+    « Importer… » étaient sous la ligne de flottaison d'une zone
+    défilante que rien ne signale. Le genre a une valeur par défaut ; le
+    libellé et le fichier, non. Ce qui doit rester visible est donc ce
+    qui est carvé, et ce sont les pastilles qui défilent dans ce qui
+    reste. Les champs et les boutons tiennent désormais sur **une**
+    rangée, ce qui rend cinquante pixels à une liste qui n'en avait que
+    cent.
+  - **« Pièces au dossier » sur le volet de l'officine** : il n'y a pas
+    de dossier, ce sont les pièces de l'officine. Le titre le dit.
+  - Et la mesure a été refaite : la hauteur de la bande, son partage et
+    la largeur du champ sortaient de trois calculs voisins qui ne
+    tombaient pas d'accord — la mesure prenait `rect.width()` quand le
+    dessin prenait `ui.available_width()`, plus étroit de la marge du
+    panneau, et déclarait deux rangées là où il n'en dessinait qu'une.
+    Cent pixels réservés pour rien sur un volet qui en compte deux cent
+    cinquante-cinq. Les largeurs sont calculées une fois et le dessin
+    les reçoit ; c'est la seule façon que les deux ne divergent pas.
+
 ## [0.145.1] - 2026-08-31
 
 ### Fixed

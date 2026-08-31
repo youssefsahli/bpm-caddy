@@ -1,6 +1,6 @@
 [package]
 name = "bpm-caddy-launcher"
-version = "0.145.1"
+version = "0.146.0"
 edition = "2021"
 description = "Auto-updating launcher for BPM-Caddy: fetches the latest release, then starts the app."
 license-file = "../LICENSE"

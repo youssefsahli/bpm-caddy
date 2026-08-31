@@ -234,6 +234,17 @@ upgrade is decided, the number to defend is the logic one, and
   end of the line and therefore the first thing elision eats — a row
   reading « Cardiologie et vaisseaux · … » has lost the only thing it
   was there to say.
+- **Measure with the width the drawing will use.** A band measured on
+  `rect.width()` and drawn at `ui.available_width()` differ by the
+  panel's own margin, and that was enough for the scans form to reserve
+  two rows where it drew one — a hundred pixels held back on a pane with
+  two hundred and fifty-five. Compute the widths once, above, and hand
+  them to the drawing; two measurements of one thing always diverge.
+- **A list of records needs a `Grid`, not a row of `horizontal`.** Drawn
+  one row at a time, every column starts where the previous one ended,
+  so nothing lines up between rows — and the defect grows with each
+  record. `egui::Grid` with headers, inside a `ScrollArea::both` because
+  a row that ends in buttons must be able to scroll to them.
 - **A band's floor can starve the pane it shares with.** The conciliation
   showed **no divergence at all** at 1024x700: the answer panel's head
   cost 136 px, the paste band claimed 110 as its floor, and one pixel

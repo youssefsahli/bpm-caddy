@@ -17045,10 +17045,57 @@ impl App {
         // rangées et la bande demandait tout le volet : « Pièces au
         // dossier » restait un titre au-dessus de rien. Une bande dont
         // la hauteur dépend de son contenu défile dans sa part plutôt
-        // que d'écraser le panneau qu'elle surmonte — c'est la règle de
-        // la maison, et c'est celle que j'avais oubliée en l'écrivant.
-        let want = (kinds + 2.0) * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 22.0;
-        let band = want.min(rect.height() * 0.5);
+        // que d'écraser le panneau qu'elle surmonte.
+        //
+        // **Une seule mesure, et celle que le dessin emploie.** Ce que
+        // la bande demande, ce qu'elle se partage et ce que le
+        // formulaire dessine sortaient de trois calculs voisins qui ne
+        // tombaient pas d'accord : la mesure prenait `rect.width()`
+        // quand le dessin prenait `ui.available_width()`, plus étroit de
+        // la marge du panneau, et déclarait deux rangées là où il n'en
+        // dessinait qu'une. Cent pixels réservés pour rien sur un volet
+        // qui en compte deux cent cinquante-cinq, et la liste réduite à
+        // son titre. Les largeurs sont calculées ici, une fois, et le
+        // dessin les reçoit.
+        let step = Self::row_height(ui) + ui.spacing().item_spacing.y;
+        let inner_w = rect.width() - 24.0;
+        let label_w = (inner_w * 0.4).clamp(120.0, 300.0);
+        // La rangée carvée porte les champs **et** les boutons : mis
+        // bout à bout ils tiennent sur une rangée à la largeur d'un
+        // comptoir, et deux rangées coûtaient cinquante pixels à une
+        // liste qui n'en a que cent.
+        let mut widths = vec![
+            label_w,
+            Self::button_width(ui, tr("scan_day_hint")) + 8.0,
+            Self::button_width(ui, tr("scan_import")),
+        ];
+        if !config.scans.command.trim().is_empty() {
+            widths.push(Self::button_width(ui, tr("scan_scan")));
+        }
+        // Le message d'erreur partage cette rangée : long, il la fait
+        // passer à deux, et c'est une bonne raison de le mesurer.
+        if let Some((_, msg)) = &session.scan_note {
+            widths.push(Self::button_width(ui, msg));
+        }
+        let field_row = Self::wrapped_rows_of(ui, inner_w, widths.into_iter()) * step;
+        // Le titre du panneau, son filet, et les marges de `panel`.
+        let chrome = ui.text_style_height(&egui::TextStyle::Body) + 26.0;
+        let want = kinds * step + field_row + chrome;
+        // Ce que la liste garde : son en-tête et une ligne. En dessous
+        // ce n'est plus une liste, c'est un titre au-dessus de rien.
+        let list_min = step * 2.0 + chrome;
+        // Et ce que le formulaire exige pour en être un : sa rangée de
+        // champs et **une** rangée de pastilles.
+        //
+        // Le plafond valait la moitié du volet, ce qui sur un onglet de
+        // dossier — le bandeau du patient prend déjà la moitié de
+        // l'espace de travail — laissait cent vingt pixels : les
+        // pastilles à demi coupées et « Importer… » sous la ligne de
+        // flottaison d'une zone défilante que rien ne signale. Un
+        // formulaire dont le bouton ne se voit pas n'est pas un
+        // formulaire court, c'est un formulaire absent.
+        let form_min = chrome + field_row + step;
+        let band = want.min((rect.height() - list_min).max(form_min));
         let rows = motif::split_rows(rect, &[band, 0.0], 6.0);
 
         let mut import = false;
@@ -17061,7 +17108,24 @@ impl App {
 
         motif::panel(ui, rows[0], Some(tr("scan_add")), |ui| {
             let body = ui.available_rect_before_wrap();
-            motif::inside(ui, body, |ui| {
+            // Le libellé, la date et les boutons ont leur **propre
+            // rangée**, prise sur le bas avant que les pastilles soient
+            // dessinées.
+            //
+            // Sans cela, sur un onglet de dossier à 1024x700, la bande
+            // plafonnée à la moitié du volet ne montrait que les six
+            // pastilles de genre : le champ « Libellé » et le bouton
+            // « Importer… » — c'est-à-dire tout ce sans quoi on ne range
+            // rien — étaient sous la ligne de flottaison d'une zone
+            // défilante que rien ne signale. Le genre a une valeur par
+            // défaut ; le libellé et le fichier, non. Ce qui doit rester
+            // visible est donc ce qui est carvé, et ce sont les
+            // pastilles qui défilent dans ce qui reste.
+            // La rangée des champs n'est **jamais** rognée : le
+            // plancher de la bande lui garantit sa hauteur, et ce sont
+            // les pastilles qui défilent dans ce qui reste.
+            let split = motif::split_rows(body, &[0.0, field_row], 4.0);
+            motif::inside(ui, split[0], |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("scan_add")
                     .auto_shrink([false, false])
@@ -17075,156 +17139,202 @@ impl App {
                                 }
                             }
                         });
-                        ui.horizontal_wrapped(|ui| {
-                            let w = (ui.available_width() * 0.4).clamp(120.0, 300.0);
-                            ui.add_sized(
-                                [w, Self::button_height(ui)],
-                                egui::TextEdit::singleline(&mut session.scan_new_label)
-                                    .hint_text(tr("scan_label_hint")),
-                            );
-                            // Mesurée sur le texte d'invite : « Date du document »
-                            // dans un champ de 110 px se lit « Date du docume », ce
-                            // qui est un champ dont personne ne sait ce qu'il veut.
-                            ui.add_sized(
-                                [
-                                    Self::button_width(ui, tr("scan_day_hint")) + 8.0,
-                                    Self::button_height(ui),
-                                ],
-                                egui::TextEdit::singleline(&mut session.scan_new_day)
-                                    .hint_text(tr("scan_day_hint")),
-                            );
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            if motif::button(ui, tr("scan_import"))
-                                .on_hover_text(tr("scan_import_tooltip"))
-                                .clicked()
-                            {
-                                import = true;
-                            }
-                            // Le bouton du scanner n'apparaît que si l'officine a
-                            // écrit sa commande : proposer un bouton qui ne peut
-                            // qu'échouer est pire que ne rien proposer.
-                            if !config.scans.command.trim().is_empty()
-                                && motif::button(ui, tr("scan_scan"))
-                                    .on_hover_text(tr("scan_scan_tooltip"))
-                                    .clicked()
-                            {
-                                scan_now = true;
-                            }
-                            if let Some((is_error, msg)) = &session.scan_note {
-                                ui.label(egui::RichText::new(msg.as_str()).size(11.0).color(
-                                    if *is_error {
-                                        motif::alert()
-                                    } else {
-                                        motif::accent()
-                                    },
-                                ));
-                            }
-                        });
                     });
+            });
+            motif::inside(ui, split[1], |ui| {
+                {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_sized(
+                            [label_w, Self::button_height(ui)],
+                            egui::TextEdit::singleline(&mut session.scan_new_label)
+                                .hint_text(tr("scan_label_hint")),
+                        );
+                        // Mesurée sur le texte d'invite : « Date du document »
+                        // dans un champ de 110 px se lit « Date du docume », ce
+                        // qui est un champ dont personne ne sait ce qu'il veut.
+                        ui.add_sized(
+                            [
+                                Self::button_width(ui, tr("scan_day_hint")) + 8.0,
+                                Self::button_height(ui),
+                            ],
+                            egui::TextEdit::singleline(&mut session.scan_new_day)
+                                .hint_text(tr("scan_day_hint")),
+                        );
+                        if motif::button(ui, tr("scan_import"))
+                            .on_hover_text(tr("scan_import_tooltip"))
+                            .clicked()
+                        {
+                            import = true;
+                        }
+                        // Le bouton du scanner n'apparaît que si l'officine a
+                        // écrit sa commande : proposer un bouton qui ne peut
+                        // qu'échouer est pire que ne rien proposer.
+                        if !config.scans.command.trim().is_empty()
+                            && motif::button(ui, tr("scan_scan"))
+                                .on_hover_text(tr("scan_scan_tooltip"))
+                                .clicked()
+                        {
+                            scan_now = true;
+                        }
+                        if let Some((is_error, msg)) = &session.scan_note {
+                            ui.label(egui::RichText::new(msg.as_str()).size(11.0).color(
+                                if *is_error {
+                                    motif::alert()
+                                } else {
+                                    motif::accent()
+                                },
+                            ));
+                        }
+                    });
+                }
             });
         });
 
-        motif::panel(ui, rows[1], Some(tr("scan_filed")), |ui| {
-            let body = ui.available_rect_before_wrap();
-            let inner = motif::well(ui, body);
-            motif::inside(ui, inner, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("scans_list")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if session.scans.is_empty() {
-                            ui.label(
-                                egui::RichText::new(tr("scan_none"))
-                                    .size(11.5)
-                                    .color(motif::text_dim()),
-                            );
-                        }
-                        for sc in &session.scans {
-                            let kind = DocKind::from_key(&sc.doc_kind);
-                            ui.horizontal(|ui| {
+        motif::panel(
+            ui,
+            rows[1],
+            Some(if subject == Subject::Officine {
+                tr("scan_filed_officine")
+            } else {
+                tr("scan_filed")
+            }),
+            |ui| {
+                let body = ui.available_rect_before_wrap();
+                let inner = motif::well(ui, body);
+                motif::inside(ui, inner, |ui| {
+                    // Horizontale aussi : la ligne finit par des boutons, et
+                    // un bouton tombé hors du volet est un bouton que
+                    // personne ne presse.
+                    egui::ScrollArea::both()
+                        .id_salt("scans_list")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if session.scans.is_empty() {
                                 ui.label(
-                                    egui::RichText::new(tr(kind.label_key()))
-                                        .size(11.0)
-                                        .color(motif::chart::series_color(kind.series())),
-                                );
-                                let when = if sc.taken_on.is_empty() {
-                                    // Sans date portée par le document,
-                                    // celle du rangement : une pièce
-                                    // sans repère temporel ne se
-                                    // retrouve pas.
-                                    sc.created_at.get(..10).unwrap_or("").to_owned()
-                                } else {
-                                    sc.taken_on.clone()
-                                };
-                                ui.label(
-                                    egui::RichText::new(db::format_french_date(&when))
-                                        .size(11.0)
-                                        .monospace()
+                                    egui::RichText::new(tr("scan_none"))
+                                        .size(11.5)
                                         .color(motif::text_dim()),
                                 );
-                                // Le libellé cède, jamais les boutons.
-                                // Une ligne dont « Corriger » et « × »
-                                // sortent du volet est une ligne qu'on
-                                // ne peut ni corriger ni retirer, et
-                                // rien dans le cadre ne dit qu'ils sont
-                                // là. La place qu'ils prennent est
-                                // mesurée et retranchée d'abord ; ce qui
-                                // reste est pour le nom, coupé s'il le
-                                // faut et lisible en entier au survol.
-                                let size = crate::scans::human_size(sc.size.max(0) as u64);
-                                let gap = ui.spacing().item_spacing.x;
-                                let reserved = Self::button_width(ui, tr("scan_edit"))
-                                    + Self::button_width(ui, tr("scan_delete_confirm"))
-                                    + Self::button_width(ui, &size)
-                                    + gap * 4.0;
-                                let room = (ui.available_width() - reserved).max(48.0);
-                                if motif::button(ui, &elide(ui, &sc.label, room, 12.0))
-                                    .on_hover_text(if sc.remark.is_empty() {
-                                        sc.label.clone()
-                                    } else {
-                                        format!("{} — {}", sc.label, sc.remark)
-                                    })
-                                    .clicked()
-                                {
-                                    open_id = Some(sc.id);
-                                }
-                                ui.label(
-                                    egui::RichText::new(size)
-                                        .size(10.5)
-                                        .color(motif::text_dim()),
-                                );
-                                if motif::button(ui, tr("scan_edit"))
-                                    .on_hover_text(tr("scan_edit_tooltip"))
-                                    .clicked()
-                                {
-                                    edit = Some(sc.clone());
-                                }
-                                // Deux clics pour retirer, comme partout
-                                // ailleurs : une pièce se supprime, mais
-                                // pas par un frôlement.
-                                let armed = session.scan_confirm == Some(sc.id);
-                                if motif::button(
-                                    ui,
-                                    if armed {
-                                        tr("scan_delete_confirm")
-                                    } else {
-                                        tr("scan_delete")
-                                    },
-                                )
-                                .clicked()
-                                {
-                                    if armed {
-                                        drop_id = Some((sc.id, sc.label.clone()));
-                                    } else {
-                                        session.scan_confirm = Some(sc.id);
+                                return;
+                            }
+                            // Une **grille** et non une suite de rangées
+                            // indépendantes.
+                            //
+                            // Chaque ligne se dessinait dans son propre
+                            // `horizontal`, donc chaque colonne commençait
+                            // où la précédente avait fini : « Ordonnance »
+                            // et « Biologie » n'ont pas la même largeur, si
+                            // bien que les dates ne tombaient pas l'une sous
+                            // l'autre, ni les tailles, ni les boutons. Cela
+                            // se lit comme une pile de bouts de phrases et
+                            // non comme une liste — et le défaut empire avec
+                            // chaque pièce rangée.
+                            egui::Grid::new("scans_grid")
+                                .num_columns(6)
+                                .spacing([10.0, 4.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    for header in [
+                                        tr("scan_col_kind"),
+                                        tr("scan_col_date"),
+                                        tr("scan_col_label"),
+                                        tr("scan_col_size"),
+                                        "",
+                                        "",
+                                    ] {
+                                        ui.label(
+                                            egui::RichText::new(header)
+                                                .size(10.5)
+                                                .color(motif::text_dim()),
+                                        );
                                     }
-                                }
-                            });
-                        }
-                    });
-            });
-        });
+                                    ui.end_row();
+                                    for sc in &session.scans {
+                                        let kind = DocKind::from_key(&sc.doc_kind);
+                                        {
+                                            ui.label(
+                                                egui::RichText::new(tr(kind.label_key()))
+                                                    .size(11.0)
+                                                    .color(motif::chart::series_color(
+                                                        kind.series(),
+                                                    )),
+                                            );
+                                            let when = if sc.taken_on.is_empty() {
+                                                // Sans date portée par le document,
+                                                // celle du rangement : une pièce
+                                                // sans repère temporel ne se
+                                                // retrouve pas.
+                                                sc.created_at.get(..10).unwrap_or("").to_owned()
+                                            } else {
+                                                sc.taken_on.clone()
+                                            };
+                                            ui.label(
+                                                egui::RichText::new(db::format_french_date(&when))
+                                                    .size(11.0)
+                                                    .monospace()
+                                                    .color(motif::text_dim()),
+                                            );
+                                            // Le libellé ouvre la pièce. La grille
+                                            // lui donne sa colonne, donc plus rien à
+                                            // réserver ni à couper à la main : la
+                                            // ligne entière défile latéralement si
+                                            // elle ne tient pas, et les boutons ne
+                                            // peuvent plus être poussés dehors.
+                                            let size =
+                                                crate::scans::human_size(sc.size.max(0) as u64);
+                                            if motif::button(ui, &sc.label)
+                                                .on_hover_text(if sc.remark.is_empty() {
+                                                    tr("scan_open_tooltip").to_owned()
+                                                } else {
+                                                    format!(
+                                                        "{} — {}",
+                                                        tr("scan_open_tooltip"),
+                                                        sc.remark
+                                                    )
+                                                })
+                                                .clicked()
+                                            {
+                                                open_id = Some(sc.id);
+                                            }
+                                            ui.label(
+                                                egui::RichText::new(size)
+                                                    .size(10.5)
+                                                    .color(motif::text_dim()),
+                                            );
+                                            if motif::button(ui, tr("scan_edit"))
+                                                .on_hover_text(tr("scan_edit_tooltip"))
+                                                .clicked()
+                                            {
+                                                edit = Some(sc.clone());
+                                            }
+                                            // Deux clics pour retirer, comme partout
+                                            // ailleurs : une pièce se supprime, mais
+                                            // pas par un frôlement.
+                                            let armed = session.scan_confirm == Some(sc.id);
+                                            if motif::button(
+                                                ui,
+                                                if armed {
+                                                    tr("scan_delete_confirm")
+                                                } else {
+                                                    tr("scan_delete")
+                                                },
+                                            )
+                                            .clicked()
+                                            {
+                                                if armed {
+                                                    drop_id = Some((sc.id, sc.label.clone()));
+                                                } else {
+                                                    session.scan_confirm = Some(sc.id);
+                                                }
+                                            }
+                                            ui.end_row();
+                                        }
+                                    }
+                                });
+                        });
+                });
+            },
+        );
 
         // La correction de ce qu'on a écrit **autour** d'une pièce :
         // son genre, son libellé, sa date, sa remarque. Les octets ne
