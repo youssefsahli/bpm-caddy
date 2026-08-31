@@ -217,7 +217,10 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
                     .step_label(r.fee_year, r.fee_rank)
                     .unwrap_or(&rank_label(r.fee_rank))
             ),
-            field(&r.theme),
+            // Même règle que sur le papier : un acte qui ne porte pas
+            // de thème n'en exporte pas, même si la base en garde un
+            // d'une version qui l'écrivait quand même.
+            field(if r.kind.has_theme() { &r.theme } else { "" }),
             r.state.label(),
             db::format_french_date(&r.created_date),
             field(&r.operator),
@@ -225,7 +228,14 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
                 .as_deref()
                 .map(db::format_french_date)
                 .unwrap_or_default(),
-            r.duration_minutes,
+            // Et une durée n'a de sens que là où l'on en saisit une :
+            // un TROD est chronométré par la bandelette, et « 0 » dans
+            // cette colonne affirmerait un acte de zéro minute.
+            if r.kind.has_duration() {
+                r.duration_minutes.to_string()
+            } else {
+                String::new()
+            },
             if r.remote { db::REMOTE_CODE } else { "" },
             if r.treatment_change && r.kind.allows_treatment_change() {
                 tr("csv_yes")

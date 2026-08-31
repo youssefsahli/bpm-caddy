@@ -457,7 +457,15 @@ fn fill_cr_template(
         .replace("{{DATE}}", &format!("#{}", typst_str(date)))
         .replace(
             "{{THEME}}",
-            &format!("#{}", typst_str(theme_or_dash(theme))),
+            // Un acte qui ne porte pas de thème n'en imprime pas, même
+            // si la base en garde un : jusqu'à la 0.145 le thème armé
+            // par le choix rapide était écrit sur les actes qui n'en ont
+            // pas, et il ressortait ici. La source est corrigée ; ceci
+            // couvre les lignes déjà écrites, sans réécrire la base.
+            &format!(
+                "#{}",
+                typst_str(theme_or_dash(if kind.has_theme() { theme } else { "" }))
+            ),
         )
         .replace("{{TREATMENTS}}", &treatments_markup(treats))
         // Ce qui a été retenu à l'export, ou le cadre vide.
@@ -2111,7 +2119,15 @@ fn fill_interview_template(
         .replace("{{DATE}}", &format!("#{}", typst_str(today)))
         .replace(
             "{{THEME}}",
-            &format!("#{}", typst_str(theme_or_dash(theme))),
+            // Un acte qui ne porte pas de thème n'en imprime pas, même
+            // si la base en garde un : jusqu'à la 0.145 le thème armé
+            // par le choix rapide était écrit sur les actes qui n'en ont
+            // pas, et il ressortait ici. La source est corrigée ; ceci
+            // couvre les lignes déjà écrites, sans réécrire la base.
+            &format!(
+                "#{}",
+                typst_str(theme_or_dash(if kind.has_theme() { theme } else { "" }))
+            ),
         )
         // Whoever held the entretien signs the sheet. A template
         // written before the team list simply has no such marker, and

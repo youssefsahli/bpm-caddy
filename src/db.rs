@@ -28970,6 +28970,16 @@ impl Db {
         theme: &str,
         operator: &str,
     ) -> Result<i64, String> {
+        // Un acte dont la nature ne porte pas de thème n'en garde pas.
+        //
+        // Le choix rapide arme un thème pour l'acte suivant. Si celui-ci
+        // est un TROD ou un rendez-vous de prévention, le thème était
+        // écrit quand même : invisible à l'écran, où `has_theme` le
+        // cache, mais bien présent dans l'export CSV et imprimé par
+        // `{{THEME}}` sur la fiche et sur le courrier au médecin. Un
+        // champ caché qui ressort sur le papier est pire qu'un champ
+        // faux — personne ne le relit, puisque rien ne le montre.
+        let theme = if kind.has_theme() { theme.trim() } else { "" };
         self.conn
             .execute(
                 // The stamps are written here rather than left to the
@@ -35897,6 +35907,63 @@ mod tests {
     /// A new act carries the counter's day, not the UTC one. Between
     /// 22 h and minuit UTC — after midnight in France — the two differ,
     /// and a pharmacie de garde works then.
+    /// Un acte dont la nature ne porte pas de thème n'en garde pas.
+    ///
+    /// Le choix rapide arme un thème pour l'acte suivant, et jusqu'à la
+    /// 0.145 il était écrit même sur les actes qui n'en ont pas — un
+    /// TROD, un rendez-vous de prévention. Invisible à l'écran, où
+    /// `has_theme` le cache, et pourtant imprimé sur la fiche et sur le
+    /// courrier au médecin, et exporté dans le CSV. C'est la pire forme
+    /// du défaut : un champ que rien ne montre et que tout ressort.
+    #[test]
+    fn an_act_without_a_thematic_never_stores_one() {
+        // Un nom de dossier qui n'est celui d'aucun autre test : ils
+        // tournent dans le même processus, donc `process::id()` ne les
+        // distingue pas, et le garde `Swept` de l'un efface le dossier
+        // de l'autre en plein milieu.
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-notheme-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("notheme.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+
+        // Ce qui en porte un le garde, espaces en moins.
+        let bpm = db
+            .add_interview_by(pid, InterviewKind::Bpm, "  Observance  ", "YS")
+            .unwrap();
+        // Ce qui n'en porte pas n'en garde pas, même armé.
+        let mut blanked = Vec::new();
+        for kind in InterviewKind::ALL {
+            let id = db.add_interview_by(pid, kind, "Observance", "YS").unwrap();
+            let itv = db
+                .interviews_for(pid)
+                .unwrap()
+                .into_iter()
+                .find(|i| i.id == id)
+                .unwrap();
+            if kind.has_theme() {
+                assert_eq!(itv.theme, "Observance", "{kind:?}");
+            } else {
+                assert!(itv.theme.is_empty(), "{kind:?} a gardé « {} »", itv.theme);
+                blanked.push(kind);
+            }
+        }
+        // Et la liste de ceux qui n'en portent pas n'est pas vide : un
+        // test qui ne vérifierait rien passerait aussi.
+        assert_eq!(blanked.len(), 3, "{blanked:?}");
+        assert!(blanked.contains(&InterviewKind::Prevention));
+        assert!(blanked.contains(&InterviewKind::TrodAngine));
+
+        let kept = db
+            .interviews_for(pid)
+            .unwrap()
+            .into_iter()
+            .find(|i| i.id == bpm)
+            .unwrap();
+        assert_eq!(kept.theme, "Observance", "les espaces sont retirés");
+    }
+
     #[test]
     fn a_new_act_is_stamped_in_the_counter_s_own_day() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-clock-{}", std::process::id()));

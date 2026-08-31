@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.145.1] - 2026-08-31
+
+### Fixed
+- **Un thème caché sortait sur le papier.** Le choix rapide arme un
+  thème pour l'acte suivant ; si celui-ci était un TROD ou — depuis la
+  0.145 — un rendez-vous de prévention, le thème était écrit quand même.
+  `has_theme` le cachait à l'écran, ce qui est le plus mauvais des deux
+  mondes : invisible là où on aurait pu le corriger, et pourtant imprimé
+  par `{{THEME}}` sur la fiche **et** sur le courrier au médecin, et
+  exporté dans la colonne « Thème » du CSV. Un champ que rien ne montre
+  et que tout ressort n'est jamais relu.
+  - Corrigé à la source — un acte dont la nature ne porte pas de thème
+    n'en garde pas — et **défendu aux trois sorties**, pour que les
+    lignes déjà écrites dans les bases installées cessent de l'imprimer
+    sans qu'on ait à réécrire quoi que ce soit dans la base.
+  - `an_act_without_a_thematic_never_stores_one` passe les dix natures
+    d'acte et vérifie les deux moitiés : celles qui portent un thème le
+    gardent, les trois autres non. La liste des trois est vérifiée elle
+    aussi — un test qui ne trouverait aucune nature sans thème passerait
+    tout aussi bien.
+- La colonne « Durée (min) » du CSV n'écrit plus « 0 » pour un TROD :
+  il est chronométré par la bandelette, et zéro minute y affirmait un
+  acte qui n'a pas eu lieu.
+
 ## [0.145.0] - 2026-08-31
 
 ### Added
