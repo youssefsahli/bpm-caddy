@@ -765,11 +765,25 @@ impl InterviewKind {
         matches!(self, Self::TrodAngine | Self::TrodCystite)
     }
 
-    /// Whether the act carries one of the entretien thematics. A TROD
-    /// does not: it has a result, not a subject, and a theme stamped on
-    /// one only travelled to the CSV and the fiche to say nothing.
+    /// Whether the act carries one of the entretien thematics.
+    ///
+    /// A TROD does not: it has a result, not a subject, and a theme
+    /// stamped on one only travelled to the CSV and the fiche to say
+    /// nothing.
+    ///
+    /// Neither does the **rendez-vous de prévention**, and for the
+    /// opposite reason — it covers *several* subjects in the same
+    /// sitting (vaccinations, sommeil, alimentation…), so stamping one
+    /// on it would name the least of them and hide the rest. What it
+    /// covers is chosen when the sheet is printed, act by act, from the
+    /// officine's own list (`[prevention] subjects`).
     pub fn has_theme(self) -> bool {
-        !self.is_trod()
+        !self.is_trod() && !self.is_prevention()
+    }
+
+    /// Le rendez-vous de prévention : plusieurs sujets en une séance.
+    pub fn is_prevention(self) -> bool {
+        matches!(self, Self::Prevention)
     }
 
     /// Whether a duration is worth recording. A TROD is a test, timed

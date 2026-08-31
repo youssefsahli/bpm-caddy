@@ -364,7 +364,7 @@ upgrade is decided, the number to defend is the logic one, and
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|scans|
-  patient_scans|explorer|explorer_organ|classes|classes_outside`
+  patient_scans|explorer|explorer_organ|classes|classes_outside|export`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size

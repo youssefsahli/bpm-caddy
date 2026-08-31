@@ -1418,6 +1418,62 @@ struct OrdonnanceBox {
     choice: crate::ordonnance::Choice,
 }
 
+/// Une fiche ou un courrier en attente de ce qu'on veut y mettre.
+///
+/// Les deux boutons imprimaient jusqu'ici sans rien demander : la fiche
+/// portait la liste du thème, le courrier un cadre vide, et l'officine
+/// n'avait pas voix au chapitre. Or c'est **elle** qui sait ce que ce
+/// rendez-vous-là a couvert — et le rendez-vous de prévention, qui n'a
+/// pas de thème du tout, n'avait aucun moyen de le dire.
+///
+/// Ce qui est proposé vient du thème quand il y en a un, et de
+/// `[prevention] subjects` quand c'est un rendez-vous de prévention. Ce
+/// qui est **ajouté** est libre : une ligne, un point.
+struct ExportBox {
+    target: ExportTarget,
+    kind: InterviewKind,
+    /// La date prévue de l'acte, telle que la ligne la porte.
+    scheduled: Option<String>,
+    theme: String,
+    /// Les initiales de qui a tenu l'entretien : c'est cette personne
+    /// qui signe.
+    by: String,
+    /// Ce qu'on propose, et ce qu'on garde.
+    points: Vec<(String, bool)>,
+    /// Ce qu'on ajoute à la main. Une ligne non vide, un point de plus.
+    extra: String,
+}
+
+impl ExportBox {
+    /// Les points retenus : les cases cochées, puis les lignes tapées.
+    ///
+    /// Dans cet ordre parce que c'est celui dans lequel on les a
+    /// pensés — la liste d'abord, ce qui manquait ensuite.
+    fn chosen(&self) -> Vec<String> {
+        self.points
+            .iter()
+            .filter(|(_, keep)| *keep)
+            .map(|(text, _)| text.clone())
+            .chain(
+                self.extra
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .map(str::to_owned),
+            )
+            .collect()
+    }
+}
+
+/// Lequel des deux documents on est en train d'exporter.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ExportTarget {
+    /// La fiche d'entretien, celle qu'on emporte dans la conversation.
+    Fiche,
+    /// Le courrier au médecin traitant.
+    Cr,
+}
+
 /// The codex's four calculators, as the fields hold them. Strings and
 /// not numbers: half-typed input is a normal state at a counter, and a
 /// field that fights back while you type is worse than one that waits.
@@ -1873,6 +1929,8 @@ struct Session {
     stup_new_supplier: String,
     stup_new_reference: String,
     stup_new_remark: String,
+    /// La fiche ou le courrier en attente de ce qu'on veut y mettre.
+    export_box: Option<ExportBox>,
     /// Ce que la colonne de gauche montre : les produits suivis, ou le
     /// catalogue où l'on choisit ceux qu'on suivra.
     stup_list: StupList,
@@ -2232,6 +2290,7 @@ impl Session {
             stup_new_supplier: String::new(),
             stup_new_reference: String::new(),
             stup_new_remark: String::new(),
+            export_box: None,
             stup_list: StupList::default(),
             stup_query: String::new(),
             stup_recent: Vec::new(),
@@ -5130,6 +5189,121 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
     chosen
 }
 
+/// Ce que la feuille portera, demandé avant de l'imprimer.
+///
+/// Les deux boutons — la fiche et le courrier — imprimaient sans rien
+/// demander : la fiche portait la liste du thème, le courrier un cadre
+/// vide. C'est l'officine qui sait ce que *ce* rendez-vous a couvert, et
+/// le rendez-vous de prévention, qui n'a pas de thème du tout, n'avait
+/// aucun moyen de le dire.
+///
+/// Deux moitiés, et c'est la seconde qui compte le plus : ce qu'on
+/// **coche** dans ce qui est proposé, et ce qu'on **ajoute** à la main.
+/// Aucune liste livrée ne couvre ce qu'un entretien a réellement abordé,
+/// et une case à cocher de plus ne l'aurait pas couvert non plus.
+///
+/// Rend ce qu'il faut imprimer quand on valide, `None` sinon.
+#[allow(clippy::type_complexity)]
+fn export_window(
+    ctx: &egui::Context,
+    session: &mut Session,
+) -> Option<(
+    ExportTarget,
+    InterviewKind,
+    Option<String>,
+    String,
+    String,
+    Vec<String>,
+)> {
+    let Some(box_) = &mut session.export_box else {
+        return None;
+    };
+    let mut go = false;
+    let mut close = false;
+    egui::Window::new(match box_.target {
+        ExportTarget::Fiche => tr("export_title_fiche"),
+        ExportTarget::Cr => tr("export_title_cr"),
+    })
+    .collapsible(false)
+    .resizable(false)
+    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+    .show(ctx, |ui| {
+        ui.set_max_width(420.0);
+        ui.label(
+            egui::RichText::new(if box_.kind.is_prevention() {
+                tr("export_hint_prevention")
+            } else {
+                tr("export_hint")
+            })
+            .size(11.0)
+            .color(motif::text_dim()),
+        );
+        ui.add_space(6.0);
+        if box_.points.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("export_no_points"))
+                    .size(11.0)
+                    .color(motif::text_dim()),
+            );
+        } else {
+            // Plafonnée en hauteur et défilante : douze sujets de
+            // prévention à l'échelle 1,25 dépassent l'écran, et une
+            // fenêtre ancrée au centre qui déborde n'a plus ni titre ni
+            // boutons.
+            egui::ScrollArea::vertical()
+                .id_salt("export_points")
+                .max_height(260.0)
+                .show(ui, |ui| {
+                    for (text, keep) in &mut box_.points {
+                        ui.checkbox(keep, egui::RichText::new(text.as_str()).size(11.5));
+                    }
+                });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if motif::button(ui, tr("export_all")).clicked() {
+                    for (_, keep) in &mut box_.points {
+                        *keep = true;
+                    }
+                }
+                if motif::button(ui, tr("export_none")).clicked() {
+                    for (_, keep) in &mut box_.points {
+                        *keep = false;
+                    }
+                }
+            });
+        }
+        ui.add_space(8.0);
+        motif::section(ui, tr("export_extra"));
+        ui.label(
+            egui::RichText::new(tr("export_extra_hint"))
+                .size(10.5)
+                .color(motif::text_dim()),
+        );
+        ui.add_sized(
+            [ui.available_width(), 74.0],
+            egui::TextEdit::multiline(&mut box_.extra).hint_text(tr("export_extra_placeholder")),
+        );
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if motif::button(ui, tr("export_print")).clicked() {
+                go = true;
+            }
+            if motif::button(ui, tr("tpl_close")).clicked() {
+                close = true;
+            }
+        });
+    });
+    if go {
+        let chosen = box_.chosen();
+        let b = session.export_box.take()?;
+        return Some((b.target, b.kind, b.scheduled, b.theme, b.by, chosen));
+    }
+    if close {
+        session.export_box = None;
+    }
+    None
+}
+
 fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<InterviewKind> {
     // One digit per act, in the order the rows are drawn: 1-9 then 0
     // for the tenth. The list must cover `InterviewKind::ALL` — it held
@@ -5633,6 +5807,28 @@ impl App {
                         // quelque chose à montrer, et sur une classe
                         // ouverte : la vue vide ne dirait rien de sa
                         // mise en page.
+                        // La fenêtre d'export, sur un rendez-vous de
+                        // prévention : c'est la forme la plus haute —
+                        // douze sujets non cochés et la zone de texte.
+                        Ok("export") => {
+                            if let Some(p) = session.patients.first().cloned() {
+                                session.open_patient(p);
+                            }
+                            session.export_box = Some(ExportBox {
+                                target: ExportTarget::Fiche,
+                                kind: InterviewKind::Prevention,
+                                scheduled: None,
+                                theme: String::new(),
+                                by: String::new(),
+                                points: config
+                                    .prevention
+                                    .subjects
+                                    .iter()
+                                    .map(|s| (s.clone(), false))
+                                    .collect(),
+                                extra: String::new(),
+                            });
+                        }
                         Ok("classes") => {
                             session.view = MainView::Classes;
                             session.refresh_class_counts();
@@ -12689,7 +12885,47 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
-        if let Some((kind, scheduled, theme, by)) = print_req {
+        // La fenêtre d'export, et ce qu'elle rend quand on valide.
+        let export_now = export_window(ui.ctx(), session);
+        // Les deux boutons n'impriment plus : ils ouvrent la fenêtre
+        // d'export, où l'on choisit ce que la feuille portera. Ce qui
+        // est proposé vient du thème, ou — pour un rendez-vous de
+        // prévention, qui n'en a pas — de la liste de l'officine.
+        for (req, target) in [
+            (print_req.take(), ExportTarget::Fiche),
+            (cr_req.take(), ExportTarget::Cr),
+        ] {
+            let Some((kind, scheduled, theme, by)) = req else {
+                continue;
+            };
+            let proposed: Vec<String> = if kind.is_prevention() {
+                config.prevention.subjects.clone()
+            } else {
+                crate::entretien::checklist(&theme)
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect()
+            };
+            // Cochés d'avance quand ils viennent du thème — c'est ce que
+            // la feuille portait déjà, et l'export ne doit pas obliger à
+            // recocher sept cases pour retrouver ce qu'on avait. Pas
+            // cochés pour un rendez-vous de prévention : là, choisir
+            // *est* la question.
+            let keep = !kind.is_prevention();
+            session.export_box = Some(ExportBox {
+                target,
+                kind,
+                scheduled,
+                theme,
+                by,
+                points: proposed.into_iter().map(|p| (p, keep)).collect(),
+                extra: String::new(),
+            });
+        }
+        // Une seule sortie pour les deux documents : ce qui a été
+        // retenu dans la fenêtre d'export, et le document qu'on avait
+        // demandé.
+        if let Some((target, kind, scheduled, theme, by, points)) = export_now {
             // The sheet is dated with the planned RDV when one is set,
             // today otherwise (sheets are usually printed just before).
             let date = scheduled
@@ -12701,44 +12937,35 @@ impl App {
                         .today_french()
                         .unwrap_or_else(|_| tr("itv_date_fallback").to_owned())
                 });
-            // The sheet is signed by whoever held the entretien —
-            // the initials on the row — and by the officine's line
-            // when the team list does not know them.
-            if let Err(e) = crate::pdf::open_interview_sheet(
-                patient,
-                kind,
-                &date,
-                &theme,
-                &config.template_path(),
-                &config.pharmacy.signature_for(&by),
-                &session.patient_treats,
-                crate::entretien::checklist(&theme),
-            ) {
-                session.error = Some(e);
-            }
-        }
-        if let Some((kind, scheduled, theme, by)) = cr_req {
-            // The CR letter to the médecin traitant, with the patient's
-            // known treatments; dated like the interview sheet.
-            let date = scheduled
-                .as_deref()
-                .map(db::format_french_date)
-                .unwrap_or_else(|| {
-                    session
-                        .db
-                        .today_french()
-                        .unwrap_or_else(|_| tr("itv_date_fallback").to_owned())
-                });
-            if let Err(e) = crate::pdf::open_cr_letter(
-                patient,
-                kind,
-                &date,
-                &theme,
-                &session.patient_treats,
-                &config.pharmacy,
-                &config.cr_template_path(),
-                &config.pharmacy.signature_for(&by),
-            ) {
+            let lines: Vec<&str> = points.iter().map(String::as_str).collect();
+            // Signé par qui a tenu l'entretien — les initiales de la
+            // ligne — et par la ligne de l'officine quand la liste de
+            // l'équipe ne les connaît pas.
+            let signature = config.pharmacy.signature_for(&by);
+            let done = match target {
+                ExportTarget::Fiche => crate::pdf::open_interview_sheet(
+                    patient,
+                    kind,
+                    &date,
+                    &theme,
+                    &config.template_path(),
+                    &signature,
+                    &session.patient_treats,
+                    &lines,
+                ),
+                ExportTarget::Cr => crate::pdf::open_cr_letter(
+                    patient,
+                    kind,
+                    &date,
+                    &theme,
+                    &session.patient_treats,
+                    &config.pharmacy,
+                    &config.cr_template_path(),
+                    &signature,
+                    &lines,
+                ),
+            };
+            if let Err(e) = done {
                 session.error = Some(e);
             }
         }

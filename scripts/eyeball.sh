@@ -46,7 +46,7 @@ views=(
     vaccins bio watch revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
     graph stup stup_catalogue ordonnancier scans patient_scans registres
-    explorer explorer_organ classes classes_outside
+    explorer explorer_organ classes classes_outside export
     template options about base keys act_picker
     goto goto_jump mono_search mono_patient
 )

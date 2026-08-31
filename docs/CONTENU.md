@@ -566,6 +566,31 @@ Deux règles valent partout :
   rapprochée doit rester visible, et un remplacement de classe doit
   faire une ligne et non deux.
 
+## Le rendez-vous de prévention et l'export
+
+- **Où** : `[prevention] subjects` dans config.toml, et la fenêtre
+  d'export dans `src/app.rs` (`ExportBox`).
+- **Pourquoi il n'a pas de thème** : on en couvre plusieurs dans la même
+  séance. En stamper un sur l'acte nommerait le moindre en cachant les
+  autres — `InterviewKind::has_theme` l'exclut, comme les TROD mais pour
+  la raison inverse : le TROD n'a pas de sujet, celui-ci en a trop pour
+  un seul champ.
+- **Ce qu'il couvre se choisit à l'impression.** La fenêtre d'export
+  propose la liste de `[prevention] subjects`, décochée : sur ce
+  rendez-vous-là, choisir *est* la question. Pour tous les autres actes,
+  elle propose la liste du thème, cochée — c'est ce que la feuille
+  portait déjà.
+- **Et ce qu'on ajoute à la main.** Une zone de texte libre, une ligne
+  par point. Aucune liste livrée ne couvre ce qu'un entretien a
+  réellement abordé ; c'est la moitié qui compte le plus.
+- **Ajouter un sujet** : une ligne dans `[prevention] subjects`. La
+  liste livrée est celle de « Mon bilan prévention » ; elle se réécrit
+  entièrement, et la vider n'est pas une erreur — la fiche se contente
+  alors de ce qu'on tape.
+- **Le courrier** porte `{{POINTS}}` : sans point coché il garde son
+  encadré vide, avec des points il imprime la liste et garde un encadré
+  plus court pour la réponse du médecin.
+
 ## Les listes d'entretien
 
 - **Où** : `src/entretien.rs` — une liste par thème, et un fond commun

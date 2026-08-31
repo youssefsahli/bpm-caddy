@@ -134,7 +134,7 @@ issus de cet échange.
 #v(2mm)
 #text(weight: "bold")[Synthèse et points d'attention :]
 #v(1mm)
-#box(width: 100%, height: 7cm, stroke: 0.8pt, radius: 5pt)
+{{POINTS}}
 
 #v(1fr)
 Restant à votre disposition, nous vous prions d'agréer, Docteur,
@@ -294,6 +294,7 @@ pub fn template_markers(target: &str) -> &'static [&'static str] {
             "{{PHARMACIST}}",
         ],
         "cr" => &[
+            "{{POINTS}}",
             "{{PHARMACY_NAME}}",
             "{{PHARMACY_ADDRESS}}",
             "{{PHARMACY_PHONE}}",
@@ -417,6 +418,7 @@ fn fill_cr_template(
     treats: &[Drug],
     pharmacy: &PharmacyConfig,
     signature: &str,
+    points: &[&str],
 ) -> String {
     let physician = if patient.physician.trim().is_empty() {
         "Médecin traitant"
@@ -458,6 +460,29 @@ fn fill_cr_template(
             &format!("#{}", typst_str(theme_or_dash(theme))),
         )
         .replace("{{TREATMENTS}}", &treatments_markup(treats))
+        // Ce qui a été retenu à l'export, ou le cadre vide.
+        //
+        // Vide veut dire vide : un courrier dont personne n'a coché de
+        // point garde l'encadré qu'on remplit à la main, qui est ce que
+        // le modèle portait avant que ce marqueur existe. Imprimer une
+        // liste de points qu'on n'a pas choisis serait faire dire au
+        // pharmacien ce qu'il n'a pas dit.
+        .replace("{{POINTS}}", &cr_points_markup(points))
+}
+
+/// Les points retenus, ou l'encadré à remplir quand il n'y en a pas.
+fn cr_points_markup(points: &[&str]) -> String {
+    if points.is_empty() {
+        return "#box(width: 100%, height: 7cm, stroke: 0.8pt, radius: 5pt)".to_owned();
+    }
+    let list = points
+        .iter()
+        .map(|p| format!("#block(below: 2mm)[— #{}]", typst_str(p)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    // L'encadré reste sous la liste, plus court : le médecin y répond,
+    // et c'est la moitié de l'intérêt d'envoyer la feuille.
+    format!("{list}\n#v(2mm)\n#box(width: 100%, height: 3.5cm, stroke: 0.8pt, radius: 5pt)")
 }
 
 /// Compile the CR letter for a patient and open it in the OS viewer.
@@ -473,6 +498,7 @@ pub fn open_cr_letter(
     pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
     signature: &str,
+    points: &[&str],
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
@@ -481,7 +507,7 @@ pub fn open_cr_letter(
         DEFAULT_CR_TEMPLATE.to_owned()
     };
     let filled = fill_cr_template(
-        &template, patient, kind, date, theme, treats, pharmacy, signature,
+        &template, patient, kind, date, theme, treats, pharmacy, signature, points,
     );
     compile_and_open(filled, &format!("cr_{}", patient.id))
 }
@@ -526,6 +552,13 @@ pub fn check_cr_template(template: &str) -> Result<(), String> {
         &sample_treatments(),
         &sample_pharmacy(),
         "Claire Leroy, Pharmacien titulaire",
+        // L'aperçu montre le cas où l'on a coché : c'est celui qui peut
+        // déborder la page, donc celui qu'un modèle doit être vérifié
+        // sur. Le cadre vide, lui, n'a jamais fait déborder personne.
+        &[
+            "Observance sur la semaine écoulée",
+            "Effets indésirables signalés",
+        ],
     );
     let world = PdfWorld::new(filled);
     typst::compile::<PagedDocument>(&world)
@@ -545,6 +578,10 @@ pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
         &sample_treatments(),
         &sample_pharmacy(),
         "Claire Leroy, Pharmacien titulaire",
+        &[
+            "Observance sur la semaine écoulée",
+            "Effets indésirables signalés",
+        ],
     );
     compile_and_open(filled, "apercu_cr")
 }
@@ -3023,7 +3060,16 @@ mod tests {
             &sample_treatments(),
             &sample_pharmacy(),
             "Claire #strike[Leroy]",
+            // Un point tapé à la main passe par le même échappement que
+            // le reste : c'est du texte libre, donc c'est là que le
+            // balisage entrerait s'il devait entrer quelque part.
+            &["Sommeil — #eval \"W\"", "Vaccinations"],
         );
+        assert!(!filled.contains("#eval \"W\"]"));
+        // Les points cochés remplacent le cadre vide ; sans eux il reste.
+        assert!(filled.contains("Vaccinations"));
+        assert!(cr_points_markup(&[]).contains("7cm"));
+        assert!(!cr_points_markup(&["Sommeil"]).contains("7cm"));
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
             .output

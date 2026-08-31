@@ -232,6 +232,14 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # pièces en coûtent dix mille. Une pièce ne change jamais après avoir été
 # rangée. 0 désactive la copie des pièces.
 # backups_keep = 2
+#
+# [prevention]
+# Les sujets d'un rendez-vous de prévention. Il n'a pas de thème — on en
+# couvre plusieurs dans la même séance —, et ce sont ces sujets qu'on
+# coche au moment d'imprimer la fiche. La liste est celle de « Mon bilan
+# prévention » ; réécrivez-la si vous organisez vos rendez-vous
+# autrement.
+# subjects = ["Vaccinations", "Sommeil", "Alimentation"]
 "#;
 
 #[derive(Deserialize, Serialize, Default, Clone)]
@@ -249,6 +257,49 @@ pub struct Config {
     pub stock: StockConfig,
     pub scans: ScansConfig,
     pub vitale: VitaleConfig,
+    pub prevention: PreventionConfig,
+}
+
+/// Les sujets d'un rendez-vous de prévention.
+///
+/// Le rendez-vous n'a pas de thème : on en couvre **plusieurs** dans la
+/// même séance, et en stamper un sur l'acte nommerait le moindre en
+/// cachant les autres. Ce qu'on couvre se choisit donc au moment
+/// d'imprimer la fiche, dans cette liste.
+///
+/// Livrée remplie de la grille de « Mon bilan prévention », et
+/// **modifiable** : c'est une liste de sujets, pas un tarif — elle ne
+/// sera pas fausse dans l'année —, et une officine qui organise ses
+/// rendez-vous autrement doit pouvoir la réécrire. La vider n'est pas
+/// une erreur : la fiche se contente alors de ce qu'on tape à la main.
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(default)]
+pub struct PreventionConfig {
+    pub subjects: Vec<String>,
+}
+
+impl Default for PreventionConfig {
+    fn default() -> Self {
+        Self {
+            subjects: [
+                "Vaccinations",
+                "Activité physique",
+                "Alimentation",
+                "Sommeil",
+                "Tabac",
+                "Alcool",
+                "Santé mentale et bien-être",
+                "Dépistages des cancers",
+                "Santé bucco-dentaire",
+                "Santé sexuelle",
+                "Audition et vision",
+                "Perte d'autonomie",
+            ]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        }
+    }
 }
 
 /// Les pièces numérisées : d'où elles viennent, et jusqu'où elles vont.

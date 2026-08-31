@@ -5,6 +5,49 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.145.0] - 2026-08-31
+
+### Added
+- **Une fenêtre d'export avant chaque fiche et chaque courrier.** Les
+  deux boutons imprimaient sans rien demander : la fiche portait la
+  liste de son thème, le courrier un cadre vide, et l'officine n'avait
+  pas voix au chapitre. C'est pourtant elle qui sait ce que *ce*
+  rendez-vous-là a couvert.
+  - Deux moitiés, et la seconde compte plus que la première : ce qu'on
+    **coche** dans ce qui est proposé, et ce qu'on **ajoute** à la main,
+    une ligne par point. Aucune liste livrée ne couvre ce qu'un entretien
+    a réellement abordé, et une case à cocher de plus ne l'aurait pas
+    couvert non plus.
+  - Ce qui est proposé vient du thème quand il y en a un, **coché
+    d'avance** : c'est ce que la feuille portait déjà, et l'export ne
+    doit pas obliger à recocher sept cases pour retrouver l'existant.
+  - Le courrier au médecin reçoit un marqueur `{{POINTS}}`. Sans point
+    coché il garde l'encadré vide qu'il portait avant — imprimer une
+    liste que personne n'a choisie ferait dire au pharmacien ce qu'il
+    n'a pas dit. Avec des points, la liste s'imprime et l'encadré reste
+    dessous, plus court : le médecin y répond, et c'est la moitié de
+    l'intérêt d'envoyer la feuille.
+
+### Changed
+- **Le rendez-vous de prévention n'a plus de thème.** On en couvre
+  plusieurs dans la même séance — vaccinations, sommeil, alimentation —
+  et en stamper un sur l'acte nommait le moindre en cachant les autres.
+  `InterviewKind::has_theme` l'exclut désormais, comme il excluait déjà
+  les TROD, mais pour la raison inverse : le TROD n'a pas de sujet, le
+  rendez-vous de prévention en a trop pour un seul champ.
+  - Ce qu'il couvre se choisit à l'impression, dans `[prevention]
+    subjects` — la grille de « Mon bilan prévention », livrée remplie et
+    **modifiable**. C'est une liste de sujets et non un tarif : elle ne
+    sera pas fausse dans l'année, et une officine qui organise ses
+    rendez-vous autrement doit pouvoir la réécrire. Les cases y sont
+    **décochées** d'avance : sur ce rendez-vous-là, choisir *est* la
+    question.
+- « Rangé » devient « Archivé », et « Ranger une pièce » « Archiver une
+  pièce ». *Ranger* est le mot des rayons, pas celui d'un système de
+  pièces : sur un bouton à bascule, l'adjectif seul ne disait pas ce qui
+  était rangé ni pourquoi, et toute sa charge tenait dans l'infobulle —
+  ce qui est l'inverse de ce qu'une étiquette doit faire.
+
 ## [0.144.0] - 2026-08-31
 
 ### Added
