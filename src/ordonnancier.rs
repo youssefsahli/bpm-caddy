@@ -687,26 +687,239 @@ pub fn to_check(followed: &[Followed], today: &str, max_days: i64) -> Vec<ToChec
 /// Le calendrier grégorien par le compte des jours depuis une origine
 /// commune : pas de bibliothèque de dates, pas d'horloge, et un test qui
 /// tient les années bissextiles.
+/// Le calendrier est celui de [`crate::date`] et non le sien : cette
+/// fonction portait sa propre formule julienne quand `location.rs` en
+/// portait une civile, pour la même soustraction. Les tests plus bas
+/// n'ont pas bougé — ils décrivent toujours ce que le registre attend
+/// d'un écart de jours, et ils l'exigent maintenant du calendrier
+/// partagé.
 pub fn days_between(from: &str, to: &str) -> Option<i64> {
-    Some(day_number(to)? - day_number(from)?)
+    crate::date::days_between(from, to)
 }
 
-/// Le rang d'une date ISO dans le calendrier, en jours.
-fn day_number(iso: &str) -> Option<i64> {
-    let mut parts = iso.trim().split('-');
-    let y: i64 = parts.next()?.parse().ok()?;
-    let m: i64 = parts.next()?.parse().ok()?;
-    let d: i64 = parts.next()?.parse().ok()?;
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+// --- Ce que le registre sait dire de lui-même ----------------------
+//
+// Tout ceci vit **ici** et non dans un module de plus : l'entrée est
+// `Move` et le sujet est le même. Un second module dupliquerait le type
+// ou n'existerait que pour l'importer, et « ce que le registre dit »
+// serait alors écrit à deux endroits.
+
+/// Ce qui est sorti d'un produit sur une fenêtre, et sur combien de
+/// jours.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Velocity {
+    pub out: f64,
+    pub days: i64,
+    pub lines: usize,
+}
+
+impl Velocity {
+    pub fn per_day(self) -> f64 {
+        if self.days <= 0 {
+            0.0
+        } else {
+            self.out / self.days as f64
+        }
+    }
+}
+
+/// Le rythme des `window_days` derniers jours.
+///
+/// **Les délivrances seules.** Une ampoule cassée est du stock qui est
+/// parti, ce n'est pas de la consommation, et elle ne dit rien de la
+/// demande de demain ; les pertes se lisent à part. Une ligne annulée
+/// n'a pas eu lieu.
+///
+/// `None` quand la fenêtre ne porte aucune délivrance : un rythme de
+/// zéro sur une fenêtre vide n'est pas « zéro par jour », c'est « rien à
+/// dire », et les deux ne se peignent pas pareil.
+pub fn velocity(moves: &[Move], today: &str, window_days: i64) -> Option<Velocity> {
+    if window_days <= 0 {
         return None;
     }
-    // Le calcul des jours juliens : mars devient le premier mois, ce qui
-    // met le jour de février qui manque à la fin de l'année et fait
-    // disparaître le cas particulier du bissextile.
-    let a = (14 - m) / 12;
-    let y2 = y + 4800 - a;
-    let m2 = m + 12 * a - 3;
-    Some(d + (153 * m2 + 2) / 5 + 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 - 32045)
+    let mut out = 0.0;
+    let mut lines = 0usize;
+    for m in moves {
+        if m.kind != Kind::Sortie || is_cancelled(moves, m.seq) {
+            continue;
+        }
+        match crate::date::days_between(m.day, today) {
+            Some(d) if (0..=window_days).contains(&d) => {
+                out += m.quantity;
+                lines += 1;
+            }
+            _ => {}
+        }
+    }
+    (lines > 0).then_some(Velocity {
+        out,
+        days: window_days,
+        lines,
+    })
+}
+
+/// Combien de jours le solde tient au rythme mesuré.
+///
+/// `None` quand rien ne bouge — la question ne se pose pas — et quand le
+/// solde est négatif : le registre est alors faux, et la réponse est
+/// [`Why::Negative`], pas une prévision.
+///
+/// C'est une projection du passé et **pas une promesse** : une entrée en
+/// soins palliatifs double le rythme du jour au lendemain. Ce n'est pas
+/// non plus un point de commande, qui demanderait le délai du
+/// grossiste — que la base n'a pas.
+pub fn days_left(stock: f64, v: Velocity) -> Option<i64> {
+    let rate = v.per_day();
+    if rate <= 0.0 || stock < 0.0 {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    Some((stock / rate).floor().max(0.0) as i64)
+}
+
+/// Un comptage et ce qu'il a trouvé.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Count {
+    pub seq: i64,
+    pub day: String,
+    pub gap: Discrepancy,
+    /// Un comptage annulé reste au registre et se lit barré.
+    pub cancelled: bool,
+}
+
+/// Tous les inventaires, dans l'ordre du registre.
+///
+/// Avec leur `expected` **tel qu'il a été écrit** et jamais recalculé :
+/// c'est la seule raison pour laquelle cette colonne existe, puisqu'un
+/// recalcul d'aujourd'hui donnerait le solde d'aujourd'hui.
+pub fn counts(moves: &[Move]) -> Vec<Count> {
+    let mut sorted: Vec<&Move> = moves.iter().collect();
+    sorted.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
+    sorted
+        .into_iter()
+        .filter(|m| m.kind == Kind::Inventaire)
+        .map(|m| Count {
+            seq: m.seq,
+            day: m.day.to_owned(),
+            gap: Discrepancy {
+                expected: m.expected,
+                counted: m.quantity,
+            },
+            cancelled: is_cancelled(moves, m.seq),
+        })
+        .collect()
+}
+
+/// Ce que les comptages disent ensemble.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Gaps {
+    pub taken: usize,
+    pub matched: usize,
+    /// Ce qui manquait, en valeur absolue.
+    pub short: f64,
+    /// Ce qu'il y avait en trop.
+    pub over: f64,
+}
+
+/// Le bilan des comptages.
+///
+/// `short` et `over` sont séparés et **jamais nets** : un comptage à −3
+/// et un comptage à +3 ne font pas « rien », ils font deux comptages
+/// inexpliqués. Les additionner serait effacer précisément ce qu'un
+/// contrôle vient chercher.
+pub fn gaps(counts: &[Count]) -> Gaps {
+    let mut g = Gaps {
+        taken: 0,
+        matched: 0,
+        short: 0.0,
+        over: 0.0,
+    };
+    for c in counts.iter().filter(|c| !c.cancelled) {
+        g.taken += 1;
+        let d = c.gap.gap();
+        if !c.gap.matters() {
+            g.matched += 1;
+        } else if d < 0.0 {
+            g.short += -d;
+        } else {
+            g.over += d;
+        }
+    }
+    g
+}
+
+/// Un trou dans la suite des numéros, de `from` à `to` inclus.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Hole {
+    pub from: u32,
+    pub to: u32,
+}
+
+impl Hole {
+    pub fn count(self) -> u32 {
+        self.to.saturating_sub(self.from) + 1
+    }
+}
+
+/// Ce que la suite d'une année porte, et ce qui lui manque.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Sequence {
+    pub first: u32,
+    pub last: u32,
+    pub count: usize,
+    /// Les trous **intérieurs**, entre le premier et le dernier numéro
+    /// portés.
+    pub holes: Vec<Hole>,
+    /// Les numéros portés deux fois. Pire qu'un trou, et invisible.
+    pub doubled: Vec<u32>,
+}
+
+/// Lire la suite des numéros d'une année.
+///
+/// # Deux décisions, et elles comptent
+///
+/// **Les trous sont strictement intérieurs.** Compter depuis 1 serait
+/// défendable — `next_number(&[])` vaut 1 — mais une officine qui entre
+/// dans l'application en juillet commence légitimement à 300, et deux
+/// cent quatre-vingt-dix-neuf trous fantômes à chaque lancement font un
+/// détecteur que personne n'ouvre deux fois. Le module dit donc ce que
+/// le registre **contient** et laisse le pharmacien juger du 300.
+///
+/// **Une délivrance annulée garde son numéro et ne fait pas un trou.**
+/// C'est ce qu'un détecteur naïf rate : compter les seules lignes non
+/// annulées signalerait chaque correction du registre comme un numéro
+/// manquant, et ferait ressembler les corrections à une dissimulation.
+/// L'appelant passe donc **tous** les numéros attribués, annulés
+/// compris.
+pub fn sequence(used: &[u32]) -> Option<Sequence> {
+    if used.is_empty() {
+        return None;
+    }
+    let mut sorted: Vec<u32> = used.to_vec();
+    sorted.sort_unstable();
+    let first = *sorted.first()?;
+    let last = *sorted.last()?;
+    let mut holes = Vec::new();
+    let mut doubled = Vec::new();
+    for w in sorted.windows(2) {
+        if w[0] == w[1] {
+            if !doubled.contains(&w[0]) {
+                doubled.push(w[0]);
+            }
+        } else if w[1] > w[0] + 1 {
+            holes.push(Hole {
+                from: w[0] + 1,
+                to: w[1] - 1,
+            });
+        }
+    }
+    Some(Sequence {
+        first,
+        last,
+        count: sorted.len(),
+        holes,
+        doubled,
+    })
 }
 
 #[cfg(test)]
@@ -1165,5 +1378,146 @@ mod tests {
             assert_eq!(days_between(bad, "2026-08-29"), None, "{bad}");
             assert_eq!(days_between("2026-08-29", bad), None, "{bad}");
         }
+    }
+
+    /// Un rythme mesuré sur une fenêtre vide n'est pas un rythme de
+    /// zéro, et une ampoule cassée n'est pas de la consommation.
+    #[test]
+    fn a_broken_ampoule_is_not_consumption_and_an_empty_window_is_not_a_rate() {
+        let none: Vec<Move> = Vec::new();
+        assert_eq!(velocity(&none, "2026-09-01", 30), None);
+        // Des lignes, mais toutes hors fenêtre : « rien à dire », et non
+        // « zéro par jour ». Les deux ne se peignent pas pareil.
+        let old = [mv(Kind::Sortie, 14.0, "2026-01-05", 1)];
+        assert_eq!(velocity(&old, "2026-09-01", 30), None);
+        // Une fenêtre sans durée n'est pas une fenêtre.
+        let now = [mv(Kind::Sortie, 14.0, "2026-08-25", 1)];
+        assert_eq!(velocity(&now, "2026-09-01", 0), None);
+
+        let v = velocity(&now, "2026-09-01", 30).expect("une délivrance dans la fenêtre");
+        assert!((v.out - 14.0).abs() < 1e-9);
+        assert_eq!(v.lines, 1);
+
+        // La perte est du stock parti, pas de la demande : elle ne monte
+        // pas le rythme, et l'entrée non plus.
+        let mixed = [
+            mv(Kind::Sortie, 14.0, "2026-08-25", 1),
+            mv(Kind::Perte, 30.0, "2026-08-26", 2),
+            mv(Kind::Entree, 60.0, "2026-08-27", 3),
+        ];
+        let v2 = velocity(&mixed, "2026-09-01", 30).expect("la délivrance compte seule");
+        assert!((v2.out - 14.0).abs() < 1e-9, "{}", v2.out);
+        assert_eq!(v2.lines, 1);
+
+        // Et une délivrance annulée n'a pas eu lieu.
+        let undone = [
+            mv(Kind::Sortie, 14.0, "2026-08-25", 1),
+            cancel(1, "2026-08-26", 2),
+        ];
+        assert_eq!(velocity(&undone, "2026-09-01", 30), None);
+    }
+
+    /// Les jours de stock sont une lecture du passé, pas une promesse.
+    #[test]
+    fn days_of_stock_are_a_reading_of_the_past_and_not_a_promise() {
+        let rows = [
+            mv(Kind::Sortie, 15.0, "2026-08-25", 1),
+            mv(Kind::Sortie, 15.0, "2026-08-28", 2),
+        ];
+        let v = velocity(&rows, "2026-09-01", 30).expect("deux délivrances");
+        // 30 unités sur 30 jours : une par jour.
+        assert!((v.per_day() - 1.0).abs() < 1e-9, "{}", v.per_day());
+        assert_eq!(days_left(12.0, v), Some(12));
+        // Un solde négatif est un registre faux, pas une prévision.
+        assert_eq!(days_left(-2.0, v), None);
+        // Et rien qui bouge ne se projette pas.
+        let still = Velocity {
+            out: 0.0,
+            days: 30,
+            lines: 0,
+        };
+        assert_eq!(days_left(40.0, still), None);
+    }
+
+    /// Un manque et un excès ne s'annulent jamais l'un l'autre.
+    #[test]
+    fn a_shortfall_and_an_excess_never_cancel_each_other_out() {
+        let rows = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            count(27.0, 30.0, "2026-02-01", 2),
+            count(33.0, 30.0, "2026-03-01", 3),
+            count(30.0, 30.0, "2026-04-01", 4),
+        ];
+        let list = counts(&rows);
+        assert_eq!(list.len(), 3, "trois comptages, dans l'ordre du registre");
+        let g = gaps(&list);
+        assert_eq!(g.taken, 3);
+        assert_eq!(g.matched, 1, "un seul tombe juste");
+        assert!((g.short - 3.0).abs() < 1e-9, "{}", g.short);
+        assert!((g.over - 3.0).abs() < 1e-9, "{}", g.over);
+        // Le net serait zéro, et zéro dirait « rien à signaler » là où il
+        // y a deux comptages inexpliqués.
+    }
+
+    /// Un comptage annulé reste dans l'histoire et sort des totaux.
+    #[test]
+    fn a_cancelled_count_stays_in_the_history_and_out_of_the_totals() {
+        let rows = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            count(5.0, 30.0, "2026-02-01", 2),
+            cancel(2, "2026-02-02", 3),
+        ];
+        let list = counts(&rows);
+        assert_eq!(list.len(), 1);
+        assert!(list[0].cancelled, "il reste écrit, et il se lit barré");
+        let g = gaps(&list);
+        assert_eq!(g.taken, 0, "mais il ne compte pas");
+        assert!((g.short).abs() < 1e-9);
+    }
+
+    /// Une délivrance annulée garde son numéro et ne fait pas un trou.
+    ///
+    /// C'est ce qu'un détecteur naïf rate, et le rater ferait ressembler
+    /// chaque correction du registre à une dissimulation.
+    #[test]
+    fn a_cancelled_delivery_is_not_a_hole_in_the_sequence() {
+        let s = sequence(&[1, 2, 3]).expect("trois numéros");
+        assert_eq!((s.first, s.last, s.count), (1, 3, 3));
+        assert!(s.holes.is_empty(), "{:?}", s.holes);
+        assert!(s.doubled.is_empty());
+    }
+
+    /// Une suite qui commence à trois cents le dit et n'invente pas de
+    /// trous.
+    #[test]
+    fn a_sequence_that_starts_at_three_hundred_says_so_and_invents_no_holes() {
+        let s = sequence(&[300, 301, 302]).expect("trois numéros");
+        assert_eq!(s.first, 300);
+        assert!(
+            s.holes.is_empty(),
+            "deux cent quatre-vingt-dix-neuf trous fantômes feraient un détecteur              que personne n'ouvre deux fois : {:?}",
+            s.holes
+        );
+        // Un vrai trou intérieur, lui, se voit — et il porte sa taille.
+        let gap = sequence(&[300, 301, 305, 306]).expect("un trou");
+        assert_eq!(gap.holes, vec![Hole { from: 302, to: 304 }]);
+        assert_eq!(gap.holes[0].count(), 3);
+        assert_eq!(sequence(&[]), None);
+    }
+
+    /// Un numéro servi deux fois est pire qu'un numéro manquant.
+    #[test]
+    fn a_number_served_twice_is_worse_than_a_number_missing() {
+        let s = sequence(&[1, 2, 2, 4]).expect("quatre lignes");
+        assert_eq!(s.doubled, vec![2]);
+        assert_eq!(
+            s.holes,
+            vec![Hole { from: 3, to: 3 }],
+            "le trou et le doublon se rapportent séparément"
+        );
+        assert_eq!(
+            s.count, 4,
+            "le compte est celui des lignes, pas des numéros"
+        );
     }
 }

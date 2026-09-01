@@ -90,54 +90,13 @@ pub fn standing(renewal: &str, today: &str, notice_days: u32) -> Option<Standing
     })
 }
 
-/// Days from `a` to `b`, negative when `b` precedes `a`.
-fn days_between(a: &str, b: &str) -> Option<i64> {
-    Some(julian(b)? - julian(a)?)
-}
-
-/// `from` shifted by `days`, back to an ISO day.
-fn add_days(from: &str, days: i64) -> Option<String> {
-    from_julian(julian(from)? + days)
-}
-
-/// Days since an arbitrary epoch, for an ISO `YYYY-MM-DD`. The usual
-/// civil-from-days algorithm: no calendar crate for two functions.
-fn julian(iso: &str) -> Option<i64> {
-    let (y, m, d) = parse_iso(iso)?;
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    Some(era * 146_097 + doe - 719_468)
-}
-
-fn from_julian(z: i64) -> Option<String> {
-    let z = z + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    Some(format!("{y:04}-{m:02}-{d:02}"))
-}
-
-fn parse_iso(iso: &str) -> Option<(i64, i64, i64)> {
-    let iso = iso.trim();
-    let mut parts = iso.split('-');
-    let y: i64 = parts.next()?.parse().ok()?;
-    let m: i64 = parts.next()?.parse().ok()?;
-    let d: i64 = parts.next()?.parse().ok()?;
-    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
-        return None;
-    }
-    Some((y, m, d))
-}
+// Le calendrier vit dans `crate::date`. Ce module en portait une copie
+// entière — `julian`, `from_julian`, `parse_iso` — pendant que
+// `ordonnancier` en portait une autre, écrite avec la formule julienne.
+// Aucune des deux n'était fausse, et c'est précisément la situation que
+// la maison refuse ailleurs : deux mesures d'une même chose finissent
+// par diverger, et celle qui divergera est celle que personne ne relit.
+use crate::date::{add_days, days_between};
 
 #[cfg(test)]
 mod tests {

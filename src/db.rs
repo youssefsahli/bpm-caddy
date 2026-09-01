@@ -313,6 +313,17 @@ CREATE TABLE IF NOT EXISTS scans (
     taken_on     TEXT NOT NULL DEFAULT '',
     operator     TEXT NOT NULL DEFAULT '',
     remark       TEXT NOT NULL DEFAULT '',
+    -- La ligne du registre des stupéfiants que cette pièce justifie, ou
+    -- zéro. Un contrôle demande la ligne **et** l'ordonnance qui la
+    -- porte ; les garder sans lien oblige à les rapprocher à la main,
+    -- sur une date et un nom de fichier.
+    --
+    -- L'identifiant vit dans l'autre fichier (`<base>_stups.db`), donc
+    -- pas de clé étrangère : les deux bases se copient séparément, et
+    -- une contrainte entre elles rendrait l'une illisible sans l'autre.
+    -- C'est le contraire de ce qu'on veut d'un registre qu'une
+    -- inspection demande seul.
+    stup_move    INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 ";
@@ -476,6 +487,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patients ADD COLUMN regime TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE interviews ADD COLUMN trod_result TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE interviews ADD COLUMN operator TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE scans ADD COLUMN stup_move INTEGER NOT NULL DEFAULT 0",
     "CREATE TABLE IF NOT EXISTS vaccinations (
         id          INTEGER PRIMARY KEY,
         patient_id  INTEGER NOT NULL REFERENCES patients(id),
@@ -1328,6 +1340,28 @@ pub struct Stupefiant {
 /// Rien ici n'est modifiable : il n'existe ni `update_` ni `delete_`
 /// pour cette table, et un test lit le fichier pour s'en assurer. Une
 /// erreur se corrige par une ligne contraire qui dit pourquoi.
+/// Une délivrance, avec ce que son produit dit d'elle.
+///
+/// Le miroir en propriété de `crate::vigilance::Dispensing`, qui est
+/// emprunté : le module est pur et ne connaît pas la base, la base ne
+/// connaît pas les règles, et cette structure est ce qui passe de l'une
+/// à l'autre.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StupDispensing {
+    pub seq: i64,
+    pub stup_id: i64,
+    pub label: String,
+    pub unit: String,
+    /// Le plafond de prescription de la famille. Zéro quand elle n'est
+    /// pas renseignée — et la vigilance se tait alors.
+    pub max_days: i64,
+    pub patient_id: i64,
+    pub prescriber: String,
+    pub day: String,
+    pub quantity: f64,
+    pub cancelled: bool,
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct StupMove {
     pub id: i64,
@@ -1378,6 +1412,10 @@ pub struct Scan {
     pub remark: String,
     /// Quand elle a été rangée, tel que la base l'a écrit.
     pub created_at: String,
+    /// La ligne du registre des stupéfiants que cette pièce justifie,
+    /// ou zéro. Un contrôle demande la ligne **et** l'ordonnance qui la
+    /// porte ; sans lien, les rapprocher se fait à la main.
+    pub stup_move: i64,
 }
 
 /// One agenda entry that is not tied to a patient.
@@ -28108,6 +28146,56 @@ CREATE TABLE IF NOT EXISTS stup_moves (
     cancels      INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+-- Les libellés qu'un produit a portés. Un produit suivi sous une faute
+-- de frappe la gardait pour toujours : seuls le seuil, l'unité et
+-- l'archivage se corrigeaient, et ce libellé-là s'imprime sur chaque
+-- page du registre.
+--
+-- C'est le seul endroit de ce fichier où l'on **renomme** au lieu de
+-- contre-passer, et cela ne dément pas l'inaltérabilité : une ligne du
+-- registre désigne le produit par son identifiant et jamais par une
+-- chaîne, donc rien de ce qui a été délivré ne change. Ce qui change est
+-- l'étiquette, et une page imprimée avant la correction doit pouvoir
+-- s'expliquer — d'où cette table plutôt qu'un simple UPDATE.
+CREATE TABLE IF NOT EXISTS stup_labels (
+    id         INTEGER PRIMARY KEY,
+    stup_id    INTEGER NOT NULL REFERENCES stupefiants(id),
+    was        TEXT NOT NULL,
+    became     TEXT NOT NULL,
+    operator   TEXT NOT NULL DEFAULT '',
+    changed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_stup_labels_stup ON stup_labels(stup_id);
+-- Les codes que l'officine a appris en présentant une boîte.
+--
+-- Rien ici n'est livré et rien n'est deviné : un code n'entre que parce
+-- que quelqu'un a scanné une boîte et **désigné** le produit qu'elle
+-- est. L'application n'embarque aucune table CIP, donc elle n'a rien
+-- avec quoi proposer, et c'est très bien ainsi — un GTIN ne porte aucun
+-- nom.
+--
+-- Une table et non une colonne sur `stupefiants` : une présentation
+-- porte plusieurs codes au fil de sa vie (reconditionnement, changement
+-- de titulaire), l'officine scannera les deux, et une colonne unique
+-- écraserait silencieusement le premier pendant que l'ancienne boîte est
+-- encore sur l'étagère.
+--
+-- `code` est la clé primaire, et c'est là tout l'intérêt : un code qui
+-- répondrait pour deux produits serait le défaut « deux soldes pour une
+-- boîte » que le registre refuse déjà sur les libellés. La base le
+-- refuse par sa structure plutôt que par un contrôle qu'on peut
+-- oublier.
+--
+-- Ce n'est pas le registre : cela se corrige comme une fiche. Un code
+-- mal appris se **retire** et se réapprend, jamais ne se modifie — d'où
+-- `add` et `forget`, et pas d'`update`.
+CREATE TABLE IF NOT EXISTS stup_codes (
+    code      TEXT PRIMARY KEY,
+    stup_id   INTEGER NOT NULL REFERENCES stupefiants(id),
+    taught_on TEXT NOT NULL DEFAULT '',
+    operator  TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_stup_codes_stup ON stup_codes(stup_id);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_stup ON stup_moves(stup_id);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_day ON stup_moves(happened_on);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_ordo ON stup_moves(ordo_year, ordo_no);
@@ -28123,6 +28211,24 @@ const STUP_MIGRATIONS: &[&str] = &[
     "ALTER TABLE stupefiants ADD COLUMN max_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE stupefiants ADD COLUMN note TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE stup_moves ADD COLUMN cancels INTEGER NOT NULL DEFAULT 0",
+    // Deux lignes ne peuvent pas porter le même numéro d'ordonnancier.
+    //
+    // `add_stup_move` l'attribue dans la transaction qui écrit, donc
+    // cela ne devrait pas arriver — mais rien de structurel ne
+    // l'empêchait, et « ne devrait pas » n'est pas une contrainte.
+    //
+    // L'index est **partiel** : `ordo_no` vaut zéro sur chaque ligne qui
+    // n'est pas une délivrance, et un UNIQUE ordinaire refuserait la
+    // deuxième d'entre elles.
+    //
+    // Et il est **ici** et non dans `STUP_SCHEMA`, où il aurait sa place
+    // logique : ce lot-là est appliqué par `execute_batch` dont l'erreur
+    // remonte, si bien qu'un registre écrit par une version d'avant et
+    // portant déjà un doublon ne s'ouvrirait plus du tout. Les
+    // migrations, elles, avalent l'échec. Un registre qu'on ne peut plus
+    // ouvrir est infiniment pire qu'un doublon qu'on peut voir.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_stup_ordo_unique
+       ON stup_moves(ordo_year, ordo_no) WHERE ordo_no > 0",
 ];
 
 /// Où vivent les octets des pièces, pour une base donnée.
@@ -30889,7 +30995,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, subject_kind, subject_id, doc_kind, label, media, size,
-                        taken_on, operator, remark, created_at
+                        taken_on, operator, remark, created_at, stup_move
                  FROM scans WHERE subject_kind = ?1 AND subject_id = ?2
                  ORDER BY (taken_on = '') ASC, taken_on DESC, id DESC",
             )
@@ -30908,10 +31014,28 @@ impl Db {
                     operator: r.get(8)?,
                     remark: r.get(9)?,
                     created_at: r.get(10)?,
+                    stup_move: r.get(11)?,
                 })
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Attacher une pièce à la ligne du registre qu'elle justifie, ou
+    /// l'en détacher avec zéro.
+    ///
+    /// Le lien se corrige comme une fiche : ce n'est pas le registre,
+    /// qui lui ne se rature pas. La ligne, elle, ne bouge jamais — c'est
+    /// la pièce qui la désigne, et non l'inverse.
+    pub fn link_scan_to_move(&self, scan_id: i64, move_id: i64) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE scans SET stup_move = ?2 WHERE id = ?1",
+                rusqlite::params![scan_id, move_id.max(0)],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
     }
 
     /// Ranger une pièce. `bytes` a déjà passé `crate::scans::accept` :
@@ -31334,18 +31458,48 @@ impl Db {
     /// affichait, comme toute ligne partagée entre deux postes.
     ///
     /// Le registre lui-même n'est pas touché — c'est l'étiquette du
-    /// produit qui change, pas ce qui a été délivré sous elle.
+    /// produit qui change, pas ce qui a été délivré sous elle. Une ligne
+    /// désigne son produit par son identifiant et jamais par une chaîne,
+    /// donc renommer ne déplace rien de ce qui a été délivré.
+    ///
+    /// Le libellé se corrige, et **le changement s'inscrit** dans
+    /// `stup_labels` : une page imprimée avant la correction doit
+    /// pouvoir s'expliquer. C'est le seul renommage du fichier, et il
+    /// est daté et signé pour cette raison.
+    ///
+    /// Deux produits ne peuvent pas porter le même libellé, à la casse
+    /// près : `follow_stupefiant` le refusait déjà à la création, et
+    /// rien ne le refusait au renommage — un contrôle qui n'existait que
+    /// sur la moitié des chemins qui y mènent.
     pub fn update_stupefiant(
         &self,
         new: &Stupefiant,
         expected: &Stupefiant,
+        operator: &str,
     ) -> Result<bool, String> {
         let label = new.label.trim();
         if label.is_empty() {
             return Err(crate::strings::tr("stup_err_no_label").to_owned());
         }
-        let changed = self
+        let tx = self
             .stups
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let was = expected.label.trim();
+        let renamed = !label.eq_ignore_ascii_case(was);
+        if renamed {
+            let taken: i64 = tx
+                .query_row(
+                    "SELECT count(*) FROM stupefiants WHERE id <> ?1 AND label = ?2 COLLATE NOCASE",
+                    rusqlite::params![new.id, label],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if taken > 0 {
+                return Err(crate::strings::tr("stup_err_duplicate").to_owned());
+            }
+        }
+        let changed = tx
             .execute(
                 "UPDATE stupefiants
                     SET label = ?2, unit = ?3, threshold = ?4, archived = ?5, drug_id = ?6,
@@ -31370,7 +31524,177 @@ impl Db {
                 ],
             )
             .map_err(|e| e.to_string())?;
+        // La trace est écrite dans la transaction qui renomme : un
+        // renommage sans sa trace, ou une trace sans son renommage,
+        // seraient l'un et l'autre pires que rien.
+        if changed == 1 && renamed {
+            tx.execute(
+                "INSERT INTO stup_labels (stup_id, was, became, operator)
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![new.id, was, label, operator.trim()],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(changed == 1)
+    }
+
+    /// Les délivrances depuis un jour donné, avec ce que le produit dit
+    /// d'elles : son libellé, son unité et le plafond de sa famille.
+    ///
+    /// Une requête pour toute la fenêtre et non une par produit : la
+    /// vigilance lit tout le registre d'un coup, et une requête par
+    /// produit serait trente requêtes sur le chemin d'un onglet qu'on
+    /// ouvre entre deux clients.
+    ///
+    /// Les annulations sortent avec, parce qu'une délivrance annulée
+    /// n'a pas eu lieu et ne doit pas faire un motif — c'est à
+    /// `crate::vigilance` de le savoir, pas au SQL de le cacher.
+    pub fn stup_dispensings_since(&self, day: &str) -> Result<Vec<StupDispensing>, String> {
+        let cancelled = self.stup_cancelled_ids()?;
+        let mut st = self
+            .stups
+            .prepare(
+                "SELECT m.id, m.stup_id, s.label, s.unit, s.max_days,
+                        m.patient_id, m.prescriber, m.happened_on, m.quantity
+                   FROM stup_moves m
+                   JOIN stupefiants s ON s.id = m.stup_id
+                  WHERE m.kind = 'SORTIE' AND m.happened_on >= ?1
+                  ORDER BY m.happened_on ASC, m.id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map(rusqlite::params![day], |r| {
+                Ok(StupDispensing {
+                    seq: r.get(0)?,
+                    stup_id: r.get(1)?,
+                    label: r.get(2)?,
+                    unit: r.get(3)?,
+                    max_days: r.get(4)?,
+                    patient_id: r.get(5)?,
+                    prescriber: r.get(6)?,
+                    day: r.get(7)?,
+                    quantity: r.get(8)?,
+                    cancelled: false,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = rows
+            .collect::<Result<Vec<StupDispensing>, _>>()
+            .map_err(|e| e.to_string())?;
+        for d in &mut out {
+            d.cancelled = cancelled.contains(&d.seq);
+        }
+        Ok(out)
+    }
+
+    /// Attacher un code-barres à un produit suivi.
+    ///
+    /// Le geste est toujours celui d'un humain : la douchette dit
+    /// « personne ne porte ce code », l'opérateur choisit le produit,
+    /// et c'est ce choix-là qu'on écrit. L'application ne propose jamais
+    /// un produit pour un code — elle n'a rien avec quoi le faire, et
+    /// c'est voulu.
+    ///
+    /// Un code déjà porté par un **autre** produit est refusé : le
+    /// détacher est un acte délibéré, pas un effet de bord.
+    // Les trois verbes des codes appris attendent le formulaire qui
+    // lira la douchette : le test les exerce, la compilation hors
+    // test ne les voit pas encore. La permission tombe avec lui.
+    #[allow(dead_code)]
+    pub fn teach_stup_code(
+        &self,
+        code: &str,
+        stup_id: i64,
+        day: &str,
+        operator: &str,
+    ) -> Result<(), String> {
+        let code = code.trim();
+        if code.is_empty() {
+            return Err(crate::strings::tr("stup_code_err_empty").to_owned());
+        }
+        let held: Option<i64> = self
+            .stups
+            .query_row(
+                "SELECT stup_id FROM stup_codes WHERE code = ?1",
+                rusqlite::params![code],
+                |r| r.get(0),
+            )
+            .ok();
+        match held {
+            Some(id) if id == stup_id => return Ok(()),
+            Some(_) => return Err(crate::strings::tr("stup_code_err_taken").to_owned()),
+            None => {}
+        }
+        self.stups
+            .execute(
+                "INSERT INTO stup_codes (code, stup_id, taught_on, operator)
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![code, stup_id, day.trim(), operator.trim()],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Détacher un code mal appris. Il se retire et se réapprend ; il ne
+    /// se modifie pas.
+    // Les trois verbes des codes appris attendent le formulaire qui
+    // lira la douchette : le test les exerce, la compilation hors
+    // test ne les voit pas encore. La permission tombe avec lui.
+    #[allow(dead_code)]
+    pub fn forget_stup_code(&self, code: &str) -> Result<bool, String> {
+        let n = self
+            .stups
+            .execute(
+                "DELETE FROM stup_codes WHERE code = ?1",
+                rusqlite::params![code.trim()],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    /// Tous les codes appris : ce que `codebar::resolve` interroge.
+    ///
+    /// Une seule requête pour toute la table — l'officine en suit
+    /// quelques dizaines, et une requête par scan serait une requête sur
+    /// le chemin d'un geste de comptoir.
+    // Les trois verbes des codes appris attendent le formulaire qui
+    // lira la douchette : le test les exerce, la compilation hors
+    // test ne les voit pas encore. La permission tombe avec lui.
+    #[allow(dead_code)]
+    pub fn stup_codes(&self) -> Result<Vec<(i64, String)>, String> {
+        let mut st = self
+            .stups
+            .prepare("SELECT stup_id, code FROM stup_codes ORDER BY code")
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Ce que ce produit s'est appelé avant, du plus récent au plus
+    /// ancien. Vide quand il n'a jamais été renommé, ce qui est le cas
+    /// de presque tous.
+    pub fn stup_label_history(
+        &self,
+        stup_id: i64,
+    ) -> Result<Vec<(String, String, String)>, String> {
+        let mut st = self
+            .stups
+            .prepare(
+                "SELECT was, became, changed_at FROM stup_labels
+                  WHERE stup_id = ?1 ORDER BY id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map(rusqlite::params![stup_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     }
 
     /// Le registre d'un produit, du plus ancien au plus récent.
@@ -31600,9 +31924,30 @@ impl Db {
                 } else {
                     0
                 },
-                m.prescriber.trim(),
-                m.supplier.trim(),
-                m.reference.trim(),
+                // Et chaque champ n'appartient qu'aux natures où il veut
+                // dire quelque chose. Le formulaire gardait le
+                // prescripteur et le grossiste d'une ligne à l'autre :
+                // une réception chez CERP puis une délivrance, et la
+                // délivrance partait au registre avec « CERP » à côté
+                // du nom du médecin. Une ligne fausse dans un registre
+                // inaltérable ne se corrige que par une annulation, donc
+                // elle se refuse ici, à l'écriture, et pas seulement
+                // dans le formulaire qui l'a proposée.
+                if kind.is_dispensing() {
+                    m.prescriber.trim()
+                } else {
+                    ""
+                },
+                if kind == crate::ordonnancier::Kind::Entree {
+                    m.supplier.trim()
+                } else {
+                    ""
+                },
+                if kind == crate::ordonnancier::Kind::Entree {
+                    m.reference.trim()
+                } else {
+                    ""
+                },
                 m.expected,
                 m.operator.trim(),
                 m.remark.trim(),
@@ -33962,6 +34307,65 @@ mod tests {
     ///
     /// So the fixture is a photograph of the schema as it shipped, and
     /// this walks the whole application over it.
+    /// Une base qui porte déjà une table `scans` d'avant reçoit sa
+    /// nouvelle colonne, et ses pièces se relisent.
+    ///
+    /// La photographie de la 0.109 est **antérieure aux pièces
+    /// numérisées** : sur elle, `SCHEMA` crée la table entière et le
+    /// chemin qui compte n'est pas exercé. Or le chemin qui compte est
+    /// celui de toutes les bases installées — celles des versions 0.110
+    /// à 0.146, qui ont la table sans la colonne. Là, `CREATE TABLE IF
+    /// NOT EXISTS` ne fait rien et c'est l'`ALTER` qui doit répondre ;
+    /// l'oublier ferait échouer chaque lecture des pièces sur chaque
+    /// base installée, et aucun autre test ne le verrait.
+    #[test]
+    fn a_base_whose_scans_predate_the_register_link_still_reads_them() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-scanmig-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("old.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.pragma_update(None, "key", "secret").unwrap();
+            // La table telle que la 0.146 la livrait : sans `stup_move`.
+            conn.execute_batch(
+                "CREATE TABLE scans (
+                     id           INTEGER PRIMARY KEY,
+                     subject_kind TEXT NOT NULL,
+                     subject_id   INTEGER NOT NULL DEFAULT 0,
+                     doc_kind     TEXT NOT NULL DEFAULT 'AUTRE',
+                     label        TEXT NOT NULL,
+                     media        TEXT NOT NULL DEFAULT '',
+                     bytes        BLOB NOT NULL,
+                     size         INTEGER NOT NULL DEFAULT 0,
+                     taken_on     TEXT NOT NULL DEFAULT '',
+                     operator     TEXT NOT NULL DEFAULT '',
+                     remark       TEXT NOT NULL DEFAULT '',
+                     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                 );
+                 INSERT INTO scans (subject_kind, subject_id, doc_kind, label, media, bytes, size)
+                 VALUES ('OFFICINE', 0, 'FACTURE', 'Facture OCP', 'application/pdf', x'25504446', 4);",
+            )
+            .expect("la table d'avant doit se créer");
+        }
+
+        let db = Db::open(&path, "secret").expect("une base d'avant doit s'ouvrir");
+        let rows = db
+            .scans(crate::scans::Subject::Officine.as_key(), 0)
+            .expect("les pièces d'une base d'avant doivent se relire");
+        assert_eq!(rows.len(), 1, "la pièce d'avant est toujours là");
+        assert_eq!(rows[0].label, "Facture OCP");
+        assert_eq!(rows[0].stup_move, 0, "et elle ne justifie encore rien");
+
+        // Et le lien s'y pose comme sur une base neuve.
+        assert!(db.link_scan_to_move(rows[0].id, 42).unwrap());
+        let again = db
+            .scans(crate::scans::Subject::Officine.as_key(), 0)
+            .unwrap();
+        assert_eq!(again[0].stup_move, 42);
+    }
+
     #[test]
     fn a_base_from_an_older_version_still_answers_every_query() {
         const OLD: &str = include_str!("../tests/fixtures/schema-0.109.0.sql");
@@ -34138,6 +34542,7 @@ mod tests {
             operator: "YS".to_owned(),
             remark: String::new(),
             created_at: String::new(),
+            stup_move: 0,
         };
         let id = db.add_scan(&piece, &pdf).unwrap();
 
@@ -34266,6 +34671,7 @@ mod tests {
                     operator: "YS".to_owned(),
                     remark: String::new(),
                     created_at: String::new(),
+                    stup_move: 0,
                 },
                 &pdf,
             )
@@ -34392,6 +34798,7 @@ mod tests {
                     operator: "YS".to_owned(),
                     remark: String::new(),
                     created_at: String::new(),
+                    stup_move: 0,
                 },
                 &pdf,
             )
@@ -34548,9 +34955,24 @@ mod tests {
         assert_eq!((entry.ordo_year, entry.ordo_no), (0, 0));
         assert_eq!(entry.patient_id, 0);
         assert_eq!(entry.supplier, "OCP");
+        assert_eq!(entry.reference, "BL-4471");
         // La délivrance, elle, porte le dossier — et pas le nom.
         let out = moves.iter().find(|m| m.kind == "SORTIE").unwrap();
         assert_eq!(out.patient_id, pid);
+        // Et chaque champ n'appartient qu'à sa nature. L'appelant a
+        // passé les trois sur les trois lignes — c'est exactement ce que
+        // le formulaire faisait, où le grossiste d'une réception
+        // survivait au changement de nature et repartait au registre sur
+        // la délivrance suivante. Une ligne fausse dans un registre
+        // inaltérable ne se corrige que par une annulation, alors elle
+        // se refuse à l'écriture.
+        assert_eq!(out.prescriber, "Dr Martin");
+        assert_eq!(out.supplier, "", "une délivrance n'a pas de grossiste");
+        assert_eq!(out.reference, "", "ni de bon de livraison");
+        assert_eq!(
+            entry.prescriber, "",
+            "une réception n'a pas de prescripteur"
+        );
 
         // Le solde suit la règle : 30 − 14 − 5.
         let summary = db.stup_summary().unwrap();
@@ -34878,13 +35300,13 @@ mod tests {
         let mut edited = shown.clone();
         edited.threshold = 12.0;
         edited.unit = "comprimé LP".to_owned();
-        assert!(db.update_stupefiant(&edited, &shown).unwrap());
+        assert!(db.update_stupefiant(&edited, &shown, "YS").unwrap());
 
         // Un deuxième poste qui écrit sur la version qu'il affichait
         // encore est refusé, et rien n'est écrasé.
         let mut stale = shown.clone();
         stale.threshold = 3.0;
-        assert!(!db.update_stupefiant(&stale, &shown).unwrap());
+        assert!(!db.update_stupefiant(&stale, &shown, "YS").unwrap());
         let now = db.stupefiants().unwrap().pop().unwrap();
         assert_eq!(now.id, id);
         assert!((now.threshold - 12.0).abs() < 1e-9);
@@ -34893,7 +35315,184 @@ mod tests {
         // Un libellé vide est refusé plutôt qu'écrit.
         let mut blank = now.clone();
         blank.label = "   ".to_owned();
-        assert!(db.update_stupefiant(&blank, &now).is_err());
+        assert!(db.update_stupefiant(&blank, &now, "YS").is_err());
+
+        // Corriger seulement le seuil n'invente pas un renommage.
+        assert!(db.stup_label_history(id).unwrap().is_empty());
+    }
+
+    /// Un code s'apprend d'un geste humain, et ne répond jamais pour
+    /// deux produits.
+    ///
+    /// L'application n'embarque aucune table CIP : elle n'a rien avec
+    /// quoi proposer un produit pour un code, et c'est la garantie que
+    /// le lien est toujours celui qu'un opérateur a posé en présentant
+    /// une boîte. Ce que la base doit tenir, c'est qu'un code ne
+    /// désigne qu'un produit — sans quoi une boîte aurait deux soldes.
+    #[test]
+    fn a_code_is_taught_by_a_human_and_never_answers_for_two_products() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-stupcode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("stup.db"), "secret").unwrap();
+        let skenan = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 5.0)
+            .unwrap();
+        let oxy = db
+            .add_stupefiant(0, "Oxycontin 10 mg", "comprimé", 0.0)
+            .unwrap();
+        const CIP: &str = "3400930000007";
+
+        assert!(db.stup_codes().unwrap().is_empty(), "rien n'est livré");
+        assert!(db.teach_stup_code("", skenan, "2026-09-01", "YS").is_err());
+
+        db.teach_stup_code(CIP, skenan, "2026-09-01", "YS").unwrap();
+        assert_eq!(db.stup_codes().unwrap(), vec![(skenan, CIP.to_owned())]);
+        // Réapprendre le même code au même produit ne fâche personne :
+        // on rescanne une boîte qu'on a déjà présentée.
+        db.teach_stup_code(CIP, skenan, "2026-09-02", "CL").unwrap();
+        assert_eq!(db.stup_codes().unwrap().len(), 1);
+
+        // Mais pas à un autre : une boîte ne peut pas avoir deux soldes,
+        // et la détacher doit être un acte délibéré.
+        assert!(db.teach_stup_code(CIP, oxy, "2026-09-02", "CL").is_err());
+        assert_eq!(db.stup_codes().unwrap(), vec![(skenan, CIP.to_owned())]);
+
+        // Un code mal appris se retire et se réapprend — il ne se
+        // modifie pas.
+        assert!(db.forget_stup_code(CIP).unwrap());
+        assert!(!db.forget_stup_code(CIP).unwrap(), "il n'y était plus");
+        db.teach_stup_code(CIP, oxy, "2026-09-03", "CL").unwrap();
+        assert_eq!(db.stup_codes().unwrap(), vec![(oxy, CIP.to_owned())]);
+
+        // Et le tout se relit par le module qui lit la douchette.
+        let taught: Vec<(i64, String)> = db.stup_codes().unwrap();
+        let borrowed: Vec<(i64, &str)> = taught.iter().map(|(id, c)| (*id, c.as_str())).collect();
+        let scan = crate::codebar::read(CIP, "2026-09-03").unwrap();
+        assert_eq!(
+            crate::codebar::resolve(&scan, &borrowed),
+            crate::codebar::Resolved::Known { stup_id: oxy }
+        );
+    }
+
+    /// Le libellé se corrige, et le changement s'inscrit.
+    ///
+    /// Un produit suivi sous une faute de frappe la gardait pour
+    /// toujours : seuls le seuil, l'unité et l'archivage se
+    /// corrigeaient, et c'est pourtant ce libellé-là qui s'imprime sur
+    /// chaque page du registre.
+    ///
+    /// Deux choses à tenir, et la seconde est la raison d'être de la
+    /// table : les lignes déjà écrites ne bougent pas — elles désignent
+    /// le produit par son identifiant et jamais par une chaîne —, et une
+    /// page imprimée avant la correction doit pouvoir s'expliquer, donc
+    /// le renommage est daté et signé.
+    #[test]
+    fn a_label_is_corrected_and_the_change_is_written_down() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-stupren-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("stup.db"), "secret").unwrap();
+        let id = db
+            .add_stupefiant(0, "Skenna LP 30 mg", "gélule", 5.0)
+            .unwrap();
+        let other = db
+            .add_stupefiant(0, "Oxycontin 10 mg", "comprimé", 0.0)
+            .unwrap();
+        let move_id = db
+            .add_stup_move(&StupMove {
+                id: 0,
+                stup_id: id,
+                kind: "ENTREE".to_owned(),
+                happened_on: "2026-01-05".to_owned(),
+                quantity: 30.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: "OCP".to_owned(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+            })
+            .unwrap();
+
+        let shown = db
+            .stupefiants()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let mut fixed = shown.clone();
+        fixed.label = "  Skenan LP 30 mg  ".to_owned();
+        assert!(db.update_stupefiant(&fixed, &shown, "YS").unwrap());
+
+        let now = db
+            .stupefiants()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        assert_eq!(
+            now.label, "Skenan LP 30 mg",
+            "le libellé est corrigé, rogné"
+        );
+
+        // La trace : ce qu'il valait, ce qu'il vaut, et qui l'a fait.
+        let history = db.stup_label_history(id).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].0, "Skenna LP 30 mg");
+        assert_eq!(history[0].1, "Skenan LP 30 mg");
+        assert!(!history[0].2.is_empty(), "le renommage est daté");
+
+        // Et le registre n'a pas bougé : la ligne désigne le produit,
+        // pas son nom. C'est ce qui autorise le renommage.
+        let moves = db.stup_moves(id).unwrap();
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].id, move_id);
+        assert_eq!(moves[0].stup_id, id);
+        assert!(
+            (db.stup_summary()
+                .unwrap()
+                .iter()
+                .find(|(p, _, _)| p.id == id)
+                .unwrap()
+                .1
+                - 30.0)
+                .abs()
+                < 1e-9
+        );
+
+        // Renommer vers un libellé déjà pris est refusé — le contrôle
+        // existait à la création et pas au renommage, et deux produits
+        // du même nom rendraient le registre illisible.
+        let now2 = db
+            .stupefiants()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let mut clash = now2.clone();
+        clash.label = "oxycontin 10 mg".to_owned();
+        assert!(db.update_stupefiant(&clash, &now2, "YS").is_err());
+        assert_eq!(
+            db.stup_label_history(id).unwrap().len(),
+            1,
+            "un renommage refusé ne laisse pas de trace"
+        );
+        assert_eq!(
+            db.stupefiants()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == other)
+                .unwrap()
+                .label,
+            "Oxycontin 10 mg"
+        );
     }
 
     /// The backup folder says what it holds, and says nothing it does
@@ -37487,6 +38086,7 @@ mod tests {
                     operator: "CL".to_owned(),
                     remark: String::new(),
                     created_at: String::new(),
+                    stup_move: 0,
                 },
                 &tiny(label),
             )
@@ -37505,6 +38105,7 @@ mod tests {
                 operator: "CL".to_owned(),
                 remark: "à rapprocher du relevé".to_owned(),
                 created_at: String::new(),
+                stup_move: 0,
             },
             &tiny("facture"),
         )

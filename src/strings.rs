@@ -135,6 +135,8 @@ mod tests {
             include_str!("graph.rs"),
             include_str!("ordonnancier.rs"),
             include_str!("scans.rs"),
+            include_str!("vigilance.rs"),
+            include_str!("codebar.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

@@ -622,3 +622,56 @@ Elles ne sont **pas** du contenu livré : `[disclaimers]` dans
 avertissement de son propre chef. Ajouter une mention, c'est ajouter une
 clé dans `DisclaimersConfig`, un champ dans Options › Mentions, et
 l'endroit qui l'imprime — jamais un texte en dur.
+
+## Deux modules qui ne livrent **aucun** contenu, exprès
+
+`src/vigilance.rs` et `src/codebar.rs` sont des règles et des lectures,
+pas des catalogues, et cela mérite d'être écrit ici pour que personne ne
+vienne un jour « compléter » ce qui est vide à dessein.
+
+### `src/vigilance.rs` — les questions que le registre pose
+
+- **Où** : le module entier ; il ne connaît ni la base ni egui, et tout
+  ce qu'il sait vient des lignes du registre de l'officine.
+- **Ce qu'il ne saura jamais** : une ligne de délivrance porte un jour,
+  une quantité en unités de comptage, un dossier et un prescripteur en
+  texte libre. **Ni dose quotidienne, ni durée prescrite, ni à quelle
+  ordonnance elle se rattache.** Donc « ce traitement aurait dû durer
+  jusqu'au » ne se calcule pas, et `quantité / max_days` est faux dans
+  le sens dangereux — le plafond est légal et non posologique, et
+  l'utiliser ainsi ferait de chaque délivrance légitime un signalement.
+- **Ce qu'il fait** : le dossier contre lui-même, sous **deux** silences
+  qu'il faut tous deux franchir — le plafond de la famille, qui ne sert
+  qu'à se taire, et la médiane des intervalles antérieurs de ce dossier.
+  Sous trois délivrances antérieures, il ne dit rien.
+- **Le cliquet n'est pas un compte** mais une forme :
+  `every_signal_asks_a_question_rather_than_stating_one` exige que chaque
+  clé finisse par un point d'interrogation, et
+  `a_finding_carries_the_lines_that_produced_it_and_never_fewer_than_two`
+  qu'une question cite les lignes qui la posent. Ajouter un signal, c'est
+  ajouter une variante, sa question dans `strings.fr.toml`, et les lignes
+  qui l'étayent — les deux tests refusent le reste.
+- **Ce qu'on n'y mettra pas**, et le module le dit : un score de mésusage
+  attaché à une personne, une dose quotidienne déduite, et l'équivalent
+  morphine — le plus séduisant et le pire, puisque le registre ne connaît
+  aucune dose quotidienne.
+
+### `src/codebar.rs` — ce qu'une douchette a tapé
+
+- **Où** : le module lit une chaîne de caractères. Une douchette USB est
+  un clavier ; il n'y a ici ni pilote, ni image, ni décodage optique.
+- **Aucune table CIP n'est livrée, et c'est la garantie** : l'application
+  n'a rien avec quoi deviner à quel produit correspond un code. Un code
+  inconnu attend qu'un humain désigne le produit, et le lien qui en
+  résulte (`stup_codes`, dans le fichier du registre) est le contenu de
+  l'officine, comme ses pièces numérisées et son registre.
+- **La clé de contrôle décide, jamais la longueur** — c'est le même
+  principe que le NIR dans `src/vitale.rs`. Treize chiffres dont la clé
+  ne tombe pas sont treize chiffres, pas une coquille à rattraper.
+- **Ajouter un identifiant d'application (AI)** : une branche dans
+  `read_element_string` et son test. Un AI inconnu **arrête** la lecture
+  et le dit (`read_to_end: false`) ; comprendre à moitié une chaîne est
+  pire que s'arrêter.
+- Le jour où la base publique des médicaments arrivera, elle viendra
+  **sous** ces fiches et ne changera pas cette règle : un GTIN ne porte
+  aucun nom, et rapprocher un scan d'un libellé resterait facile et faux.

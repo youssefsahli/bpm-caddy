@@ -5,6 +5,191 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.147.0] - 2026-09-01
+
+### Added
+- **Le registre des stupéfiants : la refonte des onglets.** Il avait
+  grandi en trois écrans — deux portes sur la page « Base médicaments »
+  en 0.143, une vue à lui en 0.145, un troisième onglet en 0.146 — et
+  jamais été dessiné une fois.
+  - **Les listes sont des tableaux.** Les quatre listes du registre
+    étaient des rangées de `horizontal` : chaque colonne commençait où la
+    précédente avait fini, si bien que rien ne tombait sous rien et que
+    le défaut empirait à chaque ligne écrite. C'était le seul endroit de
+    l'application qui enfreignait encore cette règle. Neuf colonnes, les
+    mêmes pour les trois listes, avec des cellules vides là où une liste
+    ne s'en sert pas.
+  - **Le solde en face de chaque ligne**, qui est la colonne par
+    laquelle un registre se lit et qui n'existait pas :
+    `ordonnancier::running` la calculait depuis toujours et seule la
+    courbe la consommait. Il fallait additionner de tête pour vérifier
+    quoi que ce soit.
+  - **Une délivrance s'écrit sans quitter l'écran.** Le formulaire
+    n'avait pas de champ « dossier » : il fallait que le dossier soit
+    ouvert, et le seul chemin pour l'ouvrir — le tiroir des patients —
+    bascule sur l'écran de recherche et referme le registre. Le message
+    disait « ouvrez d'abord le dossier du patient » et le moyen de le
+    faire mettait dehors. La règle ne bouge pas — une délivrance sans
+    dossier ne prouve rien — c'est le moyen qui entre dans le
+    formulaire.
+  - **Le comptoir au clavier** : les quatre natures aux chiffres 1 à 4
+    comme le choix rapide des actes, Entrée pour inscrire, les
+    raccourcis de quantité tirés de la **durée maximale de la famille du
+    produit** au lieu d'une liste écrite en dur qui proposait 28 pour un
+    produit plafonné à 7, et les derniers prescripteurs de ce produit en
+    pastilles.
+  - **La douchette.** Un lecteur USB tape comme un clavier : scanner la
+    boîte choisit le produit suivi. Rien n'est deviné — l'application
+    n'embarque aucune table CIP, donc un code inconnu attend qu'un
+    humain désigne le produit, et c'est ce qui garantit que le lien est
+    toujours celui que quelqu'un a posé en présentant une boîte.
+  - **La courbe compte les jours et non les lignes.** L'axe était
+    l'indice de la ligne : un mois sans rien et une après-midi chargée
+    occupaient la même largeur, si bien que la courbe montrait l'ordre
+    des écritures et jamais le temps. Le seuil la traverse — il était
+    calculé dans le plafond de l'échelle sans jamais être dessiné — et
+    le jour survolé se lit.
+  - **Le compte sur la porte** : « Produits suivis — 3 à compter ». La
+    liste de contrôle se lisait en couleur, ligne par ligne, et personne
+    ne la totalisait. Le nombre de jours depuis le dernier comptage,
+    qui n'atteignait que le papier, se lit sous la souris.
+  - **Ce que le registre sait dire et ne disait pas** : à quel rythme un
+    produit part, combien de jours le solde tient à ce rythme, et si les
+    comptages tombent juste. Les manques et les excédents sont comptés
+    **séparément et jamais en net** — un comptage à −3 et un à +3 ne
+    font pas « rien », ils font deux comptages inexpliqués.
+- **Les trous de l'ordonnancier se voient.** Le commentaire de cette vue
+  affirmait depuis toujours que « c'est la seule vue où le manque d'un
+  numéro se voit », et rien ne le marquait : les lignes s'affichaient
+  triées et il fallait que le lecteur remarque le saut sur deux cents
+  numéros. Une délivrance annulée garde le sien et ne fait pas un trou —
+  c'est ce qu'un détecteur naïf rate, et le rater ferait ressembler
+  chaque correction à une dissimulation.
+- **Le registre d'un produit s'imprime.** Deux documents existaient : la
+  liste d'inventaire et l'ordonnancier de l'année. Celui-ci manquait, et
+  c'est la page qu'une inspection demande.
+- **Un onglet « Vigilance ».** Voir plus bas : le module était écrit,
+  l'écran le montre. Les questions d'un côté, ce que l'officine a
+  délivré sous chaque nom de l'autre — **trié par nom et non par
+  volume**, parce qu'un tableau trié par volume est un classement de
+  suspects.
+- **Une pièce numérisée peut justifier une ligne du registre.** Une
+  inspection demande la ligne *et* l'ordonnance qui la porte ; les deux
+  existaient sans se connaître, et les rapprocher se faisait à la main
+  sur une date et un nom de fichier.
+
+### Fixed
+- **`[stock] count_days` était lu et jeté.** Le champ existe dans
+  `config.rs`, il est documenté dans le config.toml livré et dans
+  CLAUDE.md, sa valeur par défaut est trente — et la session en portait
+  trente en dur, sans jamais regarder la configuration. Le délai que
+  l'officine se donne entre deux comptages ne se donnait pas : le
+  modifier ne changeait rien à la liste de contrôle.
+- **Le grossiste d'une réception repartait sur la délivrance
+  suivante.** Le formulaire écrivait `prescriber`, `supplier` et
+  `reference` sur toutes les natures, et n'effaçait après écriture que
+  la quantité, la date, l'observation et le bon de livraison : on
+  saisissait une réception chez CERP, on passait à Délivrance, et la
+  délivrance partait au registre avec « CERP » à côté du nom du médecin.
+  - Corrigé **à l'écriture** et pas seulement dans le formulaire qui le
+    proposait. La base appliquait déjà cette discipline au dossier et à
+    la ligne annulée — une réception n'a pas de patient — et elle
+    l'applique maintenant aux trois autres champs : le prescripteur
+    n'appartient qu'à une délivrance, le grossiste et le bon de
+    livraison qu'à une réception. Une ligne fausse dans un registre
+    inaltérable ne se corrige que par une annulation ; elle se refuse
+    donc avant d'être écrite, et pour tous les appelants.
+  - Le formulaire efface en plus ce que la nature choisie ne porte pas,
+    au changement de nature comme après l'écriture.
+- **Ctrl+F quittait le registre.** La touche cherche d'abord la
+  recherche de la liste ouverte ; le registre n'était pas dans cette
+  liste, alors elle tombait dans la dernière branche, basculait sur
+  l'écran de recherche et refermait le dossier au passage. `stup_body`
+  consommait pourtant `focus_list_search` depuis le premier jour :
+  personne ne l'y posait jamais.
+- **Une quantité illisible n'est plus zéro.** « 1,,5 » ou « 1O » se
+  lisaient comme zéro, la glissière retombait à zéro, et le seul retour
+  était le refus générique de la base — « la quantité doit être
+  positive » — qui ne disait pas ce qui n'allait pas. Le vide et
+  l'illisible se distinguent, et chacun le dit.
+- Le message du registre s'efface en changeant d'onglet : c'est un seul
+  emplacement pour les deux onglets qui l'affichent, et une erreur levée
+  sur l'ordonnancier attendait encore sur les stupéfiants, où elle ne
+  voulait plus rien dire.
+- Renommer un produit suivi ne pouvait pas créer de doublon : le refus
+  du même libellé existait à la création et pas au renommage, un
+  contrôle sur la moitié des chemins qui y mènent. Deux produits du même
+  nom se partageraient un registre en se croyant distincts.
+
+### Groundwork
+- **Un calendrier au lieu de trois.** `ordonnancier` comptait les jours
+  par la formule julienne, `location` par la formule civile — deux
+  arithmétiques grégoriennes pour la même soustraction. Aucune n'était
+  fausse ; c'est exactement la situation que la maison refuse ailleurs,
+  parce que deux mesures d'une même chose finissent par diverger et que
+  celle qui divergera est celle que personne ne relit. `src/date.rs` les
+  remplace, la paire civile étant gardée parce qu'elle a un inverse —
+  ce dont la lecture d'une péremption aura besoin. Un test parcourt
+  chaque jour de 1900 à 2100 et vérifie que l'aller et le retour se
+  répondent ; le compte final n'est juste que si 1900 n'est pas
+  bissextile et 2000 l'est.
+  - `surveillance::months_between` reste à part, à dessein : il ne
+    partage aucune arithmétique (des mois de calendrier, pas des jours)
+    et sa lecture est volontairement plus stricte.
+- **`src/vigilance.rs` : les trois questions que le registre pose.**
+  Chaque délivrance porte depuis toujours son dossier, son prescripteur,
+  son jour et sa quantité, et rien ne les interrogeait ensemble — alors
+  que les monographies nomment les mêmes trois signaux page après page.
+  Pur, testé, sans vue pour l'instant.
+  - **Ce que le registre ne sait pas est écrit avant tout le reste** :
+    ni dose quotidienne, ni durée prescrite, ni à quelle ordonnance une
+    ligne se rattache. Donc « aurait dû durer jusqu'au » ne se calcule
+    pas, et l'approximation qui vient à l'esprit — la quantité divisée
+    par le plafond — est fausse dans le sens dangereux : le plafond est
+    légal et non posologique, si bien qu'une ordonnance de sept jours
+    sous un plafond de vingt-huit ferait de **chaque délivrance
+    légitime** un signalement. Une règle qui crie au loup est une règle
+    qu'on désactive.
+  - Ce qui se sait, c'est le dossier contre lui-même : deux silences
+    indépendants, tous deux à franchir. Le plafond, qui ne sert **qu'à
+    se taire**, et la médiane des intervalles antérieurs de ce dossier.
+    Sous trois délivrances antérieures il n'y a pas de médiane, donc pas
+    de question — le module refuse de parler d'un dossier qu'il vient de
+    rencontrer.
+  - **Une question, jamais un verdict, et le type l'impose** : pas de
+    phrase, pas de gravité, pas de score, donc nulle part où écrire une
+    conclusion. L'accès s'appelle `question_key`, un test exige que
+    chacune **finisse par un point d'interrogation**, une question ne
+    peut pas exister sans au moins deux lignes du registre qui la
+    posent, et le dossier n'est qu'un numéro.
+  - Le tableau des prescripteurs est rendu **par nom et non par
+    volume** : un tableau trié par volume est un classement de suspects,
+    et il ne dit de toute façon rien du prescripteur — un médecin de
+    soins palliatifs y sera en tête, correctement et innocemment.
+  - Écartés délibérément, et dits dans le module : tout score de
+    mésusage attaché à une personne, toute inférence d'une dose
+    quotidienne, et l'équivalent morphine — le plus séduisant et le pire,
+    puisque le registre ne connaît aucune dose quotidienne et qu'un
+    « équivalent délivré » se lirait comme une dose.
+- **Le libellé d'un produit suivi peut se corriger, et le changement
+  s'inscrit** — côté base seulement pour l'instant : le champ arrive
+  avec la refonte du volet, où la bande du haut est mesurée et
+  plafonnée. Un quatrième contrôle sur la rangée actuelle la fait passer
+  à deux lignes à 1024x700, et le registre y tombe à une ligne coupée ;
+  la capture le montre, `smoke.sh` ne le voyait pas.
+  - Le renommage ne dément pas l'inaltérabilité, et c'est la seule
+    raison pour laquelle il est permis : **une ligne du registre désigne
+    son produit par son identifiant et jamais par une chaîne**, donc
+    rien de ce qui a été délivré ne bouge. Le test le vérifie plutôt que
+    de l'affirmer — il renomme un produit qui porte déjà une ligne, puis
+    relit la ligne et le solde.
+  - Une page imprimée avant la correction porte l'ancien libellé, et
+    rien n'expliquerait pourquoi elle ne ressemble pas à l'écran. D'où
+    `stup_labels` : ce que le produit s'appelait, ce qu'il s'appelle,
+    qui l'a fait et quand — écrit **dans la transaction qui renomme**,
+    parce qu'un renommage sans sa trace, ou une trace sans son
+    renommage, seraient l'un et l'autre pires que rien.
+
 ## [0.146.0] - 2026-08-31
 
 ### Changed

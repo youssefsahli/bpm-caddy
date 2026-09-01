@@ -1329,6 +1329,122 @@ fn stock_check_source(
 /// Une ligne annulée est imprimée **annulée**, avec son motif, jamais
 /// retirée : une feuille d'où l'on aurait ôté les erreurs ne serait pas
 /// une copie du registre.
+/// Le registre d'un produit, tel qu'un contrôle le lit.
+///
+/// Deux documents s'imprimaient : la liste d'inventaire et
+/// l'ordonnancier de l'année. **Celui-ci manquait**, et c'est pourtant
+/// la page qu'une inspection demande : un produit, ses lignes dans
+/// l'ordre des jours, ce qui entre, ce qui sort, et le solde en face de
+/// chacune.
+pub fn open_stup_register(
+    label: &str,
+    unit: &str,
+    rows: &[crate::db::StupMove],
+    running: &[f64],
+    cancelled: &std::collections::HashSet<i64>,
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        stup_register_source(label, unit, rows, running, cancelled, pharmacy, today),
+        "registre_stupefiant",
+    )
+}
+
+fn stup_register_source(
+    label: &str,
+    unit: &str,
+    rows: &[crate::db::StupMove],
+    running: &[f64],
+    cancelled: &std::collections::HashSet<i64>,
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> String {
+    use crate::ordonnancier::Kind;
+    let mut src = String::from(
+        "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
+         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[Registre des stupéfiants — #{}]]\n#v(1mm)\n#align(center)[#text(9pt)[#{} — édité le #{}]]\n#v(4mm)\n",
+        typst_str(label),
+        typst_str(&pharmacy.name),
+        typst_str(&crate::db::format_french_date(today))
+    ));
+    let mut body = String::new();
+    for (i, m) in rows.iter().enumerate() {
+        let struck = cancelled.contains(&m.id);
+        let cell = |s: &str| {
+            if struck {
+                format!("[#strike[#{}]]", typst_str(s))
+            } else {
+                format!("[#{}]", typst_str(s))
+            }
+        };
+        let kind = Kind::from_key(&m.kind);
+        let qty = crate::codex::format_quantity(m.quantity);
+        // Deux colonnes, comme sur le papier : ce qui entre et ce qui
+        // sort. Une annulation ne porte de quantité dans ni l'une ni
+        // l'autre — ce qu'elle rend se lit sur la ligne qu'elle nomme.
+        let (into, out) = match kind {
+            Kind::Entree => (qty.clone(), String::new()),
+            Kind::Sortie | Kind::Perte => (String::new(), qty.clone()),
+            Kind::Inventaire => (format!("= {qty}"), String::new()),
+            Kind::Annulation => (String::new(), String::new()),
+        };
+        let no = if m.ordo_no > 0 {
+            crate::ordonnancier::number_label(m.ordo_year as u32, m.ordo_no as u32)
+        } else {
+            String::new()
+        };
+        let file = if m.patient_id > 0 {
+            format!("dossier {}", m.patient_id)
+        } else {
+            String::new()
+        };
+        let side = [
+            m.prescriber.as_str(),
+            m.supplier.as_str(),
+            m.reference.as_str(),
+            m.remark.as_str(),
+            m.operator.as_str(),
+        ]
+        .into_iter()
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ");
+        body.push_str(&format!(
+            "{}, {}, {}, {}, {}, {}, {}, [#{}],\n",
+            cell(&crate::db::format_french_date(&m.happened_on)),
+            cell(&no),
+            cell(crate::strings::tr(kind.label_key())),
+            cell(&into),
+            cell(&out),
+            cell(&crate::codex::format_quantity(
+                running.get(i).copied().unwrap_or(0.0)
+            )),
+            cell(&file),
+            typst_str(&if struck {
+                format!("annulée · {side}")
+            } else {
+                side
+            }),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("[], [], [], [], [], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,\n  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*Dossier*], [*Mention*],\n{body})\n"
+    ));
+    src.push_str(&format!(
+        "#v(4mm)\n#text(8pt, style: \"italic\")[{} ligne(s) au registre, comptées en {}. Une ligne écrite ne se rature pas : elle reste, barrée, et une ligne de plus la désigne et défait ce qu'elle avait fait au stock. Un inventaire **pose** le solde au lieu de s'y ajouter, si bien que les colonnes ne s'additionnent pas au solde final dès qu'un comptage a trouvé un écart — c'est le comptage qui l'explique. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]\n",
+        rows.len(),
+        if unit.is_empty() { "unités" } else { unit }
+    ));
+    src
+}
+
 pub fn open_ordonnancier(
     rows: &[crate::db::StupMove],
     labels: &std::collections::HashMap<i64, String>,
@@ -2781,6 +2897,108 @@ mod tests {
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(
                 std::path::Path::new(&dir).join("ordonnancier_exemple.pdf"),
+                &pdf,
+            );
+        }
+    }
+
+    /// Le registre d'un produit s'imprime avec son solde en face de
+    /// chaque ligne, ses annulations barrées, et la phrase qui explique
+    /// pourquoi les colonnes ne s'additionnent pas au solde final.
+    ///
+    /// Cette phrase n'est pas de la décoration : un inventaire **pose**
+    /// le solde au lieu de s'y ajouter, donc dès qu'un comptage a trouvé
+    /// un écart, entrées moins sorties ne tombe plus sur le solde. Sans
+    /// elle, la page a l'air fausse.
+    #[test]
+    fn the_register_of_one_product_prints_its_balance_against_every_line() {
+        let line = |id: i64, kind: &str, qty: f64, day: &str, expected: f64| crate::db::StupMove {
+            id,
+            stup_id: 1,
+            kind: kind.to_owned(),
+            happened_on: day.to_owned(),
+            quantity: qty,
+            ordo_year: if kind == "SORTIE" { 2026 } else { 0 },
+            ordo_no: if kind == "SORTIE" { id } else { 0 },
+            patient_id: if kind == "SORTIE" { 217 } else { 0 },
+            prescriber: if kind == "SORTIE" {
+                "Dr Martin".to_owned()
+            } else {
+                String::new()
+            },
+            supplier: String::new(),
+            reference: String::new(),
+            expected,
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            cancels: 0,
+        };
+        let rows = vec![
+            line(1, "ENTREE", 30.0, "2026-01-05", 0.0),
+            line(2, "SORTIE", 14.0, "2026-01-08", 0.0),
+            line(3, "INVENTAIRE", 15.0, "2026-02-01", 16.0),
+        ];
+        let moves: Vec<crate::ordonnancier::Move> = rows
+            .iter()
+            .map(|m| crate::ordonnancier::Move {
+                kind: crate::ordonnancier::Kind::from_key(&m.kind),
+                quantity: m.quantity,
+                day: &m.happened_on,
+                seq: m.id,
+                cancels: m.cancels,
+                expected: m.expected,
+            })
+            .collect();
+        let running = crate::ordonnancier::running(&moves);
+        // 30, puis 16, puis le comptage qui **pose** 15.
+        assert_eq!(running.len(), 3);
+        assert!((running[2] - 15.0).abs() < 1e-9, "{running:?}");
+
+        let mut cancelled = std::collections::HashSet::new();
+        cancelled.insert(2_i64);
+        let src = stup_register_source(
+            "Skenan LP 30 mg",
+            "gélule",
+            &rows,
+            &running,
+            &cancelled,
+            &PharmacyConfig::default(),
+            "2026-08-30",
+        );
+        assert!(src.contains("Registre des stupéfiants"));
+        assert!(src.contains("Skenan LP 30 mg"));
+        assert!(src.contains("[*Solde*]"), "la colonne du solde");
+        assert!(src.contains("strike"), "la ligne annulée reste, barrée");
+        assert!(
+            src.contains("un comptage a trouvé un écart"),
+            "la page doit expliquer pourquoi les colonnes ne tombent pas"
+        );
+        assert!(src.contains("gélule"), "l'unité de comptage est dite");
+
+        // Un registre vide compile aussi : un produit suivi qu'on n'a
+        // pas encore mouvementé est une page blanche, pas une erreur.
+        let empty = stup_register_source(
+            "Skenan LP 30 mg",
+            "",
+            &[],
+            &[],
+            &std::collections::HashSet::new(),
+            &PharmacyConfig::default(),
+            "2026-08-30",
+        );
+        let world = PdfWorld::new(empty);
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+
+        let world = PdfWorld::new(src);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le registre doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("registre_exemple.pdf"),
                 &pdf,
             );
         }

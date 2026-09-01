@@ -79,6 +79,28 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   base shipped with 106 followed products is 106 zero balances and a
   control list nobody opens again. Pure, tested, no clock: the day is
   passed in),
+  `src/date.rs` (the calendar, written **once**: it was written three
+  times — `ordonnancier` by the julienne formula, `location` by the
+  civil one, plus a separate ISO reader in `surveillance`. None was
+  wrong, and that is exactly what this codebase refuses elsewhere. The
+  civil pair is kept because it has an inverse, which reading a box's
+  expiry needs. One test walks every day from 1900 to 2100),
+  `src/vigilance.rs` (the three questions the register asks —
+  rapprochement, several prescribers, dose escalation — and **what it
+  cannot know**, written before anything else: no daily dose, no
+  prescribed duration. The family's ceiling is used **only to fall
+  silent**, never to infer a rate; under three prior deliveries the
+  module says nothing. A question, never a verdict, and the type
+  enforces it: no field to write a conclusion in, the accessor is
+  `question_key`, a test demands the question mark, and a finding cites
+  at least two register lines. Pure, tested, **ships no catalogue**),
+  `src/codebar.rs` (CIP13 and the GS1 DataMatrix as a scanner types them
+  — it is a keyboard, so no driver and no image. The check digit
+  decides, never the length, like the NIR in `vitale.rs`. AI 01 being
+  fixed-length and first, identifying the product never depends on the
+  FNC1 separator: only the lot and expiry do, and a lot nothing closed
+  says so. **No CIP table is shipped** — an unknown code waits for a
+  human to name the product),
   `src/scans.rs` (the scanned pieces: what a file **is**, read in its
   bytes and never in its name, what a piece can be, and how the
   officine's own scanner is asked for one — pure, tested, reads no
@@ -374,7 +396,7 @@ upgrade is decided, the number to defend is the logic one, and
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
-  stup_catalogue|ordonnancier|scans|
+  stup_catalogue|ordonnancier|vigilance|scans|
   patient_scans|explorer|explorer_organ|classes|classes_outside|export`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page.

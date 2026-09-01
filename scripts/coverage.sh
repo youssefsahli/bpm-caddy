@@ -19,8 +19,14 @@
 set -uo pipefail
 
 # Lower these never; raise them whenever a batch of tests lands.
-TOTAL_FLOOR=44
-LOGIC_FLOOR=88
+#
+# Et laissez-leur de la marge. Le plancher du workspace a été posé une
+# fois **à la valeur mesurée exactement**, et le lot suivant de vues —
+# des lignes que rien ne couvre, par construction — l'a fait tomber au
+# dixième de point près. Un plancher sans marge n'est pas un plancher,
+# c'est un cliquet qui casse.
+TOTAL_FLOOR=45
+LOGIC_FLOOR=89
 
 # The modules that carry the decisions: pure, or nearly so, and the ones
 # a wrong answer would reach a patient through.
