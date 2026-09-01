@@ -3313,6 +3313,38 @@ impl Session {
                 std::fs::read(&path).map_err(|e| trf("vitale_dump_error", format!("{path} : {e}")))
             }
             Err(_) => match config.vitale.script() {
+                // Aucune commande configurée : le lecteur et la carte
+                // sont vus, et **on ne leur demande rien**. Le message
+                // disait « Carte lue (0 octets) », ce qui est faux — la
+                // carte n'a pas été lue, on ne lui a rien adressé — et
+                // renvoyait vers la séquence APDU en la disant « peut-être
+                // à compléter » là où c'est la cause certaine. Un
+                // diagnostic qui hésite quand il sait est un diagnostic
+                // qu'on ne suit pas.
+                Ok(script) if script.is_empty() => {
+                    let mut note = tr("vitale_no_script").to_owned();
+                    // Le lecteur et l'ATR restent affichés : ce sont eux
+                    // qui disent que le reste du chemin fonctionne.
+                    // Et ce que le lecteur répond **dans les deux cas** :
+                    // sans séquence et sans lecteur, les deux manquent,
+                    // et n'en dire qu'un envoie corriger la mauvaise
+                    // moitié.
+                    match crate::vitale::read_card(&config.vitale.reader, &[]) {
+                        Ok(r) => {
+                            note.push('\n');
+                            note.push_str(&trf("vitale_readers", r.readers.join(", ")));
+                            if !r.atr.is_empty() {
+                                note.push_str(&trf("vitale_atr", &r.atr));
+                            }
+                        }
+                        Err(e) => {
+                            note.push('\n');
+                            note.push_str(&e);
+                        }
+                    }
+                    self.vitale_note = Some((true, note));
+                    return;
+                }
                 Ok(script) => crate::vitale::read_card(&config.vitale.reader, &script).map(|r| {
                     // The diagnostic is kept whatever happens next: on a
                     // post where nothing works, « quels lecteurs voit-on

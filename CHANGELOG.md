@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.147.1] - 2026-09-01
+
+### Fixed
+- **La lecture de la carte Vitale disait « Carte lue (0 octets) » quand
+  elle n'avait rien lu du tout.** Sans séquence APDU configurée, le
+  lecteur est vu, la carte est connectée, son ATR s'affiche — et **rien
+  ne lui est demandé**. Le message annonçait pourtant une lecture, et
+  renvoyait vers la séquence en la disant « peut-être à compléter » là
+  où c'est la cause certaine. Un diagnostic qui hésite quand il sait est
+  un diagnostic qu'on ne suit pas.
+  - Le cas est nommé : aucune commande configurée, et où la renseigner.
+    La séquence relève des spécifications SESAM-Vitale, sous licence,
+    et c'est pourquoi elle vit dans la configuration et non dans le
+    programme.
+  - Et le lecteur est rapporté **dans les deux cas**. Sans séquence *et*
+    sans lecteur, les deux manquent, et n'en dire qu'un envoie corriger
+    la mauvaise moitié.
+
 ## [0.147.0] - 2026-09-01
 
 ### Added
