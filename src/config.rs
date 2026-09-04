@@ -155,6 +155,26 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # versionnées. Vide, l'application liste quand même les lecteurs et
 # affiche l'ATR de la carte — de quoi voir si le lecteur et la carte sont
 # vus.
+#
+# **Le lecteur doit être en mode PC/SC, et il ne l'est pas d'usine.** Les
+# lecteurs Kapelse — kap&link, eS-KAP-Ad, TI-KAP — sont livrés en mode
+# PSS (l'ancien protocole GALSS) et se règlent sur l'appareil :
+# Menu / Réglages / Lecteur / Mode USB : mode PC/SC. Le choix demande le
+# micrologiciel 04.22 ou plus récent ; sans lui l'entrée n'existe pas.
+# Un poste qui tournait auparavant en PSS sur USB doit voir GALSS et ses
+# galss.ini désinstallés, faute de quoi les deux piles se disputent le
+# lecteur.
+#
+# **Et le mode PC/SC est un mode de la liaison USB.** Un kap&link relié
+# en Ethernet parle PSS, que PC/SC ne voit pas : sur ces postes-là
+# l'application ne trouve aucun lecteur, et la lecture de la carte passe
+# par l'USB ou ne passe pas.
+#
+# Sous Linux il faut en plus le démon pcscd et le pilote libccid. Le
+# kap&link se présente en 2947:0101, que les anciennes versions de
+# libccid ne connaissaient pas : si pcsc_scan ne montre rien alors que le
+# mode est bon, ce sont ces deux identifiants qu'il faut ajouter au
+# Info.plist de ifd-ccid.bundle.
 # enabled = false
 # reader = ""
 # apdu = ["00A4040007A0000000180C000100", "00B0000000"]

@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.147.2] - 2026-09-04
+
+### Changed
+- **Le config.toml livré dit comment régler le lecteur de carte
+  Vitale**, ce qu'aucune documentation ne portait et qui coûte une
+  demi-journée à qui l'apprend seul.
+  - Les lecteurs Kapelse — kap&link, eS-KAP-Ad, TI-KAP — sont livrés en
+    mode PSS (l'ancien protocole GALSS) et **pas** en PC/SC. Le mode se
+    règle sur l'appareil, et l'entrée n'existe qu'à partir du
+    micrologiciel 04.22.
+  - **Le mode PC/SC est un mode de la liaison USB.** Un lecteur relié en
+    Ethernet parle PSS, que `SCardListReaders` ne voit pas : sur ces
+    postes l'application ne trouve aucun lecteur, et ce n'est pas une
+    panne — c'est la liaison qui ne mène pas là.
+  - Sous Linux, le démon pcscd et le pilote libccid en plus ; le
+    kap&link se présente en 2947:0101, que les anciennes versions de
+    libccid ignoraient. Sous Windows il n'y a rien à installer : PC/SC
+    fait partie du système.
+  - Et l'avertissement qui compte : basculer en PC/SC un poste dont le
+    LGO lit la carte en PSS lui retire sa lecture, donc sa facturation.
+
 ## [0.147.1] - 2026-09-01
 
 ### Fixed
