@@ -10557,54 +10557,101 @@ impl App {
             let inner = motif::well(ui, body);
             let mut running_total = 0.0;
             motif::inside(ui, inner, |ui| {
-                // Horizontal too: the row ends in buttons, and a button
-                // that has fallen off the panel is a button nobody can
-                // press. Below about 1100 px the last one needs it.
-                egui::ScrollArea::both()
+                // Verticale seulement. La rangée finit par des boutons,
+                // et un bouton tombé hors du panneau est un bouton que
+                // personne ne presse : plutôt que d'obliger à défiler à
+                // droite pour l'atteindre puis à gauche pour relire le
+                // matériel, les colonnes que la largeur refuse
+                // descendent sous le nom. Même arbitrage qu'au carnet
+                // de vaccination.
+                egui::ScrollArea::vertical()
                     .id_salt("locations")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        let avail = ui.available_width();
+                        let gap = 10.0;
+                        let cap = avail * 0.20;
+                        let date_w = Self::widest(
+                            ui,
+                            11.5,
+                            [tr("loc_col_started"), "00/00/0000"].into_iter(),
+                        );
+                        let ended_w = Self::widest(
+                            ui,
+                            11.5,
+                            [tr("loc_col_ended"), "00/00/0000", tr("loc_running")].into_iter(),
+                        );
+                        // Mesurée sur ce que la colonne porte vraiment :
+                        // « 13 semaines · 156 € ». Son en-tête seul est
+                        // deux fois trop court, et un plancher pris sur
+                        // la largeur du panneau la faisait au contraire
+                        // deux fois trop large — assez pour renvoyer la
+                        // table à sa forme serrée sur un écran où les
+                        // six colonnes tenaient.
+                        let due_w = Self::widest(
+                            ui,
+                            12.0,
+                            [
+                                tr("loc_col_due"),
+                                tr("loc_bad_dates"),
+                                &trn(
+                                    "loc_periods",
+                                    &[&"00", &crate::config::Period::Week.agreed(2), &"0000"],
+                                ),
+                            ]
+                            .into_iter(),
+                        )
+                        .min(cap);
+                        let renew_w = Self::widest(
+                            ui,
+                            11.5,
+                            [tr("loc_col_renewal"), "00/00/0000"].into_iter(),
+                        );
+                        let btn_w = Self::button_width(ui, tr("loc_return"))
+                            + Self::button_width(ui, tr("loc_renew"))
+                            + Self::button_width(ui, tr("patient_delete_confirm"))
+                            + ui.spacing().item_spacing.x * 2.0;
+                        let name_floor = Self::widest(ui, 12.0, [tr("loc_col_label")].into_iter());
+                        let full = date_w + ended_w + due_w + renew_w + btn_w + gap * 5.0;
+                        // Serré, les trois boutons prennent une rangée à
+                        // eux : les laisser sur celle du nom ne laissait
+                        // que soixante pixels au matériel, et
+                        // « Nébuliseur » se lisait « Nébulis… » au-dessus
+                        // de quatre lignes de note. Une rangée de plus
+                        // par location coûte moins qu'un nom illisible.
+                        let tight = renew_w + gap;
+                        let (cols, taken) = if avail - full >= name_floor {
+                            (6, full)
+                        } else {
+                            (2, tight)
+                        };
+                        let name_w = (avail - taken).max(name_floor);
                         egui::Grid::new("loc_grid")
-                            .num_columns(6)
-                            .spacing([10.0, 6.0])
+                            .num_columns(cols)
+                            .spacing([gap, 6.0])
                             .striped(true)
                             .show(ui, |ui| {
-                                for header in [
-                                    tr("loc_col_label"),
-                                    tr("loc_col_started"),
-                                    tr("loc_col_ended"),
-                                    tr("loc_col_due"),
-                                    tr("loc_col_renewal"),
-                                    "",
-                                ] {
-                                    ui.label(
-                                        egui::RichText::new(header)
-                                            .size(10.5)
-                                            .color(motif::text_dim()),
-                                    );
+                                let dim = |t: &str| {
+                                    egui::RichText::new(t).size(10.5).color(motif::text_dim())
+                                };
+                                Self::grid_cell(ui, name_w, dim(tr("loc_col_label")));
+                                if cols == 6 {
+                                    Self::grid_cell(ui, date_w, dim(tr("loc_col_started")));
+                                    Self::grid_cell(ui, ended_w, dim(tr("loc_col_ended")));
+                                    Self::grid_cell(ui, due_w, dim(tr("loc_col_due")));
+                                }
+                                Self::grid_cell(ui, renew_w, dim(tr("loc_col_renewal")));
+                                if cols == 6 {
+                                    ui.label("");
                                 }
                                 ui.end_row();
                                 for l in &rows {
-                                    ui.label(egui::RichText::new(&l.label).size(12.0));
-                                    ui.label(
-                                        egui::RichText::new(db::format_french_date(&l.started_on))
-                                            .size(11.5),
-                                    );
-                                    ui.label(
-                                        egui::RichText::new(if l.running() {
-                                            tr("loc_running").to_owned()
-                                        } else {
-                                            db::format_french_date(&l.ended_on)
-                                        })
-                                        .size(11.5)
-                                        .color(
-                                            if l.running() {
-                                                motif::accent()
-                                            } else {
-                                                motif::text()
-                                            },
-                                        ),
-                                    );
+                                    let ended = if l.running() {
+                                        tr("loc_running").to_owned()
+                                    } else {
+                                        db::format_french_date(&l.ended_on)
+                                    };
+                                    let started = db::format_french_date(&l.started_on);
                                     let due = crate::location::amount_due(
                                         &l.started_on,
                                         &l.ended_on,
@@ -10613,38 +10660,98 @@ impl App {
                                         l.fee,
                                         l.max_periods,
                                     );
-                                    // The count and the money share one
-                                    // cell: with seven columns and three
-                                    // buttons, the row ran off the right
-                                    // of the panel at a counter width.
-                                    match due {
+                                    // Le décompte et la somme partagent
+                                    // une cellule : à sept colonnes et
+                                    // trois boutons, la rangée sortait
+                                    // du panneau à la largeur d'un
+                                    // comptoir.
+                                    //
+                                    // Le total court se compte **quelle
+                                    // que soit la forme** : une colonne
+                                    // qu'on ne montre pas reste une
+                                    // somme qu'on facture.
+                                    let (billable, bad) = match due {
                                         Some((periods, amount)) => {
                                             if l.running() {
                                                 running_total += amount;
                                             }
-                                            ui.label(
-                                                egui::RichText::new(trn(
+                                            (
+                                                trn(
                                                     "loc_periods",
                                                     &[
                                                         &periods.to_string(),
                                                         &l.period().agreed(periods),
                                                         &crate::codex::format_quantity(amount),
                                                     ],
-                                                ))
-                                                .size(12.0),
-                                            );
+                                                ),
+                                                false,
+                                            )
                                         }
-                                        None => {
-                                            // A backwards or unreadable
-                                            // date bills nothing and says
-                                            // so, rather than showing 0 €
-                                            // as if it were a decision.
-                                            ui.label(
-                                                egui::RichText::new(tr("loc_bad_dates"))
-                                                    .size(11.0)
-                                                    .color(motif::alert()),
+                                        // Une date à l'envers ou
+                                        // illisible ne facture rien et
+                                        // le dit, plutôt que d'écrire
+                                        // 0 € comme si c'était une
+                                        // décision.
+                                        None => (tr("loc_bad_dates").to_owned(), true),
+                                    };
+                                    // Le nom, et sous lui ce que la
+                                    // largeur n'a pas permis de mettre
+                                    // en colonnes.
+                                    let foot = if cols == 6 {
+                                        String::new()
+                                    } else {
+                                        format!("{started} · {ended} · {billable}")
+                                    };
+                                    ui.scope(|ui| {
+                                        ui.set_width(name_w);
+                                        ui.vertical(|ui| {
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&l.label).size(12.0),
+                                                )
+                                                .truncate(),
                                             );
-                                        }
+                                            if !foot.is_empty() {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(foot)
+                                                            .size(10.5)
+                                                            .italics()
+                                                            .color(if bad {
+                                                                motif::alert()
+                                                            } else {
+                                                                motif::text_faint()
+                                                            }),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                        });
+                                    });
+                                    if cols == 6 {
+                                        Self::grid_cell(
+                                            ui,
+                                            date_w,
+                                            egui::RichText::new(started).size(11.5),
+                                        );
+                                        Self::grid_cell(
+                                            ui,
+                                            ended_w,
+                                            egui::RichText::new(ended).size(11.5).color(
+                                                if l.running() {
+                                                    motif::accent()
+                                                } else {
+                                                    motif::text()
+                                                },
+                                            ),
+                                        );
+                                        Self::grid_cell(
+                                            ui,
+                                            due_w,
+                                            egui::RichText::new(billable).size(12.0).color(
+                                                if bad { motif::alert() } else { motif::text() },
+                                            ),
+                                        );
                                     }
                                     // The renewal, coloured by how it
                                     // stands rather than merely printed.
@@ -10664,19 +10771,29 @@ impl App {
                                                 }
                                                 _ => motif::text(),
                                             };
-                                            ui.label(
+                                            Self::grid_cell(
+                                                ui,
+                                                renew_w,
                                                 egui::RichText::new(db::format_french_date(&day))
                                                     .size(11.5)
                                                     .color(colour),
                                             );
                                         }
                                         _ => {
-                                            ui.label(
+                                            Self::grid_cell(
+                                                ui,
+                                                renew_w,
                                                 egui::RichText::new("—")
                                                     .size(11.5)
                                                     .color(motif::text_dim()),
                                             );
                                         }
+                                    }
+                                    // Serré : les boutons descendent d'une
+                                    // rangée, sous le nom, où ils ont la
+                                    // largeur qu'ils demandent.
+                                    if cols == 2 {
+                                        ui.end_row();
                                     }
                                     ui.horizontal(|ui| {
                                         if l.running() {
@@ -12181,7 +12298,18 @@ impl App {
     /// c'est une largeur fixe qui poussait « Par » hors du carnet dès
     /// qu'un volet s'ouvrait.
     fn widest<'a>(ui: &egui::Ui, size: f32, texts: impl Iterator<Item = &'a str>) -> f32 {
-        let font = egui::FontId::proportional(size);
+        Self::widest_in(ui, egui::FontId::proportional(size), texts)
+    }
+
+    /// [`widest`] pour une colonne qui ne se dessine pas dans la fonte
+    /// proportionnelle — les dates du rangement sont en chasse fixe, et
+    /// une mesure proportionnelle les élidait « 31/08/20… » sur une
+    /// colonne qui avait la place.
+    fn widest_in<'a>(
+        ui: &egui::Ui,
+        font: egui::FontId,
+        texts: impl Iterator<Item = &'a str>,
+    ) -> f32 {
         ui.fonts(|f| {
             texts.fold(0.0_f32, |w, t| {
                 w.max(
@@ -12454,10 +12582,16 @@ impl App {
         //
         // Le pli reste le levier de l'opérateur ; ceci est ce que
         // l'application peut décider seule, sans qu'on lui demande.
+        //
+        // Et dans les deux cas la part s'exprime aussi comme un
+        // **plancher pour l'onglet** : sur un grand écran, trente pour
+        // cent tranchaient la bande au milieu d'une rangée de boutons
+        // alors qu'il y avait la place pour tout. La bande grandit tant
+        // que l'onglet garde de quoi travailler.
         let cap = if session.patient_tab == PatientTab::Acts {
             (avail * 0.45).max(avail - 340.0)
         } else {
-            (avail * 0.30).max(Self::row_height(ui) * 3.0)
+            (avail * 0.30).max(avail - 420.0)
         };
         h.min(cap)
     }
@@ -18372,10 +18506,13 @@ impl App {
                 let body = ui.available_rect_before_wrap();
                 let inner = motif::well(ui, body);
                 motif::inside(ui, inner, |ui| {
-                    // Horizontale aussi : la ligne finit par des boutons, et
-                    // un bouton tombé hors du volet est un bouton que
-                    // personne ne presse.
-                    egui::ScrollArea::both()
+                    // Verticale seulement. La ligne finit par des boutons,
+                    // et un bouton tombé hors du volet est un bouton que
+                    // personne ne presse : plutôt que d'obliger à défiler
+                    // à droite, ce que la largeur refuse descend sous le
+                    // libellé. Même arbitrage qu'au carnet et aux
+                    // locations.
+                    egui::ScrollArea::vertical()
                         .id_salt("scans_list")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
@@ -18387,6 +18524,43 @@ impl App {
                                 );
                                 return;
                             }
+                            let avail = ui.available_width();
+                            let gap = 10.0;
+                            let kind_w = Self::widest(
+                                ui,
+                                11.0,
+                                std::iter::once(tr("scan_col_kind")).chain(
+                                    crate::scans::DocKind::ALL.iter().map(|k| tr(k.label_key())),
+                                ),
+                            );
+                            let date_w = Self::widest_in(
+                                ui,
+                                egui::FontId::monospace(11.0),
+                                [tr("scan_col_date"), "00/00/0000"].into_iter(),
+                            );
+                            let size_w = Self::widest(
+                                ui,
+                                10.5,
+                                [tr("scan_col_size"), "000,0 Mo"].into_iter(),
+                            );
+                            let mut btn_w = Self::button_width(ui, tr("scan_edit"))
+                                + Self::button_width(ui, tr("scan_delete_confirm"))
+                                + ui.spacing().item_spacing.x;
+                            if subject == Subject::Officine {
+                                btn_w += Self::button_width(ui, tr("scan_link_move"))
+                                    + ui.spacing().item_spacing.x;
+                            }
+                            // Le libellé est un bouton : il lui faut de
+                            // quoi se lire, pas seulement de quoi tenir.
+                            let label_floor =
+                                Self::widest(ui, 12.0, [tr("scan_col_label")].into_iter()) * 3.0;
+                            let full = kind_w + date_w + size_w + btn_w + gap * 4.0;
+                            let (cols, taken) = if avail - full >= label_floor {
+                                (6, full)
+                            } else {
+                                (1, 0.0)
+                            };
+                            let label_w = (avail - taken).max(label_floor);
                             // Une **grille** et non une suite de rangées
                             // indépendantes.
                             //
@@ -18400,35 +18574,26 @@ impl App {
                             // non comme une liste — et le défaut empire avec
                             // chaque pièce rangée.
                             egui::Grid::new("scans_grid")
-                                .num_columns(6)
-                                .spacing([10.0, 4.0])
+                                .num_columns(if cols == 6 { 5 } else { 1 })
+                                .spacing([gap, 4.0])
                                 .striped(true)
                                 .show(ui, |ui| {
-                                    for header in [
-                                        tr("scan_col_kind"),
-                                        tr("scan_col_date"),
-                                        tr("scan_col_label"),
-                                        tr("scan_col_size"),
-                                        "",
-                                        "",
-                                    ] {
-                                        ui.label(
-                                            egui::RichText::new(header)
-                                                .size(10.5)
-                                                .color(motif::text_dim()),
-                                        );
+                                    // Le libellé d'abord : c'est le sujet
+                                    // de la ligne, et c'est lui qui plie.
+                                    let dim = |t: &str| {
+                                        egui::RichText::new(t).size(10.5).color(motif::text_dim())
+                                    };
+                                    Self::grid_cell(ui, label_w, dim(tr("scan_col_label")));
+                                    if cols == 6 {
+                                        Self::grid_cell(ui, kind_w, dim(tr("scan_col_kind")));
+                                        Self::grid_cell(ui, date_w, dim(tr("scan_col_date")));
+                                        Self::grid_cell(ui, size_w, dim(tr("scan_col_size")));
+                                        ui.label("");
                                     }
                                     ui.end_row();
                                     for sc in &session.scans {
                                         let kind = DocKind::from_key(&sc.doc_kind);
                                         {
-                                            ui.label(
-                                                egui::RichText::new(tr(kind.label_key()))
-                                                    .size(11.0)
-                                                    .color(motif::chart::series_color(
-                                                        kind.series(),
-                                                    )),
-                                            );
                                             let when = if sc.taken_on.is_empty() {
                                                 // Sans date portée par le document,
                                                 // celle du rangement : une pièce
@@ -18438,127 +18603,192 @@ impl App {
                                             } else {
                                                 sc.taken_on.clone()
                                             };
-                                            ui.label(
-                                                egui::RichText::new(db::format_french_date(&when))
+                                            let size =
+                                                crate::scans::human_size(sc.size.max(0) as u64);
+                                            // Le libellé ouvre la pièce, et sous lui
+                                            // ce que la largeur n'a pas permis de
+                                            // mettre en colonnes.
+                                            ui.scope(|ui| {
+                                                ui.set_width(label_w);
+                                                ui.vertical(|ui| {
+                                                    if motif::button(ui, &sc.label)
+                                                        .on_hover_text(if sc.remark.is_empty() {
+                                                            tr("scan_open_tooltip").to_owned()
+                                                        } else {
+                                                            format!(
+                                                                "{} — {}",
+                                                                tr("scan_open_tooltip"),
+                                                                sc.remark
+                                                            )
+                                                        })
+                                                        .clicked()
+                                                    {
+                                                        open_id = Some(sc.id);
+                                                    }
+                                                    if cols == 1 {
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "{} · {} · {}",
+                                                                tr(kind.label_key()),
+                                                                db::format_french_date(&when),
+                                                                size
+                                                            ))
+                                                            .size(10.5)
+                                                            .italics()
+                                                            .color(motif::text_faint()),
+                                                        );
+                                                    }
+                                                });
+                                            });
+                                            if cols == 6 {
+                                                Self::grid_cell(
+                                                    ui,
+                                                    kind_w,
+                                                    egui::RichText::new(tr(kind.label_key()))
+                                                        .size(11.0)
+                                                        .color(motif::chart::series_color(
+                                                            kind.series(),
+                                                        )),
+                                                );
+                                                Self::grid_cell(
+                                                    ui,
+                                                    date_w,
+                                                    egui::RichText::new(db::format_french_date(
+                                                        &when,
+                                                    ))
                                                     .size(11.0)
                                                     .monospace()
                                                     .color(motif::text_dim()),
-                                            );
-                                            // Le libellé ouvre la pièce. La grille
-                                            // lui donne sa colonne, donc plus rien à
-                                            // réserver ni à couper à la main : la
-                                            // ligne entière défile latéralement si
-                                            // elle ne tient pas, et les boutons ne
-                                            // peuvent plus être poussés dehors.
-                                            let size =
-                                                crate::scans::human_size(sc.size.max(0) as u64);
-                                            if motif::button(ui, &sc.label)
-                                                .on_hover_text(if sc.remark.is_empty() {
-                                                    tr("scan_open_tooltip").to_owned()
-                                                } else {
-                                                    format!(
-                                                        "{} — {}",
-                                                        tr("scan_open_tooltip"),
-                                                        sc.remark
-                                                    )
-                                                })
-                                                .clicked()
-                                            {
-                                                open_id = Some(sc.id);
+                                                );
+                                                Self::grid_cell(
+                                                    ui,
+                                                    size_w,
+                                                    egui::RichText::new(size)
+                                                        .size(10.5)
+                                                        .color(motif::text_dim()),
+                                                );
+                                            } else {
+                                                // Serré : les boutons descendent d'une
+                                                // rangée, sous le libellé.
+                                                ui.end_row();
                                             }
-                                            ui.label(
-                                                egui::RichText::new(size)
-                                                    .size(10.5)
-                                                    .color(motif::text_dim()),
-                                            );
-                                            if motif::button(ui, tr("scan_edit"))
-                                                .on_hover_text(tr("scan_edit_tooltip"))
-                                                .clicked()
-                                            {
-                                                edit = Some(sc.clone());
-                                            }
-                                            // La ligne du registre que
-                                            // cette pièce justifie. Une
-                                            // inspection demande les
-                                            // deux ensemble, et elles
-                                            // vivaient sans se
-                                            // connaître : il fallait
-                                            // les rapprocher à la main,
-                                            // sur une date et un nom de
-                                            // fichier.
-                                            if subject == Subject::Officine {
-                                                // La pièce qu'on est en
-                                                // train d'attacher
-                                                // montre les dernières
-                                                // lignes du registre :
-                                                // ce sont celles qu'on
-                                                // vient d'écrire, et le
-                                                // seul moment où l'on
-                                                // sait laquelle la
-                                                // pièce justifie.
-                                                if session.scan_linking == Some(sc.id) {
-                                                    if session.stup_recent.is_empty() {
-                                                        ui.label(
-                                                            egui::RichText::new(tr(
-                                                                "scan_link_none",
-                                                            ))
-                                                            .size(10.5)
-                                                            .color(motif::text_dim()),
-                                                        );
-                                                    }
-                                                    for m in session.stup_recent.iter().take(6) {
-                                                        let label = trn(
-                                                            "scan_link_line",
-                                                            &[
-                                                                &db::format_french_date(
-                                                                    &m.happened_on,
-                                                                ),
-                                                                &session
-                                                                    .stup_labels
-                                                                    .get(&m.stup_id)
-                                                                    .map_or("—", String::as_str),
-                                                                &crate::codex::format_quantity(
-                                                                    m.quantity,
-                                                                ),
-                                                            ],
-                                                        );
-                                                        if motif::button(ui, &label).clicked() {
-                                                            link = Some((sc.id, m.id));
-                                                        }
-                                                    }
-                                                } else if sc.stup_move > 0 {
-                                                    if motif::button(ui, tr("scan_unlink"))
+                                            // Les actions dans **une** cellule : dans
+                                            // une grille, chaque appel de bouton est
+                                            // une colonne de plus, et l'état
+                                            // « justifier » en pose jusqu'à six —
+                                            // la grille passait de six colonnes à
+                                            // onze pour une seule ligne.
+                                            //
+                                            // Et la cellule prend la largeur qu'on
+                                            // lui a mesurée : sans la lui donner,
+                                            // `horizontal_wrapped` pliait les trois
+                                            // boutons l'un sous l'autre au milieu
+                                            // d'une rangée qui avait la place.
+                                            let cell_w = if cols == 1 { label_w } else { btn_w };
+                                            ui.scope(|ui| {
+                                                ui.set_width(cell_w);
+                                                ui.horizontal_wrapped(|ui| {
+                                                    if motif::button(ui, tr("scan_edit"))
+                                                        .on_hover_text(tr("scan_edit_tooltip"))
                                                         .clicked()
                                                     {
-                                                        link = Some((sc.id, 0));
+                                                        edit = Some(sc.clone());
                                                     }
-                                                } else if motif::button(ui, tr("scan_link_move"))
-                                                    .on_hover_text(tr("scan_link_tooltip"))
+                                                    // La ligne du registre que
+                                                    // cette pièce justifie. Une
+                                                    // inspection demande les
+                                                    // deux ensemble, et elles
+                                                    // vivaient sans se
+                                                    // connaître : il fallait
+                                                    // les rapprocher à la main,
+                                                    // sur une date et un nom de
+                                                    // fichier.
+                                                    if subject == Subject::Officine {
+                                                        // La pièce qu'on est en
+                                                        // train d'attacher
+                                                        // montre les dernières
+                                                        // lignes du registre :
+                                                        // ce sont celles qu'on
+                                                        // vient d'écrire, et le
+                                                        // seul moment où l'on
+                                                        // sait laquelle la
+                                                        // pièce justifie.
+                                                        if session.scan_linking == Some(sc.id) {
+                                                            if session.stup_recent.is_empty() {
+                                                                ui.label(
+                                                                    egui::RichText::new(tr(
+                                                                        "scan_link_none",
+                                                                    ))
+                                                                    .size(10.5)
+                                                                    .color(motif::text_dim()),
+                                                                );
+                                                            }
+                                                            for m in
+                                                                session.stup_recent.iter().take(6)
+                                                            {
+                                                                let label = trn(
+                                                                "scan_link_line",
+                                                                &[
+                                                                    &db::format_french_date(
+                                                                        &m.happened_on,
+                                                                    ),
+                                                                    &session
+                                                                        .stup_labels
+                                                                        .get(&m.stup_id)
+                                                                        .map_or(
+                                                                            "—",
+                                                                            String::as_str,
+                                                                        ),
+                                                                    &crate::codex::format_quantity(
+                                                                        m.quantity,
+                                                                    ),
+                                                                ],
+                                                            );
+                                                                if motif::button(ui, &label)
+                                                                    .clicked()
+                                                                {
+                                                                    link = Some((sc.id, m.id));
+                                                                }
+                                                            }
+                                                        } else if sc.stup_move > 0 {
+                                                            if motif::button(ui, tr("scan_unlink"))
+                                                                .clicked()
+                                                            {
+                                                                link = Some((sc.id, 0));
+                                                            }
+                                                        } else if motif::button(
+                                                            ui,
+                                                            tr("scan_link_move"),
+                                                        )
+                                                        .on_hover_text(tr("scan_link_tooltip"))
+                                                        .clicked()
+                                                        {
+                                                            linking = Some(sc.id);
+                                                        }
+                                                    }
+                                                    // Deux clics pour retirer, comme partout
+                                                    // ailleurs : une pièce se supprime, mais
+                                                    // pas par un frôlement.
+                                                    let armed = session.scan_confirm == Some(sc.id);
+                                                    if motif::button(
+                                                        ui,
+                                                        if armed {
+                                                            tr("scan_delete_confirm")
+                                                        } else {
+                                                            tr("scan_delete")
+                                                        },
+                                                    )
                                                     .clicked()
-                                                {
-                                                    linking = Some(sc.id);
-                                                }
-                                            }
-                                            // Deux clics pour retirer, comme partout
-                                            // ailleurs : une pièce se supprime, mais
-                                            // pas par un frôlement.
-                                            let armed = session.scan_confirm == Some(sc.id);
-                                            if motif::button(
-                                                ui,
-                                                if armed {
-                                                    tr("scan_delete_confirm")
-                                                } else {
-                                                    tr("scan_delete")
-                                                },
-                                            )
-                                            .clicked()
-                                            {
-                                                if armed {
-                                                    drop_id = Some((sc.id, sc.label.clone()));
-                                                } else {
-                                                    session.scan_confirm = Some(sc.id);
-                                                }
-                                            }
+                                                    {
+                                                        if armed {
+                                                            drop_id =
+                                                                Some((sc.id, sc.label.clone()));
+                                                        } else {
+                                                            session.scan_confirm = Some(sc.id);
+                                                        }
+                                                    }
+                                                });
+                                            });
                                             ui.end_row();
                                         }
                                     }

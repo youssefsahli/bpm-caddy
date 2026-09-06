@@ -43,7 +43,7 @@ w=${SIZE%x*} h=${SIZE#*x}
 # le pointeur au centre de l'écran, donc *dans* la fenêtre si l'écran
 # fait sa taille, et chaque capture revenait avec une bulle d'aide.
 view="$view" out="$out" w="$w" h="$h" \
-    xvfb-run -s "-screen 0 $((w * 3))x${h}x24" bash -c '
+    xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
         unset WAYLAND_DISPLAY
         BPM_CADDY_START_VIEW="$view" ./target/debug/bpm-caddy &
         pid=$!

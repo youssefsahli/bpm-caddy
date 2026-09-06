@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **Deux autres tables sortaient par la droite**, du même défaut que le
+  carnet : les locations et les pièces numérisées finissaient leur
+  rangée par des boutons, et il fallait défiler à droite pour les
+  atteindre puis à gauche pour relire de quoi il s'agissait. Elles
+  prennent maintenant deux formes selon la largeur — toutes leurs
+  colonnes, ou le libellé seul avec le reste en note sous lui et les
+  boutons sur une rangée à eux.
+  - Au passage, la liste des pièces posait ses boutons **directement
+    dans la grille** : dans un `Grid` d'egui chaque appel est une
+    cellule, donc l'état « justifier », qui pose jusqu'à six boutons,
+    faisait passer la table de six colonnes à onze pour une seule ligne.
+  - Et la colonne des dates s'y dessine en chasse fixe alors qu'elle
+    était mesurée en proportionnelle : « 31/08/2026 » se lisait
+    « 31/08/20… » sur une colonne qui avait la place.
+- « Confirmer la suppression » devient « Confirmer ? » — un bouton de
+  vingt-quatre lettres qui prend la place de « Repris… » et de
+  « Renouv. » réunis, à l'endroit exact où « Supprimer… » se trouvait
+  une fraction de seconde plus tôt.
+- « Justifie… » devient « Justifier… » : le libellé était conjugué.
 - **« Facturé sur ce dossier : -0 € ».** Une somme de flottants rend le
   zéro négatif dès qu'un terme vaut `-0.0`, et `{:.0}` le recopie tel
   quel : au comptoir, un montant écrit « -0 € » se lit comme une erreur
