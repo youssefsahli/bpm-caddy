@@ -30,6 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **La date qu'on venait de taper était coupée dans le champ où on
+  l'avait tapée.** Les cinq champs de date de l'application étaient
+  larges de 80, 92, 96 ou 100 pixels selon l'endroit — des constantes,
+  donc insensibles à `[ui] text_scale` —, et à 1,25 « 07/09/2026 » se
+  lisait « 07/09/202 » dans le tableau des entretiens. Ils se mesurent
+  maintenant, tous par la même fonction, sur leur invite et sur la date
+  qu'ils afficheront ; les initiales et l'heure aussi.
+- **Le tableau des entretiens comptait dix ou onze cellules par
+  ligne.** L'heure n'est dessinée que lorsqu'un rendez-vous est posé, et
+  dans un `Grid` chaque widget est une colonne : une ligne portant un
+  RDV décalait donc tout ce qui la suivait — sur la table même que ce
+  `Grid` a été introduit pour aligner. La date et l'heure sont une
+  cellule.
+- **La bande de l'agenda se coupait au milieu d'une rangée de
+  boutons.** « Anticancéreux long cours » à moitié dessiné sous le filet
+  du panneau se lit comme cassé ; la même bande arrêtée une rangée plus
+  haut dit simplement qu'elle défile. Sa part s'arrondit au nombre
+  entier de rangées, cadre du panneau compris.
 - **« Nouve ».** C'est ce que le champ d'ajout du journal affichait sur
   la colonne « Notes datées » d'une fiche médicament, large de cent
   quatre-vingts pixels : le champ prenait « ce qui reste, au moins

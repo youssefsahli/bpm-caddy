@@ -11144,7 +11144,7 @@ impl App {
                                                 ),
                                             );
                                             ui.add_sized(
-                                                [80.0, 20.0],
+                                                [Self::date_field_width(ui), 20.0],
                                                 egui::TextEdit::singleline(
                                                     &mut session.bio_edit_date,
                                                 )
@@ -11273,7 +11273,7 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                             ui.add_sized(
-                                [92.0, 22.0],
+                                [Self::date_field_width(ui), 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_new_date)
                                     .hint_text(tr("itv_rdv_hint")),
                             );
@@ -12385,6 +12385,17 @@ impl App {
             })
         }) + ui.spacing().button_padding.x * 2.0
             + 8.0
+    }
+
+    /// Ce qu'un champ de date demande : son invite, et la date qu'il
+    /// affichera une fois remplie.
+    ///
+    /// Elles étaient écrites en dur — 80, 92, 96, 100 selon l'endroit —
+    /// et à `[ui] text_scale = 1,25` « 07/09/2026 » se lisait
+    /// « 07/09/202 » dans le tableau des entretiens : la date qu'on
+    /// vient de taper, coupée dans le champ où on l'a tapée.
+    fn date_field_width(ui: &egui::Ui) -> f32 {
+        Self::field_width(ui, [tr("itv_rdv_hint"), "00/00/0000"].into_iter())
     }
 
     /// Les largeurs de la rangée où l'on écrit une dose, dans l'ordre où
@@ -13830,7 +13841,7 @@ impl App {
                                     .or_insert_with(|| db::format_french_date(&made));
                                 let field = ui
                                     .add_sized(
-                                        [92.0, 22.0],
+                                        [Self::date_field_width(ui), 22.0],
                                         egui::TextEdit::singleline(text)
                                             .hint_text(tr("itv_rdv_hint")),
                                     )
@@ -13856,7 +13867,13 @@ impl App {
                                 // the counter on the day it is printed.
                                 let by = ui
                                     .add_sized(
-                                        [40.0, 22.0],
+                                        [
+                                            Self::field_width(
+                                                ui,
+                                                [tr("itv_by_hint"), "AAA"].into_iter(),
+                                            ),
+                                            22.0,
+                                        ],
                                         egui::TextEdit::singleline(&mut who)
                                             .hint_text(tr("itv_by_hint")),
                                     )
@@ -13992,31 +14009,56 @@ impl App {
                                     .map(db::format_french_date)
                                     .unwrap_or_default()
                             });
-                            let field = ui.add_sized(
-                                [100.0, 22.0],
-                                egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
-                            );
-                            // The hour sits with its date; it only
-                            // means something once one is set.
-                            if itv.scheduled_date.is_some() {
-                                let mut hour = itv.scheduled_time.clone();
-                                let h = ui.add_sized(
-                                    [52.0, 22.0],
-                                    egui::TextEdit::singleline(&mut hour)
-                                        .hint_text(tr("agenda_hour_hint")),
-                                );
-                                if h.lost_focus() && hour != itv.scheduled_time {
-                                    let parsed = if hour.trim().is_empty() {
-                                        Some(String::new())
-                                    } else {
-                                        db::parse_hour(&hour)
-                                    };
-                                    if let Some(value) = parsed {
-                                        set_hour =
-                                            Some((itv.id, value, itv.scheduled_time.clone()));
+                            // **La date et l'heure dans une seule
+                            // cellule.** Dans un `Grid`, chaque widget
+                            // est une colonne : l'heure n'étant dessinée
+                            // que lorsqu'un rendez-vous est posé, une
+                            // ligne qui en portait un comptait onze
+                            // cellules là où les autres en comptaient
+                            // dix — et le bouton de suppression tombait
+                            // dans une colonne différente de celle de
+                            // ses voisins, sur la table même que ce
+                            // `Grid` a été introduit pour aligner.
+                            let field = ui
+                                .horizontal(|ui| {
+                                    let field = ui.add_sized(
+                                        [Self::date_field_width(ui), 22.0],
+                                        egui::TextEdit::singleline(text)
+                                            .hint_text(tr("itv_rdv_hint")),
+                                    );
+                                    // The hour sits with its date; it only
+                                    // means something once one is set.
+                                    if itv.scheduled_date.is_some() {
+                                        let mut hour = itv.scheduled_time.clone();
+                                        let h = ui.add_sized(
+                                            [
+                                                Self::field_width(
+                                                    ui,
+                                                    [tr("agenda_hour_hint"), "00:00"].into_iter(),
+                                                ),
+                                                22.0,
+                                            ],
+                                            egui::TextEdit::singleline(&mut hour)
+                                                .hint_text(tr("agenda_hour_hint")),
+                                        );
+                                        if h.lost_focus() && hour != itv.scheduled_time {
+                                            let parsed = if hour.trim().is_empty() {
+                                                Some(String::new())
+                                            } else {
+                                                db::parse_hour(&hour)
+                                            };
+                                            if let Some(value) = parsed {
+                                                set_hour = Some((
+                                                    itv.id,
+                                                    value,
+                                                    itv.scheduled_time.clone(),
+                                                ));
+                                            }
+                                        }
                                     }
-                                }
-                            }
+                                    field
+                                })
+                                .inner;
                             if field.lost_focus() {
                                 let year = session.db.current_year();
                                 if text.trim().is_empty() {
@@ -15542,7 +15584,7 @@ impl App {
                         .filter(|(id, _)| *id == rdv.id);
                     if let Some((_, text)) = moving {
                         let field = ui.add_sized(
-                            [96.0, 22.0],
+                            [Self::date_field_width(ui), 22.0],
                             egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
                         );
                         if field.lost_focus() {
@@ -15920,7 +15962,19 @@ impl App {
         // three rows, the band took its whole allowance, and the month
         // grid below was left with room for three weeks out of six —
         // the pane that names the view. A third, and it scrolls.
-        let band_h = want.min((body.height() * 0.32).max(120.0));
+        //
+        // Et la part s'arrondit à un **nombre entier de rangées** : une
+        // bande coupée au milieu d'une rangée de boutons se lit comme
+        // cassée — « Anticancéreux long cours » à moitié dessiné sous le
+        // filet du panneau — alors que la même bande, arrêtée une
+        // rangée plus haut, dit simplement qu'elle défile.
+        // Le pas d'une rangée **dessinée** — pas celui qui sert à
+        // estimer `want`, qui compte un peu large exprès — et le cadre
+        // du panneau, qui prend seize pixels avant de rendre le moindre
+        // pixel d'intérieur.
+        let pitch = Self::row_height(ui) + ui.spacing().item_spacing.y;
+        let cap = (body.height() * 0.32).max(120.0);
+        let band_h = want.min(16.0 + ((cap - 16.0) / pitch).floor().max(1.0) * pitch);
         let rows = motif::split_rows(body, &[band_h, 0.0], 6.0);
         // Set inside the band's closure, applied after it: the closure
         // already holds `session` uniquely.
