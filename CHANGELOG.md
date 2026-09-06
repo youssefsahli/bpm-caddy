@@ -30,6 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **« Facturé sur ce dossier : -0 € ».** Une somme de flottants rend le
+  zéro négatif dès qu'un terme vaut `-0.0`, et `{:.0}` le recopie tel
+  quel : au comptoir, un montant écrit « -0 € » se lit comme une erreur
+  de caisse. Un seul formatteur pour les trois endroits qui écrivaient
+  des euros, et un test qui tient la règle.
+- **Le tableau des entretiens montrait ses en-têtes au-dessus de rien,
+  et cette fois c'est réglé.** Le récapitulatif des séquences — une
+  ligne par famille d'actes, puis les totaux — prenait soixante pixels
+  sur cent vingt-cinq d'un dossier à deux familles, et il ne restait
+  rien pour les lignes. Il illustre le tableau, il ne le remplace pas :
+  quand le panneau ne peut payer les deux, **la garniture part la
+  première**, comme la courbe de stock du registre tombe pour que les
+  lignes du registre survivent. Mesuré : le tableau garde ses en-têtes,
+  une rangée de contrôles et sa barre, et le récapitulatif prend ce qui
+  reste — ou rien.
 - **Le carnet de vaccination ne sortait plus par la droite.** Corriger
   une ligne échangeait ses six colonnes contre six champs et deux
   boutons *dans la rangée du tableau* — plus large que le panneau à

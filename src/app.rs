@@ -12286,6 +12286,17 @@ impl App {
         h
     }
 
+    /// Un montant en euros, arrondi à l'euro.
+    ///
+    /// Et **jamais « -0 »** : une somme de flottants rend le zéro
+    /// négatif dès qu'un terme vaut `-0.0`, et « Facturé sur ce
+    /// dossier : -0 € » se lit comme une erreur de caisse au comptoir.
+    /// Tout ce qui est sous le demi-euro s'écrit zéro.
+    fn money(v: f64) -> String {
+        let v = if v.abs() < 0.005 { 0.0 } else { v };
+        format!("{v:.0}")
+    }
+
     /// Entrée dans l'un de ces champs : la rangée est validée.
     ///
     /// Une rangée de six champs qu'il faut ensuite aller cliquer n'est
@@ -13478,7 +13489,28 @@ impl App {
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
         // Where each accompaniment stands, above the rows it summarises.
-        Self::patient_sequences(ui, &interviews, &ranks, config, session.show_amounts);
+        //
+        // **Et quand le panneau est trop court, la garniture part la
+        // première.** Ce récapitulatif illustre le tableau, il ne le
+        // remplace pas : sur un dossier portant deux familles d'actes, à
+        // 1024x700, il prenait soixante pixels sur cent vingt-cinq et
+        // « ENTRETIENS » montrait « Type · Acte · Thème · Fait le / par
+        // · État » au-dessus de **rien**. C'est la même règle que la
+        // courbe de stock du registre, qui tombe pour que les lignes du
+        // registre survivent.
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        // Ce que la table garde d'abord : ses en-têtes, une ligne de
+        // contrôles, et la barre horizontale qu'elle porte toujours.
+        let table_need = line * 1.5 + Self::row_height(ui) + 14.0;
+        let budget = (ui.available_height() - table_need).max(0.0);
+        Self::patient_sequences(
+            ui,
+            &interviews,
+            &ranks,
+            config,
+            session.show_amounts,
+            budget,
+        );
         // The table is wide by nature — ten columns, most of them
         // buttons. It scrolls both ways rather than losing its right
         // hand columns silently to whatever width the pane happens to
@@ -14134,6 +14166,7 @@ impl App {
         ranks: &std::collections::HashMap<i64, (usize, usize)>,
         config: &Config,
         show_amounts: bool,
+        budget: f32,
     ) {
         // For each kind, the newest year reached and how many acts of
         // that year are on file.
@@ -14160,6 +14193,12 @@ impl App {
             return;
         }
         let row_h = 18.0;
+        // Une ligne par famille, la ligne des totaux, et l'espace sous
+        // le tout. Si le panneau ne peut pas payer cela **en plus** de
+        // ce que la table demande, le récapitulatif ne s'affiche pas.
+        if by_kind.len() as f32 * row_h + 4.0 + 20.0 + 6.0 > budget {
+            return;
+        }
         // Wide enough for the longest sequence on file, and no wider:
         // the count sits against its pips, not at the far right of a
         // strip the width of the pane.
@@ -14247,7 +14286,7 @@ impl App {
                 if config.ui.discreet_finances && !show_amounts {
                     "•••".to_owned()
                 } else {
-                    format!("{v:.0}")
+                    Self::money(v)
                 }
             };
             ui.label(
@@ -24899,7 +24938,7 @@ impl App {
             if masked {
                 "•••".to_owned()
             } else {
-                format!("{v:.0} €")
+                format!("{} €", Self::money(v))
             }
         };
         let total = |rows: &dyn Fn(&InterviewSummary) -> bool| -> f64 {
@@ -24929,7 +24968,7 @@ impl App {
             if masked {
                 "•••".to_owned()
             } else {
-                format!("{v:.0} €/h")
+                format!("{} €/h", Self::money(v))
             }
         } else {
             "— €/h".to_owned()
@@ -28599,8 +28638,26 @@ impl eframe::App for App {
 #[cfg(test)]
 mod tests {
     use super::merge_team_notes;
-    use super::{interviews_csv, Config};
+    use super::{interviews_csv, App, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+
+    /// **Un montant ne s'écrit jamais « -0 ».**
+    ///
+    /// C'est ce que le dossier affichait : « Facturé sur ce dossier :
+    /// -0 € ». Une somme de flottants rend le zéro négatif dès qu'un
+    /// terme vaut `-0.0`, et `format!("{:.0}")` le recopie tel quel —
+    /// au comptoir, cela se lit comme une erreur de caisse.
+    #[test]
+    fn a_sum_of_nothing_is_written_zero_and_never_minus_zero() {
+        assert_eq!(App::money(-0.0), "0");
+        assert_eq!(App::money(0.0), "0");
+        // Et tout ce qui arrondirait à un zéro négatif avec lui.
+        assert_eq!(App::money(-0.004), "0");
+        assert_eq!(App::money(-0.4), "-0");
+        // Les vrais montants ne bougent pas.
+        assert_eq!(App::money(45.0), "45");
+        assert_eq!(App::money(-15.0), "-15");
+    }
 
     /// « Même molécule » and « Même classe » — the two lists a card
     /// carries about its neighbourhood.
