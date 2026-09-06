@@ -1080,11 +1080,11 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le bilan et le plan de prise",
-        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication avec ce que le dossier sait : traitements, interactions, revue d'ordonnance, biologie, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : à quoi sert chaque médicament, quand le prendre, et quoi faire en cas d'oubli.",
+        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication avec ce que le dossier sait : traitements, interactions, revue d'ordonnance, biologie, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
     ),
     (
         "La biologie",
-        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Ce que ça change » la relit contre les traitements du dossier — une kaliémie à 5,4 n'a pas le même sens sous IEC. Cliquez le nom d'un analyte pour voir sa courbe.",
+        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Interprétation » la relit contre les traitements du dossier — une kaliémie à 5,4 n'a pas le même sens sous IEC. Cliquez le nom d'un analyte pour voir sa courbe.",
     ),
     (
         "Le carnet de vaccination",
@@ -1130,8 +1130,8 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
 pub struct PlanData<'a> {
     pub patient: &'a Patient,
     pub today: &'a str,
-    /// (médicament, à quoi ça sert, quand le prendre, ce qu'il faut
-    /// savoir) — one line per treatment.
+    /// (médicament, indication, posologie, remarques) — one line per
+    /// treatment.
     pub lines: Vec<(String, String, String, String)>,
     /// The officine's own mention, empty unless it wrote one.
     pub mention: &'a str,
@@ -1153,7 +1153,7 @@ fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
          #set text(size: 11.5pt, lang: \"fr\", hyphenate: true)\n",
     );
     src.push_str(&format!(
-        "#align(center)[#text(17pt, weight: \"bold\")[Mon plan de traitement]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n",
+        "#align(center)[#text(17pt, weight: \"bold\")[Plan de prise]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n",
         typst_str(&data.patient.full_name()),
         typst_str(data.today)
     ));
@@ -1172,9 +1172,9 @@ fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
         rows.push_str("[], [], [], [],\n");
     }
     src.push_str(&format!(
-        "#table(columns: (auto, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,\n  [*Médicament*], [*À quoi ça sert*], [*Quand le prendre*], [*Ce qu'il faut savoir*],\n{rows})\n"
+        "#table(columns: (auto, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,\n  [*Médicament*], [*Indication*], [*Posologie*], [*Remarques*],\n{rows})\n"
     ));
-    src.push_str("#v(4mm)\n#text(10.5pt, weight: \"bold\")[Mes questions pour la prochaine fois]\n#v(1.5mm)\n#box(width: 100%, height: 3cm, stroke: 0.7pt)\n");
+    src.push_str("#v(4mm)\n#text(10.5pt, weight: \"bold\")[Questions à poser]\n#v(1.5mm)\n#box(width: 100%, height: 3cm, stroke: 0.7pt)\n");
     src.push_str("#v(4mm)\n");
     src.push_str(&format!(
         "#text(10pt)[Votre pharmacie : #{} — #{}]\n",
@@ -1183,7 +1183,7 @@ fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
     ));
     if !data.signature.trim().is_empty() {
         src.push_str(&format!(
-            "\\\n#text(10pt)[Préparé avec vous par #{}]\n",
+            "\\\n#text(10pt)[Préparé par #{}]\n",
             typst_str(data.signature.trim())
         ));
     }
@@ -3675,9 +3675,9 @@ mod tests {
             signature: "Claire Leroy",
         };
         let source = plan_source(&data, &sample_pharmacy());
-        assert!(source.contains("Mon plan de traitement"));
+        assert!(source.contains("Plan de prise"));
         assert!(source.contains("Dans les 6 heures"));
-        assert!(source.contains("Mes questions"));
+        assert!(source.contains("Questions à poser"));
         assert!(!source.contains("#eval \"x\"]"));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Une seule vue, dans une forme choisie, pour le coup d'œil qu'on répète
+# vingt fois pendant qu'on corrige une bande.
+#
+#   ./scripts/shot.sh <vue> [fichier.png] [taille] [échelle] [clé=valeur…]
+#
+# Les `clé=valeur` en trop sont écrits dans `layout.toml` — c'est là que
+# vit la forme du plan de travail (largeur des volets, bandeau replié).
+# Comme `eyeball.sh`, contre un `XDG_CONFIG_HOME` jetable et jamais
+# celui de l'opérateur.
+set -euo pipefail
+
+view=${1:?usage: shot.sh <vue> [out.png] [taille] [échelle] [clé=valeur…]}
+out=${2:-/tmp/bpm-caddy-shot.png}
+SIZE=${3:-1024x700}
+SCALE=${4:-1.25}
+shift 4 2>/dev/null || shift $#
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+export BPM_CADDY_DB="$tmp/demo.db"
+export BPM_CADDY_PASSWORD=demo
+export BPM_CADDY_NO_KEYRING=1
+
+mkdir -p "$tmp/config/bpm-caddy"
+cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
+[ui]
+discreet_finances = false
+text_scale = $SCALE
+EOF
+: > "$tmp/config/bpm-caddy/layout.toml"
+for kv in "$@"; do
+    printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
+done
+export XDG_CONFIG_HOME="$tmp/config"
+export BPM_CADDY_WINDOW="$SIZE"
+
+BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null 2>&1
+cargo build 2>/dev/null
+
+w=${SIZE%x*} h=${SIZE#*x}
+# Trois fois la largeur, la fenêtre à gauche, et on recadre : Xvfb gare
+# le pointeur au centre de l'écran, donc *dans* la fenêtre si l'écran
+# fait sa taille, et chaque capture revenait avec une bulle d'aide.
+view="$view" out="$out" w="$w" h="$h" \
+    xvfb-run -s "-screen 0 $((w * 3))x${h}x24" bash -c '
+        unset WAYLAND_DISPLAY
+        BPM_CADDY_START_VIEW="$view" ./target/debug/bpm-caddy &
+        pid=$!
+        sleep 6
+        import -window root -crop "${w}x${h}+0+0" +repage "$out" 2>/dev/null
+        kill $pid 2>/dev/null || true
+        wait $pid 2>/dev/null || true
+    '
+echo "$out"

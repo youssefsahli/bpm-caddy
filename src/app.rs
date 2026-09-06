@@ -1666,7 +1666,17 @@ struct Session {
     /// field) and the catalogue entry it was picked from.
     vacc_new: db::Vaccination,
     vacc_new_date: String,
-    vacc_new_pick: usize,
+    /// Où les flèches se posent dans les suggestions de vaccin.
+    ///
+    /// Le champ a remplacé une liste déroulante **et** un champ libre :
+    /// deux widgets pour une seule information, deux cents pixels de
+    /// rangée, et il fallait d'abord décider si le vaccin était au
+    /// catalogue avant de pouvoir taper son nom. On tape, la liste
+    /// répond, Entrée choisit — et ce qu'elle ne connaît pas s'inscrit
+    /// quand même.
+    vacc_cursor: usize,
+    /// Redonner le foyer au champ du nom, à la prochaine image.
+    focus_vacc_name: bool,
     /// The line being corrected, with the label and date the row was
     /// displayed with — the compare-and-set baseline.
     vacc_edit: Option<db::Vaccination>,
@@ -1779,6 +1789,15 @@ struct Session {
     focus_treat_add: bool,
     /// La fiche dont on choisit la posologie, s'il y en a une.
     treat_dosing: Option<i64>,
+    /// Le bandeau d'identité, replié sur sa ligne de nom.
+    ///
+    /// À 1024x700 il prend la moitié de la hauteur utile, et l'onglet en
+    /// dessous n'a plus de quoi montrer **une** ligne de sa table — le
+    /// carnet de vaccination affichait ses en-têtes au-dessus de rien.
+    /// Ce n'est pas un partage à régler : la contrainte est au-dessus du
+    /// partage. Replié, le bandeau rend deux cents pixels d'un clic, et
+    /// `layout.toml` s'en souvient.
+    patient_band_folded: bool,
     view: MainView,
     summaries: Vec<InterviewSummary>,
     /// Planned interviews for the dashboard's "RDV à venir" list.
@@ -2262,7 +2281,8 @@ impl Session {
             travels: Vec::new(),
             vacc_new: db::Vaccination::default(),
             vacc_new_date: String::new(),
-            vacc_new_pick: 0,
+            vacc_cursor: 0,
+            focus_vacc_name: false,
             vacc_edit: None,
             vacc_edit_date: String::new(),
             vacc_edit_base: (String::new(), String::new()),
@@ -2310,6 +2330,9 @@ impl Session {
             treat_cursor: 0,
             focus_treat_add: false,
             treat_dosing: None,
+            // Ce que le poste a laissé la dernière fois : `App` le
+            // repose depuis `layout.toml` dès qu'il a la session.
+            patient_band_folded: false,
             view: MainView::Search,
             summaries: Vec::new(),
             appointments: Vec::new(),
@@ -6339,6 +6362,8 @@ impl App {
                         // e2e run, and they must keep the last word.
                         _ => restore_view(&mut session, &layout.view),
                     }
+                    // Le bandeau tel que le poste l'a laissé.
+                    session.patient_band_folded = layout.patient_band_folded;
                     state = State::Unlocked(Box::new(session));
                     remember_password = true;
                 }
@@ -7862,6 +7887,7 @@ impl App {
                     // Unlocking after the auto-lock, or first thing in
                     // the morning: reopen the view the post was left on.
                     restore_view(&mut session, &self.layout.view);
+                    session.patient_band_folded = self.layout.patient_band_folded;
                     self.state = State::Unlocked(Box::new(session));
                     if let Some(entry) = keyring_entry() {
                         if self.remember_password {
@@ -8877,16 +8903,6 @@ impl App {
         Ok(db::parse_french_date(text, year, db::YearHint::Past).unwrap_or(iso))
     }
 
-    /// Widths of the boxes on the "new dose" line. They are named
-    /// because the band's height is measured from them: a field and its
-    /// measurement drifting apart is how a row gets clipped.
-    const FORM_PICK_W: f32 = 232.0;
-    const FORM_LABEL_W: f32 = 160.0;
-    const FORM_DOSE_W: f32 = 116.0;
-    const FORM_DATE_W: f32 = 96.0;
-    const FORM_LOT_W: f32 = 90.0;
-    const FORM_SITE_W: f32 = 96.0;
-
     /// The patient file's second half: the carnet de vaccination, what
     /// the calendar still owes, and the destinations on the file.
     fn patient_vaccins_pane(
@@ -8935,11 +8951,38 @@ impl App {
             // sortait tranchée. C'est précisément le cas que les notes du
             // projet nomment : une table à qui il manque une ligne se
             // lit et défile, un formulaire coupé en deux ne se tape pas.
-            let form_need =
-                (Self::row_height(ui) + ui.spacing().item_spacing.y) * 2.0 + 34.0 + line * 2.0;
-            let band = (work.height() - form_need - 8.0)
+            //
+            // Mesuré, et par la même fonction que la bande : « deux
+            // rangées » était écrit là en dur alors que la bande en
+            // dessinait trois dès que « Imprimer » ne tenait plus sur la
+            // deuxième — le carnet gardait la place de deux, la bande
+            // était rognée à deux, et le bouton tombait sous le bord.
+            let form_w = work.width() - 32.0;
+            let form_rows = Self::wrapped_rows_of(
+                ui,
+                form_w,
+                Self::carnet_form_widths(ui, session, form_w)
+                    .into_iter()
+                    .filter(|w| *w > 0.0),
+            );
+            let form_need = (Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows
+                + Self::carnet_notice_h(ui, session, config)
+                + line * 2.0;
+            // Et la table du carnet, qui est le sujet de l'onglet : ses
+            // en-têtes et trois lignes. Elle était comptée pour rien, si
+            // bien que la bande servait ses quarante pour cent et que
+            // « CARNET DE VACCINATION » affichait « Vaccin · Dose ·
+            // Date » au-dessus de rien — sur l'onglet qui existe pour
+            // montrer les doses. En lignes, pour que l'échelle du texte
+            // ne coûte rien.
+            let table_floor = line * 4.0 + 12.0;
+            // Le plancher de la bande : son bouton et une ligne. Il vient
+            // *après* celui du carnet, mais il ne cède jamais tout à
+            // fait — « À faire » est ce qui dit qu'une dose est due.
+            let band_floor = Self::row_height(ui) + line + 20.0;
+            let band = (work.height() - form_need - table_floor - 8.0)
                 .min(work.height() * 0.40)
-                .clamp(line * 4.0, 320.0);
+                .clamp(band_floor.min(work.height() * 0.40), 320.0);
             let stack = motif::split_rows(work, &[0.0, band], 8.0);
             (stack[0], stack[1])
         };
@@ -8983,6 +9026,10 @@ impl App {
         let mut add = false;
         let mut print = false;
         let mut bill = false;
+        // Le champ du nom, gardé pour que les flèches et Entrée
+        // sachent qu'il a le foyer.
+        let mut name_field: Option<egui::Response> = None;
+        let mut rest: Vec<egui::Response> = Vec::new();
 
         motif::panel(ui, rect, Some(tr("vacc_section")), |ui| {
             let inner = ui.max_rect();
@@ -8991,44 +9038,49 @@ impl App {
             // the band is measured from those widths — measuring the
             // hint text instead read one row where two are drawn, and
             // clipped the source note away.
-            let free_label = if session.vacc_new_pick == 0 {
-                Self::FORM_LABEL_W
+            //
+            // Et la correction se tape dans cette rangée-là, pas dans la
+            // table : ses champs sont les mêmes, à une colonne près.
+            // Les largeurs sont calculées **une fois**, ici, et servent
+            // à mesurer la bande puis à la dessiner.
+            let form_w = inner.width() - 16.0;
+            let widths = Self::carnet_form_widths(ui, session, form_w);
+            let form_rows =
+                Self::wrapped_rows_of(ui, form_w, widths.iter().copied().filter(|w| *w > 0.0));
+            // Le formulaire prend ce qu'il a mesuré — une rangée de
+            // champs coupée en deux ne se tape pas — mais **la table
+            // garde ses en-têtes et deux lignes**. Sans ce plancher le
+            // formulaire prenait tout ce qu'il y avait, et l'onglet qui
+            // existe pour montrer les doses montrait « Vaccin · Dose ·
+            // Date » au-dessus de rien. Ce qui dépasse défile : une
+            // table à qui il manque une ligne se lit encore, une table
+            // sans aucune ligne ne dit plus rien du tout.
+            let line = ui.text_style_height(&egui::TextStyle::Body);
+            let table_min = line * 3.0 + 10.0;
+            let form_full = (Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows
+                + Self::carnet_notice_h(ui, session, config);
+            let form_h = if inner.height() - form_full - 6.0 >= table_min {
+                form_full
             } else {
-                0.0
+                // Les deux ne tiennent pas : la rangée où l'on tape
+                // passe. C'est l'arbitrage de la maison, et c'est aussi
+                // là que « Replier » existe — le bandeau du dossier rend
+                // deux cents pixels d'un clic, et alors les deux
+                // tiennent sans qu'on ait rien à arbitrer.
+                form_full.min((inner.height() - line).max(Self::row_height(ui) + 12.0))
             };
-            let widths = [
-                Self::FORM_PICK_W,
-                free_label,
-                Self::FORM_DOSE_W,
-                Self::FORM_DATE_W,
-                Self::FORM_LOT_W,
-                Self::FORM_SITE_W,
-                Self::button_width(ui, tr("vacc_add")),
-                Self::button_width(ui, tr("vacc_print")),
-            ];
-            let form_rows = Self::wrapped_rows_of(
-                ui,
-                inner.width() - 16.0,
-                widths.into_iter().filter(|w| *w > 0.0),
-            );
-            // Plus the source line under it, which is part of the claim
-            // the panel makes and must not be clipped away.
-            // The form always gets what it measured; the table takes
-            // what is left. A table one row short still reads and it
-            // scrolls, a form whose second row of fields is cut in half
-            // cannot be typed into. The only cap is the panel itself.
-            let form_h = ((Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows + 34.0)
-                .min((inner.height() - 34.0).max(60.0));
             let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
             let table = motif::well(ui, parts[0]);
             motif::inside(ui, table, |ui| {
-                // Both ways. Correcting a line swaps its six columns for
-                // six fields plus two buttons, and that row is wider
-                // than the pane as soon as a dock is open: with a
-                // vertical bar alone the vaccine's name was cut off the
-                // left of the field and the buttons off the right, with
-                // no way to reach either.
-                egui::ScrollArea::both()
+                // Verticale seulement. La barre horizontale était le
+                // symptôme, la rangée de correction la cause : six
+                // champs et deux boutons sur une rangée de tableau font
+                // une table plus large que le panneau à toute taille
+                // utile, et il fallait alors faire défiler à droite pour
+                // atteindre « Enregistrer » puis à gauche pour relire le
+                // nom. La correction se tape maintenant dans la rangée
+                // de saisie, en bas, qui sait déjà se replier.
+                egui::ScrollArea::vertical()
                     .id_salt("carnet_rows")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
@@ -9043,83 +9095,184 @@ impl App {
                         }
                         let dim =
                             |t: &str| egui::RichText::new(t).size(11.0).color(motif::text_dim());
-                        // The text columns share what the two buttons
-                        // leave: fixed widths pushed « Par » off the
-                        // table as soon as a dock was open.
-                        let w = (ui.available_width() - 175.0).max(300.0);
+                        // Ce que chaque colonne demande, mesuré sur les
+                        // lignes qui sont là. Les largeurs fixes d'avant
+                        // poussaient « Par » hors de la table dès qu'un
+                        // volet s'ouvrait ; et la note de bas de ligne,
+                        // posée dans la colonne « Dose », élargissait
+                        // cette colonne à sa longueur et emportait tout
+                        // ce qui suivait vers la droite.
+                        let avail = ui.available_width();
+                        let gap = 6.0;
+                        let cap = avail * 0.18;
+                        let dose_w = Self::widest(
+                            ui,
+                            12.0,
+                            std::iter::once(tr("vacc_col_dose"))
+                                .chain(lines.iter().map(|l| l.dose.as_str())),
+                        )
+                        .min(cap);
+                        let date_w =
+                            Self::widest(ui, 12.0, [tr("vacc_col_date"), "00/00/0000"].into_iter());
+                        let lot_w = Self::widest(
+                            ui,
+                            11.5,
+                            std::iter::once(tr("vacc_col_lot"))
+                                .chain(lines.iter().map(|l| l.lot.as_str())),
+                        )
+                        .min(cap);
+                        let site_w = Self::widest(
+                            ui,
+                            11.5,
+                            std::iter::once(tr("vacc_col_site"))
+                                .chain(lines.iter().map(|l| l.site.as_str())),
+                        )
+                        .min(cap);
+                        let op_w = Self::widest(
+                            ui,
+                            11.5,
+                            std::iter::once(tr("vacc_col_operator"))
+                                .chain(lines.iter().map(|l| l.operator.as_str())),
+                        )
+                        .min(cap);
+                        let btn_w = Self::button_width(ui, tr("drug_edit"))
+                            + Self::button_width(ui, tr("itv_delete_confirm"))
+                            + ui.spacing().item_spacing.x;
+                        let name_floor =
+                            Self::widest(ui, 12.0, [tr("vacc_col_vaccine")].into_iter());
+                        // Trois formes, et on garde la plus large qui
+                        // tient : ce que la largeur refuse descend sous
+                        // le nom, à la ligne où le rappel dû et la
+                        // remarque se lisaient déjà. Rien ne disparaît,
+                        // rien ne sort à droite.
+                        let full = dose_w + date_w + lot_w + site_w + op_w + btn_w + gap * 6.0;
+                        let mid = dose_w + date_w + btn_w + gap * 3.0;
+                        let tight = btn_w + gap;
+                        let (cols, taken) = if avail - full >= name_floor {
+                            (7, full)
+                        } else if avail - mid >= name_floor {
+                            (4, mid)
+                        } else {
+                            (2, tight)
+                        };
+                        let name_w = (avail - taken).max(name_floor);
                         egui::Grid::new("carnet_grid")
-                            .num_columns(7)
-                            .spacing([6.0, 5.0])
+                            .num_columns(cols)
+                            .spacing([gap, 5.0])
                             .striped(true)
                             .show(ui, |ui| {
-                                ui.label(dim(tr("vacc_col_vaccine")));
-                                ui.label(dim(tr("vacc_col_dose")));
-                                ui.label(dim(tr("vacc_col_date")));
-                                ui.label(dim(tr("vacc_col_lot")));
-                                ui.label(dim(tr("vacc_col_site")));
-                                ui.label(dim(tr("vacc_col_operator")));
+                                Self::grid_cell(ui, name_w, dim(tr("vacc_col_vaccine")));
+                                if cols >= 4 {
+                                    Self::grid_cell(ui, dose_w, dim(tr("vacc_col_dose")));
+                                    Self::grid_cell(ui, date_w, dim(tr("vacc_col_date")));
+                                }
+                                if cols == 7 {
+                                    Self::grid_cell(ui, lot_w, dim(tr("vacc_col_lot")));
+                                    Self::grid_cell(ui, site_w, dim(tr("vacc_col_site")));
+                                    Self::grid_cell(ui, op_w, dim(tr("vacc_col_operator")));
+                                }
                                 ui.label("");
                                 ui.end_row();
                                 for line in &lines {
-                                    // The `else` is unreachable — `editing`
-                                    // *is* the edit's id — but a row of the
-                                    // carnet is not worth a panic at the
-                                    // counter if that ever stops being true.
-                                    if let (true, Some(e)) =
-                                        (editing == Some(line.id), session.vacc_edit.as_mut())
-                                    {
-                                        ui.add_sized(
-                                            [w * 0.32, 22.0],
-                                            egui::TextEdit::singleline(&mut e.label),
-                                        );
-                                        ui.add_sized(
-                                            [w * 0.14, 22.0],
-                                            egui::TextEdit::singleline(&mut e.dose),
-                                        );
-                                        ui.add_sized(
-                                            [w * 0.14, 22.0],
-                                            egui::TextEdit::singleline(&mut session.vacc_edit_date),
-                                        );
-                                        ui.add_sized(
-                                            [w * 0.14, 22.0],
-                                            egui::TextEdit::singleline(&mut e.lot),
-                                        );
-                                        ui.add_sized(
-                                            [w * 0.16, 22.0],
-                                            egui::TextEdit::singleline(&mut e.site),
-                                        );
-                                        ui.add_sized(
-                                            [w * 0.10, 22.0],
-                                            egui::TextEdit::singleline(&mut e.operator),
-                                        );
-                                        ui.horizontal(|ui| {
-                                            if motif::button(ui, tr("form_save")).clicked() {
-                                                save_edit = true;
-                                            }
-                                            if motif::button(ui, tr("form_cancel")).clicked() {
-                                                cancel_edit = true;
-                                            }
-                                        });
-                                        ui.end_row();
-                                        continue;
-                                    }
-                                    ui.label(egui::RichText::new(&line.label).size(12.0));
-                                    ui.label(egui::RichText::new(&line.dose).size(12.0));
-                                    ui.label(
-                                        egui::RichText::new(if line.given_on.is_empty() {
+                                    // Ce que la forme n'a pas mis en
+                                    // colonnes, dans l'ordre où on le
+                                    // lirait, puis le rappel dû et la
+                                    // remarque — qui n'ont jamais eu de
+                                    // colonne à elles.
+                                    let mut foot: Vec<String> = Vec::new();
+                                    if cols < 4 {
+                                        if !line.dose.trim().is_empty() {
+                                            foot.push(line.dose.trim().to_owned());
+                                        }
+                                        foot.push(if line.given_on.is_empty() {
                                             tr("vacc_no_date").to_owned()
                                         } else {
                                             db::format_french_date(&line.given_on)
-                                        })
-                                        .size(12.0),
-                                    );
-                                    ui.label(egui::RichText::new(&line.lot).size(11.5));
-                                    ui.label(egui::RichText::new(&line.site).size(11.5));
-                                    ui.label(
-                                        egui::RichText::new(&line.operator)
-                                            .size(11.5)
-                                            .color(operator_color(&line.operator)),
-                                    );
+                                        });
+                                    }
+                                    if cols < 7 {
+                                        for (head, v) in [
+                                            (tr("vacc_col_lot"), line.lot.trim()),
+                                            (tr("vacc_col_site"), line.site.trim()),
+                                            (tr("vacc_col_operator"), line.operator.trim()),
+                                        ] {
+                                            if !v.is_empty() {
+                                                foot.push(format!("{head} {v}"));
+                                            }
+                                        }
+                                    }
+                                    if !line.next_due.is_empty() {
+                                        foot.push(trf(
+                                            "vacc_next_prefix",
+                                            db::format_french_date(&line.next_due),
+                                        ));
+                                    }
+                                    if !line.remark.trim().is_empty() {
+                                        foot.push(line.remark.trim().to_owned());
+                                    }
+                                    // La ligne en cours de correction se
+                                    // voit : elle se tape ailleurs, et
+                                    // sans repère on ne saurait pas
+                                    // laquelle la rangée du bas porte.
+                                    let name = egui::RichText::new(&line.label).size(12.0);
+                                    let name = if editing == Some(line.id) {
+                                        name.color(motif::accent()).strong()
+                                    } else {
+                                        name
+                                    };
+                                    ui.scope(|ui| {
+                                        ui.set_width(name_w);
+                                        ui.vertical(|ui| {
+                                            ui.add(egui::Label::new(name).truncate());
+                                            if !foot.is_empty() {
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(foot.join(" · "))
+                                                            .size(10.5)
+                                                            .italics()
+                                                            .color(motif::text_faint()),
+                                                    )
+                                                    .wrap(),
+                                                );
+                                            }
+                                        });
+                                    });
+                                    if cols >= 4 {
+                                        Self::grid_cell(
+                                            ui,
+                                            dose_w,
+                                            egui::RichText::new(&line.dose).size(12.0),
+                                        );
+                                        Self::grid_cell(
+                                            ui,
+                                            date_w,
+                                            egui::RichText::new(if line.given_on.is_empty() {
+                                                tr("vacc_no_date").to_owned()
+                                            } else {
+                                                db::format_french_date(&line.given_on)
+                                            })
+                                            .size(12.0),
+                                        );
+                                    }
+                                    if cols == 7 {
+                                        Self::grid_cell(
+                                            ui,
+                                            lot_w,
+                                            egui::RichText::new(&line.lot).size(11.5),
+                                        );
+                                        Self::grid_cell(
+                                            ui,
+                                            site_w,
+                                            egui::RichText::new(&line.site).size(11.5),
+                                        );
+                                        Self::grid_cell(
+                                            ui,
+                                            op_w,
+                                            egui::RichText::new(&line.operator)
+                                                .size(11.5)
+                                                .color(operator_color(&line.operator)),
+                                        );
+                                    }
                                     ui.horizontal(|ui| {
                                         if motif::button(ui, tr("drug_edit")).clicked() {
                                             start_edit = Some(line.clone());
@@ -9138,33 +9291,6 @@ impl App {
                                         }
                                     });
                                     ui.end_row();
-                                    // A next dose owed, or a remark,
-                                    // shows under the line rather than
-                                    // in columns of their own: both are
-                                    // filled on one line in ten.
-                                    if !line.next_due.is_empty() || !line.remark.is_empty() {
-                                        let mut foot = String::new();
-                                        if !line.next_due.is_empty() {
-                                            foot.push_str(&trf(
-                                                "vacc_next_prefix",
-                                                db::format_french_date(&line.next_due),
-                                            ));
-                                        }
-                                        if !line.remark.is_empty() {
-                                            if !foot.is_empty() {
-                                                foot.push_str(" — ");
-                                            }
-                                            foot.push_str(&line.remark);
-                                        }
-                                        ui.label("");
-                                        ui.label(
-                                            egui::RichText::new(foot)
-                                                .size(10.5)
-                                                .italics()
-                                                .color(motif::text_faint()),
-                                        );
-                                        ui.end_row();
-                                    }
                                 }
                             });
                     });
@@ -9176,59 +9302,110 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            let picked = session.vacc_new_pick;
-                            let shown = if picked == 0 {
-                                tr("vacc_free_label").to_owned()
-                            } else {
-                                vaccines::CATALOGUE[picked - 1].label.to_owned()
-                            };
-                            egui::ComboBox::from_id_salt("vacc_pick")
-                                .selected_text(egui::RichText::new(shown).size(11.5))
-                                .width(Self::FORM_PICK_W - 16.0)
-                                .show_ui(ui, |ui| {
-                                    if ui
-                                        .selectable_label(picked == 0, tr("vacc_free_label"))
-                                        .clicked()
-                                    {
-                                        session.vacc_new_pick = 0;
-                                    }
-                                    for (i, v) in vaccines::CATALOGUE.iter().enumerate() {
-                                        if ui
-                                            .selectable_label(picked == i + 1, v.label)
-                                            .on_hover_text(v.schedule)
-                                            .clicked()
-                                        {
-                                            session.vacc_new_pick = i + 1;
-                                        }
-                                    }
-                                });
-                            if session.vacc_new_pick == 0 {
-                                ui.add_sized(
-                                    [Self::FORM_LABEL_W, 22.0],
-                                    egui::TextEdit::singleline(&mut session.vacc_new.label)
-                                        .hint_text(tr("vacc_label_hint")),
-                                );
+                            // Le champ de date et la ligne corrigée sont
+                            // deux champs du même `Session` : on les
+                            // emprunte ensemble, sinon le second attend
+                            // que le premier ait fini.
+                            let Session {
+                                vacc_edit,
+                                vacc_edit_date,
+                                ..
+                            } = &mut *session;
+                            if let Some(e) = vacc_edit.as_mut() {
+                                // Les mêmes champs que pour écrire, dans
+                                // la même rangée : c'est le même geste,
+                                // et cette rangée-là sait déjà se
+                                // replier sur deux lignes quand le
+                                // panneau est étroit.
+                                let h = Self::row_height(ui);
+                                let fields = [
+                                    ui.add_sized(
+                                        [widths[0], h],
+                                        egui::TextEdit::singleline(&mut e.label)
+                                            .hint_text(tr("vacc_label_hint")),
+                                    ),
+                                    ui.add_sized(
+                                        [widths[1], h],
+                                        egui::TextEdit::singleline(&mut e.dose)
+                                            .hint_text(tr("vacc_dose_hint")),
+                                    ),
+                                    ui.add_sized(
+                                        [widths[2], h],
+                                        egui::TextEdit::singleline(vacc_edit_date)
+                                            .hint_text(tr("vacc_date_hint")),
+                                    ),
+                                    ui.add_sized(
+                                        [widths[3], h],
+                                        egui::TextEdit::singleline(&mut e.lot)
+                                            .hint_text(tr("vacc_lot_hint")),
+                                    ),
+                                    ui.add_sized(
+                                        [widths[4], h],
+                                        egui::TextEdit::singleline(&mut e.site)
+                                            .hint_text(tr("vacc_site_hint")),
+                                    ),
+                                    ui.add_sized(
+                                        [widths[5], h],
+                                        egui::TextEdit::singleline(&mut e.operator)
+                                            .hint_text(tr("vacc_col_operator")),
+                                    ),
+                                ];
+                                if Self::entered(ui, &fields) {
+                                    save_edit = true;
+                                }
+                                if motif::button(ui, tr("form_save")).clicked() {
+                                    save_edit = true;
+                                }
+                                if motif::button(ui, tr("form_cancel")).clicked() {
+                                    cancel_edit = true;
+                                }
+                                return;
                             }
-                            ui.add_sized(
-                                [Self::FORM_DOSE_W, 22.0],
-                                egui::TextEdit::singleline(&mut session.vacc_new.dose)
-                                    .hint_text(tr("vacc_dose_hint")),
+                            let h = Self::row_height(ui);
+                            // **Un seul champ pour le nom du vaccin.**
+                            // Il y avait une liste déroulante *et* un
+                            // champ libre : il fallait décider si le
+                            // vaccin était au catalogue avant de pouvoir
+                            // taper son nom, et les deux ensemble
+                            // prenaient plus de la moitié de la rangée —
+                            // assez pour la faire passer à trois lignes
+                            // et pousser « Imprimer » sous le bord.
+                            // Le foyer revient ici après chaque dose
+                            // écrite : un carnet se remplit dose après
+                            // dose, et recliquer entre chacune est le
+                            // geste qu'on finit par ne plus faire.
+                            let want_focus = std::mem::take(&mut session.focus_vacc_name);
+                            let name = ui.add_sized(
+                                [widths[0], h],
+                                egui::TextEdit::singleline(&mut session.vacc_new.label)
+                                    .hint_text(tr("vacc_label_hint")),
                             );
-                            ui.add_sized(
-                                [Self::FORM_DATE_W, 22.0],
-                                egui::TextEdit::singleline(&mut session.vacc_new_date)
-                                    .hint_text(tr("vacc_date_hint")),
-                            );
-                            ui.add_sized(
-                                [Self::FORM_LOT_W, 22.0],
-                                egui::TextEdit::singleline(&mut session.vacc_new.lot)
-                                    .hint_text(tr("vacc_lot_hint")),
-                            );
-                            ui.add_sized(
-                                [Self::FORM_SITE_W, 22.0],
-                                egui::TextEdit::singleline(&mut session.vacc_new.site)
-                                    .hint_text(tr("vacc_site_hint")),
-                            );
+                            if want_focus {
+                                name.request_focus();
+                            }
+                            name_field = Some(name);
+                            rest = vec![
+                                ui.add_sized(
+                                    [widths[1], h],
+                                    egui::TextEdit::singleline(&mut session.vacc_new.dose)
+                                        .hint_text(tr("vacc_dose_hint")),
+                                ),
+                                ui.add_sized(
+                                    [widths[2], h],
+                                    egui::TextEdit::singleline(&mut session.vacc_new_date)
+                                        .hint_text(tr("vacc_date_hint")),
+                                ),
+                                ui.add_sized(
+                                    [widths[3], h],
+                                    egui::TextEdit::singleline(&mut session.vacc_new.lot)
+                                        .hint_text(tr("vacc_lot_hint")),
+                                ),
+                                ui.add_sized(
+                                    [widths[4], h],
+                                    egui::TextEdit::singleline(&mut session.vacc_new.site)
+                                        .hint_text(tr("vacc_site_hint")),
+                                ),
+                            ];
                             if motif::button(ui, tr("vacc_add")).clicked() {
                                 add = true;
                             }
@@ -9239,6 +9416,72 @@ impl App {
                                 print = true;
                             }
                         });
+                        // Ce que le catalogue reconnaît dans ce qui est
+                        // tapé : des rangées, les flèches et Entrée,
+                        // comme le champ qui ajoute un traitement. Rien
+                        // n'est imposé — un vaccin que le calendrier ne
+                        // connaît pas s'inscrit tel quel, et la rangée
+                        // disparaît dès que le nom est celui d'une fiche.
+                        let typed = session.vacc_new.label.trim().to_owned();
+                        let hits: Vec<&vaccines::VaccineRef> = if typed.is_empty()
+                            || vaccines::CATALOGUE
+                                .iter()
+                                .any(|v| v.label.eq_ignore_ascii_case(&typed))
+                        {
+                            Vec::new()
+                        } else {
+                            let mut scored: Vec<(i32, &vaccines::VaccineRef)> = vaccines::CATALOGUE
+                                .iter()
+                                .filter_map(|v| {
+                                    let a = fuzzy::score(&typed, v.label);
+                                    let b = fuzzy::score(&typed, v.code);
+                                    a.max(b).map(|s| (s, v))
+                                })
+                                .collect();
+                            scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
+                            scored.into_iter().take(6).map(|(_, v)| v).collect()
+                        };
+                        if !hits.is_empty() {
+                            // Borné à l'affichage : la liste change à
+                            // chaque lettre, et un curseur au-delà de sa
+                            // fin choisirait le mauvais vaccin.
+                            if session.vacc_cursor >= hits.len() {
+                                session.vacc_cursor = 0;
+                            }
+                            let chosen = name_field.as_ref().and_then(|f| {
+                                Self::list_keys(ui, f, &mut session.vacc_cursor, hits.len())
+                            });
+                            let mut take: Option<&vaccines::VaccineRef> =
+                                chosen.and_then(|i| hits.get(i).copied());
+                            ui.horizontal_wrapped(|ui| {
+                                for (i, v) in hits.iter().enumerate() {
+                                    let on = i == session.vacc_cursor;
+                                    if motif::toggle(ui, v.label, on)
+                                        .on_hover_text(v.schedule)
+                                        .clicked()
+                                    {
+                                        take = Some(v);
+                                    }
+                                }
+                            });
+                            if let Some(v) = take {
+                                session.vacc_new.label = v.label.to_owned();
+                                session.vacc_new.code = v.code.to_owned();
+                                session.vacc_cursor = 0;
+                            }
+                        }
+                        // Entrée écrit la dose — sauf sur le champ du
+                        // nom quand une suggestion est offerte, où elle
+                        // sert d'abord à la choisir et où la ligne n'est
+                        // pas finie.
+                        if Self::entered(ui, &rest)
+                            || (hits.is_empty()
+                                && name_field
+                                    .as_ref()
+                                    .is_some_and(|f| Self::entered(ui, std::slice::from_ref(f))))
+                        {
+                            add = true;
+                        }
                         // A dose given today and no act billed for it:
                         // the officine is paid for the vaccination, and
                         // a dose recorded without its acte is money the
@@ -9303,6 +9546,12 @@ impl App {
                         match session.db.update_vaccination(line.id, &line, &label, &date) {
                             Ok(true) => {
                                 session.error = None;
+                                // La rangée du bas redevient celle où
+                                // l'on écrit : la laisser en correction
+                                // après un enregistrement réussi, c'est
+                                // la reprendre pour ajouter la suivante.
+                                session.vacc_edit = None;
+                                session.vacc_edit_date.clear();
                                 session.load_carnet(patient.id);
                             }
                             Ok(false) => {
@@ -9331,13 +9580,15 @@ impl App {
         }
         if add {
             let mut line = session.vacc_new.clone();
-            if session.vacc_new_pick > 0 {
-                let v = &vaccines::CATALOGUE[session.vacc_new_pick - 1];
-                line.code = v.code.to_owned();
-                line.label = v.label.to_owned();
-            } else {
+            line.label = line.label.trim().to_owned();
+            // Le code du calendrier ne vaut que pour le nom qui l'a
+            // apporté : le garder après que le nom a été retapé
+            // rangerait la dose sous un vaccin qui n'est pas le sien.
+            if !vaccines::CATALOGUE
+                .iter()
+                .any(|v| v.code == line.code && v.label.eq_ignore_ascii_case(&line.label))
+            {
                 line.code.clear();
-                line.label = line.label.trim().to_owned();
             }
             // An empty date means "today": recording the dose you have
             // just given is the common case, and typing the date again
@@ -9361,7 +9612,8 @@ impl App {
                                 session.error = None;
                                 session.vacc_new = db::Vaccination::default();
                                 session.vacc_new_date.clear();
-                                session.vacc_new_pick = 0;
+                                session.vacc_cursor = 0;
+                                session.focus_vacc_name = true;
                                 session.load_carnet(patient.id);
                             }
                             Err(e) => session.error = Some(e),
@@ -11272,11 +11524,13 @@ impl App {
                 });
         });
         if let Some(code) = pick {
-            session.vacc_new_pick = vaccines::CATALOGUE
-                .iter()
-                .position(|v| v.code == code)
-                .map(|i| i + 1)
-                .unwrap_or(0);
+            // « Charger ce vaccin dans la ligne » : c'est le nom qu'on
+            // pose dans le champ, puisqu'il n'y a plus qu'un champ.
+            if let Some(v) = vaccines::CATALOGUE.iter().find(|v| v.code == code) {
+                session.vacc_new.label = v.label.to_owned();
+                session.vacc_new.code = v.code.to_owned();
+                session.vacc_cursor = 0;
+            }
         }
         if fill {
             session.vacc_fill_confirm = false;
@@ -11709,15 +11963,17 @@ impl App {
     /// at 645 — just over the line — so the four buttons were laid out
     /// right-to-left straight across « Jean Dupont ». A long name or a
     /// wider dock reopened it every time.
-    fn patient_header_fits(ui: &egui::Ui, session: &Session, patient: &Patient) -> bool {
+    /// Ce que les quatre boutons du dossier prennent sur la rangée du
+    /// nom — pour savoir s'ils y tiennent, et pour laisser au nom
+    /// exactement ce qu'ils ne prennent pas.
+    fn patient_actions_width(ui: &egui::Ui, session: &Session) -> f32 {
         let gap = ui.spacing().item_spacing.x;
         let delete = if session.confirm_delete {
             tr("patient_delete_confirm")
         } else {
             tr("patient_delete")
         };
-        let mut needed: f32 = [
-            tr("patient_back"),
+        [
             tr("plan_print"),
             tr("bilan_print"),
             tr("patient_edit"),
@@ -11725,7 +11981,26 @@ impl App {
         ]
         .into_iter()
         .map(|l| Self::button_width(ui, l) + gap)
-        .sum();
+        .sum()
+    }
+
+    fn patient_header_fits(ui: &egui::Ui, session: &Session, patient: &Patient) -> bool {
+        let gap = ui.spacing().item_spacing.x;
+        let delete = if session.confirm_delete {
+            tr("patient_delete_confirm")
+        } else {
+            tr("patient_delete")
+        };
+        let _ = delete;
+        let mut needed: f32 = [
+            tr("patient_back"),
+            // Le pli est sur cette rangée dans les deux états : il compte.
+            tr("patient_band_fold"),
+        ]
+        .into_iter()
+        .map(|l| Self::button_width(ui, l) + gap)
+        .sum::<f32>()
+            + Self::patient_actions_width(ui, session);
         // The name is a heading and the birth date follows it.
         let heading = egui::TextStyle::Heading.resolve(ui.style());
         let body = egui::TextStyle::Body.resolve(ui.style());
@@ -11893,6 +12168,141 @@ impl App {
         lines
     }
 
+    /// La largeur du plus large de ces textes, à cette taille : ce qu'une
+    /// colonne de table demande pour ne rien élider.
+    ///
+    /// Mesurée sur les lignes qui sont là, jamais sur une constante :
+    /// c'est une largeur fixe qui poussait « Par » hors du carnet dès
+    /// qu'un volet s'ouvrait.
+    fn widest<'a>(ui: &egui::Ui, size: f32, texts: impl Iterator<Item = &'a str>) -> f32 {
+        let font = egui::FontId::proportional(size);
+        ui.fonts(|f| {
+            texts.fold(0.0_f32, |w, t| {
+                w.max(
+                    f.layout_no_wrap(t.to_owned(), font.clone(), motif::text())
+                        .size()
+                        .x,
+                )
+            })
+        }) + ui.spacing().item_spacing.x
+    }
+
+    /// Ce qu'un champ de saisie demande pour montrer son invite en
+    /// entier, plus le cadre autour.
+    ///
+    /// Les largeurs du carnet étaient des constantes en pixels — 96 pour
+    /// la date, 90 pour le lot — et à `[ui] text_scale = 1,25`
+    /// « JJ/MM/AAAA » sortait du champ par la droite : une invite qu'on
+    /// ne peut pas lire n'invite à rien. C'est la règle de la maison,
+    /// enfreinte ici comme elle l'avait été ailleurs : on mesure.
+    fn field_width<'a>(ui: &egui::Ui, texts: impl Iterator<Item = &'a str>) -> f32 {
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        ui.fonts(|f| {
+            texts.fold(0.0_f32, |w, t| {
+                w.max(
+                    f.layout_no_wrap(t.to_owned(), font.clone(), motif::text())
+                        .size()
+                        .x,
+                )
+            })
+        }) + ui.spacing().button_padding.x * 2.0
+            + 8.0
+    }
+
+    /// Les largeurs de la rangée où l'on écrit une dose, dans l'ordre où
+    /// elle les pose : la même liste sert à mesurer la bande et à la
+    /// dessiner, parce que deux mesures d'une même chose divergent
+    /// toujours — le carnet en comptait deux rangées et en dessinait
+    /// trois, et « Imprimer » tombait sous le bord du panneau.
+    ///
+    /// `width` est la largeur que le dessin aura, pas celle du panneau.
+    fn carnet_form_widths(ui: &egui::Ui, session: &Session, width: f32) -> Vec<f32> {
+        // Les cinq premières sont les mêmes des deux côtés, dans le même
+        // ordre : nom, dose, date, lot, site. Ce qui suit diffère.
+        let dose = Self::field_width(ui, [tr("vacc_dose_hint")].into_iter());
+        let date = Self::field_width(ui, [tr("vacc_date_hint")].into_iter());
+        let lot = Self::field_width(ui, [tr("vacc_lot_hint")].into_iter());
+        let site = Self::field_width(ui, [tr("vacc_site_hint")].into_iter());
+        // Le nom porte maintenant l'autocomplétion : il se mesure sur ce
+        // qu'on y écrit — les libellés du calendrier — et non sur son
+        // invite, qui est plus courte que la moitié d'entre eux. Borné à
+        // un tiers de la rangée : « Diphtérie-tétanos-poliomyélite-
+        // coqueluche » la prendrait toute.
+        let name = Self::field_width(
+            ui,
+            std::iter::once(tr("vacc_label_hint"))
+                .chain(vaccines::CATALOGUE.iter().map(|v| v.label)),
+        )
+        .min(width * 0.30);
+        if session.vacc_edit.is_some() {
+            return vec![
+                name,
+                dose,
+                date,
+                lot,
+                site,
+                Self::field_width(ui, [tr("vacc_col_operator")].into_iter()),
+                Self::button_width(ui, tr("form_save")),
+                Self::button_width(ui, tr("form_cancel")),
+            ];
+        }
+        vec![
+            name,
+            dose,
+            date,
+            lot,
+            site,
+            Self::button_width(ui, tr("vacc_add")),
+            Self::button_width(ui, tr("vacc_print")),
+        ]
+    }
+
+    /// La hauteur des deux avis qui suivent la rangée de saisie du
+    /// carnet : l'acte de vaccination non créé, et la mention de
+    /// l'officine. Ni l'un ni l'autre n'est là la plupart du temps —
+    /// trente-quatre pixels leur étaient pourtant réservés à chaque
+    /// image, sur un panneau qui en compte cent soixante.
+    fn carnet_notice_h(ui: &egui::Ui, session: &Session, config: &Config) -> f32 {
+        let mut h = 0.0;
+        let given_today = session
+            .vaccinations
+            .iter()
+            .any(|v| v.given_on == session.today);
+        let billed_today = session.viewing_interviews.iter().any(|i| {
+            i.kind == InterviewKind::Vaccination && i.created_at.starts_with(&session.today)
+        });
+        if given_today && !billed_today {
+            h += Self::row_height(ui) + ui.spacing().item_spacing.y;
+        }
+        if !config.disclaimers.vaccins.trim().is_empty() {
+            h += ui.text_style_height(&egui::TextStyle::Body);
+        }
+        h
+    }
+
+    /// Entrée dans l'un de ces champs : la rangée est validée.
+    ///
+    /// Une rangée de six champs qu'il faut ensuite aller cliquer n'est
+    /// pas une rangée où l'on tape : c'est un formulaire à la souris
+    /// avec un clavier pour l'accompagner. Le carnet se remplit dose
+    /// après dose, et chacune coûtait un aller-retour.
+    fn entered(ui: &egui::Ui, fields: &[egui::Response]) -> bool {
+        fields.iter().any(|f| f.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter))
+    }
+
+    /// Une cellule de table qui **tient dans sa colonne**.
+    ///
+    /// Un `Grid` d'egui donne à chaque colonne la largeur de son plus
+    /// large contenu : une seule valeur trop longue, et tout ce qui suit
+    /// sort du panneau à droite. La largeur est donc décidée au-dessus,
+    /// et le texte s'élide.
+    fn grid_cell(ui: &mut egui::Ui, width: f32, text: egui::RichText) {
+        ui.scope(|ui| {
+            ui.set_width(width);
+            ui.add(egui::Label::new(text).truncate());
+        });
+    }
+
     /// [`wrapped_rows_of`] for a row that is all buttons.
     fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
         Self::wrapped_rows_of(ui, width, labels.map(|l| Self::button_width(ui, l)))
@@ -11943,6 +12353,12 @@ impl App {
     /// open. Measured rather than guessed, so nothing is ever clipped.
     fn patient_band_height(ui: &egui::Ui, session: &Session, patient: &Patient) -> f32 {
         let w = motif::visible_rect(ui).width() - 40.0;
+        // Replié : le nom, la date de naissance, et de quoi le rouvrir.
+        // Une correction en cours le déplie d'office — on ne cache pas
+        // le formulaire dans lequel on est en train de taper.
+        if session.patient_band_folded && session.edit_patient.is_none() {
+            return Self::row_height(ui) + ui.spacing().item_spacing.y + 20.0;
+        }
         // The act buttons are the part that wraps.
         let lines = Self::wrapped_rows(ui, w, InterviewKind::ALL.iter().map(|k| k.label()));
         let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
@@ -12024,6 +12440,9 @@ impl App {
         let mut print_plan = false;
         let mut back = false;
         let cramped = !Self::patient_header_fits(ui, session, patient);
+        // Une correction en cours déplie le bandeau : on ne replie pas le
+        // formulaire dans lequel on tape.
+        let folded = session.patient_band_folded && session.edit_patient.is_none();
         ui.add_space(2.0);
         ui.horizontal(|ui| {
             if motif::button(ui, tr("patient_back")).clicked() {
@@ -12031,15 +12450,49 @@ impl App {
                 session.viewing = None;
                 back = true;
             }
+            // Le pli, toujours à la même place et dans les deux états :
+            // c'est le seul bouton qui doive rester atteignable une fois
+            // le reste du bandeau rangé.
+            let label = if folded {
+                tr("patient_band_unfold")
+            } else {
+                tr("patient_band_fold")
+            };
+            if motif::button(ui, label)
+                .on_hover_text(tr("patient_band_fold_tooltip"))
+                .clicked()
+            {
+                session.patient_band_folded = !session.patient_band_folded;
+            }
             ui.add_space(6.0);
-            ui.heading(patient.full_name());
-            ui.label(
-                egui::RichText::new(trf(
-                    "patient_born",
-                    db::format_french_date(&patient.birth_date),
-                ))
-                .color(motif::text_dim()),
-            );
+            // **Le nom tient dans ce que les boutons laissent.** Posés
+            // sans limite, le nom et la date de naissance se peignaient
+            // par-dessus le bord droit du panneau : « Né(e) le
+            // 03/07/1958 » se lisait « …195 ». Un `Painter` peint où on
+            // lui dit, et rien ne l'arrête — c'est la même famille que
+            // le titre de `motif::panel` qui débordait sur le panneau
+            // d'à côté.
+            let born = trf("patient_born", db::format_french_date(&patient.birth_date));
+            let body = egui::TextStyle::Body.resolve(ui.style());
+            let born_w = ui.fonts(|f| {
+                f.layout_no_wrap(born.clone(), body, motif::text_dim())
+                    .size()
+                    .x
+            });
+            let room = ui.available_width()
+                - if cramped {
+                    0.0
+                } else {
+                    Self::patient_actions_width(ui, session)
+                };
+            let name_w = (room - born_w - ui.spacing().item_spacing.x * 2.0).max(60.0);
+            ui.scope(|ui| {
+                ui.set_max_width(name_w);
+                ui.add(
+                    egui::Label::new(egui::RichText::new(patient.full_name()).heading()).truncate(),
+                );
+            });
+            ui.add(egui::Label::new(egui::RichText::new(born).color(motif::text_dim())).truncate());
             // The file's own actions live on its header line, hard
             // right — they act on the patient, not on the acts below.
             // Unless the name already fills the line, in which case they
@@ -12057,6 +12510,24 @@ impl App {
                 });
             }
         });
+        if folded {
+            // Replié, la bande est cette rangée-là et rien d'autre : sa
+            // hauteur est comptée pour une rangée, et tout ce qui suit
+            // sortirait par le bas plutôt que de tenir.
+            if print_bilan {
+                Self::print_bilan(session, patient, config, operator);
+            }
+            if print_plan {
+                Self::print_plan(session, patient, config, operator);
+            }
+            if start_edit {
+                Self::patient_edit_started(session, patient);
+            }
+            if delete_click {
+                Self::patient_delete_clicked(session, patient);
+            }
+            return;
+        }
         if cramped {
             ui.horizontal(|ui| {
                 Self::patient_actions(
@@ -12755,21 +13226,7 @@ impl App {
         }
 
         if start_edit {
-            session.confirm_delete = false;
-            session.edit_patient = Some(PatientForm {
-                last_name: patient.last_name.clone(),
-                first_name: patient.first_name.clone(),
-                birth_date: db::format_french_date(&patient.birth_date),
-                phone: patient.phone.clone(),
-                notes: patient.notes.clone(),
-                physician: patient.physician.clone(),
-                email: patient.email.clone(),
-                address: patient.address.clone(),
-                situation: patient.situation.clone(),
-                nir: patient.nir.clone(),
-                regime: patient.regime.clone(),
-                error: None,
-            });
+            Self::patient_edit_started(session, patient);
         }
         if cancel_edit {
             session.edit_patient = None;
@@ -12829,25 +13286,54 @@ impl App {
             }
         }
         if delete_click {
-            if session.confirm_delete {
-                match session.db.delete_patient(patient.id) {
-                    Ok(()) => {
-                        session.confirm_delete = false;
-                        session.edit_patient = None;
-                        session.viewing = None;
-                        session.error = None;
-                        session.query.clear();
-                        if let Ok(list) = session.db.patients() {
-                            session.set_patients(list);
-                        }
-                        // `viewing` is now None: patient_view checks it
-                        // and skips the acts and journal panes.
-                    }
-                    Err(e) => session.error = Some(e),
+            Self::patient_delete_clicked(session, patient);
+        }
+    }
+
+    /// « Modifier » : le dossier recopié dans le formulaire.
+    ///
+    /// Une fonction et non deux copies : le bandeau replié porte les
+    /// mêmes boutons que le bandeau ouvert, et deux copies du même geste
+    /// divergent — c'est ainsi qu'une correction cesse d'effacer la
+    /// confirmation de suppression sur l'une des deux.
+    fn patient_edit_started(session: &mut Session, patient: &Patient) {
+        session.confirm_delete = false;
+        session.edit_patient = Some(PatientForm {
+            last_name: patient.last_name.clone(),
+            first_name: patient.first_name.clone(),
+            birth_date: db::format_french_date(&patient.birth_date),
+            phone: patient.phone.clone(),
+            notes: patient.notes.clone(),
+            physician: patient.physician.clone(),
+            email: patient.email.clone(),
+            address: patient.address.clone(),
+            situation: patient.situation.clone(),
+            nir: patient.nir.clone(),
+            regime: patient.regime.clone(),
+            error: None,
+        });
+    }
+
+    /// « Supprimer… » : le premier clic demande, le second efface.
+    fn patient_delete_clicked(session: &mut Session, patient: &Patient) {
+        if !session.confirm_delete {
+            session.confirm_delete = true;
+            return;
+        }
+        match session.db.delete_patient(patient.id) {
+            Ok(()) => {
+                session.confirm_delete = false;
+                session.edit_patient = None;
+                session.viewing = None;
+                session.error = None;
+                session.query.clear();
+                if let Ok(list) = session.db.patients() {
+                    session.set_patients(list);
                 }
-            } else {
-                session.confirm_delete = true;
+                // `viewing` is now None: patient_view checks it and
+                // skips the acts and journal panes.
             }
+            Err(e) => session.error = Some(e),
         }
     }
 
@@ -18216,12 +18702,15 @@ impl App {
     ) {
         use crate::ordonnancier::Kind;
         let line = ui.text_style_height(&egui::TextStyle::Body);
-        // Une rangée de contrôles, la ligne de sous-titre et celle du
-        // message. Les trois champs qui servaient à suivre un produit
-        // sont partis dans la colonne de gauche, avec le catalogue :
-        // c'est là qu'on choisit ce qu'on suit, et la bande du haut a
-        // rendu une rangée au registre.
-        let head_h = Self::row_height(ui) + line * 2.0 + 16.0;
+        // Une rangée de contrôles et celle du message. Les trois champs
+        // qui servaient à suivre un produit sont partis dans la colonne
+        // de gauche, avec le catalogue : c'est là qu'on choisit ce qu'on
+        // suit, et la bande du haut a rendu une rangée au registre.
+        //
+        // Le sous-titre est parti avec eux. Il énonçait la règle du
+        // registre en une phrase que personne n'a besoin de relire à
+        // chaque délivrance, et la place vaut mieux à une ligne de plus.
+        let head_h = Self::row_height(ui) + line + 16.0;
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
         let mut open_patient: Option<i64> = None;
         // Ce que la douchette a désigné. Comme le clic d'une ligne, cela
@@ -18380,14 +18869,6 @@ impl App {
                     }
                 }
             });
-            ui.add(
-                egui::Label::new(
-                    egui::RichText::new(tr("stup_subtitle"))
-                        .size(11.5)
-                        .color(motif::text_dim()),
-                )
-                .wrap(),
-            );
             if let Some((is_error, msg)) = &session.stup_note {
                 ui.label(
                     egui::RichText::new(msg.as_str())
@@ -25681,6 +26162,7 @@ impl eframe::App for App {
             self.layout.side_pane = self.side_pane.clone();
             if let State::Unlocked(session) = &self.state {
                 self.layout.view = session.view.as_key().to_owned();
+                self.layout.patient_band_folded = session.patient_band_folded;
             }
             if self.layout != self.layout_saved {
                 // A drag reports a new width every frame: wait until it

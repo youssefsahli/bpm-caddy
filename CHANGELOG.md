@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Le carnet de vaccination ne sortait plus par la droite.** Corriger
+  une ligne échangeait ses six colonnes contre six champs et deux
+  boutons *dans la rangée du tableau* — plus large que le panneau à
+  toute taille utile —, si bien qu'il fallait défiler à droite pour
+  atteindre « Enregistrer » puis à gauche pour relire le nom du vaccin.
+  - **La correction se tape dans la rangée du bas**, celle où l'on écrit
+    déjà une dose : les mêmes champs, à une colonne près, et cette
+    rangée-là sait se replier sur deux lignes quand le panneau est
+    étroit. La ligne en cours de correction se voit dans la table, sinon
+    on ne saurait pas laquelle la rangée du bas porte.
+  - La table n'a donc plus qu'une barre verticale, et **trois formes**
+    selon ce que la largeur permet : sept colonnes, quatre, ou deux. Ce
+    que la largeur refuse descend sous le nom, à la ligne où le rappel
+    dû et la remarque se lisaient déjà. Rien ne disparaît.
+  - Et la note de bas de ligne était posée dans la colonne « Dose » : un
+    `Grid` donne à chaque colonne la largeur de son plus large contenu,
+    donc cette note élargissait la colonne à sa longueur et emportait
+    tout ce qui suivait vers la droite. C'était **elle**, la barre
+    horizontale, autant que la rangée de correction.
+- **Le bandeau du dossier se replie.** À 1024x700 il prend la moitié de
+  la hauteur utile, et l'onglet en dessous n'a plus de quoi montrer
+  *une* ligne de sa table : le carnet affichait « Vaccin · Dose · Date »
+  au-dessus de rien, sur l'onglet qui existe pour montrer les doses. Ce
+  n'est pas un partage à régler — la contrainte est au-dessus du
+  partage. « Replier » rend deux cents pixels d'un clic, `layout.toml`
+  s'en souvient, et une correction en cours déplie d'office : on ne
+  range pas le formulaire dans lequel on tape.
+- **Le nom du patient tenait dans ce que les boutons laissent.** Posés
+  sans limite, le nom et la date de naissance se peignaient par-dessus
+  le bord droit du panneau : « Né(e) le 03/07/1958 » se lisait
+  « …195 ». Même famille que le titre de `motif::panel` qui débordait
+  sur le panneau d'à côté — un `Painter` peint où on lui dit.
+- **Les largeurs de la rangée de saisie étaient des constantes en
+  pixels.** 96 pour la date, 90 pour le lot : à `[ui] text_scale = 1,25`
+  « JJ/MM/AAAA » sortait du champ par la droite, et une invite qu'on ne
+  peut pas lire n'invite à rien. Elles se mesurent, par la fonction qui
+  sert **à la fois** à mesurer la bande et à la dessiner — deux mesures
+  d'une même chose divergent toujours, et celle-ci comptait deux rangées
+  là où trois étaient dessinées : « Imprimer le carnet » tombait sous le
+  bord du panneau.
+- Les trente-quatre pixels réservés à chaque image aux deux avis du
+  carnet — l'acte non créé, la mention de l'officine — se mesurent aussi.
+  Ni l'un ni l'autre n'est là la plupart du temps.
+
+### Changed
+- **Le vaccin se saisit dans un seul champ, avec autocomplétion.** Il y
+  avait une liste déroulante **et** un champ libre : deux widgets pour
+  une seule information, et il fallait décider si le vaccin était au
+  calendrier avant de pouvoir taper son nom. On tape, les propositions
+  répondent, les flèches et Entrée choisissent — et ce que le calendrier
+  ne connaît pas s'inscrit quand même. À l'écrit, cela rendait aussi les
+  deux cents pixels qui faisaient passer la rangée à trois lignes.
+- **Entrée valide la rangée du carnet**, à l'écriture comme à la
+  correction, et le foyer revient au nom après chaque dose écrite. Une
+  rangée de six champs qu'il faut ensuite aller cliquer n'est pas une
+  rangée où l'on tape ; un carnet se remplit dose après dose, et chacune
+  coûtait un aller-retour à la souris.
+- **Une passe sur les phrases.** Le sous-titre du registre énonçait sa
+  propre règle en une phrase que personne ne relit à chaque délivrance :
+  il est parti, et la place vaut mieux à une ligne de registre. Le plan
+  de prise ne dit plus « Mon plan de traitement », « À quoi ça sert »,
+  « Quand le prendre » et « Ce qu'il faut savoir » mais « Plan de
+  prise », « Indication », « Posologie » et « Remarques » — c'est une
+  feuille qu'un professionnel remet, pas un livret. Et une quinzaine de
+  bulles d'aide qui commentaient au lieu de dire ont été ramenées à ce
+  qu'elles annoncent.
+
 ### Added
 - **Des traits relient les traitements qu'une règle nomme ensemble.**
   Ce que la revue trouve *entre* deux lignes de l'ordonnance se lisait

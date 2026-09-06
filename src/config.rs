@@ -1321,6 +1321,14 @@ pub struct Layout {
     /// Which view was on screen: see `MainView::as_key`. An empty string
     /// — or a name this version does not know — lands on the search.
     pub view: String,
+    /// Le bandeau d'identité du dossier, replié sur sa seule ligne de nom.
+    ///
+    /// C'est une préférence exprimée en travaillant, comme les autres :
+    /// à 1024x700 le bandeau prend la moitié de la hauteur, et l'onglet
+    /// en dessous — le carnet, la biologie, les locations — n'a plus de
+    /// quoi montrer une ligne de sa table. Qui travaille dans ces
+    /// onglets-là replie une fois et ne le refait plus.
+    pub patient_band_folded: bool,
     /// The version of BPM-Caddy that wrote this file. Recorded so
     /// Options › À propos can say when the workspace was last laid out
     /// by another version, and so a future change of shape can tell a
@@ -1339,6 +1347,7 @@ impl Default for Layout {
             docs_open: None,
             side_pane: String::new(),
             view: String::new(),
+            patient_band_folded: false,
             version: String::new(),
         }
     }
