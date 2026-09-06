@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Le champ des traitements accepte enfin ce que la base ne connaît
+  pas.** Une ordonnance porte des produits qui ne sont pas encore au
+  référentiel, et taper leur nom ne rendait rien : il fallait quitter le
+  dossier, aller à la base, créer la fiche, revenir. La dernière
+  proposition est maintenant « + Créer la fiche « … » », et c'en est
+  bien une — jamais un second catalogue de noms libres à côté du
+  référentiel, qui ne serait ni cherchable, ni imprimable, ni relié à
+  une interaction. Dernière de la liste et jamais sous le curseur au
+  départ : on ne crée pas une fiche par mégarde en tapant vite.
+- **L'onglet ouvert décide de la part du bandeau du dossier.** Sur
+  « Entretiens » la bande *est* le poste de travail — les traitements,
+  ce que la revue en dit, le choix rapide d'un acte — et elle garde ses
+  quarante-cinq pour cent. Sur les autres onglets elle n'est plus que le
+  contexte : on ouvre « Conciliation » pour voir la conciliation, et à
+  1024x700 celle-ci montrait ses en-têtes au-dessus d'une seule ligne
+  tranchée. C'est ce que l'application peut décider seule ; « Replier »
+  reste le levier de l'opérateur.
+- « Retour (Échap) » devient « Retour », la touche passant dans la
+  bulle : le rappel du raccourci coûtait cinquante-cinq pixels sur la
+  rangée où le nom du patient n'en avait déjà plus.
+
 ### Fixed
 - **Le carnet de vaccination ne sortait plus par la droite.** Corriger
   une ligne échangeait ses six colonnes contre six champs et deux
@@ -51,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Les trente-quatre pixels réservés à chaque image aux deux avis du
   carnet — l'acte non créé, la mention de l'officine — se mesurent aussi.
   Ni l'un ni l'autre n'est là la plupart du temps.
+- Et la rangée de saisie se mesurait sur seize pixels de moins que la
+  largeur où elle est dessinée, « pour la barre de défilement » : trois
+  rangées comptées, deux dessinées, et quatre-vingts pixels de vide sous
+  le formulaire — pris à la table au-dessus.
 
 ### Changed
 - **Le vaccin se saisit dans un seul champ, avec autocomplétion.** Il y

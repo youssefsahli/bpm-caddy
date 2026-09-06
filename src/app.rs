@@ -8957,7 +8957,7 @@ impl App {
             // dessinait trois dès que « Imprimer » ne tenait plus sur la
             // deuxième — le carnet gardait la place de deux, la bande
             // était rognée à deux, et le bouton tombait sous le bord.
-            let form_w = work.width() - 32.0;
+            let form_w = work.width() - 16.0;
             let form_rows = Self::wrapped_rows_of(
                 ui,
                 form_w,
@@ -9043,7 +9043,13 @@ impl App {
             // table : ses champs sont les mêmes, à une colonne près.
             // Les largeurs sont calculées **une fois**, ici, et servent
             // à mesurer la bande puis à la dessiner.
-            let form_w = inner.width() - 16.0;
+            // La largeur que le dessin aura, exactement : la bande est
+            // dessinée dans `parts[1]`, qui fait `inner.width()`.
+            // Retrancher seize pixels « pour la barre » faisait mesurer
+            // trois rangées là où deux sont dessinées, et le panneau
+            // gardait quatre-vingts pixels de vide sous le formulaire —
+            // pris à la table au-dessus.
+            let form_w = inner.width();
             let widths = Self::carnet_form_widths(ui, session, form_w);
             let form_rows =
                 Self::wrapped_rows_of(ui, form_w, widths.iter().copied().filter(|w| *w > 0.0));
@@ -12405,7 +12411,14 @@ impl App {
             h += 34.0;
         }
         if !session.treat_query.trim().is_empty() {
-            h += row;
+            // Deux rangées, et non une. Les propositions sont six noms
+            // de médicaments plus « créer la fiche » : elles enveloppent
+            // sur un dossier étroit, et la bande n'en comptait qu'une.
+            // On ne peut pas les mesurer ici sans refaire la passe floue
+            // sur huit cent cinquante fiches — soixante fois par
+            // seconde —, alors on réserve la place du pire cas. Réserver
+            // trop fait défiler ; réserver trop peu coupe.
+            h += row * 2.0;
         }
         // The two readings the band carries under the treatments: the
         // interactions on one line, the revue as chips that wrap.
@@ -12419,7 +12432,23 @@ impl App {
         // Whatever the band would like, the acts and the journal keep
         // their half of the file: the band scrolls instead.
         let avail = motif::visible_rect(ui).height();
-        h.min((avail * 0.45).max(avail - 340.0))
+        // **L'onglet ouvert décide de la part du bandeau.** Sur
+        // « Entretiens », la bande *est* le poste de travail : les
+        // traitements, ce que la revue en dit, le choix rapide d'un
+        // acte — et le tableau en dessous se lit ligne à ligne. Sur les
+        // autres onglets, elle n'est plus que le contexte, et le sujet
+        // est en dessous : on ouvre « Conciliation » pour voir la
+        // conciliation, et à 1024x700 elle montrait ses en-têtes
+        // au-dessus d'une seule ligne tranchée.
+        //
+        // Le pli reste le levier de l'opérateur ; ceci est ce que
+        // l'application peut décider seule, sans qu'on lui demande.
+        let cap = if session.patient_tab == PatientTab::Acts {
+            (avail * 0.45).max(avail - 340.0)
+        } else {
+            (avail * 0.30).max(Self::row_height(ui) * 3.0)
+        };
+        h.min(cap)
     }
 
     /// Who the patient is: identity, corrections, treatments, and the
@@ -12445,7 +12474,13 @@ impl App {
         let folded = session.patient_band_folded && session.edit_patient.is_none();
         ui.add_space(2.0);
         ui.horizontal(|ui| {
-            if motif::button(ui, tr("patient_back")).clicked() {
+            // « Retour », et la touche dans la bulle : le rappel du
+            // raccourci coûtait cinquante-cinq pixels sur la rangée où
+            // le nom du patient n'en avait déjà plus.
+            if motif::button(ui, tr("patient_back"))
+                .on_hover_text(tr("patient_back_tooltip"))
+                .clicked()
+            {
                 session.flush_date_edits();
                 session.viewing = None;
                 back = true;
@@ -12485,7 +12520,10 @@ impl App {
                 } else {
                     Self::patient_actions_width(ui, session)
                 };
-            let name_w = (room - born_w - ui.spacing().item_spacing.x * 2.0).max(60.0);
+            // Une seule gouttière : celle entre le nom et la date. En
+            // compter deux élidait « Jean Dupont » en « Jean Du… » sur
+            // une rangée où il tenait.
+            let name_w = (room - born_w - ui.spacing().item_spacing.x).max(60.0);
             ui.scope(|ui| {
                 ui.set_max_width(name_w);
                 ui.add(
@@ -12694,6 +12732,8 @@ impl App {
         {
             let mut remove_treat: Option<i64> = None;
             let mut add_treat: Option<i64> = None;
+            // Créer la fiche du nom tapé, puis l'attacher au dossier.
+            let mut create_treat = false;
             let mut open_card: Option<Drug> = None;
             // Le champ qui ajoute, gardé pour que les flèches et Entrée
             // sachent s'il a le foyer : la liste se parcourait à la
@@ -12786,14 +12826,35 @@ impl App {
                 // plutôt que laissé grandir : la liste change à chaque
                 // lettre tapée, et un curseur au-delà de sa fin
                 // choisirait le mauvais médicament.
-                if session.treat_cursor >= hits.len() {
+                // **Et le texte libre a sa place dans la liste.** Une
+                // ordonnance porte des produits que la base ne connaît
+                // pas encore, et jusqu'ici taper leur nom ne rendait
+                // rien : il fallait quitter le dossier, aller à la base,
+                // créer la fiche, revenir. La dernière proposition est
+                // donc « créer la fiche », et c'est bien une fiche —
+                // jamais un second catalogue de noms libres à côté du
+                // référentiel, qui ne serait ni cherchable, ni
+                // imprimable, ni relié à une interaction.
+                //
+                // Dernière, et jamais sous le curseur au départ : on ne
+                // crée pas une fiche par mégarde en tapant vite.
+                let exact = hits
+                    .iter()
+                    .any(|d| d.name.trim().eq_ignore_ascii_case(q.trim()));
+                let offer_new = !exact;
+                let rows = hits.len() + usize::from(offer_new);
+                if session.treat_cursor >= rows {
                     session.treat_cursor = 0;
                 }
                 let chosen = add_field
                     .as_ref()
-                    .and_then(|f| Self::list_keys(ui, f, &mut session.treat_cursor, hits.len()));
+                    .and_then(|f| Self::list_keys(ui, f, &mut session.treat_cursor, rows));
                 if let Some(i) = chosen {
-                    add_treat = hits.get(i).map(|d| d.id);
+                    if i < hits.len() {
+                        add_treat = hits.get(i).map(|d| d.id);
+                    } else {
+                        create_treat = true;
+                    }
                 }
                 let held = |id: i64| session.patient_treats.iter().any(|t| t.id == id);
                 // Et de vraies rangées : la sélection se voit, ce qu'un
@@ -12831,6 +12892,15 @@ impl App {
                         };
                         if motif::toggle(ui, &label, on).on_hover_text(hint).clicked() {
                             add_treat = Some(d.id);
+                        }
+                    }
+                    if offer_new {
+                        let on = session.treat_cursor == hits.len();
+                        if motif::toggle(ui, &trf("treat_hit_new", q.trim()), on)
+                            .on_hover_text(tr("treat_hit_new_tooltip"))
+                            .clicked()
+                        {
+                            create_treat = true;
                         }
                     }
                 });
@@ -12933,6 +13003,34 @@ impl App {
                     session.error = Some(e);
                 }
                 session.reload_treatments(patient.id);
+            }
+            if create_treat {
+                let name = session.treat_query.trim().to_owned();
+                if !name.is_empty() {
+                    match session.db.add_drug(&name) {
+                        Ok(id) => {
+                            // La fiche est vide : c'est le nom qui
+                            // compte au comptoir, et le reste s'écrit
+                            // dans la base quand quelqu'un a le temps.
+                            // La rattacher tout de suite est le geste
+                            // qu'on était en train de faire.
+                            if let Err(e) = session.db.add_patient_drug(patient.id, id) {
+                                session.error = Some(e);
+                            } else {
+                                session.error = None;
+                            }
+                            if let Ok(list) = session.db.drugs() {
+                                session.set_drugs(list);
+                            }
+                            session.reload_treatments(patient.id);
+                            session.treat_dosing = None;
+                            session.focus_treat_add = true;
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                }
+                session.treat_query.clear();
+                session.treat_cursor = 0;
             }
             if let Some(id) = add_treat {
                 session.treat_query.clear();
