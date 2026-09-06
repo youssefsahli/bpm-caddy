@@ -1017,12 +1017,48 @@ fn rank_label(rank: usize) -> String {
 /// The height [`notes_box`] needs under its well for the "add" row.
 /// Derived from the style so a bigger text scale does not push the
 /// button through the bottom of its panel.
+/// La largeur que « Ajouter » prend sur la rangée de saisie.
+fn notes_add_button_width(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    ui.fonts(|f| {
+        f.layout_no_wrap(tr("notes_add").to_owned(), font, motif::text())
+            .size()
+            .x
+    }) + ui.spacing().button_padding.x * 2.0
+        + 10.0
+}
+
+/// Une rangée, ou deux.
+///
+/// Le champ et le bouton tenaient toujours sur la même rangée, le champ
+/// prenant « ce qui reste, au moins soixante pixels » : sur la colonne
+/// « Notes datées » d'une fiche médicament, large de cent quatre-vingts
+/// pixels, il restait justement soixante, et l'invite « Nouvelle
+/// note… » s'y lisait « Nouve ». Un champ où l'on ne lit pas ce qu'on
+/// doit y écrire n'invite à rien : sous cette largeur, le bouton passe
+/// dessous.
+fn notes_add_rows(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let hint = ui.fonts(|f| {
+        f.layout_no_wrap(tr("notes_add_hint").to_owned(), font, motif::text())
+            .size()
+            .x
+    }) + 12.0;
+    let need = hint + notes_add_button_width(ui) + ui.spacing().item_spacing.x;
+    if ui.available_width() >= need {
+        1.0
+    } else {
+        2.0
+    }
+}
+
 fn notes_box_reserve(ui: &egui::Ui) -> f32 {
     // The field, the button's own padding, the gap the box leaves under
     // its well, and the row spacing either side of it.
     let button =
         ui.text_style_height(&egui::TextStyle::Button) + ui.spacing().button_padding.y * 2.0 + 2.0;
-    ui.spacing().interact_size.y.max(button) + ui.spacing().item_spacing.y + 10.0
+    let row = ui.spacing().interact_size.y.max(button) + ui.spacing().item_spacing.y;
+    row * notes_add_rows(ui) + 10.0
 }
 
 fn notes_box(
@@ -1112,28 +1148,36 @@ fn notes_box(
     });
     ui.add_space(6.0);
     if with_add {
+        // The button is measured, and the field never floored above
+        // what is left for it: a fixed « available - 100, at least
+        // 120 » pushed « Ajouter » off the side of the narrow notes
+        // panel on a drug card, where the whole box is 180 px. Sous une
+        // certaine largeur il passe carrément dessous — sinon c'est
+        // l'invite du champ qu'on ne lit plus.
+        let stacked = notes_add_rows(ui) > 1.0;
+        let button_w = notes_add_button_width(ui);
+        let mut pressed = false;
         ui.horizontal(|ui| {
-            // The button is measured, and the field never floored above
-            // what is left for it: a fixed « available - 100, at least
-            // 120 » pushed « Ajouter » off the side of the narrow notes
-            // panel on a drug card, where the whole box is 180 px.
-            let font = egui::TextStyle::Button.resolve(ui.style());
-            let button_w = ui.fonts(|f| {
-                f.layout_no_wrap(tr("notes_add").to_owned(), font, motif::text())
-                    .size()
-                    .x
-            }) + ui.spacing().button_padding.x * 2.0
-                + 10.0;
-            let field_w = (ui.available_width() - button_w - ui.spacing().item_spacing.x).max(60.0);
+            let field_w = if stacked {
+                ui.available_width()
+            } else {
+                (ui.available_width() - button_w - ui.spacing().item_spacing.x).max(60.0)
+            };
             ui.add_sized(
                 [field_w, 24.0],
                 egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
             )
             .on_hover_text(tr("notes_markup_hint"));
-            if motif::button(ui, tr("notes_add")).clicked() && !text.trim().is_empty() {
-                add = Some(text.trim().to_owned());
+            if !stacked {
+                pressed = motif::button(ui, tr("notes_add")).clicked();
             }
         });
+        if stacked {
+            pressed = motif::button(ui, tr("notes_add")).clicked();
+        }
+        if pressed && !text.trim().is_empty() {
+            add = Some(text.trim().to_owned());
+        }
     }
     (add, delete)
 }
@@ -24098,7 +24142,10 @@ impl App {
                     } else if motif::button(ui, tr("form_save")).clicked() {
                         save = true;
                     }
-                    if motif::button(ui, tr("drug_close")).clicked() {
+                    if motif::button(ui, tr("drug_close"))
+                        .on_hover_text(tr("drug_close_tooltip"))
+                        .clicked()
+                    {
                         close = true;
                     }
                     if reading {
@@ -24196,7 +24243,19 @@ impl App {
                     ),
                 )
             } else {
-                let band = (body.height() * 0.26).clamp(140.0, 220.0);
+                // Le plancher du bandeau, mesuré sur ce qu'il porte : le
+                // cadre et la légende d'un panneau, une ligne de note, et
+                // la rangée où l'on écrit — qui en prend **deux** quand
+                // la colonne est étroite. Cent quarante pixels écrits en
+                // dur laissaient « Notes datées » avec quatre pixels de
+                // puits, c'est-à-dire un titre au-dessus de rien, et la
+                // monographie au-dessus ne perd rien : elle défile.
+                let line = ui.text_style_height(&egui::TextStyle::Body);
+                let band_floor = 16.0
+                    + line * 2.0
+                    + (Self::row_height(ui) + ui.spacing().item_spacing.y) * 2.0
+                    + 10.0;
+                let band = (body.height() * 0.26).clamp(band_floor.min(body.height() * 0.5), 240.0);
                 let rows = motif::split_rows(body.shrink2(egui::vec2(0.0, 3.0)), &[0.0, band], 8.0);
                 (rows[0], rows[1])
             };
@@ -24409,8 +24468,18 @@ impl App {
                 // than its height: a folded sheet that kept a third of
                 // the row would have hidden its content and taken the
                 // space anyway.
+                // Et la fiche technique rend de la largeur quand les
+                // deux listes n'en ont plus assez pour leur rangée de
+                // saisie : elle, elle se replie ; « Notes datées » ne le
+                // peut pas, et son invite se lisait « Nouve ».
+                let notes_need = Self::field_width(ui, [tr("notes_add_hint")].into_iter())
+                    + Self::button_width(ui, tr("notes_add"))
+                    + ui.spacing().item_spacing.x
+                    + 16.0;
                 let tech_w = if session.drug_tech_open {
-                    (usable * 0.40).max(200.0)
+                    (usable * 0.40)
+                        .max(200.0)
+                        .min((usable - 2.0 * notes_need - 2.0 * gap).max(140.0))
                 } else {
                     (usable * 0.18).clamp(120.0, 190.0)
                 };

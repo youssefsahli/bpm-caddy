@@ -30,6 +30,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **« Nouve ».** C'est ce que le champ d'ajout du journal affichait sur
+  la colonne « Notes datées » d'une fiche médicament, large de cent
+  quatre-vingts pixels : le champ prenait « ce qui reste, au moins
+  soixante », et soixante pixels ne portent pas « Nouvelle note… ». Sous
+  la largeur qu'il faut à l'invite et au bouton réunis, le bouton passe
+  **dessous** — et la place qu'il prend est comptée avant, sans quoi
+  c'est la rangée entière qui sortait du panneau.
+  - La fiche technique, à côté, rend de la largeur quand les deux listes
+    n'en ont plus assez : elle se replie, le journal non.
+  - Et le bandeau du bas garde un plancher **mesuré** sur ce qu'il
+    porte — un cadre, une légende, une ligne de note et la rangée de
+    saisie. Cent quarante pixels écrits en dur laissaient « Notes
+    datées » avec quatre pixels de puits ; la monographie au-dessus ne
+    perd rien, elle défile.
+- « Fermer (Échap) » devient « Fermer » sur la fiche médicament, la
+  touche passant dans la bulle : la bande de boutons de la fiche
+  descend de quatre rangées à trois.
 - **Deux autres tables sortaient par la droite**, du même défaut que le
   carnet : les locations et les pièces numérisées finissaient leur
   rangée par des boutons, et il fallait défiler à droite pour les
