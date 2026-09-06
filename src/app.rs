@@ -1418,6 +1418,14 @@ struct StupLineView<'a> {
 /// jamais, puisque chacune commence là où la précédente a fini.
 const STUP_COLUMNS: usize = 9;
 
+/// Combien de lignes de posologie la bande du patient propose d'un coup.
+///
+/// Bornée parce que la hauteur de la bande est **mesurée** avant d'être
+/// dessinée, et que la mesure ne peut pas compter des lignes qu'elle
+/// irait lire en base à chaque image. Le dessin s'en tient au même
+/// nombre : deux mesures d'une même chose divergent toujours.
+const TREAT_DOSE_ROWS: usize = 5;
+
 /// Ce qu'un clic sur une ligne du registre a demandé.
 ///
 /// Les lignes sont dessinées dans un panneau qui n'emprunte la session
@@ -1756,6 +1764,21 @@ struct Session {
     note_confirm: Option<i64>,
     /// In-progress text of the treatment picker.
     treat_query: String,
+    /// Where the arrows sit in the add-a-treatment suggestions.
+    ///
+    /// La liste change à chaque lettre tapée, donc le curseur est borné
+    /// à l'affichage plutôt que gardé juste : hors des bornes il
+    /// choisirait le mauvais médicament, et c'est une ordonnance.
+    treat_cursor: usize,
+    /// Redonner le foyer au champ qui ajoute, à la prochaine image.
+    ///
+    /// C'est ce qui fait d'un champ un **listage** : on tape, Entrée,
+    /// on tape, Entrée. Sans lui il faut recliquer dans le champ entre
+    /// chaque médicament, et lister une ordonnance de huit lignes
+    /// devient huit allers-retours à la souris.
+    focus_treat_add: bool,
+    /// La fiche dont on choisit la posologie, s'il y en a une.
+    treat_dosing: Option<i64>,
     view: MainView,
     summaries: Vec<InterviewSummary>,
     /// Planned interviews for the dashboard's "RDV à venir" list.
@@ -2284,6 +2307,9 @@ impl Session {
             note_text: String::new(),
             note_confirm: None,
             treat_query: String::new(),
+            treat_cursor: 0,
+            focus_treat_add: false,
+            treat_dosing: None,
             view: MainView::Search,
             summaries: Vec::new(),
             appointments: Vec::new(),
@@ -5040,12 +5066,23 @@ fn bio_watch(db: &Db, today: &str) -> Vec<BioWatch> {
 /// The colour a biology level is shown in: the two critical ones in
 /// the alert colour, the ordinary deviations in the warmer one — a
 /// kaliémie at 5,2 and a kaliémie at 6,3 must not read the same.
+/// La couleur d'une gravité, une fois pour toutes.
+///
+/// Elle était réécrite à chaque endroit qui en avait besoin, avec
+/// l'ambre en dur : neuf copies du même `0x7a5c1f`, qui ne suivait aucun
+/// thème et détonnait sur cinq palettes sur six.
+fn severity_color(s: crate::biology::Severity) -> egui::Color32 {
+    match s {
+        crate::biology::Severity::Alert => motif::alert(),
+        crate::biology::Severity::Warn => motif::warn(),
+        crate::biology::Severity::Info => motif::accent(),
+    }
+}
+
 fn bio_level_color(level: crate::biology::Level) -> egui::Color32 {
     match level {
         crate::biology::Level::CriticalLow | crate::biology::Level::CriticalHigh => motif::alert(),
-        crate::biology::Level::Low | crate::biology::Level::High => {
-            egui::Color32::from_rgb(0x7a, 0x5c, 0x1f)
-        }
+        crate::biology::Level::Low | crate::biology::Level::High => motif::warn(),
         _ => motif::text_dim(),
     }
 }
@@ -8449,8 +8486,37 @@ impl App {
             // and the table was the one that lost. Measured in lines,
             // the arbitration is the same at every scale.
             let line = ui.text_style_height(&egui::TextStyle::Body);
-            // A heading, a note and the add row — the journal's floor.
-            let notes_min = line * 5.5;
+            // And what it keeps when there is not enough for everyone:
+            // its caption and the row one types into, and nothing else.
+            //
+            // **Cet onglet arbitre en faveur du tableau**, ce que le
+            // commentaire au-dessus affirmait sans que le code le fasse :
+            // `notes_h` était remonté au plancher du journal quel que
+            // soit ce qu'il restait, donc à 1024x700 le journal prenait
+            // ses cent dix pixels, le tableau héritait du reste, et
+            // « ENTRETIENS » montrait ses en-têtes de colonnes au-dessus
+            // de **rien**. Un tableau réduit à ses titres est un titre
+            // au-dessus de rien, exactement ce que la maison refuse
+            // ailleurs — et c'est le tableau que ce dossier existe pour
+            // montrer.
+            //
+            // Et le panneau prend sa légende, son filet et ses marges
+            // **avant** de rendre le moindre pixel d'intérieur : sans
+            // les compter, ce plancher-là laissait la rangée de saisie
+            // tranchée par le bas. Une rangée où l'on tape, coupée, ne
+            // se tape pas — c'est la seule chose que cet arbitrage ne
+            // doit jamais produire.
+            let notes_hard = line + 25.0 + Self::row_height(ui);
+            // A heading, a note and the add row — the journal's
+            // comfortable floor, and **never below the strict one**.
+            // Les deux sont mesurés à des échelles différentes (des
+            // lignes de texte d'un côté, une rangée de contrôles de
+            // l'autre) et rien ne garantit leur ordre : à petite police
+            // le strict passe au-dessus du confortable, et
+            // `f32::clamp` ne rend pas un nombre bizarre dans ce cas,
+            // il fait tomber l'application. On l'ordonne ici plutôt que
+            // de faire confiance aux métriques du jour.
+            let notes_min = (line * 5.5).max(notes_hard);
             // The table's own head (summary, fees, column titles) plus
             // a row of controls, which is taller than a line of text.
             let acts_min = line * 8.0 + Self::row_height(ui) * 3.0;
@@ -8461,7 +8527,14 @@ impl App {
             // application come down — a crash one tweak away is worth
             // closing whether or not today's numbers happen to miss it.
             let cap = (work.height() * 0.42).max(notes_min);
-            let notes_h = (work.height() - acts_min).clamp(notes_min, cap);
+            let left = work.height() - acts_min;
+            let notes_h = if left < notes_min {
+                // Les deux planchers ne tiennent pas : le journal cède
+                // jusqu'à sa rangée de saisie, et défile pour le reste.
+                left.clamp(notes_hard, notes_min)
+            } else {
+                left.clamp(notes_min, cap)
+            };
             let stack = motif::split_rows(work, &[0.0, notes_h], 8.0);
             motif::panel(ui, stack[0], Some(tr("itv_section")), |ui| {
                 Self::patient_acts_pane(ui, session, patient, config);
@@ -9445,9 +9518,7 @@ impl App {
                             // not an absence of care: on a base that has
                             // just been started it is almost every line,
                             // and it must not read like an alert.
-                            Level::Never => {
-                                (tr("watch_never"), egui::Color32::from_rgb(0x7a, 0x5c, 0x1f))
-                            }
+                            Level::Never => (tr("watch_never"), motif::warn()),
                             Level::Soon => (tr("watch_soon"), motif::accent()),
                             Level::Ok => (tr("watch_ok"), motif::text_dim()),
                         };
@@ -9589,6 +9660,26 @@ impl App {
             // coller. Une table à zéro ligne ne sert à rien ; une boîte
             // de texte courte sert encore.
             let answer_min = Self::concil_head(ui, work.width()) + line * 2.0;
+            // Cinq lignes et demie, et **on a essayé de descendre**.
+            //
+            // À 1024x700 les deux docks ouverts, la bande est déjà à ce
+            // plancher : aucun partage ne peut donc rendre une ligne de
+            // plus aux divergences, ce qu'une capture identique au bit
+            // près a montré après une tentative dans ce sens. Et le
+            // plancher ne se baisse pas non plus : le panneau dépense
+            // sa légende, son filet et ses marges, puis la rangée
+            // carvée de son bouton, soit plus de quatre-vingts pixels
+            // avant la moindre ligne de texte. À quatre lignes et demie
+            // la boîte n'affiche plus que « Vider », et on ne relit plus
+            // ce qu'on vient de coller — ce qui est pire qu'une
+            // divergence coupée.
+            //
+            // Cet onglet porte trois panneaux et n'a pas la place des
+            // trois à cette taille. Ce qui reste à décider n'est pas un
+            // partage mais une présence : la feuille collée est une
+            // référence une fois collée, et pourrait se replier derrière
+            // un bouton plutôt que garder son volet. C'est un changement
+            // de comportement, pas un réglage.
             let band_min = line * 5.5;
             let band = (work.height() * 0.52)
                 .clamp(band_min, line * 22.0)
@@ -9892,14 +9983,8 @@ impl App {
                         let (label, color) = match d.kind {
                             Change::Unmatched => (tr("concil_kind_unmatched"), motif::alert()),
                             Change::Switched => (tr("concil_kind_switched"), motif::alert()),
-                            Change::Stopped => (
-                                tr("concil_kind_stopped"),
-                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
-                            ),
-                            Change::DoseChanged => (
-                                tr("concil_kind_dose"),
-                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
-                            ),
+                            Change::Stopped => (tr("concil_kind_stopped"), motif::warn()),
+                            Change::DoseChanged => (tr("concil_kind_dose"), motif::warn()),
                             Change::Added => (tr("concil_kind_added"), motif::accent()),
                             Change::Kept => (tr("concil_kind_kept"), motif::text_dim()),
                         };
@@ -10959,9 +11044,7 @@ impl App {
                     for f in findings {
                         let (label, color) = match f.severity {
                             crate::biology::Severity::Alert => (tr("bio_alert"), motif::alert()),
-                            crate::biology::Severity::Warn => {
-                                (tr("bio_warn"), egui::Color32::from_rgb(0x7a, 0x5c, 0x1f))
-                            }
+                            crate::biology::Severity::Warn => (tr("bio_warn"), motif::warn()),
                             crate::biology::Severity::Info => (tr("bio_info"), motif::accent()),
                         };
                         ui.horizontal(|ui| {
@@ -11156,10 +11239,7 @@ impl App {
                         let (tag, color) = match line.level {
                             vaccines::DueLevel::Ok => (tr("vacc_due_ok"), motif::text_faint()),
                             vaccines::DueLevel::Due => (tr("vacc_due_todo"), motif::alert()),
-                            vaccines::DueLevel::Ask => (
-                                tr("vacc_due_ask"),
-                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
-                            ),
+                            vaccines::DueLevel::Ask => (tr("vacc_due_ask"), motif::warn()),
                         };
                         ui.horizontal(|ui| {
                             ui.label(
@@ -11866,9 +11946,33 @@ impl App {
         // The act buttons are the part that wraps.
         let lines = Self::wrapped_rows(ui, w, InterviewKind::ALL.iter().map(|k| k.label()));
         let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
+        // **La rangée des traitements enveloppe, et elle se mesure.**
+        // Chaque puce porte son nom, sa posologie et sa croix ; la
+        // posologie est arrivée avec la sélection rapide, et sans la
+        // compter la bande gardait la hauteur d'une seule rangée — si
+        // bien qu'à quatre traitements « Nouvel entretien » sortait par
+        // le bas, emportant le choix rapide des actes.
+        let treat_lines = Self::wrapped_rows_of(
+            ui,
+            w,
+            std::iter::once(Self::button_width(ui, tr("treat_label")))
+                .chain(
+                    session
+                        .patient_treats
+                        .iter()
+                        .flat_map(|t| [Self::button_width(ui, &t.name), 16.0]),
+                )
+                // Le champ qui ajoute le suivant : c'est lui qu'on perd
+                // en premier quand la rangée déborde.
+                .chain(std::iter::once(140.0)),
+        );
         // Header (name, birth, contact, address, comment) + treatments +
         // "nouvel entretien" + the wrapped act rows + the eligibility note.
-        let mut h = 96.0 + row * (2.0 + lines);
+        let mut h = 96.0 + row * (1.0 + treat_lines + lines);
+        // Les lignes de posologie proposées, quand on en ouvre une.
+        if session.treat_dosing.is_some() {
+            h += row * (2.0 + TREAT_DOSE_ROWS as f32);
+        }
         if !patient.address.is_empty() {
             h += 18.0;
         }
@@ -12120,6 +12224,15 @@ impl App {
             let mut remove_treat: Option<i64> = None;
             let mut add_treat: Option<i64> = None;
             let mut open_card: Option<Drug> = None;
+            // Le champ qui ajoute, gardé pour que les flèches et Entrée
+            // sachent s'il a le foyer : la liste se parcourait à la
+            // souris seule, et au comptoir la main est sur le clavier.
+            let mut add_field: Option<egui::Response> = None;
+            // Où chaque puce a été dessinée, pour relier celles qu'une
+            // règle de la revue nomme ensemble.
+            let mut chip_at: Vec<(String, egui::Rect)> = Vec::new();
+            // La posologie qu'un clic vient de choisir : (fiche, texte).
+            let mut set_dose: Option<(i64, String)> = None;
             ui.add_space(4.0);
             // Wrapped: a file with five treatments ran the picker off
             // the right of the band at a counter width, and the field
@@ -12136,9 +12249,14 @@ impl App {
                         )
                         .sense(egui::Sense::click()),
                     );
+                    chip_at.push((t.name.trim().to_owned(), chip.rect));
                     if chip.on_hover_text(tr("treat_open_tooltip")).clicked() {
                         open_card = Some(t.clone());
                     }
+                    // La posologie du dossier, à côté du nom : c'est ce
+                    // qu'on lit en premier d'un traitement, et cela ne
+                    // s'affichait que dans l'onglet Conciliation. Un clic
+                    // ouvre les lignes livrées de la fiche.
                     let x = ui.add(
                         egui::Label::new(egui::RichText::new("×").size(12.0))
                             .sense(egui::Sense::click()),
@@ -12147,18 +12265,36 @@ impl App {
                         remove_treat = Some(t.id);
                     }
                 }
-                ui.add_sized(
-                    [140.0, 20.0],
+                // La hauteur d'un champ de saisie, et non celle d'un
+                // bouton : les vingt pixels écrits en dur étaient sous
+                // la taille minimale d'egui — donc trop courts dès qu'on
+                // grossissait le texte —, et un bouton entier fait
+                // déborder la bande de sa part, ce qui emporte
+                // « Nouvel entretien » et le choix rapide des actes.
+                let want_focus = std::mem::take(&mut session.focus_treat_add);
+                let f = ui.add_sized(
+                    [140.0, ui.spacing().interact_size.y],
                     egui::TextEdit::singleline(&mut session.treat_query)
                         .hint_text(tr("treat_add_hint")),
                 );
+                if want_focus {
+                    f.request_focus();
+                }
+                add_field = Some(f);
             });
             if !session.treat_query.trim().is_empty() {
                 let q = session.treat_query.clone();
+                // **Les traitements déjà au dossier ne sont plus
+                // écartés.** Ils l'étaient parce qu'on ne pouvait que
+                // les ajouter, et les ajouter deux fois n'a pas de sens.
+                // Mais taper un nom qu'on a déjà ne rendait alors *rien*
+                // — et c'est pourtant le geste qu'on fait pour changer
+                // sa posologie. Le même champ, la même frappe : s'il
+                // n'est pas au dossier on l'ajoute et on dose, s'il y
+                // est on dose. Rien de plus large à l'écran.
                 let mut scored: Vec<(i32, &Drug)> = session
                     .drugs
                     .iter()
-                    .filter(|d| session.patient_treats.iter().all(|t| t.id != d.id))
                     .filter_map(|d| {
                         let a = fuzzy::score(&q, &d.name);
                         let b = if d.dci.is_empty() {
@@ -12170,19 +12306,156 @@ impl App {
                     })
                     .collect();
                 scored.sort_by_key(|&(s, _)| std::cmp::Reverse(s));
-                ui.horizontal(|ui| {
-                    for (_, d) in scored.into_iter().take(4) {
-                        let sug = ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(format!("+ {}", d.name)).size(12.0),
-                            )
-                            .sense(egui::Sense::click()),
-                        );
-                        if sug.clicked() {
+                // Six plutôt que quatre : la sixième tenait déjà dans la
+                // largeur, et une liste qui s'arrête avant la bonne
+                // réponse oblige à retaper.
+                let hits: Vec<&Drug> = scored.into_iter().take(6).map(|(_, d)| d).collect();
+                // Les flèches et Entrée, comme dans les autres listes
+                // carvées de l'application. Le curseur est borné ici
+                // plutôt que laissé grandir : la liste change à chaque
+                // lettre tapée, et un curseur au-delà de sa fin
+                // choisirait le mauvais médicament.
+                if session.treat_cursor >= hits.len() {
+                    session.treat_cursor = 0;
+                }
+                let chosen = add_field
+                    .as_ref()
+                    .and_then(|f| Self::list_keys(ui, f, &mut session.treat_cursor, hits.len()));
+                if let Some(i) = chosen {
+                    add_treat = hits.get(i).map(|d| d.id);
+                }
+                let held = |id: i64| session.patient_treats.iter().any(|t| t.id == id);
+                // Et de vraies rangées : la sélection se voit, ce qu'un
+                // libellé cliquable ne montrait pas. C'est aussi ce qui
+                // rend les flèches lisibles — sans surbrillance, elles
+                // déplacent un curseur invisible.
+                ui.horizontal_wrapped(|ui| {
+                    for (i, d) in hits.iter().enumerate() {
+                        let on = i == session.treat_cursor;
+                        // « + » pour ce qui s'ajoute, la posologie pour
+                        // ce qui est déjà là : le signe dit ce que la
+                        // touche va faire, avant qu'on l'appuie.
+                        let label = if held(d.id) {
+                            format!("≡ {}", d.name)
+                        } else {
+                            format!("+ {}", d.name)
+                        };
+                        // **La molécule sous la souris.** Coversyl et
+                        // Coveram se ressemblent assez pour se choisir
+                        // l'un pour l'autre quand on tape vite, et la
+                        // DCI est ce qui les sépare. Elle est en
+                        // survol et non dans le libellé : la rangée est
+                        // pleine, et l'élargir la ferait passer à deux
+                        // lignes — ce qui pousse « Nouvel entretien »
+                        // hors de la bande plafonnée.
+                        let what = if held(d.id) {
+                            tr("treat_hit_dose")
+                        } else {
+                            tr("treat_hit_add")
+                        };
+                        let hint = if d.dci.trim().is_empty() {
+                            what.to_owned()
+                        } else {
+                            format!("{} — {}", what, d.dci.trim())
+                        };
+                        if motif::toggle(ui, &label, on).on_hover_text(hint).clicked() {
                             add_treat = Some(d.id);
                         }
                     }
                 });
+            }
+            // --- La posologie du traitement ouvert -----------------
+            //
+            // Elle ne se posait que dans l'onglet Conciliation, en texte
+            // libre, alors que la base **livre** les posologies de
+            // chaque fiche, par indication, avec la remarque qui va
+            // avec. Les proposer ici, c'est un clic là où il fallait
+            // changer d'onglet et retaper une ligne qu'on avait sous la
+            // main.
+            //
+            // Rien n'est imposé : ce sont des propositions, le champ de
+            // la conciliation reste maître, et une fiche sans ligne
+            // livrée n'en montre aucune plutôt qu'une inventée.
+            if let Some(id) = session.treat_dosing {
+                let name = session
+                    .patient_treats
+                    .iter()
+                    .find(|t| t.id == id)
+                    .map(|t| t.name.clone());
+                if let Some(name) = name {
+                    let lines = session.db.posologies(id).unwrap_or_default();
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(trf("treat_dose_for", name))
+                                .size(11.0)
+                                .color(motif::text_dim()),
+                        );
+                        if motif::button(ui, tr("treat_dose_close")).clicked() {
+                            session.treat_dosing = None;
+                        }
+                    });
+                    if lines.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("treat_dose_none"))
+                                .size(11.0)
+                                .color(motif::text_dim()),
+                        );
+                    }
+                    let current = session.dose_of(id).to_owned();
+                    if lines.len() > TREAT_DOSE_ROWS {
+                        ui.label(
+                            egui::RichText::new(trf(
+                                "treat_dose_more",
+                                lines.len() - TREAT_DOSE_ROWS,
+                            ))
+                            .size(10.5)
+                            .color(motif::text_faint()),
+                        );
+                    }
+                    for p in lines.iter().take(TREAT_DOSE_ROWS) {
+                        let on = current.trim() == p.posologie.trim();
+                        let resp = motif::list_row(
+                            ui,
+                            egui::RichText::new(if p.indication.trim().is_empty() {
+                                p.posologie.clone()
+                            } else {
+                                format!("{} — {}", p.indication.trim(), p.posologie.trim())
+                            })
+                            .size(11.5),
+                            on,
+                        );
+                        // La remarque est ce qui se dit au comptoir : à
+                        // jeun, à distance du fer, pas de pamplemousse.
+                        // Elle vaut la posologie qu'elle accompagne.
+                        let resp = if p.remarque.trim().is_empty() {
+                            resp
+                        } else {
+                            resp.on_hover_text(p.remarque.trim())
+                        };
+                        if resp.clicked() {
+                            set_dose = Some((id, p.posologie.trim().to_owned()));
+                        }
+                    }
+                }
+            }
+            if let Some((id, dose)) = set_dose {
+                let expected = session.dose_base_of(id).to_owned();
+                match session
+                    .db
+                    .set_patient_posology(patient.id, id, &dose, &expected)
+                {
+                    Ok(true) => {
+                        session.treat_dosing = None;
+                        session.reload_treatments(patient.id);
+                    }
+                    // Un autre poste a écrit entre-temps : on recharge et
+                    // on montre ce qu'il a mis, plutôt que de l'écraser.
+                    Ok(false) => {
+                        session.reload_treatments(patient.id);
+                        session.error = Some(tr("concil_stale").to_owned());
+                    }
+                    Err(e) => session.error = Some(e),
+                }
             }
             if let Some(id) = remove_treat {
                 if let Err(e) = session.db.remove_patient_drug(patient.id, id) {
@@ -12191,11 +12464,96 @@ impl App {
                 session.reload_treatments(patient.id);
             }
             if let Some(id) = add_treat {
-                if let Err(e) = session.db.add_patient_drug(patient.id, id) {
+                session.treat_query.clear();
+                session.treat_cursor = 0;
+                let already = session.patient_treats.iter().any(|t| t.id == id);
+                // **Lister d'abord, doser ensuite.** Ouvrir les
+                // posologies à chaque ajout coupait précisément ce qu'on
+                // est en train de faire : saisir une ordonnance de huit
+                // lignes. Le champ garde donc le foyer et se vide — on
+                // tape, Entrée, on tape —, et la posologie s'ouvre quand
+                // on la demande : en retapant le nom, qui répond
+                // maintenant « ≡ » pour un traitement déjà là.
+                //
+                // Sauf si l'on vient exprès pour elle : un traitement
+                // déjà au dossier n'a rien à ajouter, donc le choisir ne
+                // peut vouloir dire qu'une chose.
+                if already {
+                    session.treat_dosing = Some(id);
+                } else {
+                    session.treat_dosing = None;
+                    session.focus_treat_add = true;
+                }
+                if already {
+                    // Rien à ajouter : on venait pour la posologie.
+                } else if let Err(e) = session.db.add_patient_drug(patient.id, id) {
                     session.error = Some(e);
                 }
                 session.treat_query.clear();
                 session.reload_treatments(patient.id);
+            }
+            // --- Les liens entre traitements -----------------------
+            //
+            // Ce que la revue trouve **entre** deux lignes se lisait en
+            // pastilles, à côté des puces, sans dire lesquelles étaient
+            // en cause : on lisait « IEC + AINS » et on cherchait des
+            // yeux lesquels des huit traitements c'était. Un trait le
+            // dit sans un mot.
+            //
+            // Rouge pour ce qui alerte, ambre pour ce qui demande un
+            // regard — l'un et l'autre venus du thème, comme toute
+            // couleur de chrome ici.
+            //
+            // Le trait passe **sous** la puce et jamais au-dessus, où il
+            // barrerait le nom ; et il ne relie que deux puces de la
+            // même ligne, parce qu'un trait qui saute d'une ligne à
+            // l'autre ne montre plus rien. Les autres restent dites par
+            // la pastille.
+            if !chip_at.is_empty() && !session.patient_review.is_empty() {
+                let painter = ui.painter();
+                let at = |name: &str| {
+                    chip_at
+                        .iter()
+                        .find(|(n, _)| n.eq_ignore_ascii_case(name.trim()))
+                        .map(|(_, r)| *r)
+                };
+                for point in &session.patient_review {
+                    let color = severity_color(point.severity);
+                    for (i, a) in point.drugs.iter().enumerate() {
+                        for b in point.drugs.iter().skip(i + 1) {
+                            let (Some(ra), Some(rb)) = (at(a), at(b)) else {
+                                continue;
+                            };
+                            if (ra.center().y - rb.center().y).abs() > 2.0 {
+                                continue;
+                            }
+                            // Deux niveaux, et le niveau **veut dire
+                            // quelque chose** : ce qui alerte passe au
+                            // plus près des puces, ce qui demande un
+                            // regard juste en dessous. Sans cela deux
+                            // liens sur la même rangée se superposaient
+                            // au pixel près et n'en faisaient qu'un.
+                            let lift = match point.severity {
+                                crate::biology::Severity::Alert => 2.0_f32,
+                                _ => 5.0_f32,
+                            };
+                            let y = ra.bottom().max(rb.bottom()) + lift;
+                            let (x1, x2) = (ra.center().x, rb.center().x);
+                            painter.line_segment(
+                                [egui::pos2(x1, y), egui::pos2(x2, y)],
+                                egui::Stroke::new(2.0_f32, color),
+                            );
+                            // Deux montants, pour que le trait désigne
+                            // les puces plutôt que de passer dessous.
+                            for x in [x1, x2] {
+                                painter.line_segment(
+                                    [egui::pos2(x, y), egui::pos2(x, y - 3.0)],
+                                    egui::Stroke::new(2.0_f32, color),
+                                );
+                            }
+                        }
+                    }
+                }
             }
             if let Some(d) = open_card {
                 session.open_drug_card(d);
@@ -12239,11 +12597,7 @@ impl App {
                         .color(motif::text_dim()),
                 );
                 for point in &session.patient_review {
-                    let color = match point.severity {
-                        crate::biology::Severity::Alert => motif::alert(),
-                        crate::biology::Severity::Warn => egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
-                        crate::biology::Severity::Info => motif::accent(),
-                    };
+                    let color = severity_color(point.severity);
                     ui.label(
                         egui::RichText::new(format!("  {}  ", point.title))
                             .size(11.0)
@@ -24261,10 +24615,7 @@ impl App {
                         let tag = if w.alerts > 0 {
                             (trf("dash_bio_alerts", w.alerts), motif::alert())
                         } else if w.warns > 0 {
-                            (
-                                trf("dash_bio_warns", w.warns),
-                                egui::Color32::from_rgb(0x7a, 0x5c, 0x1f),
-                            )
+                            (trf("dash_bio_warns", w.warns), motif::warn())
                         } else {
                             (trf("dash_bio_overdue", w.overdue), motif::accent())
                         };
@@ -24307,7 +24658,7 @@ impl App {
                             let (word, colour) = if w.overdue {
                                 (tr("loc_overdue"), motif::alert())
                             } else {
-                                (tr("loc_soon"), egui::Color32::from_rgb(0x7a, 0x5c, 0x1f))
+                                (tr("loc_soon"), motif::warn())
                             };
                             ui.label(
                                 egui::RichText::new(format!("  {word}  "))

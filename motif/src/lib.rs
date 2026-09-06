@@ -45,6 +45,15 @@ pub struct Palette {
     pub text_faint: Color32,
     /// Errors and destructive warnings.
     pub alert: Color32,
+    /// Ce qui demande un regard sans être une erreur : une surveillance
+    /// en retard, une association à connaître, un forfait qui approche.
+    ///
+    /// Elle existe parce que ce ton-là était **écrit en dur** à neuf
+    /// endroits — le même `0x7a5c1f` recopié — alors que la maison veut
+    /// que toute couleur de chrome vienne du thème. Un ambre choisi pour
+    /// le bleu-gris de mwm n'a rien à faire sur l'olive de HP VUE, et
+    /// sur « contraste » il était simplement trop pâle.
+    pub warn: Color32,
     /// The sheet a printed monograph would be read on, for the
     /// document-style views inside the grey shell.
     pub paper: Color32,
@@ -87,6 +96,7 @@ pub const THEMES: [Theme; 6] = [
             text_dim: Color32::from_rgb(0x39, 0x3c, 0x48),
             text_faint: Color32::from_rgb(0x4c, 0x50, 0x5e),
             alert: Color32::from_rgb(0x8b, 0x1a, 0x1a),
+            warn: Color32::from_rgb(0x7a, 0x56, 0x12),
             paper: Color32::from_rgb(0xf6, 0xf4, 0xec),
             ink: Color32::from_rgb(0x1a, 0x1a, 0x20),
             ink_light: Color32::from_rgb(0x55, 0x55, 0x60),
@@ -107,6 +117,7 @@ pub const THEMES: [Theme; 6] = [
             text_dim: Color32::from_rgb(0x3a, 0x37, 0x30),
             text_faint: Color32::from_rgb(0x4e, 0x4a, 0x42),
             alert: Color32::from_rgb(0x8b, 0x24, 0x14),
+            warn: Color32::from_rgb(0x7d, 0x5a, 0x10),
             paper: Color32::from_rgb(0xf7, 0xf3, 0xe8),
             ink: Color32::from_rgb(0x1c, 0x1a, 0x16),
             ink_light: Color32::from_rgb(0x57, 0x53, 0x4a),
@@ -127,6 +138,7 @@ pub const THEMES: [Theme; 6] = [
             text_dim: Color32::from_rgb(0x33, 0x36, 0x3a),
             text_faint: Color32::from_rgb(0x47, 0x4a, 0x4f),
             alert: Color32::from_rgb(0x87, 0x18, 0x22),
+            warn: Color32::from_rgb(0x74, 0x54, 0x14),
             paper: Color32::from_rgb(0xf4, 0xf4, 0xf0),
             ink: Color32::from_rgb(0x18, 0x18, 0x1c),
             ink_light: Color32::from_rgb(0x52, 0x53, 0x58),
@@ -147,6 +159,7 @@ pub const THEMES: [Theme; 6] = [
             text_dim: Color32::from_rgb(0x2e, 0x34, 0x48),
             text_faint: Color32::from_rgb(0x43, 0x4a, 0x60),
             alert: Color32::from_rgb(0x8e, 0x1c, 0x2c),
+            warn: Color32::from_rgb(0x7b, 0x57, 0x14),
             paper: Color32::from_rgb(0xf4, 0xf6, 0xfb),
             ink: Color32::from_rgb(0x16, 0x18, 0x22),
             ink_light: Color32::from_rgb(0x4d, 0x52, 0x66),
@@ -167,6 +180,7 @@ pub const THEMES: [Theme; 6] = [
             text_dim: Color32::from_rgb(0x32, 0x37, 0x2b),
             text_faint: Color32::from_rgb(0x46, 0x4c, 0x3d),
             alert: Color32::from_rgb(0x87, 0x22, 0x18),
+            warn: Color32::from_rgb(0x6f, 0x55, 0x0f),
             paper: Color32::from_rgb(0xf6, 0xf6, 0xea),
             ink: Color32::from_rgb(0x18, 0x1a, 0x14),
             ink_light: Color32::from_rgb(0x51, 0x56, 0x48),
@@ -187,6 +201,7 @@ pub const THEMES: [Theme; 6] = [
             text_dim: Color32::from_rgb(0x1e, 0x21, 0x2a),
             text_faint: Color32::from_rgb(0x33, 0x36, 0x40),
             alert: Color32::from_rgb(0x7a, 0x10, 0x10),
+            warn: Color32::from_rgb(0x6a, 0x46, 0x00),
             paper: Color32::WHITE,
             ink: Color32::BLACK,
             ink_light: Color32::from_rgb(0x3c, 0x3c, 0x46),
@@ -275,6 +290,12 @@ pub fn text_faint() -> Color32 {
 #[inline]
 pub fn alert() -> Color32 {
     palette().alert
+}
+
+/// Ce qui demande un regard sans être une erreur.
+#[inline]
+pub fn warn() -> Color32 {
+    palette().warn
 }
 /// The sheet a printed monograph would be read on.
 #[inline]
@@ -1188,6 +1209,17 @@ mod tests {
             // badges: both have to be dark enough to carry it.
             assert!(lum(p.accent) < 0.45, "{k} : sélection trop claire");
             assert!(lum(p.alert) < 0.45, "{k} : alerte trop claire");
+            // Et sur l'ambre des mises en garde, qui porte du blanc lui
+            // aussi — c'est une pastille, pas un trait.
+            assert!(lum(p.warn) < 0.45, "{k} : mise en garde trop claire");
+            // Elle doit aussi **se distinguer de l'alerte** : les deux
+            // se lisent côte à côte sur la même ordonnance, et deux
+            // rouges voisins ne disent plus lequel presse.
+            assert!(
+                (lum(p.warn) - lum(p.alert)).abs() > 0.04
+                    || (i32::from(p.warn.g()) - i32::from(p.alert.g())).abs() > 24,
+                "{k} : mise en garde et alerte trop proches"
+            );
             // And the three text shades have to stand off the grey they
             // are written on, faintest included.
             for (name, c) in [

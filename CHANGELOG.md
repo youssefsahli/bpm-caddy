@@ -5,6 +5,104 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Des traits relient les traitements qu'une règle nomme ensemble.**
+  Ce que la revue trouve *entre* deux lignes de l'ordonnance se lisait
+  en pastilles à côté des puces, sans dire lesquelles étaient en cause :
+  on lisait « IEC + AINS » et on cherchait des yeux lesquels des huit
+  traitements c'était. Un trait le dit sans un mot.
+  - Rouge pour ce qui alerte, ambre pour ce qui demande un regard, et le
+    **niveau du trait veut dire quelque chose** : l'alerte passe au plus
+    près des puces, la mise en garde juste en dessous. Sans cela deux
+    liens sur la même rangée se superposaient au pixel près.
+  - Sous la puce et jamais au-dessus, où le trait barrerait le nom ; et
+    seulement entre deux puces de la même rangée, parce qu'un trait qui
+    saute d'une ligne à l'autre ne montre plus rien. Le tout dans la
+    gouttière qui existait déjà : la rangée des traitements est pleine à
+    1024x700 et rien ne peut lui prendre un pixel.
+
+### Changed
+- **L'ambre des mises en garde vient du thème.** Il était écrit en dur —
+  le même `0x7a5c1f` recopié à **neuf** endroits — alors que la maison
+  veut que toute couleur de chrome sorte de `motif::THEMES`, précisément
+  parce qu'une couleur choisie pour une palette détonne sur les cinq
+  autres. Un ambre réglé sur le bleu-gris de mwm n'a rien à faire sur
+  l'olive de HP VUE, et sur « contraste » il était trop pâle pour ce
+  qu'il annonce.
+  - `motif::warn()` rejoint donc `alert()` et `accent()`, avec sa valeur
+    dans les six palettes, et `every_palette_can_be_read` l'y tient :
+    elle porte du texte blanc comme l'alerte, donc elle doit être assez
+    sombre pour lui — et **assez distincte de l'alerte**, puisque les
+    deux se lisent côte à côte sur la même ordonnance et que deux rouges
+    voisins ne disent plus lequel presse.
+  - La correspondance gravité → couleur vit à un seul endroit
+    (`severity_color`) au lieu d'être réécrite à chaque appel.
+
+### Added
+- **Le médicament et sa posologie d'un même geste, au clavier.** Ajouter
+  un traitement se faisait à la souris — taper, puis cliquer l'un des
+  quatre libellés proposés — et la posologie du dossier ne se posait
+  que dans l'onglet Conciliation, en texte libre, alors que la base
+  **livre** les posologies de chaque fiche, par indication, avec la
+  remarque qui va avec.
+  - Les flèches et Entrée parcourent les suggestions, comme dans les
+    autres listes carvées de l'application, et la sélection **se voit** —
+    des rangées et non des libellés cliquables, sans quoi les flèches
+    déplacent un curseur invisible. Six propositions au lieu de quatre :
+    une liste qui s'arrête avant la bonne réponse oblige à retaper.
+  - Le médicament choisi, ses lignes de posologie s'affichent aussitôt :
+    un clic les pose au dossier, et la remarque du comptoir — à jeun, à
+    distance du fer, pas de pamplemousse — est sous la souris. Rien
+    n'est imposé et rien n'est inventé : une fiche sans ligne livrée
+    n'en propose aucune.
+  - **Et le même champ atteint les traitements déjà là.** Ils étaient
+    écartés des suggestions parce qu'on ne pouvait que les ajouter ;
+    taper un nom qu'on avait déjà ne rendait donc rien, alors que c'est
+    le geste qu'on fait pour changer une posologie. « + » ajoute, « ≡ »
+    dose, et le signe le dit avant qu'on appuie.
+  - Le tout **sans un pixel de plus** : la rangée des traitements est
+    déjà pleine à 1024x700, et tout ce qu'on y ajoute — même une
+    pastille — la fait passer à deux lignes, ce qui pousse « Nouvel
+    entretien » hors de la bande plafonnée et emporte le choix rapide
+    des actes. Les propositions occupent la rangée que la bande comptait
+    déjà.
+  - Le champ de saisie prend enfin la hauteur d'un champ : les vingt
+    pixels écrits en dur étaient sous la taille minimale d'egui.
+
+### Fixed
+- **La table des entretiens montrait ses en-têtes au-dessus de rien.**
+  Sur l'onglet du dossier à 1024x700, « ENTRETIENS » affichait
+  « Type · Acte · Thème · Fait le / par · État » et **aucune ligne** —
+  sur la vue la plus ouverte de l'application, et pour la table que le
+  dossier existe pour montrer.
+  - L'arbitrage était pourtant écrit, et le commentaire disait déjà que
+    le tableau prime sur le journal : c'est le code qui ne le faisait
+    pas. `notes_h` était remonté au plancher du journal **quoi qu'il
+    reste**, si bien que le journal prenait ses cent dix pixels et que
+    la table héritait du reste. Quand les deux planchers ne tiennent
+    pas, c'est le journal qui cède maintenant, jusqu'à sa rangée de
+    saisie.
+  - Et ce plancher-là compte la légende du panneau, son filet et ses
+    marges : le panneau les prend avant de rendre le moindre pixel
+    d'intérieur, et sans eux la rangée « Nouvelle note… » sortait
+    tranchée par le bas. Une rangée où l'on tape, coupée, ne se tape
+    pas.
+  - Les deux planchers du journal se mesurent à des échelles
+    différentes — des lignes de texte d'un côté, une rangée de contrôles
+    de l'autre — et rien ne garantissait leur ordre. À petite police le
+    strict passait au-dessus du confortable, et `f32::clamp` ne rend pas
+    un nombre bizarre dans ce cas : il fait tomber l'application. Ils
+    sont ordonnés par construction.
+  - **Ce que cela ne règle pas, et il faut le dire** : un dossier qui
+    porte deux familles d'actes retrouve ses en-têtes entières mais
+    toujours aucune ligne à cette taille. Le journal est alors à son
+    plancher strict, il n'y a plus rien à prendre, et la contrainte est
+    au-dessus — le bandeau du patient occupe la moitié de la hauteur.
+    Le replier ou le faire défiler avec l'onglet est un changement de
+    comportement, pas un réglage de partage, et cela se décide.
+
 ## [0.147.2] - 2026-09-04
 
 ### Changed
