@@ -17451,7 +17451,10 @@ impl App {
             [
                 Self::heading_width(ui, tr("codex_title")),
                 Self::button_width(ui, tr("patient_back")),
-                220.0,
+                // La même expression que le champ lui-même, pas une
+                // seconde mesure du même besoin : deux mesures d'une
+                // chose divergent toujours.
+                Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
                 Self::button_width(ui, tr("dash_print")),
                 Self::button_width(ui, tr("codex_new")),
             ]
@@ -22124,7 +22127,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("dispo_title")),
                 Self::button_width(ui, tr("patient_back")),
-                220.0,
+                Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
                 Self::button_width(ui, tr("dash_print")),
                 Self::button_width(ui, tr("dispo_new")),
             ]
@@ -22562,7 +22565,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("proto_title")),
                 Self::button_width(ui, tr("patient_back")),
-                220.0,
+                Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
                 Self::button_width(ui, tr("proto_new")),
             ]
             .into_iter(),

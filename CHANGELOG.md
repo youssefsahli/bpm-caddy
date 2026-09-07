@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Trois bandes de titre — codex, dispositifs, protocoles — mesuraient
+  leur champ de nom à « 220 pixels » pendant que le champ, lui, se
+  mesurait sur son invite. Deux mesures d'une même chose divergent
+  toujours : c'est la même expression des deux côtés maintenant.
 - **Un test tient le défaut qui a ouvert la nuit.** La rangée de saisie
   du carnet comptait deux rangées et en dessinait trois : le test mesure
   comme la bande mesure, dessine comme la bande dessine, et compare — à
