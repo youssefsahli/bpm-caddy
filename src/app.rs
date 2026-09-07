@@ -1018,6 +1018,31 @@ fn rank_label(rank: usize) -> String {
 /// Derived from the style so a bigger text scale does not push the
 /// button through the bottom of its panel.
 /// La largeur que « Ajouter » prend sur la rangée de saisie.
+/// La forme d'une table : la plus riche qui tienne dans `avail`.
+///
+/// Quatre tables l'appliquent — le carnet de vaccination, les
+/// locations, les pièces numérisées, et demain les autres — et c'est la
+/// réponse à la première ligne de la feuille de route : plutôt que de
+/// faire défiler à droite pour atteindre un bouton puis à gauche pour
+/// relire de quoi il s'agit, les colonnes que la largeur refuse
+/// descendent sous la colonne qui plie.
+///
+/// `shapes` va de la plus riche à la plus pauvre : `(colonnes, ce que
+/// cette forme prend en dehors de la colonne qui plie)`. On garde la
+/// première qui laisse à cette colonne au moins `floor`, et à défaut la
+/// dernière — parce qu'il faut bien dessiner quelque chose.
+///
+/// Pure, donc vérifiable sans écran : c'est l'arbitrage qui compte, pas
+/// les pixels qu'on lui donne.
+fn table_shape(avail: f32, floor: f32, shapes: &[(usize, f32)]) -> (usize, f32) {
+    for &(cols, taken) in shapes {
+        if avail - taken >= floor {
+            return (cols, taken);
+        }
+    }
+    shapes.last().copied().unwrap_or((1, 0.0))
+}
+
 /// La largeur d'un champ de saisie, exprimée en **caractères** et non
 /// en pixels.
 ///
@@ -1488,6 +1513,51 @@ struct CarnetCols {
     lot_w: f32,
     site_w: f32,
     op_w: f32,
+}
+
+/// Ce qu'une rangée du tableau des entretiens a besoin de lire.
+///
+/// Un enregistrement plutôt que cinq paramètres : les dix cellules de
+/// la rangée sont écrites une fois et appelées depuis **deux**
+/// dispositions — le tableau à dix colonnes quand le volet est large,
+/// la fiche à trois lignes quand il ne l'est pas — et deux copies du
+/// même code divergent le jour où l'on en corrige une.
+struct ActsRow<'a> {
+    itv: &'a Interview,
+    /// L'année d'accompagnement et le rang dans sa séquence : c'est ce
+    /// couple qui choisit l'honoraire.
+    year: usize,
+    rank: usize,
+    /// Tous les actes du dossier — la dérogation « changement de
+    /// traitement » se juge sur les voisins.
+    all: &'a [Interview],
+    config: &'a Config,
+}
+
+/// Ce qu'une rangée du tableau des entretiens demande qu'on fasse.
+///
+/// Dix-sept écritures possibles, toutes remontées hors du dessin :
+/// recharger la liste au milieu d'une boucle qui la parcourt rendrait
+/// l'image suivante fausse.
+#[derive(Default)]
+struct ActsOut {
+    advance: Option<(i64, db::InterviewState)>,
+    regress: Option<(i64, db::InterviewState)>,
+    print_req: Option<(InterviewKind, Option<String>, String, String)>,
+    cr_req: Option<(InterviewKind, Option<String>, String, String)>,
+    bulletin_req: Option<InterviewKind>,
+    set_trod: Option<(i64, String, String)>,
+    open_ordonnance: Option<(i64, InterviewKind)>,
+    set_duration: Option<(i64, i64, i64)>,
+    set_date: Option<(i64, Option<String>, Option<String>)>,
+    set_made: Option<(i64, String, String)>,
+    set_by: Option<(i64, String, String)>,
+    to_carnet: Option<(String, String)>,
+    delete_itv: Option<(i64, db::InterviewState)>,
+    set_theme: Option<(i64, String, String)>,
+    set_hour: Option<(i64, String, String)>,
+    set_remote: Option<(i64, bool, bool)>,
+    set_change: Option<(i64, bool, bool)>,
 }
 
 /// Ce qu'il faut pour dessiner une ligne du registre.
@@ -10846,11 +10916,8 @@ impl App {
                         // de quatre lignes de note. Une rangée de plus
                         // par location coûte moins qu'un nom illisible.
                         let tight = renew_w + gap;
-                        let (cols, taken) = if avail - full >= name_floor {
-                            (6, full)
-                        } else {
-                            (2, tight)
-                        };
+                        let (cols, taken) =
+                            table_shape(avail, name_floor, &[(6, full), (2, tight)]);
                         let name_w = (avail - taken).max(name_floor);
                         egui::Grid::new("loc_grid")
                             .num_columns(cols)
@@ -12743,16 +12810,18 @@ impl App {
             + Self::button_width(ui, tr("itv_delete_confirm"))
             + ui.spacing().item_spacing.x;
         let name_floor = Self::widest(ui, 12.0, [tr("vacc_col_vaccine")].into_iter());
-        let full = dose_w + date_w + lot_w + site_w + op_w + btn_w + gap * 6.0;
-        let mid = dose_w + date_w + btn_w + gap * 3.0;
-        let tight = btn_w + gap;
-        let (cols, taken) = if avail - full >= name_floor {
-            (7, full)
-        } else if avail - mid >= name_floor {
-            (4, mid)
-        } else {
-            (2, tight)
-        };
+        let (cols, taken) = table_shape(
+            avail,
+            name_floor,
+            &[
+                (
+                    7,
+                    dose_w + date_w + lot_w + site_w + op_w + btn_w + gap * 6.0,
+                ),
+                (4, dose_w + date_w + btn_w + gap * 3.0),
+                (2, btn_w + gap),
+            ],
+        );
         CarnetCols {
             cols,
             gap,
@@ -13944,6 +14013,493 @@ impl App {
 
     /// The acts table: every entretien of this file, its state, its
     /// fee rank, its RDV.
+    /// Ce que le tableau des entretiens demande, en une rangée et en
+    /// deux : les deux seuils entre ses trois dispositions.
+    ///
+    /// Mesuré sur les actes **qui sont là**, et non sur le pire cas
+    /// possible : un dossier qui ne porte que des BPM n'a ni les deux
+    /// pastilles d'un TROD ni le bouton d'ordonnance, et le renvoyer à
+    /// la disposition serrée pour des boutons qu'il n'affiche pas
+    /// serait le punir de ce qu'il n'a pas.
+    fn acts_widths(
+        ui: &egui::Ui,
+        interviews: &[Interview],
+        ranks: &std::collections::HashMap<i64, (usize, usize)>,
+    ) -> (f32, f32) {
+        let gap = 8.0;
+        let mut widest: f32 = 0.0;
+        let mut half: f32 = 0.0;
+        for itv in interviews {
+            let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
+            let code = itv.kind.act_code(year).unwrap_or("—");
+            let mut act = Self::widest(
+                ui,
+                11.0,
+                [&format!("{code} · {}", rank + 1) as &str].into_iter(),
+            );
+            if itv.kind.is_accompaniment() {
+                act += Self::button_width(ui, db::REMOTE_CODE);
+            }
+            if itv.kind.allows_treatment_change() {
+                act += Self::button_width(ui, tr("itv_change_short_label")) + 12.0;
+            }
+            let theme = if itv.kind.has_theme() {
+                190.0 + ui.spacing().icon_width + ui.spacing().item_spacing.x
+            } else {
+                Self::widest(ui, 12.0, ["—"].into_iter())
+            };
+            let mut sheet =
+                Self::button_width(ui, tr("itv_pdf")) + Self::button_width(ui, tr("itv_cr"));
+            if crate::bulletin::has_bulletin(itv.kind) {
+                sheet += Self::button_width(ui, tr("itv_bulletin"));
+            }
+            if itv.kind == InterviewKind::Vaccination {
+                sheet += Self::button_width(ui, tr("itv_to_carnet"));
+            }
+            if crate::ordonnance::is_trod(itv.kind) {
+                sheet += Self::button_width(ui, tr("trod_positive"))
+                    + Self::button_width(ui, tr("trod_negative"))
+                    + Self::button_width(ui, tr("trod_ordonnance"));
+            }
+            let advance = Self::button_width(ui, "«")
+                + itv.state.next().map_or_else(
+                    || Self::widest(ui, 12.0, [tr("itv_done")].into_iter()),
+                    |n| Self::button_width(ui, &trf("itv_advance", n.label())),
+                );
+            let duration = if itv.kind.has_duration() {
+                Self::widest(ui, 12.0, ["000 min"].into_iter())
+                    + ui.spacing().button_padding.x * 2.0
+            } else {
+                Self::widest(ui, 12.0, ["—"].into_iter())
+            };
+            let kind = Self::widest(ui, 12.0, [itv.kind.label()].into_iter());
+            let made = Self::date_field_width(ui)
+                + Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter());
+            let state = Self::widest(ui, 12.0, [itv.state.label()].into_iter());
+            let rdv = Self::date_field_width(ui)
+                + Self::field_width(ui, [tr("agenda_hour_hint"), "00:00"].into_iter());
+            let del = Self::button_width(ui, tr("itv_delete_confirm"));
+            // Ce que la rangée entière demande…
+            let row = kind
+                + act
+                + theme
+                + made
+                + state
+                + advance
+                + sheet
+                + duration
+                + rdv
+                + del
+                + gap * 9.0;
+            widest = widest.max(row);
+            // …et ce que demande la moitié la plus large, quand la
+            // fiche se plie en deux : ce qu'est l'acte au-dessus, ce
+            // qu'on en fait en dessous.
+            let top = kind + act + theme + made + state + gap * 4.0;
+            let bottom = advance + sheet + duration + rdv + del + gap * 4.0;
+            half = half.max(top.max(bottom));
+        }
+        (widest, half)
+    }
+
+    /// Le type de l'acte. Le code et les deux drapeaux ont leur
+    /// propre cellule, pour que la rangée tienne sur une ligne et que
+    /// les colonnes tombent les unes sous les autres.
+    fn acts_kind(ui: &mut egui::Ui, row: &ActsRow) {
+        // The theme, and nothing else: the act
+        // code and the two flags have a column
+        // of their own, so the row keeps one
+        // line and the columns stay aligned.
+        ui.label(egui::RichText::new(row.itv.kind.label()).strong());
+    }
+
+    /// Le code de la convention, le rang qu'il paie, et les deux
+    /// drapeaux qui changent ce qui est facturé.
+    fn acts_act(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) {
+        // The convention's act code, the step it
+        // pays, and the two flags that change
+        // what is billed.
+        ui.horizontal(|ui| {
+            let step_name = row
+                .itv
+                .kind
+                .step_label(row.year, row.rank)
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| rank_label(row.rank));
+            let code = row.itv.kind.act_code(row.year).unwrap_or("—");
+            ui.label(
+                egui::RichText::new(format!("{code} · {}", row.rank + 1))
+                    .size(11.0)
+                    .strong()
+                    .color(motif::accent()),
+            )
+            .on_hover_text(format!(
+                "{step_name}\n{}",
+                trn(
+                    "itv_fee_tooltip",
+                    &[
+                        &format!(
+                            "{:.2} €",
+                            row.config
+                                .act_total(row.itv.kind, row.year, row.rank, row.itv.remote)
+                        ),
+                        &(row.year + 1),
+                        &row.itv.kind.coverage_rate(),
+                    ],
+                )
+            ));
+            // Held remotely: the convention bills
+            // TPH on top of the act code.
+            if row.itv.kind.is_accompaniment()
+                && motif::toggle(ui, db::REMOTE_CODE, row.itv.remote)
+                    .on_hover_text(trf(
+                        "itv_remote_tooltip",
+                        format!("{:.2} €", row.config.billing.teleconsultation),
+                    ))
+                    .clicked()
+            {
+                out.set_remote = Some((row.itv.id, !row.itv.remote, row.itv.remote));
+            }
+            // Anticancéreux only: the memo keeps
+            // the treatment-change derogation
+            // for those two themes alone.
+            if row.itv.kind.allows_treatment_change() {
+                if motif::toggle(ui, tr("itv_change_short_label"), row.itv.treatment_change)
+                    .on_hover_text(tr("itv_change_tooltip"))
+                    .clicked()
+                {
+                    out.set_change = Some((
+                        row.itv.id,
+                        !row.itv.treatment_change,
+                        row.itv.treatment_change,
+                    ));
+                }
+                // The derogation has conditions;
+                // say which one is not met yet
+                // rather than billing blind.
+                if let Some((before, after)) = treatment_change_shortfall(
+                    row.all,
+                    row.itv,
+                    row.config.rules.cycle_months.max(1),
+                ) {
+                    ui.label(egui::RichText::new("!").strong().color(motif::alert()))
+                        .on_hover_text(trn("itv_change_short", &[&before, &after]));
+                }
+            }
+        });
+    }
+
+    /// Le thème, quand l'acte en a un. Rend le jour où l'acte a été
+    /// tenu, que la cellule suivante affiche.
+    fn acts_theme(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) -> String {
+        // A TROD has a result, not a subject: the
+        // thematics are the entretiens', and one
+        // stamped on a test only travelled to the
+        // CSV to say nothing.
+        if row.itv.kind.has_theme() {
+            let mut theme = row.itv.theme.clone();
+            if theme_combo(ui, &format!("theme{}", row.itv.id), &mut theme) {
+                out.set_theme = Some((row.itv.id, theme, row.itv.theme.clone()));
+            }
+        } else {
+            ui.label(egui::RichText::new("—").color(motif::text_dim()))
+                .on_hover_text(tr("itv_no_theme_tooltip"));
+        }
+        // The date the act was held, and not the
+        // date it was typed in: it places the act
+        // in its cycle, and the cycle picks the fee.
+        row.itv.created_at[..10.min(row.itv.created_at.len())].to_owned()
+    }
+
+    /// Le jour où l'acte a été tenu — et non celui où il a été saisi :
+    /// c'est lui qui le place dans son cycle, et le cycle choisit
+    /// l'honoraire. Avec les initiales de qui l'a fait.
+    fn acts_made(
+        ui: &mut egui::Ui,
+        row: &ActsRow,
+        made: &str,
+        session: &mut Session,
+        out: &mut ActsOut,
+    ) {
+        ui.horizontal(|ui| {
+            let text = session
+                .made_edits
+                .entry(row.itv.id)
+                .or_insert_with(|| db::format_french_date(made));
+            let field = ui
+                .add_sized(
+                    [Self::date_field_width(ui), 22.0],
+                    egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                )
+                .on_hover_text(tr("itv_created_tooltip"));
+            if field.lost_focus() {
+                let year = session.db.current_year();
+                match db::parse_french_date(text, year, db::YearHint::Future) {
+                    Ok(iso) if iso != made => {
+                        out.set_made = Some((row.itv.id, iso, made.to_owned()));
+                    }
+                    // An unreadable date is put back
+                    // as it was rather than left
+                    // hanging: an act always has a
+                    // date.
+                    Err(_) => *text = db::format_french_date(made),
+                    _ => {}
+                }
+            }
+            // Who did it. It signs the fiche and the
+            // courrier, so it is the act's own,
+            // recorded at creation and correctable
+            // after — not whoever happens to be at
+            // the counter on the day it is printed.
+            // Le texte en cours vit dans la session,
+            // pas dans une copie refabriquée à chaque
+            // image : un `TextEdit` ne garde pas son
+            // contenu, il le tient dans le `String`
+            // qu'on lui prête.
+            let who = session
+                .by_edits
+                .entry(row.itv.id)
+                .or_insert_with(|| row.itv.operator.clone());
+            let by = ui
+                .add_sized(
+                    [
+                        Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter()),
+                        22.0,
+                    ],
+                    egui::TextEdit::singleline(who).hint_text(tr("itv_by_hint")),
+                )
+                .on_hover_text(
+                    config_operator_label(row.config, &row.itv.operator)
+                        .unwrap_or_else(|| tr("itv_by_tooltip").to_owned()),
+                );
+            if by.lost_focus() && who.trim() != row.itv.operator {
+                out.set_by = Some((row.itv.id, who.trim().to_owned(), row.itv.operator.clone()));
+            }
+        });
+    }
+
+    /// L'état, en pastille.
+    fn acts_state(ui: &mut egui::Ui, row: &ActsRow) {
+        ui.label(
+            egui::RichText::new(row.itv.state.label())
+                .color(egui::Color32::WHITE)
+                .background_color(motif::accent()),
+        );
+    }
+
+    /// Avancer d'un état, ou revenir sur un clic de trop.
+    fn acts_advance(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) {
+        ui.horizontal(|ui| {
+            // A misclicked advance is undone with the small
+            // "«" button (billing states must be correctable).
+            if row.itv.state.prev().is_some() {
+                let back = motif::button(ui, "«");
+                if back.on_hover_text(tr("itv_back_tooltip")).clicked() {
+                    out.regress = Some((row.itv.id, row.itv.state));
+                }
+            }
+            if let Some(next) = row.itv.state.next() {
+                if motif::button(ui, &trf("itv_advance", next.label())).clicked() {
+                    out.advance = Some((row.itv.id, row.itv.state));
+                }
+            } else {
+                ui.label(tr("itv_done"));
+            }
+        });
+    }
+
+    /// Ce que l'acte imprime, et ce qu'un TROD a lu.
+    fn acts_sheet(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) {
+        ui.horizontal(|ui| {
+            if motif::button(ui, tr("itv_pdf"))
+                .on_hover_text(tr("itv_pdf_tooltip"))
+                .clicked()
+            {
+                out.print_req = Some((
+                    row.itv.kind,
+                    row.itv.scheduled_date.clone(),
+                    row.itv.theme.clone(),
+                    row.itv.operator.clone(),
+                ));
+            }
+            if motif::button(ui, tr("itv_cr"))
+                .on_hover_text(tr("itv_cr_tooltip"))
+                .clicked()
+            {
+                out.cr_req = Some((
+                    row.itv.kind,
+                    row.itv.scheduled_date.clone(),
+                    row.itv.theme.clone(),
+                    row.itv.operator.clone(),
+                ));
+            }
+            // Only the themes under the accompaniment
+            // convention have an adhésion to sign.
+            if crate::bulletin::has_bulletin(row.itv.kind)
+                && motif::button(ui, tr("itv_bulletin"))
+                    .on_hover_text(tr("itv_bulletin_tooltip"))
+                    .clicked()
+            {
+                out.bulletin_req = Some(row.itv.kind);
+            }
+            // A vaccination act and a carnet line
+            // are the same event written twice:
+            // this jumps to the second one with the
+            // day and the initials already set.
+            if row.itv.kind == InterviewKind::Vaccination
+                && motif::button(ui, tr("itv_to_carnet"))
+                    .on_hover_text(tr("itv_to_carnet_tooltip"))
+                    .clicked()
+            {
+                out.to_carnet = Some((
+                    row.itv.created_at[..10.min(row.itv.created_at.len())].to_owned(),
+                    row.itv.operator.clone(),
+                ));
+            }
+            // A TROD is read once, and what it read
+            // decides whether there is anything to
+            // dispense at all.
+            if crate::ordonnance::is_trod(row.itv.kind) {
+                let result = row.itv.trod_result.clone();
+                for (value, label) in [
+                    (crate::ordonnance::POSITIF, tr("trod_positive")),
+                    (crate::ordonnance::NEGATIF, tr("trod_negative")),
+                ] {
+                    let on = result == value;
+                    if motif::toggle(ui, label, on).clicked() {
+                        // Clicking the current answer
+                        // clears it: a test read by
+                        // mistake can be un-read.
+                        let next = if on { "" } else { value };
+                        out.set_trod = Some((row.itv.id, next.to_owned(), result.clone()));
+                    }
+                }
+                if result == crate::ordonnance::POSITIF
+                    && motif::button(ui, tr("trod_ordonnance"))
+                        .on_hover_text(tr("trod_ordonnance_tooltip"))
+                        .clicked()
+                {
+                    out.open_ordonnance = Some((row.itv.id, row.itv.kind));
+                }
+            }
+        });
+    }
+
+    /// Les minutes de l'entretien. Un TROD est minuté par le test.
+    fn acts_duration(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) {
+        // A TROD is timed by the strip, not by the
+        // entretien: the minutes column asked a
+        // question it had no answer to.
+        if row.itv.kind.has_duration() {
+            let mut minutes = row.itv.duration_minutes;
+            let drag = ui.add(
+                egui::DragValue::new(&mut minutes)
+                    .range(0..=480)
+                    .suffix(tr("itv_minutes_suffix")),
+            );
+            if drag.changed() {
+                out.set_duration = Some((row.itv.id, minutes, row.itv.duration_minutes));
+            }
+        } else {
+            ui.label(egui::RichText::new("—").color(motif::text_dim()))
+                .on_hover_text(tr("itv_no_duration_tooltip"));
+        }
+    }
+
+    /// Le rendez-vous prévu : la date et l'heure, dans **une** cellule.
+    fn acts_rdv(ui: &mut egui::Ui, row: &ActsRow, session: &mut Session, out: &mut ActsOut) {
+        // Planned date: free text, committed when it parses
+        // (or empties) and the field loses focus.
+        let text = session.date_edits.entry(row.itv.id).or_insert_with(|| {
+            row.itv
+                .scheduled_date
+                .as_deref()
+                .map(db::format_french_date)
+                .unwrap_or_default()
+        });
+        // **La date et l'heure dans une seule
+        // cellule.** Dans un `Grid`, chaque widget
+        // est une colonne : l'heure n'étant dessinée
+        // que lorsqu'un rendez-vous est posé, une
+        // ligne qui en portait un comptait onze
+        // cellules là où les autres en comptaient
+        // dix — et le bouton de suppression tombait
+        // dans une colonne différente de celle de
+        // ses voisins, sur la table même que ce
+        // `Grid` a été introduit pour aligner.
+        let field = ui
+            .horizontal(|ui| {
+                let field = ui.add_sized(
+                    [Self::date_field_width(ui), 22.0],
+                    egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                );
+                // The hour sits with its date; it only
+                // means something once one is set.
+                if row.itv.scheduled_date.is_some() {
+                    let hour = session
+                        .hour_edits
+                        .entry(row.itv.id)
+                        .or_insert_with(|| row.itv.scheduled_time.clone());
+                    let h = ui.add_sized(
+                        [
+                            Self::field_width(ui, [tr("agenda_hour_hint"), "00:00"].into_iter()),
+                            22.0,
+                        ],
+                        egui::TextEdit::singleline(hour).hint_text(tr("agenda_hour_hint")),
+                    );
+                    if h.lost_focus() && *hour != row.itv.scheduled_time {
+                        let parsed = if hour.trim().is_empty() {
+                            Some(String::new())
+                        } else {
+                            db::parse_hour(hour)
+                        };
+                        if let Some(value) = parsed {
+                            out.set_hour =
+                                Some((row.itv.id, value, row.itv.scheduled_time.clone()));
+                        }
+                    }
+                }
+                field
+            })
+            .inner;
+        if field.lost_focus() {
+            let year = session.db.current_year();
+            if text.trim().is_empty() {
+                if row.itv.scheduled_date.is_some() {
+                    out.set_date = Some((row.itv.id, None, row.itv.scheduled_date.clone()));
+                }
+            } else if let Ok(iso) =
+                // RDV dates are always 20xx ("26" → 2026).
+                db::parse_french_date(text, year, db::YearHint::Future)
+            {
+                if row.itv.scheduled_date.as_deref() != Some(iso.as_str()) {
+                    out.set_date = Some((row.itv.id, Some(iso), row.itv.scheduled_date.clone()));
+                }
+            }
+        }
+    }
+
+    /// Retirer un acte ajouté par erreur, en deux clics.
+    fn acts_delete(ui: &mut egui::Ui, row: &ActsRow, session: &mut Session, out: &mut ActsOut) {
+        // Remove a mistakenly added interview (two clicks).
+        let confirm = session.confirm_delete_itv == Some(row.itv.id);
+        let del = motif::button(
+            ui,
+            if confirm {
+                tr("itv_delete_confirm")
+            } else {
+                tr("itv_delete")
+            },
+        );
+        if del.on_hover_text(tr("itv_delete_tooltip")).clicked() {
+            if confirm {
+                out.delete_itv = Some((row.itv.id, row.itv.state));
+            } else {
+                session.confirm_delete_itv = Some(row.itv.id);
+            }
+        }
+    }
+
     fn patient_acts_pane(
         ui: &mut egui::Ui,
         session: &mut Session,
@@ -13951,36 +14507,8 @@ impl App {
         config: &Config,
     ) {
         let interviews = session.viewing_interviews.clone();
-        let mut advance: Option<(i64, db::InterviewState)> = None;
-        let mut regress: Option<(i64, db::InterviewState)> = None;
-        // (kind, planned date, thematic, who did it) of the row whose
-        // PDF was asked.
-        let mut print_req: Option<(InterviewKind, Option<String>, String, String)> = None;
-        let mut cr_req: Option<(InterviewKind, Option<String>, String, String)> = None;
-        // The act's bulletin d'adhésion, for the themes that have one.
-        let mut bulletin_req: Option<InterviewKind> = None;
-        // (interview id, what the TROD read, the value this PC saw — CAS).
-        let mut set_trod: Option<(i64, String, String)> = None;
-        // The act whose ordonnance box is being opened.
-        let mut open_ordonnance: Option<(i64, InterviewKind)> = None;
-        // (interview id, new minutes, the minutes this PC saw — CAS).
-        let mut set_duration: Option<(i64, i64, i64)> = None;
-        // (interview id, new date, the date this PC saw — CAS expected).
-        let mut set_date: Option<(i64, Option<String>, Option<String>)> = None;
-        // (interview id, the day the act was held, the day this PC saw).
-        let mut set_made: Option<(i64, String, String)> = None;
-        // (interview id, who did it, the initials this PC saw — CAS).
-        let mut set_by: Option<(i64, String, String)> = None;
-        // (day, initials) of a vaccination act whose dose is to be
-        // written in the carnet.
-        let mut to_carnet: Option<(String, String)> = None;
-        let mut delete_itv: Option<(i64, db::InterviewState)> = None;
-        // (interview id, new theme, the theme this PC saw — CAS).
-        let mut set_theme: Option<(i64, String, String)> = None;
-        // (interview id, new hour, the hour this PC saw — CAS).
-        let mut set_hour: Option<(i64, String, String)> = None;
-        let mut set_remote: Option<(i64, bool, bool)> = None;
-        let mut set_change: Option<(i64, bool, bool)> = None;
+        // Les dix-sept écritures possibles vivent dans `ActsOut`, qui
+        // les nomme une fois pour les deux dispositions.
         // Rank of each act inside its yearly cycle, per kind — this is
         // what selects the fee slot (initial / 1er / 2e suivi).
         let ranks = interview_ranks(&interviews, config.rules.cycle_months.max(1));
@@ -14007,417 +14535,181 @@ impl App {
             session.show_amounts,
             budget,
         );
-        // The table is wide by nature — ten columns, most of them
-        // buttons. It scrolls both ways rather than losing its right
-        // hand columns silently to whatever width the pane happens to
-        // have.
-        egui::ScrollArea::both()
+        // **Trois dispositions, et les mêmes dix cellules dans les
+        // trois.** La table est large par nature : dix colonnes, la
+        // plupart des boutons, qui demandent ensemble près de mille
+        // quatre cents pixels de contrôles — et le volet central en
+        // offre cinq cent quatre-vingt-dix à 1024x700 avec les deux
+        // volets ouverts. Aucune colonne qu'on retire n'y change quoi
+        // que ce soit ; c'est mesuré, le seul thème et la seule date en
+        // font déjà quatre cent cinquante.
+        //
+        // Elle défilait donc **des deux côtés**, ce qui ne perd rien
+        // mais met « » Réalisé » — l'action pour laquelle on ouvre ce
+        // tableau — hors de l'écran derrière une barre horizontale.
+        //
+        // Alors : la table à dix colonnes pour les écrans qui la
+        // portent ; en dessous, l'acte se plie en deux lignes — ce
+        // qu'il *est*, puis ce qu'on en *fait* ; et sous ce seuil-là,
+        // en trois, l'action restant sur la première. Rien n'est caché,
+        // rien ne sort à droite, et les dix cellules sont écrites une
+        // seule fois : deux copies du même code divergent le jour où
+        // l'on en corrige une.
+        let avail = ui.available_width();
+        // Trois dispositions, et deux seuils mesurés : la rangée
+        // entière, puis sa moitié la plus large. En dessous des deux, la
+        // fiche se plie en trois.
+        let (full, half) = Self::acts_widths(ui, &interviews, &ranks);
+        let lines = if avail >= full {
+            1
+        } else if avail >= half {
+            2
+        } else {
+            3
+        };
+        let mut out = ActsOut::default();
+        egui::ScrollArea::vertical()
             .id_salt("interviews")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                egui::Grid::new("interviews")
-                    .num_columns(10)
-                    .spacing([8.0, 6.0])
-                    .striped(true)
-                    .show(ui, |ui| {
-                        if !interviews.is_empty() {
-                            for header in [
-                                tr("itv_header_kind"),
-                                tr("itv_header_act"),
-                                tr("itv_header_theme"),
-                                tr("itv_header_created"),
-                                tr("itv_header_state"),
-                                tr("itv_header_advance"),
-                                tr("itv_header_sheet"),
-                                tr("itv_header_duration"),
-                                tr("itv_header_rdv"),
-                                "",
-                            ] {
-                                ui.label(
-                                    egui::RichText::new(header)
-                                        .size(11.0)
-                                        .color(motif::text_dim()),
-                                );
-                            }
-                            ui.end_row();
-                        }
-                        for itv in &interviews {
-                            let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
-                            // The theme, and nothing else: the act
-                            // code and the two flags have a column
-                            // of their own, so the row keeps one
-                            // line and the columns stay aligned.
-                            ui.label(egui::RichText::new(itv.kind.label()).strong());
-                            // The convention's act code, the step it
-                            // pays, and the two flags that change
-                            // what is billed.
-                            ui.horizontal(|ui| {
-                                let step_name = itv
-                                    .kind
-                                    .step_label(year, rank)
-                                    .map(|s| s.to_owned())
-                                    .unwrap_or_else(|| rank_label(rank));
-                                let code = itv.kind.act_code(year).unwrap_or("—");
-                                ui.label(
-                                    egui::RichText::new(format!("{code} · {}", rank + 1))
-                                        .size(11.0)
-                                        .strong()
-                                        .color(motif::accent()),
-                                )
-                                .on_hover_text(format!(
-                                    "{step_name}\n{}",
-                                    trn(
-                                        "itv_fee_tooltip",
-                                        &[
-                                            &format!(
-                                                "{:.2} €",
-                                                config.act_total(itv.kind, year, rank, itv.remote)
-                                            ),
-                                            &(year + 1),
-                                            &itv.kind.coverage_rate(),
-                                        ],
-                                    )
-                                ));
-                                // Held remotely: the convention bills
-                                // TPH on top of the act code.
-                                if itv.kind.is_accompaniment()
-                                    && motif::toggle(ui, db::REMOTE_CODE, itv.remote)
-                                        .on_hover_text(trf(
-                                            "itv_remote_tooltip",
-                                            format!("{:.2} €", config.billing.teleconsultation),
-                                        ))
-                                        .clicked()
-                                {
-                                    set_remote = Some((itv.id, !itv.remote, itv.remote));
-                                }
-                                // Anticancéreux only: the memo keeps
-                                // the treatment-change derogation
-                                // for those two themes alone.
-                                if itv.kind.allows_treatment_change() {
-                                    if motif::toggle(
-                                        ui,
-                                        tr("itv_change_short_label"),
-                                        itv.treatment_change,
-                                    )
-                                    .on_hover_text(tr("itv_change_tooltip"))
-                                    .clicked()
-                                    {
-                                        set_change = Some((
-                                            itv.id,
-                                            !itv.treatment_change,
-                                            itv.treatment_change,
-                                        ));
-                                    }
-                                    // The derogation has conditions;
-                                    // say which one is not met yet
-                                    // rather than billing blind.
-                                    if let Some((before, after)) = treatment_change_shortfall(
-                                        &interviews,
-                                        itv,
-                                        config.rules.cycle_months.max(1),
-                                    ) {
-                                        ui.label(
-                                            egui::RichText::new("!").strong().color(motif::alert()),
-                                        )
-                                        .on_hover_text(trn("itv_change_short", &[&before, &after]));
-                                    }
-                                }
-                            });
-                            // A TROD has a result, not a subject: the
-                            // thematics are the entretiens', and one
-                            // stamped on a test only travelled to the
-                            // CSV to say nothing.
-                            if itv.kind.has_theme() {
-                                let mut theme = itv.theme.clone();
-                                if theme_combo(ui, &format!("theme{}", itv.id), &mut theme) {
-                                    set_theme = Some((itv.id, theme, itv.theme.clone()));
-                                }
-                            } else {
-                                ui.label(egui::RichText::new("—").color(motif::text_dim()))
-                                    .on_hover_text(tr("itv_no_theme_tooltip"));
-                            }
-                            // The date the act was held, and not the
-                            // date it was typed in: it places the act
-                            // in its cycle, and the cycle picks the fee.
-                            let made = itv.created_at[..10.min(itv.created_at.len())].to_owned();
-                            ui.horizontal(|ui| {
-                                let text = session
-                                    .made_edits
-                                    .entry(itv.id)
-                                    .or_insert_with(|| db::format_french_date(&made));
-                                let field = ui
-                                    .add_sized(
-                                        [Self::date_field_width(ui), 22.0],
-                                        egui::TextEdit::singleline(text)
-                                            .hint_text(tr("itv_rdv_hint")),
-                                    )
-                                    .on_hover_text(tr("itv_created_tooltip"));
-                                if field.lost_focus() {
-                                    let year = session.db.current_year();
-                                    match db::parse_french_date(text, year, db::YearHint::Future) {
-                                        Ok(iso) if iso != made => {
-                                            set_made = Some((itv.id, iso, made.clone()));
-                                        }
-                                        // An unreadable date is put back
-                                        // as it was rather than left
-                                        // hanging: an act always has a
-                                        // date.
-                                        Err(_) => *text = db::format_french_date(&made),
-                                        _ => {}
-                                    }
-                                }
-                                // Who did it. It signs the fiche and the
-                                // courrier, so it is the act's own,
-                                // recorded at creation and correctable
-                                // after — not whoever happens to be at
-                                // the counter on the day it is printed.
-                                // Le texte en cours vit dans la session,
-                                // pas dans une copie refabriquée à chaque
-                                // image : un `TextEdit` ne garde pas son
-                                // contenu, il le tient dans le `String`
-                                // qu'on lui prête.
-                                let who = session
-                                    .by_edits
-                                    .entry(itv.id)
-                                    .or_insert_with(|| itv.operator.clone());
-                                let by = ui
-                                    .add_sized(
-                                        [
-                                            Self::field_width(
-                                                ui,
-                                                [tr("itv_by_hint"), "AAA"].into_iter(),
-                                            ),
-                                            22.0,
-                                        ],
-                                        egui::TextEdit::singleline(who)
-                                            .hint_text(tr("itv_by_hint")),
-                                    )
-                                    .on_hover_text(
-                                        config_operator_label(config, &itv.operator)
-                                            .unwrap_or_else(|| tr("itv_by_tooltip").to_owned()),
+                if lines == 1 {
+                    egui::Grid::new("interviews")
+                        .num_columns(10)
+                        .spacing([8.0, 6.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            if !interviews.is_empty() {
+                                for header in [
+                                    tr("itv_header_kind"),
+                                    tr("itv_header_act"),
+                                    tr("itv_header_theme"),
+                                    tr("itv_header_created"),
+                                    tr("itv_header_state"),
+                                    tr("itv_header_advance"),
+                                    tr("itv_header_sheet"),
+                                    tr("itv_header_duration"),
+                                    tr("itv_header_rdv"),
+                                    "",
+                                ] {
+                                    ui.label(
+                                        egui::RichText::new(header)
+                                            .size(11.0)
+                                            .color(motif::text_dim()),
                                     );
-                                if by.lost_focus() && who.trim() != itv.operator {
-                                    set_by =
-                                        Some((itv.id, who.trim().to_owned(), itv.operator.clone()));
                                 }
-                            });
-                            ui.label(
-                                egui::RichText::new(itv.state.label())
-                                    .color(egui::Color32::WHITE)
-                                    .background_color(motif::accent()),
-                            );
-                            ui.horizontal(|ui| {
-                                // A misclicked advance is undone with the small
-                                // "«" button (billing states must be correctable).
-                                if itv.state.prev().is_some() {
-                                    let back = motif::button(ui, "«");
-                                    if back.on_hover_text(tr("itv_back_tooltip")).clicked() {
-                                        regress = Some((itv.id, itv.state));
-                                    }
-                                }
-                                if let Some(next) = itv.state.next() {
-                                    if motif::button(ui, &trf("itv_advance", next.label()))
-                                        .clicked()
-                                    {
-                                        advance = Some((itv.id, itv.state));
-                                    }
-                                } else {
-                                    ui.label(tr("itv_done"));
-                                }
-                            });
-                            ui.horizontal(|ui| {
-                                if motif::button(ui, tr("itv_pdf"))
-                                    .on_hover_text(tr("itv_pdf_tooltip"))
-                                    .clicked()
-                                {
-                                    print_req = Some((
-                                        itv.kind,
-                                        itv.scheduled_date.clone(),
-                                        itv.theme.clone(),
-                                        itv.operator.clone(),
-                                    ));
-                                }
-                                if motif::button(ui, tr("itv_cr"))
-                                    .on_hover_text(tr("itv_cr_tooltip"))
-                                    .clicked()
-                                {
-                                    cr_req = Some((
-                                        itv.kind,
-                                        itv.scheduled_date.clone(),
-                                        itv.theme.clone(),
-                                        itv.operator.clone(),
-                                    ));
-                                }
-                                // Only the themes under the accompaniment
-                                // convention have an adhésion to sign.
-                                if crate::bulletin::has_bulletin(itv.kind)
-                                    && motif::button(ui, tr("itv_bulletin"))
-                                        .on_hover_text(tr("itv_bulletin_tooltip"))
-                                        .clicked()
-                                {
-                                    bulletin_req = Some(itv.kind);
-                                }
-                                // A vaccination act and a carnet line
-                                // are the same event written twice:
-                                // this jumps to the second one with the
-                                // day and the initials already set.
-                                if itv.kind == InterviewKind::Vaccination
-                                    && motif::button(ui, tr("itv_to_carnet"))
-                                        .on_hover_text(tr("itv_to_carnet_tooltip"))
-                                        .clicked()
-                                {
-                                    to_carnet = Some((
-                                        itv.created_at[..10.min(itv.created_at.len())].to_owned(),
-                                        itv.operator.clone(),
-                                    ));
-                                }
-                                // A TROD is read once, and what it read
-                                // decides whether there is anything to
-                                // dispense at all.
-                                if crate::ordonnance::is_trod(itv.kind) {
-                                    let result = itv.trod_result.clone();
-                                    for (value, label) in [
-                                        (crate::ordonnance::POSITIF, tr("trod_positive")),
-                                        (crate::ordonnance::NEGATIF, tr("trod_negative")),
-                                    ] {
-                                        let on = result == value;
-                                        if motif::toggle(ui, label, on).clicked() {
-                                            // Clicking the current answer
-                                            // clears it: a test read by
-                                            // mistake can be un-read.
-                                            let next = if on { "" } else { value };
-                                            set_trod =
-                                                Some((itv.id, next.to_owned(), result.clone()));
-                                        }
-                                    }
-                                    if result == crate::ordonnance::POSITIF
-                                        && motif::button(ui, tr("trod_ordonnance"))
-                                            .on_hover_text(tr("trod_ordonnance_tooltip"))
-                                            .clicked()
-                                    {
-                                        open_ordonnance = Some((itv.id, itv.kind));
-                                    }
-                                }
-                            });
-                            // A TROD is timed by the strip, not by the
-                            // entretien: the minutes column asked a
-                            // question it had no answer to.
-                            if itv.kind.has_duration() {
-                                let mut minutes = itv.duration_minutes;
-                                let drag = ui.add(
-                                    egui::DragValue::new(&mut minutes)
-                                        .range(0..=480)
-                                        .suffix(tr("itv_minutes_suffix")),
-                                );
-                                if drag.changed() {
-                                    set_duration = Some((itv.id, minutes, itv.duration_minutes));
-                                }
-                            } else {
-                                ui.label(egui::RichText::new("—").color(motif::text_dim()))
-                                    .on_hover_text(tr("itv_no_duration_tooltip"));
+                                ui.end_row();
                             }
-                            // Planned date: free text, committed when it parses
-                            // (or empties) and the field loses focus.
-                            let text = session.date_edits.entry(itv.id).or_insert_with(|| {
-                                itv.scheduled_date
-                                    .as_deref()
-                                    .map(db::format_french_date)
-                                    .unwrap_or_default()
-                            });
-                            // **La date et l'heure dans une seule
-                            // cellule.** Dans un `Grid`, chaque widget
-                            // est une colonne : l'heure n'étant dessinée
-                            // que lorsqu'un rendez-vous est posé, une
-                            // ligne qui en portait un comptait onze
-                            // cellules là où les autres en comptaient
-                            // dix — et le bouton de suppression tombait
-                            // dans une colonne différente de celle de
-                            // ses voisins, sur la table même que ce
-                            // `Grid` a été introduit pour aligner.
-                            let field = ui
-                                .horizontal(|ui| {
-                                    let field = ui.add_sized(
-                                        [Self::date_field_width(ui), 22.0],
-                                        egui::TextEdit::singleline(text)
-                                            .hint_text(tr("itv_rdv_hint")),
-                                    );
-                                    // The hour sits with its date; it only
-                                    // means something once one is set.
-                                    if itv.scheduled_date.is_some() {
-                                        let hour = session
-                                            .hour_edits
-                                            .entry(itv.id)
-                                            .or_insert_with(|| itv.scheduled_time.clone());
-                                        let h = ui.add_sized(
-                                            [
-                                                Self::field_width(
-                                                    ui,
-                                                    [tr("agenda_hour_hint"), "00:00"].into_iter(),
-                                                ),
-                                                22.0,
-                                            ],
-                                            egui::TextEdit::singleline(hour)
-                                                .hint_text(tr("agenda_hour_hint")),
-                                        );
-                                        if h.lost_focus() && *hour != itv.scheduled_time {
-                                            let parsed = if hour.trim().is_empty() {
-                                                Some(String::new())
-                                            } else {
-                                                db::parse_hour(hour)
-                                            };
-                                            if let Some(value) = parsed {
-                                                set_hour = Some((
-                                                    itv.id,
-                                                    value,
-                                                    itv.scheduled_time.clone(),
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    field
-                                })
-                                .inner;
-                            if field.lost_focus() {
-                                let year = session.db.current_year();
-                                if text.trim().is_empty() {
-                                    if itv.scheduled_date.is_some() {
-                                        set_date = Some((itv.id, None, itv.scheduled_date.clone()));
-                                    }
-                                } else if let Ok(iso) =
-                                    // RDV dates are always 20xx ("26" → 2026).
-                                    db::parse_french_date(
-                                        text,
-                                        year,
-                                        db::YearHint::Future,
-                                    )
-                                {
-                                    if itv.scheduled_date.as_deref() != Some(iso.as_str()) {
-                                        set_date =
-                                            Some((itv.id, Some(iso), itv.scheduled_date.clone()));
-                                    }
-                                }
+                            for itv in &interviews {
+                                let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
+                                let row = ActsRow {
+                                    itv,
+                                    year,
+                                    rank,
+                                    all: &interviews,
+                                    config,
+                                };
+                                Self::acts_kind(ui, &row);
+                                Self::acts_act(ui, &row, &mut out);
+                                let made = Self::acts_theme(ui, &row, &mut out);
+                                Self::acts_made(ui, &row, &made, session, &mut out);
+                                Self::acts_state(ui, &row);
+                                Self::acts_advance(ui, &row, &mut out);
+                                Self::acts_sheet(ui, &row, &mut out);
+                                Self::acts_duration(ui, &row, &mut out);
+                                Self::acts_rdv(ui, &row, session, &mut out);
+                                Self::acts_delete(ui, &row, session, &mut out);
+                                ui.end_row();
                             }
-                            // Remove a mistakenly added interview (two clicks).
-                            let confirm = session.confirm_delete_itv == Some(itv.id);
-                            let del = motif::button(
-                                ui,
-                                if confirm {
-                                    tr("itv_delete_confirm")
-                                } else {
-                                    tr("itv_delete")
-                                },
-                            );
-                            if del.on_hover_text(tr("itv_delete_tooltip")).clicked() {
-                                if confirm {
-                                    delete_itv = Some((itv.id, itv.state));
-                                } else {
-                                    session.confirm_delete_itv = Some(itv.id);
-                                }
-                            }
-                            ui.end_row();
-                        }
+                        });
+                    return;
+                }
+                // Serré : une fiche par acte. Les cellules sont les
+                // mêmes fonctions — c'est tout l'intérêt de les avoir
+                // sorties de la boucle.
+                for (i, itv) in interviews.iter().enumerate() {
+                    let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
+                    let row = ActsRow {
+                        itv,
+                        year,
+                        rank,
+                        all: &interviews,
+                        config,
+                    };
+                    if i > 0 {
+                        // Un filet entre deux actes : sans lui, trois
+                        // lignes qui en suivent trois autres se lisent
+                        // comme six.
+                        let r = ui.max_rect();
+                        motif::rule(ui.painter(), r.left(), r.right(), ui.cursor().top() + 2.0);
+                        ui.add_space(8.0);
+                    }
+                    if lines == 2 {
+                        // Pliée en deux : ce que l'acte **est**
+                        // au-dessus, ce qu'on en **fait** en dessous.
+                        ui.horizontal_wrapped(|ui| {
+                            Self::acts_kind(ui, &row);
+                            Self::acts_act(ui, &row, &mut out);
+                            let made = Self::acts_theme(ui, &row, &mut out);
+                            Self::acts_made(ui, &row, &made, session, &mut out);
+                            Self::acts_state(ui, &row);
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            Self::acts_advance(ui, &row, &mut out);
+                            Self::acts_sheet(ui, &row, &mut out);
+                            Self::acts_duration(ui, &row, &mut out);
+                            Self::acts_rdv(ui, &row, session, &mut out);
+                            Self::acts_delete(ui, &row, session, &mut out);
+                        });
+                        ui.add_space(4.0);
+                        continue;
+                    }
+                    // **L'action sur la première ligne.** Ce qu'on
+                    // vient faire dans ce tableau, c'est avancer un
+                    // acte : le laisser sur la dernière ligne d'une
+                    // fiche de trois, c'est le laisser sous le pli —
+                    // exactement le défaut que la disposition serrée
+                    // vient corriger.
+                    ui.horizontal_wrapped(|ui| {
+                        Self::acts_kind(ui, &row);
+                        Self::acts_act(ui, &row, &mut out);
+                        Self::acts_state(ui, &row);
+                        Self::acts_advance(ui, &row, &mut out);
+                        // Le retrait est petit et il porte sur l'acte
+                        // entier : il tient sur cette ligne-là, plutôt
+                        // que seul en bas d'une quatrième.
+                        Self::acts_delete(ui, &row, session, &mut out);
                     });
+                    ui.horizontal_wrapped(|ui| {
+                        let made = Self::acts_theme(ui, &row, &mut out);
+                        Self::acts_made(ui, &row, &made, session, &mut out);
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        Self::acts_sheet(ui, &row, &mut out);
+                        Self::acts_duration(ui, &row, &mut out);
+                        Self::acts_rdv(ui, &row, session, &mut out);
+                    });
+                    ui.add_space(4.0);
+                }
             });
+        let ActsOut {
+            advance,
+            regress,
+            mut print_req,
+            mut cr_req,
+            bulletin_req,
+            set_trod,
+            open_ordonnance,
+            set_duration,
+            set_date,
+            set_made,
+            set_by,
+            to_carnet,
+            delete_itv,
+            set_theme,
+            set_hour,
+            set_remote,
+            set_change,
+        } = out;
         let stale_msg = tr("itv_stale");
         if let Some((id, changed, expected)) = set_change {
             match session.db.set_treatment_change(id, changed, expected) {
@@ -19024,11 +19316,8 @@ impl App {
                             let label_floor =
                                 Self::widest(ui, 12.0, [tr("scan_col_label")].into_iter()) * 3.0;
                             let full = kind_w + date_w + size_w + btn_w + gap * 4.0;
-                            let (cols, taken) = if avail - full >= label_floor {
-                                (6, full)
-                            } else {
-                                (1, 0.0)
-                            };
+                            let (cols, taken) =
+                                table_shape(avail, label_floor, &[(6, full), (1, 0.0)]);
                             let label_w = (avail - taken).max(label_floor);
                             // Une **grille** et non une suite de rangées
                             // indépendantes.
@@ -29770,6 +30059,112 @@ mod tests {
                      réservés"
                 );
             }
+        }
+    }
+
+    /// **La forme d'une table est la plus riche qui tienne.**
+    ///
+    /// L'arbitrage que quatre tables partagent, isolé de toute mesure :
+    /// il n'y a pas d'écran là-dedans, seulement une largeur, un
+    /// plancher et une liste de formes. Trois choses à tenir — qu'aucune
+    /// forme retenue ne laisse la colonne qui plie sous son plancher,
+    /// qu'un panneau plus large ne rende jamais une forme plus pauvre,
+    /// et qu'il en sorte toujours une, même sur un panneau ridicule.
+    #[test]
+    fn a_table_takes_the_richest_shape_that_fits() {
+        use super::table_shape;
+        // Le carnet : sept colonnes en prennent 420 hors du nom, quatre
+        // en prennent 260, deux en prennent 150.
+        let shapes = [(7usize, 420.0_f32), (4, 260.0), (2, 150.0)];
+        let floor = 60.0_f32;
+        // Assez large pour tout : la plus riche.
+        assert_eq!(table_shape(900.0, floor, &shapes), (7, 420.0));
+        // Juste ce qu'il faut pour sept, au pixel : encore sept.
+        assert_eq!(table_shape(480.0, floor, &shapes), (7, 420.0));
+        // Un pixel de moins : quatre.
+        assert_eq!(table_shape(479.0, floor, &shapes).0, 4);
+        assert_eq!(table_shape(320.0, floor, &shapes).0, 4);
+        assert_eq!(table_shape(319.0, floor, &shapes).0, 2);
+        // Et sur un panneau où même la plus pauvre ne tient pas, on
+        // dessine la plus pauvre plutôt que rien.
+        assert_eq!(table_shape(40.0, floor, &shapes), (2, 150.0));
+        assert_eq!(table_shape(0.0, floor, &shapes), (2, 150.0));
+        // **Monotone** : élargir le panneau n'appauvrit jamais la table.
+        // C'est ce qu'on ne remarque pas en regardant une capture, et ce
+        // qui se lit comme une table qui clignote quand on tire un
+        // volet.
+        let mut best = 0usize;
+        let mut w = 0.0_f32;
+        while w <= 1200.0 {
+            let (cols, _) = table_shape(w, floor, &shapes);
+            assert!(
+                cols >= best,
+                "à {w} px la table retombe de {best} à {cols} colonnes"
+            );
+            best = cols;
+            w += 1.0;
+        }
+        // Une liste vide ne panique pas : elle rend la forme minimale.
+        assert_eq!(table_shape(500.0, floor, &[]), (1, 0.0));
+    }
+
+    /// **Le tableau des entretiens non plus.**
+    ///
+    /// Ses deux seuils sortent de ce que les actes du dossier
+    /// demandent, et la disposition retenue doit tenir dans le volet :
+    /// une rangée entière si elle y tient, sinon sa moitié la plus
+    /// large, sinon la fiche en trois lignes — qui, elle, ne tient que
+    /// ce que le pliage lui laisse. Le test le vérifie sur un dossier
+    /// qui porte de tout : un TROD (sept boutons de fiche), un
+    /// anticancéreux (les deux drapeaux) et une vaccination.
+    #[test]
+    fn the_acts_table_never_runs_off_the_right_of_its_panel() {
+        use crate::db::{Interview, InterviewKind, InterviewState};
+        let act = |id: i64, kind: InterviewKind| Interview {
+            id,
+            kind,
+            state: InterviewState::Scheduled,
+            duration_minutes: 20,
+            scheduled_date: Some("2026-06-01".to_owned()),
+            scheduled_time: "09:30".to_owned(),
+            remote: false,
+            treatment_change: false,
+            theme: "Observance".to_owned(),
+            trod_result: String::new(),
+            operator: "CL".to_owned(),
+            created_at: "2026-05-11 09:00".to_owned(),
+        };
+        let interviews = vec![
+            act(1, InterviewKind::Bpm),
+            act(2, InterviewKind::TrodAngine),
+            act(3, InterviewKind::Vaccination),
+            act(4, InterviewKind::AnticancereuxLc),
+        ];
+        let ranks = super::interview_ranks(&interviews, 12);
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    *seen.borrow_mut() = App::acts_widths(ui, &interviews, &ranks);
+                });
+            });
+            let (full, half) = seen.into_inner();
+            // La moitié tient dans la rangée entière, et la rangée
+            // entière dans deux moitiés : sans cela le seuil du milieu
+            // ne voudrait rien dire.
+            assert!(
+                half <= full,
+                "échelle {scale} : une moitié de {half} px pour une rangée de {full} px"
+            );
+            assert!(
+                full <= half * 2.0 + 1.0,
+                "échelle {scale} : {full} > 2 × {half}"
+            );
+            // Et les seuils grandissent avec le texte : c'est tout
+            // l'intérêt de les mesurer.
+            assert!(full > 400.0, "échelle {scale} : une rangée de {full} px ?");
         }
     }
 

@@ -33,6 +33,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
+## [Unreleased]
+
+### Changed
+- **Le tableau des entretiens ne défile plus à l'horizontale.** C'était
+  la dernière table à le faire, et la plus utilisée : dix colonnes, la
+  plupart des boutons, qui demandent ensemble près de mille quatre cents
+  pixels de contrôles là où le volet central en offre cinq cent
+  quatre-vingt-dix à 1024x700. Aucune colonne qu'on retire n'y change
+  quoi que ce soit — c'est mesuré, le seul thème et la seule date en
+  font déjà quatre cent cinquante — et la barre horizontale mettait
+  « » Réalisé », l'action pour laquelle on ouvre ce tableau, hors de
+  l'écran.
+  - **Trois dispositions, deux seuils mesurés sur les actes du
+    dossier** : la table à dix colonnes pour les écrans qui la portent ;
+    en dessous, l'acte se plie en deux lignes — ce qu'il *est*, puis ce
+    qu'on en *fait* ; sous ce seuil-là, en trois, l'action restant sur
+    la première. Un dossier qui ne porte que des BPM n'a ni les
+    pastilles d'un TROD ni le bouton d'ordonnance : le mesurer sur le
+    pire cas possible le punirait de ce qu'il n'a pas.
+  - Et **les dix cellules sont écrites une seule fois**, appelées depuis
+    les trois dispositions : `ActsRow` dit ce qu'une rangée lit,
+    `ActsOut` les dix-sept écritures qu'elle peut demander. Deux copies
+    du même code divergent le jour où l'on en corrige une.
+- La règle que quatre tables partagent porte enfin un nom —
+  `table_shape`, « la forme la plus riche qui tienne » —, avec un test
+  qui tient les trois choses qui comptent : qu'aucune forme retenue ne
+  laisse la colonne qui plie sous son plancher, qu'un panneau plus large
+  n'en rende jamais une plus pauvre, et qu'il en sorte toujours une.
+
 ## [0.150.1] - 2026-09-07
 
 ### Fixed
