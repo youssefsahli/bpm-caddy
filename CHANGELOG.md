@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **La fenêtre des options sortait de l'écran des deux côtés.** À
+  1024x700 les libellés de sa colonne de gauche étaient coupés par le
+  bord — et rien ne permettait de la rapetisser, puisqu'elle est
+  centrée. Une fenêtre egui grandit avec son contenu tant qu'on ne lui
+  donne pas de maximum, et sur la page « Base » ce contenu porte une
+  grille dont les colonnes ont une largeur incompressible : un champ de
+  chemin et son bouton « Parcourir… ». La fenêtre prend maintenant sa
+  taille de l'écran, et son corps défile dans les deux sens : mieux vaut
+  atteindre une grille en défilant que ne pas pouvoir lire les libellés.
+- « MDP » sous le nom de l'application, sur l'écran de verrouillage,
+  devient ce que l'application fait — le champ juste dessous dit déjà
+  « Mot de passe ».
 - **Une seule ligne bavarde élargissait tout le registre des
   stupéfiants.** Deux de ses neuf colonnes n'avaient pas de longueur
   bornée — le libellé du produit, et la mention qui recolle

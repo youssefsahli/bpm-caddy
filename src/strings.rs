@@ -272,8 +272,8 @@ mod tests {
         // Wording is the pharmacy's to change — assert that the key
         // resolves, not what it says. Asserting the copy made an
         // ordinary edit to the lock screen look like a broken build.
-        assert_ne!(tr("lock_subtitle"), "lock_subtitle");
-        assert!(!tr("lock_subtitle").trim().is_empty());
+        assert_ne!(tr("app_tagline"), "app_tagline");
+        assert!(!tr("app_tagline").trim().is_empty());
         assert_eq!(trf("patient_born", "03/07/1958"), "Né(e) le 03/07/1958");
         assert_eq!(
             trn("status_summary", &[&5, &4, &58]),

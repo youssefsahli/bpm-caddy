@@ -8,7 +8,6 @@
 app_tagline = "Suivi des entretiens pharmaceutiques"
 
 # --- Écran de verrouillage ---
-lock_subtitle = "MDP"
 lock_password_hint = "Mot de passe"
 lock_remember = "Mémoriser"
 lock_unlock = "Déverrouiller"
@@ -408,7 +407,6 @@ opts_theme = "Palette"
 opts_theme_preview = "Aperçu"
 opts_font = "Police"
 opts_font_default = "Police intégrée"
-opts_font_note = ""
 opts_restart = "La police et le panneau prennent effet au redémarrage."
 opts_side_pane = "Panneau de droite"
 side_pane_docs = "Équipe"

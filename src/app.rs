@@ -7850,8 +7850,12 @@ impl App {
                     motif::bevel(ui.painter(), inner, false);
                     ui.add_space(4.0);
                     ui.heading("BPM-Caddy");
+                    // Ce que fait l'application, et non « MDP » : sous le
+                    // nom, sur l'écran de verrouillage, c'est la seule
+                    // ligne qu'un visiteur lira jamais — et le champ
+                    // juste dessous dit déjà « Mot de passe ».
                     ui.label(
-                        egui::RichText::new(tr("lock_subtitle"))
+                        egui::RichText::new(tr("app_tagline"))
                             .size(11.5)
                             .color(motif::text_dim()),
                     );
@@ -27666,13 +27670,35 @@ impl eframe::App for App {
         if let Some(editor) = &mut self.options {
             // Fit the dialog to the window: the options list is long,
             // and a fixed height clipped the last rows on small screens.
+            //
+            // **En largeur aussi.** Une fenêtre egui grandit avec son
+            // contenu tant qu'on ne lui donne pas de maximum : la page
+            // « Base » porte deux paragraphes qui ne se replient pas, et
+            // à 1024x700 la fenêtre des options sortait de l'écran des
+            // deux côtés — les libellés de la colonne de gauche étaient
+            // coupés par le bord, et rien ne permettait de la rapetisser
+            // puisqu'elle est centrée.
             let avail = ctx.screen_rect().height();
+            let across = ctx.screen_rect().width();
             egui::Window::new(tr("opts_title"))
                 .collapsible(false)
-                .resizable(true)
-                .default_size([600.0, (avail - 80.0).clamp(420.0, 900.0)])
+                // Plus redimensionnable : la taille vient de l'écran, et
+                // c'est précisément parce qu'elle en venait pas que la
+                // fenêtre sortait des deux côtés. Une boîte de dialogue
+                // centrée qu'on ne peut pas rapetisser doit tenir seule.
+                .resizable(false)
+                .fixed_size([
+                    (across - 40.0).clamp(340.0, 860.0),
+                    (avail - 60.0).clamp(360.0, 900.0),
+                ])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
+                    // Et le contenu, borné : une fenêtre egui grandit
+                    // avec lui, et `max_width` seul ne suffit pas —
+                    // c'est la rangée d'onglets et les paragraphes de la
+                    // page « Base » qui la poussaient, et ils ne se
+                    // replient que si on leur donne une largeur.
+                    ui.set_max_width((across - 56.0).max(300.0));
                     // One page at a time: the fee matrix and the
                     // auto-lock timeout used to be the same five-screen
                     // scroll apart.
@@ -27685,7 +27711,15 @@ impl eframe::App for App {
                     });
                     ui.add_space(6.0);
                     let page = editor.page;
-                    egui::ScrollArea::vertical()
+                    // Les deux sens. Certaines pages portent une grille
+                    // dont les colonnes ont une largeur incompressible —
+                    // un champ de chemin et son bouton « Parcourir… » —
+                    // et sur un écran étroit elles demandent plus que la
+                    // fenêtre ne peut donner : mieux vaut les atteindre
+                    // en défilant qu'avoir une fenêtre qui sort de
+                    // l'écran des deux côtés.
+                    egui::ScrollArea::both()
+                        .id_salt("opts_body")
                         .max_height((avail - 200.0).max(280.0))
                         .show(ui, |ui| {
                             let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
@@ -28281,7 +28315,10 @@ impl eframe::App for App {
                                             }
                                         });
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_font_note")));
+                                        // La colonne des libellés, vide sur
+                                        // cette rangée : la note qui suit
+                                        // porte sur la rangée entière.
+                                        ui.label("");
                                         ui.label(
                                             egui::RichText::new(tr("opts_restart"))
                                                 .size(11.0)
@@ -28418,14 +28455,31 @@ impl eframe::App for App {
                                         // what to compare the date with,
                                         // which is what an operator needs
                                         // to see it.
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(text)
-                                                    .size(11.0)
-                                                    .color(motif::text_dim()),
-                                            )
-                                            .wrap(),
-                                        );
+                                        // **Bornée, et non « ce qui reste ».**
+                                        // Dans un `Grid`, un libellé qui
+                                        // s'enroule sur `available_width`
+                                        // s'enroule sur tout ce qui reste à
+                                        // droite : la colonne mémorise cette
+                                        // largeur, la fenêtre grandit pour la
+                                        // contenir, et à 1024x700 la fenêtre
+                                        // des options sortait de l'écran des
+                                        // deux côtés. Une phrase de note se
+                                        // lit sur une mesure, pas sur un
+                                        // écran.
+                                        ui.scope(|ui| {
+                                            ui.set_max_width(
+                                                (ui.ctx().screen_rect().width() * 0.40)
+                                                    .clamp(220.0, 460.0),
+                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(text)
+                                                        .size(11.0)
+                                                        .color(motif::text_dim()),
+                                                )
+                                                .wrap(),
+                                            );
+                                        });
                                         ui.end_row();
                                     });
                                 // Ce que les pièces numérisées ajoutent à
