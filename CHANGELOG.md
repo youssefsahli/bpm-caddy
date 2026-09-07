@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+### Changed
+- **Entrée valide trois rangées de plus** : la note d'un journal, le
+  résultat de biologie, le matériel qu'on pose. Un journal se tient note
+  après note et un bilan analyte après analyte ; aller cliquer
+  « Ajouter » entre chacun est le geste qu'on finit par ne plus faire,
+  après quoi le journal ne dit plus rien de la journée. Sur le champ de
+  l'analyte, Entrée sert encore à choisir dans le catalogue — elle ne
+  vaut validation que là où elle ne sert à rien d'autre.
+
+### Fixed
 - **Le registre mesurait ses colonnes deux fois.** La liste demandait
   si les neuf colonnes tiennent — pour ouvrir une grille ou pas — et la
   ligne le redemandait à une seconde fonction qui répétait le même

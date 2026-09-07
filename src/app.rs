@@ -1018,6 +1018,16 @@ fn rank_label(rank: usize) -> String {
 /// Derived from the style so a bigger text scale does not push the
 /// button through the bottom of its panel.
 /// La largeur que « Ajouter » prend sur la rangée de saisie.
+/// Entrée dans l'un de ces champs : la rangée est validée.
+///
+/// Une rangée de six champs qu'il faut ensuite aller cliquer n'est pas
+/// une rangée où l'on tape : c'est un formulaire à la souris avec un
+/// clavier pour l'accompagner. Le carnet se remplit dose après dose, un
+/// journal note après note, et chacune coûtait un aller-retour.
+fn entered(ui: &egui::Ui, fields: &[egui::Response]) -> bool {
+    fields.iter().any(|f| f.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter))
+}
+
 /// La taille d'une boîte de dialogue : ce qu'elle voudrait, borné par
 /// ce que l'écran peut lui donner.
 ///
@@ -1238,26 +1248,34 @@ fn notes_box(
         let stacked = notes_add_rows(ui) > 1.0;
         let button_w = notes_add_button_width(ui);
         let mut pressed = false;
-        ui.horizontal(|ui| {
-            let room = notes_row_width(ui);
-            let field_w = if stacked {
-                room
-            } else {
-                (room - button_w - ui.spacing().item_spacing.x).max(60.0)
-            };
-            ui.add_sized(
-                [field_w, 24.0],
-                egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
-            )
-            .on_hover_text(tr("notes_markup_hint"));
-            if !stacked {
-                pressed = motif::button(ui, tr("notes_add")).clicked();
-            }
-        });
+        let field = ui
+            .horizontal(|ui| {
+                let room = notes_row_width(ui);
+                let field_w = if stacked {
+                    room
+                } else {
+                    (room - button_w - ui.spacing().item_spacing.x).max(60.0)
+                };
+                let field = ui
+                    .add_sized(
+                        [field_w, 24.0],
+                        egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
+                    )
+                    .on_hover_text(tr("notes_markup_hint"));
+                if !stacked {
+                    pressed = motif::button(ui, tr("notes_add")).clicked();
+                }
+                field
+            })
+            .inner;
         if stacked {
             pressed = motif::button(ui, tr("notes_add")).clicked();
         }
-        if pressed && !text.trim().is_empty() {
+        // **Entrée écrit la note.** Un journal se tient note après note,
+        // et aller cliquer « Ajouter » entre chacune est le geste qu'on
+        // finit par ne plus faire — après quoi le journal ne dit plus
+        // rien de la journée.
+        if (pressed || entered(ui, std::slice::from_ref(&field))) && !text.trim().is_empty() {
             add = Some(text.trim().to_owned());
         }
     }
@@ -9746,7 +9764,7 @@ impl App {
                                             .hint_text(tr("vacc_col_operator")),
                                     ),
                                 ];
-                                if Self::entered(ui, &fields) {
+                                if entered(ui, &fields) {
                                     save_edit = true;
                                 }
                                 if motif::button(ui, tr("form_save")).clicked() {
@@ -9870,11 +9888,11 @@ impl App {
                         // nom quand une suggestion est offerte, où elle
                         // sert d'abord à la choisir et où la ligne n'est
                         // pas finie.
-                        if Self::entered(ui, &rest)
+                        if entered(ui, &rest)
                             || (hits.is_empty()
                                 && name_field
                                     .as_ref()
-                                    .is_some_and(|f| Self::entered(ui, std::slice::from_ref(f))))
+                                    .is_some_and(|f| entered(ui, std::slice::from_ref(f))))
                         {
                             add = true;
                         }
@@ -10891,12 +10909,17 @@ impl App {
                             .size(11.0)
                             .color(motif::text_dim()),
                     );
-                    ui.add_sized(
+                    let day = ui.add_sized(
                         [chars_wide(ui, 12.0), 22.0],
                         egui::TextEdit::singleline(&mut session.loc_start)
                             .hint_text(db::format_french_date(&today)),
                     );
-                    if motif::button(ui, tr("loc_add")).clicked() {
+                    // Entrée pose le matériel : le matériel se pose au
+                    // comptoir, une main sur le clavier et l'autre sur
+                    // la boîte.
+                    if motif::button(ui, tr("loc_add")).clicked()
+                        || entered(ui, std::slice::from_ref(&day))
+                    {
                         add = true;
                     }
                     let f = forfaits[session.loc_pick];
@@ -11605,7 +11628,7 @@ impl App {
                                     session.bio_new_unit.clear();
                                 }
                             }
-                            ui.add_sized(
+                            let value = ui.add_sized(
                                 [
                                     Self::field_width(ui, [tr("bio_value_hint")].into_iter())
                                         .max(70.0),
@@ -11619,12 +11642,19 @@ impl App {
                                     .size(11.5)
                                     .color(motif::text_dim()),
                             );
-                            ui.add_sized(
+                            let when = ui.add_sized(
                                 [Self::date_field_width(ui), 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_new_date)
                                     .hint_text(tr("itv_rdv_hint")),
                             );
-                            if motif::button(ui, tr("notes_add")).clicked() {
+                            // Entrée écrit le résultat : un bilan se
+                            // saisit analyte après analyte. Sur le champ
+                            // de la valeur et sur celui de la date, pas
+                            // sur celui de l'analyte — là, Entrée sert
+                            // encore à choisir dans le catalogue.
+                            if motif::button(ui, tr("notes_add")).clicked()
+                                || entered(ui, &[value, when])
+                            {
                                 add = true;
                             }
                         });
@@ -12845,16 +12875,6 @@ impl App {
     fn money(v: f64) -> String {
         let v = if v.abs() < 0.005 { 0.0 } else { v };
         format!("{v:.0}")
-    }
-
-    /// Entrée dans l'un de ces champs : la rangée est validée.
-    ///
-    /// Une rangée de six champs qu'il faut ensuite aller cliquer n'est
-    /// pas une rangée où l'on tape : c'est un formulaire à la souris
-    /// avec un clavier pour l'accompagner. Le carnet se remplit dose
-    /// après dose, et chacune coûtait un aller-retour.
-    fn entered(ui: &egui::Ui, fields: &[egui::Response]) -> bool {
-        fields.iter().any(|f| f.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter))
     }
 
     /// Les colonnes du carnet : combien, et larges de combien.
@@ -14211,23 +14231,17 @@ impl App {
         (widest, half)
     }
 
-    /// Le type de l'acte. Le code et les deux drapeaux ont leur
-    /// propre cellule, pour que la rangée tienne sur une ligne et que
-    /// les colonnes tombent les unes sous les autres.
+    /// Le type de l'acte, et rien d'autre : le code de la convention et
+    /// les deux drapeaux ont leur propre cellule, pour que la rangée
+    /// tienne sur une ligne et que les colonnes tombent les unes sous
+    /// les autres.
     fn acts_kind(ui: &mut egui::Ui, row: &ActsRow) {
-        // The theme, and nothing else: the act
-        // code and the two flags have a column
-        // of their own, so the row keeps one
-        // line and the columns stay aligned.
         ui.label(egui::RichText::new(row.itv.kind.label()).strong());
     }
 
     /// Le code de la convention, le rang qu'il paie, et les deux
     /// drapeaux qui changent ce qui est facturé.
     fn acts_act(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) {
-        // The convention's act code, the step it
-        // pays, and the two flags that change
-        // what is billed.
         ui.horizontal(|ui| {
             let step_name = row
                 .itv
