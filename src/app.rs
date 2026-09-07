@@ -29680,6 +29680,131 @@ mod tests {
         }
     }
 
+    /// **La rangée d'ajout d'un journal tient dans ce qu'on lui
+    /// réserve.**
+    ///
+    /// C'est « Nouve » : sur la colonne « Notes datées » d'une fiche
+    /// médicament, large de cent quatre-vingts pixels, l'invite ne
+    /// tenait pas et le bouton devait passer dessous — mais la place
+    /// qu'il prend est comptée *avant* le puits, et compter une rangée
+    /// pour deux, c'est la seconde qui sort du panneau. Le test appelle
+    /// le vrai widget, avec un puits demandé à zéro, et compare ce qu'il
+    /// dessine à ce que sa réserve annonce.
+    #[test]
+    fn a_journal_add_row_fits_what_is_reserved_for_it() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [150.0_f32, 180.0, 320.0, 700.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let mut text = String::new();
+                        let mut confirm: Option<i64> = None;
+                        let drawn = ui
+                            .scope(|ui| {
+                                ui.set_max_width(width);
+                                let reserve = super::notes_box_reserve(ui);
+                                *seen.borrow_mut() = (reserve, 0.0);
+                                super::notes_box(
+                                    ui,
+                                    "test_notes",
+                                    &[],
+                                    &mut text,
+                                    &mut confirm,
+                                    0.0,
+                                    true,
+                                );
+                            })
+                            .response
+                            .rect
+                            .height();
+                        seen.borrow_mut().1 = drawn;
+                    });
+                });
+                let (reserve, drawn) = seen.into_inner();
+                assert!(
+                    drawn <= reserve,
+                    "échelle {scale}, largeur {width} : {drawn} px dessinés pour {reserve} px \
+                     réservés"
+                );
+            }
+        }
+    }
+
+    /// **Une bande de titre est aussi haute que ce qu'elle porte.**
+    ///
+    /// Six vues la partagent — codex, dispositifs, protocoles,
+    /// vigilance, classes, explorateur — et elles la carvent : ce que
+    /// `title_band_height` rend est la place que le titre, les boutons
+    /// et le sous-titre auront, pas une de plus. Trois d'entre elles
+    /// avaient déjà été prises en flagrant délit, avec « 116 px si plus
+    /// étroit que 940, sinon 64 » : une supposition juste à l'échelle 1
+    /// et qui coupait le sous-titre en deux à 1,25.
+    ///
+    /// Le test dessine la bande du codex, qui est la plus chargée, aux
+    /// trois échelles et à trois largeurs de fenêtre.
+    #[test]
+    fn a_title_band_is_as_tall_as_what_it_holds() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [420.0_f32, 700.0, 1100.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let field =
+                            App::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0);
+                        let band = App::title_band_height(
+                            ui,
+                            width,
+                            [
+                                App::heading_width(ui, tr("codex_title")),
+                                App::button_width(ui, tr("patient_back")),
+                                field,
+                                App::button_width(ui, tr("dash_print")),
+                                App::button_width(ui, tr("codex_new")),
+                            ]
+                            .into_iter(),
+                            tr("codex_subtitle"),
+                        );
+                        let mut text = String::new();
+                        let drawn = ui
+                            .scope(|ui| {
+                                ui.set_max_width(width);
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.heading(tr("codex_title"));
+                                    motif::button(ui, tr("patient_back"));
+                                    ui.add_sized(
+                                        [field, 24.0],
+                                        egui::TextEdit::singleline(&mut text)
+                                            .hint_text(tr("codex_new_hint")),
+                                    );
+                                    motif::button(ui, tr("dash_print"));
+                                    motif::button(ui, tr("codex_new"));
+                                });
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("codex_subtitle")).size(11.5),
+                                    )
+                                    .wrap(),
+                                );
+                            })
+                            .response
+                            .rect
+                            .height();
+                        *seen.borrow_mut() = (band, drawn);
+                    });
+                });
+                let (band, drawn) = seen.into_inner();
+                assert!(
+                    band >= drawn,
+                    "échelle {scale}, largeur {width} : bande de {band} px pour {drawn} px dessinés"
+                );
+            }
+        }
+    }
+
     /// **La rangée de saisie du carnet tient dans ce qu'on lui
     /// réserve.**
     ///

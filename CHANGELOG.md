@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Deux bandes de plus tenues par un test**, écrites sur le modèle de
+  celui du carnet — mesurer comme la vue mesure, dessiner comme elle
+  dessine, comparer, à trois échelles de texte et à trois largeurs :
+  - la **bande de titre** que six vues partagent (codex, dispositifs,
+    protocoles, vigilance, classes, explorateur). Vérifié en y remettant
+    la supposition d'avant — « 116 px si plus étroit que 940, sinon
+    64 » —, qui coupe le sous-titre de vingt et un pixels dès l'échelle
+    1 ;
+  - la **rangée d'ajout d'un journal**, c'est-à-dire « Nouve » :
+    vérifié en lui faisant compter une rangée pour deux, ce qui fait
+    sortir la seconde de vingt-cinq pixels.
+
+  Le workspace passe de 44,9 % à 45,9 % couvert : ce qui se mesure se
+  teste, et c'est la moitié de `src/app.rs`.
+
 ## [0.150.1] - 2026-09-07
 
 ### Fixed
