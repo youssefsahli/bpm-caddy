@@ -91,6 +91,7 @@ status_operator = "Opérateur : {}"
 home_today = "Aujourd'hui"
 home_today_empty = " —"
 nav_search_hint = "Rechercher un patient…"
+nav_search_short = "Rechercher…"
 nav_count = "{} résultat(s)"
 nav_letter_count = "{} fiches"
 

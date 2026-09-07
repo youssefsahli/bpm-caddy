@@ -6904,10 +6904,21 @@ impl App {
 
     /// The dock's search box: a sunken full-width field with a caption.
     fn nav_search(ui: &mut egui::Ui, hint: &str, text: &mut String) -> egui::Response {
-        let resp = ui.add_sized(
-            [ui.available_width(), 26.0],
-            egui::TextEdit::singleline(text).hint_text(hint),
-        );
+        // **L'invite tient dans le champ, ou elle est raccourcie.**
+        // « Rechercher un patient… » dans un volet de cent trente
+        // pixels s'affichait « Rechercher un p » — sur *toutes* les
+        // vues de l'application, puisque le volet de gauche y est
+        // toujours. Une invite coupée en plein mot n'invite à rien, et
+        // le panneau porte déjà son titre : « Patients », « Médicaments
+        // ». Quand le nom ne tient pas, on garde le verbe.
+        let w = ui.available_width();
+        let short = tr("nav_search_short");
+        let hint = if Self::field_width(ui, [hint].into_iter()) <= w {
+            hint
+        } else {
+            short
+        };
+        let resp = ui.add_sized([w, 26.0], egui::TextEdit::singleline(text).hint_text(hint));
         motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
         ui.add_space(6.0);
         resp
