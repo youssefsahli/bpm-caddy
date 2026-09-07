@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Cinq champs annoncés modifiables ne l'étaient pas.** Les initiales
+  et l'heure d'un entretien, et le libellé, le seuil et l'unité d'un
+  produit du registre recevaient chacun une copie de la valeur
+  refabriquée à chaque image — `itv.operator.clone()` juste avant le
+  `TextEdit`. Or un `TextEdit` d'egui ne garde pas son contenu : il le
+  tient dans le `String` qu'on lui prête, et lui en prêter un neuf
+  soixante fois par seconde efface la lettre tapée avant qu'on ait pu la
+  relire. Le texte en cours vit maintenant dans la session, et repart de
+  la base une fois écrit.
+- **Un forfait de location à décimales était impossible à saisir.** Le
+  montant était relu et reformaté à *chaque frappe* : « 1, » se relit 1
+  et se réécrit « 1 », donc taper « 1,5 » donnait « 15 ». Il est relu
+  quand le champ se ferme.
 - **Deux boîtes de dialogue de plus sortaient de l'écran** à
   `[ui] text_scale = 1,6` : l'ordonnance protocolisée et
   « Imprimer la fiche ». La première par son titre — « Ordonnance —

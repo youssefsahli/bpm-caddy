@@ -1429,6 +1429,26 @@ enum RegistreTab {
     Pieces,
 }
 
+/// Les trois champs corrigeables du produit ouvert au registre, en
+/// cours de frappe.
+///
+/// Ils vivaient dans une copie refabriquée à chaque image —
+/// `product.label.clone()` juste avant le `TextEdit` — et un `TextEdit`
+/// d'egui ne garde pas son contenu : il le tient dans le `String` qu'on
+/// lui prête. En lui en prêtant un neuf soixante fois par seconde, la
+/// lettre tapée était réécrite par la base avant d'avoir été relue. Le
+/// libellé, le seuil et l'unité étaient annoncés corrigeables et ne
+/// l'étaient pas.
+#[derive(Clone, Debug)]
+struct StupEdits {
+    /// Le produit dont ces textes sont ceux : ils repartent de la base
+    /// dès qu'on en ouvre un autre.
+    id: i64,
+    label: String,
+    threshold: String,
+    unit: String,
+}
+
 /// Ce qu'il faut pour dessiner une ligne du registre.
 ///
 /// Un enregistrement et non six arguments : les trois listes qui la
@@ -1932,6 +1952,20 @@ struct Session {
     date_edits: std::collections::HashMap<i64, String>,
     /// The same, for the column holding the day the act was held.
     made_edits: std::collections::HashMap<i64, String>,
+    /// Les initiales et l'heure en cours de frappe, par entretien.
+    ///
+    /// **Elles n'étaient nulle part**, et c'est le défaut : le champ
+    /// recevait `itv.operator.clone()` — une chaîne refabriquée à chaque
+    /// image — donc la lettre tapée était réécrite par la valeur de la
+    /// base à l'image suivante. Un `TextEdit` d'egui ne garde pas le
+    /// texte, il le tient dans le `String` qu'on lui prête ; en lui en
+    /// prêtant un neuf soixante fois par seconde, on efface la frappe
+    /// aussi vite qu'elle arrive. Les deux champs étaient annoncés
+    /// modifiables et ne l'étaient pas.
+    by_edits: std::collections::HashMap<i64, String>,
+    hour_edits: std::collections::HashMap<i64, String>,
+    /// Voir [`StupEdits`].
+    stup_edits: Option<StupEdits>,
     /// Discreet mode: revenue amounts stay masked until explicitly
     /// revealed, and re-mask when leaving the dashboard.
     show_amounts: bool,
@@ -2434,6 +2468,9 @@ impl Session {
             mono_links: MonoLinks::new(),
             date_edits: std::collections::HashMap::new(),
             made_edits: std::collections::HashMap::new(),
+            by_edits: std::collections::HashMap::new(),
+            hour_edits: std::collections::HashMap::new(),
+            stup_edits: None,
             show_amounts: false,
             dup_check: None,
             drugs,
@@ -3656,9 +3693,15 @@ impl Session {
         let Some(pid) = self.viewing.as_ref().map(|p| p.id) else {
             self.date_edits.clear();
             self.made_edits.clear();
+            self.by_edits.clear();
+            self.hour_edits.clear();
             return;
         };
-        if self.date_edits.is_empty() && self.made_edits.is_empty() {
+        if self.date_edits.is_empty()
+            && self.made_edits.is_empty()
+            && self.by_edits.is_empty()
+            && self.hour_edits.is_empty()
+        {
             return;
         }
         let year = self.db.current_year();
@@ -3685,9 +3728,34 @@ impl Session {
                     }
                 }
             }
+            // Les initiales : ce qui est tapé vaut, vide compris — un
+            // acte peut cesser d'être attribué.
+            if let Some(text) = self.by_edits.get(&itv.id) {
+                let who = text.trim();
+                if who != itv.operator {
+                    let _ = self.db.set_interview_operator(itv.id, who, &itv.operator);
+                }
+            }
+            // L'heure, seulement si elle se lit.
+            if let Some(text) = self.hour_edits.get(&itv.id) {
+                let parsed = if text.trim().is_empty() {
+                    Some(String::new())
+                } else {
+                    db::parse_hour(text)
+                };
+                if let Some(value) = parsed {
+                    if value != itv.scheduled_time {
+                        let _ = self
+                            .db
+                            .set_scheduled_time(itv.id, &value, &itv.scheduled_time);
+                    }
+                }
+            }
         }
         self.date_edits.clear();
         self.made_edits.clear();
+        self.by_edits.clear();
+        self.hour_edits.clear();
         self.reload_interviews(pid);
     }
 
@@ -5840,6 +5908,15 @@ struct OptionsEditor {
     cfg: Config,
     /// Text buffer for `[database] path` ("" = default location).
     db_path_text: String,
+    /// Le montant de chaque forfait de location, **tel qu'il est tapé**.
+    ///
+    /// Il était refabriqué de la valeur à chaque image, et réécrit dans
+    /// la configuration à chaque frappe : taper « 1,5 » donnait « 1 »
+    /// puis « 1 » — la virgule était relue comme un nombre entier et
+    /// reformatée sans elle — puis « 15 ». Un forfait à décimales était
+    /// donc impossible à saisir. Le texte vit ici jusqu'à ce que le
+    /// champ perde le foyer ; la valeur ne bouge qu'à ce moment-là.
+    loc_fee_text: Vec<String>,
     /// Status line; `true` marks an error.
     message: Option<(bool, String)>,
 }
@@ -6479,6 +6556,12 @@ impl App {
                     "base" => OptionsPage::Database,
                     _ => OptionsPage::Pharmacy,
                 },
+                loc_fee_text: config
+                    .locations
+                    .forfaits
+                    .iter()
+                    .map(|f| crate::codex::format_quantity(f.fee))
+                    .collect(),
                 cfg: config.clone(),
                 db_path_text: String::new(),
                 message: None,
@@ -6603,6 +6686,8 @@ impl App {
                 session.drug_patients.clear();
                 session.date_edits.clear();
                 session.made_edits.clear();
+                session.by_edits.clear();
+                session.hour_edits.clear();
                 session.drug_form = None;
                 session.drug_base = None;
                 session.drug_selected = 0;
@@ -13976,7 +14061,6 @@ impl App {
                             // date it was typed in: it places the act
                             // in its cycle, and the cycle picks the fee.
                             let made = itv.created_at[..10.min(itv.created_at.len())].to_owned();
-                            let mut who = itv.operator.clone();
                             ui.horizontal(|ui| {
                                 let text = session
                                     .made_edits
@@ -14008,6 +14092,15 @@ impl App {
                                 // recorded at creation and correctable
                                 // after — not whoever happens to be at
                                 // the counter on the day it is printed.
+                                // Le texte en cours vit dans la session,
+                                // pas dans une copie refabriquée à chaque
+                                // image : un `TextEdit` ne garde pas son
+                                // contenu, il le tient dans le `String`
+                                // qu'on lui prête.
+                                let who = session
+                                    .by_edits
+                                    .entry(itv.id)
+                                    .or_insert_with(|| itv.operator.clone());
                                 let by = ui
                                     .add_sized(
                                         [
@@ -14017,7 +14110,7 @@ impl App {
                                             ),
                                             22.0,
                                         ],
-                                        egui::TextEdit::singleline(&mut who)
+                                        egui::TextEdit::singleline(who)
                                             .hint_text(tr("itv_by_hint")),
                                     )
                                     .on_hover_text(
@@ -14172,7 +14265,10 @@ impl App {
                                     // The hour sits with its date; it only
                                     // means something once one is set.
                                     if itv.scheduled_date.is_some() {
-                                        let mut hour = itv.scheduled_time.clone();
+                                        let hour = session
+                                            .hour_edits
+                                            .entry(itv.id)
+                                            .or_insert_with(|| itv.scheduled_time.clone());
                                         let h = ui.add_sized(
                                             [
                                                 Self::field_width(
@@ -14181,14 +14277,14 @@ impl App {
                                                 ),
                                                 22.0,
                                             ],
-                                            egui::TextEdit::singleline(&mut hour)
+                                            egui::TextEdit::singleline(hour)
                                                 .hint_text(tr("agenda_hour_hint")),
                                         );
-                                        if h.lost_focus() && hour != itv.scheduled_time {
+                                        if h.lost_focus() && *hour != itv.scheduled_time {
                                             let parsed = if hour.trim().is_empty() {
                                                 Some(String::new())
                                             } else {
-                                                db::parse_hour(&hour)
+                                                db::parse_hour(hour)
                                             };
                                             if let Some(value) = parsed {
                                                 set_hour = Some((
@@ -14274,9 +14370,14 @@ impl App {
             match session.db.set_scheduled_time(id, &hour, &expected) {
                 Ok(true) => {
                     session.error = None;
+                    // Le champ repart de la base : « 9h30 » tapé
+                    // s'affiche « 09:30 » une fois écrit, et c'est la
+                    // valeur écrite qu'il faut relire.
+                    session.hour_edits.remove(&id);
                     session.reload_interviews(patient.id);
                 }
                 Ok(false) => {
+                    session.hour_edits.remove(&id);
                     session.reload_interviews(patient.id);
                     session.error = Some(stale_msg.to_owned());
                 }
@@ -14292,9 +14393,14 @@ impl App {
             match session.db.set_interview_operator(id, &who, &expected) {
                 Ok(true) => {
                     session.error = None;
+                    // Le champ repart de la base : ce qu'on vient
+                    // d'écrire y est, et un autre poste peut l'avoir
+                    // changé entre-temps.
+                    session.by_edits.remove(&id);
                     session.reload_interviews(patient.id);
                 }
                 Ok(false) => {
+                    session.by_edits.remove(&id);
                     session.reload_interviews(patient.id);
                     session.error = Some(stale_msg.to_owned());
                 }
@@ -19755,6 +19861,20 @@ impl App {
             .iter()
             .find(|(p, _, _)| Some(p.id) == session.stup_open)
             .map(|(p, stock, last)| (p.clone(), *stock, last.clone()));
+        // Les trois champs corrigeables du produit, comme le motif
+        // d'annulation : par une copie locale, rendue après. Ils
+        // repartent de la base dès qu'on ouvre un autre produit.
+        if let Some((p, _, _)) = &open {
+            if session.stup_edits.as_ref().map(|e| e.id) != Some(p.id) {
+                session.stup_edits = Some(StupEdits {
+                    id: p.id,
+                    label: p.label.clone(),
+                    threshold: crate::codex::format_quantity(p.threshold),
+                    unit: p.unit.clone(),
+                });
+            }
+        }
+        let mut stup_edits = session.stup_edits.clone();
         motif::panel(ui, mid_rect, Some(tr("stup_register")), |ui| {
             let Some((product, stock, last)) = &open else {
                 ui.label(
@@ -19929,57 +20049,61 @@ impl App {
                             //
                             // La largeur est celle qui a servi à mesurer la bande,
                             // et non une seconde mesure du même besoin.
-                            let mut label = product.label.clone();
-                            let resp = ui
-                                .add_sized(
-                                    [label_w, Self::button_height(ui)],
-                                    egui::TextEdit::singleline(&mut label)
-                                        .hint_text(tr("stup_label_hint")),
-                                )
-                                .on_hover_text(tr("stup_label_tooltip"));
-                            if resp.lost_focus()
-                                && label.trim() != product.label
-                                && !label.trim().is_empty()
-                            {
-                                let mut renamed = product.clone();
-                                renamed.label = label.trim().to_owned();
-                                set_threshold = Some((renamed, product.clone()));
-                            }
+                            // Le texte en cours vit dans la session : voir
+                            // `StupEdits`.
                             let mut edited = product.clone();
-                            let mut typed = crate::codex::format_quantity(product.threshold);
-                            let resp = ui.add_sized(
-                                [
-                                    Self::field_width(ui, [tr("stup_threshold_hint")].into_iter())
-                                        .max(70.0),
-                                    Self::button_height(ui),
-                                ],
-                                egui::TextEdit::singleline(&mut typed)
-                                    .hint_text(tr("stup_threshold_hint")),
-                            );
-                            if resp.lost_focus() {
-                                edited.threshold =
-                                    crate::codex::parse_amount(&typed).map_or(0.0, |(v, _)| v);
-                                if (edited.threshold - product.threshold).abs() > 1e-9 {
-                                    set_threshold = Some((edited.clone(), product.clone()));
+                            if let Some(e) = stup_edits.as_mut() {
+                                let resp = ui
+                                    .add_sized(
+                                        [label_w, Self::button_height(ui)],
+                                        egui::TextEdit::singleline(&mut e.label)
+                                            .hint_text(tr("stup_label_hint")),
+                                    )
+                                    .on_hover_text(tr("stup_label_tooltip"));
+                                if resp.lost_focus()
+                                    && e.label.trim() != product.label
+                                    && !e.label.trim().is_empty()
+                                {
+                                    let mut renamed = product.clone();
+                                    renamed.label = e.label.trim().to_owned();
+                                    set_threshold = Some((renamed, product.clone()));
                                 }
-                            }
-                            // L'unité de comptage se corrige au même endroit : un
-                            // produit inscrit à la main n'en a pas, et un solde sans
-                            // unité ne dit pas s'il s'agit de boîtes ou de gélules.
-                            let mut unit = product.unit.clone();
-                            let resp = ui.add_sized(
-                                [
-                                    Self::field_width(ui, [tr("stup_unit_hint")].into_iter())
-                                        .max(90.0),
-                                    Self::button_height(ui),
-                                ],
-                                egui::TextEdit::singleline(&mut unit)
-                                    .hint_text(tr("stup_unit_hint")),
-                            );
-                            if resp.lost_focus() && unit.trim() != product.unit {
-                                let mut with_unit = product.clone();
-                                with_unit.unit = unit.trim().to_owned();
-                                set_threshold = Some((with_unit, product.clone()));
+                                let resp = ui.add_sized(
+                                    [
+                                        Self::field_width(
+                                            ui,
+                                            [tr("stup_threshold_hint")].into_iter(),
+                                        )
+                                        .max(70.0),
+                                        Self::button_height(ui),
+                                    ],
+                                    egui::TextEdit::singleline(&mut e.threshold)
+                                        .hint_text(tr("stup_threshold_hint")),
+                                );
+                                if resp.lost_focus() {
+                                    edited.threshold = crate::codex::parse_amount(&e.threshold)
+                                        .map_or(0.0, |(v, _)| v);
+                                    if (edited.threshold - product.threshold).abs() > 1e-9 {
+                                        set_threshold = Some((edited.clone(), product.clone()));
+                                    }
+                                }
+                                // L'unité de comptage se corrige au même endroit : un
+                                // produit inscrit à la main n'en a pas, et un solde sans
+                                // unité ne dit pas s'il s'agit de boîtes ou de gélules.
+                                let resp = ui.add_sized(
+                                    [
+                                        Self::field_width(ui, [tr("stup_unit_hint")].into_iter())
+                                            .max(90.0),
+                                        Self::button_height(ui),
+                                    ],
+                                    egui::TextEdit::singleline(&mut e.unit)
+                                        .hint_text(tr("stup_unit_hint")),
+                                );
+                                if resp.lost_focus() && e.unit.trim() != product.unit {
+                                    let mut with_unit = product.clone();
+                                    with_unit.unit = e.unit.trim().to_owned();
+                                    set_threshold = Some((with_unit, product.clone()));
+                                }
                             }
                             // Un produit qu'on ne suit plus reste au registre pour
                             // l'historique : il est rangé, jamais effacé.
@@ -20259,7 +20383,12 @@ impl App {
         session.stup_cancel_reason = cancel_reason;
         Self::apply_stup_line_action(session, line_action, operator, &mut open_patient);
 
+        // Rendue, comme le motif d'annulation.
+        session.stup_edits = stup_edits;
         if let Some((new, was)) = set_threshold {
+            // Les trois champs repartent de la base : ce qu'on vient
+            // d'écrire y est, et un autre poste peut l'avoir corrigé.
+            session.stup_edits = None;
             match session.db.update_stupefiant(&new, &was, operator) {
                 // Refusé : un autre poste a corrigé la ligne entre-temps.
                 // On recharge et on affiche ce qu'il a écrit, plutôt que
@@ -27180,6 +27309,13 @@ impl eframe::App for App {
                         } else {
                             Some(OptionsEditor {
                                 page: OptionsPage::Pharmacy,
+                                loc_fee_text: self
+                                    .config
+                                    .locations
+                                    .forfaits
+                                    .iter()
+                                    .map(|f| crate::codex::format_quantity(f.fee))
+                                    .collect(),
                                 cfg: self.config.clone(),
                                 db_path_text: self
                                     .config
@@ -28063,6 +28199,18 @@ impl eframe::App for App {
                                             );
                                         }
                                         ui.end_row();
+                                        // Le texte des montants sort de
+                                        // l'éditeur le temps de la
+                                        // boucle : celle-ci emprunte
+                                        // déjà `editor.cfg`.
+                                        let mut fee_text = std::mem::take(&mut editor.loc_fee_text);
+                                        while fee_text.len() < editor.cfg.locations.forfaits.len() {
+                                            let i = fee_text.len();
+                                            fee_text.push(crate::codex::format_quantity(
+                                                editor.cfg.locations.forfaits[i].fee,
+                                            ));
+                                        }
+                                        fee_text.truncate(editor.cfg.locations.forfaits.len());
                                         for (i, f) in
                                             editor.cfg.locations.forfaits.iter_mut().enumerate()
                                         {
@@ -28086,17 +28234,25 @@ impl eframe::App for App {
                                                         );
                                                     }
                                                 });
-                                            let mut fee = crate::codex::format_quantity(f.fee);
-                                            if ui
-                                                .add_sized(
-                                                    [70.0, 24.0],
-                                                    egui::TextEdit::singleline(&mut fee),
-                                                )
-                                                .changed()
-                                            {
-                                                f.fee = crate::codex::parse_amount(&fee)
+                                            // **Relu quand le champ se
+                                            // ferme, pas à chaque
+                                            // frappe.** Réécrire la
+                                            // valeur à chaque lettre la
+                                            // reformatait aussitôt :
+                                            // « 1, » se relit 1 et se
+                                            // réécrit « 1 », donc taper
+                                            // « 1,5 » donnait « 15 » et
+                                            // un forfait à décimales
+                                            // était impossible à saisir.
+                                            let resp = ui.add_sized(
+                                                [70.0, 24.0],
+                                                egui::TextEdit::singleline(&mut fee_text[i]),
+                                            );
+                                            if resp.lost_focus() {
+                                                f.fee = crate::codex::parse_amount(&fee_text[i])
                                                     .map(|(v, _)| v)
                                                     .unwrap_or(0.0);
+                                                fee_text[i] = crate::codex::format_quantity(f.fee);
                                             }
                                             let mut days = f.renewal_days.to_string();
                                             if ui
@@ -28126,9 +28282,16 @@ impl eframe::App for App {
                                             }
                                             ui.end_row();
                                         }
+                                        editor.loc_fee_text = fee_text;
                                     });
                                 if let Some(i) = drop {
                                     editor.cfg.locations.forfaits.remove(i);
+                                    // Le texte suit la ligne : sans cela
+                                    // le montant de la ligne supprimée
+                                    // resterait devant celle d'après.
+                                    if i < editor.loc_fee_text.len() {
+                                        editor.loc_fee_text.remove(i);
+                                    }
                                 }
                                 ui.horizontal(|ui| {
                                     if motif::button(ui, tr("loc_opt_add")).clicked() {
