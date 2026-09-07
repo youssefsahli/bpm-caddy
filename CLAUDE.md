@@ -288,6 +288,16 @@ add clicking and typing; it is not the price of entry.
   `motif::inside` when content must not escape its frame. It also
   reserves **no space**, so a `ScrollArea` around it never learns the
   content is wider than the viewport and offers no bar.
+- **A text field's width is never written in pixels.** It is
+  `chars_wide` (a width in characters of the body face), `field_width`
+  (what its own hint needs), or a measurement taken above and handed
+  down. A number does not follow `[ui] text_scale`, so the hint the
+  field carries ends up cut the moment the text grows — and that shows
+  on no screenshot taken at scale 1, which is every screenshot anyone
+  takes. Twenty-nine of them had drifted (80 for one date, 96 for
+  another, 300 for a numéro AM), and this is now a test that reads the
+  text of `app.rs`: `no_text_field_is_measured_in_pixels`, verified by
+  putting one back.
 - **Measure, never guess a threshold.** Every layout bug found in the
   0.94–0.102 pass was a pixel constant standing in for a measurement:
   « narrower than 620 px » put the file's buttons across the patient's

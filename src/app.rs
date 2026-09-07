@@ -1018,6 +1018,24 @@ fn rank_label(rank: usize) -> String {
 /// Derived from the style so a bigger text scale does not push the
 /// button through the bottom of its panel.
 /// La largeur que « Ajouter » prend sur la rangée de saisie.
+/// La largeur d'un champ de saisie, exprimée en **caractères** et non
+/// en pixels.
+///
+/// Un nombre écrit en dur ne suit pas `[ui] text_scale` : c'est ainsi
+/// que « JJ/MM/AAAA » sortait d'un champ de quatre-vingt-seize pixels
+/// et « imprimé sur le bulletin d'adhésion » d'un champ de trois cents.
+/// Une largeur en caractères grandit avec le texte, ce qui est
+/// précisément ce qu'on veut d'un champ où l'on écrit du texte.
+///
+/// Le gabarit est le « 0 » de la fonte du corps : dans presque toutes
+/// les faces c'est la plus large des figures, donc la largeur obtenue
+/// tient ce qu'on y met plutôt que sa moyenne.
+fn chars_wide(ui: &egui::Ui, n: f32) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let ch = ui.fonts(|f| f.glyph_width(&font, '0'));
+    ch * n + ui.spacing().button_padding.x * 2.0 + 8.0
+}
+
 fn notes_add_button_width(ui: &egui::Ui) -> f32 {
     let font = egui::TextStyle::Button.resolve(ui.style());
     ui.fonts(|f| {
@@ -7664,8 +7682,11 @@ impl App {
                     // team down, the arrow picks from it and the
                     // tooltip says who is behind the letters.
                     let known = config_operator_label(&self.config, &self.operator);
-                    ui.add_sized([46.0, 22.0], egui::TextEdit::singleline(&mut self.operator))
-                        .on_hover_text(known.unwrap_or_else(|| tr("docs_operator").to_owned()));
+                    ui.add_sized(
+                        [chars_wide(ui, 6.0), 22.0],
+                        egui::TextEdit::singleline(&mut self.operator),
+                    )
+                    .on_hover_text(known.unwrap_or_else(|| tr("docs_operator").to_owned()));
                     if !self.config.pharmacy.operators.is_empty() {
                         egui::ComboBox::from_id_salt("operator_pick")
                             .width(26.0)
@@ -8348,7 +8369,7 @@ impl App {
                         .show(ui, |ui| {
                             ui.label(dim(tr("form_last_name")));
                             let a = ui.add_sized(
-                                [240.0, 26.0],
+                                [chars_wide(ui, 30.0), 26.0],
                                 egui::TextEdit::singleline(&mut form.last_name),
                             );
                             ui.end_row();
@@ -10728,7 +10749,7 @@ impl App {
                             .color(motif::text_dim()),
                     );
                     ui.add_sized(
-                        [92.0, 22.0],
+                        [chars_wide(ui, 12.0), 22.0],
                         egui::TextEdit::singleline(&mut session.loc_start)
                             .hint_text(db::format_french_date(&today)),
                     );
@@ -11026,7 +11047,7 @@ impl App {
                                             match &mut session.loc_return {
                                                 Some((id, date)) if *id == l.id => {
                                                     ui.add_sized(
-                                                        [86.0, 20.0],
+                                                        [chars_wide(ui, 11.0), 20.0],
                                                         egui::TextEdit::singleline(date).hint_text(
                                                             db::format_french_date(&today),
                                                         ),
@@ -11320,7 +11341,7 @@ impl App {
                                     if session.bio_edit.as_ref().map(|e| e.id) == Some(r.id) {
                                         ui.horizontal(|ui| {
                                             ui.add_sized(
-                                                [58.0, 20.0],
+                                                [chars_wide(ui, 7.0), 20.0],
                                                 egui::TextEdit::singleline(
                                                     &mut session.bio_edit_value,
                                                 ),
@@ -13040,7 +13061,7 @@ impl App {
                 .show(ui, |ui| {
                     ui.label(dim(tr("form_last_name")));
                     ui.add_sized(
-                        [240.0, 26.0],
+                        [chars_wide(ui, 30.0), 26.0],
                         egui::TextEdit::singleline(&mut form.last_name),
                     );
                     ui.end_row();
@@ -13095,10 +13116,16 @@ impl App {
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_email")));
-                    ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.email));
+                    ui.add_sized(
+                        [chars_wide(ui, 30.0), 26.0],
+                        egui::TextEdit::singleline(&mut form.email),
+                    );
                     ui.end_row();
                     ui.label(dim(tr("form_address")));
-                    ui.add_sized([240.0, 26.0], egui::TextEdit::singleline(&mut form.address));
+                    ui.add_sized(
+                        [chars_wide(ui, 30.0), 26.0],
+                        egui::TextEdit::singleline(&mut form.address),
+                    );
                     ui.end_row();
                     // Both are for the bulletin d'adhésion, and both are
                     // optional: left empty, the printed form keeps its
@@ -17659,7 +17686,7 @@ impl App {
                             session.codex_target = prep.yield_amount.clone();
                         }
                         ui.add_sized(
-                            [90.0, 22.0],
+                            [chars_wide(ui, 11.0), 22.0],
                             egui::TextEdit::singleline(&mut session.codex_target)
                                 .hint_text(prep.yield_amount.trim()),
                         );
@@ -17838,7 +17865,7 @@ impl App {
         let num = |s: &str| crate::codex::parse_amount(s).map(|(v, _)| v);
         let field = |ui: &mut egui::Ui, value: &mut String, hint: &str| {
             ui.add_sized(
-                [66.0, 22.0],
+                [chars_wide(ui, 8.0), 22.0],
                 egui::TextEdit::singleline(value).hint_text(hint),
             );
         };
@@ -25013,7 +25040,7 @@ impl App {
                         );
                         ui.add_space(6.0);
                         ui.add_sized(
-                            [500.0, 150.0],
+                            [chars_wide(ui, 62.0), 150.0],
                             egui::TextEdit::multiline(&mut buffer).desired_rows(8),
                         );
                         ui.add_space(6.0);
@@ -27652,13 +27679,13 @@ impl eframe::App for App {
                         .show(ui, |ui| {
                             ui.label(tr("pw_new"));
                             ui.add_sized(
-                                [200.0, 26.0],
+                                [chars_wide(ui, 25.0), 26.0],
                                 egui::TextEdit::singleline(&mut form.new1).password(true),
                             );
                             ui.end_row();
                             ui.label(tr("pw_confirm"));
                             ui.add_sized(
-                                [200.0, 26.0],
+                                [chars_wide(ui, 25.0), 26.0],
                                 egui::TextEdit::singleline(&mut form.new2).password(true),
                             );
                             ui.end_row();
@@ -28030,7 +28057,7 @@ impl eframe::App for App {
                                     .show(ui, |ui| {
                                         ui.label(dim(tr("form_last_name")));
                                         ui.add_sized(
-                                            [300.0, 24.0],
+                                            [chars_wide(ui, 38.0), 24.0],
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.name,
                                             ),
@@ -28038,7 +28065,7 @@ impl eframe::App for App {
                                         ui.end_row();
                                         ui.label(dim(tr("form_address")));
                                         ui.add_sized(
-                                            [300.0, 24.0],
+                                            [chars_wide(ui, 38.0), 24.0],
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.address,
                                             ),
@@ -28046,7 +28073,7 @@ impl eframe::App for App {
                                         ui.end_row();
                                         ui.label(dim(tr("form_phone")));
                                         ui.add_sized(
-                                            [300.0, 24.0],
+                                            [chars_wide(ui, 38.0), 24.0],
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.phone,
                                             ),
@@ -28054,7 +28081,7 @@ impl eframe::App for App {
                                         ui.end_row();
                                         ui.label(dim(tr("opts_pharmacist")));
                                         ui.add_sized(
-                                            [300.0, 24.0],
+                                            [chars_wide(ui, 38.0), 24.0],
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.pharmacist,
                                             ),
@@ -28112,15 +28139,15 @@ impl eframe::App for App {
                                             editor.cfg.pharmacy.operators.iter_mut().enumerate()
                                         {
                                             ui.add_sized(
-                                                [56.0, 24.0],
+                                                [chars_wide(ui, 7.0), 24.0],
                                                 egui::TextEdit::singleline(&mut op.initials),
                                             );
                                             ui.add_sized(
-                                                [200.0, 24.0],
+                                                [chars_wide(ui, 25.0), 24.0],
                                                 egui::TextEdit::singleline(&mut op.name),
                                             );
                                             ui.add_sized(
-                                                [200.0, 24.0],
+                                                [chars_wide(ui, 25.0), 24.0],
                                                 egui::TextEdit::singleline(&mut op.role),
                                             );
                                             if motif::button(ui, tr("itv_delete"))
@@ -28168,7 +28195,7 @@ impl eframe::App for App {
                                     let mut notice = editor.cfg.locations.notice_days.to_string();
                                     if ui
                                         .add_sized(
-                                            [56.0, 24.0],
+                                            [chars_wide(ui, 7.0), 24.0],
                                             egui::TextEdit::singleline(&mut notice),
                                         )
                                         .changed()
@@ -28215,11 +28242,11 @@ impl eframe::App for App {
                                             editor.cfg.locations.forfaits.iter_mut().enumerate()
                                         {
                                             ui.add_sized(
-                                                [170.0, 24.0],
+                                                [chars_wide(ui, 21.0), 24.0],
                                                 egui::TextEdit::singleline(&mut f.label),
                                             );
                                             ui.add_sized(
-                                                [200.0, 24.0],
+                                                [chars_wide(ui, 25.0), 24.0],
                                                 egui::TextEdit::singleline(&mut f.lpp),
                                             );
                                             egui::ComboBox::from_id_salt(("loc_period", i))
@@ -28245,7 +28272,7 @@ impl eframe::App for App {
                                             // un forfait à décimales
                                             // était impossible à saisir.
                                             let resp = ui.add_sized(
-                                                [70.0, 24.0],
+                                                [chars_wide(ui, 9.0), 24.0],
                                                 egui::TextEdit::singleline(&mut fee_text[i]),
                                             );
                                             if resp.lost_focus() {
@@ -28257,7 +28284,7 @@ impl eframe::App for App {
                                             let mut days = f.renewal_days.to_string();
                                             if ui
                                                 .add_sized(
-                                                    [56.0, 24.0],
+                                                    [chars_wide(ui, 7.0), 24.0],
                                                     egui::TextEdit::singleline(&mut days),
                                                 )
                                                 .changed()
@@ -28267,7 +28294,7 @@ impl eframe::App for App {
                                             let mut max = f.max_periods.to_string();
                                             if ui
                                                 .add_sized(
-                                                    [56.0, 24.0],
+                                                    [chars_wide(ui, 7.0), 24.0],
                                                     egui::TextEdit::singleline(&mut max),
                                                 )
                                                 .changed()
@@ -28467,7 +28494,7 @@ impl eframe::App for App {
                                 ui.horizontal(|ui| {
                                     ui.label(dim(tr("opts_vitale_reader")));
                                     ui.add_sized(
-                                        [240.0, 24.0],
+                                        [chars_wide(ui, 30.0), 24.0],
                                         egui::TextEdit::singleline(&mut editor.cfg.vitale.reader),
                                     );
                                 });
@@ -28561,7 +28588,7 @@ impl eframe::App for App {
                                     .show(ui, |ui| {
                                         ui.label(dim(tr("docs_operator")));
                                         ui.add_sized(
-                                            [80.0, 24.0],
+                                            [chars_wide(ui, 10.0), 24.0],
                                             egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
                                         );
                                         ui.end_row();
@@ -28748,7 +28775,7 @@ impl eframe::App for App {
                                         ui.label(dim(tr("opts_db_path")));
                                         ui.horizontal(|ui| {
                                             ui.add_sized(
-                                                [258.0, 24.0],
+                                                [chars_wide(ui, 32.0), 24.0],
                                                 egui::TextEdit::singleline(
                                                     &mut editor.db_path_text,
                                                 ),
@@ -29515,6 +29542,58 @@ mod tests {
         // Et la courte tient là où la longue ne tenait pas — sans quoi
         // on aurait seulement remplacé un texte coupé par un autre.
         assert!(short.chars().count() < long.chars().count());
+    }
+
+    /// **La largeur d'un champ de saisie ne s'écrit pas en pixels.**
+    ///
+    /// C'est la règle de la maison — « mesurer, jamais deviner un
+    /// seuil » — et elle était enfreinte vingt-neuf fois : 80 pour une
+    /// date, 96 pour une autre, 300 pour un numéro AM. Un nombre écrit
+    /// en dur ne suit pas `[ui] text_scale`, donc l'invite que le champ
+    /// porte finit coupée dès qu'on grossit le texte, et le défaut ne se
+    /// voit sur aucune capture prise à l'échelle 1 — c'est-à-dire sur
+    /// aucune de celles qu'on prend.
+    ///
+    /// Le test lit le texte de ce fichier, comme
+    /// `the_register_can_only_ever_be_written_to` lit celui de `db.rs` :
+    /// une relecture ne tient pas une règle, un test si. Les largeurs
+    /// s'écrivent avec `chars_wide`, `field_width`, `button_width` ou
+    /// une mesure prise plus haut.
+    #[test]
+    fn no_text_field_is_measured_in_pixels() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblés, comme dans `db.rs` : un test qui se lit lui-même
+        // trouverait d'abord ses propres constantes.
+        let sized = concat!("add_", "sized");
+        let field = concat!("TextEd", "it::");
+        let lines: Vec<&str> = SOURCE.lines().collect();
+        let mut offenders: Vec<String> = Vec::new();
+        for (i, l) in lines.iter().enumerate() {
+            if !l.contains(sized) {
+                continue;
+            }
+            // Le champ est dans les lignes qui suivent l'appel : la
+            // largeur, elle, est sur celle-ci ou la suivante.
+            let upto = (i + 8).min(lines.len());
+            if !lines[i..upto].iter().any(|x| x.contains(field)) {
+                continue;
+            }
+            for line in lines.iter().take((i + 2).min(lines.len())).skip(i) {
+                let Some((_, rest)) = line.split_once('[') else {
+                    continue;
+                };
+                let head = rest.split(',').next().unwrap_or("").trim();
+                if head.parse::<f32>().is_ok() {
+                    offenders.push(format!("app.rs:{} : {}", i + 1, line.trim()));
+                }
+                break;
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "une largeur de champ se mesure, elle ne s'écrit pas en pixels :\n{}",
+            offenders.join("\n")
+        );
     }
 
     /// **Ce qu'une bande mesure est ce qu'elle dessine.**

@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La largeur d'un champ de saisie ne s'écrit plus en pixels, et un
+  test le refuse.** Elle s'exprime en *caractères* de la fonte du corps
+  (`chars_wide`), ou par ce que son invite demande, ou par une mesure
+  prise plus haut — vingt-neuf champs restaient à 80, 96, 240 ou 300
+  pixels selon l'endroit, donc insensibles à `[ui] text_scale`. Le test
+  lit le texte de `app.rs`, comme
+  `the_register_can_only_ever_be_written_to` lit celui de `db.rs` : une
+  relecture ne tient pas une règle. Vérifié en en remettant un.
+
 ## [0.149.0] - 2026-09-07
 
 ### Added
