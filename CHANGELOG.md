@@ -20,7 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     vérifié en lui faisant compter une rangée pour deux, ce qui fait
     sortir la seconde de vingt-cinq pixels.
 
-  Le workspace passe de 44,9 % à 45,9 % couvert : ce qui se mesure se
+- **Et la première ligne de la feuille de route est tenue par un
+  test.** « Rien ne sort du panneau à droite » ne se voit sur aucune
+  capture prise au bon endroit : il faut le mauvais dossier, le mauvais
+  volet et la mauvaise échelle. L'arithmétique des colonnes du carnet
+  est sortie de la boucle de dessin — `carnet_columns` — pour qu'un test
+  la parcoure : six largeurs de panneau, trois échelles, un carnet dont
+  une ligne est volontairement bavarde. Vérifié en remettant les sept
+  colonnes de toujours, qui font cinq cent vingt-trois pixels dans une
+  table de deux cent cinquante.
+
+  Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
 ## [0.150.1] - 2026-09-07

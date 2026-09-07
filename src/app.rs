@@ -1474,6 +1474,22 @@ struct StupEdits {
     unit: String,
 }
 
+/// Les colonnes du carnet de vaccination : combien, et larges de
+/// combien. Voir [`App::carnet_columns`].
+struct CarnetCols {
+    /// Sept, quatre ou deux — la forme retenue.
+    cols: usize,
+    gap: f32,
+    /// Le nom du vaccin prend ce que les autres laissent, et jamais
+    /// moins que son en-tête.
+    name_w: f32,
+    dose_w: f32,
+    date_w: f32,
+    lot_w: f32,
+    site_w: f32,
+    op_w: f32,
+}
+
 /// Ce qu'il faut pour dessiner une ligne du registre.
 ///
 /// Un enregistrement et non six arguments : les trois listes qui la
@@ -9362,60 +9378,16 @@ impl App {
                         // posée dans la colonne « Dose », élargissait
                         // cette colonne à sa longueur et emportait tout
                         // ce qui suivait vers la droite.
-                        let avail = ui.available_width();
-                        let gap = 6.0;
-                        let cap = avail * 0.18;
-                        let dose_w = Self::widest(
-                            ui,
-                            12.0,
-                            std::iter::once(tr("vacc_col_dose"))
-                                .chain(lines.iter().map(|l| l.dose.as_str())),
-                        )
-                        .min(cap);
-                        let date_w =
-                            Self::widest(ui, 12.0, [tr("vacc_col_date"), "00/00/0000"].into_iter());
-                        let lot_w = Self::widest(
-                            ui,
-                            11.5,
-                            std::iter::once(tr("vacc_col_lot"))
-                                .chain(lines.iter().map(|l| l.lot.as_str())),
-                        )
-                        .min(cap);
-                        let site_w = Self::widest(
-                            ui,
-                            11.5,
-                            std::iter::once(tr("vacc_col_site"))
-                                .chain(lines.iter().map(|l| l.site.as_str())),
-                        )
-                        .min(cap);
-                        let op_w = Self::widest(
-                            ui,
-                            11.5,
-                            std::iter::once(tr("vacc_col_operator"))
-                                .chain(lines.iter().map(|l| l.operator.as_str())),
-                        )
-                        .min(cap);
-                        let btn_w = Self::button_width(ui, tr("drug_edit"))
-                            + Self::button_width(ui, tr("itv_delete_confirm"))
-                            + ui.spacing().item_spacing.x;
-                        let name_floor =
-                            Self::widest(ui, 12.0, [tr("vacc_col_vaccine")].into_iter());
-                        // Trois formes, et on garde la plus large qui
-                        // tient : ce que la largeur refuse descend sous
-                        // le nom, à la ligne où le rappel dû et la
-                        // remarque se lisaient déjà. Rien ne disparaît,
-                        // rien ne sort à droite.
-                        let full = dose_w + date_w + lot_w + site_w + op_w + btn_w + gap * 6.0;
-                        let mid = dose_w + date_w + btn_w + gap * 3.0;
-                        let tight = btn_w + gap;
-                        let (cols, taken) = if avail - full >= name_floor {
-                            (7, full)
-                        } else if avail - mid >= name_floor {
-                            (4, mid)
-                        } else {
-                            (2, tight)
-                        };
-                        let name_w = (avail - taken).max(name_floor);
+                        let CarnetCols {
+                            cols,
+                            gap,
+                            name_w,
+                            dose_w,
+                            date_w,
+                            lot_w,
+                            site_w,
+                            op_w,
+                        } = Self::carnet_columns(ui, ui.available_width(), &lines);
                         egui::Grid::new("carnet_grid")
                             .num_columns(cols)
                             .spacing([gap, 5.0])
@@ -12722,6 +12694,75 @@ impl App {
     /// après dose, et chacune coûtait un aller-retour.
     fn entered(ui: &egui::Ui, fields: &[egui::Response]) -> bool {
         fields.iter().any(|f| f.lost_focus()) && ui.input(|i| i.key_pressed(egui::Key::Enter))
+    }
+
+    /// Les colonnes du carnet : combien, et larges de combien.
+    ///
+    /// Trois formes, et on garde la plus large qui tient : sept
+    /// colonnes, quatre, ou deux. Ce que la largeur refuse descend sous
+    /// le nom, à la ligne où le rappel dû et la remarque se lisaient
+    /// déjà — rien ne disparaît, rien ne sort à droite.
+    ///
+    /// Extraite de la boucle de dessin pour être **vérifiable** : « rien
+    /// ne sort à droite » est la première ligne de la feuille de route,
+    /// et une règle qu'on ne peut pas mettre dans un test se
+    /// réenfreint.
+    fn carnet_columns(ui: &egui::Ui, avail: f32, lines: &[db::Vaccination]) -> CarnetCols {
+        let gap = 6.0;
+        // Aucune colonne de texte ne prend plus d'un sixième de la
+        // table : un seul numéro de lot bavard, sinon, et le nom du
+        // vaccin n'a plus de place.
+        let cap = avail * 0.18;
+        let dose_w = Self::widest(
+            ui,
+            12.0,
+            std::iter::once(tr("vacc_col_dose")).chain(lines.iter().map(|l| l.dose.as_str())),
+        )
+        .min(cap);
+        let date_w = Self::widest(ui, 12.0, [tr("vacc_col_date"), "00/00/0000"].into_iter());
+        let lot_w = Self::widest(
+            ui,
+            11.5,
+            std::iter::once(tr("vacc_col_lot")).chain(lines.iter().map(|l| l.lot.as_str())),
+        )
+        .min(cap);
+        let site_w = Self::widest(
+            ui,
+            11.5,
+            std::iter::once(tr("vacc_col_site")).chain(lines.iter().map(|l| l.site.as_str())),
+        )
+        .min(cap);
+        let op_w = Self::widest(
+            ui,
+            11.5,
+            std::iter::once(tr("vacc_col_operator"))
+                .chain(lines.iter().map(|l| l.operator.as_str())),
+        )
+        .min(cap);
+        let btn_w = Self::button_width(ui, tr("drug_edit"))
+            + Self::button_width(ui, tr("itv_delete_confirm"))
+            + ui.spacing().item_spacing.x;
+        let name_floor = Self::widest(ui, 12.0, [tr("vacc_col_vaccine")].into_iter());
+        let full = dose_w + date_w + lot_w + site_w + op_w + btn_w + gap * 6.0;
+        let mid = dose_w + date_w + btn_w + gap * 3.0;
+        let tight = btn_w + gap;
+        let (cols, taken) = if avail - full >= name_floor {
+            (7, full)
+        } else if avail - mid >= name_floor {
+            (4, mid)
+        } else {
+            (2, tight)
+        };
+        CarnetCols {
+            cols,
+            gap,
+            name_w: (avail - taken).max(name_floor),
+            dose_w,
+            date_w,
+            lot_w,
+            site_w,
+            op_w,
+        }
     }
 
     /// Une cellule de table qui **tient dans sa colonne**.
@@ -29728,6 +29769,77 @@ mod tests {
                     "échelle {scale}, largeur {width} : {drawn} px dessinés pour {reserve} px \
                      réservés"
                 );
+            }
+        }
+    }
+
+    /// **Le carnet ne sort jamais du panneau par la droite.**
+    ///
+    /// C'est la première ligne de la feuille de route de la nuit, et
+    /// c'est la seule qui ne se voit pas sur une capture prise au bon
+    /// endroit : il faut le mauvais dossier, le mauvais volet et la
+    /// mauvaise échelle. Le test parcourt les largeurs qu'un comptoir
+    /// donne réellement — deux cent cinquante à mille deux cents —,
+    /// trois échelles de texte, et un carnet dont une ligne est
+    /// volontairement bavarde, et vérifie que la somme des colonnes
+    /// retenues tient dans la table.
+    #[test]
+    fn the_carnet_never_runs_off_the_right_of_its_panel() {
+        let lines = vec![
+            crate::db::Vaccination {
+                id: 1,
+                label: "Diphtérie-tétanos-poliomyélite-coqueluche".to_owned(),
+                dose: "rappel décennal".to_owned(),
+                given_on: "2026-05-11".to_owned(),
+                lot: "FLU25-208-XA-9931".to_owned(),
+                site: "deltoïde gauche (voie IM)".to_owned(),
+                operator: "CL".to_owned(),
+                ..Default::default()
+            },
+            crate::db::Vaccination {
+                id: 2,
+                label: "Grippe".to_owned(),
+                ..Default::default()
+            },
+        ];
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for avail in [250.0_f32, 320.0, 420.0, 590.0, 800.0, 1200.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0usize, 0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let c = App::carnet_columns(ui, avail, &lines);
+                        let buttons = App::button_width(ui, tr("drug_edit"))
+                            + App::button_width(ui, tr("itv_delete_confirm"))
+                            + ui.spacing().item_spacing.x;
+                        let mut total = c.name_w + buttons + c.gap;
+                        if c.cols >= 4 {
+                            total += c.dose_w + c.date_w + c.gap * 2.0;
+                        }
+                        if c.cols == 7 {
+                            total += c.lot_w + c.site_w + c.op_w + c.gap * 3.0;
+                        }
+                        // Le plancher : le nom ne descend jamais sous son
+                        // en-tête, donc sur un panneau plus étroit que
+                        // cela il n'y a plus d'arbitrage à rendre.
+                        let floor = App::widest(ui, 12.0, [tr("vacc_col_vaccine")].into_iter())
+                            + buttons
+                            + c.gap;
+                        *seen.borrow_mut() = (c.cols, total, floor);
+                    });
+                });
+                let (cols, total, floor) = seen.into_inner();
+                assert!(
+                    total <= avail.max(floor) + 0.5,
+                    "échelle {scale}, largeur {avail} : {cols} colonnes font {total} px"
+                );
+                // Et la forme choisie est bien la plus large qui tient :
+                // un panneau généreux ne se contente pas de deux
+                // colonnes.
+                if avail >= 1200.0 {
+                    assert_eq!(cols, 7, "échelle {scale} : {avail} px et {cols} colonnes");
+                }
             }
         }
     }
