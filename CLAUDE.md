@@ -143,12 +143,17 @@ by what it *leaves out* — `app.rs`, `main.rs`, `winscard.rs` (a library
 opened by name at run time, with no reader in CI), `motif` and the
 launcher — and never by a list of what is in: that list had fallen four
 modules behind, and `conciliation`, `surveillance`, `vitale` and `graph`
-were logic nobody was counting. The workspace figure is low and
-will stay low: `src/app.rs` is ~15 000 lines of egui layout, more than
-half the repo, and a view cannot be covered without a UI harness —
-`egui_kittest` needs egui ≥ 0.30 and the project is on 0.29. Until that
-upgrade is decided, the number to defend is the logic one, and
-`scripts/smoke.sh` is what holds the interface.
+were logic nobody was counting. The workspace figure is low
+because `src/app.rs` is ~15 000 lines of egui layout, more than half the
+repo. But **a helper that measures or draws can be tested**: an
+`egui::Context` runs headless in a plain `#[test]` — `Context::run`
+draws, the fonts are there, and `ui.fonts(…)` measures in the face that
+will paint. Two tests do it, and they are the model for the rest:
+`an_invitation_too_long_for_its_field_is_shortened`, and
+`a_wrapped_row_is_counted_as_it_is_drawn`, which compares what a band
+*measures* to what it *draws*, at three text scales — the exact defect
+that cut « Imprimer » off the carnet. `egui_kittest` (egui ≥ 0.30) would
+add clicking and typing; it is not the price of entry.
 
 ## Conventions
 

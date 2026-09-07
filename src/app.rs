@@ -29484,6 +29484,163 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, App, Config};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
+    use crate::strings::tr;
+    use eframe::egui;
+
+    /// **Une invite qui ne tient pas dans son champ est remplacée.**
+    ///
+    /// C'est la règle que « Rechercher un p » a values : le volet de
+    /// gauche fait cent trente pixels, l'invite en demande deux cents,
+    /// et un `TextEdit` d'egui coupe la sienne en plein mot sans le
+    /// dire. Le test tourne un vrai contexte egui — c'est la seule
+    /// façon de mesurer un texte dans la fonte qui le dessinera.
+    #[test]
+    fn an_invitation_too_long_for_its_field_is_shortened() {
+        let ctx = egui::Context::default();
+        let long = tr("nav_search_hint");
+        let short = tr("nav_search_short");
+        let seen = std::cell::RefCell::new((String::new(), String::new()));
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let mut s = seen.borrow_mut();
+                s.0 = App::hint_that_fits(ui, 4000.0, long).to_owned();
+                s.1 = App::hint_that_fits(ui, 24.0, long).to_owned();
+            });
+        });
+        let (roomy, cramped) = seen.into_inner();
+        // De la place : l'invite entière.
+        assert_eq!(roomy, long);
+        // Vingt-quatre pixels : le verbe seul.
+        assert_eq!(cramped, short);
+        // Et la courte tient là où la longue ne tenait pas — sans quoi
+        // on aurait seulement remplacé un texte coupé par un autre.
+        assert!(short.chars().count() < long.chars().count());
+    }
+
+    /// **Ce qu'une bande mesure est ce qu'elle dessine.**
+    ///
+    /// `wrapped_rows_of` compte les rangées d'un `horizontal_wrapped`
+    /// *avant* que celui-ci existe, et toute la mise en page carvée en
+    /// dépend : compter deux rangées là où trois se dessinent, c'est la
+    /// troisième tranchée sous le filet du panneau — ce qui est arrivé
+    /// au carnet de vaccination, et ce qu'aucune capture ne dit tant
+    /// qu'on ne la regarde pas. Le test, lui, dessine vraiment, et à
+    /// trois échelles de texte : c'est en grossissant que les largeurs
+    /// et les comptes se séparent.
+    #[test]
+    fn a_wrapped_row_is_counted_as_it_is_drawn() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            // (rangées comptées, hauteur dessinée, hauteur d'une rangée,
+            //  gouttière entre deux)
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    // Une vraie rangée de l'application : celle qui
+                    // écrit au registre des stupéfiants.
+                    let labels = [
+                        tr("stup_kind_entree"),
+                        tr("stup_kind_sortie"),
+                        tr("stup_kind_inventaire"),
+                        tr("stup_kind_perte"),
+                        tr("stup_write_button"),
+                        tr("stup_print"),
+                    ];
+                    let w = 320.0;
+                    let counted = App::wrapped_rows(ui, w, labels.into_iter());
+                    let drawn = ui
+                        .scope(|ui| {
+                            ui.set_max_width(w);
+                            ui.horizontal_wrapped(|ui| {
+                                for l in labels {
+                                    motif::button(ui, l);
+                                }
+                            });
+                        })
+                        .response
+                        .rect
+                        .height();
+                    *seen.borrow_mut() = (
+                        counted,
+                        drawn,
+                        App::row_height(ui),
+                        ui.spacing().item_spacing.y,
+                    );
+                });
+            });
+            let (counted, drawn, row, gap) = seen.into_inner();
+            // Trois rangées dessinées, ce sont trois hauteurs **et deux
+            // gouttières** : diviser par la seule hauteur en compterait
+            // quatre.
+            let drawn_rows = ((drawn + gap) / (row + gap)).round();
+            assert!(
+                counted >= drawn_rows,
+                "échelle {scale} : {counted} rangée(s) comptée(s) pour {drawn_rows} dessinée(s)"
+            );
+            // Et pas deux fois trop : une bande qui réserve le double se
+            // paie sur le panneau d'à côté.
+            assert!(
+                counted <= drawn_rows + 1.0,
+                "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
+            );
+        }
+    }
+
+    /// **Le curseur d'une liste reste dans la liste.**
+    ///
+    /// Il est borné *avant* que la touche s'applique : la liste se
+    /// refiltre à chaque lettre tapée, et un curseur laissé au-delà de
+    /// sa fin ouvrirait la mauvaise fiche — ce qu'aucune capture ne
+    /// montre.
+    #[test]
+    fn a_list_cursor_never_leaves_its_list() {
+        use super::list_step;
+        // Liste vide : rien à choisir, et pas de soustraction en
+        // dessous de zéro.
+        assert_eq!(list_step(7, 0, false, true), 0);
+        assert_eq!(list_step(7, 0, true, false), 0);
+        // Un curseur hérité d'une liste plus longue est ramené sur la
+        // dernière ligne avant que la flèche joue.
+        assert_eq!(list_step(9, 3, false, false), 2);
+        assert_eq!(list_step(9, 3, false, true), 2);
+        assert_eq!(list_step(9, 3, true, false), 1);
+        // Et il ne déborde ni en haut ni en bas.
+        assert_eq!(list_step(0, 3, true, false), 0);
+        assert_eq!(list_step(2, 3, false, true), 2);
+        assert_eq!(list_step(1, 3, false, true), 2);
+    }
+
+    /// **Une durée d'insuline s'écrit comme on la dit.**
+    #[test]
+    fn an_insulin_span_reads_in_hours_and_minutes() {
+        use super::insulin_span;
+        assert_eq!(insulin_span(45), "45 min");
+        assert_eq!(insulin_span(60), "1 h");
+        assert_eq!(insulin_span(120), "2 h");
+        assert_eq!(insulin_span(90), "1 h 30");
+        // Zéro est une durée comme une autre : « sans pic » se dit
+        // ailleurs, pas ici.
+        assert_eq!(insulin_span(0), "0 min");
+    }
+
+    /// **Le rang d'un entretien dans sa séquence.**
+    ///
+    /// C'est ce que la convention paie : l'initial, le premier suivi,
+    /// puis le n-ième. Le libellé sort des chaînes, donc l'officine peut
+    /// le changer ; ce que le test tient, c'est qu'aucun rang ne rend la
+    /// clé au lieu du texte.
+    #[test]
+    fn every_rank_has_a_word_of_its_own() {
+        use super::rank_label;
+        assert_eq!(rank_label(0), tr("rank_initial"));
+        assert_eq!(rank_label(1), tr("rank_suivi_1"));
+        assert_eq!(rank_label(2), "2e suivi");
+        assert_eq!(rank_label(7), "7e suivi");
+        for n in 0..12 {
+            assert!(!rank_label(n).contains("rank_"), "rang {n}");
+        }
+    }
 
     /// **Un montant ne s'écrit jamais « -0 ».**
     ///
