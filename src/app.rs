@@ -8262,13 +8262,21 @@ impl App {
                             ui.end_row();
                             ui.label(dim(tr("form_first_name")));
                             let b = ui.add_sized(
-                                [240.0, 26.0],
+                                [
+                                    Self::field_width(ui, [tr("form_birth_hint")].into_iter())
+                                        .max(240.0),
+                                    26.0,
+                                ],
                                 egui::TextEdit::singleline(&mut form.first_name),
                             );
                             ui.end_row();
                             ui.label(dim(tr("form_birth")));
                             let c = ui.add_sized(
-                                [240.0, 26.0],
+                                [
+                                    Self::field_width(ui, [tr("form_birth_hint")].into_iter())
+                                        .max(240.0),
+                                    26.0,
+                                ],
                                 egui::TextEdit::singleline(&mut form.birth_date)
                                     .hint_text(tr("form_birth_hint")),
                             );
@@ -11310,7 +11318,11 @@ impl App {
                                 }
                             }
                             ui.add_sized(
-                                [70.0, 22.0],
+                                [
+                                    Self::field_width(ui, [tr("bio_value_hint")].into_iter())
+                                        .max(70.0),
+                                    22.0,
+                                ],
                                 egui::TextEdit::singleline(&mut session.bio_new_value)
                                     .hint_text(tr("bio_value_hint")),
                             );
@@ -12891,34 +12903,50 @@ impl App {
                     ui.end_row();
                     ui.label(dim(tr("form_first_name")));
                     ui.add_sized(
-                        [240.0, 26.0],
+                        [
+                            Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
+                            26.0,
+                        ],
                         egui::TextEdit::singleline(&mut form.first_name),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_birth")));
                     ui.add_sized(
-                        [240.0, 26.0],
+                        [
+                            Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
+                            26.0,
+                        ],
                         egui::TextEdit::singleline(&mut form.birth_date)
                             .hint_text(tr("form_birth_hint")),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_phone")));
                     ui.add_sized(
-                        [240.0, 26.0],
+                        [
+                            Self::field_width(ui, [tr("form_phone_hint")].into_iter()).max(240.0),
+                            26.0,
+                        ],
                         egui::TextEdit::singleline(&mut form.phone)
                             .hint_text(tr("form_phone_hint")),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_comment")));
                     ui.add_sized(
-                        [240.0, 26.0],
+                        [
+                            Self::field_width(ui, [tr("form_comment_hint")].into_iter()).max(240.0),
+                            26.0,
+                        ],
                         egui::TextEdit::singleline(&mut form.notes)
                             .hint_text(tr("form_comment_hint")),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_physician")));
                     ui.add_sized(
-                        [240.0, 26.0],
+                        [
+                            Self::field_width(ui, [tr("form_physician_hint")].into_iter())
+                                .max(240.0),
+                            26.0,
+                        ],
                         egui::TextEdit::singleline(&mut form.physician)
                             .hint_text(tr("form_physician_hint")),
                     );
@@ -12935,13 +12963,20 @@ impl App {
                     ui.label(dim(tr("form_nir")));
                     ui.horizontal(|ui| {
                         ui.add_sized(
-                            [200.0, 26.0],
+                            [
+                                Self::field_width(ui, [tr("form_nir_hint")].into_iter()).max(200.0),
+                                26.0,
+                            ],
                             egui::TextEdit::singleline(&mut form.nir)
                                 .hint_text(tr("form_nir_hint")),
                         );
                         ui.label(dim(tr("form_regime")));
                         ui.add_sized(
-                            [56.0, 26.0],
+                            [
+                                Self::field_width(ui, [tr("form_regime_hint")].into_iter())
+                                    .max(56.0),
+                                26.0,
+                            ],
                             egui::TextEdit::singleline(&mut form.regime)
                                 .hint_text(tr("form_regime_hint")),
                         );
@@ -13031,7 +13066,10 @@ impl App {
                 // « Nouvel entretien » et le choix rapide des actes.
                 let want_focus = std::mem::take(&mut session.focus_treat_add);
                 let f = ui.add_sized(
-                    [140.0, ui.spacing().interact_size.y],
+                    [
+                        Self::field_width(ui, [tr("treat_add_hint")].into_iter()).max(140.0),
+                        ui.spacing().interact_size.y,
+                    ],
                     egui::TextEdit::singleline(&mut session.treat_query)
                         .hint_text(tr("treat_add_hint")),
                 );
@@ -15578,7 +15616,11 @@ impl App {
                         .filter(|(id, _)| *id == rdv.id);
                     if let Some((_, text)) = editing {
                         let field = ui.add_sized(
-                            [56.0, 22.0],
+                            [
+                                Self::field_width(ui, [tr("agenda_hour_hint")].into_iter())
+                                    .max(56.0),
+                                22.0,
+                            ],
                             egui::TextEdit::singleline(text).hint_text(tr("agenda_hour_hint")),
                         );
                         if field.lost_focus() {
@@ -17230,7 +17272,10 @@ impl App {
                     session.codex_edit = None;
                 }
                 ui.add_sized(
-                    [220.0, 24.0],
+                    [
+                        Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
+                        24.0,
+                    ],
                     egui::TextEdit::singleline(&mut session.codex_new_name)
                         .hint_text(tr("codex_new_hint")),
                 );
@@ -18995,17 +19040,26 @@ impl App {
                         }
                     });
                     ui.add_sized(
-                        [320.0, Self::button_height(ui)],
+                        [
+                            Self::field_width(ui, [tr("scan_label_hint")].into_iter()).max(320.0),
+                            Self::button_height(ui),
+                        ],
                         egui::TextEdit::singleline(&mut edited.label)
                             .hint_text(tr("scan_label_hint")),
                     );
                     ui.add_sized(
-                        [320.0, Self::button_height(ui)],
+                        [
+                            Self::field_width(ui, [tr("scan_day_iso_hint")].into_iter()).max(320.0),
+                            Self::button_height(ui),
+                        ],
                         egui::TextEdit::singleline(&mut edited.taken_on)
                             .hint_text(tr("scan_day_iso_hint")),
                     );
                     ui.add_sized(
-                        [320.0, Self::button_height(ui)],
+                        [
+                            Self::field_width(ui, [tr("scan_remark_hint")].into_iter()).max(320.0),
+                            Self::button_height(ui),
+                        ],
                         egui::TextEdit::singleline(&mut edited.remark)
                             .hint_text(tr("scan_remark_hint")),
                     );
@@ -19341,7 +19395,10 @@ impl App {
                 // un autre. Tout ce qui le distingue est ce qu'on fait
                 // de son contenu.
                 let scan = ui.add_sized(
-                    [140.0, Self::button_height(ui)],
+                    [
+                        Self::field_width(ui, [tr("stup_scan_hint")].into_iter()).max(140.0),
+                        Self::button_height(ui),
+                    ],
                     egui::TextEdit::singleline(&mut session.stup_scan)
                         .hint_text(tr("stup_scan_hint")),
                 );
@@ -19829,7 +19886,11 @@ impl App {
                             let mut edited = product.clone();
                             let mut typed = crate::codex::format_quantity(product.threshold);
                             let resp = ui.add_sized(
-                                [70.0, Self::button_height(ui)],
+                                [
+                                    Self::field_width(ui, [tr("stup_threshold_hint")].into_iter())
+                                        .max(70.0),
+                                    Self::button_height(ui),
+                                ],
                                 egui::TextEdit::singleline(&mut typed)
                                     .hint_text(tr("stup_threshold_hint")),
                             );
@@ -19845,7 +19906,11 @@ impl App {
                             // unité ne dit pas s'il s'agit de boîtes ou de gélules.
                             let mut unit = product.unit.clone();
                             let resp = ui.add_sized(
-                                [90.0, Self::button_height(ui)],
+                                [
+                                    Self::field_width(ui, [tr("stup_unit_hint")].into_iter())
+                                        .max(90.0),
+                                    Self::button_height(ui),
+                                ],
                                 egui::TextEdit::singleline(&mut unit)
                                     .hint_text(tr("stup_unit_hint")),
                             );
@@ -21853,7 +21918,10 @@ impl App {
                     session.dispo_edit = None;
                 }
                 ui.add_sized(
-                    [220.0, 24.0],
+                    [
+                        Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
+                        24.0,
+                    ],
                     egui::TextEdit::singleline(&mut session.dispo_new_name)
                         .hint_text(tr("dispo_new_hint")),
                 );
@@ -22287,7 +22355,10 @@ impl App {
                     session.protocol_open = None;
                 }
                 ui.add_sized(
-                    [220.0, 24.0],
+                    [
+                        Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
+                        24.0,
+                    ],
                     egui::TextEdit::singleline(&mut session.protocol_new_title)
                         .hint_text(tr("proto_new_hint")),
                 );
@@ -27739,9 +27810,16 @@ impl eframe::App for App {
                     // fenêtre ne peut donner : mieux vaut les atteindre
                     // en défilant qu'avoir une fenêtre qui sort de
                     // l'écran des deux côtés.
+                    // Ce qui reste **vraiment** sous la rangée d'onglets,
+                    // moins la rangée « Enregistrer / Fermer » qui vient
+                    // après : « la hauteur de l'écran moins deux cents »
+                    // ne comptait pas les onglets, qui passent à deux
+                    // rangées dès qu'on grossit le texte — et la rangée
+                    // des boutons sortait alors par le bas.
+                    let bottom = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0 + 8.0;
                     egui::ScrollArea::both()
                         .id_salt("opts_body")
-                        .max_height((avail - 200.0).max(280.0))
+                        .max_height((ui.available_height() - bottom).max(160.0))
                         .show(ui, |ui| {
                             let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
                             if page == OptionsPage::Pharmacy {
@@ -27784,7 +27862,14 @@ impl eframe::App for App {
                                         ui.end_row();
                                         ui.label(dim(tr("opts_am_number")));
                                         ui.add_sized(
-                                            [300.0, 24.0],
+                                            [
+                                                Self::field_width(
+                                                    ui,
+                                                    [tr("opts_am_number_hint")].into_iter(),
+                                                )
+                                                .max(300.0),
+                                                24.0,
+                                            ],
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.am_number,
                                             )
@@ -28288,7 +28373,14 @@ impl eframe::App for App {
                                                 .unwrap_or_default();
                                             if ui
                                                 .add_sized(
-                                                    [220.0, 24.0],
+                                                    [
+                                                        Self::field_width(
+                                                            ui,
+                                                            [tr("opts_font_default")].into_iter(),
+                                                        )
+                                                        .max(220.0),
+                                                        24.0,
+                                                    ],
                                                     egui::TextEdit::singleline(&mut shown)
                                                         .hint_text(tr("opts_font_default")),
                                                 )

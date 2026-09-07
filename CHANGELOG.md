@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Vingt-trois champs de saisie étaient plus étroits que leur
+  invite** — ou le seraient devenus. Leur largeur était une constante en
+  pixels, donc insensible à `[ui] text_scale` : « imprimé sur le
+  bulletin d'adhésion » sortait de son champ de trois cents pixels dès
+  l'échelle 1,4. Chacun est maintenant au moins aussi large que ce qu'il
+  invite à écrire, et grandit avec le texte.
+- **La fenêtre des options débordait par le bas au-delà de 1,25.** La
+  hauteur de son corps était « l'écran moins deux cents pixels », ce
+  qui ne compte pas la rangée d'onglets — laquelle passe à deux rangées
+  dès qu'on grossit le texte — ni la rangée « Enregistrer / Fermer »,
+  qui sortait alors par le bas. Elle prend ce qui reste, mesuré.
 - **« Rechercher un p ».** C'est ce que le champ du volet de gauche
   affichait — sur *toutes* les vues de l'application, puisque ce volet y
   est toujours : cent trente pixels ne portent pas « Rechercher un
