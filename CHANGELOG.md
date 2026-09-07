@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.149.0] - 2026-09-07
 
+### Added
+- **Un `egui::Context` tourne dans un test, sans harnais et sans
+  écran.** `Context::run` dessine, les fontes sont là, et `ui.fonts(…)`
+  mesure dans la fonte qui dessinera : les fonctions qui *mesurent* une
+  bande avant de la carver sont donc testables, ce que « on ne peut pas
+  couvrir une vue » avait laissé croire impossible. Deux tests le font,
+  et ils sont le modèle pour la suite —
+  `an_invitation_too_long_for_its_field_is_shortened`, et
+  `a_wrapped_row_is_counted_as_it_is_drawn`, qui compare ce qu'une bande
+  **mesure** à ce qu'elle **dessine**, à trois échelles de texte : c'est
+  exactement le défaut qui coupait « Imprimer » du carnet.
+
 ### Fixed
 - **Cinq champs annoncés modifiables ne l'étaient pas.** Les initiales
   et l'heure d'un entretien, et le libellé, le seuil et l'unité d'un
