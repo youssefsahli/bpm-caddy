@@ -7,7 +7,7 @@
 # found: nine digit keys for ten acts, panicking on the first frame the
 # picker was drawn.
 #
-# Every view is opened in **two shapes**, because the panic this is
+# Every view is opened in **three shapes**, because the panic this is
 # looking for does not happen in the first one. `f32::clamp` takes the
 # whole application down when a computed floor crosses a computed cap,
 # and floors only cross caps on a short pane at large text — which is
@@ -83,6 +83,13 @@ views=(
 shapes=(
     "ordinaire|1400x900|"
     "comptoir|1024x700|text_scale = 1.25"
+    # La troisième est l'extrême : c'est là que les planchers croisent
+    # les plafonds. `[ui] text_scale` monte jusqu'à 1,8 et une officine
+    # dont l'écran se lit debout le règle haut ; à 1,6 sur un écran de
+    # comptoir, chaque bande mesurée en rangées de boutons demande un
+    # tiers de place en plus que ce que la vue peut donner. Si un
+    # `f32::clamp` doit tomber, c'est ici.
+    "loupe|1024x700|text_scale = 1.6"
 )
 
 failed=0
@@ -129,4 +136,4 @@ if [ "$failed" -ne 0 ]; then
     echo "Smoke test failed."
     exit 1
 fi
-echo "Every view opened without panicking, in both shapes."
+echo "Every view opened without panicking, in all three shapes."

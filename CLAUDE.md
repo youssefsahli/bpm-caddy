@@ -218,9 +218,10 @@ upgrade is decided, the number to defend is the logic one, and
   found by looking, and looking is only cheap when the pictures are one
   command away. Every layout
   must survive 1024x700 with both docks open — `scripts/smoke.sh` opens
-  every view **twice**, at 1400x900 and at 1024x700 with
-  `text_scale = 1.25`, and a screenshot at that size is the eye check
-  the panics test cannot do.
+  every view **three times**: at 1400x900, at 1024x700 with
+  `text_scale = 1.25`, and at 1024x700 with `text_scale = 1.6`, which is
+  where a computed floor crosses a computed cap. A screenshot at those
+  sizes is the eye check the panics test cannot do.
 - **Two unnamed `ScrollArea` in one view collide.** egui derives their id
   from position, gives both the same one, and paints « First use of
   ScrollArea ID … / Second use of … » in red across the screen. It does
@@ -433,14 +434,20 @@ edge, and crops back — do the same in any new capture script.
 
 Headless runs: `./scripts/screenshots.sh` regenerates the README
 screenshots from a fresh demo seed, and `./scripts/smoke.sh` opens every
-view in two shapes and fails on any panic — that is how the Ctrl+N crash
+view in three shapes and fails on any panic — that is how the Ctrl+N crash
 (nine digit keys for ten acts) was found. The second shape is the point:
 `f32::clamp` panics when a computed floor crosses a computed cap, and
 floors only cross caps on a short pane at large text. A deliberately
 inverted clamp in the conciliation pane passes at 1400x900 and brings
 the application down at 1024x700 with `text_scale = 1,25` — one pass
-would have shipped it. Both shoot against a throwaway
-`XDG_CONFIG_HOME`, never the operator's own config. For manual runs:
+would have shipped it. All three shoot against a throwaway
+`XDG_CONFIG_HOME`, never the operator's own config.
+
+`./scripts/shot.sh <vue> [fichier] [taille] [échelle] [clé=valeur…]`
+captures **one** view in a chosen shape — the same throwaway config, and
+the extra `clé=valeur` pairs go into `layout.toml`, which is where the
+workspace's own shape lives (`patient_band_folded=true`, dock widths).
+That is the loop for correcting a band: change, capture, look. For manual runs:
 `xvfb-run` + ImageMagick `import`, and **`unset WAYLAND_DISPLAY` inside
 the xvfb shell** or the window opens on the real desktop instead.
 
