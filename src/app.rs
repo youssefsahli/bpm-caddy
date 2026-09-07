@@ -1534,6 +1534,27 @@ struct CarnetCols {
     op_w: f32,
 }
 
+/// Les largeurs d'une ligne du registre, et laquelle des deux
+/// dispositions elles imposent.
+///
+/// Mesurées **une seule fois** : la liste les demande pour savoir si
+/// elle ouvre une grille, la ligne pour se dessiner, et deux mesures
+/// d'une même chose divergent toujours — c'est la règle que ce fichier
+/// répète, et elle valait aussi pour ce qui venait d'être écrit.
+struct StupWidths {
+    /// Les neuf colonnes ne tiennent pas : la ligne se plie en deux.
+    narrow: bool,
+    date: f32,
+    no: f32,
+    nature: f32,
+    /// La même pour ce qui entre, ce qui sort et le solde : un registre
+    /// se lit en colonnes qui s'alignent.
+    qty: f32,
+    product: f32,
+    /// Ce que les autres laissent.
+    mention: f32,
+}
+
 /// Ce dont la hauteur du bandeau d'identité dépend — et rien d'autre.
 ///
 /// Prendre la session entière rendait la mesure invérifiable : un test
@@ -20788,7 +20809,7 @@ impl App {
                             }
                             ui.visuals_mut().faint_bg_color = motif::bg_dark();
                             let table_w = ui.available_width();
-                            let narrow = Self::stup_narrow(ui, table_w, false);
+                            let narrow = Self::stup_widths(ui, table_w, false).narrow;
                             Self::stup_list(ui, "stup_register_grid", narrow, |ui| {
                                 if !narrow {
                                     Self::stup_header(ui, false, true);
@@ -21580,29 +21601,51 @@ impl App {
     /// en deux — et il faut qu'elle reçoive la même réponse : une ligne
     /// pliée dessinée dans une grille de neuf colonnes n'en finit
     /// jamais.
-    fn stup_narrow(ui: &egui::Ui, width: f32, has_product: bool) -> bool {
+    fn stup_widths(ui: &egui::Ui, width: f32, has_product: bool) -> StupWidths {
         let gap = ui.spacing().item_spacing.x;
         let mono = |size: f32| egui::FontId::monospace(size);
-        let ledger = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter())
-            + Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter())
-            + Self::widest(
-                ui,
-                11.0,
-                crate::ordonnancier::Kind::ALL
-                    .iter()
-                    .map(|k| tr(k.label_key())),
-            )
-            + Self::widest_in(ui, mono(11.5), ["= 9999,9"].into_iter()) * 3.0
-            + Self::button_width(ui, &trf("stup_file", 9999))
-            + gap * 6.0;
+        let date = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter());
+        let no = Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter());
+        let nature = Self::widest(
+            ui,
+            11.0,
+            crate::ordonnancier::Kind::ALL
+                .iter()
+                .map(|k| tr(k.label_key())),
+        );
+        // Le gabarit d'une quantité : « = 9999,9 », l'inventaire le plus
+        // large qu'un registre de stupéfiants porte. Il sert aussi de
+        // seuil entre les deux dispositions, et « = 0000,000 » — trois
+        // décimales que la balance ne rend pas — coûtait quatre-vingts
+        // pixels par colonne, assez pour plier le registre sur un écran
+        // qui portait ses neuf colonnes.
+        let qty = Self::widest_in(ui, mono(11.5), ["= 9999,9"].into_iter());
+        let file = Self::button_width(ui, &trf("stup_file", 9999));
         let product = if has_product {
             (width * 0.22).max(60.0)
         } else {
             0.0
         };
+        // Ce que la comptabilité seule demande : le jour, le numéro, la
+        // nature, ce qui entre, ce qui sort, le solde, le dossier.
+        let ledger = date + no + nature + qty * 3.0 + file + gap * 6.0;
         // Cent vingt pixels : ce qu'il faut à la mention pour dire
         // quelque chose. En dessous, elle ne dirait plus rien.
-        width - (ledger + product + gap * 2.0) < 120.0
+        let narrow = width - (ledger + product + gap * 2.0) < 120.0;
+        let mention = if narrow {
+            (width - no - product - file - gap * 3.0).max(120.0)
+        } else {
+            (width - (ledger + product + gap * 2.0)).max(120.0)
+        };
+        StupWidths {
+            narrow,
+            date,
+            no,
+            nature,
+            qty,
+            product,
+            mention,
+        }
     }
 
     /// L'encre d'une ligne du registre : une ligne annulée reste écrite
@@ -21989,40 +22032,18 @@ impl App {
         // huit pour cent » — tombait juste sur un panneau et faux sur
         // l'autre : à 1400x900 le bouton « Annuler » sortait encore par
         // la droite. Les largeurs se mesurent, la dernière est la
-        // soustraction.
-        let gap = ui.spacing().item_spacing.x;
-        let mono = |size: f32| egui::FontId::monospace(size);
-        let date_w = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter());
-        let no_w = Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter());
-        let nature_w = Self::widest(
-            ui,
-            11.0,
-            crate::ordonnancier::Kind::ALL
-                .iter()
-                .map(|k| tr(k.label_key())),
-        );
-        // Le gabarit d'une quantité : « = 9999,9 », l'inventaire le plus
-        // large qu'un registre de stupéfiants porte. Il servait aussi de
-        // seuil entre les deux dispositions, et « = 0000,000 » — trois
-        // décimales que la balance ne rend pas — coûtait quatre-vingts
-        // pixels par colonne, assez pour plier le registre sur un écran
-        // qui portait ses neuf colonnes.
-        let qty_w = Self::widest_in(ui, mono(11.5), ["= 9999,9"].into_iter());
-        let file_w = Self::button_width(ui, &trf("stup_file", 9999));
-        let product_w = if product.is_some() {
-            (width * 0.22).max(60.0)
-        } else {
-            0.0
-        };
-        // Ce que la comptabilité seule demande : le jour, le numéro, la
-        // nature, ce qui entre, ce qui sort, le solde, le dossier.
-        let ledger = date_w + no_w + nature_w + qty_w * 3.0 + file_w + gap * 6.0;
-        let narrow = Self::stup_narrow(ui, width, product.is_some());
-        let mention_w = if narrow {
-            (width - no_w - product_w - file_w - gap * 3.0).max(120.0)
-        } else {
-            (width - (ledger + product_w + gap * 2.0)).max(120.0)
-        };
+        // soustraction — et elles se mesurent **là où la liste les
+        // mesure**, sans quoi la liste ouvrirait une grille pour une
+        // ligne qui se plie.
+        let StupWidths {
+            narrow,
+            date: date_w,
+            no: no_w,
+            nature: nature_w,
+            qty: qty_w,
+            product: product_w,
+            mention: mention_w,
+        } = Self::stup_widths(ui, width, product.is_some());
         if narrow {
             let mut action = StupLineAction::None;
             // **Le jour, la nature, ce qui entre, ce qui sort, le
@@ -22639,7 +22660,7 @@ impl App {
                             }
                             ui.visuals_mut().faint_bg_color = motif::bg_dark();
                             let table_w = ui.available_width();
-                            let narrow = Self::stup_narrow(ui, table_w, true);
+                            let narrow = Self::stup_widths(ui, table_w, true).narrow;
                             Self::stup_list(ui, "stup_ordo_grid", narrow, |ui| {
                                 if !narrow {
                                     Self::stup_header(ui, true, false);
@@ -22714,7 +22735,7 @@ impl App {
                         }
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
                         let table_w = ui.available_width();
-                        let narrow = Self::stup_narrow(ui, table_w, true);
+                        let narrow = Self::stup_widths(ui, table_w, true).narrow;
                         Self::stup_list(ui, "stup_journal_grid", narrow, |ui| {
                             if !narrow {
                                 Self::stup_header(ui, true, false);
@@ -30374,6 +30395,77 @@ mod tests {
                     "échelle {scale}, largeur {width} : {drawn} px dessinés pour {reserve} px \
                      réservés"
                 );
+            }
+        }
+    }
+
+    /// **Le registre ne sort pas du panneau par la droite non plus.**
+    ///
+    /// Et surtout : la liste et la ligne posent la **même** question à
+    /// la même fonction. Elles la posaient à deux fonctions qui
+    /// répétaient le même calcul, et une ligne pliée dessinée dans une
+    /// grille de neuf colonnes n'en finit jamais.
+    #[test]
+    fn the_register_never_runs_off_the_right_of_its_panel() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for has_product in [false, true] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new(Vec::new());
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let gap = ui.spacing().item_spacing.x;
+                        let file = App::button_width(ui, &crate::strings::trf("stup_file", 9999));
+                        let mut v = Vec::new();
+                        let mut w = 200.0_f32;
+                        while w <= 1600.0 {
+                            let c = App::stup_widths(ui, w, has_product);
+                            let full = c.date
+                                + c.no
+                                + c.product
+                                + c.nature
+                                + c.qty * 3.0
+                                + file
+                                + c.mention
+                                + gap * 8.0;
+                            v.push((w, c.narrow, c.mention, full));
+                            w += 20.0;
+                        }
+                        *seen.borrow_mut() = v;
+                    });
+                });
+                let v = seen.into_inner();
+                let mut was_narrow = true;
+                for (w, narrow, mention, full) in v {
+                    // La mention garde son plancher : en dessous elle ne
+                    // dirait plus rien, et une mention qui ne dit rien
+                    // n'a pas de raison d'occuper une colonne.
+                    assert!(
+                        mention >= 120.0 - 0.5,
+                        "échelle {scale}, largeur {w} : mention de {mention} px"
+                    );
+                    // Dépliée, la rangée entière tient — c'est la
+                    // soustraction qui le garantit, et c'est elle qui
+                    // était fausse quand la mention prenait « trente-huit
+                    // pour cent » du panneau.
+                    if !narrow {
+                        assert!(
+                            full <= w + 1.0,
+                            "échelle {scale}, largeur {w} : neuf colonnes font {full} px"
+                        );
+                    }
+                    // **Monotone** : élargir le panneau ne replie jamais
+                    // une ligne qui était dépliée. C'est ce qui se lit
+                    // comme une table qui clignote quand on tire un
+                    // volet.
+                    assert!(
+                        was_narrow || !narrow,
+                        "échelle {scale} : la ligne se replie à {w} px"
+                    );
+                    was_narrow = narrow;
+                }
+                // Et sur un grand écran, elle ne se plie pas.
+                assert!(!was_narrow, "échelle {scale} : pliée jusqu'à 1600 px");
             }
         }
     }

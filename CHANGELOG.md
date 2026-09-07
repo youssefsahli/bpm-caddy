@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Le registre mesurait ses colonnes deux fois.** La liste demandait
+  si les neuf colonnes tiennent — pour ouvrir une grille ou pas — et la
+  ligne le redemandait à une seconde fonction qui répétait le même
+  calcul. C'est la règle que ce fichier répète partout, enfreinte par ce
+  qui venait d'être écrit : `stup_widths` mesure une fois, et les deux
+  lisent la même réponse. Un test parcourt les largeurs de deux cents à
+  mille six cents pixels et tient trois choses — la mention garde son
+  plancher, la rangée dépliée tient dans le panneau, et élargir le volet
+  ne replie jamais une ligne qui était dépliée. Vérifié en y remettant
+  la part fixe de « trente-huit pour cent ».
 - La largeur minimale d'une colonne des tables de conversion s'exprime
   elle aussi en caractères : cent trente-deux pixels sont seize
   caractères à l'échelle 1 et dix à 1,6, où « Comprimés
