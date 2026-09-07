@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
-## [Unreleased]
+## [0.152.0] - 2026-09-07
 
 ### Changed
 - **Le tableau des entretiens ne défile plus à l'horizontale.** C'était
