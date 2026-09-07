@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `chars_wide` ajoutait un remplissage que le nombre qu'elle remplace
+  comprenait déjà : les champs convertis sortaient un sixième trop
+  larges. Mesuré plutôt que supposé — le « 0 » du corps fait huit pixels
+  à l'échelle 1, donc trente caractères font bien les deux cent quarante
+  que le champ demandait, et trois cents à l'échelle 1,25, ce qu'il
+  n'avait jamais.
+
 ## [0.150.0] - 2026-09-07
 
 ### Added

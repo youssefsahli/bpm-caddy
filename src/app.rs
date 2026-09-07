@@ -1033,7 +1033,14 @@ fn rank_label(rank: usize) -> String {
 fn chars_wide(ui: &egui::Ui, n: f32) -> f32 {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let ch = ui.fonts(|f| f.glyph_width(&font, '0'));
-    ch * n + ui.spacing().button_padding.x * 2.0 + 8.0
+    // Le gabarit seul, sans marge ajoutée : le nombre que ces champs
+    // portaient était déjà leur largeur totale, cadre compris, et lui
+    // rajouter un remplissage les aurait tous élargis d'un sixième pour
+    // rien. Mesuré : le « 0 » du corps fait huit pixels à l'échelle 1,
+    // donc trente caractères font les deux cent quarante que le champ
+    // demandait — et trois cents à l'échelle 1,25, ce qu'il n'avait
+    // jamais.
+    ch * n
 }
 
 fn notes_add_button_width(ui: &egui::Ui) -> f32 {
