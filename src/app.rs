@@ -7754,46 +7754,56 @@ impl App {
                     print_guide = true;
                 }
                 ui.add_space(6.0);
-                egui::Grid::new("keys")
-                    .num_columns(2)
-                    .spacing([18.0, 3.0])
+                // La liste est plus longue qu'un écran de comptoir : à
+                // 1024x700 elle dépassait par le haut *et* par le bas,
+                // titre compris, et une fenêtre centrée qu'on ne peut ni
+                // déplacer ni rapetisser ne laisse alors aucun recours.
+                // Elle défile dans ce que l'écran peut lui donner.
+                egui::ScrollArea::vertical()
+                    .id_salt("keys_body")
+                    .max_height((ctx.screen_rect().height() - 160.0).max(240.0))
                     .show(ui, |ui| {
-                        for (key, what) in rows {
-                            if key.is_empty() {
-                                // A group heading spanning both columns.
-                                ui.label("");
-                                ui.label(
-                                    egui::RichText::new(what)
-                                        .size(11.0)
-                                        .strong()
-                                        .color(motif::text_dim()),
-                                );
-                                ui.end_row();
-                                continue;
-                            }
-                            // The key itself as a keycap: a raised bevel
-                            // in the monospace face, so the eye can scan
-                            // the left column for the one it wants.
-                            let font = egui::FontId::monospace(11.5);
-                            let galley = ui.painter().layout_no_wrap(
-                                key.to_owned(),
-                                font.clone(),
-                                motif::text(),
-                            );
-                            let (cap, _) = ui.allocate_exact_size(
-                                egui::vec2(galley.size().x + 14.0, galley.size().y + 8.0),
-                                egui::Sense::hover(),
-                            );
-                            ui.painter().rect_filled(cap, 0.0, motif::bg());
-                            motif::bevel(ui.painter(), cap, true);
-                            ui.painter().galley(
-                                cap.center() - galley.size() / 2.0,
-                                galley,
-                                motif::text(),
-                            );
-                            ui.label(egui::RichText::new(what).size(12.0));
-                            ui.end_row();
-                        }
+                        egui::Grid::new("keys")
+                            .num_columns(2)
+                            .spacing([18.0, 3.0])
+                            .show(ui, |ui| {
+                                for (key, what) in rows {
+                                    if key.is_empty() {
+                                        // A group heading spanning both columns.
+                                        ui.label("");
+                                        ui.label(
+                                            egui::RichText::new(what)
+                                                .size(11.0)
+                                                .strong()
+                                                .color(motif::text_dim()),
+                                        );
+                                        ui.end_row();
+                                        continue;
+                                    }
+                                    // The key itself as a keycap: a raised bevel
+                                    // in the monospace face, so the eye can scan
+                                    // the left column for the one it wants.
+                                    let font = egui::FontId::monospace(11.5);
+                                    let galley = ui.painter().layout_no_wrap(
+                                        key.to_owned(),
+                                        font.clone(),
+                                        motif::text(),
+                                    );
+                                    let (cap, _) = ui.allocate_exact_size(
+                                        egui::vec2(galley.size().x + 14.0, galley.size().y + 8.0),
+                                        egui::Sense::hover(),
+                                    );
+                                    ui.painter().rect_filled(cap, 0.0, motif::bg());
+                                    motif::bevel(ui.painter(), cap, true);
+                                    ui.painter().galley(
+                                        cap.center() - galley.size() / 2.0,
+                                        galley,
+                                        motif::text(),
+                                    );
+                                    ui.label(egui::RichText::new(what).size(12.0));
+                                    ui.end_row();
+                                }
+                            });
                     });
             });
         if print_guide {

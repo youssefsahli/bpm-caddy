@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **La fenêtre des raccourcis clavier dépassait par le haut et par le
+  bas.** La liste est plus longue qu'un écran de comptoir : à 1024x700
+  le titre et la dernière rangée étaient coupés par les bords, et une
+  fenêtre centrée qu'on ne peut ni déplacer ni rapetisser ne laisse
+  alors aucun recours. Elle défile dans ce que l'écran peut lui donner.
 - **La fenêtre des options sortait de l'écran des deux côtés.** À
   1024x700 les libellés de sa colonne de gauche étaient coupés par le
   bord — et rien ne permettait de la rapetisser, puisqu'elle est
