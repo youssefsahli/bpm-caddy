@@ -9208,7 +9208,7 @@ impl App {
             let form_rows = Self::wrapped_rows_of(
                 ui,
                 form_w,
-                Self::carnet_form_widths(ui, session, form_w)
+                Self::carnet_form_widths(ui, session.vacc_edit.is_some(), form_w)
                     .into_iter()
                     .filter(|w| *w > 0.0),
             );
@@ -9297,7 +9297,7 @@ impl App {
             // gardait quatre-vingts pixels de vide sous le formulaire —
             // pris à la table au-dessus.
             let form_w = inner.width();
-            let widths = Self::carnet_form_widths(ui, session, form_w);
+            let widths = Self::carnet_form_widths(ui, editing.is_some(), form_w);
             let form_rows =
                 Self::wrapped_rows_of(ui, form_w, widths.iter().copied().filter(|w| *w > 0.0));
             // Le formulaire prend ce qu'il a mesuré — une rangée de
@@ -12627,8 +12627,12 @@ impl App {
     /// toujours — le carnet en comptait deux rangées et en dessinait
     /// trois, et « Imprimer » tombait sous le bord du panneau.
     ///
-    /// `width` est la largeur que le dessin aura, pas celle du panneau.
-    fn carnet_form_widths(ui: &egui::Ui, session: &Session, width: f32) -> Vec<f32> {
+    /// `width` est la largeur que le dessin aura, pas celle du panneau ;
+    /// `correcting` dit laquelle des deux rangées est en cause. Un
+    /// booléen plutôt que la session entière : c'est tout ce dont la
+    /// mesure dépend, et cela la rend vérifiable par un test qui n'a
+    /// pas de base de données à ouvrir.
+    fn carnet_form_widths(ui: &egui::Ui, correcting: bool, width: f32) -> Vec<f32> {
         // Les cinq premières sont les mêmes des deux côtés, dans le même
         // ordre : nom, dose, date, lot, site. Ce qui suit diffère.
         let dose = Self::field_width(ui, [tr("vacc_dose_hint")].into_iter());
@@ -12646,7 +12650,7 @@ impl App {
                 .chain(vaccines::CATALOGUE.iter().map(|v| v.label)),
         )
         .min(width * 0.30);
-        if session.vacc_edit.is_some() {
+        if correcting {
             return vec![
                 name,
                 dose,
@@ -29663,6 +29667,63 @@ mod tests {
                 counted <= drawn_rows + 1.0,
                 "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
             );
+        }
+    }
+
+    /// **La rangée de saisie du carnet tient dans ce qu'on lui
+    /// réserve.**
+    ///
+    /// C'est le défaut nommé par la feuille de route : la bande comptait
+    /// deux rangées et en dessinait trois, « Imprimer le carnet »
+    /// tombait sous le bord du panneau, et le carnet gardait
+    /// quatre-vingts pixels de vide sous un formulaire tronqué. Le test
+    /// mesure comme la bande mesure, dessine comme la bande dessine, et
+    /// compare — à trois échelles de texte et à trois largeurs de
+    /// panneau, dont celle qu'un comptoir donne réellement.
+    #[test]
+    fn the_carnet_writing_row_fits_what_is_reserved_for_it() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [420.0_f32, 590.0, 900.0] {
+                for correcting in [false, true] {
+                    let ctx = egui::Context::default();
+                    motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                    let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32));
+                    let _ = ctx.run(Default::default(), |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let widths = App::carnet_form_widths(ui, correcting, width);
+                            let counted = App::wrapped_rows_of(
+                                ui,
+                                width,
+                                widths.iter().copied().filter(|w| *w > 0.0),
+                            );
+                            let h = App::row_height(ui);
+                            let drawn = ui
+                                .scope(|ui| {
+                                    ui.set_max_width(width);
+                                    ui.horizontal_wrapped(|ui| {
+                                        for w in widths.iter().filter(|w| **w > 0.0) {
+                                            ui.allocate_exact_size(
+                                                egui::vec2(*w, h),
+                                                egui::Sense::hover(),
+                                            );
+                                        }
+                                    });
+                                })
+                                .response
+                                .rect
+                                .height();
+                            *seen.borrow_mut() = (counted, drawn, h, ui.spacing().item_spacing.y);
+                        });
+                    });
+                    let (counted, drawn, row, gap) = seen.into_inner();
+                    let drawn_rows = ((drawn + gap) / (row + gap)).round();
+                    assert!(
+                        counted >= drawn_rows,
+                        "échelle {scale}, largeur {width}, correction {correcting} : \
+                         {counted} rangée(s) comptée(s) pour {drawn_rows} dessinée(s)"
+                    );
+                }
+            }
         }
     }
 

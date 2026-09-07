@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Un test tient le défaut qui a ouvert la nuit.** La rangée de saisie
+  du carnet comptait deux rangées et en dessinait trois : le test mesure
+  comme la bande mesure, dessine comme la bande dessine, et compare — à
+  trois échelles de texte, à trois largeurs de panneau, et dans les deux
+  états de la rangée. Vérifié en remettant la mesure fausse.
+  `carnet_form_widths` ne prend plus la session entière mais le seul
+  booléen dont elle dépend : une mesure qui demande une base de données
+  pour être vérifiée ne l'est jamais.
 - **La largeur d'un champ de saisie ne s'écrit plus en pixels, et un
   test le refuse.** Elle s'exprime en *caractères* de la fonte du corps
   (`chars_wide`), ou par ce que son invite demande, ou par une mesure
