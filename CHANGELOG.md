@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Les invites de recherche des listes se raccourcissent aussi.**
+  « Chercher une préparation… » s'arrêtait à « Chercher une prépa » dès
+  qu'on grossissait le texte, et pareil pour les protocoles, les
+  dispositifs et le catalogue des stupéfiants. La même règle que le
+  volet de gauche, par la même fonction.
+- **Le mode d'emploi imprimé décrivait trois onglets au dossier
+  patient ; il y en a six** depuis les locations, la conciliation et les
+  pièces. Et il annonçait « vingt-sept références datées » là où la base
+  en porte quarante-trois : un nombre écrit dans une phrase est un
+  nombre qui vieillit, la phrase ne le cite plus.
 - **Vingt-trois champs de saisie étaient plus étroits que leur
   invite** — ou le seraient devenus. Leur largeur était une constante en
   pixels, donc insensible à `[ui] text_scale` : « imprimé sur le

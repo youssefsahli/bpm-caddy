@@ -1068,7 +1068,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le dossier patient",
-        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et ce que le dossier voit tout seul : les interactions repérées entre ces traitements, et la revue d'ordonnance. En dessous, trois onglets : les entretiens, le carnet de vaccination, la biologie.",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et ce que le dossier voit tout seul : les interactions repérées entre ces traitements, et la revue d'ordonnance. En dessous, six onglets : les entretiens, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie et les pièces numérisées.",
     ),
     (
         "Créer et suivre un entretien",
@@ -1096,11 +1096,11 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Les tables, le codex, les protocoles",
-        "Depuis les médicaments : « Tables de conversion » (vingt-sept références datées, une recherche unique les traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
+        "Depuis les médicaments : « Tables de conversion » (les références de comptoir, chacune datée et sourcée, qu'une seule recherche traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
     ),
     (
         "Chercher partout : « Aller à… » et « Dans le texte… »",
-        "Ctrl+K ouvre une boîte au-dessus de tout : tapez trois lettres et elle rend les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches — c'est là que vivent les vraies questions du comptoir. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », et chaque fiche qui le dit revient avec la phrase qui le porte, mot surligné, la posologie et sa remarque comprises. Une fiche patient ouverte ? Un bouton limite la recherche à ses seuls traitements.",
+        "Ctrl+K ouvre une boîte au-dessus de tout : tapez trois lettres et elle rend les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches, où se trouve souvent la réponse. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », et chaque fiche qui le dit revient avec la phrase qui le porte, mot surligné, la posologie et sa remarque comprises. Une fiche patient ouverte ? Un bouton limite la recherche à ses seuls traitements.",
     ),
     (
         "L'agenda et le carnet de transmissions",

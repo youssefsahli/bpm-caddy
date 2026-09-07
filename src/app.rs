@@ -6912,12 +6912,7 @@ impl App {
         // le panneau porte déjà son titre : « Patients », « Médicaments
         // ». Quand le nom ne tient pas, on garde le verbe.
         let w = ui.available_width();
-        let short = tr("nav_search_short");
-        let hint = if Self::field_width(ui, [hint].into_iter()) <= w {
-            hint
-        } else {
-            short
-        };
+        let hint = Self::hint_that_fits(ui, w, hint);
         let resp = ui.add_sized([w, 26.0], egui::TextEdit::singleline(text).hint_text(hint));
         motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
         ui.add_space(6.0);
@@ -12446,6 +12441,22 @@ impl App {
             + 8.0
     }
 
+    /// L'invite si elle tient dans `width`, sinon la courte.
+    ///
+    /// Une invite coupée en plein mot n'invite à rien : « Rechercher un
+    /// patient… » s'affichait « Rechercher un p » dans le volet de
+    /// gauche, et « Chercher une préparation… » s'arrêtait à
+    /// « Chercher une prépa » dès qu'on grossissait le texte. Le
+    /// panneau porte déjà son titre — « Patients », « Préparations » —,
+    /// donc quand le nom ne tient pas, on garde le verbe.
+    fn hint_that_fits<'a>(ui: &egui::Ui, width: f32, hint: &'a str) -> &'a str {
+        if Self::field_width(ui, [hint].into_iter()) <= width {
+            hint
+        } else {
+            tr("nav_search_short")
+        }
+    }
+
     /// Ce qu'un champ de date demande : son invite, et la date qu'il
     /// affichera une fois remplie.
     ///
@@ -17327,10 +17338,11 @@ impl App {
         ];
         let mut open: Option<i64> = None;
         motif::panel(ui, cols[0], Some(tr("codex_list")), |ui| {
+            let w = ui.available_width();
             let field = ui.add_sized(
-                [ui.available_width(), 24.0],
+                [w, 24.0],
                 egui::TextEdit::singleline(&mut session.codex_query)
-                    .hint_text(tr("codex_search_hint")),
+                    .hint_text(Self::hint_that_fits(ui, w, tr("codex_search_hint"))),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -19565,13 +19577,16 @@ impl App {
                 trf("stup_followed_count", to_check.len())
             }),
             |ui| {
+                let w = ui.available_width();
+                let hint = if catalogue {
+                    tr("stup_catalogue_search")
+                } else {
+                    tr("stup_search_hint")
+                };
                 let search = ui.add_sized(
-                    [ui.available_width(), Self::row_height(ui)],
-                    egui::TextEdit::singleline(&mut query).hint_text(if catalogue {
-                        tr("stup_catalogue_search")
-                    } else {
-                        tr("stup_search_hint")
-                    }),
+                    [w, Self::row_height(ui)],
+                    egui::TextEdit::singleline(&mut query)
+                        .hint_text(Self::hint_that_fits(ui, w, hint)),
                 );
                 if std::mem::take(&mut session.focus_list_search) {
                     search.request_focus();
@@ -21973,10 +21988,11 @@ impl App {
         ];
         let mut open: Option<i64> = None;
         motif::panel(ui, cols[0], Some(tr("dispo_list")), |ui| {
+            let w = ui.available_width();
             let field = ui.add_sized(
-                [ui.available_width(), 24.0],
+                [w, 24.0],
                 egui::TextEdit::singleline(&mut session.dispo_query)
-                    .hint_text(tr("dispo_search_hint")),
+                    .hint_text(Self::hint_that_fits(ui, w, tr("dispo_search_hint"))),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -22426,10 +22442,11 @@ impl App {
         let mut delete: Option<(i64, String)> = None;
         let selected = session.protocol_open.as_ref().map(|p| p.id);
         motif::panel(ui, rect, Some(tr("proto_list")), |ui| {
+            let w = ui.available_width();
             let field = ui.add_sized(
-                [ui.available_width(), 24.0],
+                [w, 24.0],
                 egui::TextEdit::singleline(&mut session.protocol_query)
-                    .hint_text(tr("proto_search_hint")),
+                    .hint_text(Self::hint_that_fits(ui, w, tr("proto_search_hint"))),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
