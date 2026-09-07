@@ -1018,6 +1018,25 @@ fn rank_label(rank: usize) -> String {
 /// Derived from the style so a bigger text scale does not push the
 /// button through the bottom of its panel.
 /// La largeur que « Ajouter » prend sur la rangée de saisie.
+/// La taille d'une boîte de dialogue : ce qu'elle voudrait, borné par
+/// ce que l'écran peut lui donner.
+///
+/// Une fenêtre egui grandit avec son contenu tant qu'on ne lui donne pas
+/// de maximum, et une fenêtre **centrée** qui déborde n'a plus ni titre
+/// ni boutons — ni aucun moyen d'être rapetissée. Trois d'entre elles
+/// sortaient de l'écran à 1024x700 : les options par les deux côtés, les
+/// raccourcis par le haut et le bas, l'ordonnance par son seul titre.
+///
+/// Les planchers sont là pour un écran absurde : sous eux la fenêtre
+/// déborde, mais elle déborde d'un écran où plus rien ne tiendrait.
+/// Pure, donc vérifiable.
+fn dialog_size(screen: egui::Vec2, want: egui::Vec2) -> egui::Vec2 {
+    egui::vec2(
+        want.x.min(screen.x - 40.0).max(320.0),
+        want.y.min(screen.y - 60.0).max(300.0),
+    )
+}
+
 /// La forme d'une table : la plus riche qui tienne dans `avail`.
 ///
 /// Quatre tables l'appliquent — le carnet de vaccination, les
@@ -5736,7 +5755,7 @@ fn export_window(
         // deux cent soixante de liste faisaient une fenêtre plus haute
         // que l'écran, sans titre ni boutons.
         let screen = ctx.screen_rect();
-        ui.set_max_width(420.0_f32.min(screen.width() - 48.0));
+        ui.set_max_width(dialog_size(screen.size(), egui::vec2(420.0, 0.0)).x);
         ui.label(
             egui::RichText::new(if box_.kind.is_prevention() {
                 tr("export_hint_prevention")
@@ -9006,10 +9025,7 @@ impl App {
         egui::Window::new(tr("ord_title"))
             .collapsible(false)
             .resizable(false)
-            .fixed_size([
-                (screen.width() - 40.0).clamp(340.0, 720.0),
-                (screen.height() - 60.0).clamp(320.0, 700.0),
-            ])
+            .fixed_size(dialog_size(screen.size(), egui::vec2(720.0, 700.0)))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 let Some(open) = &mut session.ordonnance else {
@@ -28644,10 +28660,10 @@ impl eframe::App for App {
                 // fenêtre sortait des deux côtés. Une boîte de dialogue
                 // centrée qu'on ne peut pas rapetisser doit tenir seule.
                 .resizable(false)
-                .fixed_size([
-                    (across - 40.0).clamp(340.0, 860.0),
-                    (avail - 60.0).clamp(360.0, 900.0),
-                ])
+                .fixed_size(dialog_size(
+                    egui::vec2(across, avail),
+                    egui::vec2(860.0, 900.0),
+                ))
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
                     // Et le contenu, borné : une fenêtre egui grandit
@@ -30354,6 +30370,47 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **Une boîte de dialogue tient dans l'écran.**
+    ///
+    /// Trois d'entre elles n'y tenaient pas — les options par les deux
+    /// côtés, les raccourcis par le haut et le bas, l'ordonnance par son
+    /// seul titre —, et une fenêtre centrée qui déborde n'a plus ni
+    /// titre ni boutons ni aucun moyen d'être rapetissée. La règle est
+    /// arithmétique, donc elle se vérifie sans écran.
+    #[test]
+    fn a_dialog_fits_the_screen_it_is_centred_on() {
+        use super::dialog_size;
+        let want = egui::vec2(860.0, 900.0);
+        // Les écrans qu'une officine présente, du portable au poste de
+        // comptoir au grand écran.
+        for (w, h) in [
+            (1024.0_f32, 700.0_f32),
+            (1280.0, 800.0),
+            (1366.0, 768.0),
+            (1400.0, 900.0),
+            (1920.0, 1080.0),
+        ] {
+            let s = dialog_size(egui::vec2(w, h), want);
+            assert!(
+                s.x <= w && s.y <= h,
+                "{w}x{h} : une fenêtre de {}x{}",
+                s.x,
+                s.y
+            );
+            // Et elle laisse voir qu'il y a un bureau derrière : une
+            // boîte qui remplit l'écran au pixel près ne se lit plus
+            // comme une boîte.
+            assert!(s.x <= w - 40.0 || s.x == 320.0);
+            assert!(s.y <= h - 60.0 || s.y == 300.0);
+            // Elle ne dépasse jamais ce qu'elle demandait non plus.
+            assert!(s.x <= want.x && s.y <= want.y, "{w}x{h} : plus que demandé");
+        }
+        // Sur un écran absurde, le plancher passe devant : la fenêtre
+        // déborde, mais d'un écran où plus rien ne tiendrait.
+        let tiny = dialog_size(egui::vec2(200.0, 200.0), want);
+        assert_eq!(tiny, egui::vec2(320.0, 300.0));
     }
 
     /// **La forme d'une table est la plus riche qui tienne.**

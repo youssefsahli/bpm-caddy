@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Une boîte de dialogue tient dans l'écran, et c'est une règle** —
+  `dialog_size` — plutôt que trois formules recopiées. Trois d'entre
+  elles n'y tenaient pas : les options par les deux côtés, les
+  raccourcis par le haut et le bas, l'ordonnance par son seul titre. Le
+  test est arithmétique, donc il n'a pas besoin d'écran ; vérifié en
+  retirant la borne.
 - **La bande d'identité du dossier est tenue par un test.** C'est celle
   dont la hauteur décide de tout le reste : trop courte, elle perd
   « Nouvel entretien » et le choix rapide des actes ; trop haute, elle ne

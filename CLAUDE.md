@@ -288,6 +288,12 @@ add clicking and typing; it is not the price of entry.
   `motif::inside` when content must not escape its frame. It also
   reserves **no space**, so a `ScrollArea` around it never learns the
   content is wider than the viewport and offers no bar.
+- **Heights are the exception, and deliberately so.** `add_sized([w,
+  24.0], TextEdit…)` is fine: egui raises a text field to
+  `spacing.interact_size.y`, and `motif::apply_scale` scales *that* with
+  `[ui] text_scale`. The literal is a floor the style overrides, not a
+  size the style ignores — which is exactly what a width literal was.
+  Don't "fix" the heights.
 - **A text field's width is never written in pixels.** It is
   `chars_wide` (a width in characters of the body face), `field_width`
   (what its own hint needs), or a measurement taken above and handed
