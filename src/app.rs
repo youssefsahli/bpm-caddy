@@ -1045,11 +1045,23 @@ fn notes_add_rows(ui: &egui::Ui) -> f32 {
             .x
     }) + 12.0;
     let need = hint + notes_add_button_width(ui) + ui.spacing().item_spacing.x;
-    if ui.available_width() >= need {
+    if notes_row_width(ui) >= need {
         1.0
     } else {
         2.0
     }
+}
+
+/// La largeur qu'on peut vraiment **dessiner** sur cette rangée.
+///
+/// Et non celle que `available_width` annonce : dans une zone
+/// défilante, celle-ci compte la place que la barre de défilement
+/// prendra sur le bord droit, si bien que le bouton « Ajouter »,
+/// calculé « ce qui reste après le champ », se dessinait dessous et se
+/// lisait « Ajout ». Le rectangle de découpe, lui, ne ment pas.
+fn notes_row_width(ui: &egui::Ui) -> f32 {
+    let right = ui.clip_rect().right().min(ui.max_rect().right());
+    (right - ui.cursor().left()).max(60.0)
 }
 
 fn notes_box_reserve(ui: &egui::Ui) -> f32 {
@@ -1158,10 +1170,11 @@ fn notes_box(
         let button_w = notes_add_button_width(ui);
         let mut pressed = false;
         ui.horizontal(|ui| {
+            let room = notes_row_width(ui);
             let field_w = if stacked {
-                ui.available_width()
+                room
             } else {
-                (ui.available_width() - button_w - ui.spacing().item_spacing.x).max(60.0)
+                (room - button_w - ui.spacing().item_spacing.x).max(60.0)
             };
             ui.add_sized(
                 [field_w, 24.0],
@@ -1450,6 +1463,15 @@ struct StupLineView<'a> {
     /// chaque ligne ne dit pas ce qui reste derrière elle oblige à
     /// additionner de tête pour vérifier quoi que ce soit.
     balance: Option<f64>,
+    /// La largeur dont la table dispose.
+    ///
+    /// Deux colonnes de cette ligne n'ont pas de longueur bornée — le
+    /// libellé du produit, et la mention qui recolle prescripteur,
+    /// fournisseur, référence, remarque et opérateur — et un `Grid`
+    /// d'egui donne à chaque colonne la largeur de son plus long
+    /// contenu : une seule ligne bavarde, et le registre entier sortait
+    /// du panneau à droite, la colonne « Dossier » la première.
+    width: f32,
 }
 
 /// Les colonnes d'une ligne de registre.
@@ -15650,19 +15672,54 @@ impl App {
             // nothing runs off the right edge, which is what a fixed
             // 250 px title field did as soon as the panel was a column.
             let avail = ui.available_width();
-            let narrow = avail < 560.0;
+            // **Tout est mesuré, y compris le seuil.** Les largeurs de
+            // cette rangée étaient des constantes — 110 pour la
+            // catégorie, 52 par heure, 130 pour la répétition — et le
+            // seuil « plus étroit que 560 » en était une autre. À
+            // `[ui] text_scale = 1,25` les listes déroulantes sont plus
+            // larges que ces nombres, la réserve était donc trop
+            // courte : le champ du titre tombait à son plancher, la
+            // rangée dépassait, et « Formation, réunion… » se lisait
+            // « Formation, réuni… » à côté d'un « Une fois » collé au
+            // bord.
+            let gap = ui.spacing().item_spacing.x;
+            // Une liste déroulante porte son texte, sa flèche et son
+            // cadre : la flèche et le cadre ne se mesurent pas dans la
+            // fonte, on les compte.
+            let arrow = ui.spacing().icon_width + gap;
+            let cat_w =
+                Self::field_width(ui, db::EventCategory::ALL.iter().map(|c| c.label())) + arrow;
+            let hour_w = Self::field_width(ui, [tr("agenda_hour_hint"), "00:00"].into_iter());
+            let end_w = Self::field_width(ui, [tr("agenda_end_hint"), "00:00"].into_iter());
+            let rep_w = Self::field_width(
+                ui,
+                [
+                    tr("agenda_repeat_once"),
+                    tr("agenda_repeat_week"),
+                    tr("agenda_repeat_fortnight"),
+                    tr("agenda_repeat_month"),
+                ]
+                .into_iter(),
+            ) + arrow;
+            let add_w = Self::button_width(ui, tr("agenda_event_add"));
+            let reserve = cat_w + hour_w + end_w + rep_w + add_w + gap * 5.0 + 18.0;
+            // Et le titre a un plancher : ce que son invite demande.
+            // En dessous, la rangée se casse en trois plutôt que de
+            // pousser ses voisins hors du panneau.
+            let title_min = Self::field_width(ui, [tr("agenda_event_hint")].into_iter());
+            let narrow = avail - reserve < title_min;
             let mut entered = false;
             let category = |ui: &mut egui::Ui, session: &mut Session| {
                 egui::ComboBox::from_id_salt("event_cat")
                     .selected_text(session.event_category.label())
-                    .width(110.0)
+                    .width(cat_w - arrow)
                     .show_ui(ui, |ui| {
                         for c in db::EventCategory::ALL {
                             ui.selectable_value(&mut session.event_category, c, c.label());
                         }
                     });
                 ui.add_sized(
-                    [52.0, 24.0],
+                    [hour_w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_time)
                         .hint_text(tr("agenda_hour_hint")),
                 )
@@ -15675,7 +15732,7 @@ impl App {
                         .color(motif::text_faint()),
                 );
                 ui.add_sized(
-                    [52.0, 24.0],
+                    [end_w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_end)
                         .hint_text(tr("agenda_end_hint")),
                 );
@@ -15703,7 +15760,7 @@ impl App {
                 };
                 egui::ComboBox::from_id_salt("event_repeat")
                     .selected_text(label)
-                    .width(130.0)
+                    .width(rep_w - arrow)
                     .show_ui(ui, |ui| {
                         for (days, label) in [
                             (0, tr("agenda_repeat_once")),
@@ -15730,19 +15787,7 @@ impl App {
             } else {
                 ui.horizontal(|ui| {
                     category(ui, session);
-                    // The reserve is the sum of the fixed controls, not
-                    // a round number: 360 left out the width of the
-                    // « Ajouter » button itself, so at 1280 the button
-                    // went off the right edge of the day pane.
-                    let reserve = 110.0
-                        + 52.0
-                        + 52.0
-                        + 18.0
-                        + 130.0
-                        + Self::button_width(ui, tr("agenda_event_add"))
-                        + ui.spacing().button_padding.x * 4.0
-                        + ui.spacing().item_spacing.x * 4.0;
-                    let field = title(ui, session, (avail - reserve).clamp(140.0, 420.0));
+                    let field = title(ui, session, (avail - reserve).clamp(title_min, 420.0));
                     entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     repeat(ui, session);
                     if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
@@ -16199,7 +16244,16 @@ impl App {
                 db::format_french_date(&session.agenda_day),
             )),
             |ui| {
+                // Le bord droit appartient à la barre de défilement : un
+                // contenu posé jusqu'au bord du panneau se dessine
+                // dessous, et c'est ce qui coupait « Ajouter » en
+                // « Ajout » sous les notes du jour. La monographie
+                // réserve les mêmes quatorze pixels pour la même raison.
                 let rect = ui.max_rect();
+                let rect = egui::Rect::from_min_max(
+                    rect.min,
+                    egui::pos2(rect.right() - 14.0, rect.bottom()),
+                );
                 motif::inside(ui, rect, |ui| {
                     egui::ScrollArea::vertical()
                         .id_salt("agenda_day_panel")
@@ -19998,6 +20052,7 @@ impl App {
                                 return;
                             }
                             ui.visuals_mut().faint_bg_color = motif::bg_dark();
+                            let table_w = ui.available_width();
                             egui::Grid::new("stup_register_grid")
                                 .num_columns(STUP_COLUMNS)
                                 .spacing([8.0, 3.0])
@@ -20023,6 +20078,7 @@ impl App {
                                         let act = Self::stup_line(
                                             ui,
                                             StupLineView {
+                                                width: table_w,
                                                 m,
                                                 product: None,
                                                 cancelled: session.stup_cancelled.contains(&m.id),
@@ -20778,9 +20834,31 @@ impl App {
             offer_cancel,
             balance,
             pieces,
+            width,
         } = v;
         let kind = Kind::from_key(&m.kind);
         let mut action = StupLineAction::None;
+        // **Ce que la mention peut prendre : ce que les huit autres
+        // colonnes laissent, et pas un pixel de plus.** Une part fixe —
+        // « trente-huit pour cent » — tombait juste sur un panneau et
+        // faux sur l'autre : à 1400x900 le bouton « Annuler » sortait
+        // encore par la droite. Les huit largeurs se mesurent, la
+        // neuvième est la soustraction.
+        let gap = ui.spacing().item_spacing.x;
+        let mono = |size: f32| egui::FontId::monospace(size);
+        let date_w = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter());
+        let no_w = Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter());
+        let nature_w = Self::widest(ui, 11.0, Kind::ALL.iter().map(|k| tr(k.label_key())));
+        let qty_w = Self::widest_in(ui, mono(11.5), ["= 0000,000"].into_iter());
+        let file_w = Self::button_width(ui, &trf("stup_file", 9999));
+        let product_w = if product.is_some() {
+            (width * 0.22).max(60.0)
+        } else {
+            0.0
+        };
+        let mention_w = (width
+            - (date_w + no_w + product_w + nature_w + qty_w * 3.0 + file_w + gap * 8.0))
+            .max(120.0);
         // Une ligne annulée reste écrite et se lit barrée : c'est ce que
         // voit celui qui contrôle — la faute, et la correction qui la
         // nomme. La faire disparaître serait exactement ce que
@@ -20821,12 +20899,16 @@ impl App {
         // 3 — le produit, quand la liste en mêle plusieurs : le journal
         // et l'ordonnancier en portent, le registre d'un produit non —
         // l'y répéter à chaque ligne serait quarante fois le même mot au
-        // milieu de ce qu'on est venu lire.
+        // milieu de ce qu'on est venu lire. Borné, et élidé plutôt que
+        // d'élargir sa colonne : ce sont les chiffres qui doivent tomber
+        // les uns sous les autres.
         match product {
             Some(label) => {
-                ui.label(dress(
-                    egui::RichText::new(label).size(11.0).color(motif::text()),
-                ));
+                Self::grid_cell(
+                    ui,
+                    product_w,
+                    dress(egui::RichText::new(label).size(11.0).color(motif::text())),
+                );
             }
             None => {
                 ui.label("");
@@ -20905,110 +20987,121 @@ impl App {
         }
         // 9 — la mention : ce que la ligne dit d'elle-même, l'écart d'un
         // inventaire, ce qu'une annulation désigne, et la correction.
-        ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                if kind == Kind::Annulation {
-                    let what = match target {
-                        Some(t) => trn(
-                            "stup_cancels_line",
-                            &[
-                                &db::format_french_date(&t.happened_on),
-                                &tr(Kind::from_key(&t.kind).label_key()).to_lowercase(),
-                                &crate::codex::format_quantity(t.quantity),
-                            ],
-                        ),
-                        None => tr("stup_cancels_other").to_owned(),
-                    };
-                    ui.label(
-                        egui::RichText::new(what)
-                            .size(11.0)
-                            .color(motif::text_dim()),
-                    );
-                }
-                let side = [
-                    m.prescriber.as_str(),
-                    m.supplier.as_str(),
-                    m.reference.as_str(),
-                    m.remark.as_str(),
-                    m.operator.as_str(),
-                ]
-                .into_iter()
-                .filter(|t| !t.is_empty())
-                .collect::<Vec<_>>()
-                .join(" · ");
-                if !side.is_empty() {
-                    ui.label(
-                        egui::RichText::new(side)
-                            .size(10.5)
-                            .color(motif::text_dim()),
-                    );
-                }
-                // L'écart d'un inventaire est ce qui se relit dix ans
-                // plus tard : il est écrit, pas recalculé.
-                if kind == Kind::Inventaire {
-                    let d = crate::ordonnancier::Discrepancy {
-                        expected: m.expected,
-                        counted: m.quantity,
-                    };
-                    if d.matters() {
-                        ui.label(dress(
-                            egui::RichText::new(trf(
-                                "stup_gap",
-                                crate::codex::format_quantity(d.gap()),
-                            ))
-                            .size(10.5)
-                            .color(motif::alert()),
-                        ));
+        ui.scope(|ui| {
+            // Au plus : ce qui suit ne doit pas pousser « Dossier » hors
+            // du panneau. Un maximum et non une largeur fixe — une
+            // mention courte ne doit pas creuser une colonne vide.
+            ui.set_max_width(mention_w);
+            ui.vertical(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if kind == Kind::Annulation {
+                        let what = match target {
+                            Some(t) => trn(
+                                "stup_cancels_line",
+                                &[
+                                    &db::format_french_date(&t.happened_on),
+                                    &tr(Kind::from_key(&t.kind).label_key()).to_lowercase(),
+                                    &crate::codex::format_quantity(t.quantity),
+                                ],
+                            ),
+                            None => tr("stup_cancels_other").to_owned(),
+                        };
+                        ui.label(
+                            egui::RichText::new(what)
+                                .size(11.0)
+                                .color(motif::text_dim()),
+                        );
                     }
-                }
-                // La pièce qui justifie la ligne. Elle se pose depuis
-                // l'onglet des pièces ; ici elle se **voit**, ce qui est
-                // tout ce qu'un contrôle demande.
-                if pieces > 0 {
-                    ui.label(
-                        egui::RichText::new(trf("stup_line_pieces", pieces))
-                            .size(10.5)
-                            .color(motif::accent()),
-                    )
-                    .on_hover_text(tr("stup_line_pieces_tooltip"));
-                }
-                if cancelled {
-                    ui.label(
-                        egui::RichText::new(tr("stup_is_cancelled"))
-                            .size(10.5)
-                            .color(motif::alert()),
-                    );
-                } else if offer_cancel
-                    && kind.can_be_cancelled()
-                    && !cancelling
-                    && motif::button(ui, tr("stup_cancel"))
-                        .on_hover_text(tr("stup_cancel_tooltip"))
-                        .clicked()
-                {
-                    action = StupLineAction::Ask(m.id);
-                }
-            });
-            // Le motif s'ouvre **sous** la ligne qu'il annule, et il est
-            // obligatoire : le bouton reste éteint tant qu'il est vide.
-            if cancelling {
-                ui.horizontal(|ui| {
-                    ui.add_sized(
-                        [
-                            (ui.available_width() - 160.0).max(80.0),
-                            Self::row_height(ui),
-                        ],
-                        egui::TextEdit::singleline(reason).hint_text(tr("stup_cancel_reason_hint")),
-                    );
-                    if motif::button_enabled(ui, tr("stup_cancel_do"), !reason.trim().is_empty())
-                        .clicked()
+                    let side = [
+                        m.prescriber.as_str(),
+                        m.supplier.as_str(),
+                        m.reference.as_str(),
+                        m.remark.as_str(),
+                        m.operator.as_str(),
+                    ]
+                    .into_iter()
+                    .filter(|t| !t.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" · ");
+                    if !side.is_empty() {
+                        ui.label(
+                            egui::RichText::new(side)
+                                .size(10.5)
+                                .color(motif::text_dim()),
+                        );
+                    }
+                    // L'écart d'un inventaire est ce qui se relit dix ans
+                    // plus tard : il est écrit, pas recalculé.
+                    if kind == Kind::Inventaire {
+                        let d = crate::ordonnancier::Discrepancy {
+                            expected: m.expected,
+                            counted: m.quantity,
+                        };
+                        if d.matters() {
+                            ui.label(dress(
+                                egui::RichText::new(trf(
+                                    "stup_gap",
+                                    crate::codex::format_quantity(d.gap()),
+                                ))
+                                .size(10.5)
+                                .color(motif::alert()),
+                            ));
+                        }
+                    }
+                    // La pièce qui justifie la ligne. Elle se pose depuis
+                    // l'onglet des pièces ; ici elle se **voit**, ce qui est
+                    // tout ce qu'un contrôle demande.
+                    if pieces > 0 {
+                        ui.label(
+                            egui::RichText::new(trf("stup_line_pieces", pieces))
+                                .size(10.5)
+                                .color(motif::accent()),
+                        )
+                        .on_hover_text(tr("stup_line_pieces_tooltip"));
+                    }
+                    if cancelled {
+                        ui.label(
+                            egui::RichText::new(tr("stup_is_cancelled"))
+                                .size(10.5)
+                                .color(motif::alert()),
+                        );
+                    } else if offer_cancel
+                        && kind.can_be_cancelled()
+                        && !cancelling
+                        && motif::button(ui, tr("stup_cancel"))
+                            .on_hover_text(tr("stup_cancel_tooltip"))
+                            .clicked()
                     {
-                        action = StupLineAction::Confirm(m.id);
-                    }
-                    if motif::button(ui, tr("stup_cancel_abandon")).clicked() {
-                        action = StupLineAction::Abandon;
+                        action = StupLineAction::Ask(m.id);
                     }
                 });
-            }
+                // Le motif s'ouvre **sous** la ligne qu'il annule, et il est
+                // obligatoire : le bouton reste éteint tant qu'il est vide.
+                if cancelling {
+                    ui.horizontal(|ui| {
+                        ui.add_sized(
+                            [
+                                (ui.available_width() - 160.0).max(80.0),
+                                Self::row_height(ui),
+                            ],
+                            egui::TextEdit::singleline(reason)
+                                .hint_text(tr("stup_cancel_reason_hint")),
+                        );
+                        if motif::button_enabled(
+                            ui,
+                            tr("stup_cancel_do"),
+                            !reason.trim().is_empty(),
+                        )
+                        .clicked()
+                        {
+                            action = StupLineAction::Confirm(m.id);
+                        }
+                        if motif::button(ui, tr("stup_cancel_abandon")).clicked() {
+                            action = StupLineAction::Abandon;
+                        }
+                    });
+                }
+            });
         });
         ui.end_row();
         action
@@ -21579,6 +21672,7 @@ impl App {
                                 return;
                             }
                             ui.visuals_mut().faint_bg_color = motif::bg_dark();
+                            let table_w = ui.available_width();
                             egui::Grid::new("stup_ordo_grid")
                                 .num_columns(STUP_COLUMNS)
                                 .spacing([8.0, 3.0])
@@ -21589,6 +21683,7 @@ impl App {
                                         let act = Self::stup_line(
                                             ui,
                                             StupLineView {
+                                                width: table_w,
                                                 m,
                                                 product: session
                                                     .stup_labels
@@ -21653,6 +21748,7 @@ impl App {
                             return;
                         }
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
+                        let table_w = ui.available_width();
                         egui::Grid::new("stup_journal_grid")
                             .num_columns(STUP_COLUMNS)
                             .spacing([8.0, 3.0])
@@ -21668,6 +21764,7 @@ impl App {
                                     let act = Self::stup_line(
                                         ui,
                                         StupLineView {
+                                            width: table_w,
                                             m,
                                             product: session
                                                 .stup_labels

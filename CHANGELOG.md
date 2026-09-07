@@ -30,6 +30,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rangée où le nom du patient n'en avait déjà plus.
 
 ### Fixed
+- **Une seule ligne bavarde élargissait tout le registre des
+  stupéfiants.** Deux de ses neuf colonnes n'avaient pas de longueur
+  bornée — le libellé du produit, et la mention qui recolle
+  prescripteur, fournisseur, référence, remarque et opérateur — et un
+  `Grid` d'egui donne à chaque colonne la largeur de son plus long
+  contenu : la colonne « Dossier » sortait du panneau la première.
+  Les huit premières largeurs se mesurent maintenant, la neuvième est
+  la soustraction, et la mention se replie dedans. (À 1024x700 avec les
+  deux volets ouverts, le registre demande toujours plus de largeur que
+  le panneau n'en a : il défile, comme avant, mais du minimum.)
+- **La rangée du jour de l'agenda dépassait par la droite.** Ses
+  largeurs étaient des constantes — 110 pour la catégorie, 52 par
+  heure, 130 pour la répétition — et le seuil « plus étroit que 560 »
+  en était une autre : à `[ui] text_scale = 1,25` les listes
+  déroulantes sont plus larges que ces nombres, la réserve était donc
+  trop courte, le champ du titre tombait à son plancher et
+  « Formation, réunion… » se lisait « Formation, réuni… ». Tout est
+  mesuré, seuil compris.
+- **« Ajouter » se dessinait sous la barre de défilement** — et se
+  lisait « Ajout ». La rangée d'ajout d'un journal se mesurait sur
+  `available_width`, qui compte la place que la barre prendra ; elle se
+  mesure maintenant sur le rectangle de découpe, qui ne ment pas.
 - **La date qu'on venait de taper était coupée dans le champ où on
   l'avait tapée.** Les cinq champs de date de l'application étaient
   larges de 80, 92, 96 ou 100 pixels selon l'endroit — des constantes,
