@@ -12841,10 +12841,22 @@ impl App {
     /// sort du panneau à droite. La largeur est donc décidée au-dessus,
     /// et le texte s'élide.
     fn grid_cell(ui: &mut egui::Ui, width: f32, text: egui::RichText) {
-        ui.scope(|ui| {
-            ui.set_width(width);
-            ui.add(egui::Label::new(text).truncate());
-        });
+        // **La place est réservée avant d'être remplie.** Un `ui.scope`
+        // n'annonce pas sa taille : dans un `horizontal_wrapped`, egui
+        // ne sait donc pas qu'il ne tiendra pas et ne va pas à la ligne
+        // — le registre plié perdait sa colonne « Solde » par la droite
+        // sans qu'aucune barre ne le dise. `allocate_ui_with_layout`
+        // demande la largeur d'abord, et l'enveloppement redevient
+        // possible.
+        let h = ui.text_style_height(&egui::TextStyle::Body);
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, h),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.set_width(width);
+                ui.add(egui::Label::new(text).truncate());
+            },
+        );
     }
 
     /// [`wrapped_rows_of`] for a row that is all buttons.
@@ -20700,52 +20712,48 @@ impl App {
                             }
                             ui.visuals_mut().faint_bg_color = motif::bg_dark();
                             let table_w = ui.available_width();
-                            egui::Grid::new("stup_register_grid")
-                                .num_columns(STUP_COLUMNS)
-                                .spacing([8.0, 3.0])
-                                .striped(true)
-                                .show(ui, |ui| {
+                            let narrow = Self::stup_narrow(ui, table_w, false);
+                            Self::stup_list(ui, "stup_register_grid", narrow, |ui| {
+                                if !narrow {
                                     Self::stup_header(ui, false, true);
-                                    // Le registre se lit du plus récent au
-                                    // plus ancien : ce qu'on vient d'écrire
-                                    // est ce qu'on vient vérifier. Le solde,
-                                    // lui, se calcule dans l'ordre des jours
-                                    // — `running` a déjà répondu, et l'index
-                                    // suit la liste puisque les deux sont
-                                    // triées pareil.
-                                    for (i, m) in session.stup_moves.iter().enumerate().rev() {
-                                        let target = (m.cancels > 0)
-                                            .then(|| {
-                                                session
-                                                    .stup_moves
-                                                    .iter()
-                                                    .find(|t| t.id == m.cancels)
-                                            })
-                                            .flatten();
-                                        let act = Self::stup_line(
-                                            ui,
-                                            StupLineView {
-                                                width: table_w,
-                                                m,
-                                                product: None,
-                                                cancelled: session.stup_cancelled.contains(&m.id),
-                                                target,
-                                                cancelling: session.stup_cancelling == Some(m.id),
-                                                offer_cancel: true,
-                                                balance: curve.get(i).copied(),
-                                                pieces: session
-                                                    .stup_pieces
-                                                    .get(&m.id)
-                                                    .copied()
-                                                    .unwrap_or(0),
-                                            },
-                                            &mut cancel_reason,
-                                        );
-                                        if act != StupLineAction::None {
-                                            line_action = act;
-                                        }
+                                }
+                                // Le registre se lit du plus récent au
+                                // plus ancien : ce qu'on vient d'écrire
+                                // est ce qu'on vient vérifier. Le solde,
+                                // lui, se calcule dans l'ordre des jours
+                                // — `running` a déjà répondu, et l'index
+                                // suit la liste puisque les deux sont
+                                // triées pareil.
+                                for (i, m) in session.stup_moves.iter().enumerate().rev() {
+                                    let target = (m.cancels > 0)
+                                        .then(|| {
+                                            session.stup_moves.iter().find(|t| t.id == m.cancels)
+                                        })
+                                        .flatten();
+                                    let act = Self::stup_line(
+                                        ui,
+                                        StupLineView {
+                                            width: table_w,
+                                            m,
+                                            product: None,
+                                            cancelled: session.stup_cancelled.contains(&m.id),
+                                            target,
+                                            cancelling: session.stup_cancelling == Some(m.id),
+                                            offer_cancel: true,
+                                            balance: curve.get(i).copied(),
+                                            pieces: session
+                                                .stup_pieces
+                                                .get(&m.id)
+                                                .copied()
+                                                .unwrap_or(0),
+                                        },
+                                        &mut cancel_reason,
+                                    );
+                                    if act != StupLineAction::None {
+                                        line_action = act;
                                     }
-                                });
+                                }
+                            });
                         });
                 });
             });
@@ -21466,88 +21474,140 @@ impl App {
         }
     }
 
-    /// Une ligne du registre, telle qu'elle se lit.
+    /// La liste du registre : dans une grille quand ses neuf colonnes
+    /// tiennent, en rangées pliées quand elles ne tiennent pas.
     ///
-    /// Écrite une fois et dessinée à deux endroits — le registre d'un
-    /// produit et le journal des dernières lignes. Une ligne de registre
-    /// qui ne se lirait pas pareil selon l'écran est une ligne dont on
-    /// doute, et c'est la seule chose qu'un registre ne peut pas se
-    /// permettre.
+    /// Une ligne pliée dessinée dans une grille de neuf colonnes n'en
+    /// finit jamais : c'est la même question que [`App::stup_narrow`]
+    /// répond, posée par la liste plutôt que par la ligne.
+    fn stup_list<R>(
+        ui: &mut egui::Ui,
+        salt: &str,
+        narrow: bool,
+        add: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> R {
+        if narrow {
+            return add(ui);
+        }
+        egui::Grid::new(salt)
+            .num_columns(STUP_COLUMNS)
+            .spacing([8.0, 3.0])
+            .striped(true)
+            .show(ui, add)
+            .inner
+    }
+
+    /// Le registre tient-il ses neuf colonnes dans cette largeur ?
     ///
-    /// Ce que le clic demande **remonte** : rien n'est écrit ici.
-    fn stup_line(ui: &mut egui::Ui, v: StupLineView, reason: &mut String) -> StupLineAction {
-        use crate::ordonnancier::Kind;
-        let StupLineView {
-            m,
-            product,
-            cancelled,
-            target,
-            cancelling,
-            offer_cancel,
-            balance,
-            pieces,
-            width,
-        } = v;
-        let kind = Kind::from_key(&m.kind);
-        let mut action = StupLineAction::None;
-        // **Ce que la mention peut prendre : ce que les huit autres
-        // colonnes laissent, et pas un pixel de plus.** Une part fixe —
-        // « trente-huit pour cent » — tombait juste sur un panneau et
-        // faux sur l'autre : à 1400x900 le bouton « Annuler » sortait
-        // encore par la droite. Les huit largeurs se mesurent, la
-        // neuvième est la soustraction.
+    /// La question est posée **deux fois** — par la liste, qui ouvre un
+    /// `Grid` ou pas, et par la ligne, qui se dessine en une rangée ou
+    /// en deux — et il faut qu'elle reçoive la même réponse : une ligne
+    /// pliée dessinée dans une grille de neuf colonnes n'en finit
+    /// jamais.
+    fn stup_narrow(ui: &egui::Ui, width: f32, has_product: bool) -> bool {
         let gap = ui.spacing().item_spacing.x;
         let mono = |size: f32| egui::FontId::monospace(size);
-        let date_w = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter());
-        let no_w = Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter());
-        let nature_w = Self::widest(ui, 11.0, Kind::ALL.iter().map(|k| tr(k.label_key())));
-        let qty_w = Self::widest_in(ui, mono(11.5), ["= 0000,000"].into_iter());
-        let file_w = Self::button_width(ui, &trf("stup_file", 9999));
-        let product_w = if product.is_some() {
+        let ledger = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter())
+            + Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter())
+            + Self::widest(
+                ui,
+                11.0,
+                crate::ordonnancier::Kind::ALL
+                    .iter()
+                    .map(|k| tr(k.label_key())),
+            )
+            + Self::widest_in(ui, mono(11.5), ["= 9999,9"].into_iter()) * 3.0
+            + Self::button_width(ui, &trf("stup_file", 9999))
+            + gap * 6.0;
+        let product = if has_product {
             (width * 0.22).max(60.0)
         } else {
             0.0
         };
-        let mention_w = (width
-            - (date_w + no_w + product_w + nature_w + qty_w * 3.0 + file_w + gap * 8.0))
-            .max(120.0);
-        // Une ligne annulée reste écrite et se lit barrée : c'est ce que
-        // voit celui qui contrôle — la faute, et la correction qui la
-        // nomme. La faire disparaître serait exactement ce que
-        // l'inaltérabilité interdit.
-        let ink = if cancelled {
+        // Cent vingt pixels : ce qu'il faut à la mention pour dire
+        // quelque chose. En dessous, elle ne dirait plus rien.
+        width - (ledger + product + gap * 2.0) < 120.0
+    }
+
+    /// L'encre d'une ligne du registre : une ligne annulée reste écrite
+    /// et se lit barrée. C'est ce que voit celui qui contrôle — la
+    /// faute, et la correction qui la nomme. La faire disparaître serait
+    /// exactement ce que l'inaltérabilité interdit.
+    fn stup_ink(cancelled: bool) -> egui::Color32 {
+        if cancelled {
             motif::text_faint()
         } else {
             motif::text()
-        };
-        let dress = move |t: egui::RichText| {
+        }
+    }
+
+    /// Le même, appliqué à un texte.
+    fn stup_dress(cancelled: bool) -> impl Fn(egui::RichText) -> egui::RichText {
+        let ink = Self::stup_ink(cancelled);
+        move |t: egui::RichText| {
             if cancelled {
                 t.strikethrough().color(ink)
             } else {
                 t
             }
-        };
-        // 1 — le jour.
-        ui.label(dress(
-            egui::RichText::new(db::format_french_date(&m.happened_on))
-                .size(11.0)
-                .monospace()
-                .color(motif::text_dim()),
-        ));
+        }
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_day(ui: &mut egui::Ui, m: &db::StupMove, cancelled: bool, w: f32) {
+        let dress = Self::stup_dress(cancelled);
+        // 1 — le jour. Sa largeur est **donnée**, jamais prise au
+        // contenu : pliée, la ligne n'est plus dans une grille, et un
+        // registre dont les dates ne tombent pas les unes sous les
+        // autres ne se relit pas.
+        Self::grid_cell(
+            ui,
+            w,
+            dress(
+                egui::RichText::new(db::format_french_date(&m.happened_on))
+                    .size(11.0)
+                    .monospace()
+                    .color(motif::text_dim()),
+            ),
+        );
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_no(ui: &mut egui::Ui, m: &db::StupMove, cancelled: bool, w: f32) {
+        let dress = Self::stup_dress(cancelled);
         // 2 — le numéro d'ordonnancier, quand la ligne en porte un.
         if m.ordo_no > 0 {
-            ui.label(dress(
-                egui::RichText::new(crate::ordonnancier::number_label(
-                    m.ordo_year as u32,
-                    m.ordo_no as u32,
-                ))
-                .size(11.0)
-                .monospace()
-                .color(motif::text_dim()),
-            ));
+            Self::grid_cell(
+                ui,
+                w,
+                dress(
+                    egui::RichText::new(crate::ordonnancier::number_label(
+                        m.ordo_year as u32,
+                        m.ordo_no as u32,
+                    ))
+                    .size(11.0)
+                    .monospace()
+                    .color(motif::text_dim()),
+                ),
+            );
         } else {
-            ui.label("");
+            Self::grid_cell(ui, w, egui::RichText::new(""));
         }
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_product(ui: &mut egui::Ui, product: Option<&str>, w: f32, cancelled: bool) {
+        let dress = Self::stup_dress(cancelled);
+        let product_w = w;
         // 3 — le produit, quand la liste en mêle plusieurs : le journal
         // et l'ordonnancier en portent, le registre d'un produit non —
         // l'y répéter à chaque ligne serait quarante fois le même mot au
@@ -21566,12 +21626,33 @@ impl App {
                 ui.label("");
             }
         }
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_kind_and_amounts(
+        ui: &mut egui::Ui,
+        m: &db::StupMove,
+        cancelled: bool,
+        nature_w: f32,
+        qty_w: f32,
+    ) {
+        use crate::ordonnancier::Kind;
+        let dress = Self::stup_dress(cancelled);
+        let ink = Self::stup_ink(cancelled);
+        let kind = Kind::from_key(&m.kind);
         // 4 — la nature.
-        ui.label(dress(
-            egui::RichText::new(tr(kind.label_key()))
-                .size(11.0)
-                .color(motif::chart::series_color(kind.series())),
-        ));
+        Self::grid_cell(
+            ui,
+            nature_w,
+            dress(
+                egui::RichText::new(tr(kind.label_key()))
+                    .size(11.0)
+                    .color(motif::chart::series_color(kind.series())),
+            ),
+        );
         // 5 et 6 — ce qui entre et ce qui sort, en deux colonnes.
         //
         // Un registre se tient en deux colonnes et pas en une avec un
@@ -21581,50 +21662,74 @@ impl App {
         // qu'elle désigne, et « −0 » serait un nombre sans signification.
         let qty = crate::codex::format_quantity(m.quantity);
         let amount = |ui: &mut egui::Ui, text: String| {
-            ui.label(dress(
-                egui::RichText::new(text)
-                    .size(11.5)
-                    .monospace()
-                    .strong()
-                    .color(ink),
-            ));
+            Self::grid_cell(
+                ui,
+                qty_w,
+                dress(
+                    egui::RichText::new(text)
+                        .size(11.5)
+                        .monospace()
+                        .strong()
+                        .color(ink),
+                ),
+            );
         };
         match kind {
             Kind::Entree => {
                 amount(ui, qty);
-                ui.label("");
+                Self::grid_cell(ui, qty_w, egui::RichText::new(""));
             }
             Kind::Sortie | Kind::Perte => {
-                ui.label("");
+                Self::grid_cell(ui, qty_w, egui::RichText::new(""));
                 amount(ui, qty);
             }
             Kind::Inventaire => {
                 amount(ui, format!("= {qty}"));
-                ui.label("");
+                Self::grid_cell(ui, qty_w, egui::RichText::new(""));
             }
             Kind::Annulation => {
-                ui.label("");
-                ui.label("");
+                Self::grid_cell(ui, qty_w, egui::RichText::new(""));
+                Self::grid_cell(ui, qty_w, egui::RichText::new(""));
             }
         }
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_balance(ui: &mut egui::Ui, balance: Option<f64>, cancelled: bool, w: f32) {
+        let dress = Self::stup_dress(cancelled);
         // 7 — le solde après cette ligne.
         match balance {
             Some(b) => {
-                ui.label(dress(
-                    egui::RichText::new(crate::codex::format_quantity(b))
-                        .size(11.5)
-                        .monospace()
-                        .color(if b < 0.0 {
-                            motif::alert()
-                        } else {
-                            motif::text()
-                        }),
-                ));
+                Self::grid_cell(
+                    ui,
+                    w,
+                    dress(
+                        egui::RichText::new(crate::codex::format_quantity(b))
+                            .size(11.5)
+                            .monospace()
+                            .color(if b < 0.0 {
+                                motif::alert()
+                            } else {
+                                motif::text()
+                            }),
+                    ),
+                );
             }
             None => {
-                ui.label("");
+                Self::grid_cell(ui, w, egui::RichText::new(""));
             }
         }
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_file(ui: &mut egui::Ui, m: &db::StupMove) -> StupLineAction {
+        let mut action = StupLineAction::None;
         // 8 — le dossier, jamais le nom. Un clic l'ouvre, ce qui est la
         // seule façon de lire l'identité.
         if m.patient_id > 0 {
@@ -21637,6 +21742,33 @@ impl App {
         } else {
             ui.label("");
         }
+        action
+    }
+
+    /// Une cellule d'une ligne du registre. Voir [`App::stup_line`] :
+    /// les sept sont écrites une fois et appelées depuis **deux**
+    /// dispositions — les neuf colonnes quand le panneau les porte, la
+    /// ligne pliée en deux quand il ne les porte pas.
+    fn stup_mention(
+        ui: &mut egui::Ui,
+        v: &StupLineView,
+        w: f32,
+        reason: &mut String,
+    ) -> StupLineAction {
+        use crate::ordonnancier::Kind;
+        let StupLineView {
+            m,
+            cancelled,
+            target,
+            cancelling,
+            offer_cancel,
+            pieces,
+            ..
+        } = *v;
+        let dress = Self::stup_dress(cancelled);
+        let kind = Kind::from_key(&m.kind);
+        let mut action = StupLineAction::None;
+        let mention_w = w;
         // 9 — la mention : ce que la ligne dit d'elle-même, l'écart d'un
         // inventaire, ce qu'une annulation désigne, et la correction.
         ui.scope(|ui| {
@@ -21755,6 +21887,112 @@ impl App {
                 }
             });
         });
+        action
+    }
+
+    /// Une ligne du registre, dans l'une ou l'autre disposition.
+    ///
+    /// Neuf colonnes demandent près de cinq cents pixels avant même la
+    /// mention, et le panneau du registre en offre quatre cent vingt à
+    /// 1024x700 avec les deux volets ouverts : la ligne se plie alors en
+    /// deux — la comptabilité au-dessus, ce qu'elle désigne en dessous.
+    /// Les sept cellules sont écrites une seule fois et appelées depuis
+    /// les deux : un registre dont deux copies divergeraient ne
+    /// prouverait plus rien.
+    fn stup_line(ui: &mut egui::Ui, v: StupLineView, reason: &mut String) -> StupLineAction {
+        let StupLineView {
+            m,
+            product,
+            cancelled,
+            balance,
+            width,
+            ..
+        } = v;
+        // **Ce que la mention peut prendre : ce que les autres colonnes
+        // laissent, et pas un pixel de plus.** Une part fixe — « trente-
+        // huit pour cent » — tombait juste sur un panneau et faux sur
+        // l'autre : à 1400x900 le bouton « Annuler » sortait encore par
+        // la droite. Les largeurs se mesurent, la dernière est la
+        // soustraction.
+        let gap = ui.spacing().item_spacing.x;
+        let mono = |size: f32| egui::FontId::monospace(size);
+        let date_w = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter());
+        let no_w = Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter());
+        let nature_w = Self::widest(
+            ui,
+            11.0,
+            crate::ordonnancier::Kind::ALL
+                .iter()
+                .map(|k| tr(k.label_key())),
+        );
+        // Le gabarit d'une quantité : « = 9999,9 », l'inventaire le plus
+        // large qu'un registre de stupéfiants porte. Il servait aussi de
+        // seuil entre les deux dispositions, et « = 0000,000 » — trois
+        // décimales que la balance ne rend pas — coûtait quatre-vingts
+        // pixels par colonne, assez pour plier le registre sur un écran
+        // qui portait ses neuf colonnes.
+        let qty_w = Self::widest_in(ui, mono(11.5), ["= 9999,9"].into_iter());
+        let file_w = Self::button_width(ui, &trf("stup_file", 9999));
+        let product_w = if product.is_some() {
+            (width * 0.22).max(60.0)
+        } else {
+            0.0
+        };
+        // Ce que la comptabilité seule demande : le jour, le numéro, la
+        // nature, ce qui entre, ce qui sort, le solde, le dossier.
+        let ledger = date_w + no_w + nature_w + qty_w * 3.0 + file_w + gap * 6.0;
+        let narrow = Self::stup_narrow(ui, width, product.is_some());
+        let mention_w = if narrow {
+            (width - no_w - product_w - file_w - gap * 3.0).max(120.0)
+        } else {
+            (width - (ledger + product_w + gap * 2.0)).max(120.0)
+        };
+        if narrow {
+            let mut action = StupLineAction::None;
+            // **Le jour, la nature, ce qui entre, ce qui sort, le
+            // solde** : la ligne d'un registre telle qu'elle
+            // s'additionne, et rien d'autre. En dessous, ce qu'elle
+            // désigne — le numéro d'ordonnancier, le produit, le
+            // dossier, la mention —, qui répond à « pour qui » et non à
+            // « combien ».
+            ui.horizontal_wrapped(|ui| {
+                Self::stup_day(ui, m, cancelled, date_w);
+                Self::stup_kind_and_amounts(ui, m, cancelled, nature_w, qty_w);
+                Self::stup_balance(ui, balance, cancelled, qty_w);
+            });
+            ui.horizontal_wrapped(|ui| {
+                Self::stup_no(ui, m, cancelled, no_w);
+                Self::stup_product(ui, product, product_w, cancelled);
+                let a = Self::stup_file(ui, m);
+                if a != StupLineAction::None {
+                    action = a;
+                }
+                let a = Self::stup_mention(ui, &v, mention_w, reason);
+                if a != StupLineAction::None {
+                    action = a;
+                }
+            });
+            // Un filet entre deux lignes : pliées en deux, elles se
+            // liraient autrement comme une seule de quatre.
+            let r = ui.max_rect();
+            motif::rule(ui.painter(), r.left(), r.right(), ui.cursor().top() + 2.0);
+            ui.add_space(6.0);
+            return action;
+        }
+        let mut action = StupLineAction::None;
+        Self::stup_day(ui, m, cancelled, date_w);
+        Self::stup_no(ui, m, cancelled, no_w);
+        Self::stup_product(ui, product, product_w, cancelled);
+        Self::stup_kind_and_amounts(ui, m, cancelled, nature_w, qty_w);
+        Self::stup_balance(ui, balance, cancelled, qty_w);
+        let a = Self::stup_file(ui, m);
+        if a != StupLineAction::None {
+            action = a;
+        }
+        let a = Self::stup_mention(ui, &v, mention_w, reason);
+        if a != StupLineAction::None {
+            action = a;
+        }
         ui.end_row();
         action
     }
@@ -22325,56 +22563,55 @@ impl App {
                             }
                             ui.visuals_mut().faint_bg_color = motif::bg_dark();
                             let table_w = ui.available_width();
-                            egui::Grid::new("stup_ordo_grid")
-                                .num_columns(STUP_COLUMNS)
-                                .spacing([8.0, 3.0])
-                                .striped(true)
-                                .show(ui, |ui| {
+                            let narrow = Self::stup_narrow(ui, table_w, true);
+                            Self::stup_list(ui, "stup_ordo_grid", narrow, |ui| {
+                                if !narrow {
                                     Self::stup_header(ui, true, false);
-                                    for m in &session.stup_dispensings {
-                                        let act = Self::stup_line(
-                                            ui,
-                                            StupLineView {
-                                                width: table_w,
-                                                m,
-                                                product: session
-                                                    .stup_labels
-                                                    .get(&m.stup_id)
-                                                    .map(String::as_str),
-                                                cancelled: session.stup_cancelled.contains(&m.id),
-                                                target: None,
-                                                cancelling: false,
-                                                // Le solde n'a pas de sens ici :
-                                                // l'ordonnancier mêle les
-                                                // produits, et une colonne qui
-                                                // additionnerait des gélules et
-                                                // des dispositifs ne voudrait
-                                                // rien dire.
-                                                balance: None,
-                                                pieces: session
-                                                    .stup_pieces
-                                                    .get(&m.id)
-                                                    .copied()
-                                                    .unwrap_or(0),
-                                                // L'ordonnancier est le
-                                                // **document** : il se lit et
-                                                // s'imprime. Une correction se
-                                                // demande dans le journal, où
-                                                // l'on voit ce qu'on vient
-                                                // d'écrire — mettre le bouton
-                                                // sur chaque ligne d'une pièce
-                                                // qu'on sort pour un contrôle
-                                                // serait le mettre là où l'on
-                                                // ne corrige jamais.
-                                                offer_cancel: false,
-                                            },
-                                            &mut cancel_reason,
-                                        );
-                                        if act != StupLineAction::None {
-                                            line_action = act;
-                                        }
+                                }
+                                for m in &session.stup_dispensings {
+                                    let act = Self::stup_line(
+                                        ui,
+                                        StupLineView {
+                                            width: table_w,
+                                            m,
+                                            product: session
+                                                .stup_labels
+                                                .get(&m.stup_id)
+                                                .map(String::as_str),
+                                            cancelled: session.stup_cancelled.contains(&m.id),
+                                            target: None,
+                                            cancelling: false,
+                                            // Le solde n'a pas de sens ici :
+                                            // l'ordonnancier mêle les
+                                            // produits, et une colonne qui
+                                            // additionnerait des gélules et
+                                            // des dispositifs ne voudrait
+                                            // rien dire.
+                                            balance: None,
+                                            pieces: session
+                                                .stup_pieces
+                                                .get(&m.id)
+                                                .copied()
+                                                .unwrap_or(0),
+                                            // L'ordonnancier est le
+                                            // **document** : il se lit et
+                                            // s'imprime. Une correction se
+                                            // demande dans le journal, où
+                                            // l'on voit ce qu'on vient
+                                            // d'écrire — mettre le bouton
+                                            // sur chaque ligne d'une pièce
+                                            // qu'on sort pour un contrôle
+                                            // serait le mettre là où l'on
+                                            // ne corrige jamais.
+                                            offer_cancel: false,
+                                        },
+                                        &mut cancel_reason,
+                                    );
+                                    if act != StupLineAction::None {
+                                        line_action = act;
                                     }
-                                });
+                                }
+                            });
                         });
                 });
             },
@@ -22401,45 +22638,42 @@ impl App {
                         }
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
                         let table_w = ui.available_width();
-                        egui::Grid::new("stup_journal_grid")
-                            .num_columns(STUP_COLUMNS)
-                            .spacing([8.0, 3.0])
-                            .striped(true)
-                            .show(ui, |ui| {
+                        let narrow = Self::stup_narrow(ui, table_w, true);
+                        Self::stup_list(ui, "stup_journal_grid", narrow, |ui| {
+                            if !narrow {
                                 Self::stup_header(ui, true, false);
-                                for m in &session.stup_recent {
-                                    let target = (m.cancels > 0)
-                                        .then(|| {
-                                            session.stup_recent.iter().find(|t| t.id == m.cancels)
-                                        })
-                                        .flatten();
-                                    let act = Self::stup_line(
-                                        ui,
-                                        StupLineView {
-                                            width: table_w,
-                                            m,
-                                            product: session
-                                                .stup_labels
-                                                .get(&m.stup_id)
-                                                .map(String::as_str),
-                                            cancelled: session.stup_cancelled.contains(&m.id),
-                                            target,
-                                            cancelling: session.stup_cancelling == Some(m.id),
-                                            offer_cancel: true,
-                                            balance: None,
-                                            pieces: session
-                                                .stup_pieces
-                                                .get(&m.id)
-                                                .copied()
-                                                .unwrap_or(0),
-                                        },
-                                        &mut cancel_reason,
-                                    );
-                                    if act != StupLineAction::None {
-                                        line_action = act;
-                                    }
+                            }
+                            for m in &session.stup_recent {
+                                let target = (m.cancels > 0)
+                                    .then(|| session.stup_recent.iter().find(|t| t.id == m.cancels))
+                                    .flatten();
+                                let act = Self::stup_line(
+                                    ui,
+                                    StupLineView {
+                                        width: table_w,
+                                        m,
+                                        product: session
+                                            .stup_labels
+                                            .get(&m.stup_id)
+                                            .map(String::as_str),
+                                        cancelled: session.stup_cancelled.contains(&m.id),
+                                        target,
+                                        cancelling: session.stup_cancelling == Some(m.id),
+                                        offer_cancel: true,
+                                        balance: None,
+                                        pieces: session
+                                            .stup_pieces
+                                            .get(&m.id)
+                                            .copied()
+                                            .unwrap_or(0),
+                                    },
+                                    &mut cancel_reason,
+                                );
+                                if act != StupLineAction::None {
+                                    line_action = act;
                                 }
-                            });
+                            }
+                        });
                     });
             });
         });

@@ -56,6 +56,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     les trois dispositions : `ActsRow` dit ce qu'une rangée lit,
     `ActsOut` les dix-sept écritures qu'elle peut demander. Deux copies
     du même code divergent le jour où l'on en corrige une.
+- **Le registre des stupéfiants non plus, et c'était la dernière.** Ses
+  neuf colonnes demandent près de huit cents pixels avec une mention
+  lisible, et le panneau du registre en offre quatre cent vingt à
+  1024x700 : la ligne se plie alors en deux — le jour, la nature, ce qui
+  entre, ce qui sort, le solde au-dessus, c'est-à-dire la ligne telle
+  qu'elle s'additionne ; en dessous le numéro, le produit, le dossier et
+  la mention, qui répondent à « pour qui » et non à « combien ».
+  - Les sept cellules sont écrites une seule fois et appelées depuis les
+    deux dispositions : un registre dont deux copies divergeraient ne
+    prouverait plus rien.
+  - **Et leurs largeurs sont données, jamais prises au contenu.** Pliée,
+    la ligne n'est plus dans une grille, et un registre dont les dates
+    ne tombent pas les unes sous les autres ne se relit pas.
+  - Le gabarit d'une quantité passe de « = 0000,000 » à « = 9999,9 » :
+    trois décimales que la balance ne rend pas coûtaient quatre-vingts
+    pixels par colonne, assez pour plier le registre sur un écran qui
+    portait ses neuf colonnes.
+- **Une cellule de table réserve sa place avant de la remplir.** Un
+  `ui.scope` n'annonce pas sa taille : dans une rangée qui enveloppe,
+  egui ne sait pas qu'elle ne tiendra pas et ne va pas à la ligne — le
+  registre plié perdait sa colonne « Solde » par la droite sans qu'aucune
+  barre ne le dise.
 - La règle que quatre tables partagent porte enfin un nom —
   `table_shape`, « la forme la plus riche qui tienne » —, avec un test
   qui tient les trois choses qui comptent : qu'aucune forme retenue ne
