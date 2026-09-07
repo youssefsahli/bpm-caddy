@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Deux boîtes de dialogue de plus sortaient de l'écran** à
+  `[ui] text_scale = 1,6` : l'ordonnance protocolisée et
+  « Imprimer la fiche ». La première par son titre — « Ordonnance —
+  Angine à streptocoque du groupe A — TROD positif » fait à lui seul
+  plus large que l'écran, et la barre de titre d'une fenêtre egui ne se
+  replie pas, elle élargit la fenêtre : l'indication se lit maintenant à
+  l'intérieur, où elle s'enroule. La seconde par des hauteurs écrites en
+  dur — deux cent soixante pixels de liste, soixante-quatorze de texte
+  libre — qui ne laissaient plus de place aux boutons.
+- **Le passage de fumée ouvre chaque vue dans une troisième forme**,
+  1024x700 à `text_scale = 1.6` : c'est là que les planchers croisent
+  les plafonds, et c'est la forme où les trois défauts ci-dessus se
+  voyaient. Plus `scripts/shot.sh`, qui capture **une** vue dans une
+  forme choisie — la boucle qu'on répète vingt fois en corrigeant une
+  bande.
 - **Les invites de recherche des listes se raccourcissent aussi.**
   « Chercher une préparation… » s'arrêtait à « Chercher une prépa » dès
   qu'on grossissait le texte, et pareil pour les protocoles, les

@@ -5513,7 +5513,12 @@ fn export_window(
     .resizable(false)
     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
     .show(ctx, |ui| {
-        ui.set_max_width(420.0);
+        // Bornée par l'écran et non par un nombre : à
+        // `[ui] text_scale = 1,6` quatre cent vingt pixels de large et
+        // deux cent soixante de liste faisaient une fenêtre plus haute
+        // que l'écran, sans titre ni boutons.
+        let screen = ctx.screen_rect();
+        ui.set_max_width(420.0_f32.min(screen.width() - 48.0));
         ui.label(
             egui::RichText::new(if box_.kind.is_prevention() {
                 tr("export_hint_prevention")
@@ -5537,7 +5542,11 @@ fn export_window(
             // boutons.
             egui::ScrollArea::vertical()
                 .id_salt("export_points")
-                .max_height(260.0)
+                // Les sujets, la zone de texte libre et les deux rangées
+                // de boutons doivent tenir avec elle : elle prend ce que
+                // l'écran laisse, jamais deux cent soixante pixels
+                // décidés d'avance.
+                .max_height((screen.height() * 0.28).clamp(80.0, 260.0))
                 .show(ui, |ui| {
                     for (text, keep) in &mut box_.points {
                         ui.checkbox(keep, egui::RichText::new(text.as_str()).size(11.5));
@@ -5565,7 +5574,10 @@ fn export_window(
                 .color(motif::text_dim()),
         );
         ui.add_sized(
-            [ui.available_width(), 74.0],
+            [
+                ui.available_width(),
+                (screen.height() * 0.09).clamp(40.0, 74.0),
+            ],
             egui::TextEdit::multiline(&mut box_.extra).hint_text(tr("export_extra_placeholder")),
         );
         ui.add_space(8.0);
@@ -8724,21 +8736,53 @@ impl App {
         let adjuvants = std::mem::take(&mut session.ord_adjuvants);
         let mut close = false;
         let mut print = false;
-        egui::Window::new(trf("ord_title", protocol.indication))
+        // La taille vient de l'écran, comme pour la fenêtre des
+        // options : une fenêtre egui grandit avec son contenu, et à
+        // `[ui] text_scale = 1,6` ce titre — « Ordonnance — Angine à
+        // streptocoque du groupe A — TROD positif » — sortait de l'écran
+        // des deux côtés, avec le reste derrière lui.
+        let screen = ctx.screen_rect();
+        // Le titre ne porte plus l'indication : « Ordonnance — Angine à
+        // streptocoque du groupe A — TROD positif » fait à lui seul plus
+        // large que l'écran à `text_scale = 1,6`, et la barre de titre
+        // d'une fenêtre egui ne se replie pas — elle élargit la fenêtre.
+        // L'indication se lit à l'intérieur, où elle peut s'enrouler.
+        egui::Window::new(tr("ord_title"))
             .collapsible(false)
-            .resizable(true)
-            .default_size([680.0, 640.0])
+            .resizable(false)
+            .fixed_size([
+                (screen.width() - 40.0).clamp(340.0, 720.0),
+                (screen.height() - 60.0).clamp(320.0, 700.0),
+            ])
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 let Some(open) = &mut session.ordonnance else {
                     return;
                 };
                 let choice = &mut open.choice;
+                ui.add(
+                    egui::Label::new(egui::RichText::new(protocol.indication).size(13.0).strong())
+                        .wrap(),
+                );
+                ui.add_space(4.0);
                 // The body takes whatever the window leaves after the
                 // warning and the two buttons: a fixed height scrolled
                 // the toggles out of sight on the default window.
-                let body_h = (ui.available_height() - 84.0).max(160.0);
-                egui::ScrollArea::vertical()
+                // Mesurée : la rangée des deux boutons, la mention de
+                // l'officine si elle en a écrit une, et les espaces
+                // entre. Quatre-vingt-quatre pixels écrits en dur, c'est
+                // une rangée de boutons à l'échelle 1,0 — à 1,6 le corps
+                // débordait sous eux.
+                let footer = Self::row_height(ui)
+                    + ui.spacing().item_spacing.y * 2.0
+                    + 12.0
+                    + if config.disclaimers.ordonnance_screen.trim().is_empty() {
+                        0.0
+                    } else {
+                        ui.text_style_height(&egui::TextStyle::Body) + 6.0
+                    };
+                let body_h = (ui.available_height() - footer).max(160.0);
+                egui::ScrollArea::both()
                     .id_salt("ord_body")
                     .max_height(body_h)
                     .show(ui, |ui| {
@@ -8917,7 +8961,10 @@ impl App {
                     if motif::button(ui, tr("ord_print")).clicked() {
                         print = true;
                     }
-                    if motif::button(ui, tr("ord_close")).clicked() {
+                    if motif::button(ui, tr("ord_close"))
+                        .on_hover_text(tr("ord_close_tooltip"))
+                        .clicked()
+                    {
                         close = true;
                     }
                 });
