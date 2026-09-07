@@ -33,6 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
+## [Unreleased]
+
+### Added
+- **La bande d'identité du dossier est tenue par un test.** C'est celle
+  dont la hauteur décide de tout le reste : trop courte, elle perd
+  « Nouvel entretien » et le choix rapide des actes ; trop haute, elle ne
+  laisse pas une ligne à la table en dessous. Elle ne prend plus la
+  session entière mais les treize faits dont elle dépend — dont, pour la
+  première fois, **la largeur et la hauteur de la vue**, qu'elle lisait
+  elle-même : un test ne pouvait donc pas lui poser la question qui
+  compte, « et sur un volet de trois cent quatre-vingts pixels, avec cinq
+  traitements ? ».
+  - Vérifié en y remettant les deux défauts qu'il refuse : la rangée des
+    puces comptée pour une ligne quel qu'en soit le nombre, et le
+    plafond retiré. Le premier passage du test ne les voyait ni l'un ni
+    l'autre — il mesurait sur une vue trop large et trop haute pour que
+    l'un ou l'autre morde.
+
 ## [0.152.0] - 2026-09-07
 
 ### Changed

@@ -1515,6 +1515,45 @@ struct CarnetCols {
     op_w: f32,
 }
 
+/// Ce dont la hauteur du bandeau d'identité dépend — et rien d'autre.
+///
+/// Prendre la session entière rendait la mesure invérifiable : un test
+/// aurait dû ouvrir une base chiffrée pour demander combien de pixels
+/// une bande réclame. Ce qu'elle lit tient en onze faits, et rien n'y
+/// est copié — les deux listes sont empruntées à la session, parce
+/// qu'une bande se mesure soixante fois par seconde.
+struct BandNeeds<'a> {
+    /// Ce que la vue offre. La bande le lisait elle-même dans
+    /// `motif::visible_rect`, donc un test ne pouvait pas lui poser la
+    /// question qui compte : « et sur un volet de trois cents pixels,
+    /// avec cinq traitements ? »
+    width: f32,
+    height: f32,
+    folded: bool,
+    /// Une correction en cours déplie d'office : on ne range pas le
+    /// formulaire dans lequel on tape.
+    correcting: bool,
+    /// Les traitements : leurs noms enveloppent, et c'est leur largeur
+    /// qui décide combien de rangées la bande prend.
+    treats: &'a [Drug],
+    /// Une fiche dont on a ouvert les posologies.
+    dosing: bool,
+    /// Quelque chose est tapé dans le champ qui ajoute un traitement,
+    /// donc les propositions sont affichées.
+    typing: bool,
+    interactions: bool,
+    /// Ce que la revue d'ordonnance dit, en pastilles qui enveloppent.
+    review: &'a [crate::revue::Point],
+    /// Une règle de quota bloque la création d'un acte.
+    blocked: bool,
+    /// Moins de traitements que le BPM n'en demande : la bande le dit.
+    under_minimum: bool,
+    has_address: bool,
+    has_notes: bool,
+    /// L'onglet ouvert décide de la part que la bande peut prendre.
+    acts_tab: bool,
+}
+
 /// Ce qu'une rangée du tableau des entretiens a besoin de lire.
 ///
 /// Un enregistrement plutôt que cinq paramètres : les dix cellules de
@@ -8684,7 +8723,25 @@ impl App {
         let body = motif::visible_rect(ui).shrink(6.0);
         // The band is as tall as its content: the act buttons wrap, and
         // an open correction form is much taller than a header.
-        let band_h = Self::patient_band_height(ui, session, patient);
+        let band_h = Self::patient_band_height(
+            ui,
+            &BandNeeds {
+                width: motif::visible_rect(ui).width(),
+                height: motif::visible_rect(ui).height(),
+                folded: session.patient_band_folded,
+                correcting: session.edit_patient.is_some(),
+                treats: &session.patient_treats,
+                dosing: session.treat_dosing.is_some(),
+                typing: !session.treat_query.trim().is_empty(),
+                interactions: !session.patient_interactions.is_empty(),
+                review: &session.patient_review,
+                blocked: session.rule_block.is_some(),
+                under_minimum: session.patient_treats.len() < db::BPM_MIN_TREATMENTS,
+                has_address: !patient.address.is_empty(),
+                has_notes: !patient.notes.is_empty(),
+                acts_tab: session.patient_tab == PatientTab::Acts,
+            },
+        );
         let rows = motif::split_rows(body, &[band_h, 0.0], 8.0);
         motif::panel(ui, rows[0], None, |ui| {
             let inner = ui.max_rect();
@@ -12907,12 +12964,16 @@ impl App {
     /// How tall the identity band needs to be: a header and one or two
     /// wrapped button rows normally, much more with the correction form
     /// open. Measured rather than guessed, so nothing is ever clipped.
-    fn patient_band_height(ui: &egui::Ui, session: &Session, patient: &Patient) -> f32 {
-        let w = motif::visible_rect(ui).width() - 40.0;
+    ///
+    /// Elle ne prend que [`BandNeeds`] : la session entière rendait la
+    /// mesure invérifiable — un test aurait dû ouvrir une base chiffrée
+    /// pour demander combien de pixels une bande réclame.
+    fn patient_band_height(ui: &egui::Ui, n: &BandNeeds) -> f32 {
+        let w = n.width - 40.0;
         // Replié : le nom, la date de naissance, et de quoi le rouvrir.
         // Une correction en cours le déplie d'office — on ne cache pas
         // le formulaire dans lequel on est en train de taper.
-        if session.patient_band_folded && session.edit_patient.is_none() {
+        if n.folded && !n.correcting {
             return Self::row_height(ui) + ui.spacing().item_spacing.y + 20.0;
         }
         // The act buttons are the part that wraps.
@@ -12929,8 +12990,7 @@ impl App {
             w,
             std::iter::once(Self::button_width(ui, tr("treat_label")))
                 .chain(
-                    session
-                        .patient_treats
+                    n.treats
                         .iter()
                         .flat_map(|t| [Self::button_width(ui, &t.name), 16.0]),
                 )
@@ -12942,25 +13002,25 @@ impl App {
         // "nouvel entretien" + the wrapped act rows + the eligibility note.
         let mut h = 96.0 + row * (1.0 + treat_lines + lines);
         // Les lignes de posologie proposées, quand on en ouvre une.
-        if session.treat_dosing.is_some() {
+        if n.dosing {
             h += row * (2.0 + TREAT_DOSE_ROWS as f32);
         }
-        if !patient.address.is_empty() {
+        if n.has_address {
             h += 18.0;
         }
-        if !patient.notes.is_empty() {
+        if n.has_notes {
             h += 20.0;
         }
-        if session.edit_patient.is_some() {
+        if n.correcting {
             h += 9.0 * 34.0 + 40.0;
         }
-        if session.rule_block.is_some() {
+        if n.blocked {
             h += 46.0;
         }
-        if session.patient_treats.len() < db::BPM_MIN_TREATMENTS {
+        if n.under_minimum {
             h += 34.0;
         }
-        if !session.treat_query.trim().is_empty() {
+        if n.typing {
             // Deux rangées, et non une. Les propositions sont six noms
             // de médicaments plus « créer la fiche » : elles enveloppent
             // sur un dossier étroit, et la bande n'en comptait qu'une.
@@ -12972,16 +13032,16 @@ impl App {
         }
         // The two readings the band carries under the treatments: the
         // interactions on one line, the revue as chips that wrap.
-        if !session.patient_interactions.is_empty() {
+        if n.interactions {
             h += 20.0;
         }
-        if !session.patient_review.is_empty() {
-            let titles = session.patient_review.iter().map(|p| p.title);
+        if !n.review.is_empty() {
+            let titles = n.review.iter().map(|p| p.title);
             h += 6.0 + 22.0 * Self::wrapped_rows(ui, w - 130.0, titles);
         }
         // Whatever the band would like, the acts and the journal keep
         // their half of the file: the band scrolls instead.
-        let avail = motif::visible_rect(ui).height();
+        let avail = n.height;
         // **L'onglet ouvert décide de la part du bandeau.** Sur
         // « Entretiens », la bande *est* le poste de travail : les
         // traitements, ce que la revue en dit, le choix rapide d'un
@@ -12999,7 +13059,7 @@ impl App {
         // cent tranchaient la bande au milieu d'une rangée de boutons
         // alors qu'il y avait la place pour tout. La bande grandit tant
         // que l'onglet garde de quoi travailler.
-        let cap = if session.patient_tab == PatientTab::Acts {
+        let cap = if n.acts_tab {
             (avail * 0.45).max(avail - 340.0)
         } else {
             (avail * 0.30).max(avail - 420.0)
@@ -30340,6 +30400,127 @@ mod tests {
         }
         // Une liste vide ne panique pas : elle rend la forme minimale.
         assert_eq!(table_shape(500.0, floor, &[]), (1, 0.0));
+    }
+
+    /// **La bande d'identité grandit avec ce qu'elle porte, et cède
+    /// devant l'onglet.**
+    ///
+    /// C'est la bande dont la hauteur décide de tout le reste du
+    /// dossier : trop courte, elle perd « Nouvel entretien » et le choix
+    /// rapide des actes ; trop haute, elle ne laisse pas une ligne à la
+    /// table en dessous. Deux choses à tenir — qu'un traitement de plus
+    /// ne la rétrécisse jamais, et que sa part reste sous le plafond de
+    /// l'onglet ouvert.
+    #[test]
+    fn the_identity_band_grows_with_what_it_carries() {
+        let drug = |name: &str| crate::db::Drug {
+            name: name.to_owned(),
+            ..Default::default()
+        };
+        let treats: Vec<crate::db::Drug> = ["Coversyl", "Eliquis", "Lasilix", "Tahor", "Kardegic"]
+            .iter()
+            .map(|n| drug(n))
+            .collect();
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new(Vec::new());
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    // Un volet de comptoir : c'est là que la rangée
+                    // des traitements enveloppe. La hauteur varie parce
+                    // que les deux questions ne sont pas les mêmes — ce
+                    // que la bande *demande*, et ce qu'on lui *permet*.
+                    let base = |acts_tab: bool, k: usize, height: f32| super::BandNeeds {
+                        width: 380.0,
+                        height,
+                        folded: false,
+                        correcting: false,
+                        treats: &treats[..k],
+                        dosing: false,
+                        typing: false,
+                        interactions: false,
+                        review: &[],
+                        blocked: false,
+                        under_minimum: false,
+                        has_address: false,
+                        has_notes: false,
+                        acts_tab,
+                    };
+                    let mut v = Vec::new();
+                    // Ce que la bande demande, sur une vue assez haute
+                    // pour qu'aucun plafond ne morde.
+                    for k in 0..=treats.len() {
+                        v.push(App::patient_band_height(ui, &base(true, k, 2000.0)));
+                    }
+                    // Repliée, et l'onglet qui n'est pas « Entretiens » —
+                    // sur une vue de comptoir, où le plafond mord.
+                    let mut folded = base(true, treats.len(), 560.0);
+                    folded.folded = true;
+                    v.push(App::patient_band_height(ui, &folded));
+                    v.push(App::patient_band_height(
+                        ui,
+                        &base(false, treats.len(), 560.0),
+                    ));
+                    v.push(App::patient_band_height(
+                        ui,
+                        &base(true, treats.len(), 560.0),
+                    ));
+                    v.push(560.0);
+                    *seen.borrow_mut() = v;
+                });
+            });
+            let v = seen.into_inner();
+            let (heights, tail) = v.split_at(treats.len() + 1);
+            // Un traitement de plus n'a jamais rétréci la bande.
+            for w in heights.windows(2) {
+                assert!(
+                    w[1] >= w[0],
+                    "échelle {scale} : la bande rétrécit de {} à {}",
+                    w[0],
+                    w[1]
+                );
+            }
+            // Et **cinq traitements sur un volet de comptoir prennent
+            // plus de place qu'aucun** : sans cela la rangée des puces
+            // serait comptée pour une ligne quel qu'en soit le nombre,
+            // ce qui poussait « Nouvel entretien » hors de la bande.
+            assert!(
+                heights[treats.len()] > heights[0],
+                "échelle {scale} : cinq traitements ne coûtent rien ({} px)",
+                heights[0]
+            );
+            let (folded, other, capped, avail) = (tail[0], tail[1], tail[2], tail[3]);
+            // Repliée, elle tient sur une rangée et rien de plus.
+            assert!(
+                folded < other,
+                "échelle {scale} : repliée {folded}, dépliée {other}"
+            );
+            // Et chaque part reste sous le plafond de son onglet — un
+            // plafond qui **mord** : sur un volet de trois cent quatre-
+            // vingts pixels, ce que la bande demande le dépasse.
+            let acts_cap = (avail * 0.45).max(avail - 340.0);
+            let other_cap = (avail * 0.30).max(avail - 420.0);
+            assert!(
+                capped <= acts_cap + 0.5,
+                "échelle {scale} : {capped} px pour un plafond de {acts_cap}"
+            );
+            assert!(
+                other <= other_cap + 0.5,
+                "échelle {scale} : {other} px pour un plafond de {other_cap}"
+            );
+            // Et le plafond **mord** : sur une vue de comptoir, ce que
+            // cinq traitements demandent le dépasse. Sans cela l'onglet
+            // en dessous n'aurait plus une ligne.
+            assert!(
+                (capped - acts_cap).abs() < 0.5,
+                "échelle {scale} : le plafond ne mord pas — {capped} px, {acts_cap} permis"
+            );
+            assert!(
+                other < capped,
+                "échelle {scale} : les autres onglets ne rendent rien ({other} contre {capped})"
+            );
+        }
     }
 
     /// **Le tableau des entretiens non plus.**
