@@ -33,6 +33,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
+## [Unreleased]
+
+### Fixed
+- La largeur minimale d'une colonne des tables de conversion s'exprime
+  elle aussi en caractères : cent trente-deux pixels sont seize
+  caractères à l'échelle 1 et dix à 1,6, où « Comprimés
+  gastro-résistants » repartait sur cinq lignes. Ces colonnes-là restent
+  des phrases entières et la table défile encore latéralement quand elle
+  ne tient pas — une phrase ne se replie pas en note de bas de ligne
+  comme le fait un numéro de lot.
+
 ## [0.153.0] - 2026-09-08
 
 ### Added

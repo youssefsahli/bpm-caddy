@@ -24217,14 +24217,20 @@ impl App {
         const GAP: f32 = 20.0;
         // The width a column of prose stops being readable below. Under
         // it the table is drawn wider than the pane and scrolls, which
-        // is what the horizontal bar is there for.
-        const MIN_COL: f32 = 132.0;
+        // is what the horizontal bar is there for — ces colonnes-là sont
+        // des phrases entières, et une phrase ne se replie pas en note
+        // de bas de ligne comme le fait un numéro de lot.
+        //
+        // En **caractères**, comme partout ailleurs : cent trente-deux
+        // pixels sont seize caractères à l'échelle 1 et dix à 1,6, où
+        // « Comprimés gastro-résistants » repart alors sur cinq lignes.
+        let min_col = chars_wide(ui, 16.0);
         let cols = t.columns.len().max(1) as f32;
         let w = avail
             .width()
             .min(1500.0)
-            .max(2.0 * PAD + GAP * (cols - 1.0) + MIN_COL * cols);
-        let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(MIN_COL);
+            .max(2.0 * PAD + GAP * (cols - 1.0) + min_col * cols);
+        let col_w = ((w - 2.0 * PAD - GAP * (cols - 1.0)) / cols).max(min_col);
         // Centred while it fits, flush left once it does not: a table
         // wider than the pane, centred, starts to the *left* of it, and
         // the first column — the one naming the row — goes off the
