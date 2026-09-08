@@ -5,6 +5,57 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.160.0] - 2026-09-08
+
+### Added
+- **Un comptage se saisit en boîtes et en vrac.** Un stupéfiant se
+  compte devant le coffre : on aligne les boîtes pleines et l'entamée,
+  et on dit « trois de quatorze, plus cinq ». Cette multiplication se
+  faisait de tête juste avant d'écrire **un seul nombre** dans une
+  pièce inaltérable, où une erreur ne se défait que par une
+  contre-passation motivée. Trois champs — boîtes, par boîte, vrac — et
+  un bouton qui reporte le total. Le champ du comptage reste maître :
+  le total s'y reporte d'un clic et ne s'y écrit jamais tout seul,
+  comme la glissière au-dessus. `counted_total` est pure et tenue par
+  un test, y compris sur ce qui n'est pas un comptage — un champ à
+  moitié tapé ne rend pas un total qui a l'air d'un résultat.
+
+- **La couleur de l'acte devant son nom, dans le tableau du dossier.**
+  C'était déjà sa marque partout ailleurs — la pastille de l'agenda, le
+  carré du choix rapide, la barre du filtre de la semaine — et le
+  tableau des entretiens était le seul endroit où elle manquait : sur
+  un dossier qui porte un BPM, un TROD et une vaccination, les rangées
+  ne se distinguaient qu'en lisant.
+
+### Changed
+- **Un écart d'inventaire se motive, et c'est la base qui l'exige.**
+  `Discrepancy::matters` le disait en prose depuis toujours — tout écart
+  non nul mérite une explication, et le code de la santé publique ne
+  connaît pas de seuil de tolérance — et rien ne l'exigeait. Un comptage
+  qui ne tombe pas juste et qui part sans motif est une ligne dont
+  personne ne saura jamais si elle vient d'un vol, d'une casse ou d'une
+  ligne oubliée. Refusé à l'écriture et non dans le formulaire : une
+  règle qui ne tient que dans une vue ne tient pas — même place et même
+  raison que le motif obligatoire de l'annulation. L'invite du champ le
+  dit dès que l'écart s'affiche, donc **avant** de presser « Inscrire ».
+
+### Fixed
+- **La bande d'identité du dossier réservait quatre-vingt-dix pixels de
+  gris vide** au-dessus des onglets, sur la vue la plus regardée de
+  l'application : huit pixels de marge par rangée en plus de la
+  gouttière, et un en-tête de quatre-vingt-seize là où le nom et la
+  ligne de contexte en font une soixantaine. Elle emploie désormais le
+  modèle que `a_wrapped_band_is_as_tall_as_its_model_says` tient. Le
+  tableau des entretiens et le journal y gagnent chacun une rangée
+  entière.
+
+  Au passage, une leçon sur les deux emplois du mot « en-tête » : celui
+  de la *hauteur* doit être juste — se tromper en plus y remet du gris —
+  tandis que celui du *plafond* doit se surestimer, puisque se tromper
+  en moins coupe une rangée par le milieu. À l'échelle 1,25, où la ligne
+  de contexte enveloppe sur deux lignes, la rangée des traitements s'est
+  retrouvée tranchée sous ses puces avant que les deux soient séparés.
+
 ## [0.159.2] - 2026-09-08
 
 ### Fixed
