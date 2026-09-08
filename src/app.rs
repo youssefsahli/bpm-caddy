@@ -13612,7 +13612,27 @@ impl App {
         }
         // The act buttons are the part that wraps.
         let lines = Self::wrapped_rows(ui, w, InterviewKind::ALL.iter().map(|k| k.label()));
-        let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
+        // **La rangée vaut une rangée, sans supplément.** Elle portait
+        // huit pixels de marge par rangée en plus de la gouttière, et
+        // l'en-tête quatre-vingt-seize là où le nom et la ligne de
+        // contexte en font une soixantaine : sur un dossier ordinaire la
+        // bande réservait quatre-vingt-dix pixels de gris vide au-dessus
+        // des onglets, sur la vue la plus regardée de l'application.
+        //
+        // C'est le modèle que `a_wrapped_band_is_as_tall_as_its_model_says`
+        // tient désormais — `n × row_height + (n−1) × gouttière` — et il
+        // n'y a pas de raison que la bande du dossier en emploie un
+        // autre. Sous-réserver ne coupe rien ici : la bande défile, et
+        // son plafond tombe déjà sur une rangée entière.
+        let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
+        // L'en-tête mesuré : la rangée du nom, la ligne de contexte sous
+        // elle, et les marges de la bande — et non un nombre qui ne suit
+        // ni la fonte ni `[ui] text_scale`.
+        let head = 2.0
+            + Self::row_height(ui)
+            + ui.spacing().item_spacing.y
+            + ui.text_style_height(&egui::TextStyle::Body)
+            + 10.0;
         // **La rangée des traitements enveloppe, et elle se mesure.**
         // Chaque puce porte son nom, sa posologie et sa croix ; la
         // posologie est arrivée avec la sélection rapide, et sans la
@@ -13634,7 +13654,7 @@ impl App {
         );
         // Header (name, birth, contact, address, comment) + treatments +
         // "nouvel entretien" + the wrapped act rows + the eligibility note.
-        let mut h = 96.0 + row * (1.0 + treat_lines + lines);
+        let mut h = head + row * (1.0 + treat_lines + lines);
         // **Et les actions, quand elles sont passées sous le nom.**
         // Elles enveloppent comme le reste, donc elles se comptent comme
         // le reste : sans cela la bande gardait la hauteur d'une rangée
@@ -13743,7 +13763,23 @@ impl App {
         // plafond de dix-sept pixels et mangeait la seule ligne du
         // tableau de biologie.
         let head =
-            96.0 + if n.has_address { 18.0 } else { 0.0 } + if n.has_notes { 20.0 } else { 0.0 };
+            // **L'en-tête du plafond se surestime, celui de la hauteur
+            // se mesure juste.** Les deux ne servent pas à la même
+            // chose : `h` dit ce que la bande *veut*, et se tromper en
+            // plus y remet du gris vide ; celui-ci dit ce qui est
+            // dessiné *au-dessus de la première rangée qu'on puisse
+            // couper*, et se tromper en moins coupe une rangée par le
+            // milieu — c'est ce qui est arrivé à l'échelle 1,25, où la
+            // ligne de contexte enveloppe sur deux lignes et où la
+            // rangée des traitements s'est retrouvée tranchée sous ses
+            // puces. On lui accorde donc la seconde ligne de contexte,
+            // qu'on ne peut pas compter ici sans réassembler ce que le
+            // dessin assemble — et deux mesures d'une même chose
+            // divergent toujours.
+            head
+                + ui.text_style_height(&egui::TextStyle::Body)
+                + if n.has_address { 18.0 } else { 0.0 }
+                + if n.has_notes { 20.0 } else { 0.0 };
         let below = ((cap - head) / row).floor().max(0.0);
         (head + below * row).max(Self::row_height(ui) + 2.0)
     }
@@ -14865,7 +14901,11 @@ impl App {
             } else {
                 Self::widest(ui, 12.0, ["—"].into_iter())
             };
-            let kind = Self::widest(ui, 12.0, [itv.kind.label()].into_iter());
+            // La marque de couleur devant le nom compte dans la
+            // colonne : peinte sans être allouée, elle sortait de la
+            // cellule par la gauche et le panneau l'écrêtait — on ne
+            // voyait rien. Mesure et dessin lisent la même largeur.
+            let kind = Self::widest(ui, 12.0, [itv.kind.label()].into_iter()) + Self::act_mark(ui);
             let made = Self::date_field_width(ui)
                 + Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter());
             let state = Self::widest(ui, 12.0, [itv.state.label()].into_iter());
@@ -14899,8 +14939,43 @@ impl App {
     /// les deux drapeaux ont leur propre cellule, pour que la rangée
     /// tienne sur une ligne et que les colonnes tombent les unes sous
     /// les autres.
+    /// Ce que la marque de couleur d'un acte prend devant son nom : le
+    /// trait, et la gouttière que la mise en page pose derrière lui.
+    ///
+    /// Mesurée et non écrite en dur : la gouttière suit
+    /// `[ui] text_scale`, et une constante de dix pixels devenait
+    /// négative à l'échelle 1,6 une fois la gouttière retranchée — un
+    /// `add_space` négatif fait reculer le curseur et le nom serait
+    /// passé par-dessus sa propre marque. Ici la mesure et le dessin
+    /// consomment la même chose par construction : le dessin n'ajoute
+    /// rien, il laisse la gouttière faire.
+    fn act_mark(ui: &egui::Ui) -> f32 {
+        4.0 + ui.spacing().item_spacing.x
+    }
+
     fn acts_kind(ui: &mut egui::Ui, row: &ActsRow) {
-        ui.label(egui::RichText::new(row.itv.kind.label()).strong());
+        // **Et la couleur de l'acte devant son nom.** C'est déjà la
+        // marque de l'acte partout ailleurs — la pastille de l'agenda,
+        // le carré du choix rapide, la barre du filtre de la semaine —,
+        // et le tableau du dossier était le seul endroit où elle
+        // manquait : sur un dossier qui porte un BPM, un TROD et une
+        // vaccination, les rangées ne se distinguaient qu'en lisant.
+        //
+        // Même idiome que la rangée de filtres de l'agenda — quatre
+        // pixels de large —, pour que les deux surfaces se lisent comme
+        // une seule. Et **allouée** plutôt que peinte à côté : peinte à
+        // gauche de la cellule elle en sortait, et le panneau l'écrêtait
+        // sans rien dire.
+        ui.horizontal(|ui| {
+            let h = ui.text_style_height(&egui::TextStyle::Body);
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(4.0, h), egui::Sense::hover());
+            ui.painter().rect_filled(
+                rect.shrink2(egui::vec2(0.0, 1.0)),
+                0.0,
+                kind_color(row.itv.kind),
+            );
+            ui.label(egui::RichText::new(row.itv.kind.label()).strong());
+        });
     }
 
     /// Le code de la convention, le rang qu'il paie, et les deux
