@@ -26,6 +26,7 @@ mod scans;
 mod strings;
 mod surveillance;
 mod tables;
+mod timeline;
 mod vaccines;
 mod vigilance;
 mod vitale;

@@ -27,6 +27,20 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   often, read against the dates already in the file — the other half of
   `biology.rs`: that one reads the values that are there, this one names
   the ones that are not),
+  `src/timeline.rs` (the file's thread: everything the base knows about
+  one person, in the order of the days. Seven tabs each answer their own
+  question and none answers the one you ask opening the file of somebody
+  you have not seen for six months — *what happened, and when*. The last
+  dispensing is behind one tab, the last vaccine behind another, the last
+  laboratory result behind a third: each is one line, and it took three
+  clicks to read three lines. The module knows none of the sources — the
+  caller hands it `Event`s — and three rules decide it: **an undated line
+  is not in a thread** (placing it « somewhere » dates it a day that is
+  not its own), **the order is total** (day, then nature, then title, or
+  two lines of the same day swap places between frames), and **a
+  rendez-vous next week is not the last act** — which is the only reason
+  `latest` knows what day it is. Pure, tested, writes nothing: the
+  thread is a reading, so `Kind` has no database key),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints),
@@ -67,7 +81,16 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   classes than the base has labels — otherwise it would be the same list
   with one more column),
   `src/ordonnancier.rs` (the register of stupéfiants: the balance — which
-  is **not** a sum, an inventory *sets* it —, the **cancellation**,
+  is **not** a sum, an inventory *sets* it, and which is **two numbers
+  and not one**: what is dispensable, and what a patient brought back
+  and is waiting to be destroyed. Putting a return back into the stock
+  would announce forty available where there are twenty-six and a sealed
+  bag; passing it as a loss would erase it, when the officine answers
+  for it until the procès-verbal. Both are computed in one pass over the
+  same sorted lines, and `apply` writes each nature's effect **once** —
+  a cancellation walks it backwards rather than repeating it inverted,
+  because a nature added to one and forgotten in the other is a stock
+  that goes wrong silently —, the **cancellation**,
   which is the only correction there is (a bad line stays written and a
   further line names it and undoes exactly what it did — never the
   quantity that line carries, which is the one thing that may have been
@@ -77,8 +100,12 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   prescription length in days and the rule its family carries. A rule
   table, not seeded content — the officine *picks* from it, because a
   base shipped with 106 followed products is 106 zero balances and a
-  control list nobody opens again. Pure, tested, no clock: the day is
-  passed in),
+  control list nobody opens again. A box size is **not** in it: 106
+  packagings written down are 106 multiplications applied blind to every
+  reception, right the day they are written and wrong the day a
+  marketing authorisation holder repackages. The officine says it once,
+  looking at the box — the same rule as a barcode, for the same reason.
+  Pure, tested, no clock: the day is passed in),
   `src/date.rs` (the calendar, written **once**: it was written three
   times — `ordonnancier` by the julienne formula, `location` by the
   civil one, plus a separate ISO reader in `surveillance`. None was
@@ -588,13 +615,19 @@ add clicking and typing; it is not the price of entry.
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
-  stup_catalogue|ordonnancier|vigilance|scans|
-  patient_scans|explorer|explorer_organ|classes|classes_outside|export|
-  peaux`
+  stup_catalogue|ordonnancier|vigilance|destruction|scans|
+  patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
+  finances|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its
   own palette, which is the one thing only a screenshot can check.
+  `finances` is the recettes view, which has **no door**: it is in no
+  dock, in no tab strip until it has been opened, and not even in the
+  list the jump box offers on an empty query — it is reached by typing
+  its name. That is deliberate (an « for me » screen offered on the
+  fifth line of a menu is not one), and it is also why the smoke test
+  has to open it by key: nothing else would.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph

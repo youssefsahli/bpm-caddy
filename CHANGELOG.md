@@ -5,6 +5,129 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.162.0] - 2026-09-09
+
+### Added
+- **Le registre tient deux comptes, et non un.** Ce qu'un patient
+  rapporte entre bien à l'officine : cela se compte, cela s'enferme au
+  même coffre, cela se justifie devant le même contrôle — et cela ne se
+  délivrera plus à personne. Le remettre au solde ferait annoncer
+  quarante gélules disponibles là où il y en a vingt-six et un sac
+  scellé ; le passer en perte l'effacerait, alors que l'officine en
+  répond jusqu'au procès-verbal. Deux natures nouvelles, donc — **retour
+  patient** et **destruction** —, et un second solde qui se calcule dans
+  la **même passe** que le premier : deux lectures du même registre
+  finiraient par ne plus dire la même chose du même jour.
+
+  Un retour porte le dossier — d'où sortent quarante gélules de morphine
+  est la seule question qui compte — et ne prend **pas** de numéro
+  d'ordonnancier, qui est celui d'une délivrance. Une destruction ne
+  s'écrit pas sans citer ce qui la rend vérifiable : procès-verbal,
+  confrère présent, collecteur. C'est le seul compte du registre dont
+  personne d'autre ne tient la contrepartie, et la base le refuse à
+  l'écriture, pas seulement le formulaire.
+
+- **Un onglet « À détruire »**, trié du plus ancien au plus récent et
+  par rien d'autre. Ce qu'on vient y chercher n'est pas la plus grosse
+  quantité, c'est la plus vieille : un stock à détruire ne réclame rien
+  tout seul — aucune échéance ne tombe, aucun patient ne rappelle,
+  aucun grossiste ne le reprend — et c'est très exactement pour cela
+  qu'un sac dort trois ans au fond d'un coffre. La date affichée est
+  celle où le coffre a **quitté zéro** pour la dernière fois, et non
+  celle du plus ancien retour du registre : entre les deux il y a
+  peut-être eu une destruction, et dater d'un sac déjà parti ferait dire
+  « en attente depuis onze mois » d'un retour d'avant-hier, c'est-à-dire
+  un signal que personne ne croirait deux fois.
+
+  Avec sa feuille : le **procès-verbal de destruction**, qui sort avant
+  la destruction, se coche à mesure et porte les deux signatures au bas.
+  La pièce que la ligne du registre cite n'existait nulle part.
+
+- **On ne reçoit pas des unités, on reçoit des boîtes.** Le grossiste
+  livre trois boîtes d'Actiskenan, qui en contiennent quatorze, quand on
+  en délivre seize : la multiplication était la dernière chose qui se
+  faisait de tête avant d'écrire dans un registre inaltérable, où une
+  erreur ne se défait que par une contre-passation motivée. La rangée du
+  comptage — « trois de quatorze, plus cinq » — sert désormais aussi au
+  déballage, et le conditionnement se retient sur la fiche du produit.
+
+  **Il n'est pas livré avec le catalogue** : cent six conditionnements
+  écrits en dur sont cent six multiplications appliquées à l'aveugle,
+  justes le jour où on les écrit et fausses le jour où le titulaire
+  reconditionne. L'officine le dit une fois, en regardant la boîte —
+  comme pour un code-barres, et pour la même raison.
+
+- **Les recettes ont leur écran, et il n'a pas de porte.** Le chiffre
+  d'affaires facturé, celui qui attend, le taux horaire et la courbe des
+  douze mois étaient en tête du tableau de bord — c'est-à-dire sur
+  l'écran qu'on ouvre devant un patient, un préparateur, un stagiaire,
+  un visiteur. Le mode discret les masquait derrière un bouton qu'il
+  suffit de cliquer : cela protège d'un regard et de rien d'autre.
+
+  Ils sont dans « Recettes », qui ne figure dans aucun dock, dans aucune
+  barre d'onglets tant qu'on ne l'a pas ouverte, et **pas même dans la
+  liste que la boîte de saut propose à vide** : on y va en tapant son
+  nom. Un écran « pour soi » offert en cinquième ligne d'un menu n'en
+  est pas un. Le récapitulatif de facturation et l'export des actes
+  l'ont suivi ; la liste d'appel reste au tableau de bord, parce qu'un
+  résultat de biologie à commenter est une affaire clinique et pas une
+  recette.
+
+  Ce que le tableau de bord garde se lit à voix haute : les actes
+  facturés, ceux qui restent à facturer, le temps passé, les dossiers.
+
+- **Et l'écran des recettes dit quatre choses que personne ne comptait.**
+  La **moyenne par acte** — pas le tarif d'un acte, mais ce que vaut une
+  heure de travail de plus, qui est la question qu'on se pose en
+  décidant d'en faire ou non. La **recette par thématique**, qui n'est
+  pas le compte d'actes par thème : un bilan partagé de médication pèse
+  plusieurs TROD, et le mélange qui remplit le mieux l'agenda n'est pas
+  celui qui rapporte le plus. Le **CA annuel**, l'horizon d'une
+  convention là où douze mois ne disent que le rythme. Et **où l'argent
+  attend** : un acte fait et non facturé est de l'argent gagné qui dort,
+  et c'est la seule barre de cet écran sur laquelle on puisse agir
+  aujourd'hui.
+
+- **Le fil du dossier.** Un dossier se lisait par onglets — les actes,
+  les vaccins, la biologie, les locations, les pièces —, et chacun
+  répondait bien à sa question. Aucun ne répondait à celle qu'on pose en
+  ouvrant la fiche de quelqu'un qu'on n'a pas vu depuis six mois :
+  **qu'est-ce qui s'est passé, et quand ?** La dernière délivrance
+  derrière un onglet, le dernier vaccin derrière un autre, le dernier
+  résultat derrière un troisième — chacun est une ligne, et il fallait
+  trois clics pour lire trois lignes.
+
+  Un onglet « Fil » les fond en une seule suite datée : la bande des
+  douze derniers mois, le résumé « dernier de chaque nature », puis les
+  lignes, du plus récent au plus ancien, chacune avec le repère de
+  couleur de sa source. Trois règles le tiennent : **une ligne sans jour
+  n'y entre pas** — la placer « quelque part » la daterait d'un jour qui
+  n'est pas le sien —, **l'ordre est total**, sans quoi deux lignes du
+  même jour changent de place d'une image à l'autre, et **un rendez-vous
+  de la semaine prochaine n'est pas le dernier acte** : il est en tête,
+  sous un intertitre qui le dit, et le résumé ne le compte pas.
+
+  Le registre des stupéfiants se lit **aussi par dossier** pour
+  l'occasion : il portait le numéro de dossier sur chaque délivrance
+  depuis toujours, et « qu'a-t-on délivré à cette personne » demandait
+  de parcourir tous les produits.
+
+### Fixed
+- **Le report du comptage en boîtes n'écrivait rien.** Le bouton
+  « = 47 » posait le total dans une variable déjà lue quinze rangées
+  plus haut : il s'affichait, il se cliquait, et le champ ne bougeait
+  pas. Le défaut était invisible parce que l'affectation vivait dans une
+  fermeture, où le compilateur ne peut pas la voir morte ; sortie de la
+  fermeture pour être partagée avec la réception, elle a été signalée à
+  la première compilation. La quantité s'écrit maintenant **après** les
+  champs propres à chaque nature, et à un seul endroit.
+
+- **Deux mesures d'une même largeur, dans la bande du produit.** La
+  mesure comptait 70 et 90 pixels là où le dessin appelait
+  `field_width(…)` : la règle de la maison, oubliée à l'endroit précis
+  où elle décide si la bande tient sur une rangée ou deux. Les largeurs
+  sont calculées une fois et le dessin les reçoit.
+
 ## [0.161.1] - 2026-09-08
 
 ### Fixed

@@ -287,9 +287,15 @@ pub enum Kind {
     Sortie,
     /// Comptage physique : le stock **devient** ce qui a été compté.
     Inventaire,
-    /// Casse, péremption, retour, vol : le stock descend, hors
-    /// délivrance. La ligne porte ce qui s'est passé.
+    /// Casse, péremption, vol : le stock descend, hors délivrance. La
+    /// ligne porte ce qui s'est passé.
     Perte,
+    /// Ce qu'un patient rapporte. Le stock délivrable **ne bouge pas**,
+    /// et c'est toute la question — voir [`Balance`].
+    Retour,
+    /// Ce qui a été détruit : le stock à détruire descend. La ligne
+    /// porte le procès-verbal, et elle ne s'écrit pas sans lui.
+    Destruction,
     /// L'annulation d'une ligne fautive : elle **désigne** la ligne
     /// qu'elle annule et défait exactement ce que celle-ci avait fait au
     /// stock. C'est la seule correction que le registre connaisse — la
@@ -310,6 +316,8 @@ impl Kind {
             Kind::Sortie => "SORTIE",
             Kind::Inventaire => "INVENTAIRE",
             Kind::Perte => "PERTE",
+            Kind::Retour => "RETOUR",
+            Kind::Destruction => "DESTRUCTION",
             Kind::Annulation => "ANNULATION",
         }
     }
@@ -323,6 +331,8 @@ impl Kind {
             "ENTREE" => Kind::Entree,
             "SORTIE" => Kind::Sortie,
             "INVENTAIRE" => Kind::Inventaire,
+            "RETOUR" => Kind::Retour,
+            "DESTRUCTION" => Kind::Destruction,
             "ANNULATION" => Kind::Annulation,
             _ => Kind::Perte,
         }
@@ -335,6 +345,8 @@ impl Kind {
             Kind::Sortie => "stup_kind_sortie",
             Kind::Inventaire => "stup_kind_inventaire",
             Kind::Perte => "stup_kind_perte",
+            Kind::Retour => "stup_kind_retour",
+            Kind::Destruction => "stup_kind_destruction",
             Kind::Annulation => "stup_kind_annulation",
         }
     }
@@ -347,6 +359,8 @@ impl Kind {
             Kind::Sortie => 0,
             Kind::Inventaire => 1,
             Kind::Perte => 3,
+            Kind::Retour => 4,
+            Kind::Destruction => 6,
             Kind::Annulation => 5,
         }
     }
@@ -358,14 +372,40 @@ impl Kind {
         self == Kind::Sortie
     }
 
-    /// Les quatre natures que l'on **écrit**.
+    /// Porte-t-elle un numéro de dossier ?
+    ///
+    /// **Séparé de [`Self::is_dispensing`], et c'est le point.** Cette
+    /// question-là servait aux deux : porter un dossier et prendre un
+    /// numéro d'ordonnancier. Un retour vient de quelqu'un — c'est même
+    /// la seule chose qui compte le jour où l'on cherche d'où sortent
+    /// quarante gélules de morphine — et il ne prend aucun numéro : le
+    /// numéro d'ordonnancier est celui d'une délivrance, et lui en
+    /// donner un ferait un trou dans la suite qui ne dit rien.
+    pub fn carries_file(self) -> bool {
+        matches!(self, Kind::Sortie | Kind::Retour)
+    }
+
+    /// Écrit-elle dans le stock à détruire plutôt que dans le stock
+    /// délivrable ? Voir [`Balance`].
+    pub fn is_destruction_side(self) -> bool {
+        matches!(self, Kind::Retour | Kind::Destruction)
+    }
+
+    /// Les six natures que l'on **écrit**.
     ///
     /// L'annulation n'en est pas : elle ne se choisit pas dans un
     /// formulaire, elle se demande sur la ligne à annuler. Un
     /// « annuler » posé à côté de « réception » et de « délivrance »
-    /// serait une cinquième façon d'écrire une ligne, alors que c'est
+    /// serait une septième façon d'écrire une ligne, alors que c'est
     /// une façon d'en corriger une.
-    pub const ALL: [Kind; 4] = [Kind::Entree, Kind::Sortie, Kind::Inventaire, Kind::Perte];
+    pub const ALL: [Kind; 6] = [
+        Kind::Entree,
+        Kind::Sortie,
+        Kind::Inventaire,
+        Kind::Perte,
+        Kind::Retour,
+        Kind::Destruction,
+    ];
 
     /// Une ligne de cette nature peut-elle être annulée ?
     ///
@@ -454,7 +494,29 @@ pub struct Move<'a> {
     pub expected: f64,
 }
 
-/// Le solde après toutes ces lignes.
+/// Les deux soldes d'un produit, après une ligne.
+///
+/// **Deux, et jamais un.** Ce qu'un patient rapporte entre bien dans
+/// l'officine, se compte, s'enferme au même coffre et se justifie devant
+/// le même contrôle — mais cela ne se délivre plus à personne. Le
+/// remettre dans le solde ferait dire au registre qu'il y a quarante
+/// gélules disponibles là où il y en a vingt-six et un sac scellé qui
+/// attend la destruction ; le passer en perte l'effacerait purement et
+/// simplement, alors que l'officine en répond jusqu'au procès-verbal.
+///
+/// Les deux nombres se calculent donc **dans la même passe**, sur les
+/// mêmes lignes triées dans le même ordre : deux fonctions qui
+/// reliraient le registre chacune de son côté finiraient par ne plus
+/// dire la même chose du même jour.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct Balance {
+    /// Ce qui est délivrable.
+    pub stock: f64,
+    /// Ce qui attend d'être détruit.
+    pub to_destroy: f64,
+}
+
+/// Où en sont les deux comptes après toutes ces lignes.
 ///
 /// Ce n'est **pas** une somme. Un inventaire fixe le solde à ce qui a
 /// été compté : additionner l'écart *et* poser le compte reviendrait à
@@ -464,8 +526,12 @@ pub struct Move<'a> {
 /// Les lignes sont triées ici, par jour puis par ordre de saisie : ce
 /// que la base rend n'a pas à être dans l'ordre, et un inventaire lu
 /// avant les sorties qui le précèdent donnerait un solde faux.
-pub fn balance(moves: &[Move]) -> f64 {
-    running(moves).last().copied().unwrap_or(0.0)
+///
+/// Une seule fonction pour les deux comptes, et pas une par compte :
+/// deux lectures du même registre finiraient par ne plus dire la même
+/// chose du même jour.
+pub fn balance(moves: &[Move]) -> Balance {
+    running(moves).last().copied().unwrap_or_default()
 }
 
 /// Ce qu'une ligne fait au solde.
@@ -475,26 +541,44 @@ pub fn balance(moves: &[Move]) -> f64 {
 /// doit donc être retrouvée. Une annulation dont la cible n'est pas dans
 /// la tranche ne fait **rien** — ne rien inventer est le seul choix
 /// honnête quand on ne sait pas ce qu'on annule.
-fn apply(stock: &mut f64, m: &Move, all: &[&Move]) {
+fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
+    // Ce qu'une ligne ordinaire fait, `sign` valant −1 pour l'annuler.
+    // Écrit **une fois** : l'annulation défaisait ce que la ligne
+    // faisait, dans un second `match` qui répétait le premier à
+    // l'envers, et une nature ajoutée à l'un et oubliée à l'autre est
+    // exactement le genre de faute qu'un registre ne peut pas se
+    // permettre.
+    fn shift(b: &mut Balance, kind: Kind, quantity: f64, sign: f64) {
+        match kind {
+            Kind::Entree => b.stock += sign * quantity,
+            Kind::Sortie | Kind::Perte => b.stock -= sign * quantity,
+            // Un retour ne rend rien au stock délivrable : il entre au
+            // coffre, du côté de ce qui ne se délivrera plus.
+            Kind::Retour => b.to_destroy += sign * quantity,
+            Kind::Destruction => b.to_destroy -= sign * quantity,
+            // Un inventaire **pose** le solde, il ne s'y ajoute pas :
+            // il n'a donc pas de contraire, et son annulation est
+            // traitée à part.
+            Kind::Inventaire | Kind::Annulation => {}
+        }
+    }
     match m.kind {
-        Kind::Entree => *stock += m.quantity,
-        Kind::Sortie | Kind::Perte => *stock -= m.quantity,
-        Kind::Inventaire => *stock = m.quantity,
+        Kind::Inventaire => b.stock = m.quantity,
         Kind::Annulation => {
             let Some(target) = all.iter().find(|t| t.seq == m.cancels) else {
                 return;
             };
-            match target.kind {
-                Kind::Entree => *stock -= target.quantity,
-                Kind::Sortie | Kind::Perte => *stock += target.quantity,
-                // Rendre au solde ce que le comptage lui avait posé :
-                // le registre redit ce qu'il disait avant. C'est la
-                // seule raison pour laquelle `expected` est écrit dans
-                // la base au lieu d'être recalculé à la lecture.
-                Kind::Inventaire => *stock = target.expected,
-                Kind::Annulation => {}
+            // Rendre au solde ce que le comptage lui avait posé : le
+            // registre redit ce qu'il disait avant. C'est la seule
+            // raison pour laquelle `expected` est écrit dans la base au
+            // lieu d'être recalculé à la lecture.
+            if target.kind == Kind::Inventaire {
+                b.stock = target.expected;
+            } else {
+                shift(b, target.kind, target.quantity, -1.0);
             }
         }
+        kind => shift(b, kind, m.quantity, 1.0),
     }
 }
 
@@ -509,21 +593,48 @@ pub fn is_cancelled(moves: &[Move], seq: i64) -> bool {
         .any(|m| m.kind == Kind::Annulation && m.cancels == seq)
 }
 
-/// Le solde jour après jour, pour la courbe : une valeur par ligne, dans
-/// l'ordre du registre.
+/// Les deux soldes ligne après ligne, dans l'ordre du registre.
 ///
 /// Le dessin lit ça et rien d'autre — refaire l'arithmétique dans la vue
 /// serait deux versions de la même règle, et un jour elles diffèrent.
-pub fn running(moves: &[Move]) -> Vec<f64> {
+pub fn running(moves: &[Move]) -> Vec<Balance> {
     let mut ordered: Vec<&Move> = moves.iter().collect();
     ordered.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
-    let mut stock = 0.0;
+    let mut b = Balance::default();
     let mut out = Vec::with_capacity(ordered.len());
     for m in &ordered {
-        apply(&mut stock, m, &ordered);
-        out.push(stock);
+        apply(&mut b, m, &ordered);
+        out.push(b);
     }
     out
+}
+
+/// Depuis quel jour quelque chose attend d'être détruit.
+///
+/// Le jour où le stock à détruire a **quitté zéro** pour la dernière
+/// fois, et non celui du plus ancien retour : entre les deux il y a
+/// peut-être eu une destruction, et dater d'un sac déjà parti ferait
+/// dire à l'écran « en attente depuis onze mois » d'un retour d'avant-
+/// hier. `None` quand rien n'attend.
+///
+/// C'est ce que l'onglet trie : un coffre où dort un sac depuis un an
+/// est un problème, et il n'a pas d'autre façon de se signaler — aucune
+/// échéance ne tombe, personne ne le réclame.
+pub fn waiting_since(moves: &[Move]) -> Option<String> {
+    let mut ordered: Vec<&Move> = moves.iter().collect();
+    ordered.sort_by(|a, b| a.day.cmp(b.day).then(a.seq.cmp(&b.seq)));
+    let mut b = Balance::default();
+    let mut since: Option<String> = None;
+    for m in &ordered {
+        let was = b.to_destroy;
+        apply(&mut b, m, &ordered);
+        if was.abs() <= 1e-6 && b.to_destroy.abs() > 1e-6 {
+            since = Some(m.day.to_owned());
+        } else if b.to_destroy.abs() <= 1e-6 {
+            since = None;
+        }
+    }
+    since
 }
 
 /// Le prochain numéro d'ordonnancier de l'année.
@@ -571,8 +682,7 @@ impl Discrepancy {
     }
 }
 
-/// Ce qu'un comptage trouve, quand il se compte comme il se fait
-/// vraiment : des boîtes pleines, ce que chacune contient, et le vrac.
+/// Des boîtes pleines, ce que chacune contient, et le vrac.
 ///
 /// Un stupéfiant ne se compte pas d'un seul nombre. On sort le coffre,
 /// on aligne les boîtes entamées et pleines, et on dit « trois boîtes
@@ -581,10 +691,18 @@ impl Discrepancy {
 /// erreur ne se corrige que par une contre-passation motivée. Elle se
 /// fait ici.
 ///
-/// Les nombres négatifs n'ont pas de sens dans un comptage et valent
-/// zéro : un champ à moitié tapé — « - », « 1e » — ne doit pas rendre
-/// un total qui a l'air d'un résultat.
-pub fn counted_total(boxes: f64, per_box: f64, loose: f64) -> f64 {
+/// **La même fonction sert au comptage et à la réception**, et ce n'est
+/// pas une économie : c'est la même phrase. Une commande de stupéfiants
+/// n'arrive jamais en unités — le grossiste livre trois boîtes
+/// d'Actiskenan, qui en contiennent quatorze — alors qu'on en délivre
+/// seize. Le registre, lui, ne connaît que l'unité : c'est cette
+/// multiplication-là qui manquait, et elle se faisait de tête au moment
+/// exact où une erreur coûte le plus cher.
+///
+/// Les nombres négatifs n'ont pas de sens ici et valent zéro : un champ
+/// à moitié tapé — « - », « 1e » — ne doit pas rendre un total qui a
+/// l'air d'un résultat.
+pub fn boxed_total(boxes: f64, per_box: f64, loose: f64) -> f64 {
     let keep = |n: f64| if n.is_finite() && n > 0.0 { n } else { 0.0 };
     keep(boxes) * keep(per_box) + keep(loose)
 }
@@ -633,6 +751,61 @@ pub struct Followed {
     pub threshold: f64,
     /// Le dernier inventaire, ISO ; vide si jamais compté.
     pub last_count: String,
+    /// Ce qui attend d'être détruit — voir [`Balance`].
+    pub to_destroy: f64,
+    /// Depuis quel jour, ISO ; vide si rien n'attend. Voir
+    /// [`waiting_since`].
+    pub waiting_since: String,
+}
+
+/// Une ligne de ce qui attend la destruction.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Awaiting {
+    pub id: i64,
+    pub label: String,
+    pub unit: String,
+    pub quantity: f64,
+    /// Depuis quel jour, ISO ; vide si le registre ne le dit pas.
+    pub since: String,
+    /// Depuis combien de jours ; `None` si le jour n'est pas lisible.
+    pub days: Option<i64>,
+}
+
+/// Ce qui dort au coffre en attendant le procès-verbal.
+///
+/// Trié du plus ancien au plus récent, et **c'est tout le tri** : ce
+/// qu'on cherche en ouvrant cet onglet n'est pas le produit dont il y a
+/// le plus, c'est celui qui attend depuis le plus longtemps. Un stock à
+/// détruire ne réclame rien tout seul — aucune échéance ne tombe, aucun
+/// patient ne rappelle — et c'est précisément pour cela qu'il s'oublie.
+///
+/// Un solde négatif y figure aussi : il veut dire qu'on a détruit plus
+/// qu'on n'avait reçu, donc qu'une ligne manque, et le cacher serait
+/// cacher la seule erreur que ce compte-là sache montrer.
+pub fn awaiting(followed: &[Followed], today: &str) -> Vec<Awaiting> {
+    let mut out: Vec<Awaiting> = followed
+        .iter()
+        .filter(|f| f.to_destroy.abs() > 1e-6)
+        .map(|f| Awaiting {
+            id: f.id,
+            label: f.label.clone(),
+            unit: f.unit.clone(),
+            quantity: f.to_destroy,
+            since: f.waiting_since.clone(),
+            days: days_between(&f.waiting_since, today),
+        })
+        .collect();
+    // Le plus ancien d'abord ; ce dont on ne connaît pas le jour passe
+    // devant, parce qu'« on ne sait pas depuis quand » est au moins
+    // aussi inquiétant que « depuis longtemps ». Puis le nom, pour que
+    // la liste de lundi et celle de mardi se comparent.
+    out.sort_by(|a, b| {
+        b.days
+            .unwrap_or(i64::MAX)
+            .cmp(&a.days.unwrap_or(i64::MAX))
+            .then(a.label.cmp(&b.label))
+    });
+    out
 }
 
 /// Une ligne de la liste de contrôle.
@@ -956,32 +1129,32 @@ mod tests {
     /// total invisible mais faux.
     #[test]
     fn a_count_is_boxes_and_loose_units() {
-        use super::counted_total;
+        use super::boxed_total;
         // Le cas de tous les jours.
-        assert!((counted_total(3.0, 14.0, 5.0) - 47.0).abs() < 1e-9);
+        assert!((boxed_total(3.0, 14.0, 5.0) - 47.0).abs() < 1e-9);
         // Rien que du vrac : une boîte entamée et rien d'autre.
-        assert!((counted_total(0.0, 14.0, 9.0) - 9.0).abs() < 1e-9);
+        assert!((boxed_total(0.0, 14.0, 9.0) - 9.0).abs() < 1e-9);
         // Rien que des boîtes pleines.
-        assert!((counted_total(2.0, 28.0, 0.0) - 56.0).abs() < 1e-9);
+        assert!((boxed_total(2.0, 28.0, 0.0) - 56.0).abs() < 1e-9);
         // Un coffre vide se compte, et il se compte à zéro : c'est un
         // résultat, pas une absence de saisie.
-        assert!(counted_total(0.0, 0.0, 0.0).abs() < 1e-9);
+        assert!(boxed_total(0.0, 0.0, 0.0).abs() < 1e-9);
         // Les fractions existent — un sirop se compte en flacons et en
         // millilitres.
-        assert!((counted_total(1.0, 7.0, 2.5) - 9.5).abs() < 1e-9);
+        assert!((boxed_total(1.0, 7.0, 2.5) - 9.5).abs() < 1e-9);
         // Et rien de ce qui n'est pas un comptage ne passe.
         for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -3.0] {
             for total in [
-                counted_total(bad, 14.0, 5.0),
-                counted_total(3.0, bad, 5.0),
-                counted_total(3.0, 14.0, bad),
+                boxed_total(bad, 14.0, 5.0),
+                boxed_total(3.0, bad, 5.0),
+                boxed_total(3.0, 14.0, bad),
             ] {
                 assert!(total.is_finite(), "{bad} rend {total}");
                 assert!(total >= 0.0, "{bad} rend {total}");
             }
         }
         // Un négatif ne se soustrait pas : il ne compte pas.
-        assert!((counted_total(3.0, 14.0, -5.0) - 42.0).abs() < 1e-9);
+        assert!((boxed_total(3.0, 14.0, -5.0) - 42.0).abs() < 1e-9);
     }
 
     use super::*;
@@ -1030,10 +1203,14 @@ mod tests {
             mv(Kind::Inventaire, 15.0, "2026-01-10", 3),
             mv(Kind::Sortie, 5.0, "2026-01-12", 4),
         ];
-        assert!((balance(&moves) - 10.0).abs() < 1e-9, "{}", balance(&moves));
+        assert!(
+            (balance(&moves).stock - 10.0).abs() < 1e-9,
+            "{}",
+            balance(&moves).stock
+        );
 
         // Et l'écart de ce comptage se lit pour ce qu'il est.
-        let before = balance(&moves[..2]);
+        let before = balance(&moves[..2]).stock;
         let d = Discrepancy {
             expected: before,
             counted: 15.0,
@@ -1062,7 +1239,7 @@ mod tests {
             mv(Kind::Entree, 30.0, "2026-01-05", 1),
             mv(Kind::Sortie, 14.0, "2026-01-08", 2),
         ];
-        assert!((balance(&jumbled) - 10.0).abs() < 1e-9);
+        assert!((balance(&jumbled).stock - 10.0).abs() < 1e-9);
         // Deux lignes du même jour sont départagées par l'ordre de
         // saisie : l'inventaire du matin puis la sortie de l'après-midi
         // ne donnent pas le même solde que l'inverse.
@@ -1070,12 +1247,12 @@ mod tests {
             mv(Kind::Inventaire, 20.0, "2026-02-02", 1),
             mv(Kind::Sortie, 6.0, "2026-02-02", 2),
         ];
-        assert!((balance(&same_day) - 14.0).abs() < 1e-9);
+        assert!((balance(&same_day).stock - 14.0).abs() < 1e-9);
         let reversed = [
             mv(Kind::Sortie, 6.0, "2026-02-02", 1),
             mv(Kind::Inventaire, 20.0, "2026-02-02", 2),
         ];
-        assert!((balance(&reversed) - 20.0).abs() < 1e-9);
+        assert!((balance(&reversed).stock - 20.0).abs() < 1e-9);
     }
 
     /// La courbe et le solde disent la même chose, parce que c'est le
@@ -1090,10 +1267,13 @@ mod tests {
         ];
         let curve = running(&moves);
         assert_eq!(curve.len(), moves.len());
-        assert_eq!(curve, vec![30.0, 16.0, 15.0, 13.0]);
-        assert!((curve.last().copied().unwrap() - balance(&moves)).abs() < 1e-9);
+        assert_eq!(
+            curve.iter().map(|b| b.stock).collect::<Vec<_>>(),
+            vec![30.0, 16.0, 15.0, 13.0]
+        );
+        assert!((curve.last().copied().unwrap().stock - balance(&moves).stock).abs() < 1e-9);
         assert!(running(&[]).is_empty());
-        assert_eq!(balance(&[]), 0.0);
+        assert_eq!(balance(&[]), Balance::default());
     }
 
     /// Une annulation défait ce que la ligne annulée avait fait — et
@@ -1114,14 +1294,18 @@ mod tests {
             mv(Kind::Sortie, 14.0, "2026-01-08", 2),
             mv(Kind::Sortie, 14.0, "2026-01-08", 3),
         ];
-        assert!((balance(&doubled) - 2.0).abs() < 1e-9);
+        assert!((balance(&doubled).stock - 2.0).abs() < 1e-9);
         let fixed = [
             mv(Kind::Entree, 30.0, "2026-01-05", 1),
             mv(Kind::Sortie, 14.0, "2026-01-08", 2),
             mv(Kind::Sortie, 14.0, "2026-01-08", 3),
             cancel(3, "2026-01-09", 4),
         ];
-        assert!((balance(&fixed) - 16.0).abs() < 1e-9, "{}", balance(&fixed));
+        assert!(
+            (balance(&fixed).stock - 16.0).abs() < 1e-9,
+            "{}",
+            balance(&fixed).stock
+        );
         // La quantité portée par l'annulation n'est jamais lue : ce
         // qu'elle rend se lit sur la ligne annulée. Une annulation à qui
         // l'on ferait dire 999 rend quand même 14.
@@ -1133,20 +1317,20 @@ mod tests {
                 ..mv(Kind::Annulation, 999.0, "2026-01-09", 3)
             },
         ];
-        assert!((balance(&lying) - 30.0).abs() < 1e-9);
+        assert!((balance(&lying).stock - 30.0).abs() < 1e-9);
         // Annuler une réception fait redescendre le stock.
         let returned = [
             mv(Kind::Entree, 30.0, "2026-01-05", 1),
             cancel(1, "2026-01-06", 2),
         ];
-        assert_eq!(balance(&returned), 0.0);
+        assert_eq!(balance(&returned).stock, 0.0);
         // Et une perte annulée rend ce qu'elle avait pris.
         let broken = [
             mv(Kind::Entree, 30.0, "2026-01-05", 1),
             mv(Kind::Perte, 4.0, "2026-01-06", 2),
             cancel(2, "2026-01-07", 3),
         ];
-        assert!((balance(&broken) - 30.0).abs() < 1e-9);
+        assert!((balance(&broken).stock - 30.0).abs() < 1e-9);
     }
 
     /// Annuler un inventaire rend au registre ce qu'il disait avant lui.
@@ -1165,14 +1349,18 @@ mod tests {
             mv(Kind::Sortie, 14.0, "2026-01-08", 2),
             count(5.0, 16.0, "2026-01-10", 3),
         ];
-        assert!((balance(&wrong) - 5.0).abs() < 1e-9);
+        assert!((balance(&wrong).stock - 5.0).abs() < 1e-9);
         let fixed = [
             mv(Kind::Entree, 30.0, "2026-01-05", 1),
             mv(Kind::Sortie, 14.0, "2026-01-08", 2),
             count(5.0, 16.0, "2026-01-10", 3),
             cancel(3, "2026-01-10", 4),
         ];
-        assert!((balance(&fixed) - 16.0).abs() < 1e-9, "{}", balance(&fixed));
+        assert!(
+            (balance(&fixed).stock - 16.0).abs() < 1e-9,
+            "{}",
+            balance(&fixed).stock
+        );
         // Ce que le registre continue de porter, c'est les deux lignes :
         // le comptage fautif et son annulation. La faute ne disparaît
         // pas, elle se lit barrée.
@@ -1193,7 +1381,7 @@ mod tests {
             mv(Kind::Entree, 30.0, "2026-01-05", 1),
             cancel(77, "2026-01-06", 2),
         ];
-        assert!((balance(&orphan) - 30.0).abs() < 1e-9);
+        assert!((balance(&orphan).stock - 30.0).abs() < 1e-9);
         // Et une annulation d'annulation ne fait rien non plus : le
         // registre refuse de l'écrire, et l'arithmétique refuse de la
         // lire, pour que les deux disent la même chose.
@@ -1202,11 +1390,17 @@ mod tests {
             cancel(1, "2026-01-06", 2),
             cancel(2, "2026-01-07", 3),
         ];
-        assert_eq!(balance(&stacked), 0.0);
+        assert_eq!(balance(&stacked).stock, 0.0);
         assert!(Kind::Entree.can_be_cancelled());
         assert!(!Kind::Annulation.can_be_cancelled());
         // La courbe suit le même calcul : elle remonte à l'annulation.
-        assert_eq!(running(&stacked), vec![30.0, 0.0, 0.0]);
+        assert_eq!(
+            running(&stacked)
+                .iter()
+                .map(|b| b.stock)
+                .collect::<Vec<_>>(),
+            vec![30.0, 0.0, 0.0]
+        );
     }
 
     /// Le numéro d'ordonnancier ne revient jamais en arrière et ne
@@ -1243,19 +1437,186 @@ mod tests {
         }
         assert_eq!(Kind::from_key("QUELQUE CHOSE"), Kind::Perte);
         assert_eq!(Kind::from_key(""), Kind::Perte);
-        // Et seule la délivrance porte un numéro et un dossier.
+        // Et seule la délivrance porte un numéro d'ordonnancier.
         assert!(Kind::Sortie.is_dispensing());
         for k in [
             Kind::Entree,
             Kind::Inventaire,
             Kind::Perte,
+            Kind::Retour,
+            Kind::Destruction,
             Kind::Annulation,
         ] {
             assert!(!k.is_dispensing(), "{k:?}");
         }
+        // Le dossier, lui, est une autre question : un retour vient de
+        // quelqu'un, et il ne prend pas de numéro pour autant.
+        assert!(Kind::Sortie.carries_file());
+        assert!(Kind::Retour.carries_file());
+        for k in [
+            Kind::Entree,
+            Kind::Inventaire,
+            Kind::Perte,
+            Kind::Destruction,
+            Kind::Annulation,
+        ] {
+            assert!(!k.carries_file(), "{k:?}");
+        }
         // L'annulation ne se choisit pas dans le formulaire : elle se
         // demande sur la ligne à annuler.
         assert!(!Kind::ALL.contains(&Kind::Annulation));
+    }
+
+    /// **Ce qu'un patient rapporte ne revient pas au stock.**
+    ///
+    /// C'est la règle qui justifie deux soldes plutôt qu'un. Les
+    /// quatorze gélules qu'une famille rapporte après un décès sont
+    /// bien à l'officine, elles se comptent, elles s'enferment au même
+    /// coffre et elles se justifient devant le même contrôle — et elles
+    /// ne se délivreront à personne. Un registre qui les remettrait au
+    /// solde annoncerait quarante disponibles là où il y en a
+    /// vingt-six ; un registre qui les passerait en perte les
+    /// effacerait, alors que l'officine en répond jusqu'au
+    /// procès-verbal.
+    #[test]
+    fn what_a_patient_brings_back_never_returns_to_the_stock() {
+        let moves = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            // Le patient meurt, la famille rapporte ce qui restait.
+            mv(Kind::Retour, 9.0, "2026-01-20", 3),
+        ];
+        assert!(
+            (balance(&moves).stock - 16.0).abs() < 1e-9,
+            "{}",
+            balance(&moves).stock
+        );
+        assert!((balance(&moves).to_destroy - 9.0).abs() < 1e-9);
+        // La destruction vide l'autre solde et ne touche pas au premier.
+        let destroyed = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            mv(Kind::Retour, 9.0, "2026-01-20", 3),
+            mv(Kind::Destruction, 9.0, "2026-02-10", 4),
+        ];
+        assert!((balance(&destroyed).stock - 16.0).abs() < 1e-9);
+        assert!(balance(&destroyed).to_destroy.abs() < 1e-9);
+        // Et une perte reste une perte : la casse ne va pas au coffre
+        // des retours, elle sort du stock. Les deux natures existent
+        // précisément parce qu'elles ne disent pas la même chose.
+        let broken = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Perte, 2.0, "2026-01-06", 2),
+        ];
+        assert!((balance(&broken).stock - 28.0).abs() < 1e-9);
+        assert!(balance(&broken).to_destroy.abs() < 1e-9);
+    }
+
+    /// Une annulation défait la ligne du **bon côté**.
+    ///
+    /// La contre-passation d'un retour ne rend rien au stock
+    /// délivrable : elle retire du coffre des retours ce que le retour
+    /// y avait mis. Écrite comme un `match` à l'envers du premier, la
+    /// règle se serait dédoublée et une nature ajoutée à l'un des deux
+    /// aurait rendu le stock faux sans que rien ne le dise — c'est
+    /// pourquoi `apply` n'écrit qu'un seul sens et le parcourt à
+    /// l'envers.
+    #[test]
+    fn cancelling_a_return_gives_back_to_the_side_it_came_from() {
+        // Un retour saisi deux fois par deux postes.
+        let doubled = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Retour, 9.0, "2026-01-20", 2),
+            mv(Kind::Retour, 9.0, "2026-01-20", 3),
+            cancel(3, "2026-01-21", 4),
+        ];
+        assert!((balance(&doubled).stock - 30.0).abs() < 1e-9);
+        assert!((balance(&doubled).to_destroy - 9.0).abs() < 1e-9);
+        // Et une destruction annulée remet au coffre ce qu'elle en
+        // avait sorti, sans jamais toucher au délivrable.
+        let undone = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Retour, 9.0, "2026-01-20", 2),
+            mv(Kind::Destruction, 9.0, "2026-02-10", 3),
+            cancel(3, "2026-02-11", 4),
+        ];
+        assert!((balance(&undone).stock - 30.0).abs() < 1e-9);
+        assert!((balance(&undone).to_destroy - 9.0).abs() < 1e-9);
+        // Un inventaire pose le solde délivrable et ne dit rien du
+        // coffre des retours : compter le stock ne compte pas le sac
+        // scellé, et faire croire le contraire viderait ce compte-là
+        // sans qu'aucune ligne ne l'explique.
+        let counted = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Retour, 9.0, "2026-01-20", 2),
+            count(28.0, 30.0, "2026-01-25", 3),
+        ];
+        assert!((balance(&counted).stock - 28.0).abs() < 1e-9);
+        assert!((balance(&counted).to_destroy - 9.0).abs() < 1e-9);
+    }
+
+    /// Ce qui attend d'être détruit, et **depuis quand**.
+    ///
+    /// Depuis le jour où le coffre des retours a quitté zéro pour la
+    /// dernière fois, et non depuis le plus ancien retour du registre :
+    /// entre les deux il y a peut-être eu une destruction, et dater d'un
+    /// sac déjà parti ferait dire « en attente depuis onze mois » d'un
+    /// retour d'avant-hier — c'est-à-dire un signal que personne ne
+    /// croira la deuxième fois.
+    #[test]
+    fn what_waits_for_destruction_is_dated_from_when_it_started_waiting() {
+        let moves = [
+            mv(Kind::Retour, 9.0, "2025-03-02", 1),
+            mv(Kind::Destruction, 9.0, "2025-06-10", 2),
+            mv(Kind::Retour, 4.0, "2026-08-30", 3),
+        ];
+        assert_eq!(waiting_since(&moves).as_deref(), Some("2026-08-30"));
+        // Rien n'attend : il n'y a pas de date à donner.
+        let cleared = [
+            mv(Kind::Retour, 9.0, "2025-03-02", 1),
+            mv(Kind::Destruction, 9.0, "2025-06-10", 2),
+        ];
+        assert_eq!(waiting_since(&cleared), None);
+        assert_eq!(waiting_since(&[]), None);
+        // Un second retour n'efface pas la date du premier : c'est
+        // depuis le premier que le coffre n'est plus vide.
+        let piled = [
+            mv(Kind::Retour, 9.0, "2026-01-05", 1),
+            mv(Kind::Retour, 4.0, "2026-05-05", 2),
+        ];
+        assert_eq!(waiting_since(&piled).as_deref(), Some("2026-01-05"));
+
+        // Et la liste se lit du plus ancien au plus récent.
+        let f = |id: i64, label: &str, qty: f64, since: &str| Followed {
+            id,
+            label: label.to_owned(),
+            unit: "gélule".to_owned(),
+            stock: 40.0,
+            threshold: 0.0,
+            last_count: String::new(),
+            to_destroy: qty,
+            waiting_since: since.to_owned(),
+        };
+        let list = awaiting(
+            &[
+                f(1, "Actiskenan 10 mg", 4.0, "2026-08-30"),
+                // Rien n'attend : la ligne n'a rien à faire là.
+                f(2, "Oxynorm 5 mg", 0.0, ""),
+                f(3, "Skenan LP 30 mg", 14.0, "2025-11-02"),
+                // On a détruit plus qu'on n'avait reçu : une ligne
+                // manque, et cela se montre au lieu de se taire.
+                f(4, "Sevredol 20 mg", -2.0, "2026-09-01"),
+            ],
+            "2026-09-08",
+        );
+        assert_eq!(
+            list.iter().map(|a| a.id).collect::<Vec<_>>(),
+            vec![3, 1, 4],
+            "du plus ancien au plus récent, et le produit sans rien à \
+             détruire n'y est pas"
+        );
+        assert_eq!(list[0].days, Some(310));
+        assert!((list[2].quantity + 2.0).abs() < 1e-9);
     }
 
     /// La liste de contrôle : un produit, un motif, le plus grave.
@@ -1268,6 +1629,8 @@ mod tests {
             stock,
             threshold,
             last_count: last.to_owned(),
+            to_destroy: 0.0,
+            waiting_since: String::new(),
         };
         let base = [
             // Impossible : une ligne manque au registre.

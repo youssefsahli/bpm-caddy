@@ -1333,6 +1333,10 @@ pub struct Stupefiant {
     pub max_days: i64,
     /// La règle propre à cette présentation, en une ligne.
     pub note: String,
+    /// Ce que contient une boîte ; 0 = on ne l'a pas dit. C'est le
+    /// nombre par lequel une réception se multiplie, et celui que le
+    /// comptage propose.
+    pub per_box: f64,
 }
 
 /// Une ligne du registre, telle qu'elle est écrite.
@@ -1360,6 +1364,27 @@ pub struct StupDispensing {
     pub day: String,
     pub quantity: f64,
     pub cancelled: bool,
+}
+
+/// Ce que le registre dit d'un produit suivi, au jour où on le lit.
+///
+/// Un tuple de trois jusqu'ici — `(produit, solde, dernier comptage)` —,
+/// et il en aurait fallu cinq. Un `.2` qui veut dire « la date du
+/// dernier inventaire » se relit mal ; deux dates dans le même tuple ne
+/// se relisent plus du tout.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Standing {
+    pub product: Stupefiant,
+    /// Ce qui est délivrable.
+    pub stock: f64,
+    /// Ce qui attend d'être détruit — voir
+    /// [`crate::ordonnancier::Balance`].
+    pub to_destroy: f64,
+    /// Le dernier inventaire, ISO ; vide si jamais compté.
+    pub last_count: String,
+    /// Depuis quand quelque chose attend d'être détruit, ISO ; vide si
+    /// rien n'attend.
+    pub waiting_since: String,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -28353,6 +28378,14 @@ CREATE TABLE IF NOT EXISTS stupefiants (
     -- La règle propre à cette présentation, en une ligne : le
     -- fractionnement, ce qui se rapporte, ce qui se relaie.
     note        TEXT NOT NULL DEFAULT '',
+    -- Ce que contient une boîte : quatorze gélules d'Actiskenan, cinq
+    -- patchs de Durogesic. Zéro veut dire « on ne l'a pas dit », et non
+    -- « une boîte est vide » : rien n'est deviné ici, pas plus que pour
+    -- un code-barres. L'officine l'apprend en suivant le produit, et
+    -- c'est ce nombre qui fait la multiplication d'une réception —
+    -- trois boîtes de quatorze — au lieu de la laisser se faire de tête
+    -- devant un registre inaltérable.
+    per_box     REAL NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 CREATE TABLE IF NOT EXISTS stup_moves (
@@ -28441,6 +28474,7 @@ const STUP_MIGRATIONS: &[&str] = &[
     "ALTER TABLE stupefiants ADD COLUMN status TEXT NOT NULL DEFAULT 'STUPEFIANT'",
     "ALTER TABLE stupefiants ADD COLUMN max_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE stupefiants ADD COLUMN note TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE stupefiants ADD COLUMN per_box REAL NOT NULL DEFAULT 0",
     "ALTER TABLE stup_moves ADD COLUMN cancels INTEGER NOT NULL DEFAULT 0",
     // Deux lignes ne peuvent pas porter le même numéro d'ordonnancier.
     //
@@ -31591,7 +31625,7 @@ impl Db {
             .stups
             .prepare(
                 "SELECT id, drug_id, label, unit, threshold, archived,
-                        family, status, max_days, note
+                        family, status, max_days, note, per_box
                  FROM stupefiants ORDER BY archived ASC, label COLLATE NOCASE ASC",
             )
             .map_err(|e| e.to_string())?;
@@ -31608,6 +31642,7 @@ impl Db {
                     status: r.get(7)?,
                     max_days: r.get(8)?,
                     note: r.get(9)?,
+                    per_box: r.get(10)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -31641,6 +31676,7 @@ impl Db {
             status: crate::ordonnancier::Status::Stupefiant.as_key().to_owned(),
             max_days: 0,
             note: String::new(),
+            per_box: 0.0,
         })
     }
 
@@ -31668,8 +31704,8 @@ impl Db {
         self.stups
             .execute(
                 "INSERT INTO stupefiants
-                     (drug_id, label, unit, threshold, family, status, max_days, note)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                     (drug_id, label, unit, threshold, family, status, max_days, note, per_box)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     p.drug_id,
                     label,
@@ -31679,6 +31715,7 @@ impl Db {
                     crate::ordonnancier::Status::from_key(&p.status).as_key(),
                     p.max_days.max(0),
                     p.note.trim(),
+                    p.per_box.max(0.0),
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -31734,7 +31771,8 @@ impl Db {
             .execute(
                 "UPDATE stupefiants
                     SET label = ?2, unit = ?3, threshold = ?4, archived = ?5, drug_id = ?6,
-                        family = ?11, status = ?12, max_days = ?13, note = ?14
+                        family = ?11, status = ?12, max_days = ?13, note = ?14,
+                        per_box = ?15
                   WHERE id = ?1 AND label = ?7 AND unit = ?8
                     AND threshold = ?9 AND archived = ?10",
                 rusqlite::params![
@@ -31752,6 +31790,7 @@ impl Db {
                     crate::ordonnancier::Status::from_key(&new.status).as_key(),
                     new.max_days.max(0),
                     new.note.trim(),
+                    new.per_box.max(0.0),
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -31972,6 +32011,83 @@ impl Db {
         )
     }
 
+    /// Ce que le registre porte au nom d'un dossier : ses délivrances
+    /// et ses retours, avec le libellé du produit.
+    ///
+    /// Le registre se lit par produit et par numéro ; il ne se lisait
+    /// **pas** par dossier, alors que la ligne porte le numéro de
+    /// dossier depuis toujours. C'est ce que le fil d'un dossier vient
+    /// chercher : « qu'est-ce qu'on lui a délivré, et quand ».
+    ///
+    /// Les annulations n'en sont pas : une délivrance annulée n'a pas eu
+    /// lieu, et l'ensemble `cancelled` dit lesquelles. Le libellé vient
+    /// du produit, jamais d'une chaîne écrite sur la ligne.
+    pub fn stup_for_patient(&self, patient_id: i64) -> Result<Vec<(StupMove, String)>, String> {
+        let cancelled = self.stup_cancelled_ids()?;
+        let mut st = self
+            .stups
+            .prepare(
+                "SELECT m.id, m.stup_id, m.kind, m.happened_on, m.quantity, s.label
+                 FROM stup_moves m JOIN stupefiants s ON s.id = m.stup_id
+                 WHERE m.patient_id = ?1
+                 ORDER BY m.happened_on DESC, m.id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = st
+            .query_map([patient_id], |r| {
+                Ok((
+                    StupMove {
+                        id: r.get(0)?,
+                        stup_id: r.get(1)?,
+                        kind: r.get(2)?,
+                        happened_on: r.get(3)?,
+                        quantity: r.get(4)?,
+                        ordo_year: 0,
+                        ordo_no: 0,
+                        patient_id,
+                        prescriber: String::new(),
+                        supplier: String::new(),
+                        reference: String::new(),
+                        expected: 0.0,
+                        operator: String::new(),
+                        remark: String::new(),
+                        cancels: 0,
+                    },
+                    r.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let all: Vec<(StupMove, String)> =
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        Ok(all
+            .into_iter()
+            .filter(|(m, _)| !cancelled.contains(&m.id))
+            .collect())
+    }
+
+    /// Tout ce qui est passé par le coffre des retours : ce que des
+    /// patients ont rapporté, et ce qui en est reparti détruit.
+    ///
+    /// Tous produits confondus et du plus récent au plus ancien, comme
+    /// le journal : c'est un compte de l'officine et pas d'un produit —
+    /// une destruction se fait pour le coffre entier, en une fois,
+    /// devant témoin, et la question posée est « qu'est-ce qui dort
+    /// là-dedans », jamais « qu'est-ce qui dort là-dedans de
+    /// l'Actiskenan ».
+    ///
+    /// Les annulations qui les désignent viennent avec : une ligne
+    /// annulée se lit barrée, et la sortir de la liste ferait
+    /// disparaître la correction en même temps que la faute.
+    pub fn stup_destruction_moves(&self) -> Result<Vec<StupMove>, String> {
+        self.stup_rows(
+            "WHERE kind IN ('RETOUR', 'DESTRUCTION')
+                OR (kind = 'ANNULATION' AND cancels IN
+                    (SELECT id FROM stup_moves WHERE kind IN ('RETOUR', 'DESTRUCTION')))
+             ORDER BY happened_on DESC, id DESC",
+            rusqlite::params![],
+        )
+    }
+
     /// Les lignes que le registre a annulées.
     ///
     /// Une requête pour tout le registre, et non une par ligne
@@ -32102,6 +32218,19 @@ impl Db {
                 return Err(crate::strings::tr("stup_err_no_gap_reason").to_owned());
             }
         }
+        // **Une destruction sans procès-verbal ne prouve rien.** Le
+        // stock à détruire est le seul compte du registre qui ne se
+        // vide par aucune contrepartie extérieure : aucun patient ne le
+        // réclame, aucun grossiste ne le reprend, et la ligne qui
+        // l'annule est écrite par celui-là même qui la produit. Ce qui
+        // la rend vérifiable est ce qu'elle cite — le procès-verbal, le
+        // confrère présent, le collecteur. La même place et la même
+        // raison que le motif de l'annulation et celui de l'écart
+        // d'inventaire : à l'écriture, et pas dans le formulaire qui l'a
+        // proposée.
+        if kind == crate::ordonnancier::Kind::Destruction && m.remark.trim().is_empty() {
+            return Err(crate::strings::tr("stup_err_no_pv").to_owned());
+        }
         if kind == crate::ordonnancier::Kind::Annulation {
             if m.remark.trim().is_empty() {
                 return Err(crate::strings::tr("stup_err_no_reason").to_owned());
@@ -32170,14 +32299,13 @@ impl Db {
                 m.quantity,
                 year,
                 no,
-                // Seule une délivrance porte un dossier : une réception
-                // n'a pas de patient, et en écrire un serait mettre un
-                // nom dans un registre pour rien.
-                if kind.is_dispensing() {
-                    m.patient_id
-                } else {
-                    0
-                },
+                // Une délivrance et un retour portent un dossier ; une
+                // réception n'a pas de patient, et en écrire un serait
+                // mettre un nom dans un registre pour rien. Le retour a
+                // rejoint la délivrance le jour où il a existé : quatorze
+                // gélules de morphine rendues sans qu'on sache par qui
+                // sont exactement ce qu'un contrôle vient chercher.
+                if kind.carries_file() { m.patient_id } else { 0 },
                 // Et chaque champ n'appartient qu'aux natures où il veut
                 // dire quelque chose. Le formulaire gardait le
                 // prescripteur et le grossiste d'une ligne à l'autre :
@@ -32197,7 +32325,14 @@ impl Db {
                 } else {
                     ""
                 },
-                if kind == crate::ordonnancier::Kind::Entree {
+                // Le bon de livraison d'une réception — et le numéro du
+                // procès-verbal d'une destruction, qui est la même
+                // chose : la pièce extérieure à laquelle la ligne
+                // renvoie.
+                if matches!(
+                    kind,
+                    crate::ordonnancier::Kind::Entree | crate::ordonnancier::Kind::Destruction
+                ) {
                     m.reference.trim()
                 } else {
                     ""
@@ -32267,13 +32402,14 @@ impl Db {
         })
     }
 
-    /// Ce que le registre dit de chaque produit suivi : le solde et la
-    /// date du dernier comptage.
+    /// Ce que le registre dit de chaque produit suivi : les deux
+    /// soldes, la date du dernier comptage et celle depuis laquelle
+    /// quelque chose attend d'être détruit.
     ///
     /// Une requête pour toute la table, et non une par produit : la vue
     /// en affiche la liste, et quarante soldes lus un par un sur un
     /// partage réseau, c'est quarante allers-retours.
-    pub fn stup_summary(&self) -> Result<Vec<(Stupefiant, f64, String)>, String> {
+    pub fn stup_summary(&self) -> Result<Vec<Standing>, String> {
         let products = self.stupefiants()?;
         let mut stmt = self
             .stups
@@ -32325,7 +32461,11 @@ impl Db {
                         expected: l.expected,
                     })
                     .collect();
-                let stock = crate::ordonnancier::balance(&moves);
+                // Les deux soldes en une passe : deux appels séparés
+                // reliraient le même registre deux fois, et
+                // `ordonnancier::running` les calcule ensemble
+                // précisément pour qu'ils ne puissent pas diverger.
+                let last_balance = crate::ordonnancier::balance(&moves);
                 // Le dernier comptage, qui est ce qui décide de la liste
                 // de contrôle. Les lignes sont déjà dans l'ordre — et un
                 // comptage annulé n'en est pas un : le prendre pour le
@@ -32338,7 +32478,13 @@ impl Db {
                     })
                     .map(|l| l.day.clone())
                     .unwrap_or_default();
-                (p, stock, last)
+                Standing {
+                    stock: last_balance.stock,
+                    to_destroy: last_balance.to_destroy,
+                    last_count: last,
+                    waiting_since: crate::ordonnancier::waiting_since(&moves).unwrap_or_default(),
+                    product: p,
+                }
             })
             .collect())
     }
@@ -35204,6 +35350,154 @@ mod tests {
         assert!(count(30.0, 30.0 + 1e-9, "").is_ok());
     }
 
+    /// **Ce qu'un patient rapporte entre au registre sans revenir au
+    /// stock**, et ne repart que sur un procès-verbal.
+    ///
+    /// Le module pur tient l'arithmétique ; ce test tient ce que la
+    /// base en fait — les deux comptes rendus par `stup_summary`, le
+    /// dossier écrit sur un retour et pas sur une destruction, la
+    /// référence qui appartient à deux natures, et le refus d'une
+    /// destruction qui ne cite rien.
+    #[test]
+    fn a_patients_return_waits_at_the_safe_until_a_written_destruction() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-retour-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("retour.db"), "secret").unwrap();
+        let pid = db.add_patient("Vasseur", "Odile", "1947-02-11").unwrap();
+        let sid = db
+            .add_stupefiant(0, "Actiskenan 10 mg", "gélule", 0.0)
+            .unwrap();
+        let line = |kind: crate::ordonnancier::Kind, qty: f64, day: &str, patient: i64| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: kind.as_key().to_owned(),
+                happened_on: day.to_owned(),
+                quantity: qty,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: patient,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: "PV-2026-03".to_owned(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: "dénaturation devant confrère".to_owned(),
+                cancels: 0,
+            })
+        };
+        use crate::ordonnancier::Kind;
+        line(Kind::Entree, 28.0, "2026-01-05", 0).unwrap();
+        line(Kind::Sortie, 14.0, "2026-01-08", pid).unwrap();
+        // La patiente meurt ; la famille rapporte ce qui restait.
+        let back = line(Kind::Retour, 9.0, "2026-02-02", pid).unwrap();
+
+        let one = |db: &Db| db.stup_summary().unwrap().into_iter().next().unwrap();
+        let st = one(&db);
+        assert!(
+            (st.stock - 14.0).abs() < 1e-9,
+            "le retour ne revient pas au délivrable : {}",
+            st.stock
+        );
+        assert!((st.to_destroy - 9.0).abs() < 1e-9, "{}", st.to_destroy);
+        assert_eq!(st.waiting_since, "2026-02-02");
+
+        // Un retour porte le dossier — d'où sortent neuf gélules de
+        // morphine est la seule question qui compte — et **pas** de
+        // numéro d'ordonnancier : celui-là est le numéro d'une
+        // délivrance, et lui en donner un ferait un trou dans la suite
+        // qui ne dit rien.
+        let moves = db.stup_moves(sid).unwrap();
+        let ret = moves.iter().find(|m| m.id == back).unwrap();
+        assert_eq!(ret.patient_id, pid);
+        assert_eq!((ret.ordo_year, ret.ordo_no), (0, 0));
+        assert_eq!(ret.reference, "", "un retour ne cite pas de pièce");
+
+        // Une destruction sans procès-verbal est refusée à l'écriture,
+        // et pas seulement dans le formulaire qui l'a proposée : le
+        // stock à détruire est le seul compte du registre dont personne
+        // d'autre ne tient la contrepartie.
+        assert!(db
+            .add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: Kind::Destruction.as_key().to_owned(),
+                happened_on: "2026-03-01".to_owned(),
+                quantity: 9.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: pid,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: "   ".to_owned(),
+                cancels: 0,
+            })
+            .is_err());
+
+        let gone = line(Kind::Destruction, 9.0, "2026-03-01", pid).unwrap();
+        let st = one(&db);
+        assert!((st.stock - 14.0).abs() < 1e-9);
+        assert!(st.to_destroy.abs() < 1e-9, "{}", st.to_destroy);
+        assert_eq!(st.waiting_since, "", "plus rien n'attend");
+        let moves = db.stup_moves(sid).unwrap();
+        let d = moves.iter().find(|m| m.id == gone).unwrap();
+        assert_eq!(d.reference, "PV-2026-03", "la pièce que la ligne cite");
+        assert_eq!(d.patient_id, 0, "une destruction n'a pas de patient");
+
+        // Les deux lignes, et rien d'autre, se lisent au coffre.
+        let journal = db.stup_destruction_moves().unwrap();
+        assert_eq!(
+            journal.iter().map(|m| m.id).collect::<Vec<_>>(),
+            vec![gone, back],
+            "du plus récent au plus ancien"
+        );
+
+        // L'annulation de la destruction remet au coffre ce qu'elle en
+        // avait sorti, sans jamais toucher au délivrable — et elle se
+        // lit dans la même liste, sans quoi la correction disparaîtrait
+        // avec la faute.
+        db.cancel_stup_move(gone, "2026-03-02", "mauvais produit", "YS")
+            .unwrap();
+        let st = one(&db);
+        assert!((st.stock - 14.0).abs() < 1e-9);
+        assert!((st.to_destroy - 9.0).abs() < 1e-9, "{}", st.to_destroy);
+        assert_eq!(db.stup_destruction_moves().unwrap().len(), 3);
+
+        // **Le registre se lit aussi par dossier.** Il porte le numéro
+        // de dossier sur chaque délivrance depuis toujours et ne se
+        // lisait que par produit et par numéro d'ordonnancier : « qu'a-
+        // t-on délivré à cette personne » demandait de parcourir tous
+        // les produits. Une délivrance annulée n'a pas eu lieu et n'en
+        // fait pas partie ; un retour, si — il vient de quelqu'un.
+        let mine = db.stup_for_patient(pid).unwrap();
+        assert_eq!(
+            mine.iter()
+                .map(|(m, l)| (m.kind.as_str(), l.as_str()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("RETOUR", "Actiskenan 10 mg"),
+                ("SORTIE", "Actiskenan 10 mg")
+            ],
+            "du plus récent au plus ancien ; la destruction annulée n'y \
+             est pas, et elle ne porte pas de dossier de toute façon"
+        );
+        assert!(db.stup_for_patient(pid + 999).unwrap().is_empty());
+
+        // Et le conditionnement se corrige comme le seuil : c'est une
+        // étiquette du produit, pas une ligne du registre.
+        let was = db.stupefiants().unwrap().into_iter().next().unwrap();
+        assert_eq!(was.per_box, 0.0, "rien n'est livré ni deviné");
+        let mut now = was.clone();
+        now.per_box = 14.0;
+        assert!(db.update_stupefiant(&now, &was, "YS").unwrap());
+        assert!((db.stupefiants().unwrap()[0].per_box - 14.0).abs() < 1e-9);
+    }
+
     #[test]
     fn the_register_numbers_its_dispensings_and_keeps_the_balance() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-stup-{}", std::process::id()));
@@ -35290,8 +35584,12 @@ mod tests {
         // Le solde suit la règle : 30 − 14 − 5.
         let summary = db.stup_summary().unwrap();
         assert_eq!(summary.len(), 1);
-        assert!((summary[0].1 - 11.0).abs() < 1e-9, "{}", summary[0].1);
-        assert_eq!(summary[0].2, "", "aucun comptage encore");
+        assert!(
+            (summary[0].stock - 11.0).abs() < 1e-9,
+            "{}",
+            summary[0].stock
+        );
+        assert_eq!(summary[0].last_count, "", "aucun comptage encore");
 
         // Un inventaire pose le solde et garde ce qu'il a corrigé.
         db.add_stup_move(&StupMove {
@@ -35313,8 +35611,12 @@ mod tests {
         })
         .unwrap();
         let summary = db.stup_summary().unwrap();
-        assert!((summary[0].1 - 10.0).abs() < 1e-9, "{}", summary[0].1);
-        assert_eq!(summary[0].2, "2026-01-20", "le dernier comptage");
+        assert!(
+            (summary[0].stock - 10.0).abs() < 1e-9,
+            "{}",
+            summary[0].stock
+        );
+        assert_eq!(summary[0].last_count, "2026-01-20", "le dernier comptage");
 
         // L'année suivante repart à un.
         write(Kind::Sortie, 2.0, "2027-01-03", pid);
@@ -35396,7 +35698,7 @@ mod tests {
         let first = write(sid, "SORTIE", 14.0, "2026-01-08", pid);
         // La même délivrance saisie deux fois, par deux postes.
         let twice = write(sid, "SORTIE", 14.0, "2026-01-08", pid);
-        assert!((db.stup_summary().unwrap()[1].1 - 0.0).abs() < 1e-9);
+        assert!((db.stup_summary().unwrap()[1].stock - 0.0).abs() < 1e-9);
 
         // Un motif est obligatoire.
         assert!(db
@@ -35412,7 +35714,7 @@ mod tests {
         // fautive est toujours là** : quatre lignes, pas trois.
         let moves = db.stup_moves(sid).unwrap();
         assert_eq!(moves.len(), 4);
-        assert!((db.stup_summary().unwrap()[1].1 - 14.0).abs() < 1e-9);
+        assert!((db.stup_summary().unwrap()[1].stock - 14.0).abs() < 1e-9);
         assert!(db.stup_cancelled_ids().unwrap().contains(&twice));
         assert!(!db.stup_cancelled_ids().unwrap().contains(&first));
 
@@ -35772,9 +36074,9 @@ mod tests {
             (db.stup_summary()
                 .unwrap()
                 .iter()
-                .find(|(p, _, _)| p.id == id)
+                .find(|s| s.product.id == id)
                 .unwrap()
-                .1
+                .stock
                 - 30.0)
                 .abs()
                 < 1e-9
@@ -38276,10 +38578,22 @@ mod tests {
                 status: family.status.to_owned(),
                 max_days: family.max_days,
                 note: family.note.to_owned(),
+                per_box: 0.0,
             })
             .unwrap()
         };
         let skenan = follow("Skenan LP 30 mg", 14.0);
+        // Ce que contient une boîte : appris par l'officine, jamais
+        // livré avec le catalogue. La démonstration le porte parce que
+        // c'est ce qui fait marcher la multiplication d'une réception,
+        // et qu'un champ vide ne montre rien.
+        for (id, per_box) in [(skenan, 14.0)] {
+            if let Some(was) = db.stupefiants().unwrap().into_iter().find(|p| p.id == id) {
+                let mut now = was.clone();
+                now.per_box = per_box;
+                let _ = db.update_stupefiant(&now, &was, "CL");
+            }
+        }
         write(skenan, "ENTREE", 28.0, day(1, 12), 0, 0.0);
         write(skenan, "SORTIE", 14.0, day(2, 3), pid, 0.0);
         write(skenan, "SORTIE", 14.0, day(3, 9), pid, 0.0);
@@ -38330,6 +38644,32 @@ mod tests {
         })
         .unwrap();
 
+        // Ce qu'un patient rapporte, et ce qui en reste au coffre. Une
+        // démonstration sans retour laisserait l'onglet « À détruire »
+        // vide, c'est-à-dire montrerait un compte à zéro là où tout
+        // l'intérêt est de voir depuis combien de temps quelque chose
+        // dort. Deux produits : l'un rendu puis détruit sur
+        // procès-verbal, l'autre qui attend encore — et qui attend
+        // depuis longtemps, ce qui est le cas qu'on vient chercher.
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: oxy,
+            kind: "RETOUR".to_owned(),
+            happened_on: day(3, 14),
+            quantity: 12.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: pid,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "CL".to_owned(),
+            remark: "rapporté par la famille après le décès".to_owned(),
+            cancels: 0,
+        })
+        .unwrap();
+
         // Un assimilé, pour que l'écran montre les deux régimes : la
         // buprénorphine n'a pas d'obligation de registre, et une
         // démonstration qui ne porterait que des stupéfiants laisserait
@@ -38340,6 +38680,44 @@ mod tests {
         let subutex = follow("Subutex 8 mg", 14.0);
         write(subutex, "ENTREE", 28.0, day(6, 2), 0, 0.0);
         write(subutex, "SORTIE", 7.0, day(6, 9), pid, 0.0);
+        // Rapporté puis détruit : le coffre se vide, et les deux lignes
+        // restent au registre — c'est la paire qu'un contrôle demande.
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: subutex,
+            kind: "RETOUR".to_owned(),
+            happened_on: day(6, 20),
+            quantity: 5.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: pid,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: "traitement arrêté, comprimés rendus au comptoir".to_owned(),
+            cancels: 0,
+        })
+        .unwrap();
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: subutex,
+            kind: "DESTRUCTION".to_owned(),
+            happened_on: day(7, 4),
+            quantity: 5.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: "PV-2026-011".to_owned(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: "dénaturés au plâtre devant Mme Roche, pharmacienne".to_owned(),
+            cancels: 0,
+        })
+        .unwrap();
 
         // Et une correction, parce que c'est la moitié du sujet : la
         // même délivrance saisie deux fois par deux postes, puis

@@ -1270,6 +1270,80 @@ pub fn open_stock_check(
     compile_and_open(stock_check_source(rows, pharmacy, today), "controle_stock")
 }
 
+/// Le procès-verbal de destruction : ce qu'on s'apprête à détruire, et
+/// devant qui.
+///
+/// Un stupéfiant rapporté par un patient ne se jette pas et ne se
+/// délivre plus : il se dénature en présence d'un confrère et la
+/// destruction s'inscrit au registre. Ce qui rend cette ligne
+/// vérifiable est la pièce qu'elle cite, et cette pièce n'existait
+/// nulle part — c'est celle-ci. Elle sort **avant** la destruction, on
+/// coche à mesure, et les deux signatures se posent au bas.
+///
+/// Aucun nom de patient : c'est une feuille qui sort du logiciel, se
+/// pose sur une paillasse et se garde dix ans. Le numéro de dossier de
+/// chaque retour est au registre, qui est l'endroit pour cela.
+pub fn open_destruction_list(
+    rows: &[crate::ordonnancier::Awaiting],
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        destruction_list_source(rows, pharmacy, today),
+        "proces_verbal_destruction",
+    )
+}
+
+fn destruction_list_source(
+    rows: &[crate::ordonnancier::Awaiting],
+    pharmacy: &PharmacyConfig,
+    today: &str,
+) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.5cm)\n\
+         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(15pt, weight: \"bold\")[Procès-verbal de destruction de stupéfiants]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n#v(4mm)\n",
+        typst_str(&pharmacy.name),
+        typst_str(&crate::db::format_french_date(today))
+    ));
+    let mut body = String::new();
+    for r in rows {
+        let since = match (r.since.is_empty(), r.days) {
+            (false, Some(d)) => format!("{} ({d} j)", crate::db::format_french_date(&r.since)),
+            (false, None) => crate::db::format_french_date(&r.since),
+            (true, _) => String::new(),
+        };
+        body.push_str(&format!(
+            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [], [],\n",
+            typst_str(&r.label),
+            typst_str(&format!(
+                "{} {}",
+                crate::codex::format_quantity(r.quantity),
+                r.unit
+            )),
+            typst_str(&since),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("[], [], [], [], [], [],\n");
+    }
+    src.push_str(&format!(
+        "#table(columns: (auto, 1.4fr, auto, auto, auto, 1fr), inset: 5pt, stroke: 0.5pt,\n  [], [*Produit*], [*Au coffre*], [*En attente depuis*], [*Détruit*], [*Observation*],\n{body})\n"
+    ));
+    src.push_str(
+        "#v(6mm)\n#text(9pt)[Dénaturation effectuée le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Procédé : #box(width: 6cm, stroke: (bottom: 0.5pt))]\n",
+    );
+    src.push_str(
+        "#v(4mm)\n#text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]\n",
+    );
+    src.push_str(
+        "#v(3mm)\n#text(9pt, style: \"italic\")[Les quantités portées ci-dessus sont celles que le registre tient au compte « à détruire » : ce que des patients ont rapporté et qui n'a pas été remis au stock délivrable. La destruction se porte au registre ligne par ligne, en citant le numéro du présent procès-verbal. Un stupéfiant rapporté ne se redélivre jamais.]\n",
+    );
+    src
+}
+
 fn stock_check_source(
     rows: &[crate::ordonnancier::ToCheck],
     pharmacy: &PharmacyConfig,
@@ -1340,7 +1414,7 @@ pub fn open_stup_register(
     label: &str,
     unit: &str,
     rows: &[crate::db::StupMove],
-    running: &[f64],
+    running: &[crate::ordonnancier::Balance],
     cancelled: &std::collections::HashSet<i64>,
     pharmacy: &PharmacyConfig,
     today: &str,
@@ -1355,7 +1429,7 @@ fn stup_register_source(
     label: &str,
     unit: &str,
     rows: &[crate::db::StupMove],
-    running: &[f64],
+    running: &[crate::ordonnancier::Balance],
     cancelled: &std::collections::HashSet<i64>,
     pharmacy: &PharmacyConfig,
     today: &str,
@@ -1386,11 +1460,26 @@ fn stup_register_source(
         // Deux colonnes, comme sur le papier : ce qui entre et ce qui
         // sort. Une annulation ne porte de quantité dans ni l'une ni
         // l'autre — ce qu'elle rend se lit sur la ligne qu'elle nomme.
+        //
+        // Un retour entre et une destruction sort : de l'autre compte,
+        // ce que dit la colonne « À détruire » en face. Les colonnes de
+        // quantité disent ce qui a bougé, les colonnes de solde disent
+        // dans quel compte — c'est ainsi qu'un registre à deux comptes
+        // se lit, et la note du bas le redit en toutes lettres.
         let (into, out) = match kind {
-            Kind::Entree => (qty.clone(), String::new()),
-            Kind::Sortie | Kind::Perte => (String::new(), qty.clone()),
+            Kind::Entree | Kind::Retour => (qty.clone(), String::new()),
+            Kind::Sortie | Kind::Perte | Kind::Destruction => (String::new(), qty.clone()),
             Kind::Inventaire => (format!("= {qty}"), String::new()),
             Kind::Annulation => (String::new(), String::new()),
+        };
+        let after = running.get(i).copied().unwrap_or_default();
+        // La colonne du coffre ne s'écrit que si quelque chose y est
+        // passé : un registre sans aucun retour — l'immense majorité —
+        // ne porte pas une colonne de zéros.
+        let waiting = if after.to_destroy.abs() > 1e-6 || kind.is_destruction_side() {
+            crate::codex::format_quantity(after.to_destroy)
+        } else {
+            String::new()
         };
         let no = if m.ordo_no > 0 {
             crate::ordonnancier::number_label(m.ordo_year as u32, m.ordo_no as u32)
@@ -1414,15 +1503,14 @@ fn stup_register_source(
         .collect::<Vec<_>>()
         .join(" · ");
         body.push_str(&format!(
-            "{}, {}, {}, {}, {}, {}, {}, [#{}],\n",
+            "{}, {}, {}, {}, {}, {}, {}, {}, [#{}],\n",
             cell(&crate::db::format_french_date(&m.happened_on)),
             cell(&no),
             cell(crate::strings::tr(kind.label_key())),
             cell(&into),
             cell(&out),
-            cell(&crate::codex::format_quantity(
-                running.get(i).copied().unwrap_or(0.0)
-            )),
+            cell(&crate::codex::format_quantity(after.stock)),
+            cell(&waiting),
             cell(&file),
             typst_str(&if struck {
                 format!("annulée · {side}")
@@ -1432,13 +1520,13 @@ fn stup_register_source(
         ));
     }
     if body.is_empty() {
-        body.push_str("[], [], [], [], [], [], [], [],\n");
+        body.push_str("[], [], [], [], [], [], [], [], [],\n");
     }
     src.push_str(&format!(
-        "#table(columns: (auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,\n  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*Dossier*], [*Mention*],\n{body})\n"
+        "#table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,\n  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*À détruire*], [*Dossier*], [*Mention*],\n{body})\n"
     ));
     src.push_str(&format!(
-        "#v(4mm)\n#text(8pt, style: \"italic\")[{} ligne(s) au registre, comptées en {}. Une ligne écrite ne se rature pas : elle reste, barrée, et une ligne de plus la désigne et défait ce qu'elle avait fait au stock. Un inventaire **pose** le solde au lieu de s'y ajouter, si bien que les colonnes ne s'additionnent pas au solde final dès qu'un comptage a trouvé un écart — c'est le comptage qui l'explique. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]\n",
+        "#v(4mm)\n#text(8pt, style: \"italic\")[{} ligne(s) au registre, comptées en {}. Une ligne écrite ne se rature pas : elle reste, barrée, et une ligne de plus la désigne et défait ce qu'elle avait fait au stock. Un inventaire **pose** le solde au lieu de s'y ajouter, si bien que les colonnes ne s'additionnent pas au solde final dès qu'un comptage a trouvé un écart — c'est le comptage qui l'explique. Deux soldes et non un : ce qu'un patient rapporte entre à l'officine et se justifie ici, mais ne se délivre plus, et reste au compte « à détruire » jusqu'au procès-verbal. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]\n",
         rows.len(),
         if unit.is_empty() { "unités" } else { unit }
     ));
@@ -2952,7 +3040,7 @@ mod tests {
         let running = crate::ordonnancier::running(&moves);
         // 30, puis 16, puis le comptage qui **pose** 15.
         assert_eq!(running.len(), 3);
-        assert!((running[2] - 15.0).abs() < 1e-9, "{running:?}");
+        assert!((running[2].stock - 15.0).abs() < 1e-9, "{running:?}");
 
         let mut cancelled = std::collections::HashSet::new();
         cancelled.insert(2_i64);
@@ -3523,6 +3611,83 @@ mod tests {
         // Rien à compter compile aussi : le bouton n'apparaît que
         // lorsqu'il y a quelque chose, mais la fonction n'en dépend pas.
         let world = PdfWorld::new(stock_check_source(&[], &sample_pharmacy(), "2026-08-29"));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// Le procès-verbal de destruction : ce qu'on s'apprête à détruire,
+    /// et devant qui.
+    ///
+    /// C'est la pièce que la ligne du registre cite, et sans laquelle
+    /// une destruction ne prouve rien : elle sort **avant** la
+    /// destruction, on coche à mesure, et les deux signatures se posent
+    /// au bas. Aucun nom de patient — une feuille qui sort du logiciel
+    /// se pose sur une paillasse et se garde dix ans ; le numéro de
+    /// dossier de chaque retour est au registre, qui est l'endroit pour
+    /// cela.
+    #[test]
+    fn the_destruction_sheet_carries_what_makes_it_provable() {
+        use crate::ordonnancier::Awaiting;
+        let rows = vec![
+            Awaiting {
+                id: 1,
+                label: "Skenan #eval \"x\" LP 30 mg".to_owned(),
+                unit: "gélule".to_owned(),
+                quantity: 14.0,
+                since: "2025-11-02".to_owned(),
+                days: Some(311),
+            },
+            // Ce qui attend sans qu'on sache depuis quand : la colonne
+            // reste vide plutôt que d'inventer un jour.
+            Awaiting {
+                id: 2,
+                label: "Oxycontin LP 10 mg".to_owned(),
+                unit: "comprimé".to_owned(),
+                quantity: 12.0,
+                since: String::new(),
+                days: None,
+            },
+        ];
+        let source = destruction_list_source(&rows, &sample_pharmacy(), "2026-09-08");
+        assert!(source.contains("Procès-verbal de destruction"));
+        assert!(source.contains("08/09/2026"), "la date se lit en français");
+        assert!(
+            source.contains("02/11/2025 (311 j)"),
+            "et l'ancienneté avec"
+        );
+        assert!(source.contains("Au coffre"));
+        assert!(source.contains("Détruit"), "une colonne à cocher à mesure");
+        assert!(source.contains("stroke: 0.6pt"), "une case à cocher");
+        assert!(
+            source.contains("Le témoin"),
+            "une destruction se fait devant quelqu'un"
+        );
+        assert!(source.contains("Procédé"));
+        assert!(
+            !source.contains("dossier"),
+            "aucun numéro de dossier : cette feuille traîne sur une paillasse"
+        );
+        // Rien de ce qui vient de la base n'est du code Typst.
+        assert!(!source.contains("#eval \"x\"]"));
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("le procès-verbal doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(
+                std::path::Path::new(&dir).join("proces_verbal_destruction_exemple.pdf"),
+                &pdf,
+            );
+        }
+        // Un coffre vide compile aussi : le bouton ne s'active que
+        // lorsqu'il y a quelque chose, mais la fonction n'en dépend pas.
+        let world = PdfWorld::new(destruction_list_source(
+            &[],
+            &sample_pharmacy(),
+            "2026-09-08",
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
