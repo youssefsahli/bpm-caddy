@@ -5,6 +5,127 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.161.0] - 2026-09-08
+
+### Added
+- **Deux peaux sombres, « Nuit » et « Ambre ».** Les six palettes
+  livrées jusqu'ici sont six gris clairs : l'ardoise d'une station de
+  travail, le taupe de CDE, le vert-de-gris de HP. Une officine de garde
+  à trois heures du matin n'est éclairée que par son écran, et la
+  question n'est pas de goût. « Nuit » est cette ardoise-là en sombre,
+  « Ambre » le phosphore d'un terminal — et l'une comme l'autre est
+  **une palette et rien d'autre** : pas une branche du dessin ne
+  distingue le jour de la nuit. La forme ne bouge jamais, c'est ce qui
+  fait Motif.
+
+  La monographie s'y lit sur une feuille sombre à l'encre pâle. Une page
+  blanche au milieu d'un écran choisi pour ne plus brûler serait la
+  seule chose qu'on ne pourrait pas regarder.
+
+- **Un vocabulaire pour les couleurs qui ne viennent pas du thème.**
+  `on_fill(fond)` donne l'encre qu'une pastille porte, décidée sur le
+  fond réellement peint. `data_ramp` pose une rampe catégorielle dans
+  la bande que la peau lui laisse, **d'un seul mouvement pour toute la
+  rampe** : dix couleurs d'actes se lisent les unes contre les autres
+  dans une même légende, et une pastille seule est une rampe d'une
+  couleur — il n'y a volontairement pas de seconde fonction pour elle.
+  `data_shade` en tire un second et un troisième ton quand un ensemble
+  a plus de membres que la rampe n'a de couleurs.
+
+- **Le choix de la peau se fait en la regardant.** Chacun des huit
+  boutons d'Options › Interface est dessiné *dans la peau qu'il
+  nomme* — son fond, son encre, son biseau — avec quatre de ses
+  couleurs à côté : le fond, la sélection, l'alerte et la feuille sur
+  laquelle se lit une monographie. Un `selectable_label` écrivait
+  « Nuit » dans la palette en cours, c'est-à-dire la seule qu'il ne
+  s'agit pas de montrer. La bande des huit couleurs reste dessous, et
+  rien de tout cela ne demande de redémarrer.
+
+  `BPM_CADDY_START_VIEW=peaux` ouvre cette page-là : c'est la seule
+  chose de ce lot qu'aucun test ne peut regarder à votre place.
+
+- **Le lanceur ouvre dans la peau choisie.** C'est la première fenêtre
+  de la soirée, et elle s'ouvrait dans le bleu-gris de `mwm` quoi que
+  l'officine ait réglé : qui a choisi « Nuit » recevait un rectangle
+  allumé en pleine figure avant que la fenêtre sombre n'arrive. Le
+  lanceur lit la clé `[ui] theme` du `config.toml` à la main — il ne
+  dépend pas du crate de l'application, et il n'a pas besoin de toute
+  une configuration pour une clé. Ce qu'il ne sait pas lire le laisse
+  sur la palette classique, comme une clé inconnue.
+
+### Changed
+- **Toute règle sur la couleur est une distance, plus jamais une
+  direction.** « L'encre est sombre » était vrai de six palettes et faux
+  de deux ; « l'encre est loin du papier » est ce qu'on voulait dire à
+  chaque fois. `every_palette_can_be_read` est réécrit ainsi, et les
+  deux règles restées directionnelles — le biseau et la teinte de
+  survol — le sont dans le *dessin* : un widget Motif est éclairé du
+  coin supérieur gauche à toute heure.
+
+- **Une rampe se pose dans la bande que la peau lui laisse.** Multiplier
+  les trois canaux garde les rapports, donc la teinte, et *écarte* les
+  membres en les remontant ; mais la rampe des actes, multipliée pour
+  dégager son membre le plus sombre, sortait son vert à trois quarts de
+  blanc — une lampe sur un écran choisi pour n'en plus être une. Trois
+  cas, essayés dans l'ordre : multiplier tant que ça tient sous le
+  plafond, translater quand multiplier éblouirait (les distances sont
+  alors gardées à l'unité près), comprimer seulement si la bande est
+  plus étroite que la rampe. Le mélange vers le blanc, lui, est refusé
+  partout : il emmène toutes les teintes au même point, et deux séries
+  du graphique se retrouvaient à vingt et un l'une de l'autre là où la
+  règle de la rampe est trente-cinq.
+
+- **`Color32::WHITE` écrit à la main a disparu des pastilles.** Trente
+  endroits l'écrivaient, et ils avaient raison tant que tous les fonds
+  étaient sombres — ce qui a cessé d'être vrai le jour où une peau a eu
+  un fond clair. C'est `on_fill` qui choisit, à partir du fond peint :
+  le « dépassé » rouge d'une location porte du noir sur « Nuit » et du
+  blanc sur « Motif », sans que le site d'appel ait à le savoir.
+
+- **L'emphase s'éloigne du fond au lieu de foncer.** La famille livrée
+  n'a pas de gras, donc `*gras*` se porte par une encre plus forte —
+  écrite « plus sombre », ce qui est une emphase de jour et un murmure
+  de nuit. Même chose pour la bande zébrée d'un tableau et pour la
+  grille d'un graphique : mêlées vers le biseau *opposé* au creux, car
+  un creux est déjà la surface la plus sombre d'une peau de nuit.
+
+### Fixed
+- **Une couleur de chrome écrite en hexadécimal ne suit aucun thème**, et
+  il en restait. La bande zébrée des tables de conversion était un gris
+  bleuté fixe — juste sur le bleu de mwm, une tache sur le vert de HP
+  VUE, un trou sur tout fond sombre. L'échelle ordinale de la carte
+  vaccinale était écrite **deux fois**, une fois pour les tuiles et une
+  fois pour la légende sous elles, libres de diverger : ce sont
+  pourtant les deux choses qu'on lit l'une par l'autre. Et un opérateur
+  sans initiales, comme un médicament sans statut connu, se dessinait
+  dans l'ombre du biseau, invisible sur une peau sombre.
+  `no_colour_is_written_in_hex_outside_a_named_ramp` lit le texte de
+  `app.rs` et refuse le prochain littéral, comme les deux tests qui
+  refusent une taille et une bascule en pixels : une teinte
+  catégorielle vit dans une rampe `const` nommée, une seule fois, et
+  rejoint l'écran par `data_ramp`.
+
+- **Le modèle de `config.toml` nommait six palettes sur huit.** C'est
+  le genre de liste qui vieillit sans rien casser : le fichier reste
+  valide, l'application démarre, et la seule chose qui se passe est
+  qu'une officine ne saura jamais que « nuit » existe — or ce fichier
+  écrit au premier lancement est la documentation que tout le monde
+  lit. Un test le tient maintenant contre `motif::THEMES`.
+
+- **Une rangée qui enveloppe dans une cellule de `Grid` n'annonce que
+  sa première ligne.** Huit boutons de palette passent à deux rangées,
+  et la seconde se dessinait par-dessus l'« Aperçu » d'en dessous.
+  Aucun test ne l'aurait dit ; une capture d'écran l'a dite tout de
+  suite. Le choix de la peau vit maintenant dans le flot vertical de la
+  boîte de dialogue, où une bande grandit comme elle doit.
+
+- **La carte des groupes de pays sortait douze pays en blanc pur.** Dix-
+  sept régions pour huit couleurs de rampe : le second tour était un
+  `gamma_multiply(1.6)`, non borné, et appliqué à une couleur déjà
+  remontée sur une peau de nuit il saturait à blanc. `data_shade` fait
+  ce pas à l'intérieur de la même bande, et fait demi-tour quand il
+  rencontre le mur plutôt que de rendre la teinte dont il part.
+
 ## [0.160.0] - 2026-09-08
 
 ### Added
