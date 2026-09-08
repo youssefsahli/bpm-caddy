@@ -327,6 +327,26 @@ add clicking and typing; it is not the price of entry.
   the frame. `motif::tab_strip_height(ui)` is that height, written where
   it is decided. The same for anything a `motif::` function sizes
   itself: ask it, never copy the number.
+- **And writing the measurement in the right place is still not
+  enough — confront it with the drawing.** `tab_strip_height` was
+  written where the height is decided and was *still* wrong, because it
+  was computed from memory rather than checked.
+  `a_tab_strip_takes_the_height_it_announces` and
+  `a_wrapped_band_is_as_tall_as_its_model_says` draw the real thing
+  headless at three or four text scales and compare promise to
+  occupancy. The second holds the arithmetic **every** cap in the
+  application rests on — `n × row_height + (n−1) × item_spacing.y`,
+  with `n` from `wrapped_rows` — which nothing checked, though the
+  patient band, the drug card, the vaccine map and the scans form all
+  depend on it. This is the cheap shape for the next one: a helper that
+  measures, a headless draw, and an assertion in both directions.
+- **Compare against the content, not the cursor.** A band's cursor
+  advance includes one trailing `item_spacing.y` that belongs to the
+  layout *after* it — `split_rows` already counts that gutter between
+  its rows, so folding it into the height counts it twice. The tab
+  strip test caught its own author this way: measured at the cursor,
+  the function looked eight pixels short and « fixing » it over-
+  reserved every strip in the app. Subtract the gutter, then compare.
 - **A cap that cuts a row is worse than a cap that drops it** —
   `whole_rows`, already applied to the explorer's doors and the agenda's
   legend, and now to the patient band. But the patient band showed the
