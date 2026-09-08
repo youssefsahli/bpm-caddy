@@ -340,6 +340,16 @@ add clicking and typing; it is not the price of entry.
   patient band, the drug card, the vaccine map and the scans form all
   depend on it. This is the cheap shape for the next one: a helper that
   measures, a headless draw, and an assertion in both directions.
+- **A bound that "doesn't bite" is usually the path, not the measure.**
+  `egui::Label::new(LayoutJob)` **overwrites** the job's
+  `wrap.max_width` with the ui's own wrap width and keeps only
+  `max_rows`, so a width computed by the caller is thrown away — the
+  label then paints as wide as it likes and the panel clips it
+  silently. `motif::panel` lays its title's galley out itself
+  (`ui.fonts(|f| f.layout_job(job))`) for exactly this reason, and
+  `motif::section` now does the same. Three attempts at the section
+  header were spent hunting a "correct" width that was correct all
+  along.
 - **Compare against the content, not the cursor.** A band's cursor
   advance includes one trailing `item_spacing.y` that belongs to the
   layout *after* it — `split_rows` already counts that gutter between

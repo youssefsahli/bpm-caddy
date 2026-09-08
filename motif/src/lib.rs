@@ -1093,15 +1093,39 @@ pub fn section(ui: &mut egui::Ui, label: &str) {
         // c'est l'intitulé qui s'élide, une fois qu'il n'y a plus de
         // filet à sacrifier.
         //
-        // On s'en remet à l'élision d'egui, qui mesure sur la largeur
-        // réelle du dessin : dans une zone défilante,
-        // `available_width` est celle du contenu et non celle qu'on
-        // voit, si bien qu'une borne calculée ici ne mord pas. Deux
-        // lignes seraient mieux — « Amérique du Nord » et « Amérique
-        // centrale » s'élident tous deux en « Amérique… » — mais elles
-        // demandent cette largeur-là, qu'on n'a pas ici. L'ellipse dit
-        // au moins qu'il manque quelque chose ; la coupe muette, non.
-        ui.add(egui::Label::new(egui::RichText::new(label).strong().size(sz)).truncate());
+        // Deux lignes quand chaque mot y tient, une sinon — la règle de
+        // [`list_row`], et pour la même raison : élidés, « Amérique du
+        // Nord » et « Amérique centrale » se lisent tous deux
+        // « Amérique… », et l'intitulé ne distingue plus rien.
+        //
+        // **La galée est posée ici, pas confiée à `Label`.** Un
+        // `Label::new(LayoutJob)` écrase le `max_width` du job par la
+        // largeur d'enveloppement de l'`ui` et ne garde que le nombre de
+        // lignes : la borne calculée ici ne servait donc à rien, et
+        // l'intitulé repartait se faire trancher par le volet. C'est
+        // pour la même raison que [`panel`] pose lui-même la galée de
+        // son titre. Trois tentatives ont buté là-dessus en cherchant la
+        // bonne largeur, alors que la largeur était bonne et que c'est
+        // le chemin qui la jetait.
+        let room = (ui.available_width() - 12.0).max(pt(ui, 24.0));
+        let font = egui::FontId::proportional(sz);
+        let rows = label_rows(ui, label, &font, room);
+        let mut job = egui::text::LayoutJob::single_section(
+            label.to_owned(),
+            egui::TextFormat {
+                font_id: font,
+                color: crate::text(),
+                ..Default::default()
+            },
+        );
+        job.wrap = egui::text::TextWrapping {
+            max_width: room,
+            max_rows: rows,
+            overflow_character: Some('…'),
+            break_anywhere: false,
+        };
+        let galley = ui.fonts(|f| f.layout_job(job));
+        ui.add(egui::Label::new(galley));
         // A heading long enough to fill the row leaves nothing for the
         // rule — and egui panics on a negative allocation. The rule is
         // the decoration here, so it is what gives way.
