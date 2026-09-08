@@ -294,6 +294,15 @@ Deux règles valent partout :
   les familles dont les actes dépendent doivent exister.
 - **Ajouter une table** : une entrée `ConvTable`, et le nom de la
   famille dans la liste du test si elle est structurante.
+- **Les intitulés sont des intitulés.** Une colonne se nomme par le
+  terme professionnel quand il existe — Surveillance, Effets
+  indésirables, Écueil, Conduite à tenir, Signes d'alerte, Idée reçue,
+  Zones d'application —, jamais par la périphrase qui la décrit
+  (« Ce qu'on surveille », « Ce qui va de travers »). Le titre suit la
+  même règle. Le contenu des cellules, lui, est de la prose et le
+  reste : une phrase n'est pas un intitulé. Effet de bord utile : un
+  en-tête court est une colonne étroite, donc une table qui défile moins
+  souvent.
 
 ## Le codex des préparations
 
