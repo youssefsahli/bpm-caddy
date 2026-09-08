@@ -9266,7 +9266,7 @@ impl App {
                         ui.add_space(4.0);
                         for (i, atb) in protocol.antibiotics.iter().enumerate() {
                             let picked = choice.antibiotic == Some(i);
-                            let row = ui.horizontal_wrapped(|ui| {
+                            let row = ui.horizontal(|ui| {
                                 if motif::toggle(ui, atb.name, picked).clicked() {
                                     if picked {
                                         choice.antibiotic = None;
@@ -9281,11 +9281,32 @@ impl App {
                                             .unwrap_or_default();
                                     }
                                 }
-                                ui.label(
-                                    egui::RichText::new(atb.situation)
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
+                                // **La situation enveloppe à côté du
+                                // bouton, pas sous lui.** Dans un
+                                // `horizontal_wrapped`, l'invite est un
+                                // élément entier : ne tenant pas sur la
+                                // ligne, elle passait à la suivante et
+                                // revenait au bord gauche du cadre —
+                                // « Allergie aux pénicillines sans
+                                // contre-indication aux » puis
+                                // « céphalosporines » seul sous le
+                                // bouton, dans la gouttière de la
+                                // rangée suivante. Bornée à ce que le
+                                // bouton laisse, elle enveloppe dans sa
+                                // colonne et la rangée grandit avec
+                                // elle.
+                                let room = ui.available_width();
+                                ui.scope(|ui| {
+                                    ui.set_max_width(room);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(atb.situation)
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
                             });
                             let _ = row;
                             if picked {
@@ -11427,9 +11448,31 @@ impl App {
                                     } else {
                                         format!("{started} · {ended} · {billable}")
                                     };
-                                    ui.scope(|ui| {
-                                        ui.set_width(name_w);
-                                        ui.vertical(|ui| {
+                                    // **La colonne annonce sa largeur.**
+                                    // Un `ui.scope` ne l'annonce pas —
+                                    // c'est pour cela que `grid_cell`
+                                    // alloue —, si bien que la grille
+                                    // mesurait cette cellule sur la
+                                    // ligne italique qu'elle porte et
+                                    // non sur la part qu'on lui avait
+                                    // donnée : la colonne du nom
+                                    // s'élargissait, poussait celle de
+                                    // l'échéance hors du panneau, et
+                                    // « Renouvellement » se lisait
+                                    // « Renouvellemer » — l'échéance
+                                    // étant la seule chose que cette
+                                    // table-là est là pour dire. La
+                                    // hauteur passée est un plancher :
+                                    // deux lignes la dépassent et la
+                                    // rangée grandit.
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(
+                                            name_w,
+                                            ui.text_style_height(&egui::TextStyle::Body),
+                                        ),
+                                        egui::Layout::top_down(egui::Align::LEFT),
+                                        |ui| {
+                                            ui.set_width(name_w);
                                             ui.add(
                                                 egui::Label::new(
                                                     egui::RichText::new(&l.label)
@@ -11452,8 +11495,8 @@ impl App {
                                                     .wrap(),
                                                 );
                                             }
-                                        });
-                                    });
+                                        },
+                                    );
                                     if cols == 6 {
                                         Self::grid_cell(
                                             ui,
@@ -11525,56 +11568,79 @@ impl App {
                                     if cols == 2 {
                                         ui.end_row();
                                     }
-                                    ui.horizontal(|ui| {
-                                        if l.running() {
-                                            match &mut session.loc_return {
-                                                Some((id, date)) if *id == l.id => {
-                                                    ui.add_sized(
-                                                        [chars_wide(ui, 11.0), 20.0],
-                                                        egui::TextEdit::singleline(date).hint_text(
-                                                            db::format_french_date(&today),
-                                                        ),
-                                                    );
-                                                    if motif::button(ui, tr("form_save")).clicked()
-                                                    {
-                                                        close = Some((l.id, date.clone()));
+                                    // **Et la rangée des boutons tient
+                                    // dans la colonne du nom.** Sur la
+                                    // forme serrée elle descend d'une
+                                    // rangée mais reste dans la première
+                                    // colonne : posée dans un
+                                    // `horizontal` sans borne, elle
+                                    // mesurait quatre cent quatre-vingts
+                                    // pixels là où la colonne en avait
+                                    // quatre cent quarante, la grille
+                                    // élargissait la colonne, et
+                                    // l'échéance sortait du panneau par
+                                    // la droite. Bornée et enveloppante,
+                                    // elle passe à la ligne au lieu de
+                                    // pousser la colonne d'à côté.
+                                    ui.allocate_ui_with_layout(
+                                        egui::vec2(name_w, Self::row_height(ui)),
+                                        egui::Layout::left_to_right(egui::Align::Center)
+                                            .with_main_wrap(true),
+                                        |ui| {
+                                            ui.set_max_width(name_w);
+                                            if l.running() {
+                                                match &mut session.loc_return {
+                                                    Some((id, date)) if *id == l.id => {
+                                                        ui.add_sized(
+                                                            [chars_wide(ui, 11.0), 20.0],
+                                                            egui::TextEdit::singleline(date)
+                                                                .hint_text(db::format_french_date(
+                                                                    &today,
+                                                                )),
+                                                        );
+                                                        if motif::button(ui, tr("form_save"))
+                                                            .clicked()
+                                                        {
+                                                            close = Some((l.id, date.clone()));
+                                                        }
+                                                    }
+                                                    _ => {
+                                                        if motif::button(ui, tr("loc_return"))
+                                                            .on_hover_text(tr("loc_return_tooltip"))
+                                                            .clicked()
+                                                        {
+                                                            session.loc_return =
+                                                                Some((l.id, String::new()));
+                                                        }
                                                     }
                                                 }
-                                                _ => {
-                                                    if motif::button(ui, tr("loc_return"))
-                                                        .on_hover_text(tr("loc_return_tooltip"))
+                                                if l.renewal_days > 0
+                                                    && motif::button(ui, tr("loc_renew"))
+                                                        .on_hover_text(tr("loc_renew_tooltip"))
                                                         .clicked()
-                                                    {
-                                                        session.loc_return =
-                                                            Some((l.id, String::new()));
-                                                    }
+                                                {
+                                                    renew = Some(l.id);
                                                 }
                                             }
-                                            if l.renewal_days > 0
-                                                && motif::button(ui, tr("loc_renew"))
-                                                    .on_hover_text(tr("loc_renew_tooltip"))
-                                                    .clicked()
-                                            {
-                                                renew = Some(l.id);
-                                            }
-                                        }
-                                        let confirming = session.loc_confirm_delete == Some(l.id);
-                                        let label = if confirming {
-                                            tr("patient_delete_confirm")
-                                        } else {
-                                            tr("patient_delete")
-                                        };
-                                        if motif::button(ui, label)
-                                            .on_hover_text(tr("loc_delete_tooltip"))
-                                            .clicked()
-                                        {
-                                            if confirming {
-                                                delete = Some((l.id, l.label.clone()));
+                                            let confirming =
+                                                session.loc_confirm_delete == Some(l.id);
+                                            let label = if confirming {
+                                                tr("patient_delete_confirm")
                                             } else {
-                                                session.loc_confirm_delete = Some(l.id);
+                                                tr("patient_delete")
+                                            };
+                                            if motif::button(ui, label)
+                                                .on_hover_text(tr("loc_delete_tooltip"))
+                                                .clicked()
+                                            {
+                                                if confirming {
+                                                    delete = Some((l.id, l.label.clone()));
+                                                } else {
+                                                    session.loc_confirm_delete = Some(l.id);
+                                                }
                                             }
-                                        }
-                                    });
+                                        },
+                                    );
                                     ui.end_row();
                                 }
                             });
