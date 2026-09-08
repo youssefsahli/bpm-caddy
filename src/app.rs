@@ -1097,6 +1097,28 @@ fn chars_wide(ui: &egui::Ui, n: f32) -> f32 {
     ch * n
 }
 
+/// Where a held column is drawn: at the left edge of what is visible,
+/// and never left of the table's own first column — at rest the two are
+/// the same pixel, and it is only once the table slides under the
+/// viewport that they part.
+fn frozen_left(clip_left: f32, content_left: f32, pad: f32) -> f32 {
+    clip_left.max(content_left - pad) + pad
+}
+
+/// The band a held cell is painted in, and where its text starts —
+/// from the rectangle the grid reserved for it, which is the one thing
+/// that scrolls. Written once because it was written twice: the band
+/// went to the edge and the galley stayed with the grid, which is
+/// invisible until the bar is dragged.
+fn frozen_cell(x: f32, col_w: f32, pad: f32, rect: egui::Rect) -> (egui::Rect, egui::Pos2) {
+    let band = egui::Rect::from_min_max(
+        egui::pos2(x - pad, rect.top()),
+        egui::pos2(x + col_w + 6.0, rect.bottom()),
+    )
+    .expand2(egui::vec2(0.0, 4.0));
+    (band, egui::pos2(x, rect.top()))
+}
+
 fn notes_add_button_width(ui: &egui::Ui) -> f32 {
     let font = egui::TextStyle::Button.resolve(ui.style());
     ui.fonts(|f| {
@@ -1277,6 +1299,11 @@ fn notes_box(
         // rien de la journée.
         if (pressed || entered(ui, std::slice::from_ref(&field))) && !text.trim().is_empty() {
             add = Some(text.trim().to_owned());
+            // Et le foyer reste dans le champ : Entrée le lui fait
+            // perdre, et sans le lui rendre il faudrait recliquer entre
+            // deux notes — ce qui est exactement le geste qu'on vient
+            // de supprimer.
+            field.request_focus();
         }
     }
     (add, delete)
@@ -11612,7 +11639,7 @@ impl App {
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             let w = (ui.available_width() * 0.3).clamp(120.0, 220.0);
-                            ui.add_sized(
+                            let analyte = ui.add_sized(
                                 [w, 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_query)
                                     .hint_text(tr("bio_pick_hint")),
@@ -11656,6 +11683,9 @@ impl App {
                                 || entered(ui, &[value, when])
                             {
                                 add = true;
+                                // Le foyer repart sur l'analyte : le
+                                // bilan suivant commence par son nom.
+                                analyte.request_focus();
                             }
                         });
                         // The catalogue, filtered as it is typed: three lines,
@@ -24271,6 +24301,19 @@ impl App {
         // the first column — the one naming the row — goes off the
         // screen with no way back to it.
         let left = (avail.center().x - w / 2.0).max(avail.left());
+        // **The row's name must not scroll away.** A table wider than
+        // its pane scrolls sideways — that is what the bar is for, and
+        // six columns of prose have no other honest shape. But the
+        // first column of every one of these tables is what *names* the
+        // row (DCI, molécule, stade, classe, pilier), and « 2 mg » read
+        // with the drug it belongs to off the left edge is read for
+        // nothing. So that column is allocated where the grid puts it
+        // and **painted at the viewport's left edge**: at rest the two
+        // are the same pixel, and once scrolled the name stays.
+        let frozen = w > avail.width() + 0.5;
+        // Rect and grid row of each first-column cell, filled in as the
+        // grid lays them out and repainted, in place, after it.
+        let mut names: Vec<(egui::Rect, usize)> = Vec::new();
         // The cell edit committed this frame, applied after the grid.
         let mut commit: Option<(usize, usize, String)> = None;
         let bg = ui.painter().add(egui::Shape::Noop);
@@ -24342,22 +24385,169 @@ impl App {
                 // it. The band is a shade of the trough the table sits
                 // in, not egui's default hover blue.
                 ui.visuals_mut().faint_bg_color = egui::Color32::from_rgb(0x8b, 0x8f, 0xa1);
+                // A first-column cell while the table is scrolling: it
+                // takes the height it would have taken — measured in
+                // the face that would have drawn it, so the row is as
+                // tall as if it had been written here — and is drawn
+                // later, at the edge.
+                let mut reserve = |ui: &mut egui::Ui, row: usize, text: &str, min_h: f32| {
+                    let h = ui
+                        .fonts(|f| {
+                            f.layout(
+                                text.to_owned(),
+                                egui::FontId::proportional(13.0),
+                                motif::ink(),
+                                col_w,
+                            )
+                            .size()
+                            .y
+                        })
+                        .max(min_h);
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(col_w, h), egui::Sense::hover());
+                    names.push((rect, row));
+                };
                 egui::Grid::new(("conv_table", session.table_selected))
                     .num_columns(t.columns.len())
                     .spacing([GAP, 8.0])
                     .striped(true)
                     .show(ui, |ui| {
-                        for c in t.columns {
-                            cell(ui, egui::RichText::new(*c).strong().size(13.0));
+                        for (ci, c) in t.columns.iter().enumerate() {
+                            if frozen && ci == 0 {
+                                reserve(ui, 0, c, 0.0);
+                            } else {
+                                cell(ui, egui::RichText::new(*c).strong().size(13.0));
+                            }
                         }
                         ui.end_row();
                         for (ri, row) in t.rows.iter().enumerate() {
                             for (ci, c) in row.iter().enumerate() {
-                                body_cell(ui, session, ri, ci, c);
+                                if frozen && ci == 0 {
+                                    // The editor, when this is the cell
+                                    // being corrected, is put at the
+                                    // edge too — so it is where the
+                                    // name was, not where the grid
+                                    // would have written it.
+                                    let editing = matches!(
+                                        &session.table_edit,
+                                        Some((er, ec, _)) if *er == ri && *ec == 0
+                                    );
+                                    let text = session
+                                        .table_cells
+                                        .get(&(ri, 0))
+                                        .cloned()
+                                        .unwrap_or_else(|| (*c).to_owned());
+                                    reserve(ui, ri + 1, &text, if editing { 22.0 } else { 0.0 });
+                                } else {
+                                    body_cell(ui, session, ri, ci, c);
+                                }
                             }
                             ui.end_row();
                         }
                     });
+                // The frozen column, painted last so it sits over the
+                // columns that slide under it: the row's band first (in
+                // the grid's own two shades, else the text would read
+                // through a hole), then the name, then a rule marking
+                // where the sliding starts.
+                if frozen {
+                    // The edge of what is visible — never left of where
+                    // the table itself starts, or the name would paint
+                    // outside its own box.
+                    let x = frozen_left(ui.clip_rect().left(), content.left(), PAD);
+                    let stripe = ui.visuals().faint_bg_color;
+                    let mut edit_at: Option<(usize, egui::Rect)> = None;
+                    for &(rect, row) in &names {
+                        let (band, at) = frozen_cell(x, col_w, PAD, rect);
+                        ui.painter().rect_filled(
+                            band,
+                            0.0,
+                            if row % 2 == 1 {
+                                stripe
+                            } else {
+                                motif::trough()
+                            },
+                        );
+                        if row == 0 {
+                            let text = t.columns.first().copied().unwrap_or("").to_owned();
+                            let color = ui.visuals().strong_text_color();
+                            let galley = ui.fonts(|f| {
+                                f.layout(text, egui::FontId::proportional(13.0), color, col_w)
+                            });
+                            ui.painter().galley(at, galley, color);
+                            continue;
+                        }
+                        let r = row - 1;
+                        if matches!(&session.table_edit, Some((er, ec, _)) if *er == r && *ec == 0)
+                        {
+                            edit_at =
+                                Some((r, egui::Rect::from_min_size(at, egui::vec2(col_w, 22.0))));
+                            continue;
+                        }
+                        let shipped = t
+                            .rows
+                            .get(r)
+                            .and_then(|row| row.first())
+                            .copied()
+                            .unwrap_or("");
+                        let edited = session.table_cells.get(&(r, 0)).cloned();
+                        let shown = edited.clone().unwrap_or_else(|| shipped.to_owned());
+                        let color = if edited.is_some() {
+                            motif::accent()
+                        } else {
+                            motif::ink()
+                        };
+                        let galley = ui.fonts(|f| {
+                            f.layout(
+                                shown.clone(),
+                                egui::FontId::proportional(13.0),
+                                color,
+                                col_w,
+                            )
+                        });
+                        ui.painter().galley(at, galley, color);
+                        // Clicking corrects it, like any other cell —
+                        // and the hit is taken where the name is drawn,
+                        // not where the grid reserved it.
+                        let resp = ui
+                            .interact(
+                                band,
+                                ui.id().with(("frozen_name", row)),
+                                egui::Sense::click(),
+                            )
+                            .on_hover_text(if edited.is_some() {
+                                trf("tables_cell_edited", shipped)
+                            } else {
+                                tr("tables_cell_edit").to_owned()
+                            });
+                        if resp.clicked() {
+                            session.table_edit = Some((r, 0, shown));
+                        }
+                    }
+                    if let Some((r, rect)) = edit_at {
+                        if let Some((_, _, text)) = &mut session.table_edit {
+                            let resp = ui.put(
+                                rect,
+                                egui::TextEdit::singleline(text).font(egui::TextStyle::Small),
+                            );
+                            if resp.lost_focus() {
+                                commit = Some((r, 0, text.clone()));
+                            } else {
+                                resp.request_focus();
+                            }
+                        }
+                    }
+                    // Where the table starts to slide.
+                    let top = names.first().map(|(r, _)| r.top() - 4.0).unwrap_or(0.0);
+                    let bottom = names.last().map(|(r, _)| r.bottom() + 4.0).unwrap_or(0.0);
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(x + col_w + 6.0, top),
+                            egui::pos2(x + col_w + 6.0, bottom),
+                        ],
+                        egui::Stroke::new(1.0_f32, motif::text_dim()),
+                    );
+                }
             })
             .response
             .rect;
@@ -30482,6 +30672,97 @@ mod tests {
                 assert!(!was_narrow, "échelle {scale} : pliée jusqu'à 1600 px");
             }
         }
+    }
+
+    /// **La colonne qui nomme la ligne ne s'en va pas par la gauche.**
+    ///
+    /// Un tableau de six colonnes de phrases ne tient pas dans un
+    /// panneau de comptoir : il défile latéralement, et c'est la seule
+    /// forme honnête qu'il ait — une phrase ne se replie pas en note de
+    /// bas de ligne comme le fait un numéro de lot. Mais la première
+    /// colonne de chacun de ces tableaux *nomme* la ligne (DCI,
+    /// molécule, stade, classe), et « 20 mg » lu sans le médicament
+    /// auquel il appartient n'est pas lu. Elle est donc réservée où la
+    /// grille la met et **peinte au bord de ce qui est visible**.
+    ///
+    /// On le vérifie comme on vérifie une bande : en dessinant, avec un
+    /// décalage horizontal imposé, et en regardant où la galée atterrit.
+    #[test]
+    fn the_column_that_names_the_row_never_scrolls_away() {
+        use super::{frozen_cell, frozen_left};
+        const PAD: f32 = 8.0;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for offset in [0.0_f32, 120.0, 600.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::Cell::new((0.0_f32, 0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let view =
+                            egui::Rect::from_min_size(ui.max_rect().min, egui::vec2(400.0, 300.0));
+                        ui.allocate_new_ui(egui::UiBuilder::new().max_rect(view), |ui| {
+                            egui::ScrollArea::both()
+                                .id_salt("frozen_test")
+                                .horizontal_scroll_offset(offset)
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    // Un contenu deux fois plus large que
+                                    // la vue, comme le tableau à six
+                                    // colonnes dans son panneau.
+                                    let content = egui::Rect::from_min_size(
+                                        ui.cursor().min + egui::vec2(PAD, PAD),
+                                        egui::vec2(800.0, 280.0),
+                                    );
+                                    ui.allocate_new_ui(
+                                        egui::UiBuilder::new().max_rect(content),
+                                        |ui| {
+                                            ui.allocate_exact_size(
+                                                egui::vec2(800.0, 280.0),
+                                                egui::Sense::hover(),
+                                            );
+                                            let x = frozen_left(
+                                                ui.clip_rect().left(),
+                                                content.left(),
+                                                PAD,
+                                            );
+                                            seen.set((
+                                                x,
+                                                ui.clip_rect().left(),
+                                                ui.clip_rect().right(),
+                                            ));
+                                        },
+                                    );
+                                });
+                        });
+                    });
+                });
+                let (x, clip_left, clip_right) = seen.get();
+                // Elle est dans ce qui est visible, à toute position de
+                // la barre — c'est tout ce qu'on lui demande.
+                assert!(
+                    x >= clip_left - 0.5 && x + 40.0 <= clip_right,
+                    "échelle {scale}, décalage {offset} : le nom peint en \
+                     {x} pour une fenêtre {clip_left}..{clip_right}"
+                );
+            }
+        }
+        // Et au repos, elle est exactement où la grille l'aurait écrite :
+        // sans quoi le tableau sauterait d'un pixel au premier défilement.
+        assert_eq!(frozen_left(100.0, 108.0, 8.0), 108.0);
+        // Une fois glissé, elle reste au bord.
+        assert_eq!(frozen_left(100.0, -400.0, 8.0), 108.0);
+        // Et le texte se peint au bord, pas dans le rectangle que la
+        // grille avait réservé — c'est le rectangle qui glisse. Le
+        // défaut se cache au repos, où les deux sont le même pixel : on
+        // le débusque avec une cellule partie loin à gauche.
+        let gone = egui::Rect::from_min_size(egui::pos2(-300.0, 40.0), egui::vec2(120.0, 20.0));
+        let (band, at) = frozen_cell(108.0, 120.0, 8.0, gone);
+        assert_eq!(at.x, 108.0, "le nom suit le défilement au lieu de rester");
+        assert_eq!(at.y, gone.top(), "le nom quitte sa propre ligne");
+        // La bande couvre le nom et le mince espace avant la colonne
+        // suivante : sans quoi ce qui glisse dessous se lit au travers.
+        assert!(band.left() <= at.x && band.right() >= at.x + 120.0);
+        assert!(band.top() <= gone.top() && band.bottom() >= gone.bottom());
     }
 
     /// **Une boîte de dialogue tient dans l'écran.**
