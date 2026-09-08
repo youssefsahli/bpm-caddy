@@ -8,7 +8,11 @@
 # or eight doors reflowing into four lines. Those are found by looking,
 # and looking is only cheap if the pictures are one command away.
 #
-#   ./scripts/eyeball.sh [outdir] [size] [scale]
+#   ./scripts/eyeball.sh [outdir] [size] [scale] [peau]
+#
+# La peau est le quatrième argument parce que la couleur se regarde comme
+# la mise en page : rien ne dit dans un test qu'une teinte s'est perdue
+# dans son fond.
 #
 # Requires xvfb-run and ImageMagick. Run from the repo root.
 set -euo pipefail
@@ -16,6 +20,7 @@ set -euo pipefail
 out=${1:-/tmp/bpm-caddy-eyeball}
 SIZE=${2:-1024x700}
 SCALE=${3:-1.25}
+THEME=${4:-motif}
 mkdir -p "$out"
 
 tmp=$(mktemp -d)
@@ -30,6 +35,7 @@ cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
 [ui]
 discreet_finances = false
 text_scale = $SCALE
+theme = "$THEME"
 EOF
 export XDG_CONFIG_HOME="$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
