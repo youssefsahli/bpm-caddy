@@ -8960,7 +8960,7 @@ impl App {
         // vaccination and the biology — and each wants the whole work
         // area. They take turns behind a notebook strip instead of
         // sharing a split.
-        let strip = motif::split_rows(rows[1], &[28.0, 0.0], 4.0);
+        let strip = motif::split_rows(rows[1], &[motif::tab_strip_height(ui), 0.0], 4.0);
         // Alt and the arrows walk the file's own four halves, the way
         // Ctrl+Tab walks the workspace's. Three of them had no keyboard
         // route at all. Alt, so the bare arrows keep driving the acts
@@ -10316,7 +10316,7 @@ impl App {
         // what the values say about the treatments, and what the
         // treatments ask to have measured. A fourth panel would have
         // left each of them three lines.
-        let strip = motif::split_rows(reading, &[24.0, 0.0], 2.0);
+        let strip = motif::split_rows(reading, &[motif::tab_strip_height(ui), 0.0], 2.0);
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
                 motif::Tab::new(tr("bio_reading")),
@@ -11709,20 +11709,67 @@ impl App {
             if body.height() < line * 3.0 {
                 return;
             }
-            let row_h = ui.spacing().interact_size.y.max(22.0) + ui.spacing().item_spacing.y;
-            let field = (body.width() * 0.3).clamp(120.0, 220.0);
-            let mut form_rows = Self::wrapped_rows_of(
-                ui,
-                body.width(),
-                [
-                    field,
-                    70.0,
-                    Self::button_width(ui, &session.bio_new_unit),
-                    92.0,
-                    Self::button_width(ui, tr("notes_add")),
-                ]
-                .into_iter(),
-            );
+            // **Une rangée qui porte un bouton se réserve à la hauteur
+            // d'un bouton.** `interact_size.y` ne l'est pas : à
+            // `text_scale = 1,25` il vaut vingt-sept pixels et demi là
+            // où un bouton en fait trente-huit, si bien qu'une bande qui
+            // réserve avec lui puis dessine des boutons est courte de
+            // dix pixels par rangée — ici la seconde, celle qui porte
+            // « Ajouter », et donc le geste qui enregistre le résultat.
+            let row_h = Self::row_height(ui) + ui.spacing().item_spacing.y;
+            // **Le champ tient son invite, et il est mesuré une fois.**
+            // « Trente pour cent du volet, plafonné à deux cent vingt
+            // pixels » était écrit deux fois — ici pour mesurer la
+            // bande, plus bas pour la dessiner — et c'est deux nombres
+            // de pixels : à l'échelle 1,6 « Analyte (kaliémie, DFG…) »
+            // se lisait « Analyte (kaliémie, » dans le champ même où
+            // l'on tape le nom de l'analyte.
+            //
+            // Mais la **rangée entière** passe avant l'invite entière :
+            // le champ partage sa ligne avec quatre autres contrôles
+            // dont « Ajouter », et cette ligne qui passe à deux en cache
+            // la moitié dans un panneau haut de cent quatre-vingts
+            // pixels — le geste qui enregistre le résultat, hors de
+            // vue. Le champ prend donc ce que son invite demande tant
+            // que la rangée y tient ; au-delà, c'est l'invite qui
+            // raccourcit, comme celle d'un volet trop étroit. Le
+            // panneau porte déjà son titre.
+            //
+            // Et les quatre autres sont mesurées **ici**, une fois,
+            // puis passées au dessin : la mesure disait `92.0` pour un
+            // champ de date que le dessin taille avec
+            // `date_field_width`, soit cent quatre-vingt-dix pixels à
+            // 1,6. Deux mesures d'une même chose divergent toujours, et
+            // celle-ci se voyait — la rangée comptée pour une, dessinée
+            // sur deux.
+            let value_w = Self::field_width(ui, [tr("bio_value_hint")].into_iter()).max(70.0);
+            let date_w = Self::date_field_width(ui);
+            let unit_w = ui.fonts(|f| {
+                f.layout_no_wrap(
+                    session.bio_new_unit.clone(),
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    motif::text_dim(),
+                )
+                .size()
+                .x
+            });
+            let sisters = [
+                value_w,
+                unit_w,
+                date_w,
+                Self::button_width(ui, tr("notes_add")),
+            ];
+            let taken: f32 =
+                sisters.iter().sum::<f32>() + ui.spacing().item_spacing.x * sisters.len() as f32;
+            let field = Self::field_width(ui, [tr("bio_pick_hint")].into_iter())
+                .min((body.width() - taken).max(chars_wide(ui, 9.0)));
+            let hint = if Self::field_width(ui, [tr("bio_pick_hint")].into_iter()) <= field {
+                tr("bio_pick_hint")
+            } else {
+                tr("bio_pick_hint_short")
+            };
+            let mut form_rows =
+                Self::wrapped_rows_of(ui, body.width(), std::iter::once(field).chain(sisters));
             let picking = !session.bio_query.trim().is_empty() && session.bio_new_code.is_empty();
             if picking {
                 form_rows += Self::wrapped_rows(
@@ -11981,11 +12028,9 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            let w = (ui.available_width() * 0.3).clamp(120.0, 220.0);
                             let analyte = ui.add_sized(
-                                [w, 22.0],
-                                egui::TextEdit::singleline(&mut session.bio_query)
-                                    .hint_text(tr("bio_pick_hint")),
+                                [field, 22.0],
+                                egui::TextEdit::singleline(&mut session.bio_query).hint_text(hint),
                             );
                             // Typing over a picked analyte unpicks it: a line
                             // must never be stored with one analyte's name and
@@ -11999,11 +12044,7 @@ impl App {
                                 }
                             }
                             let value = ui.add_sized(
-                                [
-                                    Self::field_width(ui, [tr("bio_value_hint")].into_iter())
-                                        .max(70.0),
-                                    22.0,
-                                ],
+                                [value_w, 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_new_value)
                                     .hint_text(tr("bio_value_hint")),
                             );
@@ -12013,7 +12054,7 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                             let when = ui.add_sized(
-                                [Self::date_field_width(ui), 22.0],
+                                [date_w, 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_new_date)
                                     .hint_text(tr("itv_rdv_hint")),
                             );
@@ -19142,7 +19183,7 @@ impl App {
     /// l'officine tient tous les jours.
     fn registres_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         let body = motif::visible_rect(ui);
-        let strip = motif::split_rows(body, &[28.0, 0.0], 4.0);
+        let strip = motif::split_rows(body, &[motif::tab_strip_height(ui), 0.0], 4.0);
         const TABS: [RegistreTab; 4] = [
             RegistreTab::Stupefiants,
             RegistreTab::Ordonnancier,

@@ -10,8 +10,8 @@ pub mod chart;
 pub mod layout;
 
 pub use layout::{
-    column_count, inside, page, panel, rule, split_columns, split_rows, tab_strip, visible_rect,
-    vrule, well, Tab, TabAction,
+    column_count, inside, page, panel, rule, split_columns, split_rows, tab_strip,
+    tab_strip_height, visible_rect, vrule, well, Tab, TabAction,
 };
 
 /// One skin: every colour the Motif chrome is drawn from.

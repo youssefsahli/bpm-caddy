@@ -237,9 +237,27 @@ pub enum TabAction {
 /// hard-coded one, and egui painted « First use of ScrollArea ID … »
 /// across both of them the day a second one appeared: a widget meant to
 /// be used twice cannot name itself.
+/// What a strip of tabs takes, in pixels, before it is drawn.
+///
+/// Une bande d'onglets se taille dans un rectangle, et le rectangle se
+/// calcule avant : les trois appelants l'écrivaient en dur — 24 px,
+/// 28 px, 28 px — et un onglet mesure `taille de la fonte + 14`, ce qui
+/// fait trente-huit à l'échelle 1,6. Les trois étaient donc trop courts
+/// de dix à quatorze pixels, et la bande du volet de biologie, la seule
+/// des trois posée dans un `inside`, se dessinait tranchée par le haut :
+/// « Interprétation » et « À surveiller » coupés dans leur cadre.
+///
+/// Écrit ici plutôt que chez l'appelant parce que c'est ici que la
+/// hauteur est décidée — deux mesures d'une même chose divergent
+/// toujours, et celles-là avaient divergé trois fois.
+pub fn tab_strip_height(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    (font.size + 14.0).max(26.0) + 2.0
+}
+
 pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> Option<TabAction> {
     let font = egui::TextStyle::Button.resolve(ui.style());
-    let height = (font.size + 14.0).max(26.0);
+    let height = tab_strip_height(ui) - 2.0;
     let mut action = None;
     // Where the selected tab sits, so the rule under the strip can be
     // broken there: an unbroken line makes every tab look inactive.
