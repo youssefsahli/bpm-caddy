@@ -11676,9 +11676,18 @@ impl App {
             }
             // The form wins over the table: a table one row short still
             // reads and scrolls, a chooser whose suggestions are cut
-            // cannot be used at all. The table keeps three lines, and
-            // past that the form scrolls inside its own share.
-            let foot = (row_h * form_rows + 6.0).min((body.height() - line * 3.0).max(row_h));
+            // cannot be used at all. Mais le plancher de la table n'est
+            // pas « trois lignes » : ses lignes portent un bouton, donc
+            // il lui faut sa ligne d'en-têtes **et une rangée de la
+            // hauteur d'un bouton** — à l'échelle 1,6 trois lignes de
+            // corps font soixante-sept pixels quand l'en-tête et une
+            // rangée en demandent quatre-vingt-quatre, et la seule
+            // ligne visible était coupée en deux.
+            // Plus le creux dans lequel elle est posée : `motif::well`
+            // reprend ses marges sur ce qu'on lui donne, et huit pixels
+            // de moins suffisaient à trancher la seule rangée visible.
+            let table_floor = line + Self::row_height(ui) + 24.0;
+            let foot = (row_h * form_rows + 6.0).min((body.height() - table_floor).max(row_h));
             let rows = motif::split_rows(body, &[0.0, foot], 6.0);
             let inner = motif::well(ui, rows[0]);
             motif::inside(ui, inner, |ui| {
@@ -11694,20 +11703,65 @@ impl App {
                             );
                             return;
                         }
+                        // **Six colonnes non bornées dans un panneau de
+                        // comptoir sortent par la droite**, et cette
+                        // table-là ne défile que verticalement : « Usuel »
+                        // n'était pas seulement coupé, il était
+                        // inatteignable. Les quatre premières se
+                        // mesurent, l'intervalle prend ce qui reste — et
+                        // s'il ne reste pas de quoi le lire, il n'est
+                        // pas montré du tout : la colonne « Lecture »
+                        // dit déjà normal ou élevé, qui est la question
+                        // qu'on pose au comptoir.
+                        let bio_gap = 10.0_f32;
+                        let bio_avail = ui.available_width() - 14.0;
+                        let date_w = Self::widest(ui, 11.5, ["00/00/0000"].into_iter());
+                        let value_w = chars_wide(ui, 12.0);
+                        let level_w = Self::widest(
+                            ui,
+                            10.5,
+                            ["  très élevé  ", tr("bio_col_level")].into_iter(),
+                        );
+                        let del_w = Self::button_width(ui, tr("itv_delete_confirm"));
+                        // Les quatre colonnes fixes, puis ce qui reste :
+                        // l'analyte et l'intervalle se le partagent, et
+                        // s'il n'y a pas de quoi les lire tous les deux
+                        // c'est l'analyte qui prend tout — la colonne
+                        // « Lecture » dit déjà normal ou élevé, qui est
+                        // la question qu'on pose au comptoir. Le total
+                        // tient dans les deux formes : mesurer la seule
+                        // colonne de l'intervalle laissait la croix de
+                        // suppression hors du panneau.
+                        let fixed = date_w + value_w + level_w + del_w;
+                        let rest = bio_avail - fixed - bio_gap * 5.0;
+                        let with_interval = rest >= chars_wide(ui, 16.0) + chars_wide(ui, 12.0);
+                        let (analyte_w, interval_w) = if with_interval {
+                            (rest * 0.55, rest * 0.45)
+                        } else {
+                            (
+                                (bio_avail - fixed - bio_gap * 4.0).max(chars_wide(ui, 8.0)),
+                                0.0,
+                            )
+                        };
                         egui::Grid::new("bio_grid")
-                            .num_columns(6)
-                            .spacing([10.0, 5.0])
+                            .num_columns(if with_interval { 6 } else { 5 })
+                            .spacing([bio_gap, 5.0])
                             .striped(true)
                             .show(ui, |ui| {
-                                for header in [
-                                    tr("bio_col_date"),
-                                    tr("bio_col_analyte"),
-                                    tr("bio_col_value"),
-                                    tr("bio_col_level"),
-                                    tr("bio_col_interval"),
-                                    "",
+                                for (header, w) in [
+                                    (tr("bio_col_date"), date_w),
+                                    (tr("bio_col_analyte"), analyte_w),
+                                    (tr("bio_col_value"), value_w),
+                                    (tr("bio_col_level"), level_w),
+                                    (tr("bio_col_interval"), interval_w),
+                                    ("", del_w),
                                 ] {
-                                    ui.label(
+                                    if !with_interval && header == tr("bio_col_interval") {
+                                        continue;
+                                    }
+                                    Self::grid_cell(
+                                        ui,
+                                        w,
                                         egui::RichText::new(header)
                                             .size(motif::pt(ui, 10.5))
                                             .color(motif::text_dim()),
@@ -11728,13 +11782,18 @@ impl App {
                                     // little, three in a row say where
                                     // it is going.
                                     if ui
-                                        .add(
-                                            egui::Label::new(
-                                                egui::RichText::new(&r.label)
-                                                    .size(motif::pt(ui, 12.0)),
+                                        .scope(|ui| {
+                                            ui.set_max_width(analyte_w);
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&r.label)
+                                                        .size(motif::pt(ui, 12.0)),
+                                                )
+                                                .truncate()
+                                                .sense(egui::Sense::click()),
                                             )
-                                            .sense(egui::Sense::click()),
-                                        )
+                                        })
+                                        .inner
                                         .on_hover_text(tr("bio_trend_tooltip"))
                                         .clicked()
                                         && !r.code.is_empty()
@@ -11808,22 +11867,29 @@ impl App {
                                                     .color(motif::text_dim()),
                                                 );
                                             }
-                                            ui.label(
-                                                egui::RichText::new(crate::biology::interval_text(
-                                                    a,
-                                                ))
-                                                .size(motif::pt(ui, 10.5))
-                                                .color(motif::text_dim()),
-                                            )
-                                            .on_hover_text(a.note);
+                                            if with_interval {
+                                                Self::grid_cell(
+                                                    ui,
+                                                    interval_w,
+                                                    egui::RichText::new(
+                                                        crate::biology::interval_text(a),
+                                                    )
+                                                    .size(motif::pt(ui, 10.5))
+                                                    .color(motif::text_dim()),
+                                                );
+                                            }
                                         }
                                         None => {
                                             ui.label("");
-                                            ui.label(
-                                                egui::RichText::new(tr("bio_free_line"))
-                                                    .size(motif::pt(ui, 10.5))
-                                                    .color(motif::text_dim()),
-                                            );
+                                            if with_interval {
+                                                Self::grid_cell(
+                                                    ui,
+                                                    interval_w,
+                                                    egui::RichText::new(tr("bio_free_line"))
+                                                        .size(motif::pt(ui, 10.5))
+                                                        .color(motif::text_dim()),
+                                                );
+                                            }
                                         }
                                     }
                                     let confirm = session.bio_confirm == Some(r.id);

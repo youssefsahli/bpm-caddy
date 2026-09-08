@@ -52,6 +52,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Au passage, une panique évitée : `Rect::NOTHING` passé à egui pour
   « ne dessine rien » a ses bornes à l'infini et `Layout` divise dedans.
   On n'appelle simplement pas la fonction.
+- **La table de biologie sortait par la droite, et elle ne défile que
+  vers le bas.** Six colonnes non bornées dans un panneau de comptoir :
+  « Usuel » n'était pas seulement coupé, il était inatteignable, et à
+  l'échelle 1,6 la croix de suppression l'était aussi. Les quatre
+  colonnes fixes se mesurent, l'analyte et l'intervalle se partagent ce
+  qui reste, et s'il n'y a pas de quoi lire les deux, c'est l'intervalle
+  qui part — la colonne « Lecture » dit déjà normal ou élevé, qui est la
+  question qu'on pose au comptoir. Son plancher n'est plus « trois
+  lignes » mais son en-tête et une rangée de la hauteur d'un bouton,
+  creux compris : trois lignes de corps font soixante-sept pixels quand
+  la rangée en demande quatre-vingt-quatre, et la seule ligne visible
+  était coupée en deux.
 
 ## [0.156.0] - 2026-09-08
 
