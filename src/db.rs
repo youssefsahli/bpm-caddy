@@ -32079,6 +32079,29 @@ impl Db {
         // et ne pas l'être déjà. Vérifié **dans la transaction** : deux
         // postes qui annulent la même ligne en même temps l'annuleraient
         // deux fois, et le stock remonterait du double.
+        // **Un écart d'inventaire se motive, comme une annulation.**
+        //
+        // `Discrepancy::matters` le dit depuis toujours en prose — « tout
+        // écart non nul mérite d'être expliqué, et il n'y a pas de seuil
+        // de tolérance dans le code de la santé publique » — et rien ne
+        // l'exigeait. Un comptage qui ne tombe pas juste et qui n'a pas
+        // de motif est une ligne dont personne ne saura jamais si elle
+        // vient d'un vol, d'une casse ou d'une ligne oubliée ; c'est
+        // exactement ce que l'inaltérabilité du registre doit empêcher.
+        //
+        // Vérifié ici, à l'écriture, et non dans le formulaire qui l'a
+        // proposée : une règle qui ne tient que dans une vue ne tient
+        // pas. C'est la même place et la même raison que le motif
+        // obligatoire de l'annulation, deux lignes plus bas.
+        if kind == crate::ordonnancier::Kind::Inventaire {
+            let gap = crate::ordonnancier::Discrepancy {
+                expected: m.expected,
+                counted: m.quantity,
+            };
+            if gap.matters() && m.remark.trim().is_empty() {
+                return Err(crate::strings::tr("stup_err_no_gap_reason").to_owned());
+            }
+        }
         if kind == crate::ordonnancier::Kind::Annulation {
             if m.remark.trim().is_empty() {
                 return Err(crate::strings::tr("stup_err_no_reason").to_owned());
@@ -35122,6 +35145,65 @@ mod tests {
     /// **pose** le solde), le numéro d'ordonnancier est séquentiel dans
     /// l'année et attribué par la base et non par l'appelant, et une
     /// ligne qui n'est pas une délivrance ne porte ni numéro ni dossier.
+    /// **Un écart d'inventaire se motive, et c'est la base qui l'exige.**
+    ///
+    /// `Discrepancy::matters` le disait en prose depuis toujours — tout
+    /// écart non nul mérite une explication, et le code de la santé
+    /// publique ne connaît pas de seuil de tolérance — et rien ne
+    /// l'exigeait. Un comptage qui ne tombe pas juste et qui part sans
+    /// motif est une ligne dont personne ne saura jamais si elle vient
+    /// d'un vol, d'une casse ou d'une ligne oubliée.
+    ///
+    /// Vérifié à l'écriture et non dans le formulaire : une règle qui
+    /// ne tient que dans une vue ne tient pas. Même place et même raison
+    /// que le motif obligatoire de l'annulation.
+    #[test]
+    fn an_inventory_gap_has_to_say_why() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-gap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("gap.db"), "secret").unwrap();
+        let sid = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)
+            .unwrap();
+        use crate::ordonnancier::Kind;
+        let count = |counted: f64, expected: f64, remark: &str| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: Kind::Inventaire.as_key().to_owned(),
+                happened_on: "2026-02-02".to_owned(),
+                quantity: counted,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected,
+                operator: "YS".to_owned(),
+                remark: remark.to_owned(),
+                cancels: 0,
+            })
+        };
+        // Un comptage qui tombe juste n'a rien à expliquer.
+        assert!(count(30.0, 30.0, "").is_ok());
+        // Il en manque deux, et la ligne ne dit pas pourquoi : refusée.
+        assert!(count(28.0, 30.0, "").is_err());
+        // Un motif d'espaces n'est pas un motif.
+        assert!(count(28.0, 30.0, "   ").is_err());
+        // Un excédent se motive comme un manque : deux écarts opposés
+        // restent deux écarts, et l'excédent est le plus suspect des
+        // deux — il veut souvent dire qu'une sortie n'a pas été écrite.
+        assert!(count(32.0, 30.0, "").is_err());
+        // Avec le motif, elle passe.
+        assert!(count(28.0, 30.0, "Deux gélules cassées, jetées au DASRI").is_ok());
+        // Et la marge de calcul reste une marge de calcul : un centième
+        // de gélule d'écart flottant n'est pas un écart.
+        assert!(count(30.0, 30.0 + 1e-9, "").is_ok());
+    }
+
     #[test]
     fn the_register_numbers_its_dispensings_and_keeps_the_balance() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-stup-{}", std::process::id()));

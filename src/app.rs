@@ -2375,6 +2375,13 @@ struct Session {
     /// tout autre champ date).
     stup_new_kind: crate::ordonnancier::Kind,
     stup_new_qty: String,
+    /// Le comptage tel qu'il se fait au coffre : des boîtes pleines, ce
+    /// que chacune contient, et le vrac. Trois champs plutôt qu'un
+    /// nombre, parce que la multiplication se faisait de tête juste
+    /// avant d'écrire dans une pièce inaltérable.
+    stup_count_boxes: String,
+    stup_count_per_box: String,
+    stup_count_loose: String,
     stup_new_day: String,
     stup_new_prescriber: String,
     stup_new_supplier: String,
@@ -2795,6 +2802,9 @@ impl Session {
             stup_moves: Vec::new(),
             stup_new_kind: crate::ordonnancier::Kind::Sortie,
             stup_new_qty: String::new(),
+            stup_count_boxes: String::new(),
+            stup_count_per_box: String::new(),
+            stup_count_loose: String::new(),
             stup_new_day: String::new(),
             stup_new_prescriber: String::new(),
             stup_new_supplier: String::new(),
@@ -21931,6 +21941,10 @@ impl App {
                             _ => stock.max(typed).max(30.0),
                         };
                         let mut set_qty: Option<f64> = None;
+                        // Un écart d'inventaire se motive : la base le
+                        // refuse sans motif, et le champ doit le dire
+                        // *avant* qu'on presse « Inscrire », pas après.
+                        let mut gap_needs_reason = false;
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(if kind == Kind::Inventaire {
@@ -22178,6 +22192,102 @@ impl App {
                                     .has_focus();
                             }
                             Kind::Inventaire => {
+                                // **Le comptage se fait en boîtes et en
+                                // vrac**, parce que c'est ainsi qu'on
+                                // compte devant un coffre : on aligne
+                                // les boîtes pleines et l'entamée, et on
+                                // dit « trois de quatorze, plus cinq ».
+                                // Cette multiplication se faisait de
+                                // tête juste avant d'écrire un nombre
+                                // dans une pièce inaltérable, où une
+                                // erreur ne se défait que par une
+                                // contre-passation motivée.
+                                //
+                                // Le champ de la quantité reste
+                                // **maître** : le total se reporte d'un
+                                // bouton et ne s'y écrit pas tout seul,
+                                // comme la glissière au-dessus. On
+                                // compte parfois sans boîtes, et un
+                                // total qui viendrait écraser ce qu'on
+                                // a tapé serait pire que pas d'aide.
+                                let num =
+                                    |t: &str| crate::codex::parse_amount(t).map_or(0.0, |(v, _)| v);
+                                let total = crate::ordonnancier::counted_total(
+                                    num(&session.stup_count_boxes),
+                                    num(&session.stup_count_per_box),
+                                    num(&session.stup_count_loose),
+                                );
+                                // Chaque champ tient son invite : trois
+                                // cases de cinq caractères coupaient
+                                // « boîtes » en « boîte » et « par
+                                // boîte » en « par bo », c'est-à-dire
+                                // qu'elles ne disaient plus ce qu'on y
+                                // met. C'est la règle de la maison, et
+                                // elle vaut aussi pour un champ étroit.
+                                let cells = [
+                                    tr("stup_count_boxes"),
+                                    tr("stup_count_per_box"),
+                                    tr("stup_count_loose"),
+                                ];
+                                let cell = Self::field_width(ui, cells.into_iter());
+                                let dim = |ui: &egui::Ui, t: &str| {
+                                    egui::RichText::new(t)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim())
+                                };
+                                ui.horizontal_wrapped(|ui| {
+                                    focus_here |= ui
+                                        .add_sized(
+                                            [cell, Self::button_height(ui)],
+                                            egui::TextEdit::singleline(
+                                                &mut session.stup_count_boxes,
+                                            )
+                                            .hint_text(tr("stup_count_boxes")),
+                                        )
+                                        .has_focus();
+                                    ui.label(dim(ui, "×"));
+                                    focus_here |= ui
+                                        .add_sized(
+                                            [cell, Self::button_height(ui)],
+                                            egui::TextEdit::singleline(
+                                                &mut session.stup_count_per_box,
+                                            )
+                                            .hint_text(tr("stup_count_per_box")),
+                                        )
+                                        .has_focus();
+                                    ui.label(dim(ui, "+"));
+                                    focus_here |= ui
+                                        .add_sized(
+                                            [cell, Self::button_height(ui)],
+                                            egui::TextEdit::singleline(
+                                                &mut session.stup_count_loose,
+                                            )
+                                            .hint_text(tr("stup_count_loose")),
+                                        )
+                                        .has_focus();
+                                    // Le total ne s'annonce que s'il y a
+                                    // quelque chose à annoncer : « = 0 »
+                                    // sur trois champs vides est du
+                                    // bruit devant un coffre.
+                                    // Le `&&` court-circuite, donc le
+                                    // bouton n'est pas dessiné quand il
+                                    // n'y a rien à reporter — c'est bien
+                                    // une condition d'affichage et pas
+                                    // seulement de clic.
+                                    if total > 0.0
+                                        && motif::button(
+                                            ui,
+                                            &trf(
+                                                "stup_count_carry",
+                                                crate::codex::format_quantity(total),
+                                            ),
+                                        )
+                                        .on_hover_text(tr("stup_count_carry_tooltip"))
+                                        .clicked()
+                                    {
+                                        set_qty = Some(total);
+                                    }
+                                });
                                 let counted = crate::codex::parse_amount(&session.stup_new_qty)
                                     .map_or(0.0, |(v, _)| v);
                                 let d = crate::ordonnancier::Discrepancy {
@@ -22197,6 +22307,7 @@ impl App {
                                         motif::text_dim()
                                     }),
                                 );
+                                gap_needs_reason = d.matters();
                             }
                             // L'annulation ne se choisit pas ici : elle
                             // se demande sur la ligne à annuler.
@@ -22208,6 +22319,8 @@ impl App {
                                 egui::TextEdit::singleline(&mut session.stup_new_remark).hint_text(
                                     if kind == Kind::Perte {
                                         tr("stup_loss_hint")
+                                    } else if gap_needs_reason {
+                                        tr("stup_gap_reason_hint")
                                     } else {
                                         tr("stup_remark_hint")
                                     },
@@ -22322,6 +22435,14 @@ impl App {
                 // oubli, et la ligne d'après les emportait.
                 session.stup_new_prescriber.clear();
                 session.stup_new_supplier.clear();
+                // Et le comptage en boîtes, pour la même raison qu'eux :
+                // « trois de quatorze plus cinq » vaut pour le produit
+                // qu'on vient de compter et pour aucun autre. Laissé en
+                // place, le bouton de report proposerait à la ligne
+                // suivante un total qui n'est plus le sien.
+                session.stup_count_boxes.clear();
+                session.stup_count_per_box.clear();
+                session.stup_count_loose.clear();
                 // Le dossier désigné vaut pour la ligne qu'on vient
                 // d'écrire et pas pour la suivante : le garder ferait
                 // délivrer au patient d'avant sans que rien ne le dise.

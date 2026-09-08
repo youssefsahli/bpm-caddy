@@ -571,6 +571,24 @@ impl Discrepancy {
     }
 }
 
+/// Ce qu'un comptage trouve, quand il se compte comme il se fait
+/// vraiment : des boîtes pleines, ce que chacune contient, et le vrac.
+///
+/// Un stupéfiant ne se compte pas d'un seul nombre. On sort le coffre,
+/// on aligne les boîtes entamées et pleines, et on dit « trois boîtes
+/// de quatorze, plus cinq ». Cette multiplication-là se faisait de tête
+/// avant d'écrire un seul nombre dans un registre inaltérable, où une
+/// erreur ne se corrige que par une contre-passation motivée. Elle se
+/// fait ici.
+///
+/// Les nombres négatifs n'ont pas de sens dans un comptage et valent
+/// zéro : un champ à moitié tapé — « - », « 1e » — ne doit pas rendre
+/// un total qui a l'air d'un résultat.
+pub fn counted_total(boxes: f64, per_box: f64, loose: f64) -> f64 {
+    let keep = |n: f64| if n.is_finite() && n > 0.0 { n } else { 0.0 };
+    keep(boxes) * keep(per_box) + keep(loose)
+}
+
 /// Pourquoi un produit est sur la liste de contrôle.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Why {
@@ -924,6 +942,48 @@ pub fn sequence(used: &[u32]) -> Option<Sequence> {
 
 #[cfg(test)]
 mod tests {
+    /// **Un comptage se fait en boîtes et en vrac.**
+    ///
+    /// « Trois boîtes de quatorze, plus cinq » fait quarante-sept, et
+    /// c'est ce nombre-là qui part au registre. La multiplication se
+    /// faisait de tête avant d'écrire dans une pièce inaltérable, où
+    /// une erreur ne se défait que par une contre-passation motivée.
+    ///
+    /// Ce que le test tient en plus du calcul : un champ à moitié tapé
+    /// ne rend pas un total qui a l'air d'un résultat. Un « - » seul,
+    /// un « 1e » sans exposant, une soustraction — le comptage n'a pas
+    /// de nombres négatifs, et un `NaN` qui traverserait rendrait un
+    /// total invisible mais faux.
+    #[test]
+    fn a_count_is_boxes_and_loose_units() {
+        use super::counted_total;
+        // Le cas de tous les jours.
+        assert!((counted_total(3.0, 14.0, 5.0) - 47.0).abs() < 1e-9);
+        // Rien que du vrac : une boîte entamée et rien d'autre.
+        assert!((counted_total(0.0, 14.0, 9.0) - 9.0).abs() < 1e-9);
+        // Rien que des boîtes pleines.
+        assert!((counted_total(2.0, 28.0, 0.0) - 56.0).abs() < 1e-9);
+        // Un coffre vide se compte, et il se compte à zéro : c'est un
+        // résultat, pas une absence de saisie.
+        assert!(counted_total(0.0, 0.0, 0.0).abs() < 1e-9);
+        // Les fractions existent — un sirop se compte en flacons et en
+        // millilitres.
+        assert!((counted_total(1.0, 7.0, 2.5) - 9.5).abs() < 1e-9);
+        // Et rien de ce qui n'est pas un comptage ne passe.
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -3.0] {
+            for total in [
+                counted_total(bad, 14.0, 5.0),
+                counted_total(3.0, bad, 5.0),
+                counted_total(3.0, 14.0, bad),
+            ] {
+                assert!(total.is_finite(), "{bad} rend {total}");
+                assert!(total >= 0.0, "{bad} rend {total}");
+            }
+        }
+        // Un négatif ne se soustrait pas : il ne compte pas.
+        assert!((counted_total(3.0, 14.0, -5.0) - 42.0).abs() < 1e-9);
+    }
+
     use super::*;
 
     fn mv(kind: Kind, quantity: f64, day: &str, seq: i64) -> Move<'_> {
