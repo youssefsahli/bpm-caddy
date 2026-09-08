@@ -16170,11 +16170,7 @@ impl App {
     /// share a swatch, which is the whole point of the group lens.
     fn region_color(i: usize) -> egui::Color32 {
         let base = motif::chart::series_color(i);
-        match i / motif::chart::SERIES_LEN {
-            0 => base,
-            1 => motif::data_shade(base, true),
-            _ => motif::data_shade(base, false),
-        }
+        motif::data_tones(base)[(i / motif::chart::SERIES_LEN).min(2)]
     }
 
     /// One step of the map's ordinal scale — « rien à faire » through

@@ -244,10 +244,13 @@ add clicking and typing; it is not the price of entry.
 - **A categorical hue lives in one named `const` ramp**, and reaches the
   screen through `data_ramp`. Adding a colour is adding a line to that
   array — never a second array, and never a literal at the point of
-  use. `motif::data_shade(c, up)` gives a set with more members than the
-  ramp has colours its second and third tone — a step inside the same
-  band, where a bare `gamma_multiply(1.6)` clipped a dozen countries of
-  the vaccine map to white. `motif::stripe()` is the zebra band,
+  use. `motif::data_tones(c)` gives a set with more members than the ramp
+  has colours its three tones — **chosen together**, inside that same
+  band: computed one at a time they collide (a darker tone that hits the
+  floor and turns round lands on its own lighter tone), and bounded by
+  absolute limits rather than by the band they wash out against a
+  daylight background. A bare `gamma_multiply(1.6)` did neither and
+  clipped a dozen countries of the vaccine map to white. `motif::stripe()` is the zebra band,
   `motif::emphasize(c)` is bold where there is no bold face (further
   from the ground, not darker), `motif::readable_on(ink, surface)`
   keeps a sentence's own colour on a highlight unless the highlight has

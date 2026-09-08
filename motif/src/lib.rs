@@ -87,7 +87,7 @@ pub struct Theme {
 /// differently for it. What it *does* change is that a colour picked
 /// once for a light grey — a categorical hue, an amber warning — can no
 /// longer be written down and drawn as it is, which is what
-/// [`data_ramp`], [`data_shade`] and [`on_fill`] are for.
+/// [`data_ramp`], [`data_tones`] and [`on_fill`] are for.
 pub const THEMES: [Theme; 8] = [
     Theme {
         key: "motif",
@@ -450,14 +450,22 @@ fn to_luminance(c: Color32, target: f32) -> Color32 {
     if luminance(out) + 0.01 >= target {
         return out;
     }
-    let mut lifted = out;
-    for i in 1..=20 {
-        if luminance(lifted) >= target {
-            break;
+    // A channel saturated, so the factor could not carry the whole
+    // distance: the rest is made up toward white, the only direction
+    // left. **Bisected and not stepped** — a walk in twentieths stops
+    // at the first step past the target, which overshot the band by
+    // three hundredths on the CDE taupe and put a tone outside the
+    // room it was being fitted into.
+    let (mut under, mut over) = (0.0_f32, 1.0_f32);
+    for _ in 0..12 {
+        let t = (under + over) / 2.0;
+        if luminance(out.lerp_to_gamma(Color32::WHITE, t)) < target {
+            under = t;
+        } else {
+            over = t;
         }
-        lifted = out.lerp_to_gamma(Color32::WHITE, i as f32 / 20.0);
     }
-    lifted
+    out.lerp_to_gamma(Color32::WHITE, over)
 }
 
 /// `ink` if it can be read on `surface`, and the plain black or white
@@ -571,35 +579,56 @@ pub fn data_ramp<const N: usize>(ramp: [Color32; N], apart: f32) -> [Color32; N]
     out
 }
 
-/// A second and a third tone of one hue, for a set that has more
-/// members than the ramp has colours.
+/// The three tones of one hue, for a set with more members than the
+/// ramp has colours.
 ///
 /// The vaccine map has seventeen regions and the ramp has eight, so it
-/// draws the second round paler and the third darker. That was a bare
-/// `gamma_multiply(1.6)`, which is unbounded: applied to a colour
-/// already lifted onto a night shell it clipped to **white**, and a
-/// dozen countries came out as a hole in the map — the one thing a
-/// night palette is chosen to avoid. A step inside the same band, then,
-/// and one that turns round when it meets the wall rather than
-/// returning the tone it started from.
-pub fn data_shade(c: Color32, up: bool) -> Color32 {
-    const STEP: f32 = 0.16;
-    let l = luminance(c);
-    let (floor, ceiling) = (NO_MURK + 0.04, NO_GLARE - 0.04);
-    let step = |up: bool| {
-        if up {
-            (l + STEP).min(ceiling)
-        } else {
-            (l - STEP).max(floor)
-        }
-    };
-    let t = step(up);
-    let t = if (t - l).abs() < STEP * 0.5 {
-        step(!up)
+/// walks the ramp three times: the colour itself, then a lighter and a
+/// darker tone of it. That was a bare `gamma_multiply(1.6)` and a
+/// `gamma_multiply(0.55)`, which are unbounded — applied to a colour
+/// already lifted onto a night shell the first clipped to **white**, and
+/// a dozen countries came out as a hole in the map.
+///
+/// Bounded, they have to be bounded by **the band [`data_ramp`] fits a
+/// ramp into**, and not by a pair of absolute limits: held only under
+/// [`NO_GLARE`], the lighter tone was free to walk up to within six
+/// hundredths of a *daylight* background, and « Afrique de l'Est »
+/// became a tile you had to look for. A ceiling written for a dark
+/// shell is not a ceiling on a light one.
+///
+/// And the three are chosen **together**. Computed one at a time they
+/// collided: on the night skin the violet sits high enough that its
+/// darker tone hit the floor, turned round, and landed four hundredths
+/// from its own lighter tone — two regions, one swatch, which is the
+/// one thing the group lens cannot afford. So the band is cut in three,
+/// the slot the colour already occupies is dropped, and the two tones
+/// take the two that are left: half a band apart by construction, and
+/// never a matter of which order they were asked for.
+pub fn data_tones(c: Color32) -> [Color32; 3] {
+    let on = luminance(bg());
+    let (near, far) = if on < 0.5 {
+        (on + AS_FILL, NO_GLARE)
     } else {
-        t
+        (on - AS_FILL, NO_MURK)
     };
-    to_luminance(c, t)
+    let (lo, hi) = if near < far { (near, far) } else { (far, near) };
+    let mid = (lo + hi) / 2.0;
+    let l = luminance(c);
+    let slots = [lo, mid, hi];
+    let mut nearest = 0;
+    for (i, s) in slots.iter().enumerate() {
+        if (s - l).abs() < (slots[nearest] - l).abs() {
+            nearest = i;
+        }
+    }
+    // The lighter of the two kept slots first, so tone 1 is always the
+    // paler one — the map's second round, as it has always been.
+    let (lighter, darker) = match nearest {
+        0 => (hi, mid),
+        1 => (hi, lo),
+        _ => (mid, lo),
+    };
+    [c, to_luminance(c, lighter), to_luminance(c, darker)]
 }
 
 /// The band behind every other row of a striped table.
@@ -1798,6 +1827,39 @@ mod tests {
         for c in fitted {
             assert!(lum(c) >= lum(super::bg()) + super::AS_FILL - 0.01);
             assert!(lum(c) <= super::NO_GLARE + 0.01);
+        }
+
+        // The two extra tones of one hue, on every skin: three tones
+        // that must be three, and all three inside the band. The map
+        // walks the ramp three times, and a round that lands on another
+        // round is two regions with one swatch.
+        for t in super::THEMES.iter() {
+            super::set_theme(t.key);
+            let on = lum(super::bg());
+            let (near, far) = if on < 0.5 {
+                (on + super::AS_FILL, super::NO_GLARE)
+            } else {
+                (on - super::AS_FILL, super::NO_MURK)
+            };
+            let (lo, hi) = if near < far { (near, far) } else { (far, near) };
+            for base in super::chart::series() {
+                let tones = super::data_tones(base);
+                for (i, a) in tones.iter().enumerate() {
+                    assert!(
+                        lum(*a) >= lo - 0.01 && lum(*a) <= hi + 0.01,
+                        "{} : le ton {i} de {base:?} sort de la bande ({:.2})",
+                        t.key,
+                        lum(*a)
+                    );
+                    for (j, b) in tones.iter().enumerate().skip(i + 1) {
+                        assert!(
+                            (lum(*a) - lum(*b)).abs() > 0.06,
+                            "{} : les tons {i} et {j} de {base:?} sont le même ton",
+                            t.key
+                        );
+                    }
+                }
+            }
         }
         super::set_theme(super::THEMES[0].key);
     }
