@@ -35,6 +35,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Une rangée de liste prend deux lignes quand elle peut se couper
+  proprement.** Elles étaient sur une ligne avec une ellipse, et sur un
+  volet étroit cela coûtait précisément ce que la rangée est là pour
+  porter : « Bain de bouche à la chlorhexidine » et « Bain de bouche au
+  bicarbonate » se lisaient toutes les deux « Bain de bouche … », et
+  « Paul Bernard » se lisait « Paul … ». Deux lignes le règlent — mais
+  egui coupe où il peut un mot plus large que la colonne, si bien que
+  « Benzodiazépines » devenait « Benzodiazép / ines », ce qui se lit
+  plus mal que l'ellipse. La seconde ligne n'est donc accordée que
+  lorsque **chaque mot tient** dans la colonne ; le mot le plus long est
+  mesuré au gabarit du « 0 », plus large que la moyenne des lettres,
+  donc l'erreur penche vers l'ellipse et non vers la coupe. Et la
+  moitié discrète est ajoutée avec un **vrai espace** et non le seul
+  `leading_space`, qui est un écart en pixels et non une frontière de
+  mot : c'est ce qui coupait « Efferalgan paracétamol » en
+  « paracéta / mol ».
+
 ### Fixed
 - **La rangée où l'on tape n'est plus rognée dans le carnet de
   vaccination.** Sur un volet de comptoir à l'échelle 1,6, la table des

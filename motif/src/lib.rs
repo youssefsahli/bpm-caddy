@@ -767,6 +767,34 @@ pub fn button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Res
 /// A selected row overrides the colour: white on the accent bar is a
 /// legibility rule and not a preference, and a red on that blue reads as
 /// neither.
+/// How many rows a list label may take: **two, but only if it can break
+/// cleanly.**
+///
+/// egui breaks a word that does not fit on a line of its own wherever it
+/// must — `break_anywhere: false` cannot save a word wider than the
+/// column. So « Benzodiazépines » on a narrow dock came out
+/// « Benzodiazép / ines », which reads worse than the ellipsis it
+/// replaced. Two lines are worth having when there is a space to break
+/// at and every word fits: « Efferalgan / *paracétamol* » and « Paul /
+/// Bernard » are what a one-line row was losing.
+///
+/// Le mot le plus long est mesuré au gabarit du « 0 », qui est plus
+/// large que la moyenne des lettres : l'erreur penche donc vers une
+/// seule ligne, c'est-à-dire vers l'ellipse plutôt que vers la coupe.
+fn label_rows(ui: &egui::Ui, text: &str, font: &egui::FontId, max_width: f32) -> usize {
+    let longest = text
+        .split_whitespace()
+        .map(|w| w.chars().count())
+        .max()
+        .unwrap_or(0) as f32;
+    let ch = ui.fonts(|f| f.glyph_width(font, '0'));
+    if longest * ch <= max_width {
+        2
+    } else {
+        1
+    }
+}
+
 pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui::Response {
     let width = ui.available_width();
     // The face comes from the style, so `[ui] text_scale` and the
@@ -789,12 +817,24 @@ pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui
             section.format.color = Color32::WHITE;
         }
     }
-    // One line, ending in an ellipsis rather than mid-letter: a row
-    // clipped by the panel edge reads as a rendering fault, and hides
-    // the fact that there was more to read.
+    // **Deux lignes au plus**, et une ellipse plutôt qu'une coupe au
+    // milieu d'une lettre : une rangée tranchée par le bord du panneau
+    // se lit comme un défaut de rendu et cache qu'il y avait plus à
+    // lire. Une seule ligne ne suffisait pas : sur un volet étroit,
+    // « Bain de bouche à la chlorhexidine » et « Bain de bouche au
+    // bicarbonate » se lisaient tous les deux « Bain de bouche … », et
+    // une liste où quatre entrées se ressemblent ne se navigue plus.
+    // Les rangées qui tiennent sur une ligne y restent — la hauteur est
+    // mesurée sur la galée, pas réservée d'avance.
+    let max_width = (width - 12.0).max(1.0);
     job.wrap = egui::text::TextWrapping {
-        max_width: (width - 12.0).max(1.0),
-        max_rows: 1,
+        max_width,
+        max_rows: label_rows(
+            ui,
+            &job.text,
+            &egui::TextStyle::Body.resolve(ui.style()),
+            max_width,
+        ),
         break_anywhere: false,
         overflow_character: Some('…'),
     };
@@ -837,29 +877,26 @@ pub fn list_row_pair(
     // scale like the plain row beside it.
     let font = egui::TextStyle::Body.resolve(ui.style());
     let quiet = egui::FontId::new(font.size * 0.86, font.family.clone());
-    let row = ui.fonts(|f| f.row_height(&font));
-    let height = (ui.spacing().interact_size.y + 2.0)
-        .max(row + 4.0)
-        .max(18.0);
-    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
-    if ui.is_rect_visible(rect) {
-        if selected {
-            ui.painter().rect_filled(rect, 0.0, crate::accent());
-        } else if response.hovered() {
-            ui.painter().rect_filled(rect, 0.0, crate::bg_hover());
-        }
-        let color = if selected {
-            Color32::WHITE
-        } else {
-            crate::text()
-        };
-        // On the selection blue, a dimmed grey is unreadable: the quiet
-        // half stays white and leans on the italics alone.
-        let dim = if selected {
-            Color32::WHITE
-        } else {
-            crate::text_faint()
-        };
+    let font_for_rows = font.clone();
+    let color = if selected {
+        Color32::WHITE
+    } else {
+        crate::text()
+    };
+    // On the selection blue, a dimmed grey is unreadable: the quiet
+    // half stays white and leans on the italics alone.
+    let dim = if selected {
+        Color32::WHITE
+    } else {
+        crate::text_faint()
+    };
+    // **Mise en page d'abord, hauteur ensuite.** La rangée était
+    // allouée sur une ligne puis peinte dedans, donc « Paul Bernard »
+    // sur un volet étroit se lisait « Paul … » — et deux patients de
+    // même prénom devenaient la même rangée. Elle prend deux lignes
+    // quand il en faut deux, comme `list_row_count`, et la hauteur
+    // suit la galée au lieu de la précéder.
+    let galley = {
         let mut job = egui::text::LayoutJob::default();
         job.append(
             primary,
@@ -871,9 +908,13 @@ pub fn list_row_pair(
             },
         );
         if !secondary.is_empty() {
+            // Un vrai espace, et non le seul `leading_space` : celui-ci
+            // est un écart en pixels, pas une frontière de mot, et egui
+            // coupait alors « Efferalgan paracétamol » en
+            // « paracéta / mol » faute d'avoir où passer à la ligne.
             job.append(
-                secondary,
-                8.0,
+                &format!(" {secondary}"),
+                0.0,
                 egui::TextFormat {
                     font_id: quiet,
                     color: dim,
@@ -882,13 +923,25 @@ pub fn list_row_pair(
                 },
             );
         }
+        let max_width = (width - 12.0 - indent).max(1.0);
         job.wrap = egui::text::TextWrapping {
-            max_width: rect.width() - 12.0 - indent,
-            max_rows: 1,
+            max_width,
+            max_rows: label_rows(ui, &job.text, &font_for_rows, max_width),
             break_anywhere: false,
             overflow_character: Some('…'),
         };
-        let galley = ui.fonts(|f| f.layout_job(job));
+        ui.fonts(|f| f.layout_job(job))
+    };
+    let height = (ui.spacing().interact_size.y + 2.0)
+        .max(galley.size().y + 4.0)
+        .max(18.0);
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        if selected {
+            ui.painter().rect_filled(rect, 0.0, crate::accent());
+        } else if response.hovered() {
+            ui.painter().rect_filled(rect, 0.0, crate::bg_hover());
+        }
         let pos = egui::pos2(
             rect.left() + 8.0 + indent,
             rect.center().y - galley.size().y / 2.0,

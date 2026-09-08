@@ -277,6 +277,20 @@ add clicking and typing; it is not the price of entry.
   below: the overflow breaks nothing, it just reads wrong. Any text laid
   out for a carved rectangle takes a `max_width` and, if it must stay on
   one line, `max_rows: 1` with an overflow character.
+- **A list row takes two lines when it can break cleanly, one when it
+  cannot.** `list_row` and `list_row_pair` were one line with an
+  ellipsis, and on a narrow dock that cost the information the row was
+  there to carry: « Bain de bouche à la chlorhexidine » and « Bain de
+  bouche au bicarbonate » both read « Bain de bouche … », and « Paul
+  Bernard » read « Paul … ». Two lines fix that — but egui breaks a word
+  wider than the column wherever it must (`break_anywhere: false` cannot
+  save it), so « Benzodiazépines » came out « Benzodiazép / ines », which
+  reads worse than the ellipsis. `motif::label_rows` measures the longest
+  word against the column and allows the second line only when every word
+  fits; the estimate uses the « 0 » template, wider than the average
+  letter, so it errs toward the ellipsis rather than the break. And the
+  secondary half is appended with a **real space**, not only
+  `leading_space`, which is a gap in pixels and not a word boundary.
 - **A row that wraps must be measured before it is allocated.**
   `motif::list_row_count` lays out its label first and sizes the row to
   the galley: allocating one line and painting two centres the text
