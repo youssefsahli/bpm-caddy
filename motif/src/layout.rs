@@ -252,12 +252,21 @@ pub enum TabAction {
 /// toujours, et celles-là avaient divergé trois fois.
 pub fn tab_strip_height(ui: &egui::Ui) -> f32 {
     let font = egui::TextStyle::Button.resolve(ui.style());
+    // L'onglet lui-même, plus les deux pixels de marge propre de la
+    // bande — et **pas** la gouttière que la mise en page prend après
+    // elle. Le test a d'abord fait croire le contraire : mesurée au
+    // curseur, la bande « consomme » une gouttière de plus, et la
+    // fonction paraissait courte de huit pixels. Mais cette
+    // gouttière-là appartient à la disposition qui suit, pas à la
+    // bande : `split_rows` la compte déjà entre ses rangées, et la
+    // rendre ici la compterait deux fois. Ce qui doit tenir dans le
+    // rectangle taillé, c'est l'onglet.
     (font.size + 14.0).max(26.0) + 2.0
 }
 
 pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> Option<TabAction> {
     let font = egui::TextStyle::Button.resolve(ui.style());
-    let height = tab_strip_height(ui) - 2.0;
+    let height = (font.size + 14.0).max(26.0);
     let mut action = None;
     // Where the selected tab sits, so the rule under the strip can be
     // broken there: an unbroken line makes every tab look inactive.
@@ -477,6 +486,83 @@ fn bg_hover_strong() -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Ce qu'une bande d'onglets prend, et ce qu'elle dit prendre.**
+    ///
+    /// Trois appelants taillaient son rectangle en pixels — 24, 28,
+    /// 28 — pour une bande dont la règle est `taille de la fonte + 14`,
+    /// soit trente-huit à l'échelle 1,6. Deux s'en tiraient en
+    /// débordant sur le panneau d'en dessous ; la troisième, seule
+    /// posée dans un `inside`, dessinait ses onglets tranchés par le
+    /// haut.
+    ///
+    /// `tab_strip_height` est cette hauteur, écrite là où elle est
+    /// décidée — et ce test la confronte à ce que la bande *alloue
+    /// vraiment* en se dessinant, à quatre échelles. Deux mesures d'une
+    /// même chose divergent toujours ; celle-ci ne le peut plus sans
+    /// que le test tombe. Vérifié en remettant `26.0` à la place de la
+    /// règle, ce qui écarte les deux dès l'échelle 1.
+    #[test]
+    fn a_tab_strip_takes_the_height_it_announces() {
+        for scale in [1.0_f32, 1.25, 1.6, 2.0] {
+            let ctx = egui::Context::default();
+            crate::apply_scale(&ctx, scale, crate::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let announced = tab_strip_height(ui);
+                    let before = ui.cursor().top();
+                    let tabs = [
+                        Tab::new("Entretiens"),
+                        Tab::new("Vaccinations"),
+                        Tab::new("Biologie"),
+                    ];
+                    let _ = tab_strip(ui, "probe", &tabs, 0);
+                    *seen.borrow_mut() = (announced, ui.cursor().top() - before);
+                });
+            });
+            let (announced, drawn) = seen.into_inner();
+            // **Ce qui doit tenir, c'est le contenu.** Le curseur, lui,
+            // avance d'une gouttière de plus, et celle-là appartient à
+            // la disposition qui suit : `split_rows` la compte déjà
+            // entre ses rangées. La comparer à l'annonce ferait
+            // réserver deux fois la même chose — le premier jet de ce
+            // test le faisait, et rendait la fonction huit pixels trop
+            // haute.
+            let content = drawn - ui_gap(scale);
+            // La tolérance est d'un pixel et non d'un demi : egui
+            // arrondit la hauteur d'une galée au sous-pixel, et six
+            // dixièmes de pixel ne coupent aucun glyphe. Au-delà, c'est
+            // un onglet tranché.
+            assert!(
+                announced + 1.0 >= content,
+                "échelle {scale} : la bande annonce {announced} px pour un contenu de {content}"
+            );
+            // Et sans réserver une rangée pour rien : la marge tolérée
+            // est celle d'une gouttière, pas d'un onglet.
+            assert!(
+                announced - content <= ui_gap(scale) + 0.5,
+                "échelle {scale} : {announced} px annoncés pour un contenu de {content}"
+            );
+            // La hauteur suit l'échelle du texte, ce qui est tout
+            // l'objet de la fonction : un littéral ne l'aurait pas fait.
+            assert!(announced > 26.0 * scale.min(1.5) - 6.0);
+        }
+    }
+
+    /// La gouttière verticale du style, à une échelle donnée : la marge
+    /// que le test ci-dessus s'autorise entre l'annonce et le dessin.
+    fn ui_gap(scale: f32) -> f32 {
+        let ctx = egui::Context::default();
+        crate::apply_scale(&ctx, scale, crate::Density::Comfortable);
+        let gap = std::cell::Cell::new(0.0_f32);
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                gap.set(ui.spacing().item_spacing.y);
+            });
+        });
+        gap.get()
+    }
 
     /// **Le chevron se pose sur la bande, pas à côté.**
     ///

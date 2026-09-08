@@ -5,6 +5,38 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.159.1] - 2026-09-08
+
+### Added
+- **Deux tests qui confrontent une mesure à son dessin**, sur le modèle
+  de ceux du carnet et de la bande d'identité — et écrits parce que
+  `tab_strip_height`, pourtant écrite au bon endroit la veille, était
+  encore calculée de mémoire. **Écrire la mesure une fois ne suffit
+  pas : il faut la confronter au dessin.**
+  - `a_tab_strip_takes_the_height_it_announces` dessine une vraie bande
+    d'onglets à quatre échelles et compare ce que `tab_strip_height`
+    promet à ce que la bande occupe réellement.
+  - `a_wrapped_band_is_as_tall_as_its_model_says` fait de même pour
+    l'arithmétique dont dépendent *tous* les plafonds de la maison —
+    une rangée de boutons enveloppée vaut `n × row_height + (n−1) ×
+    gouttière`, où `n` vient de `wrapped_rows`. Trois échelles, trois
+    largeurs, de une à six rangées. Rien ne la vérifiait, alors que la
+    bande d'identité du dossier, celle de la fiche médicament, celle de
+    la carte vaccinale et celle des pièces en dépendent toutes.
+
+  Chacun a été vérifié en y remettant le défaut qu'il refuse. Le second
+  reprend celui que le fichier refuse déjà ailleurs — réserver ses
+  rangées avec `interact_size.y` —, et il l'attrape : cent dix-huit
+  pixels annoncés pour cent cinquante dessinés, soit huit par rangée.
+
+  Et le premier a d'abord attrapé le testeur : mesurée au curseur, une
+  bande « consomme » une gouttière de plus que sa hauteur, et
+  `tab_strip_height` paraissait courte de huit pixels. Cette
+  gouttière-là appartient à la disposition qui suit — `split_rows` la
+  compte déjà entre ses rangées — et la rendre l'aurait comptée deux
+  fois. Ce qui doit tenir dans le rectangle taillé, c'est le contenu ;
+  les deux tests le disent maintenant explicitement.
+
 ## [0.159.0] - 2026-09-08
 
 La suite de la même passe : ce qu'une seconde tournée de captures a

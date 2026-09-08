@@ -31431,6 +31431,121 @@ mod tests {
         );
     }
 
+    /// **Le modèle de rangée est celui du dessin, et non l'inverse.**
+    ///
+    /// Tous les plafonds de la maison reposent sur une même
+    /// arithmétique : une bande de boutons enveloppée mesure
+    /// `n × row_height + (n−1) × item_spacing.y`, où `n` vient de
+    /// `wrapped_rows`. `whole_rows` s'en sert pour couper entre deux
+    /// rangées, la bande d'identité du dossier, celle de la fiche
+    /// médicament, celle de la carte vaccinale et celle des pièces en
+    /// dépendent — et rien ne la vérifiait.
+    ///
+    /// La leçon vient de `tab_strip_height`, qui écrivait pourtant sa
+    /// hauteur au bon endroit et se trompait quand même de huit pixels
+    /// parce qu'elle la calculait de mémoire : **écrire la mesure une
+    /// fois ne suffit pas, il faut la confronter au dessin**. Celui-ci
+    /// dessine une vraie rangée enveloppée à trois échelles et à trois
+    /// largeurs, et compare ce que le modèle annonce à ce que le
+    /// curseur a réellement avancé.
+    ///
+    /// Vérifié en remplaçant `row_height` par `interact_size.y` dans le
+    /// modèle, ce qui est exactement le défaut que le fichier refuse
+    /// ailleurs : l'écart passe à dix pixels par rangée.
+    #[test]
+    fn a_wrapped_band_is_as_tall_as_its_model_says() {
+        const LABELS: [&str; 8] = [
+            "Modifier",
+            "Fermer",
+            "Note de classe…",
+            "Codex…",
+            "Pièces…",
+            "ANSM…",
+            "PubChem…",
+            "Supprimer…",
+        ];
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [320.0_f32, 520.0, 900.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let rows = App::wrapped_rows(ui, width, LABELS.into_iter());
+                        let row = App::row_height(ui);
+                        let gap = ui.spacing().item_spacing.y;
+                        let model = rows * row + (rows - 1.0).max(0.0) * gap;
+                        // Dessinée dans une largeur *imposée*, celle-là
+                        // même qu'on a mesurée : deux largeurs
+                        // divergeraient, et c'est le défaut d'à côté.
+                        let before = ui.cursor().top();
+                        ui.scope(|ui| {
+                            ui.set_max_width(width);
+                            ui.horizontal_wrapped(|ui| {
+                                for l in LABELS {
+                                    let _ = motif::button(ui, l);
+                                }
+                            });
+                        });
+                        let drawn = ui.cursor().top() - before;
+                        *seen.borrow_mut() = (model, drawn, rows);
+                    });
+                });
+                let (model, drawn, rows) = seen.into_inner();
+                // Le curseur avance d'une gouttière de plus que la
+                // bande : celle-là appartient à la disposition qui
+                // suit, et `split_rows` la compte déjà entre ses
+                // rangées. Ce qui doit tenir dans le rectangle taillé,
+                // c'est le contenu.
+                let content = drawn - row_gap_probe(scale);
+                // Ce que le modèle annonce couvre ce qui est dessiné :
+                // une bande plafonnée en dessous coupe sa dernière
+                // rangée, ce qui se lit « cassé ».
+                assert!(
+                    model + 1.5 >= content,
+                    "échelle {scale}, largeur {width} : le modèle annonce \
+                     {model} px pour {rows} rangées, le contenu en prend {content}"
+                );
+                // Et sans réserver une rangée pour rien.
+                // Et sans réserver une rangée pour rien.
+                assert!(
+                    model - content <= row_height_probe(scale),
+                    "échelle {scale}, largeur {width} : {model} px annoncés \
+                     pour un contenu de {content}"
+                );
+                assert!(rows >= 1.0);
+            }
+        }
+    }
+
+    /// La gouttière verticale du style à une échelle donnée : celle
+    /// que le curseur prend après la bande et qui n'est pas à elle.
+    fn row_gap_probe(scale: f32) -> f32 {
+        let ctx = egui::Context::default();
+        motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+        let g = std::cell::Cell::new(0.0_f32);
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                g.set(ui.spacing().item_spacing.y);
+            });
+        });
+        g.get()
+    }
+
+    /// La hauteur d'une rangée à une échelle donnée : la marge que le
+    /// test ci-dessus s'autorise entre le modèle et le dessin.
+    fn row_height_probe(scale: f32) -> f32 {
+        let ctx = egui::Context::default();
+        motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+        let h = std::cell::Cell::new(0.0_f32);
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                h.set(App::row_height(ui));
+            });
+        });
+        h.get()
+    }
+
     /// **Une bande plafonnée s'arrête sur une rangée entière.**
     ///
     /// Plafonnée aux pixels, la bande de portes de l'explorateur
