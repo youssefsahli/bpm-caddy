@@ -506,7 +506,7 @@ fn mono_section_linked(
         }
         ui.scope(|ui| {
             ui.set_max_width(width);
-            let mut job = rich_text(para, 13.0, motif::ink());
+            let mut job = rich_text(para, motif::pt(ui, 13.0), motif::ink());
             job.wrap.max_width = width;
             ui.add(egui::Label::new(job).wrap());
         });
@@ -585,7 +585,7 @@ fn mono_linked_body(ui: &mut egui::Ui, width: f32, segments: &[MonoSeg]) -> Opti
                             }
                         }
                         None => {
-                            let mut job = rich_text(text, 13.0, motif::ink());
+                            let mut job = rich_text(text, motif::pt(ui, 13.0), motif::ink());
                             job.wrap.max_width = width;
                             ui.add(egui::Label::new(job).wrap());
                         }
@@ -1270,7 +1270,8 @@ fn notes_box(
                             }
                         });
                     });
-                    ui.add(egui::Label::new(rich_text(&n.body, 13.0, motif::text())).wrap());
+                    let sz = motif::pt(ui, 13.0);
+                    ui.add(egui::Label::new(rich_text(&n.body, sz, motif::text())).wrap());
                     ui.add_space(3.0);
                 }
             });
@@ -28290,7 +28291,8 @@ impl App {
                                 .size(motif::pt(ui, 10.0))
                                 .color(operator_color(&note.operator)),
                         );
-                        ui.add(egui::Label::new(rich_text(&note.body, 12.0, motif::text())).wrap());
+                        let sz = motif::pt(ui, 12.0);
+                        ui.add(egui::Label::new(rich_text(&note.body, sz, motif::text())).wrap());
                         ui.add_space(3.0);
                     }
                 });

@@ -47,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1,6 « Anticancéreux long cours » se réduisait à deux mots pour laisser
   la place à une année qui n'en avait plus besoin. Toutes ses colonnes
   se mesurent maintenant.
+- **Et la prose des monographies non plus.** C'est le texte le plus lu
+  de l'application — les paragraphes d'une fiche, les notes datées — et
+  il était écrit à treize pixels quels que soient les réglages : sur un
+  poste réglé à 1,6, tout grandissait autour de lui sauf lui. Il passe
+  par `motif::pt` comme le reste.
 
 ### Changed
 - **Le même champ portait deux noms.** « Conseils au patient » sur la
