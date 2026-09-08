@@ -35,6 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Trois mesures comptaient encore en pixels après la conversion.**
+  `elide` — ce qui raccourcit un libellé pour qu'il tienne — recevait sa
+  taille en points et la lisait en pixels : élidé à onze et peint à
+  dix-huit, le texte revenait plus large que ce qu'on venait de mesurer.
+  La phrase d'un résultat de « Dans le texte… » de même. Et la bande de
+  suivi des entretiens était posée sur quatre constantes — le libellé
+  élidé à cent cinquante pixels, l'année à cent soixante-dix, les
+  pastilles à deux cent cinquante, quinze par pastille — si bien qu'à
+  1,6 « Anticancéreux long cours » se réduisait à deux mots pour laisser
+  la place à une année qui n'en avait plus besoin. Toutes ses colonnes
+  se mesurent maintenant.
+
 ### Changed
 - **Le même champ portait deux noms.** « Conseils au patient » sur la
   fiche et sur le papier, « IUP » dans les résultats de « Dans le

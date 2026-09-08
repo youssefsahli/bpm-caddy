@@ -423,7 +423,10 @@ fn drug_form_pk(ui: &mut egui::Ui, form: &mut Drug) {
 /// ellipsis. A hard clip cut names mid-letter and gave no sign that
 /// anything was missing.
 fn elide(ui: &egui::Ui, text: &str, width: f32, size: f32) -> String {
-    let font = egui::FontId::proportional(size);
+    // La taille est en points, comme partout : élidé à onze pixels et
+    // peint à dix-huit, le texte revient plus large que ce qu'on vient
+    // de mesurer, et l'élision n'a servi à rien.
+    let font = egui::FontId::proportional(motif::pt(ui, size));
     let measure = |t: &str| {
         ui.fonts(|f| {
             f.layout_no_wrap(t.to_owned(), font.clone(), motif::text())
@@ -15401,7 +15404,15 @@ impl App {
         if by_kind.is_empty() {
             return;
         }
-        let row_h = 18.0;
+        // Toutes les colonnes de cette bande se mesurent : elle était
+        // posée sur quatre constantes — le libellé élidé à cent
+        // cinquante pixels, l'année à cent soixante-dix, les pastilles à
+        // deux cent cinquante, quinze par pastille — et à l'échelle 1,6
+        // le texte fait la moitié en plus quand les colonnes, elles, ne
+        // bougent pas : « Anticancéreux long cours » se réduisait à deux
+        // mots pour laisser la place à une année qui n'en avait plus
+        // besoin.
+        let row_h = motif::pt(ui, 18.0);
         // Une ligne par famille, la ligne des totaux, et l'espace sous
         // le tout. Si le panneau ne peut pas payer cela **en plus** de
         // ce que la table demande, le récapitulatif ne s'affiche pas.
@@ -15417,7 +15428,19 @@ impl App {
             .max()
             .unwrap_or(1)
             .max(1);
-        let width = (250.0 + 15.0 * widest as f32 + 56.0).min(ui.available_width());
+        let gap = ui.spacing().item_spacing.x;
+        let swatch_x = motif::pt(ui, 12.0);
+        let label_w = Self::widest(ui, 11.5, by_kind.iter().map(|(k, _, _)| k.label()));
+        let years: Vec<String> = by_kind
+            .iter()
+            .map(|(_, y, _)| trf("seq_year", y + 1))
+            .collect();
+        let year_w = Self::widest(ui, 11.0, years.iter().map(|s| s.as_str()));
+        let pip = motif::pt(ui, 15.0);
+        let count_w = Self::widest(ui, 11.0, ["00/00"].into_iter());
+        let year_x = swatch_x + label_w + gap;
+        let pips_x = year_x + year_w + gap;
+        let width = (pips_x + pip * widest as f32 + gap + count_w).min(ui.available_width());
         let (rect, _) = ui.allocate_exact_size(
             egui::vec2(width, by_kind.len() as f32 * row_h + 4.0),
             egui::Sense::hover(),
@@ -15428,19 +15451,19 @@ impl App {
                 egui::vec2(rect.width(), row_h),
             );
             let swatch = egui::Rect::from_min_size(
-                egui::pos2(line.left(), line.center().y - 5.0),
-                egui::vec2(4.0, 10.0),
+                egui::pos2(line.left(), line.center().y - motif::pt(ui, 5.0)),
+                egui::vec2(4.0, motif::pt(ui, 10.0)),
             );
             ui.painter().rect_filled(swatch, 0.0, kind_color(*kind));
             ui.painter().text(
-                egui::pos2(line.left() + 12.0, line.center().y),
+                egui::pos2(line.left() + swatch_x, line.center().y),
                 egui::Align2::LEFT_CENTER,
-                elide(ui, kind.label(), 150.0, 11.5),
+                elide(ui, kind.label(), label_w, 11.5),
                 egui::FontId::proportional(motif::pt(ui, 11.5)),
                 motif::text(),
             );
             ui.painter().text(
-                egui::pos2(line.left() + 170.0, line.center().y),
+                egui::pos2(line.left() + year_x, line.center().y),
                 egui::Align2::LEFT_CENTER,
                 trf("seq_year", year + 1),
                 egui::FontId::proportional(motif::pt(ui, 11.0)),
@@ -15452,9 +15475,9 @@ impl App {
                 continue;
             }
             let pips = egui::Rect::from_min_max(
-                egui::pos2(line.left() + 250.0, line.top() + 3.0),
+                egui::pos2(line.left() + pips_x, line.top() + 3.0),
                 egui::pos2(
-                    (line.left() + 250.0 + 15.0 * total as f32).min(line.right() - 50.0),
+                    (line.left() + pips_x + pip * total as f32).min(line.right() - count_w - gap),
                     line.bottom() - 3.0,
                 ),
             );
@@ -15462,7 +15485,7 @@ impl App {
                 motif::chart::pips(ui, pips, *done, total, motif::accent());
             }
             ui.painter().text(
-                egui::pos2(pips.right() + 10.0, line.center().y),
+                egui::pos2(pips.right() + gap, line.center().y),
                 egui::Align2::LEFT_CENTER,
                 format!("{done}/{total}"),
                 egui::FontId::proportional(motif::pt(ui, 11.0)),
@@ -27781,8 +27804,12 @@ impl App {
                             ui.scope(|ui| {
                                 ui.set_max_width(ui.available_width());
                                 ui.add(
-                                    egui::Label::new(mono_sentence(&hit.sentence, &marked, 12.0))
-                                        .wrap(),
+                                    egui::Label::new(mono_sentence(
+                                        &hit.sentence,
+                                        &marked,
+                                        motif::pt(ui, 12.0),
+                                    ))
+                                    .wrap(),
                                 );
                             });
                             ui.add_space(8.0);
