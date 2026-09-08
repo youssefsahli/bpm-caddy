@@ -313,6 +313,25 @@ add clicking and typing; it is not the price of entry.
   `Self::button_width`, `Self::wrapped_rows(_of)`,
   `ui.text_style_height(&TextStyle::Body)` — and express floors in
   **lines**, so `[ui] text_scale` costs nothing.
+- **And a layout-switch threshold in characters, for the same reason.**
+  « Two columns above 1080 px » does not follow `[ui] text_scale`: at
+  1,6 those same 1080 px carry two thirds of the text, and the view
+  keeps two columns holding half a sentence each. Fourteen switches were
+  written that way; they are `chars_wide(ui, n)` now, and
+  `no_layout_switch_is_measured_in_pixels` reads the text of `app.rs`
+  and refuses a new one — like `the_register_can_only_ever_be_written_to`
+  refuses an `UPDATE`. Small numbers are still allowed: a guard floor
+  (« this pane is too narrow for anything ») is not a switch.
+- **A table whose columns are prose does not fold — it holds its first
+  column instead.** The conversion tables are six columns of full
+  sentences and scroll sideways, because a sentence does not fold into a
+  footnote the way a lot number does. But the first column *names* the
+  row, and « 20 mg » read without its drug is read for nothing: that
+  column is allocated where the grid puts it (so the row keeps its
+  height) and **painted at the viewport's left edge** — `frozen_left`
+  for the x, `frozen_cell` for the band and the text position, measured
+  once because the first version painted the band at the edge and the
+  text with the grid, which is invisible until the bar is dragged.
 - **When two panes cannot both fit, the one you type into wins.** A
   table missing a row still reads and scrolls; a form whose second row
   of fields is cut cannot be used. The same rule settled the carnet
