@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sortait par la droite. Les largeurs sont en caractères et non mesurées
   sur huit cent cinquante et un noms : une passe de mesure par fiche,
   soixante fois par seconde, est ce que ce fichier refuse ailleurs.
+  Ce qui reste de `ScrollArea::both` ailleurs est un filet et non une
+  disposition : le registre et l'ordonnancier se replient d'abord et ne
+  défilent que si même la forme repliée ne tient pas, et les tables de
+  conversion défilent par choix, la colonne qui nomme la ligne tenue au
+  bord.
 - **Le même champ portait deux noms.** « Conseils au patient » sur la
   fiche et sur le papier, « IUP » dans les résultats de « Dans le
   texte… » : un sigle en dit moins que ce qu'il abrège, et la recherche
