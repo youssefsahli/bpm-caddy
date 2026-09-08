@@ -22572,6 +22572,237 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
             )],
         )],
     },
+    // Sept algorithmes de plus, tirés de ce que le comptoir refuse ou
+    // diffère sans avoir de marche écrite : la recevabilité d'une
+    // ordonnance de stupéfiant, le méthotrexate hebdomadaire, la
+    // prescription restreinte, l'alerte de lot, la déprescription d'un
+    // IPP, la décroissance d'une benzodiazépine, et l'acte vaccinal.
+    // Chacun cite sa source dans son sujet : ce sont des règles ou des
+    // recommandations, et un prescripteur qui s'en écarte a le plus
+    // souvent une raison qui n'est pas sur l'ordonnance.
+    StarterProtocol {
+        title: "Ordonnance de stupéfiant présentée au comptoir",
+        subject: "Stupéfiants — recevabilité de l'ordonnance avant toute délivrance (art. R. 5132-29 à R. 5132-36 du code de la santé publique)",
+        steps: &[q(
+            "L'ordonnance est-elle sécurisée — carré de sécurité, numéro d'identification du lot d'ordonnances, nombre de spécialités porté dans le carré — ou numérique ?",
+            &[q(
+                "Le dosage, le nombre d'unités thérapeutiques par prise et le nombre de prises sont-ils écrits en toutes lettres ?",
+                &[q(
+                    "L'ordonnance est-elle présentée dans les trois jours qui suivent sa date d'établissement ?",
+                    &[q(
+                        "La durée prescrite dépasse-t-elle celle que sa famille autorise — 7, 14 ou 28 jours selon la forme, le catalogue de l'ordonnancier les porte —, ou chevauche-t-elle une délivrance encore en cours ?",
+                        &[act(
+                            "Ne délivrer que la durée réglementaire de la famille, jamais la durée prescrite en excès ; et ne rien délivrer sur une période déjà couverte tant que le prescripteur n'a pas porté la mention expresse autorisant le chevauchement. Appeler pour qu'il tranche, tracer l'appel, et ne jamais avancer une boîte « en attendant » : un stupéfiant avancé est un stupéfiant sorti du stock sans ligne au registre.",
+                        )],
+                        &[act(
+                            "Délivrance régulière. Porter la ligne à l'ordonnancier le jour même — numéro d'ordre, prescripteur, numéro de dossier du patient, produit et quantité —, mentionner la délivrance sur l'ordonnance, en conserver une copie trois ans et rendre l'original au patient. Une ligne fausse ne se rature pas : elle reste écrite, et une annulation motivée la défait.",
+                        )],
+                    )],
+                    &[act(
+                        "Passé trois jours, la délivrance ne porte plus que sur la durée de traitement restant à courir : compter les jours écoulés depuis la date de l'ordonnance, retrancher, délivrer le reste et rien de plus. Porter la quantité réellement délivrée sur l'ordonnance et à l'ordonnancier, et expliquer au patient pourquoi la boîte servie ne couvre pas la période entière.",
+                    )],
+                )],
+                &[act(
+                    "Une ordonnance de stupéfiant dont ces trois mentions ne sont pas en toutes lettres n'est pas exécutable, et la mention ne se rajoute jamais à la main — ni par l'officine, ni par le patient. Faire refaire l'ordonnance par le prescripteur, le jour même. Quand l'arrêt est dangereux — morphine de fond, méthadone, buprénorphine —, la dispensation supplémentaire de dépannage est exclue pour ce qui relève des stupéfiants : un accord téléphonique ne rend pas une ordonnance exécutable, c'est une ordonnance conforme qu'il faut obtenir, au besoin auprès du service hospitalier ou du CSAPA prescripteur. Écrire l'appel, l'heure et le nom de l'interlocuteur au dossier.",
+                )],
+            )],
+            &[q(
+                "S'agit-il de tramadol, de codéine ou de dihydrocodéine sur une ordonnance ordinaire ?",
+                &[act(
+                    "Depuis le renforcement décidé par l'ANSM, ces antalgiques exigent eux aussi l'ordonnance sécurisée : sur une ordonnance simple, la délivrance ne se fait pas, et c'est au prescripteur de rééditer. Le dire sans le reprocher au patient, appeler le cabinet, et retenir que ce ne sont pas pour autant des stupéfiants — ni ordonnancier, ni délai de trois jours, ni interdiction de chevauchement. La durée de prescription du tramadol dans la douleur chronique est par ailleurs plafonnée à trois mois, avec réévaluation.",
+                )],
+                &[act(
+                    "Pas d'ordonnance sécurisée, pas de délivrance de stupéfiant — la règle ne souffre pas d'exception au comptoir, et une photographie ou une photocopie n'en est pas une. Appeler le prescripteur pour qu'il en établisse une ; s'il s'agit d'une sortie d'hospitalisation, le service dispose du même support. Tracer l'appel et la décision sur la fiche patient.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Méthotrexate oral — la dose est hebdomadaire",
+        subject: "Méthotrexate à faible dose — rhumatologie, dermatologie, MICI (ANSM, mesures de réduction du risque)",
+        steps: &[q(
+            "L'ordonnance porte-t-elle une dose hebdomadaire et le jour de la semaine où elle se prend ?",
+            &[q(
+                "Le patient sait-il dire quel jour il le prend, et combien de comprimés il avale ce jour-là ?",
+                &[q(
+                    "L'acide folique est-il prescrit, et pris un autre jour que le méthotrexate ?",
+                    &[q(
+                        "Une NFS, des transaminases et une créatininémie datent-elles de moins de trois mois ?",
+                        &[q(
+                            "Une ordonnance ou une automédication apporte-t-elle du cotrimoxazole, un AINS ou un IPP ?",
+                            &[act(
+                                "Le cotrimoxazole ne se délivre pas avec le méthotrexate sans avis — deux antifoliques ensemble donnent une aplasie : appeler le prescripteur pour un autre antibiotique avant de délivrer. Même partage pour les AINS, contre-indiqués au-delà de 20 mg par semaine et précaution d'emploi en deçà, avec hémogramme rapproché les premières semaines ; l'IPP relève de la précaution d'emploi au-delà de 20 mg par semaine. Dans tous les cas, consigne formelle au patient : rien en libre accès, l'ibuprofène le premier.",
+                            )],
+                            &[act(
+                                "Délivrer, et donner les signes qui font arrêter la prise et appeler le jour même — aphtes ou bouche douloureuse, fièvre, toux sèche ou essoufflement d'apparition récente, saignement ou hématome inhabituel, diarrhée. Rappeler la contraception, chez l'homme comme chez la femme, et inscrire au dossier que l'antidote d'un surdosage est l'acide folinique.",
+                            )],
+                        )],
+                        &[act(
+                            "Les demander avant de délivrer davantage, et fixer l'échéance dans le module Surveillance. Le rythme attendu : avant l'instauration, puis toutes les deux à quatre semaines les trois premiers mois, puis tous les trois mois. Une insuffisance rénale même modérée ralentit l'élimination et transforme une dose habituelle en surdosage.",
+                        )],
+                    )],
+                    &[act(
+                        "Le signaler au prescripteur. La supplémentation folique — 5 mg une fois par semaine — réduit les aphtes, les troubles digestifs et la toxicité hépatique ; elle se prend au moins 24 à 48 heures après la prise, jamais le même jour, où elle amputerait l'effet du traitement. Ne pas la confondre avec l'acide folinique, qui est l'antidote du surdosage et non le supplément.",
+                    )],
+                )],
+                &[act(
+                    "Reprendre la prise avec lui — une seule prise, un seul jour, toujours le même. Écrire le jour sur la boîte et sur le plan de prise. Vérifier qu'il n'a qu'un seul dosage chez lui : deux dosages dans le placard, c'est la double dose au premier renouvellement. Lui faire répéter le jour et le nombre de comprimés avant qu'il quitte le comptoir.",
+                )],
+            )],
+            &[act(
+                "Ne pas délivrer en l'état. Appeler le prescripteur pour faire écrire la dose et le jour — « 15 mg par semaine, le lundi ». Une posologie qui peut se lire comme une prise quotidienne finit par être prise quotidiennement : aplasie médullaire et mucite en quelques jours, y compris aux faibles doses de la rhumatologie. Noter la réponse et le nom de l'interlocuteur sur l'ordonnance.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Médicament à prescription restreinte",
+        subject: "Rétrocession, initiale hospitalière, contrôle avant délivrance",
+        steps: &[q(
+            "Le médicament est-il réservé à l'usage hospitalier, ou disponible seulement en rétrocession par une pharmacie à usage intérieur ?",
+            &[act(
+                "L'officine ne peut pas le délivrer, et le dire ne suffit pas : donner le nom, l'adresse et les horaires de la pharmacie hospitalière qui rétrocède, appeler devant le patient si le doute porte sur la disponibilité, et vérifier ce qu'il lui reste d'avance. S'il n'a plus rien pour tenir jusqu'à son déplacement, prévenir le service prescripteur le jour même.",
+            )],
+            &[q(
+                "La prescription initiale est-elle réservée à l'hôpital ou à un médecin spécialiste ?",
+                &[q(
+                    "L'ordonnance initiale — ou la mention de sa date sur l'ordonnance de renouvellement — est-elle présente et encore valide ?",
+                    &[act(
+                        "Délivrer, en conserver la copie ou la référence, et poser tout de suite le rappel : inscrire dans l'agenda la date à laquelle l'ordonnance initiale expire, quelques semaines avant, et le dire au patient. C'est cette échéance oubliée qui bloque une délivrance six mois plus tard, un samedi, avec un rendez-vous hospitalier à trois mois.",
+                    )],
+                    &[act(
+                        "La délivrance n'est pas régulière en l'état. Appeler le prescripteur hospitalier ou le spécialiste pour obtenir l'ordonnance ou la mention manquante ; quand l'arrêt est dangereux, ne dépanner que la quantité nécessaire jusqu'au rendez-vous, avec son accord tracé. Et fixer la consultation avec le patient avant qu'il ne quitte le comptoir, sans quoi la même scène se rejouera au renouvellement suivant.",
+                    )],
+                )],
+                &[q(
+                    "La spécialité impose-t-elle un contrôle avant chaque délivrance — hémogramme de la clozapine, test de grossesse et carnet de l'isotrétinoïne ou du lénalidomide ?",
+                    &[act(
+                        "Ne délivrer que sur le document à jour, et retenir que deux dates commandent, qu'on confond en permanence. Sous clozapine, c'est celle de l'hémogramme : en phase hebdomadaire, un résultat conforme de moins de sept jours, le carnet renseigné, et jamais une quantité qui dépasse le prochain contrôle prévu. Sous isotrétinoïne et sous lénalidomide chez la femme en âge de procréer, c'est celle de l'ordonnance : la délivrance doit intervenir dans les sept jours qui suivent sa rédaction, pour un mois de traitement au plus, et passé ce délai elle ne peut plus être honorée. Porter la date du contrôle au dossier, et refuser un dépannage : ici, dépanner c'est délivrer sans le contrôle.",
+                    )],
+                    &[act(
+                        "Rien ne s'oppose à la délivrance. Si le poste refuse la prise en charge, chercher du côté de l'ordonnance de médicament d'exception, de l'entente préalable ou de l'exonération, jamais du côté du droit de délivrer : ce sont deux questions distinctes, et un patient ne repart pas sans son traitement pour un motif de facturation qui se régularise ensuite.",
+                    )],
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Alerte de retrait ou de rappel de lot",
+        subject: "ANSM, DGS-Urgent, DP-Rappels — ce qu'on fait du stock et ce qu'on fait des patients",
+        steps: &[q(
+            "L'alerte demande-t-elle de rappeler les patients déjà servis ?",
+            &[q(
+                "Le numéro de lot est-il tracé nominativement à l'officine — vaccin, médicament dérivé du sang, médicament biologique ?",
+                &[act(
+                    "Sortir la traçabilité, établir la liste des patients servis avec ce lot, les appeler un par un, leur dire ce qu'ils font du produit et s'ils doivent consulter, et noter chaque appel — nom, heure, réponse obtenue. Un patient qu'on n'a pas joint se rappelle le lendemain et le surlendemain ; il ne se raye pas de la liste parce qu'il n'a pas décroché.",
+                )],
+                &[q(
+                    "Le traitement concerné est-il de ceux qui ne peuvent pas s'interrompre — anticoagulant, antiépileptique, insuline, immunosuppresseur, antirétroviral ?",
+                    &[act(
+                        "Ne jamais dire « arrêtez » sans avoir le remplacement en main. Réserver d'abord une boîte d'un autre lot de la même spécialité, à défaut une autre présentation ou un générique de la même DCI, puis seulement appeler le patient et le faire passer échanger sa boîte le jour même. Si rien n'est disponible, appeler le prescripteur avant le patient : c'est lui qui dira ce qui se prend en attendant.",
+                    )],
+                    &[act(
+                        "Reprendre l'historique de délivrance sur la période où le lot a circulé, appeler les patients que l'historique identifie, et afficher au comptoir l'information à l'attention de ceux qu'il ne rattache pas. Toute boîte rapportée est reprise et remplacée sans discussion, le numéro de lot est vérifié à la reprise, et la boîte reprise rejoint la quarantaine — pas le rayon.",
+                    )],
+                )],
+            )],
+            &[act(
+                "Sortir du rayon, du robot, du tiroir de garde et de la réserve toutes les unités du lot cité, les isoler dans un bac de quarantaine étiqueté « ne pas délivrer », bloquer le produit dans le logiciel pour que personne ne le serve dans l'heure qui suit, puis suivre la procédure de retour indiquée par l'alerte. Noter la quantité retirée et la date : c'est la seule preuve que le retrait a été fait.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "IPP au long cours — faut-il le poursuivre ?",
+        subject: "Inhibiteurs de la pompe à protons — HAS : indications du traitement prolongé et déprescription",
+        steps: &[q(
+            "L'IPP est-il pris depuis plus de huit semaines ?",
+            &[q(
+                "L'indication justifie-t-elle un traitement prolongé — œsophagite sévère ou compliquée cicatrisée, endobrachyœsophage, syndrome de Zollinger-Ellison, ou prévention sous AINS au long cours chez un patient à risque : plus de 65 ans, antécédent d'ulcère, association à un anticoagulant, un antiagrégant ou un corticoïde ?",
+                &[act(
+                    "Poursuivre, à la dose minimale efficace, et surveiller ce que le long cours coûte — magnésémie, vitamine B12, hémogramme, les trois que le module Biologie fait remonter sous IPP. Réévaluer l'indication une fois par an : elle peut être devenue caduque sans que l'ordonnance change.",
+                )],
+                &[q(
+                    "Un signe d'alerte est-il présent — dysphagie, amaigrissement, anémie, selles noires, vomissements répétés ?",
+                    &[act(
+                        "La question n'est plus celle de l'arrêt. Orientation médicale pour endoscopie, sans attendre le renouvellement suivant : un IPP soulage aussi ce qu'il ne soigne pas, et un signe d'alarme masqué se rattrape mal. Ne rien modifier de soi-même, et noter au dossier ce qui a été dit.",
+                    )],
+                    &[q(
+                        "L'IPP a-t-il été introduit à l'hôpital, ou en même temps qu'un traitement aujourd'hui arrêté — un AINS, un corticoïde, une cure courte ?",
+                        &[act(
+                            "C'est une prescription qui a survécu à son motif, le cas le plus fréquent de tous. La protection sous corticoïde seul, ou sous anticoagulant seul en l'absence d'autre facteur de risque, n'est pas justifiée. Le signaler au prescripteur avec la date d'introduction et celle de l'arrêt du traitement qu'elle protégeait : un motif daté emporte la décision mieux qu'un avis.",
+                        )],
+                        &[act(
+                            "Proposer au prescripteur une déprescription progressive — demi-dose pendant deux à quatre semaines, puis prise à la demande, puis arrêt — et non un arrêt sec. Prévenir le patient du rebond d'acidité : des brûlures pendant une à deux semaines, qui ne signent pas la rechute et qui cèdent ; lui donner de quoi le passer, alginate ou anti-acide à la demande. Reprendre les mesures qui portent — repas du soir plus léger et plus tôt, tête de lit surélevée, tabac, alcool, poids. Fixer un point à trois mois.",
+                        )],
+                    )],
+                )],
+            )],
+            &[act(
+                "Traitement court, cohérent. Vérifier la prise — une fois par jour, quinze à trente minutes avant le repas, et non au coucher ni pendant le repas — et annoncer dès maintenant la date de fin. Un IPP se poursuit surtout parce que personne n'a jamais dit quand il s'arrêtait.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Arrêt d'une benzodiazépine — le plan de décroissance",
+        subject: "Benzodiazépines et apparentés — HAS, arrêt en ambulatoire chez l'adulte",
+        steps: &[q(
+            "Le traitement dure-t-il depuis plus de quatre semaines pour un hypnotique, ou plus de douze semaines pour un anxiolytique ?",
+            &[q(
+                "La molécule est-elle prescrite comme antiépileptique — clonazépam — ou dans un sevrage alcoolique en cours ?",
+                &[act(
+                    "Ne pas engager de décroissance et ne pas la suggérer au patient. Là, l'interruption expose à la crise convulsive et la décision appartient au prescripteur seul. Vérifier plutôt l'observance et l'absence d'association sédative, et transmettre au prescripteur si le renouvellement dure depuis des années sans réévaluation.",
+                )],
+                &[q(
+                    "Le patient envisage-t-il l'arrêt ?",
+                    &[q(
+                        "Le patient a-t-il plus de 65 ans, a-t-il chuté, ou associe-t-il un opioïde, un autre hypnotique ou un antihistaminique sédatif ?",
+                        &[act(
+                            "L'arrêt devient prioritaire — chute, fracture, confusion, accident de la route — mais la décroissance sera plus lente, pas plus rapide : des paliers plus petits, un dixième à un quart de la dose, toutes les deux à quatre semaines, sur plusieurs mois s'il le faut. Ne jamais remplacer par un autre sédatif, antihistaminique compris. Proposer au prescripteur de retirer d'abord ce qui s'ajoute — un seul sédatif à la fois.",
+                        )],
+                        &[act(
+                            "Proposer au prescripteur un plan écrit, remis au patient : réduire d'un dixième à un quart de la dose, tenir le palier une à quatre semaines, et ne descendre au palier suivant que si le précédent est tenu ; en tout, de quelques semaines à plusieurs mois selon l'ancienneté du traitement, en ralentissant vers la fin. La forme fait le palier — un comprimé quadrisécable, l'oxazépam en 10 mg, le diazépam en gouttes : c'est ce qui rend le quart de dose réalisable. Prévenir du rebond des premiers jours de chaque palier — insomnie, anxiété, irritabilité —, qui cède en une à deux semaines et n'est pas la rechute qu'il paraît. Fixer un rendez-vous à chaque palier et tracer l'entretien.",
+                        )],
+                    )],
+                    &[act(
+                        "Ne pas forcer, ne pas moraliser, et surtout ne pas refuser la délivrance. Poser le sujet une fois, sans la file derrière : depuis quand, pour quoi au départ, ce qu'il craint d'arrêter. Laisser une information écrite, noter au dossier que le sujet a été abordé et à quelle date, et le reprendre à une prochaine venue. Un arrêt commence presque toujours à la deuxième conversation.",
+                    )],
+                )],
+            )],
+            &[act(
+                "On est dans la durée prévue, et c'est le moment où l'arrêt est encore facile. Annoncer la date de fin dès cette délivrance, la porter sur le plan de prise, et prévenir que les quelques nuits qui suivront l'arrêt seront moins bonnes sans que cela signifie qu'il faut reprendre.",
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Demande de vaccination au comptoir",
+        subject: "Acte vaccinal du pharmacien — 11 ans et plus, calendrier vaccinal en vigueur",
+        steps: &[q(
+            "La personne a-t-elle onze ans ou plus ?",
+            &[q(
+                "Le vaccin demandé figure-t-il au calendrier vaccinal ?",
+                &[q(
+                    "Une contre-indication du jour est-elle retrouvée — fièvre ou infection aiguë en cours, réaction anaphylactique à une dose antérieure ou à un composant, vaccin vivant atténué chez une femme enceinte ou un patient immunodéprimé ?",
+                    &[act(
+                        "Ne pas injecter aujourd'hui, et distinguer les deux cas. Une fièvre ou une infection aiguë ne fait que reporter de quelques jours — un rhume sans fièvre ne reporte rien, et un report inutile est une dose perdue. Une anaphylaxie antérieure, ou un vaccin vivant chez l'immunodéprimé ou la femme enceinte, relève du médecin : le noter au dossier et adresser.",
+                    )],
+                    &[q(
+                        "Le patient prend-il un anticoagulant ou un antiagrégant ?",
+                        &[act(
+                            "Ce n'est pas une contre-indication et l'injection se fait. Voie intramusculaire dans le deltoïde, aiguille fine, aucun massage après le retrait, compression appuyée deux à trois minutes, et prévenir d'un hématome possible qui n'a pas de valeur d'alerte. Puis la même suite que pour tout le monde : quinze minutes de surveillance sur place.",
+                        )],
+                        &[act(
+                            "Injecter dans le deltoïde, puis garder la personne assise quinze minutes dans l'officine — le malaise vagal et la réaction immédiate surviennent là et nulle part ailleurs —, adrénaline et trousse d'urgence à portée de main. Tracer ensuite : carnet de vaccination, dossier pharmaceutique, Mon espace santé, information du médecin traitant, et l'acte enregistré au dossier avant que la file ne reprenne.",
+                        )],
+                    )],
+                )],
+                &[act(
+                    "Hors calendrier — fièvre jaune, rage, encéphalite japonaise, vaccins soumis à certificat —, l'acte n'appartient pas à l'officine : orienter vers un centre de vaccination internationale, au moins dix jours avant le départ pour la fièvre jaune, dont le certificat ne vaut qu'à partir du dixième jour. Vérifier au passage ce que le pays de destination exige à l'arrivée et ce qu'il recommande seulement.",
+                )],
+            )],
+            &[act(
+                "Avant onze ans, le pharmacien ne prescrit ni n'administre — orienter vers le médecin, ou vers l'infirmier sur prescription. Profiter du carnet posé sur le comptoir pour relever ce qui est dû et ce qui a été sauté dans la famille, et le signaler.",
+            )],
+        )],
+    },
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.
@@ -36181,8 +36412,8 @@ mod tests {
         // The catalogue only ever grows: a protocol removed is a
         // question nobody asks any more.
         assert!(
-            STARTER_PROTOCOLS.len() >= 47,
-            "{} protocoles livrés, il y en avait quarante-sept",
+            STARTER_PROTOCOLS.len() >= 54,
+            "{} protocoles livrés, il y en avait cinquante-quatre",
             STARTER_PROTOCOLS.len()
         );
 

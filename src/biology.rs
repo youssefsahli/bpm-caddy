@@ -1609,6 +1609,116 @@ const RULES: &[Rule] = &[
         severity: Severity::Warn,
         text: "Cholestérol total au-delà de 3 g/L malgré un hypolipémiant : vérifier d'abord que le traitement est pris — l'inobservance explique la majorité des échecs, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent. Un chiffre aussi haut, surtout avant 40 ans ou avec un accident cardiovasculaire précoce dans la famille, fait évoquer une hypercholestérolémie familiale, qui se dépiste chez les apparentés au premier degré. C'est le LDL qui porte la cible : le total ne sert qu'à alerter.",
     },
+    // Ce qui suit vient des sections « Toxicité » des fiches, comme les
+    // règles de revue : ce qu'une monographie écrit comme « surveiller
+    // tel chiffre » ne sert au comptoir que si quelque chose le lit le
+    // jour où le chiffre arrive.
+    Rule {
+        code: "K",
+        side: Side::Above,
+        threshold: 5.0,
+        needs: &["cotrimoxazole", "bactrim", "triméthoprime", "amiloride"],
+        severity: Severity::Alert,
+        text: "Kaliémie élevée sous cotrimoxazole ou amiloride : le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur, d'autant plus à dose forte et sur un rein diminué, et l'hyperkaliémie s'installe en quelques jours d'antibiothérapie. Ne pas délivrer la suite sans avis lorsqu'un IEC, un sartan, une spironolactone ou un AINS accompagne la cure, et proscrire les sels de régime — le patient les croit inoffensifs, ce sont des sels de potassium. Écueil : la créatininémie qui monte à côté peut n'être qu'une fausse hausse, le triméthoprime bloquant la sécrétion tubulaire de la créatinine sans toucher à la filtration. Ici le potassium est vrai, la créatinine ne l'est pas.",
+    },
+    Rule {
+        code: "K",
+        side: Side::Below,
+        threshold: 3.5,
+        needs: &["bisacodyl", "laxatif stimulant", "séné", "docusate"],
+        severity: Severity::Warn,
+        text: "Hypokaliémie sous laxatif stimulant : elle vient de l'usage quotidien prolongé et non d'une prise ponctuelle, si bien que le potassium se corrige puis rechute tant que le laxatif continue. C'est donc l'usage réel qu'il faut reprendre avec le patient, et des achats répétés sont l'information à ne pas laisser passer — dépendance de l'intestin, qui ne répond plus sans stimulation, et mésusage dans les troubles du comportement alimentaire. Dangereuse sous digoxine et sous diurétique. Toute douleur abdominale non expliquée contre-indique de renouveler.",
+    },
+    Rule {
+        code: "TSH",
+        side: Side::Above,
+        threshold: 4.0,
+        needs: &[
+            "sunitinib",
+            "pazopanib",
+            "pembrolizumab",
+            "nivolumab",
+            "anti-PD-1",
+        ],
+        severity: Severity::Warn,
+        text: "TSH élevée sous antiangiogénique ou sous anti-PD-1 : l'hypothyroïdie est fréquente, souvent d'installation tardive, et elle est mise sur le compte de la fatigue de la maladie. La substitution par lévothyroxine se discute avec l'oncologue et ne fait pas arrêter l'anticancéreux. Sous anti-PD-1 elle peut suivre une phase de thyrotoxicose et apparaître des mois après la dernière perfusion : la TSH se contrôle encore après l'arrêt, et toute dysthyroïdie s'y lit comme un effet auto-immun, au même titre qu'une diarrhée ou une dyspnée nouvelles.",
+    },
+    Rule {
+        code: "TSH",
+        side: Side::Below,
+        threshold: 0.1,
+        needs: &["amiodarone"],
+        severity: Severity::Alert,
+        text: "Thyrotoxicose induite par l'amiodarone : elle apparaît après des années de traitement comme jusqu'à plusieurs mois après son arrêt, la demi-vie d'élimination se comptant en semaines. Elle se révèle souvent par la reprise du trouble du rythme qu'on traitait, par un amaigrissement ou par une agitation prise pour autre chose. T4 libre et T3 libre pour trancher, avis spécialisé avant tout renouvellement ; entre 0,1 et 0,4 mUI/L, contrôler plutôt que conclure. L'arrêt ne suffit pas à la régler et ne se décide pas au comptoir.",
+    },
+    Rule {
+        code: "TSH",
+        side: Side::Below,
+        threshold: 0.4,
+        needs: &[
+            "carbimazole",
+            "thiamazole",
+            "benzylthiouracile",
+            "antithyroïdien",
+        ],
+        severity: Severity::Warn,
+        text: "TSH basse sous antithyroïdien : ce n'est pas un signe de surdosage. Elle reste freinée des mois après que les hormones sont redescendues, et une dose baissée sur ce chiffre relance l'hyperthyroïdie — c'est la T4 libre qui juge l'efficacité de la classe. Écueil : toute fièvre ou toute angine sous antithyroïdien fait faire une numération le jour même, l'agranulocytose étant le risque qui tue.",
+    },
+    Rule {
+        code: "HCO3",
+        side: Side::Below,
+        threshold: 20.0,
+        needs: &["gliflozine", "dapagliflozine", "empagliflozine", "SGLT2"],
+        severity: Severity::Alert,
+        text: "Réserve alcaline basse sous gliflozine : acidocétose à glycémie normale, où le patient contrôle son sucre, le trouve correct, et s'aggrave. Ce sont les corps cétoniques qu'il faut mesurer, jamais la seule glycémie. Nausées, vomissements, anorexie, douleurs abdominales, difficulté à respirer, confusion ou asthénie inhabituelle : arrêt du traitement et avis en urgence. Les circonstances déclenchantes sont la vraie prévention et se donnent d'avance — jeûne, régime très pauvre en glucides, infection aiguë, vomissements, diarrhée, déshydratation, alcool, réduction brutale de l'insuline, chirurgie lourde : dans toutes, la gliflozine se suspend.",
+    },
+    Rule {
+        code: "LDL",
+        side: Side::Above,
+        threshold: 1.6,
+        needs: &[
+            "inhibiteur JAK",
+            "tofacitinib",
+            "baricitinib",
+            "upadacitinib",
+            "évérolimus",
+            "sirolimus",
+        ],
+        severity: Severity::Warn,
+        text: "LDL élevé sous inhibiteur de JAK ou sous inhibiteur mTOR : la dyslipidémie est un effet de classe attendu et le bilan lipidique fait partie de la surveillance prévue — huit semaines après l'instauration pour le tofacitinib, douze pour le baricitinib et l'upadacitinib, puis régulièrement. Elle ne fait pas arrêter le traitement, elle se traite. Sous JAK elle pèse double, la classe étant déjà restreinte après 65 ans, chez le fumeur et en cas de risque cardiovasculaire, pour excès d'événements cardiovasculaires et de thromboses. Sous mTOR, ce sont surtout les triglycérides qui montent, et la protéinurie se contrôle dans le même bilan.",
+    },
+    Rule {
+        code: "CPK",
+        side: Side::Above,
+        threshold: 1000.0,
+        needs: &["antipsychotique", "neuroleptique", "lévodopa"],
+        severity: Severity::Alert,
+        text: "Avec fièvre, rigidité, sueurs ou confusion, ce chiffre sous antipsychotique est un syndrome malin des neuroleptiques : urgence vitale, appel du 15, aucune nouvelle prise. Une forme retard injectable ne se retire pas — son effet se subit pendant des semaines, ce qui ne change rien à l'appel. Sans fièvre ni rigidité, une élévation isolée est fréquente sous antipsychotique — agitation, chute, injection intramusculaire — et se contrôle plutôt qu'elle n'alarme. Sous lévodopa, le même tableau signe l'arrêt brutal : syndrome akinéto-hyperthermique avec rhabdomyolyse, sur une rupture de délivrance, un jeûne préopératoire ou une hospitalisation, et la conduite est de rétablir la prise en urgence, jamais de la reporter.",
+    },
+    Rule {
+        code: "K",
+        side: Side::Above,
+        threshold: 5.0,
+        needs: &["tacrolimus", "ciclosporine", "anticalcineurine"],
+        severity: Severity::Warn,
+        text: "Kaliémie élevée sous tacrolimus ou ciclosporine : hyperkaliémie et néphrotoxicité sont les signes du surdosage de la classe et se lisent ensemble — demander la concentration résiduelle, prélevée avant la prise, et la créatininémie. Chercher ce qui a fait monter la concentration : pamplemousse, macrolide, azolé, ou un changement de spécialité, à éviter sur ces molécules à marge thérapeutique étroite. La délivrance ne s'interrompt pas — une dose d'immunosuppresseur sautée expose au rejet du greffon — mais le résultat se signale à l'équipe de greffe le jour même, et rien ne se modifie sans elle.",
+    },
+    Rule {
+        code: "PHOS",
+        side: Side::Below,
+        threshold: 0.8,
+        needs: &["ténofovir"],
+        severity: Severity::Warn,
+        text: "Phosphorémie basse sous ténofovir : c'est le premier signe de la tubulopathie proximale du disoproxil, silencieuse, osseuse avant d'être bruyante. Demander avec elle la créatininémie, la protéinurie et la glycosurie — une glycosurie sans hyperglycémie oriente vers le syndrome de Fanconi. Sous disoproxil, le passage à l'alafénamide se discute avec le prescripteur ; sous alafénamide, l'exposition rénale est déjà moindre et c'est une autre cause qu'il faut chercher. Le traitement ne s'interrompt jamais de lui-même : chez un porteur du virus de l'hépatite B, l'arrêt de quelques jours expose à une réactivation sévère, et une délivrance sans rupture fait partie du traitement.",
+    },
+    Rule {
+        code: "LIP",
+        side: Side::Above,
+        threshold: 180.0,
+        needs: &["valproate", "valproïque", "divalproate", "valpromide"],
+        severity: Severity::Alert,
+        text: "Lipase au-delà de trois fois la normale sous valproate : pancréatite aiguë jusqu'à preuve du contraire — douleur épigastrique transfixiante, vomissements. Arrêt immédiat, avis en urgence, pas de réintroduction. Écueil : elle ne suit pas la concentration, et une valproatémie dans la zone n'écarte rien — comme pour l'hépatite fulminante, et comme pour l'hyperammoniémie, qui survient à taux normal.",
+    },
 ];
 
 #[cfg(test)]
@@ -1745,7 +1855,7 @@ mod tests {
         // floor of `db.rs`: a number spelled out twice is a number that
         // will disagree with itself.
         const CATALOGUE_FLOOR: usize = 55;
-        const RULES_FLOOR: usize = 97;
+        const RULES_FLOOR: usize = 108;
         assert!(
             CATALOGUE.len() >= CATALOGUE_FLOOR,
             "{} analytes, il y en avait {CATALOGUE_FLOOR}",
