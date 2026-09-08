@@ -5,6 +5,35 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.161.1] - 2026-09-08
+
+### Fixed
+- **Un plafond écrit pour une peau sombre n'est pas un plafond sur une
+  peau claire** — la leçon de la veille, une fois de plus, et trouvée en
+  comparant deux captures de la même carte. Les tons supplémentaires que
+  la carte vaccinale tire de la rampe (dix-sept régions, huit couleurs)
+  n'étaient bornés que par le plafond d'éblouissement : sur un fond
+  clair, le ton pâle pouvait donc monter à six centièmes du fond, et
+  « Afrique de l'Est » devenait une tuile qu'il fallait chercher. Ils
+  tiennent maintenant dans **la bande** où `data_ramp` pose une rampe.
+
+- **Et les trois tons se choisissent ensemble.** Calculés un par un ils
+  se rejoignaient : sur « Nuit », le violet est assez haut pour que son
+  ton sombre touche le plancher, fasse demi-tour et atterrisse à quatre
+  centièmes de son propre ton clair — deux régions, une seule pastille,
+  ce que la vue par groupes ne peut pas se permettre. La bande est
+  coupée en trois, la case que la couleur occupe déjà est retirée, et
+  les deux tons prennent les deux qui restent : une demi-bande d'écart
+  par construction. `data_shade(c, up)` devient `data_tones(c)`, et un
+  test tient les trois tons de chaque couleur de la rampe, sur les huit
+  peaux.
+
+- **Une teinte remise à l'échelle sortait de la bande de trois
+  centièmes.** Quand un canal sature, le facteur ne porte pas toute la
+  distance et le reste se fait vers le blanc ; ce reste se parcourait
+  par vingtièmes, en s'arrêtant au premier pas *au-delà* de la cible.
+  Il se bissecte, et la cible est atteinte au millième.
+
 ## [0.161.0] - 2026-09-08
 
 ### Added
