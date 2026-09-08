@@ -240,6 +240,16 @@ add clicking and typing; it is not the price of entry.
   `text_scale = 1.25`, and at 1024x700 with `text_scale = 1.6`, which is
   where a computed floor crosses a computed cap. A screenshot at those
   sizes is the eye check the panics test cannot do.
+- **And the shape that finds things is `eyeball.sh <dir> 1024x700 1.6`,
+  looked at.** One pass over those fifty pictures found, in a single
+  sitting: « Plan de prise » running off the band (a `horizontal` that
+  cannot wrap) and the row it moved to uncounted, so the cross that
+  removes an act fell off the bottom; a tab strip hiding half its tabs
+  with nothing to say so; the conciliation showing **no divergence at
+  all**; the explorer's doors and the agenda's legend each stopping in
+  the middle of a row; and four hundred and seven font sizes that did
+  not follow `[ui] text_scale`. None of the five was visible at 1,25,
+  and none would ever have appeared in a panic.
 - **Two unnamed `ScrollArea` in one view collide.** egui derives their id
   from position, gives both the same one, and paints « First use of
   ScrollArea ID … / Second use of … » in red across the screen. It does
