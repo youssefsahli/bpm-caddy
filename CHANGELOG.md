@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.159.2] - 2026-09-08
+
+### Fixed
+- **`motif::section` prend deux lignes quand chaque mot y tient.**
+  Élidés, « Amérique du Nord » et « Amérique centrale » se lisaient
+  tous deux « Amérique… » : l'intitulé ne distinguait plus rien, ce qui
+  est exactement le défaut que `list_row` avait corrigé de son côté.
+
+  Trois tentatives avaient échoué avant celle-ci, toutes en cherchant
+  la bonne largeur — `available_width`, `clip_rect`, une borne
+  calculée : la borne « ne mordait pas » et l'intitulé repartait se
+  faire trancher par le volet. **La largeur était bonne depuis le
+  début.** Ce qui la jetait est `Label::new(LayoutJob)`, qui écrase le
+  `max_width` du job par la largeur d'enveloppement de l'`ui` et ne
+  garde que le nombre de lignes. `motif::panel` posait déjà lui-même la
+  galée de son titre pour cette raison exacte, sans que ce soit écrit
+  nulle part ; `section` fait pareil, et la règle est notée : quand une
+  borne ne mord pas, soupçonner le chemin avant la mesure.
+
+  Le filet reste la décoration et c'est lui qui cède : sur un volet
+  large il est entier, sur un volet étroit il se réduit pendant que
+  l'intitulé, lui, se lit.
+
 ## [0.159.1] - 2026-09-08
 
 ### Added
