@@ -46,6 +46,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   divergé, et c'est la hauteur qui aurait perdu. Le test de la bande
   d'identité le tient, vérifié en décomptant la rangée.
 
+### Fixed
+- **Quatre cent sept tailles de texte ne suivaient pas
+  `[ui] text_scale`.** `RichText::size(11.0)` est un nombre de pixels,
+  point : l'échelle passe par le style, et un littéral ne passe pas par
+  le style. À 1,6, les légendes des panneaux, les comptes, les dates du
+  registre, les libellés à côté de chaque chiffre restaient à onze
+  pixels pendant que les boutons autour d'eux grandissaient de
+  moitié — c'est-à-dire que le texte le plus petit, celui que quelqu'un
+  qui agrandit la typographie a le plus besoin de voir grandir, était le
+  seul à ne pas bouger. Le registre des stupéfiants était le pire :
+  « dossier 1 » en grand à côté d'une date minuscule.
+  `motif::pt(ui, 11.0)` est ce onze, mis à l'échelle, et **la mesure
+  passe par la même fonction que le dessin** — mesurée à onze et peinte
+  à dix-huit, une colonne élide tout ce qu'elle porte, ce que la
+  première version du correctif a fait au registre pendant une capture.
+  Un test lit le texte du fichier et refuse le prochain littéral.
+
+### Changed
+- **Une feuille déjà collée ne coûte plus la seule divergence.**
+  L'onglet de conciliation porte trois panneaux et n'a pas la place des
+  trois sur un volet de comptoir : à 1024x700 avec le texte à 1,6, la
+  tête du panneau des réponses coûtait deux rangées de boutons, la boîte
+  de collage réclamait ses cinq lignes et demie, et il ne restait
+  **rien** pour ce que l'onglet existe pour montrer. C'est la règle du
+  registre — sur un panneau trop court, la garniture part la
+  première — appliquée ici : une feuille *déjà collée* est une
+  référence, elle se range en une rangée qui dit combien de lignes elle
+  porte, et « Modifier… » la rouvre. Tant qu'elle est vide elle garde
+  son volet : on ne range pas la boîte dans laquelle on va coller. Le
+  partage est sorti de la vue pour être mesurable, et un test tient
+  qu'il ne prend jamais plus qu'il ne faut — vérifié en remettant le
+  plancher qui gagnait.
+
 ### Added
 - **Un chevron dit qu'une bande d'onglets continue.** Elle défilait
   déjà, mais sans barre — cachée exprès, une barre horizontale sous des

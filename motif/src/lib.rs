@@ -450,7 +450,7 @@ fn type_scale(style: &mut egui::Style, scale: f32) {
         ),
         (
             TextStyle::Body,
-            FontId::new(px(14.0), FontFamily::Proportional),
+            FontId::new(px(BODY_PT), FontFamily::Proportional),
         ),
         (
             TextStyle::Button,
@@ -479,6 +479,26 @@ pub enum Density {
 
 /// Apply a text scale and a spacing density on top of [`apply`].
 /// `scale` multiplies every font size (0.8 to 1.4 is sensible).
+/// The type ladder's base body size, in points. `[ui] text_scale`
+/// multiplies it, and [`pt`] reads the multiplier back off the style.
+pub const BODY_PT: f32 = 14.0;
+
+/// A size in points, scaled the way the style is.
+///
+/// **A `RichText::size(11.0)` does not follow `[ui] text_scale`.** The
+/// ladder in `type_scale` does, and so does everything that resolves a
+/// `TextStyle` — but a literal handed to `size()` or to
+/// `FontId::proportional` is a number of pixels, full stop. Two hundred
+/// and fourteen of them meant that on a screen set to 1,6 the captions,
+/// the counts, the dates in the register and the labels beside every
+/// figure stayed at eleven pixels while the buttons around them grew by
+/// half: the very text that a person who enlarges the type most needs
+/// enlarged. `motif::pt(ui, 11.0)` is that eleven, scaled.
+pub fn pt(ui: &egui::Ui, points: f32) -> f32 {
+    let body = egui::TextStyle::Body.resolve(ui.style()).size;
+    (points * body / BODY_PT).max(6.0)
+}
+
 pub fn apply_scale(ctx: &egui::Context, scale: f32, density: Density) {
     let scale = scale.clamp(0.7, 1.8);
     let mut style = (*ctx.style()).clone();
@@ -1006,7 +1026,8 @@ pub fn toggle(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
 pub fn section(ui: &mut egui::Ui, label: &str) {
     ui.horizontal(|ui| {
         ui.add_space(4.0);
-        ui.label(egui::RichText::new(label).strong().size(13.0));
+        let sz = pt(ui, 13.0);
+        ui.label(egui::RichText::new(label).strong().size(sz));
         // A heading long enough to fill the row leaves nothing for the
         // rule — and egui panics on a negative allocation. The rule is
         // the decoration here, so it is what gives way.

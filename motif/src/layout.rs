@@ -112,7 +112,7 @@ pub fn panel<R>(
     bevel(ui.painter(), rect, true);
     let mut inner = rect.shrink(8.0);
     if let Some(title) = title {
-        let font = egui::FontId::proportional(11.0);
+        let font = egui::FontId::proportional(crate::pt(ui, 11.0));
         let caption: String = title
             .to_uppercase()
             .chars()
@@ -354,7 +354,7 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
                             x.center(),
                             egui::Align2::CENTER_CENTER,
                             "×",
-                            egui::FontId::proportional(14.0),
+                            egui::FontId::proportional(crate::pt(ui, 14.0)),
                             if hit.hovered() {
                                 crate::text()
                             } else {

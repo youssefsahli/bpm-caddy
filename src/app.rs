@@ -456,7 +456,7 @@ fn mono_heading(ui: &mut egui::Ui, width: f32, title: &str) {
     ui.add_space(10.0);
     ui.label(
         egui::RichText::new(title.to_uppercase())
-            .size(11.0)
+            .size(motif::pt(ui, 11.0))
             .strong()
             .color(motif::ink_light()),
     );
@@ -568,7 +568,7 @@ fn mono_linked_body(ui: &mut egui::Ui, width: f32, segments: &[MonoSeg]) -> Opti
                                 .add(
                                     egui::Label::new(
                                         egui::RichText::new(*text)
-                                            .size(13.0)
+                                            .size(motif::pt(ui, 13.0))
                                             .color(motif::accent())
                                             .underline(),
                                     )
@@ -625,7 +625,7 @@ fn drug_monograph(
             ui.vertical_centered(|ui| {
                 ui.label(
                     egui::RichText::new(d.name.trim().to_uppercase())
-                        .size(19.0)
+                        .size(motif::pt(ui, 19.0))
                         .strong()
                         .color(motif::ink()),
                 );
@@ -639,7 +639,7 @@ fn drug_monograph(
                 if !sub.is_empty() {
                     ui.label(
                         egui::RichText::new(sub)
-                            .size(13.0)
+                            .size(motif::pt(ui, 13.0))
                             .italics()
                             .color(motif::ink_light()),
                     );
@@ -648,7 +648,7 @@ fn drug_monograph(
                     ui.add_space(2.0);
                     ui.label(
                         egui::RichText::new(trf("drug_antidote_banner", d.antidote.trim()))
-                            .size(12.0)
+                            .size(motif::pt(ui, 12.0))
                             .strong()
                             .color(motif::alert()),
                     );
@@ -657,7 +657,7 @@ fn drug_monograph(
                     ui.add_space(3.0);
                     ui.label(
                         egui::RichText::new(format!("  {}  ", d.status.trim()))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .strong()
                             .color(egui::Color32::WHITE)
                             .background_color(status_color(&d.status)),
@@ -673,7 +673,7 @@ fn drug_monograph(
                     ui.add_space(3.0);
                     ui.label(
                         egui::RichText::new(tags.join("  ·  "))
-                            .size(10.0)
+                            .size(motif::pt(ui, 10.0))
                             .color(motif::ink_light()),
                     );
                 }
@@ -731,7 +731,7 @@ fn drug_monograph(
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(&p.indication)
-                                            .size(12.5)
+                                            .size(motif::pt(ui, 12.5))
                                             .strong()
                                             .color(motif::ink()),
                                     )
@@ -743,7 +743,7 @@ fn drug_monograph(
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(&p.posologie)
-                                            .size(12.5)
+                                            .size(motif::pt(ui, 12.5))
                                             .color(motif::ink()),
                                     )
                                     .wrap(),
@@ -752,7 +752,7 @@ fn drug_monograph(
                                     ui.add(
                                         egui::Label::new(
                                             egui::RichText::new(&p.remarque)
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .italics()
                                                 .color(motif::ink_light()),
                                         )
@@ -817,7 +817,7 @@ fn drug_monograph(
                         );
                         ui.label(
                             egui::RichText::new(caption)
-                                .size(10.0)
+                                .size(motif::pt(ui, 10.0))
                                 .color(motif::ink_light()),
                         );
                         resp.on_hover_text(trf("drug_decay_tooltip", format!("{hl:.1}")));
@@ -837,7 +837,7 @@ fn drug_monograph(
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(label)
-                                            .size(12.0)
+                                            .size(motif::pt(ui, 12.0))
                                             .color(motif::ink_light()),
                                     )
                                     .wrap(),
@@ -848,7 +848,7 @@ fn drug_monograph(
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(value.trim())
-                                            .size(13.0)
+                                            .size(motif::pt(ui, 13.0))
                                             .color(motif::ink()),
                                     )
                                     .wrap(),
@@ -897,7 +897,7 @@ fn drug_monograph(
                                                 "facet_axis",
                                                 &[&sense, &im.organ.label()],
                                             ))
-                                            .size(12.0)
+                                            .size(motif::pt(ui, 12.0))
                                             .color(tint),
                                         )
                                         .wrap(),
@@ -908,7 +908,7 @@ fn drug_monograph(
                                     ui.add(
                                         egui::Label::new(
                                             egui::RichText::new(im.why)
-                                                .size(13.0)
+                                                .size(motif::pt(ui, 13.0))
                                                 .color(motif::ink()),
                                         )
                                         .wrap(),
@@ -954,7 +954,7 @@ fn drug_monograph(
                 ui.add_space(5.0);
                 ui.label(
                     egui::RichText::new(tr("tables_sources"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .strong()
                         .color(motif::ink_light()),
                 );
@@ -964,7 +964,7 @@ fn drug_monograph(
                         ui.add(
                             egui::Label::new(
                                 egui::RichText::new(format!("{}. {}", i + 1, src))
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::ink_light()),
                             )
                             .wrap(),
@@ -1216,7 +1216,7 @@ fn notes_box(
                 if notes.is_empty() {
                     ui.label(
                         egui::RichText::new(tr("notes_empty"))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
                 }
@@ -1231,7 +1231,7 @@ fn notes_box(
                         // journal can be scanned by who wrote what.
                         ui.label(
                             egui::RichText::new(head)
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(operator_color(&n.operator)),
                         );
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1241,8 +1241,10 @@ fn notes_box(
                                 tr("itv_delete")
                             };
                             let x = ui.add(
-                                egui::Label::new(egui::RichText::new(label).size(11.0))
-                                    .sense(egui::Sense::click()),
+                                egui::Label::new(
+                                    egui::RichText::new(label).size(motif::pt(ui, 11.0)),
+                                )
+                                .sense(egui::Sense::click()),
                             );
                             if x.on_hover_text(tr("notes_delete_tooltip")).clicked() {
                                 if *confirm == Some(n.id) {
@@ -2073,6 +2075,9 @@ struct Session {
     /// The discharge prescription being conciliated, the table it gives
     /// against the file, and the question that table answers.
     concil_sheet: String,
+    /// La feuille collée, rouverte à la main sur un volet trop court
+    /// pour elle et pour les divergences à la fois.
+    concil_sheet_open: bool,
     concil_rows: Vec<crate::conciliation::Divergence>,
     concil_key: Option<(i64, String, u64)>,
     /// « Reprendre les posologies » asks twice, like every other button
@@ -2654,6 +2659,7 @@ impl Session {
             patient_doses_base: Vec::new(),
             treats_rev: 0,
             concil_sheet: String::new(),
+            concil_sheet_open: false,
             concil_rows: Vec::new(),
             concil_key: None,
             concil_adopt_confirm: false,
@@ -4160,6 +4166,16 @@ impl Session {
     /// Compare the file's ordonnance to the sheet that has been pasted,
     /// once per question rather than on each frame that shows it: the
     /// comparison folds every name and every dose on both sides.
+    /// Combien de lignes la feuille collée porte : le repli l'annonce,
+    /// et la hauteur qu'il réserve la mesure. Une seule fonction, donc
+    /// les deux ne peuvent pas diverger.
+    fn concil_sheet_lines(&self) -> usize {
+        self.concil_sheet
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    }
+
     fn refresh_conciliation(&mut self, patient_id: i64) {
         let key = (patient_id, self.concil_sheet.clone(), self.treats_rev);
         if self.concil_key.as_ref() == Some(&key) {
@@ -5022,7 +5038,7 @@ fn insulin_strip(ui: &mut egui::Ui, width: f32, p: &crate::insulin::Profile) {
                 &insulin_span(p.duration_min),
             ],
         ))
-        .size(10.0)
+        .size(motif::pt(ui, 10.0))
         .color(motif::ink_light()),
     );
     resp.on_hover_text(p.note);
@@ -5730,7 +5746,7 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             if hits.is_empty() {
                 ui.label(
                     egui::RichText::new(tr("goto_none"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -5752,14 +5768,14 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
                     rect.left_center() + egui::vec2(6.0, 0.0),
                     egui::Align2::LEFT_CENTER,
                     &hit.label,
-                    egui::FontId::proportional(13.0),
+                    egui::FontId::proportional(motif::pt(ui, 13.0)),
                     fg,
                 );
                 ui.painter().text(
                     rect.right_center() - egui::vec2(6.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     hit.kind,
-                    egui::FontId::proportional(10.0),
+                    egui::FontId::proportional(motif::pt(ui, 10.0)),
                     if active {
                         motif::bg()
                     } else {
@@ -5833,14 +5849,14 @@ fn export_window(
             } else {
                 tr("export_hint")
             })
-            .size(11.0)
+            .size(motif::pt(ui, 11.0))
             .color(motif::text_dim()),
         );
         ui.add_space(6.0);
         if box_.points.is_empty() {
             ui.label(
                 egui::RichText::new(tr("export_no_points"))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
         } else {
@@ -5857,7 +5873,10 @@ fn export_window(
                 .max_height((screen.height() * 0.28).clamp(80.0, 260.0))
                 .show(ui, |ui| {
                     for (text, keep) in &mut box_.points {
-                        ui.checkbox(keep, egui::RichText::new(text.as_str()).size(11.5));
+                        ui.checkbox(
+                            keep,
+                            egui::RichText::new(text.as_str()).size(motif::pt(ui, 11.5)),
+                        );
                     }
                 });
             ui.add_space(4.0);
@@ -5878,7 +5897,7 @@ fn export_window(
         motif::section(ui, tr("export_extra"));
         ui.label(
             egui::RichText::new(tr("export_extra_hint"))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(motif::text_dim()),
         );
         ui.add_sized(
@@ -5935,7 +5954,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
         .show(ctx, |ui| {
             ui.label(
                 egui::RichText::new(tr("act_picker_hint"))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
             ui.add_space(6.0);
@@ -5957,7 +5976,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                         ui.label(
                             egui::RichText::new("     ")
                                 .background_color(kind_color(kind))
-                                .size(11.0),
+                                .size(motif::pt(ui, 11.0)),
                         );
                         ui.end_row();
                     }
@@ -6001,7 +6020,7 @@ fn theme_combo(ui: &mut egui::Ui, id_salt: &str, theme: &mut String) -> bool {
         theme.clone()
     };
     egui::ComboBox::from_id_salt(id_salt)
-        .selected_text(egui::RichText::new(shown).size(12.0))
+        .selected_text(egui::RichText::new(shown).size(motif::pt(ui, 12.0)))
         .width(190.0)
         .show_ui(ui, |ui| {
             if ui
@@ -7091,7 +7110,7 @@ impl App {
         if op.is_empty() {
             ui.label(
                 egui::RichText::new(tr("op_notes_missing"))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
             return;
@@ -7309,7 +7328,7 @@ impl App {
                 ui.add_space(2.0);
                 ui.label(
                     egui::RichText::new(tr("vitale_pick"))
-                        .size(10.5)
+                        .size(motif::pt(ui, 10.5))
                         .color(motif::text_dim()),
                 );
                 for who in &people {
@@ -7337,11 +7356,13 @@ impl App {
             }
             if let Some((is_error, note)) = session.vitale_note.clone() {
                 ui.add(
-                    egui::Label::new(egui::RichText::new(note).size(10.0).color(if is_error {
-                        motif::alert()
-                    } else {
-                        motif::text_faint()
-                    }))
+                    egui::Label::new(egui::RichText::new(note).size(motif::pt(ui, 10.0)).color(
+                        if is_error {
+                            motif::alert()
+                        } else {
+                            motif::text_faint()
+                        },
+                    ))
                     .wrap(),
                 );
             }
@@ -7379,7 +7400,7 @@ impl App {
         let cursor = field.has_focus().then_some(session.selected);
         ui.label(
             egui::RichText::new(trf("nav_count", results.len()))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(motif::text_faint()),
         );
         ui.add_space(3.0);
@@ -7488,7 +7509,7 @@ impl App {
         let cursor = field.has_focus().then_some(session.drug_selected);
         ui.label(
             egui::RichText::new(trf("nav_count", count))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(motif::text_faint()),
         );
         ui.add_space(3.0);
@@ -7650,7 +7671,7 @@ impl App {
                     egui::pos2(rect.left() + (i as f32 + 0.5) * cell, rect.top() + 6.0),
                     egui::Align2::CENTER_CENTER,
                     *label,
-                    egui::FontId::proportional(9.5),
+                    egui::FontId::proportional(motif::pt(ui, 9.5)),
                     motif::text_faint(),
                 );
             }
@@ -7686,7 +7707,7 @@ impl App {
                     r.center(),
                     egui::Align2::CENTER_CENTER,
                     num,
-                    egui::FontId::proportional(10.5),
+                    egui::FontId::proportional(motif::pt(ui, 10.5)),
                     if selected {
                         egui::Color32::WHITE
                     } else {
@@ -7782,7 +7803,7 @@ impl App {
         if !query.trim().is_empty() {
             ui.label(
                 egui::RichText::new(trf("nav_count", matches.len()))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
             ui.add_space(4.0);
@@ -7807,7 +7828,7 @@ impl App {
                 for country in vaccines::COUNTRIES.iter().filter(|c| c.region == region) {
                     if motif::list_row(
                         ui,
-                        egui::RichText::new(country.name).size(12.0),
+                        egui::RichText::new(country.name).size(motif::pt(ui, 12.0)),
                         selected == Some(country.code),
                     )
                     .clicked()
@@ -7891,7 +7912,7 @@ impl App {
                 // click, never per frame.
                 let unlocked = matches!(self.state, State::Unlocked(_));
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new(status).size(11.0).color(
+                    ui.label(egui::RichText::new(status).size(motif::pt(ui, 11.0)).color(
                         if self.doc_error.is_some() {
                             motif::alert()
                         } else {
@@ -7998,7 +8019,7 @@ impl App {
                 if op.is_empty() {
                     ui.label(
                         egui::RichText::new(tr("op_notes_missing"))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
                 } else if matches!(self.state, State::Unlocked(_)) {
@@ -8119,7 +8140,7 @@ impl App {
                                         ui.label("");
                                         ui.label(
                                             egui::RichText::new(what)
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .strong()
                                                 .color(motif::text_dim()),
                                         );
@@ -8129,7 +8150,7 @@ impl App {
                                     // The key itself as a keycap: a raised bevel
                                     // in the monospace face, so the eye can scan
                                     // the left column for the one it wants.
-                                    let font = egui::FontId::monospace(11.5);
+                                    let font = egui::FontId::monospace(motif::pt(ui, 11.5));
                                     let galley = ui.painter().layout_no_wrap(
                                         key.to_owned(),
                                         font.clone(),
@@ -8146,7 +8167,7 @@ impl App {
                                         galley,
                                         motif::text(),
                                     );
-                                    ui.label(egui::RichText::new(what).size(12.0));
+                                    ui.label(egui::RichText::new(what).size(motif::pt(ui, 12.0)));
                                     ui.end_row();
                                 }
                             });
@@ -8212,7 +8233,7 @@ impl App {
                     // juste dessous dit déjà « Mot de passe ».
                     ui.label(
                         egui::RichText::new(tr("app_tagline"))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     );
                     ui.add_space(14.0);
@@ -8248,7 +8269,7 @@ impl App {
                         ui.add(
                             egui::Label::new(
                                 egui::RichText::new(err.as_str())
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::alert()),
                             )
                             .wrap(),
@@ -8269,7 +8290,7 @@ impl App {
                     screen.width() - 40.0,
                     11.0,
                 ),
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
                 motif::text_dim(),
             );
             // And when that path was not configured but *found*, say so
@@ -8281,7 +8302,7 @@ impl App {
                     egui::pos2(screen.center().x, box_rect.bottom() + 38.0),
                     egui::Align2::CENTER_CENTER,
                     elide(ui, tr("lock_db_found"), screen.width() - 40.0, 11.0),
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
                     motif::alert(),
                 );
             }
@@ -8510,7 +8531,7 @@ impl App {
                             } else {
                                 motif::text()
                             };
-                            let font = egui::FontId::proportional(14.0);
+                            let font = egui::FontId::proportional(motif::pt(ui, 14.0));
                             let plain = egui::TextFormat {
                                 font_id: font.clone(),
                                 color: base_color,
@@ -8736,7 +8757,7 @@ impl App {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 tr("home_today_empty"),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
                 motif::text_dim(),
             );
             return None;
@@ -9113,8 +9134,12 @@ impl App {
                 };
                 let choice = &mut open.choice;
                 ui.add(
-                    egui::Label::new(egui::RichText::new(protocol.indication).size(13.0).strong())
-                        .wrap(),
+                    egui::Label::new(
+                        egui::RichText::new(protocol.indication)
+                            .size(motif::pt(ui, 13.0))
+                            .strong(),
+                    )
+                    .wrap(),
                 );
                 ui.add_space(4.0);
                 // The body takes whatever the window leaves after the
@@ -9159,7 +9184,7 @@ impl App {
                                 }
                                 ui.label(
                                     egui::RichText::new(atb.situation)
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                             });
@@ -9182,7 +9207,7 @@ impl App {
                                     ui.add_space(12.0);
                                     ui.label(
                                         egui::RichText::new(tr("ord_posology"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
                                     ui.add_sized(
@@ -9196,7 +9221,7 @@ impl App {
                                         ui.add_space(12.0);
                                         ui.label(
                                             egui::RichText::new(atb.caution)
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .italics()
                                                 .color(motif::alert()),
                                         );
@@ -9215,7 +9240,7 @@ impl App {
                         if adjuvants.is_empty() {
                             ui.label(
                                 egui::RichText::new(trf("ord_probio_empty", &adjuvant_tag))
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
                         }
@@ -9303,7 +9328,7 @@ impl App {
                     ui.add_space(6.0);
                     ui.label(
                         egui::RichText::new(config.disclaimers.ordonnance_screen.trim())
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .italics()
                             .color(motif::text_faint()),
                     );
@@ -9587,13 +9612,17 @@ impl App {
                             ui.add_space(6.0);
                             ui.label(
                                 egui::RichText::new(tr("vacc_empty"))
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
                             return;
                         }
+                        // La taille, mesurée avant la fermeture : `motif::pt`
+                        // lit le style, et la fermeture garderait `ui`
+                        // emprunté pour toute la grille.
+                        let dim_pt = motif::pt(ui, 11.0);
                         let dim =
-                            |t: &str| egui::RichText::new(t).size(11.0).color(motif::text_dim());
+                            |t: &str| egui::RichText::new(t).size(dim_pt).color(motif::text_dim());
                         // Ce que chaque colonne demande, mesuré sur les
                         // lignes qui sont là. Les largeurs fixes d'avant
                         // poussaient « Par » hors de la table dès qu'un
@@ -9669,7 +9698,8 @@ impl App {
                                     // voit : elle se tape ailleurs, et
                                     // sans repère on ne saurait pas
                                     // laquelle la rangée du bas porte.
-                                    let name = egui::RichText::new(&line.label).size(12.0);
+                                    let name =
+                                        egui::RichText::new(&line.label).size(motif::pt(ui, 12.0));
                                     let name = if editing == Some(line.id) {
                                         name.color(motif::accent()).strong()
                                     } else {
@@ -9683,7 +9713,7 @@ impl App {
                                                 ui.add(
                                                     egui::Label::new(
                                                         egui::RichText::new(foot.join(" · "))
-                                                            .size(10.5)
+                                                            .size(motif::pt(ui, 10.5))
                                                             .italics()
                                                             .color(motif::text_faint()),
                                                     )
@@ -9696,7 +9726,8 @@ impl App {
                                         Self::grid_cell(
                                             ui,
                                             dose_w,
-                                            egui::RichText::new(&line.dose).size(12.0),
+                                            egui::RichText::new(&line.dose)
+                                                .size(motif::pt(ui, 12.0)),
                                         );
                                         Self::grid_cell(
                                             ui,
@@ -9706,25 +9737,27 @@ impl App {
                                             } else {
                                                 db::format_french_date(&line.given_on)
                                             })
-                                            .size(12.0),
+                                            .size(motif::pt(ui, 12.0)),
                                         );
                                     }
                                     if cols == 7 {
                                         Self::grid_cell(
                                             ui,
                                             lot_w,
-                                            egui::RichText::new(&line.lot).size(11.5),
+                                            egui::RichText::new(&line.lot)
+                                                .size(motif::pt(ui, 11.5)),
                                         );
                                         Self::grid_cell(
                                             ui,
                                             site_w,
-                                            egui::RichText::new(&line.site).size(11.5),
+                                            egui::RichText::new(&line.site)
+                                                .size(motif::pt(ui, 11.5)),
                                         );
                                         Self::grid_cell(
                                             ui,
                                             op_w,
                                             egui::RichText::new(&line.operator)
-                                                .size(11.5)
+                                                .size(motif::pt(ui, 11.5))
                                                 .color(operator_color(&line.operator)),
                                         );
                                     }
@@ -9949,7 +9982,7 @@ impl App {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(
                                     egui::RichText::new(tr("vacc_not_billed"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::alert()),
                                 );
                                 if motif::button(ui, tr("vacc_bill"))
@@ -9963,7 +9996,7 @@ impl App {
                         if !config.disclaimers.vaccins.trim().is_empty() {
                             ui.label(
                                 egui::RichText::new(config.disclaimers.vaccins.trim())
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .italics()
                                     .color(motif::text_faint()),
                             );
@@ -10207,7 +10240,7 @@ impl App {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(tr("watch_empty"))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     )
                     .wrap(),
@@ -10232,14 +10265,18 @@ impl App {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("  {word}  "))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(color),
                             );
                             let row = ui.add(
-                                egui::Label::new(egui::RichText::new(d.label).size(12.0).strong())
-                                    .sense(egui::Sense::click()),
+                                egui::Label::new(
+                                    egui::RichText::new(d.label)
+                                        .size(motif::pt(ui, 12.0))
+                                        .strong(),
+                                )
+                                .sense(egui::Sense::click()),
                             );
                             if row.on_hover_text(tr("watch_pick_tooltip")).clicked() {
                                 pick = Some(d.code);
@@ -10248,7 +10285,7 @@ impl App {
                                 egui::RichText::new(crate::surveillance::rhythm_text(
                                     d.every_months,
                                 ))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                             );
                         });
@@ -10263,16 +10300,16 @@ impl App {
                             }
                             _ => tr("watch_no_result").to_owned(),
                         };
-                        ui.label(egui::RichText::new(since).size(11.0));
+                        ui.label(egui::RichText::new(since).size(motif::pt(ui, 11.0)));
                         ui.label(
                             egui::RichText::new(trf("watch_asked_by", d.drugs.join(", ")))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                         );
                         ui.add(
                             egui::Label::new(
                                 egui::RichText::new(d.why)
-                                    .size(10.5)
+                                    .size(motif::pt(ui, 10.5))
                                     .italics()
                                     .color(motif::text_faint()),
                             )
@@ -10320,6 +10357,11 @@ impl App {
         session.refresh_conciliation(patient.id);
         let line = ui.text_style_height(&egui::TextStyle::Body);
         let wide = work.width() >= chars_wide(ui, 138.0);
+        // Le volet est-il trop court pour la réponse *et* la feuille ?
+        // La réponse est la même des deux côtés de la bascule : en
+        // large, il y a la place, donc non.
+        let mut short = false;
+        let mut folded = false;
         let (result, side) = if wide {
             let side_w = (work.width() * 0.38).clamp(320.0, 520.0);
             (
@@ -10330,71 +10372,17 @@ impl App {
                 egui::Rect::from_min_max(egui::pos2(work.right() - side_w, work.top()), work.max),
             )
         } else {
-            // Under the answer rather than beside it. The band keeps
-            // enough for the paste box to be typed into — that is the
-            // pane the operator works in — and the answer keeps eight
-            // of its own lines before the band takes any.
-            // In lines, so `[ui] text_scale` costs nothing. The band's
-            // floor is what the paste box needs to be a paste box: its
-            // title, four lines of text and the button under them. Its
-            // cap is what leaves the answer above it more than a
-            // heading — and the cap is raised to the floor rather than
-            // trusted to sit above it, because on a short pane they do
-            // cross and `f32::clamp` panics when they do.
-            //
-            // What the answer pane needs before it can show an answer is
-            // *measured*, not assumed: its control row wraps, and at
-            // 1024x700 with both docks open it wraps to two lines. The
-            // third button appearing pushed every divergence off the
-            // pane, which is the one thing the tab exists to show.
-            //
-            // Five lines and a half is the paste box's floor: its title,
-            // two lines of text and the button under them. One pastes
-            // into it far more often than one reads it back, and the
-            // answer above is what the tab exists to show.
-            //
-            // Mesuré à 1024x700 les deux docks ouverts, et le compte ne
-            // tombait pas : la tête du panneau des réponses coûtait
-            // 136 px, la bande en réclamait 110 au titre de son
-            // plancher, et il restait **un pixel** pour les divergences.
-            // Le plancher de la bande gagnait contre le sien, si bien
-            // que l'onglet n'affichait jamais ce pour quoi il existe.
-            //
-            // Ce qui a changé : la réponse garde sa tête **et deux
-            // lignes**, et c'est la boîte de collage qui cède — elle
-            // défile d'elle-même, on y colle cent fois pour une fois
-            // qu'on l'y relit, et trois lignes et demie suffisent à
-            // coller. Une table à zéro ligne ne sert à rien ; une boîte
-            // de texte courte sert encore.
-            let answer_min = Self::concil_head(ui, work.width()) + line * 2.0;
-            // Cinq lignes et demie, et **on a essayé de descendre**.
-            //
-            // À 1024x700 les deux docks ouverts, la bande est déjà à ce
-            // plancher : aucun partage ne peut donc rendre une ligne de
-            // plus aux divergences, ce qu'une capture identique au bit
-            // près a montré après une tentative dans ce sens. Et le
-            // plancher ne se baisse pas non plus : le panneau dépense
-            // sa légende, son filet et ses marges, puis la rangée
-            // carvée de son bouton, soit plus de quatre-vingts pixels
-            // avant la moindre ligne de texte. À quatre lignes et demie
-            // la boîte n'affiche plus que « Vider », et on ne relit plus
-            // ce qu'on vient de coller — ce qui est pire qu'une
-            // divergence coupée.
-            //
-            // Cet onglet porte trois panneaux et n'a pas la place des
-            // trois à cette taille. Ce qui reste à décider n'est pas un
-            // partage mais une présence : la feuille collée est une
-            // référence une fois collée, et pourrait se replier derrière
-            // un bouton plutôt que garder son volet. C'est un changement
-            // de comportement, pas un réglage.
-            let band_min = line * 5.5;
-            let band = (work.height() * 0.52)
-                .clamp(band_min, line * 22.0)
-                // La gouttière comprise : sans elle la réponse recevait
-                // huit pixels de moins que son plancher, soit une
-                // divergence de moins — le genre d'écart qu'un calcul
-                // juste à huit pixels près produit tout seul.
-                .min((work.height() - answer_min - 8.0).max(band_min));
+            // Sous la réponse plutôt qu'à côté. Le partage — et le repli
+            // de la feuille quand les deux planchers ne tiennent pas
+            // ensemble — est dans `concil_band`, où il se mesure.
+            let (band, f, s) = Self::concil_band(
+                ui,
+                work,
+                session.concil_sheet_lines(),
+                session.concil_sheet_open,
+            );
+            folded = f;
+            short = s;
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -10415,8 +10403,144 @@ impl App {
             )
         };
         Self::concil_result_pane(ui, session, patient, result, operator, config);
-        Self::concil_sheet_pane(ui, session, sheet);
-        Self::concil_doses_pane(ui, session, patient, doses);
+        if folded {
+            Self::concil_folded_band(ui, session, side);
+        } else {
+            Self::concil_sheet_pane(ui, session, sheet, short);
+            Self::concil_doses_pane(ui, session, patient, doses);
+        }
+    }
+
+    /// Comment le volet étroit se partage entre la réponse et la
+    /// feuille — et si la feuille se range pour que la réponse ait de
+    /// quoi montrer une divergence.
+    ///
+    /// Sortie de la vue pour être mesurable : c'est un partage, donc de
+    /// l'arithmétique, et l'arithmétique se vérifie sans écran.
+    fn concil_band(
+        ui: &egui::Ui,
+        work: egui::Rect,
+        sheet_lines: usize,
+        open: bool,
+    ) -> (f32, bool, bool) {
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let answer_min = Self::concil_head(ui, work.width()) + line * 2.0;
+        // Cinq lignes et demie, et **on a essayé de descendre**.
+        //
+        // À 1024x700 les deux docks ouverts, la bande est déjà à ce
+        // plancher : aucun partage ne peut donc rendre une ligne de
+        // plus aux divergences, ce qu'une capture identique au bit
+        // près a montré après une tentative dans ce sens. Et le
+        // plancher ne se baisse pas non plus : le panneau dépense
+        // sa légende, son filet et ses marges, puis la rangée
+        // carvée de son bouton, soit plus de quatre-vingts pixels
+        // avant la moindre ligne de texte. À quatre lignes et demie
+        // la boîte n'affiche plus que « Vider », et on ne relit plus
+        // ce qu'on vient de coller — ce qui est pire qu'une
+        // divergence coupée.
+        //
+        // Cet onglet porte trois panneaux et n'a pas la place des
+        // trois à cette taille. Ce qui reste à décider n'est pas un
+        // partage mais une présence : la feuille collée est une
+        // référence une fois collée, et pourrait se replier derrière
+        // un bouton plutôt que garder son volet. C'est un changement
+        // de comportement, pas un réglage.
+        let band_min = line * 5.5;
+        // **Et quand les deux planchers ne tiennent pas ensemble,
+        // c'est la feuille qui cède.** C'est la règle du registre —
+        // sur un panneau trop court, la garniture part la
+        // première — appliquée ici : une table à zéro divergence ne
+        // sert à rien, alors qu'une feuille *déjà collée* est une
+        // référence. Elle se range en une rangée qui dit combien de
+        // lignes elle porte, et « Modifier… » la rouvre : c'est
+        // alors la réponse qui défile, ce qu'elle sait faire.
+        //
+        // Tant qu'elle est vide, elle garde son volet : on ne range
+        // pas la boîte dans laquelle on va coller.
+        let short = work.height() - 8.0 < answer_min + band_min;
+        let folded = short && sheet_lines > 0 && !open;
+        let band = if folded {
+            Self::concil_sheet_folded_height(ui, work.width(), sheet_lines)
+        } else {
+            (work.height() * 0.52)
+                .clamp(band_min, line * 22.0)
+                // La gouttière comprise : sans elle la réponse
+                // recevait huit pixels de moins que son plancher,
+                // soit une divergence de moins — le genre d'écart
+                // qu'un calcul juste à huit pixels près produit tout
+                // seul.
+                .min((work.height() - answer_min - 8.0).max(band_min))
+        };
+        (band, folded, short)
+    }
+
+    /// Ce que la feuille repliée coûte : la légende du panneau et son
+    /// filet, puis la rangée qui la rouvre. Mesurée comme
+    /// [`Self::concil_head`], et par la même fonction que celle qui la
+    /// dessine — deux calculs d'une même chose finissent toujours par
+    /// diverger.
+    fn concil_sheet_folded_height(ui: &egui::Ui, width: f32, lines: usize) -> f32 {
+        // La légende du panneau — onze pixels, un filet et ses marges,
+        // comme `motif::panel` les dépense — puis la rangée qui la
+        // rouvre, qui enveloppe comme toutes les autres.
+        let caption = ui.fonts(|f| {
+            f.layout_no_wrap(
+                "A".to_owned(),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                motif::text_dim(),
+            )
+            .size()
+            .y
+        });
+        let rows = Self::wrapped_rows_of(
+            ui,
+            width - 24.0,
+            [
+                Self::widest_in(
+                    ui,
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    std::iter::once(trf("concil_sheet_lines", lines).as_str()),
+                ),
+                Self::button_width(ui, tr("concil_sheet_edit")),
+                Self::button_width(ui, tr("concil_clear")),
+            ]
+            .into_iter(),
+        );
+        // Les gouttières *entre* les rangées, pas une de plus : la
+        // dernière n'en a pas sous elle, et ces seize pixels-là sont
+        // exactement une ligne de divergence dans le panneau d'à côté.
+        8.0 + caption
+            + 9.0
+            + rows * Self::button_height(ui)
+            + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y
+            + 8.0
+    }
+
+    /// La feuille collée, rangée : combien de lignes elle porte, de quoi
+    /// la rouvrir et de quoi la vider.
+    fn concil_folded_band(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let mut clear = false;
+        let lines = session.concil_sheet_lines();
+        motif::panel(ui, rect, Some(tr("concil_sheet")), |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(
+                    egui::RichText::new(trf("concil_sheet_lines", lines)).color(motif::text_dim()),
+                );
+                if motif::button(ui, tr("concil_sheet_edit"))
+                    .on_hover_text(tr("concil_sheet_edit_tooltip"))
+                    .clicked()
+                {
+                    session.concil_sheet_open = true;
+                }
+                if motif::button(ui, tr("concil_clear")).clicked() {
+                    clear = true;
+                }
+            });
+        });
+        if clear {
+            session.concil_sheet.clear();
+            session.concil_adopt_confirm = false;
+        }
     }
 
     /// Ce que le panneau des divergences dépense avant d'en montrer
@@ -10443,7 +10567,16 @@ impl App {
     }
 
     /// La feuille de sortie, telle qu'elle est collée ou tapée.
-    fn concil_sheet_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+    /// `foldable` : le volet est trop court pour la feuille *et* les
+    /// divergences, donc la feuille peut se ranger — et le bouton qui la
+    /// range n'apparaît que là, parce qu'ailleurs il ne servirait à
+    /// rien.
+    fn concil_sheet_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        foldable: bool,
+    ) {
         let mut clear = false;
         motif::panel(ui, rect, Some(tr("concil_sheet")), |ui| {
             // Carved, not stacked. A `TextEdit::multiline` given a
@@ -10466,7 +10599,7 @@ impl App {
                 let help_h = ui.fonts(|f| {
                     f.layout(
                         tr("concil_sheet_help").to_owned(),
-                        egui::FontId::proportional(10.5),
+                        egui::FontId::proportional(motif::pt(ui, 10.5)),
                         motif::text_dim(),
                         ui.available_width(),
                     )
@@ -10477,7 +10610,7 @@ impl App {
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(tr("concil_sheet_help"))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                         )
                         .wrap(),
@@ -10496,9 +10629,14 @@ impl App {
                 );
             });
             motif::inside(ui, rows[1], |ui| {
-                if motif::button(ui, tr("concil_clear")).clicked() {
-                    clear = true;
-                }
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("concil_clear")).clicked() {
+                        clear = true;
+                    }
+                    if foldable && motif::button(ui, tr("concil_sheet_fold")).clicked() {
+                        session.concil_sheet_open = false;
+                    }
+                });
             });
         });
         if clear {
@@ -10528,7 +10666,7 @@ impl App {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(tr("concil_ordonnance_empty"))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     )
                     .wrap(),
@@ -10561,8 +10699,10 @@ impl App {
                                 ui.set_min_width(label_w);
                                 ui.set_max_width(label_w);
                                 ui.add(
-                                    egui::Label::new(egui::RichText::new(name).size(11.5))
-                                        .truncate(),
+                                    egui::Label::new(
+                                        egui::RichText::new(name).size(motif::pt(ui, 11.5)),
+                                    )
+                                    .truncate(),
                                 );
                             });
                             let field = ui.add_sized(
@@ -10620,7 +10760,7 @@ impl App {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(tr("concil_empty"))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     )
                     .wrap(),
@@ -10644,7 +10784,7 @@ impl App {
             // commande, il n'avait rien à faire au milieu des boutons.
             ui.label(
                 egui::RichText::new(trn("concil_count", &[&counts.divergences(), &rows.len()]))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
             ui.horizontal_wrapped(|ui| {
@@ -10678,7 +10818,7 @@ impl App {
             if counts.divergences() == 0 {
                 ui.label(
                     egui::RichText::new(tr("concil_none"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
             }
@@ -10698,27 +10838,27 @@ impl App {
                         ui.horizontal_wrapped(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("  {label}  "))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(color),
                             );
                             ui.label(
                                 egui::RichText::new(Self::concil_title(d))
-                                    .size(12.0)
+                                    .size(motif::pt(ui, 12.0))
                                     .strong(),
                             );
                         });
                         if !d.before.trim().is_empty() {
                             ui.label(
                                 egui::RichText::new(trf("concil_before", d.before.clone()))
-                                    .size(11.0),
+                                    .size(motif::pt(ui, 11.0)),
                             );
                         }
                         if !d.after.trim().is_empty() {
                             ui.label(
                                 egui::RichText::new(trf("concil_after", d.after.clone()))
-                                    .size(11.0),
+                                    .size(motif::pt(ui, 11.0)),
                             );
                         }
                         let note = match d.kind {
@@ -10732,7 +10872,7 @@ impl App {
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(note)
-                                        .size(10.5)
+                                        .size(motif::pt(ui, 10.5))
                                         .italics()
                                         .color(motif::text_dim()),
                                 )
@@ -10930,7 +11070,7 @@ impl App {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(tr("loc_no_forfait"))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     )
                     .wrap(),
@@ -10947,7 +11087,7 @@ impl App {
                         });
                     ui.label(
                         egui::RichText::new(tr("loc_started_on"))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
                     let day = ui.add_sized(
@@ -10972,7 +11112,7 @@ impl App {
                     if f.fee == 0.0 {
                         ui.label(
                             egui::RichText::new(tr("loc_fee_todo"))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::alert()),
                         );
                     } else {
@@ -10989,7 +11129,7 @@ impl App {
                                     },
                                 ],
                             ))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                         );
                     }
@@ -10999,7 +11139,7 @@ impl App {
             if rows.is_empty() {
                 ui.label(
                     egui::RichText::new(tr("loc_empty"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -11082,8 +11222,12 @@ impl App {
                             .spacing([gap, 6.0])
                             .striped(true)
                             .show(ui, |ui| {
+                                // La taille, mesurée avant la fermeture :
+                                // `motif::pt` lit le style, et la fermeture
+                                // garderait `ui` emprunté pour la grille.
+                                let dim_pt = motif::pt(ui, 10.5);
                                 let dim = |t: &str| {
-                                    egui::RichText::new(t).size(10.5).color(motif::text_dim())
+                                    egui::RichText::new(t).size(dim_pt).color(motif::text_dim())
                                 };
                                 Self::grid_cell(ui, name_w, dim(tr("loc_col_label")));
                                 if cols == 6 {
@@ -11158,7 +11302,8 @@ impl App {
                                         ui.vertical(|ui| {
                                             ui.add(
                                                 egui::Label::new(
-                                                    egui::RichText::new(&l.label).size(12.0),
+                                                    egui::RichText::new(&l.label)
+                                                        .size(motif::pt(ui, 12.0)),
                                                 )
                                                 .truncate(),
                                             );
@@ -11166,7 +11311,7 @@ impl App {
                                                 ui.add(
                                                     egui::Label::new(
                                                         egui::RichText::new(foot)
-                                                            .size(10.5)
+                                                            .size(motif::pt(ui, 10.5))
                                                             .italics()
                                                             .color(if bad {
                                                                 motif::alert()
@@ -11183,25 +11328,29 @@ impl App {
                                         Self::grid_cell(
                                             ui,
                                             date_w,
-                                            egui::RichText::new(started).size(11.5),
+                                            egui::RichText::new(started).size(motif::pt(ui, 11.5)),
                                         );
                                         Self::grid_cell(
                                             ui,
                                             ended_w,
-                                            egui::RichText::new(ended).size(11.5).color(
-                                                if l.running() {
+                                            egui::RichText::new(ended)
+                                                .size(motif::pt(ui, 11.5))
+                                                .color(if l.running() {
                                                     motif::accent()
                                                 } else {
                                                     motif::text()
-                                                },
-                                            ),
+                                                }),
                                         );
                                         Self::grid_cell(
                                             ui,
                                             due_w,
-                                            egui::RichText::new(billable).size(12.0).color(
-                                                if bad { motif::alert() } else { motif::text() },
-                                            ),
+                                            egui::RichText::new(billable)
+                                                .size(motif::pt(ui, 12.0))
+                                                .color(if bad {
+                                                    motif::alert()
+                                                } else {
+                                                    motif::text()
+                                                }),
                                         );
                                     }
                                     // The renewal, coloured by how it
@@ -11226,7 +11375,7 @@ impl App {
                                                 ui,
                                                 renew_w,
                                                 egui::RichText::new(db::format_french_date(&day))
-                                                    .size(11.5)
+                                                    .size(motif::pt(ui, 11.5))
                                                     .color(colour),
                                             );
                                         }
@@ -11235,7 +11384,7 @@ impl App {
                                                 ui,
                                                 renew_w,
                                                 egui::RichText::new("—")
-                                                    .size(11.5)
+                                                    .size(motif::pt(ui, 11.5))
                                                     .color(motif::text_dim()),
                                             );
                                         }
@@ -11308,7 +11457,7 @@ impl App {
                         "loc_running_total",
                         crate::codex::format_quantity(running_total),
                     ))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
                 );
             }
@@ -11487,7 +11636,7 @@ impl App {
                         if results.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr("bio_empty"))
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
                             return;
@@ -11507,7 +11656,7 @@ impl App {
                                 ] {
                                     ui.label(
                                         egui::RichText::new(header)
-                                            .size(10.5)
+                                            .size(motif::pt(ui, 10.5))
                                             .color(motif::text_dim()),
                                     );
                                 }
@@ -11519,7 +11668,7 @@ impl App {
                                         } else {
                                             db::format_french_date(&r.taken_on)
                                         })
-                                        .size(11.5),
+                                        .size(motif::pt(ui, 11.5)),
                                     );
                                     // The analyte's name opens its trend
                                     // on the right: a value alone says
@@ -11528,7 +11677,8 @@ impl App {
                                     if ui
                                         .add(
                                             egui::Label::new(
-                                                egui::RichText::new(&r.label).size(12.0),
+                                                egui::RichText::new(&r.label)
+                                                    .size(motif::pt(ui, 12.0)),
                                             )
                                             .sense(egui::Sense::click()),
                                         )
@@ -11569,7 +11719,7 @@ impl App {
                                                     crate::codex::format_quantity(r.value),
                                                     r.unit
                                                 ))
-                                                .size(12.0)
+                                                .size(motif::pt(ui, 12.0))
                                                 .strong(),
                                             )
                                             .sense(egui::Sense::click()),
@@ -11591,7 +11741,7 @@ impl App {
                                                         "  {}  ",
                                                         crate::biology::level_word(level)
                                                     ))
-                                                    .size(10.5)
+                                                    .size(motif::pt(ui, 10.5))
                                                     .strong()
                                                     .color(egui::Color32::WHITE)
                                                     .background_color(bio_level_color(level)),
@@ -11601,7 +11751,7 @@ impl App {
                                                     egui::RichText::new(
                                                         crate::biology::level_word(level),
                                                     )
-                                                    .size(10.5)
+                                                    .size(motif::pt(ui, 10.5))
                                                     .color(motif::text_dim()),
                                                 );
                                             }
@@ -11609,7 +11759,7 @@ impl App {
                                                 egui::RichText::new(crate::biology::interval_text(
                                                     a,
                                                 ))
-                                                .size(10.5)
+                                                .size(motif::pt(ui, 10.5))
                                                 .color(motif::text_dim()),
                                             )
                                             .on_hover_text(a.note);
@@ -11618,7 +11768,7 @@ impl App {
                                             ui.label("");
                                             ui.label(
                                                 egui::RichText::new(tr("bio_free_line"))
-                                                    .size(10.5)
+                                                    .size(motif::pt(ui, 10.5))
                                                     .color(motif::text_dim()),
                                             );
                                         }
@@ -11680,7 +11830,7 @@ impl App {
                             );
                             ui.label(
                                 egui::RichText::new(&session.bio_new_unit)
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
                             let when = ui.add_sized(
@@ -11876,7 +12026,7 @@ impl App {
                     if findings.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("bio_reading_empty"))
-                                .size(11.5)
+                                .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         );
                         return;
@@ -11890,18 +12040,18 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("  {label}  "))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(color),
                             );
                             ui.label(
                                 egui::RichText::new(f.code)
-                                    .size(10.5)
+                                    .size(motif::pt(ui, 10.5))
                                     .color(motif::text_dim()),
                             );
                         });
-                        ui.label(egui::RichText::new(&f.text).size(11.5));
+                        ui.label(egui::RichText::new(&f.text).size(motif::pt(ui, 11.5)));
                         ui.add_space(6.0);
                     }
                 });
@@ -11955,7 +12105,7 @@ impl App {
             if series.len() < 2 {
                 ui.label(
                     egui::RichText::new(tr("bio_trend_empty"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -12006,7 +12156,7 @@ impl App {
                         &crate::codex::format_quantity(last.1),
                     ],
                 ))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(motif::text_dim()),
             );
         });
@@ -12070,7 +12220,7 @@ impl App {
                     if lines.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("vacc_due_empty"))
-                                .size(11.5)
+                                .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         );
                         return;
@@ -12084,7 +12234,7 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("  {tag}  "))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(color),
@@ -12092,7 +12242,9 @@ impl App {
                             if ui
                                 .add(
                                     egui::Label::new(
-                                        egui::RichText::new(line.label).strong().size(12.0),
+                                        egui::RichText::new(line.label)
+                                            .strong()
+                                            .size(motif::pt(ui, 12.0)),
                                     )
                                     .sense(egui::Sense::click()),
                                 )
@@ -12104,7 +12256,7 @@ impl App {
                         });
                         ui.label(
                             egui::RichText::new(&line.detail)
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(5.0);
@@ -12174,8 +12326,12 @@ impl App {
             let query = session.travel_query.clone();
             if !query.trim().is_empty() {
                 for country in vaccines::search(&query).into_iter().take(6) {
-                    if motif::list_row(ui, egui::RichText::new(country.name).size(12.0), false)
-                        .clicked()
+                    if motif::list_row(
+                        ui,
+                        egui::RichText::new(country.name).size(motif::pt(ui, 12.0)),
+                        false,
+                    )
+                    .clicked()
                     {
                         add = Some(country.code);
                     }
@@ -12189,7 +12345,7 @@ impl App {
                     if travels.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("vacc_travel_empty"))
-                                .size(11.5)
+                                .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         );
                         return;
@@ -12199,7 +12355,11 @@ impl App {
                             continue;
                         };
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(country.name).strong().size(12.0));
+                            ui.label(
+                                egui::RichText::new(country.name)
+                                    .strong()
+                                    .size(motif::pt(ui, 12.0)),
+                            );
                             if motif::button(ui, tr("vacc_travel_remove")).clicked() {
                                 remove = Some(travel.country.clone());
                             }
@@ -12210,7 +12370,7 @@ impl App {
                                     "vacc_travel_depart",
                                     db::format_french_date(&travel.depart_on),
                                 ))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_faint()),
                             );
                         }
@@ -12223,12 +12383,12 @@ impl App {
                             ui.horizontal(|ui| {
                                 ui.label(
                                     egui::RichText::new(format!("  {tag}  "))
-                                        .size(10.0)
+                                        .size(motif::pt(ui, 10.0))
                                         .strong()
                                         .color(egui::Color32::WHITE)
                                         .background_color(color),
                                 );
-                                ui.label(egui::RichText::new(label).size(11.5));
+                                ui.label(egui::RichText::new(label).size(motif::pt(ui, 11.5)));
                             });
                         };
                         // Yellow fever first: it is the one that has to
@@ -12770,7 +12930,11 @@ impl App {
     /// c'est une largeur fixe qui poussait « Par » hors du carnet dès
     /// qu'un volet s'ouvrait.
     fn widest<'a>(ui: &egui::Ui, size: f32, texts: impl Iterator<Item = &'a str>) -> f32 {
-        Self::widest_in(ui, egui::FontId::proportional(size), texts)
+        // La taille est en points, donc elle passe par `motif::pt` comme
+        // celle qui dessinera : une colonne mesurée à onze pixels et
+        // peinte à dix-huit élide tout ce qu'elle contient, et la mesure
+        // se fait toujours dans la fonte qui dessine.
+        Self::widest_in(ui, egui::FontId::proportional(motif::pt(ui, size)), texts)
     }
 
     /// [`widest`] pour une colonne qui ne se dessine pas dans la fonte
@@ -13059,7 +13223,7 @@ impl App {
         let sub_w = ui.fonts(|f| {
             f.layout_no_wrap(
                 subtitle.to_owned(),
-                egui::FontId::proportional(11.5),
+                egui::FontId::proportional(motif::pt(ui, 11.5)),
                 motif::text_dim(),
             )
             .size()
@@ -13353,7 +13517,7 @@ impl App {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(bits.join("   ·   "))
-                            .size(12.0)
+                            .size(motif::pt(ui, 12.0))
                             .color(motif::text_dim()),
                     )
                     .wrap(),
@@ -13527,7 +13691,7 @@ impl App {
                     let chip = ui.add(
                         egui::Label::new(
                             egui::RichText::new(format!("  {}  ", t.name))
-                                .size(12.0)
+                                .size(motif::pt(ui, 12.0))
                                 .color(egui::Color32::WHITE)
                                 .background_color(motif::accent()),
                         )
@@ -13542,7 +13706,7 @@ impl App {
                     // s'affichait que dans l'onglet Conciliation. Un clic
                     // ouvre les lignes livrées de la fiche.
                     let x = ui.add(
-                        egui::Label::new(egui::RichText::new("×").size(12.0))
+                        egui::Label::new(egui::RichText::new("×").size(motif::pt(ui, 12.0)))
                             .sense(egui::Sense::click()),
                     );
                     if x.on_hover_text(tr("treat_remove_tooltip")).clicked() {
@@ -13704,7 +13868,7 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             egui::RichText::new(trf("treat_dose_for", name))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         if motif::button(ui, tr("treat_dose_close")).clicked() {
@@ -13714,7 +13878,7 @@ impl App {
                     if lines.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("treat_dose_none"))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                     }
@@ -13725,7 +13889,7 @@ impl App {
                                 "treat_dose_more",
                                 lines.len() - TREAT_DOSE_ROWS,
                             ))
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .color(motif::text_faint()),
                         );
                     }
@@ -13738,7 +13902,7 @@ impl App {
                             } else {
                                 format!("{} — {}", p.indication.trim(), p.posologie.trim())
                             })
-                            .size(11.5),
+                            .size(motif::pt(ui, 11.5)),
                             on,
                         );
                         // La remarque est ce qui se dit au comptoir : à
@@ -13922,7 +14086,7 @@ impl App {
                         "treat_interactions",
                         session.patient_interactions.len(),
                     ))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .strong()
                     .color(motif::alert()),
                 )
@@ -13938,14 +14102,14 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new(tr("revue_label"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 for point in &session.patient_review {
                     let color = severity_color(point.severity);
                     ui.label(
                         egui::RichText::new(format!("  {}  ", point.title))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .strong()
                             .color(egui::Color32::WHITE)
                             .background_color(color),
@@ -14068,7 +14232,7 @@ impl App {
             if config.rules.enforcement == RuleEnforcement::Block {
                 ui.label(
                     egui::RichText::new(tr("rule_blocked_hard"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             } else if motif::button(ui, tr("rule_override")).clicked() {
@@ -14094,7 +14258,7 @@ impl App {
                     "rule_bpm_eligibility",
                     &[&db::BPM_MIN_TREATMENTS, &session.patient_treats.len()],
                 ))
-                .size(11.0)
+                .size(motif::pt(ui, 11.0))
                 .color(motif::text_dim()),
             );
         }
@@ -14323,7 +14487,7 @@ impl App {
             let code = row.itv.kind.act_code(row.year).unwrap_or("—");
             ui.label(
                 egui::RichText::new(format!("{code} · {}", row.rank + 1))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .strong()
                     .color(motif::accent()),
             )
@@ -14787,7 +14951,7 @@ impl App {
                                 ] {
                                     ui.label(
                                         egui::RichText::new(header)
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
                                 }
@@ -15261,14 +15425,14 @@ impl App {
                 egui::pos2(line.left() + 12.0, line.center().y),
                 egui::Align2::LEFT_CENTER,
                 elide(ui, kind.label(), 150.0, 11.5),
-                egui::FontId::proportional(11.5),
+                egui::FontId::proportional(motif::pt(ui, 11.5)),
                 motif::text(),
             );
             ui.painter().text(
                 egui::pos2(line.left() + 170.0, line.center().y),
                 egui::Align2::LEFT_CENTER,
                 trf("seq_year", year + 1),
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
                 motif::text_dim(),
             );
             let total = config.sequence_len(*kind, *year);
@@ -15290,7 +15454,7 @@ impl App {
                 egui::pos2(pips.right() + 10.0, line.center().y),
                 egui::Align2::LEFT_CENTER,
                 format!("{done}/{total}"),
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
                 if *done >= total {
                     motif::text_dim()
                 } else {
@@ -15325,7 +15489,7 @@ impl App {
             };
             ui.label(
                 egui::RichText::new(trn("seq_totals", &[&money(billed), &money(pending)]))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
         }
@@ -15618,14 +15782,16 @@ impl App {
                     ui.label(egui::RichText::new(country.name).strong());
                     ui.label(
                         egui::RichText::new(country.region.label())
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
                     ui.label(
-                        egui::RichText::new(trf("map_yf_line", country.yf.label())).size(11.5),
+                        egui::RichText::new(trf("map_yf_line", country.yf.label()))
+                            .size(motif::pt(ui, 11.5)),
                     );
                     ui.label(
-                        egui::RichText::new(trf("map_palu_line", country.palu.label())).size(11.5),
+                        egui::RichText::new(trf("map_palu_line", country.palu.label()))
+                            .size(motif::pt(ui, 11.5)),
                     );
                     let recos: Vec<&str> = country.recos().map(|r| r.label).collect();
                     ui.label(
@@ -15634,7 +15800,7 @@ impl App {
                         } else {
                             trf("map_reco_line", recos.join(", "))
                         })
-                        .size(11.5),
+                        .size(motif::pt(ui, 11.5)),
                     );
                 });
             }
@@ -15651,7 +15817,7 @@ impl App {
                                 ui.painter().rect_filled(rect, 0.0, *color);
                                 ui.label(
                                     egui::RichText::new(*label)
-                                        .size(10.5)
+                                        .size(motif::pt(ui, 10.5))
                                         .color(motif::text_dim()),
                                 );
                                 ui.add_space(6.0);
@@ -15687,7 +15853,7 @@ impl App {
                     let Some(c) = country else {
                         ui.label(
                             egui::RichText::new(tr("map_detail_empty"))
-                                .size(11.5)
+                                .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         );
                         return;
@@ -15702,10 +15868,14 @@ impl App {
                     let mut any = false;
                     for reco in c.recos() {
                         any = true;
-                        ui.label(egui::RichText::new(reco.label).strong().size(12.0));
+                        ui.label(
+                            egui::RichText::new(reco.label)
+                                .strong()
+                                .size(motif::pt(ui, 12.0)),
+                        );
                         ui.label(
                             egui::RichText::new(reco.detail)
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(4.0);
@@ -15715,12 +15885,12 @@ impl App {
                         ui.label(
                             egui::RichText::new(tr("map_reco_yf"))
                                 .strong()
-                                .size(12.0)
+                                .size(motif::pt(ui, 12.0))
                                 .color(motif::alert()),
                         );
                         ui.label(
                             egui::RichText::new(tr("map_reco_yf_detail"))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(4.0);
@@ -15728,7 +15898,7 @@ impl App {
                     if !any {
                         ui.label(
                             egui::RichText::new(tr("map_reco_calendar_only"))
-                                .size(11.5)
+                                .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         );
                     }
@@ -15745,7 +15915,7 @@ impl App {
                     if !config.disclaimers.vaccins.trim().is_empty() {
                         ui.label(
                             egui::RichText::new(config.disclaimers.vaccins.trim())
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .italics()
                                 .color(motif::text_faint()),
                         );
@@ -15881,7 +16051,7 @@ impl App {
             if !is_today {
                 ui.label(
                     egui::RichText::new(tr("trans_readonly"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             }
@@ -15962,7 +16132,7 @@ impl App {
                     egui::pos2(inner.left() + 6.0, y + row_h / 2.0),
                     egui::Align2::LEFT_CENTER,
                     format!("{:02} h", start + i),
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
                     motif::text_dim(),
                 );
             }
@@ -16043,7 +16213,7 @@ impl App {
                 egui::pos2(block.left() + 5.0, block.top() + (row_h - 6.0) / 2.0),
                 egui::Align2::LEFT_CENTER,
                 label,
-                egui::FontId::proportional(11.5),
+                egui::FontId::proportional(motif::pt(ui, 11.5)),
                 egui::Color32::WHITE,
             );
             let resp = ui.interact(
@@ -16130,7 +16300,7 @@ impl App {
                     } else {
                         h0.clone()
                     },
-                    egui::FontId::proportional(11.5),
+                    egui::FontId::proportional(motif::pt(ui, 11.5)),
                     motif::text(),
                 );
                 if sweep.drag_stopped() {
@@ -16152,11 +16322,11 @@ impl App {
             motif::column(ui, 940.0, |ui| {
                 ui.label(
                     egui::RichText::new(tr("agenda_untimed"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
                 for label in &untimed {
-                    ui.label(egui::RichText::new(label.trim()).size(12.0));
+                    ui.label(egui::RichText::new(label.trim()).size(motif::pt(ui, 12.0)));
                 }
             });
             ui.add_space(6.0);
@@ -16213,7 +16383,7 @@ impl App {
                 egui::pos2(inner.left() + (i as f32 + 0.5) * col_w, inner.top() + 9.0),
                 egui::Align2::CENTER_CENTER,
                 head,
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
                 motif::text_dim(),
             );
         }
@@ -16251,7 +16421,7 @@ impl App {
                 egui::pos2(cell.left() + 6.0, cell.top() + 10.0),
                 egui::Align2::LEFT_CENTER,
                 date.get(8..10).unwrap_or("").trim_start_matches('0'),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
                 if in_month {
                     motif::text()
                 } else {
@@ -16327,7 +16497,7 @@ impl App {
             if rdvs.is_empty() && session.events.is_empty() {
                 ui.label(
                     egui::RichText::new(tr("agenda_day_empty"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
             }
@@ -16366,8 +16536,12 @@ impl App {
                         if ui
                             .add_sized(
                                 [56.0, 20.0],
-                                egui::Button::new(egui::RichText::new(shown).size(12.0).strong())
-                                    .fill(motif::bg()),
+                                egui::Button::new(
+                                    egui::RichText::new(shown)
+                                        .size(motif::pt(ui, 12.0))
+                                        .strong(),
+                                )
+                                .fill(motif::bg()),
                             )
                             .on_hover_text(tr("agenda_hour_tooltip"))
                             .clicked()
@@ -16377,7 +16551,7 @@ impl App {
                     }
                     ui.label(
                         egui::RichText::new(format!("  {}  ", rdv.kind.label()))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(egui::Color32::WHITE)
                             .background_color(kind_color(rdv.kind)),
                     );
@@ -16391,7 +16565,7 @@ impl App {
                     if !rdv.phone.is_empty() {
                         ui.label(
                             egui::RichText::new(&rdv.phone)
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                     }
@@ -16425,17 +16599,21 @@ impl App {
                     if ev.time.is_empty() {
                         ui.add_space(48.0);
                     } else if ev.end_time.is_empty() {
-                        ui.label(egui::RichText::new(&ev.time).size(12.0).strong());
+                        ui.label(
+                            egui::RichText::new(&ev.time)
+                                .size(motif::pt(ui, 12.0))
+                                .strong(),
+                        );
                     } else {
                         ui.label(
                             egui::RichText::new(format!("{}–{}", ev.time, ev.end_time))
-                                .size(12.0)
+                                .size(motif::pt(ui, 12.0))
                                 .strong(),
                         );
                     }
                     ui.label(
                         egui::RichText::new(format!("  {}  ", ev.category.label()))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(egui::Color32::WHITE)
                             .background_color(motif::bg_dark()),
                     );
@@ -16443,7 +16621,7 @@ impl App {
                     if ev.repeat_days > 0 {
                         ui.label(
                             egui::RichText::new(trf("agenda_repeat_mark", ev.repeat_days))
-                                .size(10.0)
+                                .size(motif::pt(ui, 10.0))
                                 .color(motif::text_dim()),
                         );
                     }
@@ -16524,7 +16702,7 @@ impl App {
                 // no → and drew a tofu box between the two hours.
                 ui.label(
                     egui::RichText::new("–")
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_faint()),
                 );
                 ui.add_sized(
@@ -16877,7 +17055,7 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             egui::RichText::new(tr("agenda_filter"))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         if motif::toggle(
@@ -16940,7 +17118,7 @@ impl App {
                                 if overdue.len() > 4 {
                                     ui.label(
                                         egui::RichText::new(trf("dash_more", overdue.len() - 4))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::alert()),
                                     );
                                 }
@@ -17174,7 +17352,7 @@ impl App {
         if session.appointments.is_empty() {
             ui.label(
                 egui::RichText::new(tr("dash_rdv_empty"))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
             );
             return;
@@ -17217,7 +17395,12 @@ impl App {
                                 motif::text_dim()
                             };
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new(header).strong().size(11.5).color(color));
+                            ui.label(
+                                egui::RichText::new(header)
+                                    .strong()
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(color),
+                            );
                         }
                         let hour = if rdv.time.is_empty() {
                             String::new()
@@ -17258,7 +17441,7 @@ impl App {
             // The legend has nine chips: at a narrow grid width it needs
             // two lines, and a fixed one line dropped the last kinds.
             let legend_rows = {
-                let font = egui::FontId::proportional(11.0);
+                let font = egui::FontId::proportional(motif::pt(ui, 11.0));
                 let mut x = 0.0_f32;
                 let mut lines = 1.0_f32;
                 for kind in InterviewKind::ALL {
@@ -17329,7 +17512,7 @@ impl App {
                     egui::pos2(col.center().x, col.top() + 12.0),
                     egui::Align2::CENTER_CENTER,
                     format!("{short} {}", dm.unwrap_or_default()),
-                    egui::FontId::proportional(12.0),
+                    egui::FontId::proportional(motif::pt(ui, 12.0)),
                     if *date == session.today {
                         motif::accent()
                     } else {
@@ -17382,7 +17565,7 @@ impl App {
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
                         label,
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(motif::pt(ui, 11.0)),
                         egui::Color32::WHITE,
                     );
                     let resp =
@@ -17422,7 +17605,7 @@ impl App {
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
                         label,
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(motif::pt(ui, 11.0)),
                         egui::Color32::WHITE,
                     );
                     ui.interact(block, ui.id().with(("wkev", i, ei)), egui::Sense::hover())
@@ -17442,7 +17625,7 @@ impl App {
                         egui::pos2(col.center().x, col.bottom() - 8.0),
                         egui::Align2::CENTER_CENTER,
                         format!("+{}", day_rdvs.len() - max_blocks),
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(motif::pt(ui, 11.0)),
                         motif::text(),
                     );
                 }
@@ -17504,7 +17687,11 @@ impl App {
             let side_by_side = ui.available_width() / 2.0 >= need;
             let cockcroft = |ui: &mut egui::Ui, session: &mut Session| {
                 // --- Cockcroft & Gault ---
-                ui.label(egui::RichText::new(tr("calc_dfg")).strong().size(13.0));
+                ui.label(
+                    egui::RichText::new(tr("calc_dfg"))
+                        .strong()
+                        .size(motif::pt(ui, 13.0)),
+                );
                 egui::Grid::new("calc_dfg")
                     .num_columns(2)
                     .spacing([10.0, 5.0])
@@ -17555,13 +17742,17 @@ impl App {
                 };
                 ui.label(
                     egui::RichText::new(stage)
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             };
             let per_kilo = |ui: &mut egui::Ui, session: &mut Session| {
                 // --- Dose par kilo ---
-                ui.label(egui::RichText::new(tr("calc_perkg")).strong().size(13.0));
+                ui.label(
+                    egui::RichText::new(tr("calc_perkg"))
+                        .strong()
+                        .size(motif::pt(ui, 13.0)),
+                );
                 egui::Grid::new("calc_perkg")
                     .num_columns(2)
                     .spacing([10.0, 5.0])
@@ -17597,7 +17788,7 @@ impl App {
                 );
                 ui.label(
                     egui::RichText::new(tr("calc_perkg_note"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             };
@@ -17614,7 +17805,11 @@ impl App {
 
             // --- Décroissance et accumulation ---
             ui.add_space(10.0);
-            ui.label(egui::RichText::new(tr("calc_halflife")).strong().size(13.0));
+            ui.label(
+                egui::RichText::new(tr("calc_halflife"))
+                    .strong()
+                    .size(motif::pt(ui, 13.0)),
+            );
             ui.horizontal(|ui| {
                 ui.label(tr("calc_t12"));
                 ui.add(
@@ -17679,7 +17874,7 @@ impl App {
                     egui::pos2(x, plot.bottom() + 1.0),
                     egui::Align2::CENTER_TOP,
                     format!("{:.0} h", t12 * i as f64),
-                    egui::FontId::proportional(9.0),
+                    egui::FontId::proportional(motif::pt(ui, 9.0)),
                     motif::text_faint(),
                 );
             }
@@ -17702,7 +17897,7 @@ impl App {
                     egui::pos2(plot.left() + 3.0, y),
                     egui::Align2::LEFT_BOTTOM,
                     label,
-                    egui::FontId::proportional(9.0),
+                    egui::FontId::proportional(motif::pt(ui, 9.0)),
                     motif::text_faint(),
                 );
             }
@@ -17717,7 +17912,7 @@ impl App {
                 ui.add_space(14.0);
                 ui.label(
                     egui::RichText::new(config.disclaimers.calculator.trim())
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .italics()
                         .color(motif::text_dim()),
                 );
@@ -17734,11 +17929,15 @@ impl App {
     /// sentence saying so is read once; two curves on the same axis are
     /// understood at a glance, and can be shown to the patient.
     fn insulin_panel(ui: &mut egui::Ui, session: &mut Session) {
-        ui.label(egui::RichText::new(tr("insulin_title")).strong().size(13.0));
+        ui.label(
+            egui::RichText::new(tr("insulin_title"))
+                .strong()
+                .size(motif::pt(ui, 13.0)),
+        );
         ui.add(
             egui::Label::new(
                 egui::RichText::new(tr("insulin_subtitle"))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             )
             .wrap(),
@@ -17799,7 +17998,7 @@ impl App {
                 egui::pos2(x, plot.bottom() + 1.0),
                 egui::Align2::CENTER_TOP,
                 format!("{h:.0} h"),
-                egui::FontId::proportional(9.0),
+                egui::FontId::proportional(motif::pt(ui, 9.0)),
                 motif::text_faint(),
             );
             h += step_h;
@@ -17841,7 +18040,7 @@ impl App {
             for (i, p) in shown.iter().enumerate() {
                 ui.label(
                     egui::RichText::new(format!("— {}", p.name))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .strong()
                         .color(motif::chart::series_color(i)),
                 );
@@ -17860,7 +18059,7 @@ impl App {
                             &insulin_span(p.duration_min),
                         ],
                     ))
-                    .size(10.5)
+                    .size(motif::pt(ui, 10.5))
                     .color(motif::text_dim()),
                 );
             }
@@ -17869,7 +18068,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(shown[0].note)
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -17953,7 +18152,7 @@ impl App {
             if correction < 0.0 {
                 ui.label(
                     egui::RichText::new(tr("insulin_under_target"))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             }
@@ -17961,7 +18160,7 @@ impl App {
         ui.add(
             egui::Label::new(
                 egui::RichText::new(tr("insulin_titration"))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             )
             .wrap(),
@@ -18044,7 +18243,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("codex_subtitle"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -18114,7 +18313,11 @@ impl App {
                             // column, which hides the one thing the row
                             // is there to say.
                             let on = keyed == Some(i) || (keyed.is_none() && selected == Some(id));
-                            let row = motif::list_row(ui, egui::RichText::new(name).size(12.0), on);
+                            let row = motif::list_row(
+                                ui,
+                                egui::RichText::new(name).size(motif::pt(ui, 12.0)),
+                                on,
+                            );
                             let row = if form.trim().is_empty() {
                                 row
                             } else {
@@ -18141,7 +18344,7 @@ impl App {
             motif::panel(ui, cols[1], Some(tr("codex_sheet")), |ui| {
                 ui.label(
                     egui::RichText::new(tr("codex_pick"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
             });
@@ -18201,18 +18404,24 @@ impl App {
                         }
                     });
                     ui.add_space(6.0);
-                    ui.label(egui::RichText::new(&prep.name).size(16.0).strong());
+                    ui.label(
+                        egui::RichText::new(&prep.name)
+                            .size(motif::pt(ui, 16.0))
+                            .strong(),
+                    );
                     if !prep.form.trim().is_empty() {
                         ui.label(
                             egui::RichText::new(prep.form.trim())
-                                .size(12.0)
+                                .size(motif::pt(ui, 12.0))
                                 .italics()
                                 .color(motif::text_dim()),
                         );
                     }
                     if !prep.indication.trim().is_empty() {
                         ui.add_space(3.0);
-                        ui.label(egui::RichText::new(prep.indication.trim()).size(12.0));
+                        ui.label(
+                            egui::RichText::new(prep.indication.trim()).size(motif::pt(ui, 12.0)),
+                        );
                     }
                     ui.add_space(8.0);
                     // The quantity actually being made. Empty means the
@@ -18221,7 +18430,7 @@ impl App {
                     ui.horizontal(|ui| {
                         ui.label(
                             egui::RichText::new(tr("codex_make"))
-                                .size(11.5)
+                                .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         );
                         if session.codex_target.trim().is_empty() {
@@ -18246,7 +18455,7 @@ impl App {
                     if factor.is_none() && !session.codex_target.trim().is_empty() {
                         ui.label(
                             egui::RichText::new(trf("codex_no_factor", prep.yield_amount.trim()))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::alert()),
                         );
                     }
@@ -18267,21 +18476,21 @@ impl App {
                             ] {
                                 ui.label(
                                     egui::RichText::new(header)
-                                        .size(10.5)
+                                        .size(motif::pt(ui, 10.5))
                                         .color(motif::text_dim()),
                                 );
                             }
                             ui.end_row();
                             for line in &lines {
-                                ui.label(egui::RichText::new(&line.name).size(12.0));
+                                ui.label(egui::RichText::new(&line.name).size(motif::pt(ui, 12.0)));
                                 ui.label(
                                     egui::RichText::new(&line.written)
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                 );
                                 ui.label(
                                     egui::RichText::new(line.scaled(factor.unwrap_or(1.0)))
-                                        .size(12.5)
+                                        .size(motif::pt(ui, 12.5))
                                         .strong()
                                         .color(motif::accent()),
                                 );
@@ -18303,7 +18512,7 @@ impl App {
                                             "{} %",
                                             crate::codex::format_quantity(pct)
                                         ))
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                     ),
                                     None => ui.label(""),
@@ -18322,11 +18531,11 @@ impl App {
                         }
                         motif::section(ui, title);
                         ui.add_space(2.0);
-                        ui.label(egui::RichText::new(body.trim()).size(12.0).color(if alert {
-                            motif::alert()
-                        } else {
-                            motif::text()
-                        }));
+                        ui.label(
+                            egui::RichText::new(body.trim())
+                                .size(motif::pt(ui, 12.0))
+                                .color(if alert { motif::alert() } else { motif::text() }),
+                        );
                         ui.add_space(6.0);
                     }
                     let sources: Vec<&str> = prep
@@ -18342,7 +18551,7 @@ impl App {
                                 tr("tables_sources"),
                                 sources.join(" · ")
                             ))
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .color(motif::text_dim()),
                         );
                         ui.add_space(6.0);
@@ -18413,7 +18622,7 @@ impl App {
         };
         // Titre : x % de y g de préparation.
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(tr("codex_calc_titre")).size(11.5));
+            ui.label(egui::RichText::new(tr("codex_calc_titre")).size(motif::pt(ui, 11.5)));
             field(ui, &mut calc.percent, "5");
             ui.label("%");
             ui.label(tr("codex_calc_of"));
@@ -18425,7 +18634,7 @@ impl App {
                         "codex_calc_mass",
                         crate::codex::format_quantity(crate::codex::mass_for_percent(p, t)),
                     ))
-                    .size(12.0)
+                    .size(motif::pt(ui, 12.0))
                     .strong()
                     .color(motif::accent()),
                 );
@@ -18434,7 +18643,7 @@ impl App {
         ui.add_space(3.0);
         // Dilution : C1·V1 = C2·V2.
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(tr("codex_calc_dilution")).size(11.5));
+            ui.label(egui::RichText::new(tr("codex_calc_dilution")).size(motif::pt(ui, 11.5)));
             field(ui, &mut calc.strong, "0,5");
             ui.label(format!("% {}", tr("codex_calc_to")));
             field(ui, &mut calc.wanted, "0,05");
@@ -18454,7 +18663,7 @@ impl App {
                                     &crate::codex::format_quantity(v - take),
                                 ],
                             ))
-                            .size(12.0)
+                            .size(motif::pt(ui, 12.0))
                             .strong()
                             .color(motif::accent()),
                         );
@@ -18462,7 +18671,7 @@ impl App {
                     None => {
                         ui.label(
                             egui::RichText::new(tr("codex_calc_impossible"))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::alert()),
                         );
                     }
@@ -18472,7 +18681,7 @@ impl App {
         ui.add_space(3.0);
         // Gélules : dose unitaire × nombre, plus la surcharge.
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(tr("codex_calc_capsules")).size(11.5));
+            ui.label(egui::RichText::new(tr("codex_calc_capsules")).size(motif::pt(ui, 11.5)));
             field(ui, &mut calc.dose, "12,5");
             ui.label("mg ×");
             field(ui, &mut calc.count, "30");
@@ -18486,7 +18695,7 @@ impl App {
                         "codex_calc_batch",
                         crate::codex::format_quantity(crate::codex::capsule_batch_mass(d, n, over)),
                     ))
-                    .size(12.0)
+                    .size(motif::pt(ui, 12.0))
                     .strong()
                     .color(motif::accent()),
                 );
@@ -18502,7 +18711,7 @@ impl App {
             .join(" · ");
         ui.label(
             egui::RichText::new(trf("codex_capsule_volumes", volumes))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(motif::text_dim()),
         );
     }
@@ -18533,7 +18742,12 @@ impl App {
                         }
                     });
                     ui.add_space(6.0);
-                    let dim = |t: &str| egui::RichText::new(t).size(11.0).color(motif::text_dim());
+                    // La taille, mesurée avant la fermeture : `motif::pt`
+                    // lit le style, et la fermeture garderait `ui`
+                    // emprunté.
+                    let dim_pt = motif::pt(ui, 11.0);
+                    let dim =
+                        |t: &str| egui::RichText::new(t).size(dim_pt).color(motif::text_dim());
                     let w = ui.available_width().min(680.0);
                     for (label, value, rows) in [
                         (tr("codex_name"), &mut form.name, 1),
@@ -18560,7 +18774,7 @@ impl App {
                     }
                     ui.label(
                         egui::RichText::new(tr("codex_formula_hint"))
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .color(motif::text_dim()),
                     );
                     if let Some(err) = &session.error {
@@ -18740,7 +18954,7 @@ impl App {
                             &crate::classes::FAMILIES.len(),
                         ],
                     ))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -18866,7 +19080,7 @@ impl App {
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(tr("classes_outside_note"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 )
                                 .wrap(),
@@ -18928,7 +19142,7 @@ impl App {
             if !outside && session.class_open.is_none() {
                 ui.label(
                     egui::RichText::new(tr("classes_pick"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -18942,7 +19156,7 @@ impl App {
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(trf("classes_also", c.aliases.join(", ")))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                         )
                         .wrap(),
@@ -18962,7 +19176,7 @@ impl App {
                         if rows.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr("classes_empty"))
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
                         }
@@ -18984,8 +19198,12 @@ impl App {
                                 label.push_str("  —  ");
                                 label.push_str(d.class.trim());
                             }
-                            if motif::list_row(ui, egui::RichText::new(label).size(11.5), false)
-                                .clicked()
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(label).size(motif::pt(ui, 11.5)),
+                                false,
+                            )
+                            .clicked()
                             {
                                 open_card = Some(d.id);
                             }
@@ -19437,13 +19655,15 @@ impl App {
                             scan_now = true;
                         }
                         if let Some((is_error, msg)) = &session.scan_note {
-                            ui.label(egui::RichText::new(msg.as_str()).size(11.0).color(
-                                if *is_error {
-                                    motif::alert()
-                                } else {
-                                    motif::accent()
-                                },
-                            ));
+                            ui.label(
+                                egui::RichText::new(msg.as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(if *is_error {
+                                        motif::alert()
+                                    } else {
+                                        motif::accent()
+                                    }),
+                            );
                         }
                     });
                 }
@@ -19475,7 +19695,7 @@ impl App {
                             if session.scans.is_empty() {
                                 ui.label(
                                     egui::RichText::new(tr("scan_none"))
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                 );
                                 return;
@@ -19491,7 +19711,7 @@ impl App {
                             );
                             let date_w = Self::widest_in(
                                 ui,
-                                egui::FontId::monospace(11.0),
+                                egui::FontId::monospace(motif::pt(ui, 11.0)),
                                 [tr("scan_col_date"), "00/00/0000"].into_iter(),
                             );
                             let size_w = Self::widest(
@@ -19533,8 +19753,13 @@ impl App {
                                 .show(ui, |ui| {
                                     // Le libellé d'abord : c'est le sujet
                                     // de la ligne, et c'est lui qui plie.
+                                    // La taille, mesurée avant la
+                                    // fermeture : `motif::pt` lit le
+                                    // style, et la fermeture garderait
+                                    // `ui` emprunté.
+                                    let dim_pt = motif::pt(ui, 10.5);
                                     let dim = |t: &str| {
-                                        egui::RichText::new(t).size(10.5).color(motif::text_dim())
+                                        egui::RichText::new(t).size(dim_pt).color(motif::text_dim())
                                     };
                                     Self::grid_cell(ui, label_w, dim(tr("scan_col_label")));
                                     if cols == 6 {
@@ -19586,7 +19811,7 @@ impl App {
                                                                 db::format_french_date(&when),
                                                                 size
                                                             ))
-                                                            .size(10.5)
+                                                            .size(motif::pt(ui, 10.5))
                                                             .italics()
                                                             .color(motif::text_faint()),
                                                         );
@@ -19598,7 +19823,7 @@ impl App {
                                                     ui,
                                                     kind_w,
                                                     egui::RichText::new(tr(kind.label_key()))
-                                                        .size(11.0)
+                                                        .size(motif::pt(ui, 11.0))
                                                         .color(motif::chart::series_color(
                                                             kind.series(),
                                                         )),
@@ -19609,7 +19834,7 @@ impl App {
                                                     egui::RichText::new(db::format_french_date(
                                                         &when,
                                                     ))
-                                                    .size(11.0)
+                                                    .size(motif::pt(ui, 11.0))
                                                     .monospace()
                                                     .color(motif::text_dim()),
                                                 );
@@ -19617,7 +19842,7 @@ impl App {
                                                     ui,
                                                     size_w,
                                                     egui::RichText::new(size)
-                                                        .size(10.5)
+                                                        .size(motif::pt(ui, 10.5))
                                                         .color(motif::text_dim()),
                                                 );
                                             } else {
@@ -19672,7 +19897,7 @@ impl App {
                                                                     egui::RichText::new(tr(
                                                                         "scan_link_none",
                                                                     ))
-                                                                    .size(10.5)
+                                                                    .size(motif::pt(ui, 10.5))
                                                                     .color(motif::text_dim()),
                                                                 );
                                                             }
@@ -20204,7 +20429,7 @@ impl App {
             if let Some((is_error, msg)) = &session.stup_note {
                 ui.label(
                     egui::RichText::new(msg.as_str())
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(if *is_error {
                             motif::alert()
                         } else {
@@ -20328,7 +20553,7 @@ impl App {
                             if session.stup_summary.is_empty() {
                                 ui.label(
                                     egui::RichText::new(tr("stup_empty"))
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                 );
                             }
@@ -20350,7 +20575,7 @@ impl App {
                                         format!(" {}", p.unit)
                                     }
                                 ))
-                                .size(11.5);
+                                .size(motif::pt(ui, 11.5));
                                 // La couleur dit ce qui cloche, et le
                                 // libellé du motif est sous la souris : une
                                 // liste de quarante lignes dont chacune
@@ -20445,7 +20670,7 @@ impl App {
             let Some((product, stock, last)) = &open else {
                 ui.label(
                     egui::RichText::new(tr("stup_pick"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -20697,7 +20922,7 @@ impl App {
                             // la bande : deux mesures d'une même chose divergent.
                             ui.label(
                                 egui::RichText::new(stock_txt.as_str())
-                                    .size(13.0)
+                                    .size(motif::pt(ui, 13.0))
                                     .strong()
                                     .color(if *stock < 0.0 {
                                         motif::alert()
@@ -20707,7 +20932,7 @@ impl App {
                             );
                             ui.label(
                                 egui::RichText::new(counted_txt.as_str())
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
                             // La durée maximale de prescription est le nombre sur
@@ -20717,13 +20942,15 @@ impl App {
                             if !rule_txt.is_empty() {
                                 let status = crate::ordonnancier::Status::from_key(&product.status);
                                 let resp = ui.label(
-                                    egui::RichText::new(rule_txt.as_str()).size(10.5).color(
-                                        if status == crate::ordonnancier::Status::Assimile {
-                                            motif::alert()
-                                        } else {
-                                            motif::text_dim()
-                                        },
-                                    ),
+                                    egui::RichText::new(rule_txt.as_str())
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(
+                                            if status == crate::ordonnancier::Status::Assimile {
+                                                motif::alert()
+                                            } else {
+                                                motif::text_dim()
+                                            },
+                                        ),
                                 );
                                 if !product.note.is_empty() {
                                     resp.on_hover_text(product.note.as_str());
@@ -20732,7 +20959,7 @@ impl App {
                             if !pace_txt.is_empty() {
                                 ui.label(
                                     egui::RichText::new(pace_txt.as_str())
-                                        .size(10.5)
+                                        .size(motif::pt(ui, 10.5))
                                         .color(motif::text_dim()),
                                 )
                                 .on_hover_text(tr("stup_pace_tooltip"));
@@ -20740,7 +20967,7 @@ impl App {
                             if !gaps_txt.is_empty() {
                                 ui.label(
                                     egui::RichText::new(gaps_txt.as_str())
-                                        .size(10.5)
+                                        .size(motif::pt(ui, 10.5))
                                         .color(motif::alert()),
                                 )
                                 .on_hover_text(tr("stup_gaps_tooltip"));
@@ -20758,7 +20985,7 @@ impl App {
                                         "stup_renamed",
                                         &[was, &db::format_french_date(day)],
                                     ))
-                                    .size(10.5)
+                                    .size(motif::pt(ui, 10.5))
                                     .color(motif::text_faint()),
                                 );
                                 if session.stup_renames.len() > 1 {
@@ -20888,7 +21115,7 @@ impl App {
                             if session.stup_moves.is_empty() {
                                 ui.label(
                                     egui::RichText::new(tr("stup_no_move"))
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                 );
                                 return;
@@ -21053,7 +21280,7 @@ impl App {
             let Some((product, stock, _)) = open else {
                 ui.label(
                     egui::RichText::new(tr("stup_pick"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -21142,7 +21369,7 @@ impl App {
                                 } else {
                                     tr("stup_quantity")
                                 })
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                             );
                             focus_here |= ui
@@ -21201,7 +21428,7 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(tr("stup_day"))
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
                             focus_here |= ui
@@ -21236,7 +21463,7 @@ impl App {
                                     }
                                     None => tr("stup_no_file").to_owned(),
                                 };
-                                ui.label(egui::RichText::new(who).size(11.0).color(
+                                ui.label(egui::RichText::new(who).size(motif::pt(ui, 11.0)).color(
                                     if on_file.is_some() {
                                         motif::text()
                                     } else {
@@ -21282,7 +21509,8 @@ impl App {
                                         for (id, label) in hits {
                                             if motif::list_row(
                                                 ui,
-                                                egui::RichText::new(label).size(11.0),
+                                                egui::RichText::new(label)
+                                                    .size(motif::pt(ui, 11.0)),
                                                 false,
                                             )
                                             .clicked()
@@ -21393,7 +21621,7 @@ impl App {
                                     } else {
                                         tr("stup_no_gap").to_owned()
                                     })
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(if d.matters() {
                                         motif::alert()
                                     } else {
@@ -21429,7 +21657,7 @@ impl App {
                     }
                     ui.label(
                         egui::RichText::new(tr("stup_no_undo"))
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .color(motif::text_dim()),
                     );
                 });
@@ -21583,7 +21811,7 @@ impl App {
                     "stup_family_line",
                     &[&tr(status.label_key()), &family.max_days],
                 ))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(if status == crate::ordonnancier::Status::Assimile {
                     motif::alert()
                 } else {
@@ -21602,7 +21830,7 @@ impl App {
                     .iter()
                     .any(|(p, _, _)| p.label.eq_ignore_ascii_case(label));
                 let text = egui::RichText::new(format!("{label}  ·  {unit}"))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(if already {
                         motif::text_faint()
                     } else {
@@ -21632,7 +21860,7 @@ impl App {
         if shown == 0 {
             ui.label(
                 egui::RichText::new(tr("stup_catalogue_none"))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
             );
             let typed = query.trim();
@@ -21689,7 +21917,10 @@ impl App {
     /// jamais.
     fn stup_widths(ui: &egui::Ui, width: f32, has_product: bool) -> StupWidths {
         let gap = ui.spacing().item_spacing.x;
-        let mono = |size: f32| egui::FontId::monospace(size);
+        // En points, comme le dessin : une colonne mesurée à onze
+        // pixels et peinte à dix-huit élide la date qu'elle est là pour
+        // porter.
+        let mono = |size: f32| egui::FontId::monospace(motif::pt(ui, size));
         let date = Self::widest_in(ui, mono(11.0), ["00/00/0000"].into_iter());
         let no = Self::widest_in(ui, mono(11.0), ["0000-0000"].into_iter());
         let nature = Self::widest(
@@ -21773,7 +22004,7 @@ impl App {
             w,
             dress(
                 egui::RichText::new(db::format_french_date(&m.happened_on))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .monospace()
                     .color(motif::text_dim()),
             ),
@@ -21796,7 +22027,7 @@ impl App {
                         m.ordo_year as u32,
                         m.ordo_no as u32,
                     ))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .monospace()
                     .color(motif::text_dim()),
                 ),
@@ -21824,7 +22055,11 @@ impl App {
                 Self::grid_cell(
                     ui,
                     product_w,
-                    dress(egui::RichText::new(label).size(11.0).color(motif::text())),
+                    dress(
+                        egui::RichText::new(label)
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text()),
+                    ),
                 );
             }
             None => {
@@ -21854,7 +22089,7 @@ impl App {
             nature_w,
             dress(
                 egui::RichText::new(tr(kind.label_key()))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::chart::series_color(kind.series())),
             ),
         );
@@ -21872,7 +22107,7 @@ impl App {
                 qty_w,
                 dress(
                     egui::RichText::new(text)
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .monospace()
                         .strong()
                         .color(ink),
@@ -21913,7 +22148,7 @@ impl App {
                     w,
                     dress(
                         egui::RichText::new(crate::codex::format_quantity(b))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .monospace()
                             .color(if b < 0.0 {
                                 motif::alert()
@@ -21997,7 +22232,7 @@ impl App {
                         };
                         ui.label(
                             egui::RichText::new(what)
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                     }
@@ -22015,7 +22250,7 @@ impl App {
                     if !side.is_empty() {
                         ui.label(
                             egui::RichText::new(side)
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                         );
                     }
@@ -22032,7 +22267,7 @@ impl App {
                                     "stup_gap",
                                     crate::codex::format_quantity(d.gap()),
                                 ))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::alert()),
                             ));
                         }
@@ -22043,7 +22278,7 @@ impl App {
                     if pieces > 0 {
                         ui.label(
                             egui::RichText::new(trf("stup_line_pieces", pieces))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::accent()),
                         )
                         .on_hover_text(tr("stup_line_pieces_tooltip"));
@@ -22051,7 +22286,7 @@ impl App {
                     if cancelled {
                         ui.label(
                             egui::RichText::new(tr("stup_is_cancelled"))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::alert()),
                         );
                     } else if offer_cancel
@@ -22225,7 +22460,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("vigilance_note"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -22236,7 +22471,7 @@ impl App {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(trn("vigilance_blind", &[&unfiled, &unwatched]))
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .color(motif::text_faint()),
                     )
                     .wrap(),
@@ -22283,7 +22518,7 @@ impl App {
                         if findings.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr("vigilance_none"))
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
                             return;
@@ -22303,7 +22538,7 @@ impl App {
                                     }
                                     ui.label(
                                         egui::RichText::new(f.label.as_str())
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text()),
                                     );
                                     // La question, jamais un verdict :
@@ -22331,9 +22566,11 @@ impl App {
                                     };
                                     let q = ui.add(
                                         egui::Label::new(
-                                            egui::RichText::new(text).size(11.0).color(
-                                                motif::chart::series_color(f.signal.series()),
-                                            ),
+                                            egui::RichText::new(text)
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::chart::series_color(
+                                                    f.signal.series(),
+                                                )),
                                         )
                                         .wrap(),
                                     );
@@ -22350,7 +22587,7 @@ impl App {
                                     }
                                     ui.label(
                                         egui::RichText::new(trf("vigilance_lines", f.lines.len()))
-                                            .size(10.5)
+                                            .size(motif::pt(ui, 10.5))
                                             .color(motif::text_dim()),
                                     )
                                     .on_hover_text(db::format_french_date(&f.last_day));
@@ -22383,7 +22620,7 @@ impl App {
                             if table.is_empty() {
                                 ui.label(
                                     egui::RichText::new(tr("vigilance_no_prescriber"))
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                 );
                                 return;
@@ -22397,7 +22634,7 @@ impl App {
                                     for p in &table {
                                         let name = ui.label(
                                             egui::RichText::new(p.shown.as_str())
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .color(motif::text()),
                                         );
                                         // Les graphies repliées, telles
@@ -22413,12 +22650,12 @@ impl App {
                                         }
                                         ui.label(
                                             egui::RichText::new(trf("vigilance_lines", p.lines))
-                                                .size(10.5)
+                                                .size(motif::pt(ui, 10.5))
                                                 .color(motif::text_dim()),
                                         );
                                         ui.label(
                                             egui::RichText::new(trf("vigilance_files", p.patients))
-                                                .size(10.5)
+                                                .size(motif::pt(ui, 10.5))
                                                 .color(motif::text_dim()),
                                         )
                                         .on_hover_text(
@@ -22501,7 +22738,7 @@ impl App {
             if on {
                 ui.label(
                     egui::RichText::new(tr(key))
-                        .size(10.0)
+                        .size(motif::pt(ui, 10.0))
                         .strong()
                         .color(motif::text_dim()),
                 );
@@ -22613,7 +22850,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("stup_ordo_subtitle"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -22676,12 +22913,19 @@ impl App {
                         motif::alert(),
                     )
                 };
-                ui.add(egui::Label::new(egui::RichText::new(text).size(11.0).color(colour)).wrap());
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(text)
+                            .size(motif::pt(ui, 11.0))
+                            .color(colour),
+                    )
+                    .wrap(),
+                );
             }
             if let Some((is_error, msg)) = &session.stup_note {
                 ui.label(
                     egui::RichText::new(msg.as_str())
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(if *is_error {
                             motif::alert()
                         } else {
@@ -22739,7 +22983,7 @@ impl App {
                             if session.stup_dispensings.is_empty() {
                                 ui.label(
                                     egui::RichText::new(tr("stup_ordo_empty"))
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .color(motif::text_dim()),
                                 );
                                 return;
@@ -22814,7 +23058,7 @@ impl App {
                         if session.stup_recent.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr("stup_no_move"))
-                                    .size(11.5)
+                                    .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
                             return;
@@ -22936,7 +23180,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("dispo_subtitle"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -23009,7 +23253,7 @@ impl App {
                                     ui.add_space(3.0);
                                     ui.label(
                                         egui::RichText::new(family.to_uppercase())
-                                            .size(10.0)
+                                            .size(motif::pt(ui, 10.0))
                                             .color(motif::text_dim()),
                                     );
                                 }
@@ -23018,7 +23262,11 @@ impl App {
                             // cursor marks where Enter would go, which
                             // is not always the same row.
                             let on = keyed == Some(i) || (keyed.is_none() && selected == Some(id));
-                            let row = motif::list_row(ui, egui::RichText::new(name).size(12.0), on);
+                            let row = motif::list_row(
+                                ui,
+                                egui::RichText::new(name).size(motif::pt(ui, 12.0)),
+                                on,
+                            );
                             if keyed == Some(i) {
                                 row.scroll_to_me(None);
                             }
@@ -23039,7 +23287,7 @@ impl App {
             motif::panel(ui, cols[1], Some(tr("dispo_sheet")), |ui| {
                 ui.label(
                     egui::RichText::new(tr("dispo_pick"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
             });
@@ -23099,11 +23347,15 @@ impl App {
                         }
                     });
                     ui.add_space(6.0);
-                    ui.label(egui::RichText::new(&dispo.name).size(16.0).strong());
+                    ui.label(
+                        egui::RichText::new(&dispo.name)
+                            .size(motif::pt(ui, 16.0))
+                            .strong(),
+                    );
                     if !dispo.family.trim().is_empty() {
                         ui.label(
                             egui::RichText::new(dispo.family.trim())
-                                .size(12.0)
+                                .size(motif::pt(ui, 12.0))
                                 .italics()
                                 .color(motif::text_dim()),
                         );
@@ -23124,11 +23376,9 @@ impl App {
                         ui.add_space(2.0);
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(body.trim()).size(12.0).color(if alert {
-                                    motif::alert()
-                                } else {
-                                    motif::text()
-                                }),
+                                egui::RichText::new(body.trim())
+                                    .size(motif::pt(ui, 12.0))
+                                    .color(if alert { motif::alert() } else { motif::text() }),
                             )
                             .wrap(),
                         );
@@ -23143,7 +23393,7 @@ impl App {
                     if !tags.is_empty() {
                         ui.label(
                             egui::RichText::new(tags.join(" · "))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(4.0);
@@ -23162,7 +23412,7 @@ impl App {
                                     tr("tables_sources"),
                                     sources.join(" · ")
                                 ))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                             )
                             .wrap(),
@@ -23174,7 +23424,7 @@ impl App {
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(tr("dispo_lpp_notice"))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .italics()
                                 .color(motif::text_dim()),
                         )
@@ -23236,7 +23486,12 @@ impl App {
                         }
                     });
                     ui.add_space(6.0);
-                    let dim = |t: &str| egui::RichText::new(t).size(11.0).color(motif::text_dim());
+                    // La taille, mesurée avant la fermeture : `motif::pt`
+                    // lit le style, et la fermeture garderait `ui`
+                    // emprunté.
+                    let dim_pt = motif::pt(ui, 11.0);
+                    let dim =
+                        |t: &str| egui::RichText::new(t).size(dim_pt).color(motif::text_dim());
                     let w = ui.available_width().min(680.0);
                     for (label, value, rows) in [
                         (tr("dispo_name"), &mut form.name, 1),
@@ -23264,7 +23519,7 @@ impl App {
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(tr("dispo_family_hint"))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim()),
                         )
                         .wrap(),
@@ -23351,7 +23606,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("proto_subtitle"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -23389,7 +23644,7 @@ impl App {
             motif::panel(ui, cols[1], Some(tr("proto_sheet")), |ui| {
                 ui.label(
                     egui::RichText::new(tr("proto_pick"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
             });
@@ -23419,7 +23674,7 @@ impl App {
             if session.protocols.is_empty() {
                 ui.label(
                     egui::RichText::new(tr("proto_empty"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -23485,7 +23740,7 @@ impl App {
                                 egui::pos2(rect.left() + 8.0, rect.center().y),
                                 egui::Align2::LEFT_CENTER,
                                 elide(ui, &p.title, rect.width() - 34.0, 12.5),
-                                egui::FontId::proportional(12.5),
+                                egui::FontId::proportional(motif::pt(ui, 12.5)),
                                 if on { motif::bg() } else { motif::text() },
                             );
                             // The delete target is the row's right edge.
@@ -23502,7 +23757,7 @@ impl App {
                                 x.center(),
                                 egui::Align2::CENTER_CENTER,
                                 "×",
-                                egui::FontId::proportional(14.0),
+                                egui::FontId::proportional(motif::pt(ui, 14.0)),
                                 if hit.hovered() {
                                     motif::alert()
                                 } else {
@@ -23571,7 +23826,7 @@ impl App {
                                 .add_sized([title_w, 24.0], egui::TextEdit::singleline(&mut title));
                             ui.label(
                                 egui::RichText::new(tr("proto_subject"))
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
                             let sj = ui.add_sized(
@@ -23585,11 +23840,15 @@ impl App {
                             // Read, not typed into: a title is a
                             // heading, and a field around it invites a
                             // typo nobody meant to make.
-                            ui.label(egui::RichText::new(&proto.title).size(15.0).strong());
+                            ui.label(
+                                egui::RichText::new(&proto.title)
+                                    .size(motif::pt(ui, 15.0))
+                                    .strong(),
+                            );
                             if !proto.subject.trim().is_empty() {
                                 ui.label(
                                     egui::RichText::new(&proto.subject)
-                                        .size(11.5)
+                                        .size(motif::pt(ui, 11.5))
                                         .italics()
                                         .color(motif::text_dim()),
                                 );
@@ -23632,7 +23891,7 @@ impl App {
                     if session.protocol_nodes.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("proto_no_steps"))
-                                .size(12.0)
+                                .size(motif::pt(ui, 12.0))
                                 .color(motif::text_dim()),
                         );
                         if editing {
@@ -23688,7 +23947,7 @@ impl App {
                                     db::Branch::Yes => {
                                         ui.label(
                                             egui::RichText::new(tr("proto_branch_yes"))
-                                                .size(10.5)
+                                                .size(motif::pt(ui, 10.5))
                                                 .strong()
                                                 .color(egui::Color32::WHITE)
                                                 .background_color(motif::accent()),
@@ -23697,7 +23956,7 @@ impl App {
                                     db::Branch::No => {
                                         ui.label(
                                             egui::RichText::new(tr("proto_branch_no"))
-                                                .size(10.5)
+                                                .size(motif::pt(ui, 10.5))
                                                 .strong()
                                                 .color(egui::Color32::WHITE)
                                                 .background_color(motif::alert()),
@@ -23951,7 +24210,7 @@ impl App {
                     if !answer.is_empty() {
                         ui.label(
                             egui::RichText::new(answer)
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .strong()
                                 .color(egui::Color32::WHITE)
                                 .background_color(if answer == tr("proto_walk_yes") {
@@ -23964,7 +24223,7 @@ impl App {
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(text)
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         )
                         .wrap(),
@@ -23976,7 +24235,7 @@ impl App {
         ui.add(
             egui::Label::new(
                 egui::RichText::new(&node.text)
-                    .size(16.0)
+                    .size(motif::pt(ui, 16.0))
                     .strong()
                     .color(motif::accent()),
             )
@@ -24024,7 +24283,7 @@ impl App {
             } else {
                 ui.label(
                     egui::RichText::new(tr("proto_walk_done"))
-                        .size(12.0)
+                        .size(motif::pt(ui, 12.0))
                         .color(motif::text_dim()),
                 );
             }
@@ -24044,7 +24303,7 @@ impl App {
         ui.add_space(4.0);
         ui.label(
             egui::RichText::new(tr("proto_walk_keys"))
-                .size(10.5)
+                .size(motif::pt(ui, 10.5))
                 .color(motif::text_dim()),
         );
         if stamp {
@@ -24306,7 +24565,11 @@ impl App {
         {
             let t =
                 &crate::tables::TABLES[session.table_selected.min(crate::tables::TABLES.len() - 1)];
-            ui.label(egui::RichText::new(t.title).strong().size(15.0));
+            ui.label(
+                egui::RichText::new(t.title)
+                    .strong()
+                    .size(motif::pt(ui, 15.0)),
+            );
             ui.add_space(6.0);
         }
         // Sunken box around the table grid, centered. Reference cells
@@ -24406,7 +24669,9 @@ impl App {
                         let resp = ui
                             .add(
                                 egui::Label::new(
-                                    egui::RichText::new(shown.clone()).size(13.0).color(color),
+                                    egui::RichText::new(shown.clone())
+                                        .size(motif::pt(ui, 13.0))
+                                        .color(color),
                                 )
                                 .wrap()
                                 .sense(egui::Sense::click()),
@@ -24437,7 +24702,7 @@ impl App {
                         .fonts(|f| {
                             f.layout(
                                 text.to_owned(),
-                                egui::FontId::proportional(13.0),
+                                egui::FontId::proportional(motif::pt(ui, 13.0)),
                                 motif::ink(),
                                 col_w,
                             )
@@ -24458,7 +24723,10 @@ impl App {
                             if frozen && ci == 0 {
                                 reserve(ui, 0, c, 0.0);
                             } else {
-                                cell(ui, egui::RichText::new(*c).strong().size(13.0));
+                                cell(
+                                    ui,
+                                    egui::RichText::new(*c).strong().size(motif::pt(ui, 13.0)),
+                                );
                             }
                         }
                         ui.end_row();
@@ -24514,7 +24782,12 @@ impl App {
                             let text = t.columns.first().copied().unwrap_or("").to_owned();
                             let color = ui.visuals().strong_text_color();
                             let galley = ui.fonts(|f| {
-                                f.layout(text, egui::FontId::proportional(13.0), color, col_w)
+                                f.layout(
+                                    text,
+                                    egui::FontId::proportional(motif::pt(ui, 13.0)),
+                                    color,
+                                    col_w,
+                                )
                             });
                             ui.painter().galley(at, galley, color);
                             continue;
@@ -24542,7 +24815,7 @@ impl App {
                         let galley = ui.fonts(|f| {
                             f.layout(
                                 shown.clone(),
-                                egui::FontId::proportional(13.0),
+                                egui::FontId::proportional(motif::pt(ui, 13.0)),
                                 color,
                                 col_w,
                             )
@@ -24616,20 +24889,20 @@ impl App {
             // reference nobody can date is a reference nobody trusts.
             ui.label(
                 egui::RichText::new(trf("tables_reviewed", t.reviewed))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .color(motif::accent()),
             );
             ui.add_space(3.0);
             ui.label(
                 egui::RichText::new(tr("tables_sources"))
-                    .size(11.0)
+                    .size(motif::pt(ui, 11.0))
                     .strong()
                     .color(motif::text_dim()),
             );
             for (i, src) in t.sources.iter().enumerate() {
                 ui.label(
                     egui::RichText::new(format!("{}. {}", i + 1, src))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             }
@@ -24640,7 +24913,7 @@ impl App {
                 if !session.table_cells.is_empty() {
                     ui.label(
                         egui::RichText::new(trf("tables_edited", session.table_cells.len()))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::accent()),
                     );
                 }
@@ -24789,7 +25062,7 @@ impl App {
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
                     tr("drug_home_none"),
-                    egui::FontId::proportional(12.0),
+                    egui::FontId::proportional(motif::pt(ui, 12.0)),
                     motif::text_dim(),
                 );
                 return;
@@ -24823,7 +25096,7 @@ impl App {
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
                     tr("drug_home_none"),
-                    egui::FontId::proportional(12.0),
+                    egui::FontId::proportional(motif::pt(ui, 12.0)),
                     motif::text_dim(),
                 );
                 return;
@@ -24855,7 +25128,7 @@ impl App {
                                 chip.center(),
                                 egui::Align2::CENTER_CENTER,
                                 elide(ui, d.status.trim(), chip_w - 8.0, 10.5),
-                                egui::FontId::proportional(10.5),
+                                egui::FontId::proportional(motif::pt(ui, 10.5)),
                                 egui::Color32::WHITE,
                             );
                             ui.painter().text(
@@ -24867,7 +25140,7 @@ impl App {
                                     (rect.right() - chip.right() - 18.0).max(20.0),
                                     13.0,
                                 ),
-                                egui::FontId::proportional(13.0),
+                                egui::FontId::proportional(motif::pt(ui, 13.0)),
                                 motif::text(),
                             );
                             if resp.clicked() {
@@ -24915,7 +25188,7 @@ impl App {
                     } else {
                         egui::RichText::new(k.name.clone())
                     }
-                    .size(11.5);
+                    .size(motif::pt(ui, 11.5));
                     if motif::list_row(ui, text, false)
                         .on_hover_text(tr("drug_kin_open_tooltip"))
                         .clicked()
@@ -25056,7 +25329,7 @@ impl App {
                                     "drug_tech_left",
                                     &[&format!("{left:.0}"), &format!("{:.0}", hl * 5.0)],
                                 ))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                             );
                             // The two sentences go **above** the plot and
@@ -25068,7 +25341,7 @@ impl App {
                             // it.
                             ui.label(
                                 egui::RichText::new(rise.delay_label())
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             )
                             // The tooltip carries the three numbers the
@@ -25119,13 +25392,13 @@ impl App {
                     if !d.toxicity.trim().is_empty() {
                         ui.label(
                             egui::RichText::new(tr("drug_sec_toxicity"))
-                                .size(10.5)
+                                .size(motif::pt(ui, 10.5))
                                 .strong()
                                 .color(motif::alert()),
                         );
                         ui.label(
                             egui::RichText::new(d.toxicity.trim())
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text()),
                         );
                         ui.add_space(6.0);
@@ -25156,7 +25429,7 @@ impl App {
                                     ui.add(
                                         egui::Label::new(
                                             egui::RichText::new(label)
-                                                .size(10.5)
+                                                .size(motif::pt(ui, 10.5))
                                                 .color(motif::text_dim()),
                                         )
                                         .wrap(),
@@ -25170,7 +25443,7 @@ impl App {
                                     ui.add(
                                         egui::Label::new(
                                             egui::RichText::new(value.trim())
-                                                .size(11.5)
+                                                .size(motif::pt(ui, 11.5))
                                                 .color(motif::text()),
                                         )
                                         .truncate(),
@@ -25483,7 +25756,7 @@ impl App {
                 if session.drugs.len() < db::STARTER_DRUG_COUNT / 4 {
                     ui.label(
                         egui::RichText::new(trf("drug_base_sparse", session.drugs.len()))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::alert()),
                     );
                 }
@@ -25771,7 +26044,7 @@ impl App {
                                                 ui.label(&p.posologie);
                                                 ui.label(
                                                     egui::RichText::new(&p.remarque)
-                                                        .size(11.0)
+                                                        .size(motif::pt(ui, 11.0))
                                                         .color(motif::text_dim()),
                                                 );
                                                 ui.horizontal(|ui| {
@@ -25833,7 +26106,7 @@ impl App {
             let caption_h = ui.fonts(|f| {
                 f.layout_no_wrap(
                     "X".to_owned(),
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
                     motif::text_dim(),
                 )
                 .size()
@@ -25934,7 +26207,7 @@ impl App {
                 if session.drug_patients.is_empty() {
                     ui.label(
                         egui::RichText::new(tr("drug_patients_none"))
-                            .size(11.5)
+                            .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     );
                 } else if let Some(id) = Self::drug_patients_pane(ui, session) {
@@ -25962,7 +26235,7 @@ impl App {
                     .show(ctx, |ui| {
                         ui.label(
                             egui::RichText::new(tr("drug_class_note_hint"))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(6.0);
@@ -26347,7 +26620,7 @@ impl App {
             egui::pos2(rect.left() + 12.0, rect.top() + 13.0),
             egui::Align2::LEFT_CENTER,
             caption.trim_end(),
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(motif::pt(ui, 10.0)),
             motif::text_dim(),
         );
         motif::rule(
@@ -26385,7 +26658,7 @@ impl App {
                 egui::pos2(rect.right() - 12.0, rect.top() + 46.0),
                 egui::Align2::RIGHT_CENTER,
                 elide(ui, note, rect.width() * 0.45, 10.5),
-                egui::FontId::proportional(10.5),
+                egui::FontId::proportional(motif::pt(ui, 10.5)),
                 motif::text_faint(),
             );
         }
@@ -26535,7 +26808,7 @@ impl App {
             if let Some(notice) = &session.export_notice {
                 ui.label(
                     egui::RichText::new(elide(ui, notice, 260.0, 10.5))
-                        .size(10.5)
+                        .size(motif::pt(ui, 10.5))
                         .color(motif::text_faint()),
                 )
                 .on_hover_text(notice.as_str());
@@ -26608,7 +26881,7 @@ impl App {
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
                         "•••",
-                        egui::FontId::proportional(10.0),
+                        egui::FontId::proportional(motif::pt(ui, 10.0)),
                         motif::text_dim(),
                     );
                     if resp.on_hover_text(tr("dash_discreet_tooltip")).clicked() {
@@ -26933,14 +27206,18 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("  {}  ", tag.0))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(tag.1),
                             );
-                            if motif::list_row(ui, egui::RichText::new(&w.name).size(12.5), false)
-                                .on_hover_text(&w.first)
-                                .clicked()
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(&w.name).size(motif::pt(ui, 12.5)),
+                                false,
+                            )
+                            .on_hover_text(&w.first)
+                            .clicked()
                             {
                                 open = Some(w.patient_id);
                             }
@@ -26973,7 +27250,7 @@ impl App {
                             };
                             ui.label(
                                 egui::RichText::new(format!("  {word}  "))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(colour),
@@ -26984,7 +27261,7 @@ impl App {
                                     "loc_due_line",
                                     &[&w.name, &w.label, &db::format_french_date(&w.renewal)],
                                 ))
-                                .size(12.0),
+                                .size(motif::pt(ui, 12.0)),
                                 false,
                             )
                             .clicked()
@@ -27129,7 +27406,7 @@ impl App {
             let Some(map) = session.graph_map.clone() else {
                 ui.label(
                     egui::RichText::new(tr("graph_none"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -27220,7 +27497,7 @@ impl App {
                     egui::pos2(x, y),
                     anchor,
                     &n.name,
-                    egui::FontId::proportional(11.5),
+                    egui::FontId::proportional(motif::pt(ui, 11.5)),
                     if resp.hovered() {
                         motif::text()
                     } else {
@@ -27255,7 +27532,7 @@ impl App {
                 egui::pos2(mid.x, mid.y + 24.0),
                 egui::Align2::CENTER_TOP,
                 &map.centre.1,
-                egui::FontId::proportional(13.0),
+                egui::FontId::proportional(motif::pt(ui, 13.0)),
                 motif::text(),
             );
         });
@@ -27287,19 +27564,19 @@ impl App {
             if !dropped.is_empty() {
                 ui.label(
                     egui::RichText::new(dropped.join(" · "))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             } else if let Some(note) = &session.graph_note {
                 ui.label(
                     egui::RichText::new(note.as_str())
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::accent()),
                 );
             } else if map.is_empty() && session.graph_centre.is_some() {
                 ui.label(
                     egui::RichText::new(trf("graph_alone", &centre_name))
-                        .size(11.0)
+                        .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
             }
@@ -27356,7 +27633,7 @@ impl App {
             });
             ui.label(
                 egui::RichText::new(tr("mono_subtitle"))
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
             );
             ui.add_space(10.0);
@@ -27401,7 +27678,7 @@ impl App {
             if typed < 3 {
                 ui.label(
                     egui::RichText::new(tr("mono_short"))
-                        .size(11.5)
+                        .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 );
                 return;
@@ -27419,7 +27696,7 @@ impl App {
             };
             ui.label(
                 egui::RichText::new(count)
-                    .size(11.5)
+                    .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
             );
             ui.add_space(6.0);
@@ -27432,7 +27709,7 @@ impl App {
                     } else {
                         tr("mono_no_hit")
                     })
-                    .size(12.0),
+                    .size(motif::pt(ui, 12.0)),
                 );
                 return;
             }
@@ -27468,7 +27745,7 @@ impl App {
                                 }
                                 ui.label(
                                     egui::RichText::new(head)
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                             });
@@ -27545,7 +27822,7 @@ impl App {
                     "tables_search_count",
                     &[&hits.len(), &crate::tables::TABLES.len()],
                 ))
-                .size(11.5)
+                .size(motif::pt(ui, 11.5))
                 .color(motif::text_dim()),
             );
             ui.add_space(6.0);
@@ -27570,7 +27847,7 @@ impl App {
                                 }
                                 ui.label(
                                     egui::RichText::new(cells.first().cloned().unwrap_or_default())
-                                        .size(12.5)
+                                        .size(motif::pt(ui, 12.5))
                                         .strong(),
                                 );
                             });
@@ -27590,7 +27867,7 @@ impl App {
                                     ui.add(
                                         egui::Label::new(
                                             egui::RichText::new(rest)
-                                                .size(11.5)
+                                                .size(motif::pt(ui, 11.5))
                                                 .color(motif::text_dim()),
                                         )
                                         .wrap(),
@@ -27630,23 +27907,27 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.label(
                                 egui::RichText::new(format!("  {}  ", s.kind.label()))
-                                    .size(10.0)
+                                    .size(motif::pt(ui, 10.0))
                                     .strong()
                                     .color(egui::Color32::WHITE)
                                     .background_color(motif::accent()),
                             );
                             ui.label(
                                 egui::RichText::new(format!("{} / {}", s.done, s.total))
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
-                            if motif::list_row(ui, egui::RichText::new(&s.name).size(12.5), false)
-                                .on_hover_text(if s.last.is_empty() {
-                                    tr("dash_schedule_tooltip").to_owned()
-                                } else {
-                                    trf("dash_schedule_last", db::format_french_date(&s.last))
-                                })
-                                .clicked()
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(&s.name).size(motif::pt(ui, 12.5)),
+                                false,
+                            )
+                            .on_hover_text(if s.last.is_empty() {
+                                tr("dash_schedule_tooltip").to_owned()
+                            } else {
+                                trf("dash_schedule_last", db::format_french_date(&s.last))
+                            })
+                            .clicked()
                             {
                                 open = Some(s.patient_id);
                             }
@@ -27690,7 +27971,7 @@ impl App {
                 inner.center(),
                 egui::Align2::CENTER_CENTER,
                 "• • •",
-                egui::FontId::proportional(16.0),
+                egui::FontId::proportional(motif::pt(ui, 16.0)),
                 motif::text_dim(),
             );
             return;
@@ -27701,7 +27982,7 @@ impl App {
                 inner.center(),
                 egui::Align2::CENTER_CENTER,
                 tr("dash_empty"),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
                 motif::text_dim(),
             );
             return;
@@ -27813,7 +28094,7 @@ impl App {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 tr("dash_rdv_empty"),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
                 motif::text_dim(),
             );
             return None;
@@ -27844,7 +28125,7 @@ impl App {
                 egui::pos2(rows[1].left(), rows[1].center().y),
                 egui::Align2::LEFT_CENTER,
                 tr("dash_load_caption"),
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(motif::pt(ui, 10.0)),
                 motif::text_faint(),
             );
         }
@@ -27900,7 +28181,7 @@ impl App {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 tr("dash_recent_empty"),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
                 motif::text_dim(),
             );
             return None;
@@ -27937,7 +28218,7 @@ impl App {
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
                 tr("dash_today_notes_empty"),
-                egui::FontId::proportional(12.0),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
                 motif::text_dim(),
             );
             return;
@@ -27950,7 +28231,7 @@ impl App {
                     for note in &notes {
                         ui.label(
                             egui::RichText::new(note.stamp())
-                                .size(10.0)
+                                .size(motif::pt(ui, 10.0))
                                 .color(operator_color(&note.operator)),
                         );
                         ui.add(egui::Label::new(rich_text(&note.body, 12.0, motif::text())).wrap());
@@ -28428,7 +28709,7 @@ impl eframe::App for App {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new(summary)
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
                     // Each count is a way in: clicking goes where the
@@ -28440,8 +28721,12 @@ impl eframe::App for App {
                                     to: WorkTab| {
                         ui.add_space(6.0);
                         let resp = ui.add(
-                            egui::Label::new(egui::RichText::new(text).size(11.0).color(color))
-                                .sense(egui::Sense::click()),
+                            egui::Label::new(
+                                egui::RichText::new(text)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(color),
+                            )
+                            .sense(egui::Sense::click()),
                         );
                         if resp.on_hover_text(hint).clicked() {
                             status_goto = Some(to);
@@ -28477,7 +28762,7 @@ impl eframe::App for App {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             egui::RichText::new(trf("lock_db_path", db_file))
-                                .size(11.0)
+                                .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
                         // Who is stamping the notes, so a shared post
@@ -28486,7 +28771,7 @@ impl eframe::App for App {
                         if !operator.is_empty() {
                             ui.label(
                                 egui::RichText::new(trf("status_operator", &operator))
-                                    .size(11.0)
+                                    .size(motif::pt(ui, 11.0))
                                     .color(operator_color(&operator)),
                             );
                         }
@@ -28709,7 +28994,7 @@ impl eframe::App for App {
                     });
                     ui.label(
                         egui::RichText::new(trf("tpl_path", path.display()))
-                            .size(11.0)
+                            .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
                     // The markers this template may use: one mistyped
@@ -28727,7 +29012,7 @@ impl eframe::App for App {
                                 "tpl_markers",
                                 crate::pdf::template_markers(key).join("  "),
                             ))
-                            .size(10.5)
+                            .size(motif::pt(ui, 10.5))
                             .color(motif::text_dim()),
                         )
                         .wrap(),
@@ -29040,7 +29325,7 @@ impl eframe::App for App {
                                 motif::section(ui, tr("opts_operators"));
                                 ui.label(
                                     egui::RichText::new(tr("opts_operators_hint"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                                 ui.add_space(4.0);
@@ -29057,7 +29342,7 @@ impl eframe::App for App {
                                         ] {
                                             ui.label(
                                                 egui::RichText::new(header)
-                                                    .size(11.0)
+                                                    .size(motif::pt(ui, 11.0))
                                                     .color(motif::text_dim()),
                                             );
                                         }
@@ -29107,7 +29392,7 @@ impl eframe::App for App {
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(tr("loc_options_hint"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     )
                                     .wrap(),
@@ -29116,7 +29401,7 @@ impl eframe::App for App {
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         egui::RichText::new(tr("loc_opt_notice"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
                                     let mut notice = editor.cfg.locations.notice_days.to_string();
@@ -29148,7 +29433,7 @@ impl eframe::App for App {
                                         ] {
                                             ui.label(
                                                 egui::RichText::new(header)
-                                                    .size(11.0)
+                                                    .size(motif::pt(ui, 11.0))
                                                     .color(motif::text_dim()),
                                             );
                                         }
@@ -29311,7 +29596,7 @@ impl eframe::App for App {
                                         ui.label(dim(tr("about_db")));
                                         ui.label(
                                             egui::RichText::new(about_db.display().to_string())
-                                                .size(11.5),
+                                                .size(motif::pt(ui, 11.5)),
                                         );
                                         ui.end_row();
                                         if let Some(bytes) = about_db_size {
@@ -29333,7 +29618,7 @@ impl eframe::App for App {
                                     ui.add(
                                         egui::Label::new(
                                             egui::RichText::new(tr("about_db_found"))
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .color(motif::alert()),
                                         )
                                         .wrap(),
@@ -29364,27 +29649,27 @@ impl eframe::App for App {
                                 if let Some(step) = &maint_running {
                                     ui.label(
                                         egui::RichText::new(step.as_str())
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::accent()),
                                     );
                                 }
                                 if about_checking {
                                     ui.label(
                                         egui::RichText::new(tr("about_checking"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
                                 }
                                 if let Some((is_error, msg)) = &about_note {
                                     ui.add(
                                         egui::Label::new(
-                                            egui::RichText::new(msg.as_str()).size(11.5).color(
-                                                if *is_error {
+                                            egui::RichText::new(msg.as_str())
+                                                .size(motif::pt(ui, 11.5))
+                                                .color(if *is_error {
                                                     motif::alert()
                                                 } else {
                                                     motif::accent()
-                                                },
-                                            ),
+                                                }),
                                         )
                                         .wrap(),
                                     );
@@ -29393,7 +29678,7 @@ impl eframe::App for App {
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(tr("about_offline"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     )
                                     .wrap(),
@@ -29408,7 +29693,7 @@ impl eframe::App for App {
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(tr("opts_vitale_hint"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     )
                                     .wrap(),
@@ -29463,7 +29748,7 @@ impl eframe::App for App {
                                 motif::section(ui, tr("opts_mentions"));
                                 ui.label(
                                     egui::RichText::new(tr("opts_mentions_hint"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                                 ui.add_space(6.0);
@@ -29615,7 +29900,7 @@ impl eframe::App for App {
                                         ui.label("");
                                         ui.label(
                                             egui::RichText::new(tr("opts_restart"))
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .color(motif::text_dim()),
                                         );
                                         ui.end_row();
@@ -29768,7 +30053,7 @@ impl eframe::App for App {
                                             ui.add(
                                                 egui::Label::new(
                                                     egui::RichText::new(text)
-                                                        .size(11.0)
+                                                        .size(motif::pt(ui, 11.0))
                                                         .color(motif::text_dim()),
                                                 )
                                                 .wrap(),
@@ -29798,7 +30083,7 @@ impl eframe::App for App {
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(tr("opts_scans_hint"))
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     )
                                     .wrap(),
@@ -29835,7 +30120,7 @@ impl eframe::App for App {
                                                             .unwrap_or_default(),
                                                     ],
                                                 ))
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .color(motif::text_dim()),
                                             )
                                             .wrap(),
@@ -29851,7 +30136,7 @@ impl eframe::App for App {
                                                     "opts_scan_legacy",
                                                     legacy,
                                                 ))
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .color(motif::alert()),
                                             )
                                             .wrap(),
@@ -29882,7 +30167,7 @@ impl eframe::App for App {
                                                             .unwrap_or_default(),
                                                     ],
                                                 ))
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .color(motif::text_dim()),
                                             )
                                             .wrap(),
@@ -29948,7 +30233,7 @@ impl eframe::App for App {
                                         egui::Button::new(
                                             egui::RichText::new(danger)
                                                 .color(egui::Color32::WHITE)
-                                                .size(12.0),
+                                                .size(motif::pt(ui, 12.0)),
                                         )
                                         .fill(motif::alert()),
                                     );
@@ -29967,13 +30252,13 @@ impl eframe::App for App {
                                 if let Some(step) = &maint_running {
                                     ui.label(
                                         egui::RichText::new(step.as_str())
-                                            .size(11.0)
+                                            .size(motif::pt(ui, 11.0))
                                             .color(motif::accent()),
                                     );
                                 }
                                 ui.label(
                                     egui::RichText::new(tr("opts_db_note"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                             }
@@ -29981,12 +30266,12 @@ impl eframe::App for App {
                                 motif::section(ui, tr("opts_fees"));
                                 ui.label(
                                     egui::RichText::new(tr("opts_fees_note"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                                 ui.label(
                                     egui::RichText::new(tr("opts_fees_rules"))
-                                        .size(11.0)
+                                        .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
                                 ui.add_space(4.0);
@@ -30049,7 +30334,7 @@ impl eframe::App for App {
                                                         kind.and_then(|k| k.act_code(year))
                                                             .unwrap_or("—"),
                                                     )
-                                                    .size(11.0)
+                                                    .size(motif::pt(ui, 11.0))
                                                     .strong()
                                                     .color(motif::accent()),
                                                 );
@@ -30086,7 +30371,7 @@ impl eframe::App for App {
                                         ui.label(dim(tr("opts_fee_adhesion")));
                                         ui.label(
                                             egui::RichText::new(db::ADHESION_CODE)
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .strong()
                                                 .color(motif::accent()),
                                         );
@@ -30104,7 +30389,7 @@ impl eframe::App for App {
                                         ui.label(dim(tr("opts_fee_remote")));
                                         ui.label(
                                             egui::RichText::new(db::REMOTE_CODE)
-                                                .size(11.0)
+                                                .size(motif::pt(ui, 11.0))
                                                 .strong()
                                                 .color(motif::accent()),
                                         );
@@ -30523,6 +30808,51 @@ mod tests {
         );
     }
 
+    /// **Une taille de texte non plus.**
+    ///
+    /// `RichText::size(11.0)` est un nombre de pixels, point : l'échelle
+    /// de `[ui] text_scale` passe par le style, et un littéral ne passe
+    /// pas par le style. Quatre cent sept d'entre eux faisaient qu'à
+    /// 1,6 les légendes, les comptes, les dates du registre et les
+    /// libellés à côté de chaque chiffre restaient à onze pixels pendant
+    /// que les boutons autour d'eux grandissaient de moitié — c'est-à-
+    /// dire que le texte le plus petit, celui que quelqu'un qui
+    /// agrandit la typographie a le plus besoin de voir grandir, était
+    /// le seul à ne pas bouger. `motif::pt(ui, 11.0)`, c'est ce onze,
+    /// mis à l'échelle.
+    ///
+    /// Et **la mesure passe par la même fonction que le dessin** :
+    /// mesurée à onze et peinte à dix-huit, une colonne élide tout ce
+    /// qu'elle porte.
+    #[test]
+    fn no_font_size_is_written_in_pixels() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblés, sinon le test se trouve lui-même.
+        let calls = [
+            concat!(".si", "ze("),
+            concat!("FontId::propor", "tional("),
+            concat!("FontId::mono", "space("),
+        ];
+        let mut offenders: Vec<String> = Vec::new();
+        for (i, l) in SOURCE.lines().enumerate() {
+            for call in calls {
+                let mut rest = l;
+                while let Some((_, tail)) = rest.split_once(call) {
+                    if tail.starts_with(|c: char| c.is_ascii_digit()) {
+                        offenders.push(format!("app.rs:{} : {}", i + 1, l.trim()));
+                    }
+                    rest = tail;
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "une taille de texte passe par motif::pt, elle ne s'écrit pas \
+             en pixels :\n{}",
+            offenders.join("\n")
+        );
+    }
+
     /// **Un seuil de bascule non plus.**
     ///
     /// « Deux colonnes si la fenêtre fait plus de mille quatre-vingts
@@ -30856,6 +31186,78 @@ mod tests {
         // suivante : sans quoi ce qui glisse dessous se lit au travers.
         assert!(band.left() <= at.x && band.right() >= at.x + 120.0);
         assert!(band.top() <= gone.top() && band.bottom() >= gone.bottom());
+    }
+
+    /// **Une feuille déjà collée ne coûte pas la seule divergence.**
+    ///
+    /// L'onglet porte trois panneaux et n'a pas la place des trois sur
+    /// un volet de comptoir : à 1024x700 avec le texte à 1,6, la tête du
+    /// panneau des réponses coûte deux rangées de boutons, la boîte de
+    /// collage réclame ses cinq lignes et demie, et il ne reste **rien**
+    /// pour ce que l'onglet existe pour montrer. C'est la règle du
+    /// registre — sur un panneau trop court, la garniture part la
+    /// première : la feuille se range en une rangée qui dit combien de
+    /// lignes elle porte, et « Modifier… » la rouvre.
+    ///
+    /// Un partage est de l'arithmétique, donc il se vérifie sans écran.
+    #[test]
+    fn a_pasted_sheet_never_costs_the_last_divergence() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new(Vec::new());
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let line = ui.text_style_height(&egui::TextStyle::Body);
+                    let mut v = Vec::new();
+                    // Le volet que l'onglet reçoit à 1024x700 les deux
+                    // docks ouverts, et deux voisins de part et d'autre.
+                    for h in [300.0_f32, 340.0, 420.0] {
+                        let work =
+                            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(620.0, h));
+                        let head = App::concil_head(ui, work.width());
+                        // Feuille collée, repli non forcé.
+                        let (band, folded, _) = App::concil_band(ui, work, 5, false);
+                        let least = App::concil_sheet_folded_height(ui, work.width(), 5);
+                        v.push((h, head, band, folded, line, least));
+                        // Rouverte à la main, elle reprend son volet.
+                        let (open_band, open_folded, _) = App::concil_band(ui, work, 5, true);
+                        assert!(
+                            !open_folded,
+                            "échelle {scale} : « Modifier… » ne rouvre rien"
+                        );
+                        assert!(
+                            open_band >= band,
+                            "échelle {scale} : rouverte, la feuille est plus petite"
+                        );
+                        // Vide, elle garde son volet : on ne range pas la
+                        // boîte dans laquelle on va coller.
+                        let (_, empty_folded, _) = App::concil_band(ui, work, 0, false);
+                        assert!(
+                            !empty_folded,
+                            "échelle {scale} : une feuille vide se range, \
+                             et il n'y a plus où coller"
+                        );
+                    }
+                    *seen.borrow_mut() = v;
+                });
+            });
+            for (h, head, band, folded, line, least) in seen.into_inner() {
+                // **La feuille ne prend jamais plus qu'il ne faut.** Ce
+                // que la réponse doit garder, c'est sa tête et une
+                // divergence ; ce que la feuille peut prendre, c'est le
+                // reste — et quand il n'y a pas de reste, son minimum
+                // replié, après quoi la réponse défile, ce qu'elle sait
+                // faire. C'est le plancher de la feuille gagnant contre
+                // celui de la réponse qui vidait l'onglet.
+                let most = (h - 8.0 - head - line).max(0.0).max(least);
+                assert!(
+                    band <= most + 0.5,
+                    "échelle {scale}, volet {h} : la feuille prend {band} px \
+                     quand {most} suffisent (repliée : {folded})"
+                );
+            }
+        }
     }
 
     /// **Une boîte de dialogue tient dans l'écran.**
@@ -31270,7 +31672,8 @@ mod tests {
                                 });
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(tr("codex_subtitle")).size(11.5),
+                                        egui::RichText::new(tr("codex_subtitle"))
+                                            .size(motif::pt(ui, 11.5)),
                                     )
                                     .wrap(),
                                 );

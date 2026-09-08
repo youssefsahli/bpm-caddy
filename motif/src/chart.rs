@@ -82,7 +82,7 @@ fn grid(
     steps: usize,
     fmt: &dyn Fn(f64) -> String,
 ) -> egui::Rect {
-    let font = egui::FontId::proportional(9.5);
+    let font = egui::FontId::proportional(crate::pt(ui, 9.5));
     let gutter = (0..=steps)
         .map(|i| {
             let v = max * i as f64 / steps as f64;
@@ -192,7 +192,7 @@ pub fn bars(
                 egui::pos2(x0 + slot / 2.0, area.bottom() + 8.0),
                 egui::Align2::CENTER_CENTER,
                 g.label,
-                egui::FontId::proportional(9.5),
+                egui::FontId::proportional(crate::pt(ui, 9.5)),
                 if over {
                     crate::text()
                 } else {
@@ -461,7 +461,7 @@ pub fn pips(ui: &egui::Ui, rect: egui::Rect, filled: usize, total: usize, color:
             egui::pos2(rect.right() + 4.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             format!("+{}", filled - total),
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(crate::pt(ui, 10.0)),
             crate::alert(),
         );
     }
@@ -517,7 +517,7 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
                     ui.fonts(|f| {
                         f.layout_no_wrap(
                             (*label).to_owned(),
-                            egui::FontId::proportional(11.0),
+                            egui::FontId::proportional(crate::pt(ui, 11.0)),
                             crate::text(),
                         )
                         .size()
@@ -538,7 +538,7 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
                 egui::pos2(rect.left() + 14.0, rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 *label,
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(crate::pt(ui, 11.0)),
                 crate::text_dim(),
             );
         }
