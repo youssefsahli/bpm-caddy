@@ -1080,7 +1080,28 @@ pub fn section(ui: &mut egui::Ui, label: &str) {
     ui.horizontal(|ui| {
         ui.add_space(4.0);
         let sz = pt(ui, 13.0);
-        ui.label(egui::RichText::new(label).strong().size(sz));
+        // **L'intitulé tient dans ce qu'on lui donne.** Posé sans
+        // limite, il s'étalait et le volet le tranchait sans rien dire :
+        // dans la liste des pays, « Amérique du Nord » se lisait
+        // « Amérique du » et « Amérique centrale » « Amérique cen », au
+        // ras du bord, sans même l'ellipse qui aurait dit qu'il manquait
+        // quelque chose. Même famille que le titre de [`panel`], qui
+        // peignait par-dessus la gouttière : un `Painter` peint où on
+        // lui dit, et rien ne l'arrête.
+        //
+        // Le filet est la décoration et c'est lui qui cède déjà ; ici
+        // c'est l'intitulé qui s'élide, une fois qu'il n'y a plus de
+        // filet à sacrifier.
+        //
+        // On s'en remet à l'élision d'egui, qui mesure sur la largeur
+        // réelle du dessin : dans une zone défilante,
+        // `available_width` est celle du contenu et non celle qu'on
+        // voit, si bien qu'une borne calculée ici ne mord pas. Deux
+        // lignes seraient mieux — « Amérique du Nord » et « Amérique
+        // centrale » s'élident tous deux en « Amérique… » — mais elles
+        // demandent cette largeur-là, qu'on n'a pas ici. L'ellipse dit
+        // au moins qu'il manque quelque chose ; la coupe muette, non.
+        ui.add(egui::Label::new(egui::RichText::new(label).strong().size(sz)).truncate());
         // A heading long enough to fill the row leaves nothing for the
         // rule — and egui panics on a negative allocation. The rule is
         // the decoration here, so it is what gives way.

@@ -16085,7 +16085,26 @@ impl App {
             // 44 px of panel chrome: the inset title, its rule, and the
             // padding above and below. Leaving it out cost the band a
             // row, and the last lens with it.
-            (44.0 + row * lines).min(body.height() * 0.35)
+            let want = 44.0 + row * lines;
+            let cap = body.height() * 0.35;
+            if want <= cap {
+                want
+            } else {
+                // **Et le plafond tombe sur une rangée entière.**
+                // Plafonnée aux pixels, la bande montrait deux rangées
+                // de loupes et le haut d'une troisième : une pastille
+                // coupée par le milieu se lit « cassé » et non « il y en
+                // a d'autres ». Ici, contrairement à la bande du
+                // dossier, une rangée au moins doit rester — les
+                // quarante-quatre pixels d'en-tête sont le cadre du
+                // panneau et ne portent aucune loupe.
+                44.0 + whole_rows(
+                    cap - 44.0,
+                    Self::row_height(ui),
+                    ui.spacing().item_spacing.y,
+                    lines,
+                )
+            }
         };
         let rows = motif::split_rows(body, &[lens_h, 0.0], 8.0);
         motif::panel(ui, rows[0], Some(tr("map_lens_title")), |ui| {
