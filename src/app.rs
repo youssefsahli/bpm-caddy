@@ -1087,6 +1087,13 @@ fn table_shape(avail: f32, floor: f32, shapes: &[(usize, f32)]) -> (usize, f32) 
 /// Le gabarit est le « 0 » de la fonte du corps : dans presque toutes
 /// les faces c'est la plus large des figures, donc la largeur obtenue
 /// tient ce qu'on y met plutôt que sa moyenne.
+/// Le partage du carnet, pour le test : une méthode associée ne se
+/// nomme pas depuis `mod tests` sans passer par le type.
+#[cfg(test)]
+fn carnet_split_for_test(inner_h: f32, form_full: f32, table_min: f32) -> (f32, bool) {
+    App::carnet_split(inner_h, form_full, table_min)
+}
+
 fn chars_wide(ui: &egui::Ui, n: f32) -> f32 {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let ch = ui.fonts(|f| f.glyph_width(&font, '0'));
@@ -9564,7 +9571,16 @@ impl App {
         let mut name_field: Option<egui::Response> = None;
         let mut rest: Vec<egui::Response> = Vec::new();
 
-        motif::panel(ui, rect, Some(tr("vacc_section")), |ui| {
+        // **Le compte est dans la légende du panneau.** Elle est déjà
+        // dessinée : il n'en coûte pas une ligne, et sur un volet trop
+        // court pour la table — où le formulaire prend tout — c'est ce
+        // qui reste pour dire que le carnet n'est pas vide.
+        let caption = if lines.is_empty() {
+            tr("vacc_section").to_owned()
+        } else {
+            trf("vacc_section_count", lines.len())
+        };
+        motif::panel(ui, rect, Some(&caption), |ui| {
             let inner = ui.max_rect();
             // The line being written wraps onto two rows on a narrow
             // file. Its fields are fixed-width boxes, not buttons, so
@@ -9598,206 +9614,228 @@ impl App {
             let table_min = line * 3.0 + 10.0;
             let form_full = (Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows
                 + Self::carnet_notice_h(ui, session, config);
-            let form_h = if inner.height() - form_full - 6.0 >= table_min {
-                form_full
-            } else {
-                // Les deux ne tiennent pas : la rangée où l'on tape
-                // passe. C'est l'arbitrage de la maison, et c'est aussi
-                // là que « Replier » existe — le bandeau du dossier rend
-                // deux cents pixels d'un clic, et alors les deux
-                // tiennent sans qu'on ait rien à arbitrer.
-                form_full.min((inner.height() - line).max(Self::row_height(ui) + 12.0))
-            };
+            // Les deux ne tiennent pas : **la table cède entièrement**,
+            // et non d'une ligne. C'est l'arbitrage de la maison — une
+            // rangée de formulaire coupée ne se tape pas — mais lui
+            // laisser *une* ligne le trahissait des deux côtés : une
+            // ligne de table ne se lit pas, et la rangée « Imprimer le
+            // carnet » sortait quand même par le bas, tranchée de vingt
+            // pixels. À la place, une ligne dit combien de doses le
+            // carnet porte, et où aller les lire : « Replier » rend le
+            // bandeau du dossier, et alors les deux tiennent sans qu'on
+            // ait rien à arbitrer.
+            let (form_h, folded) = Self::carnet_split(inner.height(), form_full, table_min);
             let parts = motif::split_rows(inner, &[0.0, form_h], 6.0);
-            let table = motif::well(ui, parts[0]);
-            motif::inside(ui, table, |ui| {
-                // Verticale seulement. La barre horizontale était le
-                // symptôme, la rangée de correction la cause : six
-                // champs et deux boutons sur une rangée de tableau font
-                // une table plus large que le panneau à toute taille
-                // utile, et il fallait alors faire défiler à droite pour
-                // atteindre « Enregistrer » puis à gauche pour relire le
-                // nom. La correction se tape maintenant dans la rangée
-                // de saisie, en bas, qui sait déjà se replier.
-                egui::ScrollArea::vertical()
-                    .id_salt("carnet_rows")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if lines.is_empty() {
-                            ui.add_space(6.0);
-                            ui.label(
-                                egui::RichText::new(tr("vacc_empty"))
-                                    .size(motif::pt(ui, 11.5))
-                                    .color(motif::text_dim()),
-                            );
-                            return;
-                        }
-                        // La taille, mesurée avant la fermeture : `motif::pt`
-                        // lit le style, et la fermeture garderait `ui`
-                        // emprunté pour toute la grille.
-                        let dim_pt = motif::pt(ui, 11.0);
-                        let dim =
-                            |t: &str| egui::RichText::new(t).size(dim_pt).color(motif::text_dim());
-                        // Ce que chaque colonne demande, mesuré sur les
-                        // lignes qui sont là. Les largeurs fixes d'avant
-                        // poussaient « Par » hors de la table dès qu'un
-                        // volet s'ouvrait ; et la note de bas de ligne,
-                        // posée dans la colonne « Dose », élargissait
-                        // cette colonne à sa longueur et emportait tout
-                        // ce qui suivait vers la droite.
-                        let CarnetCols {
-                            cols,
-                            gap,
-                            name_w,
-                            dose_w,
-                            date_w,
-                            lot_w,
-                            site_w,
-                            op_w,
-                        } = Self::carnet_columns(ui, ui.available_width(), &lines);
-                        egui::Grid::new("carnet_grid")
-                            .num_columns(cols)
-                            .spacing([gap, 5.0])
-                            .striped(true)
-                            .show(ui, |ui| {
-                                Self::grid_cell(ui, name_w, dim(tr("vacc_col_vaccine")));
-                                if cols >= 4 {
-                                    Self::grid_cell(ui, dose_w, dim(tr("vacc_col_dose")));
-                                    Self::grid_cell(ui, date_w, dim(tr("vacc_col_date")));
-                                }
-                                if cols == 7 {
-                                    Self::grid_cell(ui, lot_w, dim(tr("vacc_col_lot")));
-                                    Self::grid_cell(ui, site_w, dim(tr("vacc_col_site")));
-                                    Self::grid_cell(ui, op_w, dim(tr("vacc_col_operator")));
-                                }
-                                ui.label("");
-                                ui.end_row();
-                                for line in &lines {
-                                    // Ce que la forme n'a pas mis en
-                                    // colonnes, dans l'ordre où on le
-                                    // lirait, puis le rappel dû et la
-                                    // remarque — qui n'ont jamais eu de
-                                    // colonne à elles.
-                                    let mut foot: Vec<String> = Vec::new();
-                                    if cols < 4 {
-                                        if !line.dose.trim().is_empty() {
-                                            foot.push(line.dose.trim().to_owned());
-                                        }
-                                        foot.push(if line.given_on.is_empty() {
-                                            tr("vacc_no_date").to_owned()
-                                        } else {
-                                            db::format_french_date(&line.given_on)
-                                        });
-                                    }
-                                    if cols < 7 {
-                                        for (head, v) in [
-                                            (tr("vacc_col_lot"), line.lot.trim()),
-                                            (tr("vacc_col_site"), line.site.trim()),
-                                            (tr("vacc_col_operator"), line.operator.trim()),
-                                        ] {
-                                            if !v.is_empty() {
-                                                foot.push(format!("{head} {v}"));
-                                            }
-                                        }
-                                    }
-                                    if !line.next_due.is_empty() {
-                                        foot.push(trf(
-                                            "vacc_next_prefix",
-                                            db::format_french_date(&line.next_due),
-                                        ));
-                                    }
-                                    if !line.remark.trim().is_empty() {
-                                        foot.push(line.remark.trim().to_owned());
-                                    }
-                                    // La ligne en cours de correction se
-                                    // voit : elle se tape ailleurs, et
-                                    // sans repère on ne saurait pas
-                                    // laquelle la rangée du bas porte.
-                                    let name =
-                                        egui::RichText::new(&line.label).size(motif::pt(ui, 12.0));
-                                    let name = if editing == Some(line.id) {
-                                        name.color(motif::accent()).strong()
-                                    } else {
-                                        name
-                                    };
-                                    ui.scope(|ui| {
-                                        ui.set_width(name_w);
-                                        ui.vertical(|ui| {
-                                            ui.add(egui::Label::new(name).truncate());
-                                            if !foot.is_empty() {
-                                                ui.add(
-                                                    egui::Label::new(
-                                                        egui::RichText::new(foot.join(" · "))
-                                                            .size(motif::pt(ui, 10.5))
-                                                            .italics()
-                                                            .color(motif::text_faint()),
-                                                    )
-                                                    .wrap(),
-                                                );
-                                            }
-                                        });
-                                    });
+            // Repliée, la table ne laisse rien derrière elle : le compte
+            // est passé dans la légende, qui ne coûte pas de hauteur, et
+            // ce qui reste va au formulaire — la rangée « Imprimer le
+            // carnet » sortait tranchée tant qu'on gardait une ligne ici
+            // pour elle.
+            if folded && parts[0].height() >= line {
+                motif::inside(ui, parts[0], |ui| {
+                    ui.label(
+                        egui::RichText::new(tr("vacc_folded"))
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::text_dim()),
+                    );
+                });
+            }
+            // Et quand elle cède, on ne l'appelle pas du tout : un
+            // rectangle vide passé à egui n'est pas une table de zéro
+            // ligne, c'est une panique — `Rect::NOTHING` a ses bornes à
+            // l'infini, et `Layout` divise dedans.
+            if !folded {
+                let table = motif::well(ui, parts[0]);
+                motif::inside(ui, table, |ui| {
+                    // Verticale seulement. La barre horizontale était le
+                    // symptôme, la rangée de correction la cause : six
+                    // champs et deux boutons sur une rangée de tableau font
+                    // une table plus large que le panneau à toute taille
+                    // utile, et il fallait alors faire défiler à droite pour
+                    // atteindre « Enregistrer » puis à gauche pour relire le
+                    // nom. La correction se tape maintenant dans la rangée
+                    // de saisie, en bas, qui sait déjà se replier.
+                    egui::ScrollArea::vertical()
+                        .id_salt("carnet_rows")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if lines.is_empty() {
+                                ui.add_space(6.0);
+                                ui.label(
+                                    egui::RichText::new(tr("vacc_empty"))
+                                        .size(motif::pt(ui, 11.5))
+                                        .color(motif::text_dim()),
+                                );
+                                return;
+                            }
+                            // La taille, mesurée avant la fermeture : `motif::pt`
+                            // lit le style, et la fermeture garderait `ui`
+                            // emprunté pour toute la grille.
+                            let dim_pt = motif::pt(ui, 11.0);
+                            let dim = |t: &str| {
+                                egui::RichText::new(t).size(dim_pt).color(motif::text_dim())
+                            };
+                            // Ce que chaque colonne demande, mesuré sur les
+                            // lignes qui sont là. Les largeurs fixes d'avant
+                            // poussaient « Par » hors de la table dès qu'un
+                            // volet s'ouvrait ; et la note de bas de ligne,
+                            // posée dans la colonne « Dose », élargissait
+                            // cette colonne à sa longueur et emportait tout
+                            // ce qui suivait vers la droite.
+                            let CarnetCols {
+                                cols,
+                                gap,
+                                name_w,
+                                dose_w,
+                                date_w,
+                                lot_w,
+                                site_w,
+                                op_w,
+                            } = Self::carnet_columns(ui, ui.available_width(), &lines);
+                            egui::Grid::new("carnet_grid")
+                                .num_columns(cols)
+                                .spacing([gap, 5.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    Self::grid_cell(ui, name_w, dim(tr("vacc_col_vaccine")));
                                     if cols >= 4 {
-                                        Self::grid_cell(
-                                            ui,
-                                            dose_w,
-                                            egui::RichText::new(&line.dose)
-                                                .size(motif::pt(ui, 12.0)),
-                                        );
-                                        Self::grid_cell(
-                                            ui,
-                                            date_w,
-                                            egui::RichText::new(if line.given_on.is_empty() {
+                                        Self::grid_cell(ui, dose_w, dim(tr("vacc_col_dose")));
+                                        Self::grid_cell(ui, date_w, dim(tr("vacc_col_date")));
+                                    }
+                                    if cols == 7 {
+                                        Self::grid_cell(ui, lot_w, dim(tr("vacc_col_lot")));
+                                        Self::grid_cell(ui, site_w, dim(tr("vacc_col_site")));
+                                        Self::grid_cell(ui, op_w, dim(tr("vacc_col_operator")));
+                                    }
+                                    ui.label("");
+                                    ui.end_row();
+                                    for line in &lines {
+                                        // Ce que la forme n'a pas mis en
+                                        // colonnes, dans l'ordre où on le
+                                        // lirait, puis le rappel dû et la
+                                        // remarque — qui n'ont jamais eu de
+                                        // colonne à elles.
+                                        let mut foot: Vec<String> = Vec::new();
+                                        if cols < 4 {
+                                            if !line.dose.trim().is_empty() {
+                                                foot.push(line.dose.trim().to_owned());
+                                            }
+                                            foot.push(if line.given_on.is_empty() {
                                                 tr("vacc_no_date").to_owned()
                                             } else {
                                                 db::format_french_date(&line.given_on)
-                                            })
-                                            .size(motif::pt(ui, 12.0)),
-                                        );
-                                    }
-                                    if cols == 7 {
-                                        Self::grid_cell(
-                                            ui,
-                                            lot_w,
-                                            egui::RichText::new(&line.lot)
-                                                .size(motif::pt(ui, 11.5)),
-                                        );
-                                        Self::grid_cell(
-                                            ui,
-                                            site_w,
-                                            egui::RichText::new(&line.site)
-                                                .size(motif::pt(ui, 11.5)),
-                                        );
-                                        Self::grid_cell(
-                                            ui,
-                                            op_w,
-                                            egui::RichText::new(&line.operator)
-                                                .size(motif::pt(ui, 11.5))
-                                                .color(operator_color(&line.operator)),
-                                        );
-                                    }
-                                    ui.horizontal(|ui| {
-                                        if motif::button(ui, tr("drug_edit")).clicked() {
-                                            start_edit = Some(line.clone());
+                                            });
                                         }
-                                        let label = if confirm == Some(line.id) {
-                                            tr("itv_delete_confirm")
-                                        } else {
-                                            tr("itv_delete")
-                                        };
-                                        if motif::button(ui, label).clicked() {
-                                            if confirm == Some(line.id) {
-                                                delete = Some((line.id, line.label.clone()));
-                                            } else {
-                                                session.vacc_confirm = Some(line.id);
+                                        if cols < 7 {
+                                            for (head, v) in [
+                                                (tr("vacc_col_lot"), line.lot.trim()),
+                                                (tr("vacc_col_site"), line.site.trim()),
+                                                (tr("vacc_col_operator"), line.operator.trim()),
+                                            ] {
+                                                if !v.is_empty() {
+                                                    foot.push(format!("{head} {v}"));
+                                                }
                                             }
                                         }
-                                    });
-                                    ui.end_row();
-                                }
-                            });
-                    });
-            });
+                                        if !line.next_due.is_empty() {
+                                            foot.push(trf(
+                                                "vacc_next_prefix",
+                                                db::format_french_date(&line.next_due),
+                                            ));
+                                        }
+                                        if !line.remark.trim().is_empty() {
+                                            foot.push(line.remark.trim().to_owned());
+                                        }
+                                        // La ligne en cours de correction se
+                                        // voit : elle se tape ailleurs, et
+                                        // sans repère on ne saurait pas
+                                        // laquelle la rangée du bas porte.
+                                        let name = egui::RichText::new(&line.label)
+                                            .size(motif::pt(ui, 12.0));
+                                        let name = if editing == Some(line.id) {
+                                            name.color(motif::accent()).strong()
+                                        } else {
+                                            name
+                                        };
+                                        ui.scope(|ui| {
+                                            ui.set_width(name_w);
+                                            ui.vertical(|ui| {
+                                                ui.add(egui::Label::new(name).truncate());
+                                                if !foot.is_empty() {
+                                                    ui.add(
+                                                        egui::Label::new(
+                                                            egui::RichText::new(foot.join(" · "))
+                                                                .size(motif::pt(ui, 10.5))
+                                                                .italics()
+                                                                .color(motif::text_faint()),
+                                                        )
+                                                        .wrap(),
+                                                    );
+                                                }
+                                            });
+                                        });
+                                        if cols >= 4 {
+                                            Self::grid_cell(
+                                                ui,
+                                                dose_w,
+                                                egui::RichText::new(&line.dose)
+                                                    .size(motif::pt(ui, 12.0)),
+                                            );
+                                            Self::grid_cell(
+                                                ui,
+                                                date_w,
+                                                egui::RichText::new(if line.given_on.is_empty() {
+                                                    tr("vacc_no_date").to_owned()
+                                                } else {
+                                                    db::format_french_date(&line.given_on)
+                                                })
+                                                .size(motif::pt(ui, 12.0)),
+                                            );
+                                        }
+                                        if cols == 7 {
+                                            Self::grid_cell(
+                                                ui,
+                                                lot_w,
+                                                egui::RichText::new(&line.lot)
+                                                    .size(motif::pt(ui, 11.5)),
+                                            );
+                                            Self::grid_cell(
+                                                ui,
+                                                site_w,
+                                                egui::RichText::new(&line.site)
+                                                    .size(motif::pt(ui, 11.5)),
+                                            );
+                                            Self::grid_cell(
+                                                ui,
+                                                op_w,
+                                                egui::RichText::new(&line.operator)
+                                                    .size(motif::pt(ui, 11.5))
+                                                    .color(operator_color(&line.operator)),
+                                            );
+                                        }
+                                        ui.horizontal(|ui| {
+                                            if motif::button(ui, tr("drug_edit")).clicked() {
+                                                start_edit = Some(line.clone());
+                                            }
+                                            let label = if confirm == Some(line.id) {
+                                                tr("itv_delete_confirm")
+                                            } else {
+                                                tr("itv_delete")
+                                            };
+                                            if motif::button(ui, label).clicked() {
+                                                if confirm == Some(line.id) {
+                                                    delete = Some((line.id, line.label.clone()));
+                                                } else {
+                                                    session.vacc_confirm = Some(line.id);
+                                                }
+                                            }
+                                        });
+                                        ui.end_row();
+                                    }
+                                });
+                        });
+                });
+            }
             // --- The line being written ---
             motif::inside(ui, parts[1], |ui| {
                 egui::ScrollArea::vertical()
@@ -13032,6 +13070,30 @@ impl App {
     /// booléen plutôt que la session entière : c'est tout ce dont la
     /// mesure dépend, et cela la rend vérifiable par un test qui n'a
     /// pas de base de données à ouvrir.
+    /// Comment le carnet se partage entre sa table et sa rangée de
+    /// saisie : ce que le formulaire reçoit, et si la table cède.
+    ///
+    /// **La rangée où l'on tape n'est jamais rognée.** Une table à qui
+    /// il manque une ligne se lit et défile ; une rangée de formulaire
+    /// coupée en deux ne se tape pas. Lui laisser *une* ligne trahissait
+    /// les deux à la fois — une ligne de table ne se lit pas, et
+    /// « Imprimer le carnet » sortait quand même tranché par le bas.
+    /// Quand les deux ne tiennent pas, la table cède entièrement et son
+    /// compte passe dans la légende du panneau, qui ne coûte pas de
+    /// hauteur.
+    ///
+    /// Sorti de la vue pour être mesurable : c'est un partage, donc de
+    /// l'arithmétique.
+    fn carnet_split(inner_h: f32, form_full: f32, table_min: f32) -> (f32, bool) {
+        let folded = inner_h - form_full - 6.0 < table_min;
+        let form_h = if folded {
+            form_full.min(inner_h)
+        } else {
+            form_full
+        };
+        (form_h, folded)
+    }
+
     fn carnet_form_widths(ui: &egui::Ui, correcting: bool, width: f32) -> Vec<f32> {
         // Les cinq premières sont les mêmes des deux côtés, dans le même
         // ordre : nom, dose, date, lot, site. Ce qui suit diffère.
@@ -31346,6 +31408,46 @@ mod tests {
         // suivante : sans quoi ce qui glisse dessous se lit au travers.
         assert!(band.left() <= at.x && band.right() >= at.x + 120.0);
         assert!(band.top() <= gone.top() && band.bottom() >= gone.bottom());
+    }
+
+    /// **La rangée où l'on tape n'est jamais rognée.**
+    ///
+    /// Le carnet porte une table et une rangée de saisie, et sur un
+    /// volet de comptoir à l'échelle 1,6 les deux ne tiennent pas.
+    /// L'arbitrage de la maison est que le formulaire gagne — une table
+    /// à qui il manque une ligne se lit et défile, une rangée de
+    /// formulaire coupée ne se tape pas. Lui laisser *une* ligne les
+    /// trahissait tous les deux : une ligne de table ne se lit pas, et
+    /// « Imprimer le carnet » sortait quand même tranché de vingt
+    /// pixels par le bas.
+    #[test]
+    fn the_carnet_never_trims_the_row_one_types_in() {
+        use super::carnet_split_for_test as split;
+        let table_min = 80.0_f32;
+        for form_full in [90.0_f32, 160.0, 210.0] {
+            for inner in [100.0_f32, 150.0, 200.0, 260.0, 400.0] {
+                let (form_h, folded) = split(inner, form_full, table_min);
+                // Ce que le formulaire demande, sauf si le panneau
+                // entier est plus court que lui — auquel cas il prend
+                // tout, et rien d'autre n'est dessiné.
+                assert!(
+                    (form_h - form_full.min(inner)).abs() < 0.01,
+                    "panneau {inner}, formulaire {form_full} : {form_h} px réservés"
+                );
+                // Et quand la table reste, elle a de quoi se lire.
+                if !folded {
+                    assert!(
+                        inner - form_h - 6.0 >= table_min - 0.01,
+                        "panneau {inner} : la table garde {} px pour un plancher de {table_min}",
+                        inner - form_h - 6.0
+                    );
+                }
+            }
+        }
+        // Le cas mesuré : à 1024x700 en 1,6, le panneau fait moins que
+        // le formulaire plus le plancher de la table.
+        let (h, folded) = split(197.0, 196.0, 79.0);
+        assert!(folded && (h - 196.0).abs() < 0.01);
     }
 
     /// **Une feuille déjà collée ne coûte pas la seule divergence.**

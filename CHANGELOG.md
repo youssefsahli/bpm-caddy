@@ -33,6 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
+## [Unreleased]
+
+### Fixed
+- **La rangée où l'on tape n'est plus rognée dans le carnet de
+  vaccination.** Sur un volet de comptoir à l'échelle 1,6, la table des
+  doses et la rangée de saisie ne tiennent pas ensemble. L'arbitrage de
+  la maison est que le formulaire gagne — une table à qui il manque une
+  ligne se lit et défile, une rangée coupée ne se tape pas — mais lui
+  laisser *une* ligne les trahissait tous les deux : cette ligne
+  n'affichait rien de lisible, et « Imprimer le carnet » sortait quand
+  même tranché de vingt pixels par le bas. La table cède donc
+  entièrement, et **le compte passe dans la légende du panneau** —
+  « CARNET DE VACCINATION — 3 DOSE(S) » —, qui est déjà dessinée et ne
+  coûte pas une ligne. Une phrase dit où aller les lire quand il reste
+  la place de l'écrire. Un test tient le partage, vérifié en remettant
+  la ligne concédée.
+  Au passage, une panique évitée : `Rect::NOTHING` passé à egui pour
+  « ne dessine rien » a ses bornes à l'infini et `Layout` divise dedans.
+  On n'appelle simplement pas la fonction.
+
 ## [0.156.0] - 2026-09-08
 
 ### Fixed
