@@ -611,6 +611,30 @@ pub const WATCHES: &[Watch] = &[
         every_months: 3,
         why: "Des insuffisances hépatiques mortelles ont imposé un contrôle toutes les deux semaines les deux premiers mois puis régulier : c'est la surveillance qui conditionne la poursuite du traitement.",
     },
+    Watch {
+        needs: &["carbimazole", "thiamazole", "propylthiouracile", "benzylthiouracile", "antithyroïdien"],
+        code: "T4L",
+        every_months: 3,
+        why: "Sous antithyroïdien la TSH reste freinée des mois après que l'hormone est revenue à sa place : lue seule elle fait surdoser. C'est la T4 libre qui dit l'équilibre, et c'est elle qu'on demande.",
+    },
+    Watch {
+        needs: &["dronédarone", "Multaq"],
+        code: "ALAT",
+        every_months: 1,
+        why: "Des atteintes hépatiques sévères ont imposé un dosage avant l'instauration puis tous les mois les six premiers mois : c'est la seule surveillance qui prévienne, l'ictère arrivant après.",
+    },
+    Watch {
+        needs: &["tofacitinib", "baricitinib", "upadacitinib", "inhibiteur JAK", "Xeljanz", "Olumiant", "Rinvoq"],
+        code: "ALAT",
+        every_months: 3,
+        why: "L'inhibiteur de JAK demande la numération, les transaminases et le bilan lipidique en cours de traitement : la cytolyse est silencieuse et c'est le chiffre qui décide de la poursuite.",
+    },
+    Watch {
+        needs: &["interféron bêta", "Rebif", "Avonex", "Betaferon", "Plegridy"],
+        code: "ALAT",
+        every_months: 6,
+        why: "Cytolyse hépatique parfois sévère sous interféron bêta, sans aucun signe d'appel : le dosage est ce qui la trouve, et le patient l'oublie entre deux consultations de neurologie.",
+    },
 ];
 
 #[cfg(test)]
@@ -776,7 +800,7 @@ mod tests {
     /// does any more, and it goes without anyone seeing it.
     #[test]
     fn the_watch_count_only_grows() {
-        const WATCH_FLOOR: usize = 61;
+        const WATCH_FLOOR: usize = 65;
         assert!(
             WATCHES.len() >= WATCH_FLOOR,
             "{} surveillances : le compte ne baisse pas, il en faut {WATCH_FLOOR}",

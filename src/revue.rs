@@ -820,6 +820,201 @@ const RULES: &[Rule] = &[
         title: "Aminoside + diurétique de l'anse",
         detail: "Les deux sont ototoxiques et leurs effets s'additionnent : l'atteinte cochléaire et vestibulaire de l'aminoside est irréversible, et le diurétique en abaisse le seuil tout en favorisant la déshydratation qui majore la néphrotoxicité. L'association se limite à la durée strictement nécessaire, sous contrôle de la fonction rénale et des concentrations résiduelles, et toute baisse d'audition, tout acouphène ou toute instabilité à la marche se signale sans attendre.",
     },
+    // Ce qui suit est sorti des sections « Toxicité / marge
+    // thérapeutique » des fiches, relu contre elles. C'est le gisement
+    // que `docs/CONTENU.md` désigne : une association écrite comme
+    // contre-indiquée sur une monographie ne sert au comptoir que si la
+    // revue la voit sur l'ordonnance. Chaque règle nomme la fiche qui
+    // l'écrit, et se corrige en corrigeant cette fiche.
+    Rule {
+        kind: Kind::Combination(&[
+            &["cotrimoxazole", "triméthoprime", "sulfaméthoxazole", "bactrim"],
+            &["IEC", "sartan", "ARA II", "spironolactone", "éplérénone", "antialdostérone", "amiloride", "diurétique épargneur"],
+        ]),
+        severity: Severity::Alert,
+        title: "Cotrimoxazole + hyperkaliémiant",
+        detail: "Le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur : sur un bloqueur du système rénine-angiotensine ou une spironolactone, la kaliémie monte sans qu'aucun signe précède le trouble du rythme. Cinq jours de cure suffisent, et le sujet âgé ou insuffisant rénal est celui qui en meurt. Demander une kaliémie en cours de cure, écarter les sels de régime, et signaler l'association au prescripteur.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["tamoxifène"],
+            &["paroxétine", "fluoxétine"],
+        ]),
+        severity: Severity::Alert,
+        title: "Tamoxifène + paroxétine ou fluoxétine",
+        detail: "Le tamoxifène est une prodrogue que le CYP2D6 active en endoxifène : la paroxétine et la fluoxétine, inhibiteurs puissants, amputent l'efficacité d'un traitement dont l'enjeu est la récidive. L'association naît le plus souvent du traitement des bouffées de chaleur dues au tamoxifène lui-même, ce qui la rend banale à l'ordonnance. Signaler avant délivrance ; la venlafaxine et l'escitalopram sont les alternatives usuelles.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["métoprolol", "nébivolol"],
+            &["paroxétine", "fluoxétine", "bupropion", "duloxétine", "terbinafine"],
+        ]),
+        severity: Severity::Warn,
+        title: "Métoprolol ou nébivolol + inhibiteur CYP2D6",
+        detail: "Le métoprolol et le nébivolol passent par le CYP2D6 : la paroxétine, la fluoxétine, le bupropion, la duloxétine et la terbinafine multiplient leur exposition et donnent bradycardie, asthénie et hypotension chez un patient dont aucune dose n'a changé. Faire prendre le pouls et la tension les premiers jours, et rattacher toute chute ou fatigue nouvelle à cette introduction plutôt qu'à l'âge. Le bisoprolol et l'aténolol ne passent pas par cette voie.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["dolutégravir", "raltégravir", "bictégravir", "inhibiteur d'intégrase"],
+            &["antiacide", "pansement gastrique", "hydroxyde d'aluminium", "calcium", "magnésium", "ferreux", "zinc"],
+        ]),
+        severity: Severity::Alert,
+        title: "Inhibiteur d'intégrase + cations",
+        detail: "Les cations chélatent l'inhibiteur d'intégrase et effondrent son absorption : le traitement échoue et des résistances émergent, sans qu'aucun symptôme prévienne. Ces produits s'achètent sans ordonnance, ce qui met le repérage au comptoir et nulle part ailleurs. Jamais ensemble : deux heures avant ou six heures après le cation, et poser la question du pansement gastrique que le patient ne cite jamais.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["méthylergométrine", "méthergin"],
+            &["macrolide", "clarithromycine", "érythromycine", "josamycine", "itraconazole", "kétoconazole", "voriconazole", "posaconazole", "ritonavir"],
+        ]),
+        severity: Severity::Alert,
+        title: "Méthylergométrine + inhibiteur CYP3A4",
+        detail: "L'inhibition du CYP3A4 fait monter l'exposition à un alcaloïde de l'ergot de seigle : c'est l'ergotisme — vasoconstriction des extrémités, ischémie, et le tableau ne se rattrape pas toujours. L'association est contre-indiquée. En post-partum, c'est un macrolide prescrit pour une mastite qui l'amène ; refuser la délivrance et rappeler le prescripteur.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["fluconazole", "triflucan"],
+            &["AVK", "warfarine", "fluindione", "acénocoumarol"],
+        ]),
+        severity: Severity::Alert,
+        title: "Fluconazole + AVK",
+        detail: "Le fluconazole inhibe le CYP2C9 et majore fortement l'effet de l'AVK : l'INR part en quelques jours et l'hémorragie suit. Une dose unique de 150 mg pour une mycose vaginale suffit à le faire. Prévoir un INR à quarante-huit heures, prévenir le patient avant qu'il sorte, et poser la question de l'antifongique local qui ne passe pas par cette voie.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["dasatinib", "erlotinib", "géfitinib", "pazopanib"],
+            &["IPP", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
+        ]),
+        severity: Severity::Warn,
+        title: "Inhibiteur de tyrosine kinase + IPP",
+        detail: "L'absorption de ces anticancéreux oraux dépend de l'acidité gastrique : sous IPP elle chute, et c'est l'efficacité du traitement du cancer qui chute avec elle, sans qu'aucun signe le dise. L'IPP est souvent là depuis longtemps et personne ne le rattache. Signaler au prescripteur : l'antiacide décalé ou l'anti-H2 sont les recours, jamais l'IPP maintenu tel quel.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["buprénorphine", "nalbuphine"],
+            &["morphine", "oxycodone", "fentanyl", "hydromorphone", "méthadone"],
+        ]),
+        severity: Severity::Alert,
+        title: "Buprénorphine ou nalbuphine + agoniste pur",
+        detail: "L'agoniste partiel déloge l'agoniste pur de son récepteur : chez un patient sous morphinique, c'est un syndrome de sevrage aigu et la douleur qui revient d'un coup. L'association n'a pas de place sur la même ordonnance. Chercher lequel des deux est le traitement de fond, et appeler le prescripteur avant de délivrer le second.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["drospirénone"],
+            &["IEC", "sartan", "ARA II", "spironolactone", "éplérénone", "antialdostérone", "amiloride", "triméthoprime", "cotrimoxazole"],
+        ]),
+        severity: Severity::Warn,
+        title: "Drospirénone + hyperkaliémiant",
+        detail: "La drospirénone est un dérivé de la spironolactone et retient le potassium comme elle : personne ne lit une pilule comme un traitement hyperkaliémiant, et c'est ce qui la rend dangereuse en association. Contrôler la kaliémie le premier mois, et davantage sur un rein qui n'est pas neuf.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["lamotrigine", "lamictal"],
+            &["valproate", "valproïque", "divalproate", "dépakine", "dépakote"],
+        ]),
+        severity: Severity::Alert,
+        title: "Lamotrigine + valproate",
+        detail: "Le valproate double la demi-vie de la lamotrigine : à titration normale, c'est le syndrome de Lyell ou de Stevens-Johnson, et c'est la vitesse de montée qui décide, pas la dose finale. Le protocole d'association divise les paliers par deux. Vérifier la titration écrite sur l'ordonnance, et dire au patient qu'une éruption dans les huit semaines s'arrête et se montre le jour même.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["naltrexone", "revia"],
+            &["morphine", "oxycodone", "fentanyl", "hydromorphone", "tramadol", "codéine", "méthadone", "buprénorphine"],
+        ]),
+        severity: Severity::Alert,
+        title: "Naltrexone + opioïde",
+        detail: "La naltrexone bloque le récepteur : l'opioïde ne fait plus rien, et chez quelqu'un qui en prenait c'est un sevrage aigu déclenché en une prise. À l'arrêt de la naltrexone, la tolérance est perdue et la dose d'avant devient une overdose. L'association ne se délivre pas sans avoir joint le prescripteur.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["ulipristal", "ellaone"],
+            &["désogestrel", "lévonorgestrel", "étonogestrel", "drospirénone", "chlormadinone", "progestatif"],
+        ]),
+        severity: Severity::Warn,
+        title: "Ulipristal + progestatif",
+        detail: "Le progestatif prend la place de l'ulipristal sur le récepteur et lui retire son effet : reprendre la pilule le lendemain d'une contraception d'urgence à l'ulipristal, c'est perdre les deux. Attendre cinq jours avant de reprendre le progestatif, et préservatif jusqu'à la fin du cycle. Si la pilule ne peut pas être suspendue, c'est le lévonorgestrel qu'il fallait délivrer.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["doxycycline", "minocycline", "lymécycline"],
+            &["isotrétinoïne", "acitrétine"],
+        ]),
+        severity: Severity::Alert,
+        title: "Cycline + rétinoïde oral",
+        detail: "Les deux montent la pression intracrânienne et l'association est contre-indiquée : céphalées, vision qui se trouble, vomissements — un tableau d'hypertension intracrânienne bénigne qui peut laisser une atteinte du nerf optique. C'est l'acné qui met les deux sur la même ordonnance, chez des patients jeunes. Refuser l'association et faire arrêter la cycline avant l'instauration.",
+    },
+    Rule {
+        kind: Kind::Without(
+            &[&["anti-aromatase", "anastrozole", "létrozole", "exémestane"]],
+            &["calcium", "vitamine D", "cholécalciférol", "bisphosphonate", "biphosphonate", "alendronate", "risédronate", "acide zolédronique", "dénosumab"],
+        ),
+        severity: Severity::Warn,
+        title: "Anti-aromatase sans protection osseuse",
+        detail: "L'anti-aromatase supprime les œstrogènes restants : la perte osseuse est rapide, le traitement dure cinq ans, et rien sur l'ordonnance ne s'y oppose. Demander où en est la densitométrie, et si le calcium et la vitamine D ont été prévus — c'est la question qui ne se pose jamais parce que le sujet de la consultation est ailleurs.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["AVK", "warfarine", "fluindione", "acénocoumarol"],
+            &["rifampicine", "phénobarbital", "phénytoïne", "carbamazépine", "griséofulvine"],
+        ]),
+        severity: Severity::Alert,
+        title: "AVK + inducteur enzymatique",
+        detail: "L'inducteur accélère la dégradation de l'AVK et l'INR s'effondre : le patient est anticoagulé sur le papier et pas dans le sang, ce qui ne se voit par aucun symptôme jusqu'à la thrombose. L'arrêt de l'inducteur fait le chemin inverse et expose à l'hémorragie. INR une semaine après toute introduction et tout arrêt, et le dire au patient dans les deux sens.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["élétriptan", "relpax"],
+            &["itraconazole", "kétoconazole", "clarithromycine", "ritonavir", "néfazodone"],
+        ]),
+        severity: Severity::Alert,
+        title: "Élétriptan + inhibiteur CYP3A4",
+        detail: "L'inhibiteur puissant du CYP3A4 multiplie l'exposition à l'élétriptan et le vasospasme devient coronarien. L'association est contre-indiquée, et il suffit d'attendre : soixante-douze heures après la dernière prise de l'inhibiteur. Un autre triptan, non métabolisé par cette voie, est le recours si la crise ne peut pas attendre.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["fluoroquinolone", "ciprofloxacine", "ofloxacine", "lévofloxacine", "doxycycline", "minocycline", "lymécycline"],
+            &["calcium", "magnésium", "zinc", "antiacide", "pansement gastrique", "ferreux"],
+        ]),
+        severity: Severity::Warn,
+        title: "Quinolone ou cycline + cations",
+        detail: "Le cation chélate l'antibiotique dans l'estomac et l'absorption tombe de moitié ou plus : la cure est faite, elle n'a pas eu lieu, et l'échec se lit comme une résistance. Le lait, les pansements gastriques et les compléments en font partie, et aucun n'est sur l'ordonnance. Deux heures avant ou quatre heures après, et le demander explicitement au patient.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["sofosbuvir"],
+            &["amiodarone"],
+        ]),
+        severity: Severity::Alert,
+        title: "Sofosbuvir + amiodarone",
+        detail: "Bradycardies sévères et arrêts cardiaques rapportés dès les premières heures, par un mécanisme qu'on n'explique toujours pas : l'association est à éviter, et la demi-vie de l'amiodarone la rend encore possible des mois après son arrêt. Si elle est maintenue, la surveillance du rythme est hospitalière les quarante-huit premières heures.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["rizatriptan"],
+            &["propranolol"],
+        ]),
+        severity: Severity::Warn,
+        title: "Rizatriptan + propranolol",
+        detail: "Le propranolol multiplie par deux l'exposition au rizatriptan : la dose se ramène à 5 mg, et l'association est fréquente puisque le propranolol est un traitement de fond de la migraine et le rizatriptan son traitement de crise. Vérifier le dosage délivré ; c'est le seul triptan concerné.",
+    },
+    Rule {
+        kind: Kind::Combination(&[
+            &["gabapentine", "prégabaline", "gabapentinoïde"],
+            &["morphine", "oxycodone", "hydromorphone", "fentanyl", "tramadol", "codéine", "méthadone", "opium"],
+        ]),
+        severity: Severity::Alert,
+        title: "Gabapentinoïde + opioïde",
+        detail: "Dépression respiratoire par addition, et l'association est banale sur une ordonnance de douleur chronique : c'est le motif d'une alerte de pharmacovigilance et non une précaution de principe. Le risque est maximal à l'instauration, à toute augmentation, et chez l'insuffisant respiratoire ou le sujet âgé. Signaler, et expliquer à l'entourage ce qu'est une somnolence anormale.",
+    },
+    Rule {
+        kind: Kind::Without(
+            &[&["isoniazide"]],
+            &["vitamine b6", "pyridoxine"],
+        ),
+        severity: Severity::Warn,
+        title: "Isoniazide sans vitamine B6",
+        detail: "L'isoniazide épuise la pyridoxine et donne une neuropathie périphérique qui ne se rattrape pas toujours — dénutri, alcoolique, diabétique, insuffisant rénal et femme enceinte sont les plus exposés. La pyridoxine se prescrit avec, à 10 à 25 mg par jour, et elle manque ici. Poser la question au prescripteur avant que les fourmillements commencent.",
+    },
 ];
 
 #[cfg(test)]
@@ -1150,7 +1345,7 @@ mod tests {
         // nobody does any more. The floor is a named constant the
         // message reads back — written twice, in figures and in words,
         // the two had already drifted by six.
-        const RULES_FLOOR: usize = 66;
+        const RULES_FLOOR: usize = 87;
         assert!(
             RULES.len() >= RULES_FLOOR,
             "{} règles de revue, il y en avait {RULES_FLOOR}",
