@@ -248,7 +248,7 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
         ui.cursor().min,
         Vec2::new(ui.available_width(), height + 2.0),
     );
-    egui::ScrollArea::horizontal()
+    let out = egui::ScrollArea::horizontal()
         .id_salt(salt)
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
         .show(ui, |ui| {
@@ -379,6 +379,34 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
                 }
             });
         });
+    // **Et un chevron du côté où il y a la suite.** La bande défile
+    // déjà, mais sans barre — cachée exprès, une barre horizontale sous
+    // des onglets se lit comme un défaut de dessin. Restait ce que le
+    // commentaire ci-dessus dit lui-même : un onglet coupé au milieu
+    // d'un mot ne se lit pas « il y en a d'autres », il se lit
+    // « cassé ». À l'échelle 1,6, les six onglets d'un dossier tiennent
+    // rarement, et rien ne disait qu'on pouvait aller les chercher.
+    //
+    // Peint et non typé, comme les pictogrammes de la barre d'outils :
+    // la face proportionnelle d'egui ne porte pas de chevron.
+    let hidden_right = out.content_size.x - out.state.offset.x - out.inner_rect.width();
+    for (side, more) in [(-1.0_f32, out.state.offset.x), (1.0, hidden_right)] {
+        if more <= 1.0 {
+            continue;
+        }
+        let edge = if side < 0.0 {
+            strip.left()
+        } else {
+            strip.right()
+        };
+        let (sliver, arrow) = chevron(edge, side, strip.top(), strip.bottom() - 2.0);
+        ui.painter().rect_filled(sliver, 0.0, crate::bg());
+        ui.painter().add(egui::Shape::convex_polygon(
+            arrow,
+            crate::text_dim(),
+            Stroke::NONE,
+        ));
+    }
     // The rule the tabs sit on, broken under the active tab so that tab
     // reads as the front of the page rather than one more button.
     let y = strip.bottom() - 2.0;
@@ -396,6 +424,31 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
     action
 }
 
+/// The chevron that says the strip goes on: its background sliver and
+/// the triangle on it, for an edge and the side it points to (`-1` left,
+/// `1` right).
+///
+/// **Vers l'intérieur.** Écrit d'abord vers l'extérieur, il se peignait
+/// à côté de la bande, c'est-à-dire nulle part : rien n'apparaissait et
+/// rien ne signalait l'erreur.
+fn chevron(edge: f32, side: f32, top: f32, bottom: f32) -> (egui::Rect, Vec<egui::Pos2>) {
+    let inner = edge - side * 14.0;
+    let sliver = egui::Rect::from_min_max(
+        egui::pos2(edge.min(inner), top),
+        egui::pos2(edge.max(inner), bottom),
+    );
+    let c = sliver.center();
+    let (h, v) = (4.0_f32, 5.0_f32);
+    (
+        sliver,
+        vec![
+            egui::pos2(c.x + side * h, c.y),
+            egui::pos2(c.x - side * h, c.y - v),
+            egui::pos2(c.x - side * h, c.y + v),
+        ],
+    )
+}
+
 /// Slightly stronger than the hover tint, for the × target inside a tab.
 /// Mixed from the theme rather than fixed: a blue-grey highlight on the
 /// HP VUE green reads as a stain, not as a hover.
@@ -406,6 +459,46 @@ fn bg_hover_strong() -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Le chevron se pose sur la bande, pas à côté.**
+    ///
+    /// Écrit vers l'extérieur, il se peignait hors du rectangle des
+    /// onglets : rien n'apparaissait, et rien ne le signalait — un
+    /// `Painter` peint où on lui dit, y compris dans le vide.
+    #[test]
+    fn a_chevron_sits_on_the_strip_it_points_out_of() {
+        for (edge, side) in [(300.0_f32, 1.0_f32), (40.0, -1.0)] {
+            let (sliver, arrow) = chevron(edge, side, 10.0, 34.0);
+            assert!(
+                sliver.min.x <= edge && edge <= sliver.max.x,
+                "côté {side} : la bande {:?} ne touche pas le bord {edge}",
+                sliver
+            );
+            // Du côté intérieur, donc vers le centre de la bande.
+            let other = if side > 0.0 {
+                sliver.left()
+            } else {
+                sliver.right()
+            };
+            assert!(
+                (other - (edge - side * 14.0)).abs() < 0.01,
+                "côté {side} : la bande part vers l'extérieur"
+            );
+            // Et la flèche est dedans, la pointe vers le dehors.
+            for p in &arrow {
+                assert!(sliver.contains(*p), "la flèche sort de sa bande : {p:?}");
+            }
+            let apex = arrow[0].x;
+            assert!(
+                if side > 0.0 {
+                    apex > sliver.center().x
+                } else {
+                    apex < sliver.center().x
+                },
+                "côté {side} : la pointe regarde du mauvais côté"
+            );
+        }
+    }
 
     #[test]
     fn columns_share_the_width_and_leave_gutters() {

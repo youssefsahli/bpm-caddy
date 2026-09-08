@@ -33,6 +33,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
+## [Unreleased]
+
+### Fixed
+- **Les quatre actions du dossier sortaient par la droite du panneau.**
+  Quand le nom remplit la ligne, elles passent dessous — sur une rangée
+  `horizontal`, qui n'enveloppe pas : à l'échelle 1,6, « Plan de
+  prise… » se lisait « Plan de pr » et rien ne le ramenait. Elle
+  enveloppe, et **la bande compte la rangée** : comptée pour rien, elle
+  poussait hors du bandeau ce qui la suit, dont la croix qui retire un
+  acte. Les libellés sont écrits une fois — deux listes auraient
+  divergé, et c'est la hauteur qui aurait perdu. Le test de la bande
+  d'identité le tient, vérifié en décomptant la rangée.
+
+### Added
+- **Un chevron dit qu'une bande d'onglets continue.** Elle défilait
+  déjà, mais sans barre — cachée exprès, une barre horizontale sous des
+  onglets se lit comme un défaut de dessin —, si bien qu'un onglet
+  coupé au milieu d'un mot ne se lisait pas « il y en a d'autres » mais
+  « cassé ». À l'échelle 1,6, les six onglets d'un dossier ne tiennent
+  pas, et les dix vues de l'espace de travail non plus. Peint et non
+  typé, comme les pictogrammes de la barre d'outils : la face
+  proportionnelle d'egui ne porte pas de chevron. Écrit d'abord vers
+  l'extérieur, il se peignait à côté de la bande, c'est-à-dire nulle
+  part — un test tient maintenant qu'il se pose dessus.
+
 ## [0.154.0] - 2026-09-08
 
 ### Added

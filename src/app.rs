@@ -1637,6 +1637,11 @@ struct BandNeeds<'a> {
     has_notes: bool,
     /// L'onglet ouvert décide de la part que la bande peut prendre.
     acts_tab: bool,
+    /// Le nom et les quatre actions ne tiennent pas sur une rangée :
+    /// les actions passent dessous, et cette rangée-là compte.
+    cramped: bool,
+    /// « Supprimer… » devient « Confirmer ? », qui est plus large.
+    confirming_delete: bool,
 }
 
 /// Ce qu'une rangée du tableau des entretiens a besoin de lire.
@@ -8830,6 +8835,8 @@ impl App {
                 has_address: !patient.address.is_empty(),
                 has_notes: !patient.notes.is_empty(),
                 acts_tab: session.patient_tab == PatientTab::Acts,
+                cramped: !Self::patient_header_fits(ui, session, patient),
+                confirming_delete: session.confirm_delete,
             },
         );
         let rows = motif::split_rows(body, &[band_h, 0.0], 8.0);
@@ -12547,22 +12554,29 @@ impl App {
     /// Ce que les quatre boutons du dossier prennent sur la rangée du
     /// nom — pour savoir s'ils y tiennent, et pour laisser au nom
     /// exactement ce qu'ils ne prennent pas.
-    fn patient_actions_width(ui: &egui::Ui, session: &Session) -> f32 {
-        let gap = ui.spacing().item_spacing.x;
-        let delete = if session.confirm_delete {
-            tr("patient_delete_confirm")
-        } else {
-            tr("patient_delete")
-        };
+    /// Les quatre actions du dossier, écrites une fois : leur largeur
+    /// les met à droite du nom, et leur nombre de rangées décide de la
+    /// hauteur de la bande quand elles passent dessous. Deux listes
+    /// auraient divergé, et c'est la hauteur qui aurait perdu.
+    fn patient_action_labels(confirm: bool) -> [&'static str; 4] {
         [
             tr("plan_print"),
             tr("bilan_print"),
             tr("patient_edit"),
-            delete,
+            if confirm {
+                tr("patient_delete_confirm")
+            } else {
+                tr("patient_delete")
+            },
         ]
-        .into_iter()
-        .map(|l| Self::button_width(ui, l) + gap)
-        .sum()
+    }
+
+    fn patient_actions_width(ui: &egui::Ui, confirm: bool) -> f32 {
+        let gap = ui.spacing().item_spacing.x;
+        Self::patient_action_labels(confirm)
+            .into_iter()
+            .map(|l| Self::button_width(ui, l) + gap)
+            .sum()
     }
 
     fn patient_header_fits(ui: &egui::Ui, session: &Session, patient: &Patient) -> bool {
@@ -12581,7 +12595,7 @@ impl App {
         .into_iter()
         .map(|l| Self::button_width(ui, l) + gap)
         .sum::<f32>()
-            + Self::patient_actions_width(ui, session);
+            + Self::patient_actions_width(ui, session.confirm_delete);
         // The name is a heading and the birth date follows it.
         let heading = egui::TextStyle::Heading.resolve(ui.style());
         let body = egui::TextStyle::Body.resolve(ui.style());
@@ -13095,6 +13109,21 @@ impl App {
         // Header (name, birth, contact, address, comment) + treatments +
         // "nouvel entretien" + the wrapped act rows + the eligibility note.
         let mut h = 96.0 + row * (1.0 + treat_lines + lines);
+        // **Et les actions, quand elles sont passées sous le nom.**
+        // Elles enveloppent comme le reste, donc elles se comptent comme
+        // le reste : sans cela la bande gardait la hauteur d'une rangée
+        // là où il en fallait deux, et ce qui suivait sortait par le
+        // bas — à l'échelle 1,6, la croix qui retire un acte.
+        if n.cramped {
+            h += row
+                * Self::wrapped_rows_of(
+                    ui,
+                    w,
+                    Self::patient_action_labels(n.confirming_delete)
+                        .into_iter()
+                        .map(|l| Self::button_width(ui, l)),
+                );
+        }
         // Les lignes de posologie proposées, quand on en ouvre une.
         if n.dosing {
             h += row * (2.0 + TREAT_DOSE_ROWS as f32);
@@ -13228,7 +13257,7 @@ impl App {
                 - if cramped {
                     0.0
                 } else {
-                    Self::patient_actions_width(ui, session)
+                    Self::patient_actions_width(ui, session.confirm_delete)
                 };
             // Une seule gouttière : celle entre le nom et la date. En
             // compter deux élidait « Jean Dupont » en « Jean Du… » sur
@@ -13277,7 +13306,12 @@ impl App {
             return;
         }
         if cramped {
-            ui.horizontal(|ui| {
+            // **Enveloppée, et non alignée.** Quatre boutons du dossier
+            // sur une rangée `horizontal` sortaient par la droite du
+            // panneau dès l'échelle 1,6 : « Plan de prise » se lisait
+            // « Plan de pr » et rien ne le ramenait. Ce qui dépasse
+            // passe à la ligne, et la bande compte cette ligne.
+            ui.horizontal_wrapped(|ui| {
                 Self::patient_actions(
                     ui,
                     session,
@@ -30955,6 +30989,8 @@ mod tests {
                         has_address: false,
                         has_notes: false,
                         acts_tab,
+                        cramped: false,
+                        confirming_delete: false,
                     };
                     let mut v = Vec::new();
                     // Ce que la bande demande, sur une vue assez haute
@@ -30976,6 +31012,13 @@ mod tests {
                         &base(true, treats.len(), 560.0),
                     ));
                     v.push(560.0);
+                    // Les actions passées sous le nom : une rangée de
+                    // plus, sur une vue assez haute pour qu'aucun
+                    // plafond ne cache la différence.
+                    v.push(App::patient_band_height(ui, &base(true, 0, 2000.0)));
+                    let mut under = base(true, 0, 2000.0);
+                    under.cramped = true;
+                    v.push(App::patient_band_height(ui, &under));
                     *seen.borrow_mut() = v;
                 });
             });
@@ -31000,6 +31043,17 @@ mod tests {
                 heights[0]
             );
             let (folded, other, capped, avail) = (tail[0], tail[1], tail[2], tail[3]);
+            // **Une rangée qui enveloppe sous le nom se compte.** Les
+            // quatre actions du dossier passent dessous dès que le nom
+            // remplit la ligne ; comptées pour rien, elles poussaient
+            // hors de la bande ce qui les suit — à l'échelle 1,6, la
+            // croix qui retire un acte.
+            let (roomy, under) = (tail[4], tail[5]);
+            assert!(
+                under > roomy,
+                "échelle {scale} : les actions sous le nom ne coûtent rien \
+                 ({roomy} px dans les deux cas)"
+            );
             // Repliée, elle tient sur une rangée et rien de plus.
             assert!(
                 folded < other,
