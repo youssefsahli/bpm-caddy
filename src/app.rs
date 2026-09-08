@@ -8064,7 +8064,24 @@ impl App {
                 // is an operator to claim it: 185 px were reserved for
                 // it whether or not the field was filled in.
                 let op = self.operator.trim().to_owned();
-                let reserve = if op.is_empty() { 34.0 } else { 185.0 };
+                // **Et ce qu'il réclame se compte en lignes.**
+                // Trente-quatre pixels sans opérateur, cent
+                // quatre-vingt-cinq avec : deux nombres de pixels sous
+                // un texte qui grandit. À l'échelle 1,6 la seule phrase
+                // du premier cas — « Opérateur non renseigné. » — en
+                // demandait quarante et tombait sous le bord du volet,
+                // emportant avec elle le trait du bas de l'éditeur
+                // au-dessus d'elle. Sur *toutes* les vues, puisque ce
+                // volet est ouvert partout : c'est le défaut le plus
+                // répété de l'application, et le plus discret.
+                let line = ui.text_style_height(&egui::TextStyle::Body);
+                let journal_h = Self::row_height(ui) * 2.0 + line;
+                let reserve = 10.0
+                    + if op.is_empty() {
+                        line + 4.0
+                    } else {
+                        line + 6.0 + 4.0 + journal_h
+                    };
                 let mut editor_rect = ui.available_rect_before_wrap().shrink(2.0);
                 editor_rect
                     .set_bottom((editor_rect.bottom() - reserve).max(editor_rect.top() + 60.0));
@@ -8113,7 +8130,7 @@ impl App {
                         &self.op_notes,
                         &mut self.op_note_text,
                         &mut self.op_note_confirm,
-                        84.0,
+                        journal_h,
                         true,
                     );
                     if let State::Unlocked(session) = &self.state {
