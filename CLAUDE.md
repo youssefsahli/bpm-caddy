@@ -340,6 +340,18 @@ add clicking and typing; it is not the price of entry.
   patient band, the drug card, the vaccine map and the scans form all
   depend on it. This is the cheap shape for the next one: a helper that
   measures, a headless draw, and an assertion in both directions.
+- **Never subtract the layout's own gutter from a constant.** A width
+  written as "the mark plus the air after it" has to give the air back,
+  because `ui.horizontal` already inserts `item_spacing.x` — and that
+  subtraction goes *negative* the moment the style scales past the
+  constant (10 − 4 − 16 at `text_scale = 1.6`). A negative
+  `ui.add_space` walks the cursor backwards and the next widget paints
+  over the previous one. Derive the width instead
+  (`4.0 + item_spacing.x`), let the layout supply the gutter, and have
+  the measurement call the same function the drawing does — they then
+  agree by construction rather than by arithmetic somebody has to keep
+  correct. Found on the act colour mark, invisible at `text_scale = 1`
+  because there the number happens to stay positive.
 - **A bound that "doesn't bite" is usually the path, not the measure.**
   `egui::Label::new(LayoutJob)` **overwrites** the job's
   `wrap.max_width` with the ui's own wrap width and keeps only
