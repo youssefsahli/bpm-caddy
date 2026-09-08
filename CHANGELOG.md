@@ -63,6 +63,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   première version du correctif a fait au registre pendant une capture.
   Un test lit le texte du fichier et refuse le prochain littéral.
 
+- **La bande de portes de l'explorateur s'arrêtait au milieu d'une
+  rangée.** Plafonnée aux pixels, elle coupait sa troisième en deux.
+  Elle défile, donc rien n'était perdu — mais une porte coupée dans le
+  sens de la hauteur ne se lit pas « il y en a d'autres », elle se lit
+  « cassé » : le même défaut que l'onglet tronqué, et la même réponse,
+  montrer moins mais entier.
+
 ### Changed
 - **Une feuille déjà collée ne coûte plus la seule divergence.**
   L'onglet de conciliation porte trois panneaux et n'a pas la place des

@@ -1101,6 +1101,17 @@ fn chars_wide(ui: &egui::Ui, n: f32) -> f32 {
 /// and never left of the table's own first column — at rest the two are
 /// the same pixel, and it is only once the table slides under the
 /// viewport that they part.
+/// The height a capped band of wrapped rows takes: whole rows only,
+/// never a fraction of one, and at least one.
+///
+/// Une bande plafonnée aux pixels s'arrête au milieu d'une rangée. Elle
+/// défile, donc rien n'est perdu — mais une porte coupée en deux dans le
+/// sens de la hauteur se lit « cassé », pas « il y en a d'autres ».
+fn whole_rows(cap: f32, row_h: f32, gap: f32, rows: f32) -> f32 {
+    let fit = ((cap + gap) / (row_h + gap)).floor().max(1.0).min(rows);
+    fit * row_h + (fit - 1.0).max(0.0) * gap
+}
+
 fn frozen_left(clip_left: f32, content_left: f32, pad: f32) -> f32 {
     clip_left.max(content_left - pad) + pad
 }
@@ -19256,8 +19267,18 @@ impl App {
         // une bande mesurée sans plafond mange le tableau qu'elle titre.
         let rows = Self::wrapped_rows(ui, body.width(), labels.iter().map(|s| s.as_str()));
         let row_h = Self::row_height(ui);
-        let head = (rows * row_h + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y)
-            .min(body.height() * 0.4);
+        // Plafonnée sur des rangées **entières**. Plafonnée aux pixels,
+        // la bande s'arrêtait au milieu d'une rangée : elle défile, donc
+        // rien n'est perdu, mais une porte coupée en deux dans le sens
+        // de la hauteur ne se lit pas « il y en a d'autres », elle se
+        // lit « cassé » — c'est le même défaut que l'onglet tronqué, et
+        // la même réponse : montrer moins, mais entier.
+        let head = whole_rows(
+            body.height() * 0.4,
+            row_h,
+            ui.spacing().item_spacing.y,
+            rows,
+        );
         let axis = axes.get(session.explorer_axis).copied().flatten();
         // La note de couverture est une phrase entière : sa hauteur se
         // mesure sur le galley qu'elle produira à cette largeur, jamais
@@ -30806,6 +30827,40 @@ mod tests {
             "une largeur de champ se mesure, elle ne s'écrit pas en pixels :\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// **Une bande plafonnée s'arrête sur une rangée entière.**
+    ///
+    /// Plafonnée aux pixels, la bande de portes de l'explorateur
+    /// s'arrêtait au milieu de sa troisième rangée. Elle défile, donc
+    /// rien n'est perdu — mais une porte coupée en deux dans le sens de
+    /// la hauteur ne se lit pas « il y en a d'autres », elle se lit
+    /// « cassé » : le même défaut que l'onglet tronqué, et la même
+    /// réponse, montrer moins mais entier.
+    #[test]
+    fn a_capped_band_stops_on_a_whole_row() {
+        use super::whole_rows;
+        let (row, gap) = (38.0_f32, 10.0_f32);
+        for cap in [20.0_f32, 47.0, 48.0, 100.0, 137.0, 400.0] {
+            for rows in [1.0_f32, 3.0, 13.0] {
+                let h = whole_rows(cap, row, gap, rows);
+                // Un nombre entier de rangées, gouttières comprises.
+                let n = (h + gap) / (row + gap);
+                assert!(
+                    (n - n.round()).abs() < 0.001,
+                    "plafond {cap}, {rows} rangées : {h} px, soit {n} rangées"
+                );
+                // Jamais plus que ce qu'il y a à montrer, ni plus que le
+                // plafond — sauf la première, qu'on montre toujours :
+                // une bande à zéro rangée est une bande absente.
+                assert!(n <= rows + 0.001);
+                assert!(
+                    h <= cap + 0.001 || n <= 1.001,
+                    "plafond {cap} dépassé : {h}"
+                );
+                assert!(h >= row - 0.001);
+            }
+        }
     }
 
     /// **Une taille de texte non plus.**

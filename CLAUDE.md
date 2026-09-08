@@ -191,6 +191,19 @@ add clicking and typing; it is not the price of entry.
   a sentence, and three strings were hollow boxes on screen for months
   because the chip beside them was right. Two tests in `src/strings.rs`
   pass every shipped character through the face that will draw it.
+- **A font size comes from `motif::pt`, never from a literal.**
+  `RichText::size(11.0)` is a number of pixels: `[ui] text_scale` scales
+  the `TextStyle` ladder, and a literal does not go through the ladder.
+  Four hundred and seven of them meant that at 1,6 the panel captions,
+  the counts, the register's dates and the label beside every figure
+  stayed at eleven pixels while the buttons around them grew by half —
+  the smallest text, the text someone who enlarges the type most needs
+  enlarged, was the only text that did not move. `motif::pt(ui, 11.0)`
+  is that eleven, scaled; `no_font_size_is_written_in_pixels` reads the
+  text of `app.rs` and refuses the next literal. **And the measurement
+  goes through the same function as the drawing** — `Self::widest` and
+  the register's own templates still counted in pixels after the
+  conversion, and the register elided its dates.
 - **Colour comes from the theme, never from a literal.** `motif::bg()`,
   `text_dim()`, `accent()`… are functions over `motif::THEMES` (six
   palettes, `[ui] theme`); a hard-coded `Color32::from_rgb` in the
