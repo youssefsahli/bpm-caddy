@@ -19371,7 +19371,26 @@ impl App {
 
         let mut open: Option<String> = None;
         motif::panel(ui, strip[2], None, |ui| {
-            egui::ScrollArea::both()
+            // **Ce tableau se replie, il ne défile pas de côté.** Ses
+            // colonnes ne sont pas des phrases entières comme celles des
+            // tables de conversion : un nom, une valeur courte, et une
+            // liste. Une liste enveloppe. Il suffisait donc de borner la
+            // dernière colonne pour que la table tienne dans son
+            // panneau — non bornée, elle prenait sa largeur naturelle
+            // dans un `ScrollArea::both` qui la lui accordait, et
+            // « Organes altérés » sortait par la droite.
+            //
+            // Les largeurs sont en **caractères** et non mesurées sur
+            // huit cent cinquante et un noms : une passe de mesure par
+            // fiche, soixante fois par seconde, est exactement ce que ce
+            // fichier refuse ailleurs. Le nom s'élide, la liste
+            // enveloppe.
+            let body_w = ui.available_width() - 14.0;
+            let gapx = gap * 2.0;
+            let name_w = chars_wide(ui, 24.0).min(body_w * 0.34);
+            let value_w = chars_wide(ui, 16.0).min(body_w * 0.24);
+            let rest_w = (body_w - name_w - value_w - gapx * 2.0).max(chars_wide(ui, 10.0));
+            egui::ScrollArea::vertical()
                 .id_salt("explorer_body")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
@@ -19383,20 +19402,37 @@ impl App {
                                 .spacing([gap * 2.0, 6.0])
                                 .striped(true)
                                 .show(ui, |ui| {
-                                    ui.label(egui::RichText::new(tr("explorer_col_card")).strong());
-                                    ui.label(
+                                    Self::grid_cell(
+                                        ui,
+                                        name_w,
+                                        egui::RichText::new(tr("explorer_col_card")).strong(),
+                                    );
+                                    Self::grid_cell(
+                                        ui,
+                                        value_w,
                                         egui::RichText::new(tr("explorer_col_half_life")).strong(),
                                     );
-                                    ui.label(
+                                    Self::grid_cell(
+                                        ui,
+                                        rest_w,
                                         egui::RichText::new(tr("explorer_col_organs")).strong(),
                                     );
                                     ui.end_row();
                                     for f in crate::facets::by_half_life_desc() {
                                         if ui
-                                            .add(
-                                                egui::Label::new(f.name)
-                                                    .sense(egui::Sense::click()),
+                                            .allocate_ui_with_layout(
+                                                egui::vec2(name_w, 0.0),
+                                                egui::Layout::left_to_right(egui::Align::TOP),
+                                                |ui| {
+                                                    ui.set_width(name_w);
+                                                    ui.add(
+                                                        egui::Label::new(f.name)
+                                                            .truncate()
+                                                            .sense(egui::Sense::click()),
+                                                    )
+                                                },
                                             )
+                                            .inner
                                             .clicked()
                                         {
                                             open = Some(f.name.to_owned());
@@ -19410,21 +19446,35 @@ impl App {
                                         // demi-vie : sa place est sous elle, et
                                         // non dans une quatrième colonne que le
                                         // volet ne peut pas montrer.
-                                        ui.vertical(|ui| {
-                                            ui.label(egui::RichText::new(value).color(colour));
-                                            if !f.beyond.is_empty() {
-                                                let small =
-                                                    egui::TextStyle::Body.resolve(ui.style()).size
+                                        // Un `scope` et non `allocate_ui_with_layout` :
+                                        // celui-ci réserve la taille qu'on lui
+                                        // demande, et une hauteur nulle laisse la
+                                        // note déborder sur la ligne d'en dessous —
+                                        // « interactions des » se peignait par-dessus
+                                        // « 70 j ». Le `scope` prend la hauteur de ce
+                                        // qu'il contient, et la grille suit.
+                                        ui.scope(|ui| {
+                                            ui.set_max_width(value_w);
+                                            // Verticale : la note est *sous* la
+                                            // valeur, et la disposition d'une
+                                            // cellule de grille ne l'est pas.
+                                            ui.vertical(|ui| {
+                                                ui.label(egui::RichText::new(value).color(colour));
+                                                if !f.beyond.is_empty() {
+                                                    let small = egui::TextStyle::Body
+                                                        .resolve(ui.style())
+                                                        .size
                                                         * 0.85;
-                                                ui.add(
-                                                    egui::Label::new(
-                                                        egui::RichText::new(f.beyond)
-                                                            .size(small)
-                                                            .color(motif::text_dim()),
-                                                    )
-                                                    .wrap(),
-                                                );
-                                            }
+                                                    ui.add(
+                                                        egui::Label::new(
+                                                            egui::RichText::new(f.beyond)
+                                                                .size(small)
+                                                                .color(motif::text_dim()),
+                                                        )
+                                                        .wrap(),
+                                                    );
+                                                }
+                                            });
                                         });
                                         // Les organes que la fiche altère,
                                         // le plus lourd en tête : c'est ce
@@ -19444,12 +19494,16 @@ impl App {
                                         } else {
                                             motif::text_dim()
                                         };
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(organs.join(", ")).color(tint),
-                                            )
-                                            .wrap(),
-                                        );
+                                        ui.scope(|ui| {
+                                            ui.set_max_width(rest_w);
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(organs.join(", "))
+                                                        .color(tint),
+                                                )
+                                                .wrap(),
+                                            );
+                                        });
                                         ui.end_row();
                                     }
                                 });
@@ -19482,19 +19536,33 @@ impl App {
                                                 Grade::Notable => motif::text(),
                                                 Grade::Mineur => motif::text_dim(),
                                             };
-                                            ui.label(
+                                            Self::grid_cell(
+                                                ui,
+                                                value_w,
                                                 egui::RichText::new(im.grade.label()).color(tint),
                                             );
                                             if ui
-                                                .add(
-                                                    egui::Label::new(f.name)
-                                                        .sense(egui::Sense::click()),
+                                                .allocate_ui_with_layout(
+                                                    egui::vec2(name_w, 0.0),
+                                                    egui::Layout::left_to_right(egui::Align::TOP),
+                                                    |ui| {
+                                                        ui.set_width(name_w);
+                                                        ui.add(
+                                                            egui::Label::new(f.name)
+                                                                .truncate()
+                                                                .sense(egui::Sense::click()),
+                                                        )
+                                                    },
                                                 )
+                                                .inner
                                                 .clicked()
                                             {
                                                 open = Some(f.name.to_owned());
                                             }
-                                            ui.add(egui::Label::new(im.why).wrap());
+                                            ui.scope(|ui| {
+                                                ui.set_max_width(rest_w);
+                                                ui.add(egui::Label::new(im.why).wrap());
+                                            });
                                             ui.end_row();
                                         }
                                     });

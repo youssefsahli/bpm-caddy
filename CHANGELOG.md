@@ -54,6 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   par `motif::pt` comme le reste.
 
 ### Changed
+- **Le tableau de l'explorateur se replie, il ne défile plus de côté.**
+  C'était la dernière vue à défiler des deux côtés, et pour une raison
+  qui ne tenait pas : ses colonnes ne sont pas des phrases entières
+  comme celles des tables de conversion, mais un nom, une valeur courte
+  et une liste — et une liste enveloppe. Il suffisait de borner la
+  dernière colonne. Non bornée, elle prenait sa largeur naturelle dans
+  un `ScrollArea::both` qui la lui accordait, et « Organes altérés »
+  sortait par la droite. Les largeurs sont en caractères et non mesurées
+  sur huit cent cinquante et un noms : une passe de mesure par fiche,
+  soixante fois par seconde, est ce que ce fichier refuse ailleurs.
 - **Le même champ portait deux noms.** « Conseils au patient » sur la
   fiche et sur le papier, « IUP » dans les résultats de « Dans le
   texte… » : un sigle en dit moins que ce qu'il abrège, et la recherche
