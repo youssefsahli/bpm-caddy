@@ -5,6 +5,67 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.159.0] - 2026-09-08
+
+La suite de la même passe : ce qu'une seconde tournée de captures a
+rendu, et une relecture des huit cent cinquante et une fiches contre
+elles-mêmes.
+
+### Fixed
+- **La vue la plus ouverte de l'application ne montrait que ses
+  boutons.** Onze actions dans un `horizontal_wrapped` sans plafond :
+  à 1024x700 et à l'échelle 1,6 elles enveloppaient sur quatre rangées,
+  deux cent cinquante pixels sur cinq cent quarante-cinq, et ce qui
+  restait de la fiche médicament était son nom coupé en deux, aucune
+  ligne de monographie, et les trois panneaux du bas rognés. La bande
+  se plafonne désormais en part du volet et s'arrête sur deux rangées
+  entières, comme la bande d'identité du dossier, les portes de
+  l'explorateur et la légende de l'agenda. Ce qui apparaît à la place,
+  sur un anticoagulant : « Antidote : Andexanet alfa ». Sur un écran
+  large, rien ne change.
+- **La bande de regroupement de la carte vaccinale** s'arrêtait au
+  milieu d'une rangée de pastilles ; elle tombe sur une rangée entière.
+- **`motif::section` peignait par-dessus le bord de son volet** :
+  « Amérique du Nord » se lisait « Amérique du » au ras du bord, sans
+  même l'ellipse qui aurait dit qu'il manquait quelque chose.
+- **La bande d'archivage des pièces** coupait sa seconde rangée de
+  genres par le milieu, et « Pièces au dossier » n'avait plus qu'un
+  filet sous son titre.
+- **Le choix rapide d'un acte débordait de l'écran des deux côtés.**
+  Dix actes, une liste de thèmes et un bouton : à 1024x700 et à
+  l'échelle 1,6 la fenêtre mesurait plus haut que l'écran, et comme
+  elle est centrée elle perdait son propre titre en haut et « Fermer »
+  en bas. Échap la ferme et l'invite le dit, mais une fenêtre dont on
+  ne voit ni le titre ni le bouton se lit cassée. La liste défile ; le
+  thème armé et le bouton qui ferme gardent leur rangée, hors du
+  défilement.
+
+### Changed
+- **Dix-huit fiches se contredisaient elles-mêmes.** Les erreurs qui
+  restent dans une base relue ne sont pas des champs vides, ce sont des
+  champs qui ne peuvent pas être vrais ensemble. Les plus graves sont
+  les chiffres, parce que c'est le chiffre que la délivrance retient :
+  - **Médrol** posait l'équivalence de 4 mg pour 5 mg de prednisone,
+    puis illustrait le piège du relais par « un comprimé de 16 mg
+    n'étant pas un comprimé de 20 mg de prednisone » — alors qu'avec
+    son propre rapport, 16 mg en valent exactement 20 ;
+  - **Aubagio** prescrivait deux rythmes incompatibles pour le même
+    contrôle sur la même période, toutes les deux semaines et une fois
+    par mois ;
+  - **Maviret** et **Solian** portaient deux seuils pour la même
+    contre-indication : un patient Child-Pugh B traitable selon un champ
+    et interdit selon l'autre, une clairance à 20 mL/min qui vaut un
+    tiers de dose ici et un refus de délivrance là ;
+  - **Insulatard** donnait deux durées d'action ; c'est `insulin.rs`
+    qui a tranché, son profil étant tenu par un test ;
+  - plus **Xarelto**, **Lariam**, **Sporanox** sur des chiffres, et
+    **Izilox**, **Zeclar**, **Sterdex**, **Nordaz**, **Noctamide**,
+    **Scandicaïne**, **Orgaran**, **Arimidex**, **Xolair** sur deux
+    phrases qui s'excluent.
+
+  Trois constats de plus ont été écartés à la relecture, et un
+  quatorzième corrigé dans l'autre sens que celui proposé.
+
 ## [0.158.0] - 2026-09-08
 
 Une passe d'interface et de contenu. Les défauts d'interface viennent

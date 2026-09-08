@@ -5980,28 +5980,53 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                     .color(motif::text_dim()),
             );
             ui.add_space(6.0);
-            egui::Grid::new("act_picker")
-                .num_columns(2)
-                .spacing([10.0, 6.0])
+            // **La liste défile ; le thème et « Fermer » restent.** Dix
+            // actes, une liste de thèmes et un bouton : à 1024x700 et à
+            // l'échelle 1,6 la fenêtre mesurait plus haut que l'écran,
+            // et comme elle est centrée elle débordait des **deux**
+            // côtés — son propre titre coupé en haut, « Fermer » coupé
+            // en bas. Échap la ferme, et l'invite le dit, mais une
+            // fenêtre dont on voit ni le titre ni le bouton se lit
+            // cassée.
+            //
+            // La règle de la maison : ce qui doit rester visible sous un
+            // widget qui grandit prend sa propre rangée, hors du
+            // défilement. Ici, le thème armé et le bouton qui ferme.
+            let room = (ctx.screen_rect().height()
+                - App::row_height(ui) * 3.0
+                - ui.text_style_height(&egui::TextStyle::Body) * 4.0)
+                .max(App::row_height(ui) * 3.0);
+            egui::ScrollArea::vertical()
+                .id_salt("act_picker_body")
+                .max_height(room)
                 .show(ui, |ui| {
-                    for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
-                        if ui
-                            .add_sized(
-                                [190.0, 24.0],
-                                egui::Button::new(format!("{}  ·  {}", (i + 1) % 10, kind.label()))
-                                    .fill(motif::bg()),
-                            )
-                            .clicked()
-                        {
-                            chosen = Some(kind);
-                        }
-                        ui.label(
-                            egui::RichText::new("     ")
-                                .background_color(kind_color(kind))
-                                .size(motif::pt(ui, 11.0)),
-                        );
-                        ui.end_row();
-                    }
+                    egui::Grid::new("act_picker")
+                        .num_columns(2)
+                        .spacing([10.0, 6.0])
+                        .show(ui, |ui| {
+                            for (i, kind) in InterviewKind::ALL.into_iter().enumerate() {
+                                if ui
+                                    .add_sized(
+                                        [190.0, 24.0],
+                                        egui::Button::new(format!(
+                                            "{}  ·  {}",
+                                            (i + 1) % 10,
+                                            kind.label()
+                                        ))
+                                        .fill(motif::bg()),
+                                    )
+                                    .clicked()
+                                {
+                                    chosen = Some(kind);
+                                }
+                                ui.label(
+                                    egui::RichText::new("     ")
+                                        .background_color(kind_color(kind))
+                                        .size(motif::pt(ui, 11.0)),
+                                );
+                                ui.end_row();
+                            }
+                        });
                 });
             ui.add_space(8.0);
             theme_combo(ui, "act_picker_theme", &mut session.act_theme);
@@ -20096,7 +20121,24 @@ impl App {
         // formulaire dont le bouton ne se voit pas n'est pas un
         // formulaire court, c'est un formulaire absent.
         let form_min = chrome + field_row + step;
-        let band = want.min((rect.height() - list_min).max(form_min));
+        let cap = (rect.height() - list_min).max(form_min);
+        // **Et le plafond tombe sur une rangée entière.** Plafonné aux
+        // pixels il coupait la seconde rangée de pastilles par le
+        // milieu : elle défile, donc rien n'est perdu, mais une
+        // pastille tranchée dans le sens de la hauteur se lit
+        // « cassé ». Tout ce qui suit l'en-tête du panneau est fait de
+        // rangées d'une seule hauteur, donc on coupe entre deux.
+        let band = if want <= cap {
+            want
+        } else {
+            chrome
+                + whole_rows(
+                    cap - chrome,
+                    Self::row_height(ui),
+                    ui.spacing().item_spacing.y,
+                    kinds + field_row / step,
+                )
+        };
         let rows = motif::split_rows(rect, &[band, 0.0], 6.0);
 
         let mut import = false;
