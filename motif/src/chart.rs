@@ -506,43 +506,105 @@ pub fn heat_strip(
 }
 
 /// A legend row: a swatch and a caption per series, wrapped.
+/// The height of one row of [`legend`], so a caller can refuse to draw
+/// a legend it cannot show whole.
+///
+/// **Elle grandit avec le texte.** Écrite à quatorze pixels en dur, la
+/// rangée portait un texte de onze pixels — donc dix-sept virgule six à
+/// l'échelle 1,6 —, et les deux lignes de la légende de l'agenda se
+/// chevauchaient.
+pub fn legend_row_height(ui: &egui::Ui) -> f32 {
+    crate::pt(ui, 14.0)
+}
+
 pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
-    ui.horizontal_wrapped(|ui| {
-        // A legend is a caption, not a form: it wraps tightly, so the
-        // strip a caller reserves for it is the strip it needs.
-        ui.spacing_mut().item_spacing = Vec2::new(10.0, 2.0);
-        for (label, color) in items {
-            let (rect, _) = ui.allocate_exact_size(
-                Vec2::new(
-                    ui.fonts(|f| {
-                        f.layout_no_wrap(
-                            (*label).to_owned(),
-                            egui::FontId::proportional(crate::pt(ui, 11.0)),
-                            crate::text(),
-                        )
-                        .size()
-                        .x
-                    }) + 18.0,
-                    14.0,
-                ),
-                egui::Sense::hover(),
-            );
-            let swatch = egui::Rect::from_min_size(
-                egui::pos2(rect.left(), rect.center().y - 5.0),
-                Vec2::splat(10.0),
-            );
-            ui.painter().rect_filled(swatch, 0.0, *color);
-            ui.painter()
-                .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, crate::bg_dark()));
-            ui.painter().text(
-                egui::pos2(rect.left() + 14.0, rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                *label,
-                egui::FontId::proportional(crate::pt(ui, 11.0)),
-                crate::text_dim(),
-            );
-        }
+    // **Peinte rangée par rangée contre le rectangle qu'on lui donne.**
+    // `horizontal_wrapped` dessine autant de rangées qu'il en faut et
+    // `motif::inside` coupe la dernière en deux : une demi-pastille de
+    // couleur ne dit rien de plus qu'une pastille absente. Ici la bande
+    // s'arrête d'elle-même sur une rangée entière et compte ce qu'elle
+    // laisse — « +4 » dit ce que la demi-rangée cachait.
+    let row = legend_row_height(ui);
+    let gap_x = crate::pt(ui, 10.0);
+    let gap_y = 2.0;
+    let pad = crate::pt(ui, 18.0);
+    let swatch_w = crate::pt(ui, 10.0);
+    let font = egui::FontId::proportional(crate::pt(ui, 11.0));
+    let (widths, marker_w) = ui.fonts(|f| {
+        let w = |s: &str| {
+            f.layout_no_wrap(s.to_owned(), font.clone(), crate::text())
+                .size()
+                .x
+        };
+        (
+            items.iter().map(|(l, _)| w(l) + pad).collect::<Vec<f32>>(),
+            w("+99") + pad,
+        )
     });
+    // Depuis le curseur, pas depuis le haut du panneau : la légende
+    // s'écrit *sous* la courbe qu'elle explique, et `max_rect` commence
+    // là où le panneau commence.
+    let area = egui::Rect::from_min_max(
+        ui.cursor().min,
+        egui::pos2(ui.max_rect().right(), ui.max_rect().bottom()),
+    );
+    let (mut x, mut y) = (area.left(), area.top());
+    let mut drawn = 0usize;
+    let mut bottom = area.top();
+    // Où le compte s'écrira : au bout de la dernière pastille dessinée,
+    // et non là où la boucle s'est arrêtée — elle peut s'être arrêtée
+    // sur une rangée qui n'existe pas.
+    let mut mark = egui::pos2(area.left(), area.top());
+    for (i, ((label, color), w)) in items.iter().zip(&widths).enumerate() {
+        if x + w > area.right() && x > area.left() {
+            x = area.left();
+            y += row + gap_y;
+        }
+        // La rangée suivante ne tient pas : ce qui reste se compte.
+        if y + row > area.bottom() + 0.5 {
+            break;
+        }
+        // Sur la dernière rangée possible, on garde la place du compte.
+        let last_row = y + row + gap_y + row > area.bottom() + 0.5;
+        if last_row && i + 1 < items.len() && x + w + gap_x + marker_w > area.right() {
+            break;
+        }
+        let rect = egui::Rect::from_min_size(egui::pos2(x, y), Vec2::new(*w, row));
+        let swatch = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.center().y - swatch_w / 2.0),
+            Vec2::splat(swatch_w),
+        );
+        ui.painter().rect_filled(swatch, 0.0, *color);
+        ui.painter()
+            .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, crate::bg_dark()));
+        ui.painter().text(
+            egui::pos2(rect.left() + swatch_w + 4.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            *label,
+            font.clone(),
+            crate::text_dim(),
+        );
+        x += w + gap_x;
+        bottom = rect.bottom();
+        mark = egui::pos2(x, y);
+        drawn += 1;
+    }
+    let hidden = items.len() - drawn;
+    if hidden > 0 && mark.x + marker_w <= area.right() + 0.5 {
+        ui.painter().text(
+            egui::pos2(mark.x, mark.y + row / 2.0),
+            egui::Align2::LEFT_CENTER,
+            format!("+{hidden}"),
+            font,
+            crate::text_dim(),
+        );
+        bottom = bottom.max(mark.y + row);
+    }
+    // La place réellement prise, pour que ce qui suit s'écrive dessous.
+    ui.allocate_rect(
+        egui::Rect::from_min_max(area.min, egui::pos2(area.right(), bottom)),
+        egui::Sense::hover(),
+    );
 }
 
 #[cfg(test)]

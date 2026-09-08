@@ -63,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   première version du correctif a fait au registre pendant une capture.
   Un test lit le texte du fichier et refuse le prochain littéral.
 
+- **Une légende se coupait au milieu d'une rangée de pastilles.** Celle
+  de l'agenda porte dix actes : deux rangées au comptoir, dont la
+  seconde était tranchée par le bas du panneau, et une demi-pastille de
+  couleur ne dit rien de plus qu'une pastille absente. La légende se
+  peint maintenant rangée par rangée contre le rectangle qu'on lui
+  donne, s'arrête sur une rangée entière et **compte ce qu'elle
+  laisse** — « +2 » dit ce que la demi-rangée cachait. Ses propres
+  mesures suivent aussi `[ui] text_scale` : quatorze pixels de rangée
+  pour un texte de dix-sept virgule six, c'était deux lignes qui se
+  chevauchaient.
 - **La bande de portes de l'explorateur s'arrêtait au milieu d'une
   rangée.** Plafonnée aux pixels, elle coupait sa troisième en deux.
   Elle défile, donc rien n'était perdu — mais une porte coupée dans le

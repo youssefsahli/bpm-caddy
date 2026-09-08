@@ -17645,13 +17645,21 @@ impl App {
             // under the grid.
             let legend =
                 egui::Rect::from_min_max(egui::pos2(rect.left(), grid.bottom() + 4.0), rect.max);
-            motif::inside(ui, legend, |ui| {
-                let items: Vec<(&str, egui::Color32)> = InterviewKind::ALL
-                    .iter()
-                    .map(|k| (k.label(), kind_color(*k)))
-                    .collect();
-                motif::chart::legend(ui, &items);
-            });
+            // **Entière ou pas du tout.** La légende est une garniture :
+            // une bande qui n'a pas la hauteur d'une de ses rangées en
+            // dessine une moitié, et une demi-pastille de couleur ne dit
+            // rien de plus qu'une pastille absente. Au-delà d'une
+            // rangée, `chart::legend` se limite elle-même et compte ce
+            // qu'elle laisse.
+            if legend.height() >= motif::chart::legend_row_height(ui) {
+                motif::inside(ui, legend, |ui| {
+                    let items: Vec<(&str, egui::Color32)> = InterviewKind::ALL
+                        .iter()
+                        .map(|k| (k.label(), kind_color(*k)))
+                        .collect();
+                    motif::chart::legend(ui, &items);
+                });
+            }
         }
     }
 
