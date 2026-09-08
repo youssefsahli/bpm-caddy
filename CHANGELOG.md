@@ -35,8 +35,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
+### Added
+- **La colonne qui nomme la ligne ne s'en va plus par la gauche.** Un
+  tableau de conversion à six colonnes de phrases ne tient pas dans un
+  panneau de comptoir : il défile latéralement, et c'est la seule forme
+  honnête qu'il ait. Mais la première colonne de chacun de ces tableaux
+  *nomme* la ligne — DCI, molécule, stade, classe, pilier —, et « 20 mg »
+  lu sans le médicament auquel il appartient n'est pas lu. Elle est
+  désormais réservée là où la grille la met et **peinte au bord de ce
+  qui est visible** : au repos c'est le même pixel, une fois glissé le
+  nom reste. Elle se corrige d'un clic comme n'importe quelle autre
+  cellule, et la correction s'ouvre là où le nom est écrit, pas là où la
+  grille l'aurait mis. Un test l'impose à trois échelles et à trois
+  positions de la barre ; vérifié en laissant le nom suivre le contenu,
+  où il part à quatre-vingt-seize pixels *à gauche* de la fenêtre.
+
 ### Changed
+- **Les intitulés des tables de conversion passent au registre du
+  reste.** Quarante-deux en-têtes de colonne et dix-sept titres
+  disaient « Ce qu'on surveille », « Ce qui va de travers », « Le
+  piège », « Où on l'applique ». Là où un terme professionnel existe,
+  c'est lui : Surveillance, Effets indésirables, Écueil, Zones
+  d'application, Conduite à tenir, Signes d'alerte, Idée reçue, Motif
+  de refus. Le contenu des cellules, lui, n'est pas touché — ce sont
+  des phrases, et une phrase n'est pas un intitulé. Effet de bord utile :
+  des en-têtes plus courts sont des colonnes plus étroites, donc un
+  tableau qui défile moins souvent.
+- **Et huit lignes de posologie retrouvent le registre de leurs
+  voisines.** Dans une colonne d'indications — « Cystite aiguë simple
+  de la femme », « Conservation et conduite à tenir » —, « Ce qui se dit
+  avant la première perfusion » détonne : c'est devenu « Avant la
+  première perfusion », « À vérifier avant la prise », « Mesures
+  associées ». Le contenu ne change pas, seul son intitulé.
 - **Entrée valide trois rangées de plus** : la note d'un journal, le
   résultat de biologie, le matériel qu'on pose. Un journal se tient note
   après note et un bilan analyte après analyte ; aller cliquer

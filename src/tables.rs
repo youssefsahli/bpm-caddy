@@ -454,7 +454,7 @@ pub const TABLES: &[ConvTable] = &[
             "RCP des spécialités concernées, base de données publique des médicaments",
             "ANSM — millepertuis et interactions médicamenteuses, mise au point",
         ],
-        columns: &["Ce qui interagit", "Mécanisme", "Médicaments concernés", "Conséquence attendue", "Conduite au comptoir"],
+        columns: &["Aliment ou substance", "Mécanisme", "Médicaments concernés", "Conséquence attendue", "Conduite au comptoir"],
         rows: &[
             &["Pamplemousse (fruit et jus)", "Inhibition du CYP3A4 intestinal, durable après une seule prise", "Simvastatine et atorvastatine, inhibiteurs calciques dihydropyridines, ciclosporine, tacrolimus, colchicine", "Concentrations augmentées, parfois d'un facteur trois : myalgies, œdèmes, toxicité", "Suppression du pamplemousse, pas un simple espacement : l'inhibition dure plus de 24 heures. Les autres agrumes ne posent pas le même problème."],
             &["Millepertuis", "Induction du CYP3A4 et de la P-glycoprotéine", "Contraceptifs oraux, anticoagulants oraux directs, antivitamines K, immunosuppresseurs, antirétroviraux, antidépresseurs sérotoninergiques", "Perte d'efficacité pouvant aller jusqu'à l'échec de la contraception ou du greffon ; syndrome sérotoninergique avec les antidépresseurs", "Contre-indication ou association déconseillée selon le médicament. À rechercher activement : le patient ne le déclare pas, parce que c'est « une plante »."],
@@ -477,7 +477,7 @@ pub const TABLES: &[ConvTable] = &[
             "HAS — prise en charge de l'anaphylaxie ; conduite à tenir devant une hypoglycémie",
             "Guide des gestes d'urgence à l'officine, Ordre national des pharmaciens",
         ],
-        columns: &["Situation", "Ce que l'on voit", "Geste immédiat", "Ce qu'il ne faut pas faire", "Orientation"],
+        columns: &["Situation", "Signes", "Geste immédiat", "À ne pas faire", "Orientation"],
         rows: &[
             &["Anaphylaxie", "Urticaire étendue avec gêne respiratoire, gonflement de la gorge, malaise ou chute de tension, souvent en quelques minutes", "Adrénaline intramusculaire dans la face externe de la cuisse, sans attendre ; allonger jambes surélevées", "Ne pas faire asseoir ni lever la personne, ne pas se contenter d'un antihistaminique ou d'un corticoïde", "Appel du 15 dans tous les cas, même si les signes cèdent : une deuxième vague est possible dans les heures qui suivent."],
             &["Hypoglycémie consciente", "Sueurs, tremblements, faim, pâleur, troubles du comportement chez un patient diabétique", "15 g de sucre rapide : 3 morceaux de sucre, un verre de jus de fruit ou de soda non light, puis un sucre lent une fois les signes passés", "Ne pas donner de chocolat ni de produit gras, dont le sucre passe trop lentement", "Recontrôler la glycémie à 15 minutes et resucrer si nécessaire ; rechercher la cause avant de laisser repartir."],
@@ -493,7 +493,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Grossesse",
         family: "Adaptation",
-        title: "Grossesse et allaitement — ce qui se délivre au comptoir",
+        title: "Grossesse et allaitement — délivrance au comptoir",
         reviewed: "Août 2026 — CRAT consulté, RCP à jour",
         sources: &[
             "CRAT — Centre de référence sur les agents tératogènes",
@@ -516,14 +516,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Sujet âgé",
         family: "Adaptation",
-        title: "Sujet âgé — médicaments à réévaluer et ce qu'on propose à la place",
+        title: "Sujet âgé — médicaments à réévaluer et alternatives",
         reviewed: "Août 2026 — critères de Laroche adaptés à la pratique française, STOPP/START v2",
         sources: &[
             "Laroche M.-L. et al. — liste des médicaments potentiellement inappropriés à la personne âgée en France",
             "STOPP/START version 2, adaptation française",
             "HAS — programme « prescription médicamenteuse chez le sujet âgé »",
         ],
-        columns: &["Médicament ou classe", "Pourquoi il pose problème après 75 ans", "Ce qui se propose à la place", "Si on le garde"],
+        columns: &["Médicament ou classe", "Pourquoi il pose problème après 75 ans", "Alternative", "Si maintenu"],
         rows: &[
             &["Benzodiazépines à demi-vie longue (diazépam, clorazépate, bromazépam)", "Chutes, fractures, confusion et troubles de mémoire, par accumulation du métabolite actif", "Molécule à demi-vie courte à dose réduite, et surtout un plan d'arrêt progressif", "Dose de moitié, réévaluation à chaque renouvellement, jamais d'association à un autre sédatif"],
             &["Anticholinergiques (oxybutynine, hydroxyzine, antihistaminiques de 1re génération)", "Confusion, rétention urinaire, constipation, sécheresse buccale, glaucome aigu — la charge anticholinergique s'additionne sur toute l'ordonnance", "Antihistaminique de 2e génération, mesures non médicamenteuses pour la vessie", "Compter la charge anticholinergique de l'ordonnance entière, pas molécule par molécule"],
@@ -539,14 +539,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Inhalateurs",
         family: "Administration",
-        title: "Dispositifs inhalés — technique, contrôle et erreurs qui font échouer le traitement",
+        title: "Dispositifs inhalés — technique, contrôle et erreurs fréquentes",
         reviewed: "Août 2026 — notices des dispositifs commercialisés en France, GINA en vigueur",
         sources: &[
             "Notices et RCP des dispositifs (ANSM)",
             "GINA — Global Initiative for Asthma, édition en vigueur",
             "Société de pneumologie de langue française — éducation thérapeutique de l'asthmatique",
         ],
-        columns: &["Dispositif", "Comment on l'arme", "Comment on inspire", "L'erreur qui fait tout rater", "Ce qu'on vérifie"],
+        columns: &["Dispositif", "Armement", "Inspiration", "Erreur fréquente", "Contrôle"],
         rows: &[
             &["Aérosol-doseur pressurisé (spray)", "Agiter, retirer le capuchon, expirer à fond hors de l'appareil", "Inspiration lente et profonde, déclenchement au tout début de l'inspiration, puis 10 secondes d'apnée", "Déclencher avant ou après le début de l'inspiration : le produit se dépose dans la bouche", "Faire une démonstration à chaque renouvellement ; proposer une chambre d'inhalation dès qu'il y a un doute"],
             &["Spray + chambre d'inhalation", "Agiter, emboîter le spray, une bouffée à la fois dans la chambre", "Cinq à dix respirations calmes dans l'embout, ou masque bien appliqué chez l'enfant", "Envoyer deux bouffées d'un coup dans la chambre : la seconde se perd sur les parois", "Chambre lavée à l'eau savonneuse une fois par semaine et séchée à l'air libre, jamais essuyée"],
@@ -561,14 +561,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Antidiabétiques",
         family: "Posologies",
-        title: "Antidiabétiques oraux et injectables — ce qui change au comptoir",
+        title: "Antidiabétiques oraux et injectables — repères de délivrance",
         reviewed: "Août 2026 — RCP à jour, recommandations SFD en vigueur",
         sources: &[
             "RCP des spécialités (ANSM)",
             "Société francophone du diabète — prise de position sur la prise en charge du diabète de type 2",
             "HAS — parcours de soins du patient diabétique de type 2",
         ],
-        columns: &["Classe (exemples)", "Risque d'hypoglycémie", "Fonction rénale", "Effets à annoncer", "Ce qu'on dit à la délivrance"],
+        columns: &["Classe (exemples)", "Risque d'hypoglycémie", "Fonction rénale", "Effets à annoncer", "Conseil à la délivrance"],
         rows: &[
             &["Metformine (Glucophage, Stagid)", "Non en monothérapie", "Dose réduite de moitié si DFG 30 à 45, contre-indiquée en dessous de 30", "Troubles digestifs à l'instauration, goût métallique, carence en B12 au long cours", "Pendant ou après le repas, titration lente ; arrêt 48 h avant un examen avec produit de contraste iodé, et pendant toute déshydratation (fièvre, diarrhée, vomissements)"],
             &["Sulfamides (gliclazide, glimépiride)", "Oui, réel et parfois prolongé", "Prudence, contre-indiqués en insuffisance rénale sévère", "Prise de poids, hypoglycémies", "Ne jamais sauter le repas qui suit la prise ; resucrage expliqué à l'entourage ; l'alcool à jeun majore l'hypoglycémie"],
@@ -589,7 +589,7 @@ pub const TABLES: &[ConvTable] = &[
             "RCP des spécialités ophtalmiques (ANSM)",
             "Société française d'ophtalmologie — bon usage des collyres",
         ],
-        columns: &["Situation", "Règle", "Pourquoi", "Ce qu'on ajoute"],
+        columns: &["Situation", "Règle", "Pourquoi", "Précision"],
         rows: &[
             &["Deux collyres à la même heure", "Attendre au moins 5 minutes entre les deux", "Le cul-de-sac conjonctival tient environ 30 µL : la deuxième goutte chasse la première", "L'ordre suit la viscosité : le plus fluide d'abord"],
             &["Collyre et gel ou pommade", "Le collyre d'abord, le gel ou la pommade en dernier, 5 à 10 minutes après", "La pommade forme un film qui empêche la pénétration de ce qui suit", "La pommade le soir de préférence : elle trouble la vision"],
@@ -604,14 +604,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Automédication",
         family: "Au comptoir",
-        title: "Automédication — ce qui se refuse au comptoir, et ce qu'on propose",
+        title: "Automédication — refus au comptoir et alternatives",
         reviewed: "Août 2026 — RCP à jour, recommandations de bon usage en vigueur",
         sources: &[
             "RCP des spécialités de médication officinale (ANSM)",
             "Cespharm — fiches de conseil à l'officine",
             "ANSM — points d'information sur le bon usage des AINS et du paracétamol",
         ],
-        columns: &["Demande", "Ce qui bloque", "Ce qu'on propose", "Quand on oriente"],
+        columns: &["Demande", "Motif de refus", "Alternative", "Orientation"],
         rows: &[
             &["AINS chez un patient sous anticoagulant ou antiagrégant", "Risque hémorragique digestif multiplié ; l'association n'est pas une question de dose", "Paracétamol, topique local, chaud ou froid selon la douleur", "Douleur non soulagée à 48 h, ou saignement, selles noires, vomissement sanglant : le jour même"],
             &["AINS avec IEC ou sartan et diurétique", "La triade néfaste : insuffisance rénale aiguë, d'autant plus vite qu'il fait chaud", "Paracétamol, hydratation", "Prise de poids brutale, œdèmes, urines rares : consultation"],
@@ -628,14 +628,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Antibiotiques",
         family: "Posologies",
-        title: "Antibiotiques — durée, prise, et ce qui fait échouer le traitement",
+        title: "Antibiotiques — durée, prise et causes d'échec",
         reviewed: "Août 2026 — RCP à jour, recommandations SPILF en vigueur",
         sources: &[
             "RCP des spécialités (ANSM)",
             "SPILF — recommandations de bonne pratique en antibiothérapie",
             "HAS / Assurance Maladie — antibiotiques : les bons réflexes",
         ],
-        columns: &["Famille (exemples)", "Durée usuelle", "Prise", "Ce qui réduit l'efficacité", "À surveiller"],
+        columns: &["Famille (exemples)", "Durée usuelle", "Prise", "Perte d'efficacité", "À surveiller"],
         rows: &[
             &["Amoxicilline (Clamoxyl)", "5 à 7 jours selon l'indication, 6 jours dans l'angine", "Au moment des repas ou non, en trois prises espacées", "Prises rapprochées la nuit et sautées le jour : c'est la régularité qui maintient la concentration", "Éruption cutanée, diarrhée ; une éruption au 7e jour n'est pas toujours une allergie"],
             &["Amoxicilline-acide clavulanique (Augmentin)", "5 à 7 jours", "Au début du repas : cela réduit nettement l'intolérance digestive", "Prise à jeun, qui fait arrêter pour diarrhée", "Diarrhée fréquente, cholestase possible — première cause d'hépatite médicamenteuse en ville"],
@@ -654,14 +654,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Arrêts",
         family: "Au comptoir",
-        title: "Arrêts et sevrages — ce qui ne s'arrête jamais d'un coup",
+        title: "Arrêts et sevrages — traitements à décroître",
         reviewed: "Août 2026 — fiches HAS sur l'arrêt des benzodiazépines et des antidépresseurs, RCP à jour",
         sources: &[
             "HAS — arrêt des benzodiazépines et médicaments apparentés chez le patient âgé",
             "HAS — arrêt de la consommation de tabac ; mésusage de l'alcool",
             "RCP des spécialités (ANSM)",
         ],
-        columns: &["Traitement", "Pourquoi l'arrêt brutal pose problème", "Comment on décroît", "Ce qu'on surveille", "Ce qui fait appeler"],
+        columns: &["Traitement", "Pourquoi l'arrêt brutal pose problème", "Décroissance", "Surveillance", "Signes d'alerte"],
         rows: &[
             &["Bêtabloquant", "Rebond adrénergique : poussée hypertensive, angor, infarctus", "Sur une à deux semaines au moins, par paliers, sous contrôle du pouls et de la tension", "Pouls, tension, douleur thoracique", "Douleur thoracique, palpitations, tension qui s'emballe"],
             &["Corticoïde au long cours", "Insuffisance surrénale aiguë après plus de trois semaines de traitement", "Paliers décroissants sur plusieurs semaines, plus lents en dessous de 7,5 mg d'équivalent prednisone", "Fatigue, nausées, hypotension, douleurs articulaires", "Malaise, vomissements, fièvre : l'insuffisance surrénale est une urgence"],
@@ -685,7 +685,7 @@ pub const TABLES: &[ConvTable] = &[
             "Société française de dermatologie — traitement local de la dermatite atopique",
             "HAS — prise en charge de la dermatite atopique de l'enfant",
         ],
-        columns: &["Classe", "Molécules et spécialités", "Où on l'applique", "Durée usuelle", "Quantité pour un adulte", "Ce qui va de travers"],
+        columns: &["Classe", "Molécules et spécialités", "Zones d'application", "Durée usuelle", "Quantité pour un adulte", "Effets indésirables"],
         rows: &[
             &["I — très forte", "Clobétasol (Dermoval, Clarelux)", "Paumes, plantes, cuir chevelu, lichénifications épaisses ; jamais le visage ni les plis", "Deux à quatre semaines, puis relais par une classe plus faible", "Moins de 50 g par semaine", "Atrophie cutanée, vergetures définitives, et freinage surrénalien sur grande surface"],
             &["II — forte", "Bétaméthasone dipropionate (Diprosone), désonide 0,1 %, difluprednate (Épitopic 0,05 %)", "Corps, membres, poussée de dermatite atopique de l'adulte", "Une à trois semaines par poussée", "30 à 60 g par mois selon l'étendue", "Rebond à l'arrêt brutal : espacer plutôt qu'arrêter net"],
@@ -709,7 +709,7 @@ pub const TABLES: &[ConvTable] = &[
             "RCP des spécialités, base de données publique des médicaments (ANSM)",
             "Code de la route, article R412-6",
         ],
-        columns: &["Niveau", "Ce que dit le pictogramme", "Classes concernées", "Ce qu'on dit au comptoir", "Ce qui aggrave"],
+        columns: &["Niveau", "Mention", "Classes concernées", "Conseil au comptoir", "Facteurs aggravants"],
         rows: &[
             &["Niveau 1 — jaune", "« Soyez prudent »", "Antihistaminiques de deuxième génération, certains antalgiques, antitussifs, antiémétiques", "Le risque existe mais reste faible : lire la notice, et ne pas conduire si l'on se sent somnolent", "L'alcool, la fatigue, une première prise"],
             &["Niveau 2 — orange", "« Soyez très prudent — ne pas conduire sans l'avis d'un professionnel de santé »", "Benzodiazépines à demi-vie courte, antidépresseurs, antiépileptiques, opioïdes faibles, antihistaminiques sédatifs", "L'avis est celui du médecin ou du pharmacien : la conduite se discute, elle n'est pas interdite d'office", "Le début du traitement, tout changement de dose, l'association à un autre sédatif"],
@@ -726,14 +726,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Aliments",
         family: "Au comptoir",
-        title: "Aliments, boissons et médicaments — ce qui interfère vraiment",
+        title: "Aliments, boissons et médicaments — interférences avérées",
         reviewed: "Août 2026 — RCP à jour ; référentiel des interactions de l'ANSM",
         sources: &[
             "ANSM — thésaurus des interactions médicamenteuses",
             "RCP des spécialités, base de données publique des médicaments (ANSM)",
             "CRAT et sociétés savantes pour les recommandations diététiques associées",
         ],
-        columns: &["Aliment ou boisson", "Ce qu'il fait", "Médicaments concernés", "Ce qu'on conseille", "Ce qui n'est pas vrai"],
+        columns: &["Aliment ou boisson", "Effet", "Médicaments concernés", "Conseil", "Idée reçue"],
         rows: &[
             &["Pamplemousse", "Inhibe le CYP3A4 intestinal pour 24 à 72 heures ; l'effet ne se rattrape pas en espaçant", "Statines (simvastatine, atorvastatine), inhibiteurs calciques, immunosuppresseurs, certains antiarythmiques", "On n'espace pas, on supprime : un verre suffit et l'effet dure des jours", "Que le jus d'orange fasse la même chose — il n'inhibe pas le CYP3A4"],
             &["Vitamine K des légumes verts", "Antagonise l'AVK", "Warfarine, fluindione, acénocoumarol", "Ne pas supprimer les légumes verts, mais en manger une quantité régulière d'une semaine à l'autre : c'est la variation qui déséquilibre l'INR", "Qu'il faille les interdire — un régime pauvre en vitamine K rend l'INR instable, pas stable"],
@@ -752,14 +752,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Biosimilaires",
         family: "Au comptoir",
-        title: "Biosimilaires — ce qui se substitue, ce qui se trace, ce qui se remontre",
+        title: "Biosimilaires — substitution, traçabilité, information",
         reviewed: "Août 2026 — état des lieux ANSM sur les biosimilaires, article L.5125-23-2 du code de la santé publique et l'arrêté qui fixe les groupes substituables",
         sources: &[
             "ANSM — état des lieux sur les médicaments biosimilaires",
             "Code de la santé publique, article L.5125-23-2 et l'arrêté fixant la liste des groupes biologiques similaires substituables",
             "EMA — Biosimilars in the EU, information guide for healthcare professionals",
         ],
-        columns: &["Question", "La réponse", "Ce que fait le pharmacien", "Le piège"],
+        columns: &["Question", "Réponse", "Conduite à tenir", "Écueil"],
         rows: &[
             &["Un biosimilaire est-il un générique ?", "Non. Un générique est la même molécule chimique ; un biosimilaire est une protéine produite par une lignée cellulaire vivante, dont la comparabilité au médicament de référence est établie par un dossier de qualité, de pharmacocinétique et de clinique", "Le dire au patient dans ces termes : ce n'est pas une copie approximative, c'est une équivalence démontrée", "Employer le mot « générique » devant le patient : cela installe une méfiance qu'il faudra défaire ensuite"],
             &["Puis-je le substituer au comptoir ?", "Seulement pour les groupes biologiques similaires inscrits par arrêté. La liste est courte et se vérifie : elle a commencé par le filgrastim et le pegfilgrastim", "Vérifier la liste en vigueur avant toute substitution ; hors de ces groupes, la substitution en officine n'est pas permise", "Supposer que ce qui vaut pour un groupe vaut pour tous : chaque groupe est inscrit un par un"],
@@ -778,14 +778,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Canicule",
         family: "Au comptoir",
-        title: "Chaleur et traitements — ce que la canicule fait à une ordonnance",
+        title: "Chaleur et traitements — l'ordonnance en période de canicule",
         reviewed: "Août 2026 — mise au point ANSM « Bon usage des médicaments en cas de vague de chaleur » et recommandations Santé publique France",
         sources: &[
             "ANSM — bon usage des médicaments en cas de vague de chaleur",
             "Santé publique France — plan national canicule, recommandations sanitaires",
             "HAS — repérage et prise en charge de la déshydratation du sujet âgé",
         ],
-        columns: &["Traitement", "Ce que la chaleur en fait", "Ce qu'on surveille", "Ce qu'on ne fait pas"],
+        columns: &["Traitement", "Effet de la chaleur", "Surveillance", "À ne pas faire"],
         rows: &[
             &["Diurétiques (thiazidiques, anse, antialdostérone)", "Ils font perdre de l'eau et du sel au moment où la sueur en fait perdre aussi : déshydratation, hyponatrémie, hypokaliémie", "Le poids tous les jours — deux kilos perdus en trois jours, c'est de l'eau — la soif, les urines rares et foncées, la confusion", "Ne jamais conseiller d'arrêter ni de doubler : c'est le prescripteur qui suspend un diurétique, souvent pour quelques jours seulement"],
             &["IEC et ARA II", "Ils lèvent l'autorégulation rénale : sur un rein déjà déshydraté, la filtration s'effondre", "Créatinine et kaliémie si la chaleur dure, et tout ce qui fait perdre de l'eau — diarrhée, vomissements, fièvre", "Ne pas ajouter d'AINS : diurétique, bloqueur du système rénine-angiotensine et AINS ensemble, c'est la triade classique de l'insuffisance rénale aiguë"],
@@ -811,7 +811,7 @@ pub const TABLES: &[ConvTable] = &[
             "ANSM — kétoprofène en gel : rappel des conditions d'utilisation",
             "Centre régional de pharmacovigilance — fiches de photosensibilisation médicamenteuse",
         ],
-        columns: &["Médicament ou classe", "Type de réaction", "Ce qu'on dit au comptoir", "Le piège"],
+        columns: &["Médicament ou classe", "Type de réaction", "Conseil au comptoir", "Écueil"],
         rows: &[
             &["Cyclines, doxycycline en tête", "Phototoxique et dose-dépendante : un coup de soleil démesuré pour une exposition banale, en quelques heures", "Chapeau, manches longues, indice 50 sur ce qui reste découvert, et pas de séance de bronzage pendant la cure", "La prescription d'été pour l'acné ou pour un voyage en zone impaludée est justement celle qu'on donne au moment où le soleil est le plus fort"],
             &["Fluoroquinolones", "Phototoxique, avec un érythème parfois bulleux", "Éviter le soleil pendant le traitement et les jours qui suivent", "La réaction peut survenir sur une exposition à travers une vitre : la voiture ne protège pas des UVA"],
@@ -830,14 +830,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Pilulier",
         family: "Administration",
-        title: "Pilulier — ce qui ne s'y met pas, et pourquoi",
+        title: "Pilulier — formes à ne pas déconditionner",
         reviewed: "Août 2026 — RCP des spécialités citées et recommandations de la Société française de pharmacie clinique sur la préparation des doses à administrer",
         sources: &[
             "Base de données publique des médicaments (ANSM) — RCP des spécialités citées",
             "Société française de pharmacie clinique — préparation des doses à administrer",
             "Ordre national des pharmaciens — recommandations sur la PDA en officine",
         ],
-        columns: &["Forme ou médicament", "Pourquoi il n'y va pas", "Ce qu'on fait à la place"],
+        columns: &["Forme ou médicament", "Pourquoi il n'y va pas", "Alternative"],
         rows: &[
             &["Pradaxa (dabigatran)", "Les gélules sont hygroscopiques : hors de leur plaquette ou de leur flacon d'origine, elles se dégradent, et un flacon entamé ne se garde que quatre mois", "Laisser dans la plaquette et découper la plaquette si le patient a besoin d'un repère de jour"],
             &["Comprimés effervescents et sachets", "L'humidité les fait réagir avant l'heure ; ils gonflent, collent et perdent leur dose", "Les laisser dans leur tube ou leur sachet, et les compter à part sur le plan de prise"],
@@ -856,14 +856,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Foie",
         family: "Adaptation",
-        title: "Insuffisance hépatique — ce qui change, ce qui s'évite",
+        title: "Insuffisance hépatique — adaptations et contre-indications",
         reviewed: "Août 2026 — RCP des spécialités citées, recommandations EASL sur l'encéphalopathie hépatique, et thésaurus des interactions de l'ANSM",
         sources: &[
             "RCP des spécialités (ANSM / base de données publique des médicaments)",
             "EASL — Clinical Practice Guidelines on the management of hepatic encephalopathy",
             "HAS — Prise en charge de la cirrhose",
         ],
-        columns: &["Situation ou classe", "Ce que le foie change", "Conduite au comptoir", "Ce qu'on ne fait pas"],
+        columns: &["Situation ou classe", "Retentissement", "Conduite au comptoir", "À ne pas faire"],
         rows: &[
             &["Le score de Child-Pugh", "Il classe la cirrhose en A, B ou C sur cinq éléments : bilirubine, albumine, TP, ascite, encéphalopathie. Beaucoup de RCP ne parlent qu'en Child", "Demander au patient s'il connaît son stade : la plupart des contre-indications commencent à Child B", "Lire « insuffisance hépatique » comme un tout : entre un Child A et un Child C il y a l'écart entre une prudence et une contre-indication"],
             &["Paracétamol", "Métabolisé par le foie, mais c'est l'antalgique qui reste le plus sûr en cirrhose : c'est la dose qui change, pas la molécule", "3 g par jour au maximum, et 2 g en cas de dénutrition, d'alcoolisation active ou de faible poids. Espacer les prises de 6 h", "Le remplacer par un AINS, qui est bien plus dangereux ici : le paracétamol reste le premier choix"],
@@ -880,14 +880,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Tabac",
         family: "Au comptoir",
-        title: "Sevrage tabagique — substituts, doses et ce qui fait échouer",
+        title: "Sevrage tabagique — substituts, doses et causes d'échec",
         reviewed: "Août 2026 — RCP des substituts nicotiniques et recommandation HAS « Arrêt de la consommation de tabac »",
         sources: &[
             "HAS — Arrêt de la consommation de tabac : du dépistage individuel au maintien de l'abstinence",
             "RCP des substituts nicotiniques (ANSM)",
             "Assurance Maladie — prise en charge des substituts nicotiniques sur prescription",
         ],
-        columns: &["Ce qu'on regarde", "Repère", "Ce qu'on propose", "Remarque de comptoir"],
+        columns: &["Élément évalué", "Repère", "Proposition", "Remarque de comptoir"],
         rows: &[
             &["Combien de cigarettes par jour", "Une cigarette apporte environ 1 mg de nicotine absorbée", "10 à 15 cigarettes : patch 14 mg/24 h. 15 à 25 : patch 21 mg/24 h. Au-delà de 25 : 21 mg plus une forme orale, ou deux patchs sur avis", "Le sous-dosage est la première cause d'échec, et il se voit : le patient continue de fumer sous patch"],
             &["Le délai de la première cigarette", "Fumer dans les cinq minutes du réveil signe une dépendance forte", "Patch 24 h plutôt que 16 h, et une forme orale prête au réveil", "C'est la question la plus utile du test de Fagerström, et elle tient en une phrase"],
@@ -905,14 +905,14 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "Sonde",
         family: "Administration",
-        title: "Sonde et nutrition entérale — donner un médicament sans la bouche",
+        title: "Sonde et nutrition entérale — administration par sonde",
         reviewed: "Août 2026 — recommandations de la Société française de pharmacie clinique sur l'administration par sonde et RCP des spécialités citées",
         sources: &[
             "SFPC — Administration des médicaments par sonde de nutrition entérale",
             "RCP des spécialités (ANSM)",
             "ANSM — Bon usage : formes orales à ne pas écraser",
         ],
-        columns: &["Point", "Ce qui se passe", "Ce qu'on fait"],
+        columns: &["Point", "Enjeu", "Conduite à tenir"],
         rows: &[
             &["La règle qui prime toutes les autres", "Une sonde bouchée est une sonde à changer, et un changement de sonde est un geste et une attente", "Rincer avant, entre chaque médicament et après : 10 à 30 mL d'eau selon le calibre. C'est le rinçage entre deux médicaments qui manque le plus souvent"],
             &["Ce qui ne s'écrase jamais", "Libération prolongée, formes gastro-résistantes, comprimés enrobés d'un principe irritant, cytotoxiques", "Demander une autre forme au prescripteur : solution buvable, forme orodispersible dissoute, ou une autre molécule. La table « Broyage » dit laquelle"],
@@ -937,7 +937,7 @@ pub const TABLES: &[ConvTable] = &[
             "RCP des spécialités (ANSM)",
             "Ministère chargé de la santé — transport de médicaments à l'étranger",
         ],
-        columns: &["Question", "Ce qu'il faut savoir", "Ce qu'on prépare"],
+        columns: &["Question", "À savoir", "À préparer"],
         rows: &[
             &["L'ordonnance", "Un nom de marque français ne veut rien dire ailleurs, et certains pays contrôlent les stupéfiants et les psychotropes à l'entrée", "Une ordonnance en DCI, et pour les stupéfiants une attestation de transport délivrée par l'ARS. Se renseigner sur le pays : ce qui est banal ici est interdit là-bas"],
             &["La quantité", "Une pharmacie n'est pas toujours trouvable, et un bagage se perd", "La durée du séjour plus une semaine, répartie entre le bagage cabine et le bagage en soute — jamais tout dans le même"],
@@ -963,7 +963,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "LDL",
         family: "Adaptation",
-        title: "LDL — la cible dépend du risque, pas d'un seuil unique",
+        title: "LDL — cibles selon le niveau de risque",
         reviewed: "Août 2026 — recommandations ESC/EAS sur les dyslipidémies, fiche HAS",
         sources: &[
             "ESC/EAS — prise en charge des dyslipidémies",
@@ -971,10 +971,10 @@ pub const TABLES: &[ConvTable] = &[
         ],
         columns: &[
             "Niveau de risque",
-            "Ce qui range le patient là",
+            "Critères",
             "Cible de LDL",
             "En mmol/L",
-            "Ce qu'on fait pour l'atteindre",
+            "Traitement",
         ],
         rows: &[
             &[
@@ -1006,7 +1006,7 @@ pub const TABLES: &[ConvTable] = &[
                 "Mode de vie. Une statine ici se discute et ne va pas de soi",
             ],
             &[
-                "Ce qui se vérifie au comptoir",
+                "Au comptoir",
                 "La cible n'est pas sur l'ordonnance : elle se déduit du dossier",
                 "—",
                 "—",
@@ -1029,8 +1029,8 @@ pub const TABLES: &[ConvTable] = &[
             "Molécules",
             "Dose de départ",
             "Dose cible",
-            "Ce qui se surveille",
-            "Le piège",
+            "Surveillance",
+            "Écueil",
         ],
         rows: &[
             &[
@@ -1066,7 +1066,7 @@ pub const TABLES: &[ConvTable] = &[
                 "Avec ou sans diabète. Règle des jours de maladie : on l'arrête si l'on ne mange plus, si l'on vomit ou si l'on se déshydrate",
             ],
             &[
-                "Ce que le comptoir vérifie",
+                "Au comptoir",
                 "Les quatre présents, et titrés en parallèle",
                 "Tôt et bas",
                 "Ou la dose maximale tolérée",
@@ -1088,7 +1088,7 @@ pub const TABLES: &[ConvTable] = &[
             "Item",
             "Score",
             "Lequel",
-            "Ce que cela veut dire",
+            "Signification",
         ],
         rows: &[
             &["Insuffisance cardiaque ou FEVG altérée", "1", "CHA₂DS₂-VASc", "C"],
@@ -1110,13 +1110,13 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "HbA1c",
         family: "Adaptation",
-        title: "HbA1c — l'objectif se choisit sur le patient",
+        title: "HbA1c — objectifs selon le profil",
         reviewed: "Août 2026 — recommandations HAS/SFD sur le diabète de type 2",
         sources: &[
             "HAS — stratégie médicamenteuse du contrôle glycémique du diabète de type 2",
             "SFD — prise de position sur la prise en charge du diabète de type 2",
         ],
-        columns: &["Profil", "Objectif d'HbA1c", "Pourquoi", "Ce qu'il ne faut pas faire"],
+        columns: &["Profil", "Objectif d'HbA1c", "Pourquoi", "À ne pas faire"],
         rows: &[
             &[
                 "Diabète récent, espérance de vie longue, sans comorbidité",
@@ -1159,7 +1159,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "DFG — stades",
         family: "Adaptation",
-        title: "Insuffisance rénale chronique — les stades et ce qu'ils changent",
+        title: "Insuffisance rénale chronique — stades et adaptations",
         reviewed: "Août 2026 — guide HAS sur la maladie rénale chronique, RCP",
         sources: &[
             "HAS — guide du parcours de soins : maladie rénale chronique de l'adulte",
@@ -1168,9 +1168,9 @@ pub const TABLES: &[ConvTable] = &[
         columns: &[
             "Stade",
             "DFG (mL/min/1,73 m²)",
-            "Ce qui s'arrête ou se réduit",
-            "Ce qui se surveille",
-            "Ce qu'on dit au patient",
+            "Arrêts et adaptations",
+            "Surveillance",
+            "Conseil au patient",
         ],
         rows: &[
             &[
@@ -1209,7 +1209,7 @@ pub const TABLES: &[ConvTable] = &[
                 "Toute automédication passe par un avis, y compris la phytothérapie",
             ],
             &[
-                "Ce qui trompe",
+                "Écueils",
                 "Créatininémie normale ≠ DFG normal",
                 "Chez le sujet âgé peu musclé, une créatininémie à 90 µmol/L peut recouvrir un DFG à 40",
                 "Le DFG se calcule, il ne se lit pas",
