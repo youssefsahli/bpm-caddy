@@ -7655,6 +7655,55 @@ impl App {
                 .month_grid(session.agenda_month_offset)
                 .unwrap_or_default();
         }
+        // **Deux flèches et le nom du mois, et non un bouton coupé.**
+        // La rangée portait « ‹ », « Aujourd'hui » et « › » dans un
+        // volet de cent quarante pixels : à l'échelle 1,6 le bouton du
+        // milieu sortait par la droite du volet — il se lisait « Aujo »
+        // — et la flèche suivante n'était plus dessinée du tout. Un
+        // `horizontal` n'enveloppe pas, et le volet écrête sans rien
+        // dire.
+        //
+        // Ce qui manquait à cette rangée n'était pas de la place, c'est
+        // **quel mois on regarde** : la grille ne le disait nulle part,
+        // si bien que deux clics sur « ‹ » laissaient devant six
+        // rangées de chiffres sans nom. Le nom du mois le dit et
+        // ramène au mois courant, ce que le bouton faisait ; et
+        // « Aujourd'hui » reste sur la vue elle-même, où il n'a jamais
+        // manqué de place.
+        //
+        // Le nom prend sa propre rangée : deux flèches en occupent déjà
+        // les quatre cinquièmes à cette échelle, et « septembre 2026 »
+        // n'aurait tenu ni entre elles ni après. Et quand la rangée
+        // entière ne lui suffit pas, c'est `09/2026` qui s'écrit — la
+        // même réponse que l'invite d'un champ trop étroit : le panneau
+        // porte déjà son titre, « Mois », donc on garde ce qui distingue
+        // et on abandonne ce qui décore.
+        let ym = session
+            .agenda_month_days
+            .get(15)
+            .map(|d| d[..7.min(d.len())].to_owned())
+            .unwrap_or_default();
+        let named = db::month_name_fr(&ym);
+        let mut goto_now = false;
+        if !ym.is_empty() {
+            let room = ui.available_width();
+            let label = if Self::field_width(ui, [named.as_str()].into_iter()) <= room {
+                named.clone()
+            } else {
+                match (ym.get(5..7), ym.get(..4)) {
+                    (Some(m), Some(y)) => format!("{m}/{y}"),
+                    _ => named.clone(),
+                }
+            };
+            goto_now = ui
+                .add(
+                    egui::Label::new(egui::RichText::new(label).strong())
+                        .truncate()
+                        .sense(egui::Sense::click()),
+                )
+                .on_hover_text(trf("agenda_month_tooltip", &named))
+                .clicked();
+        }
         ui.horizontal(|ui| {
             if motif::button(ui, "‹").clicked() {
                 session.agenda_month_offset -= 1;
@@ -7662,10 +7711,6 @@ impl App {
                     .db
                     .month_grid(session.agenda_month_offset)
                     .unwrap_or_default();
-            }
-            if motif::button(ui, tr("agenda_this_week")).clicked() {
-                session.agenda_month_offset = 0;
-                session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
             }
             if motif::button(ui, "›").clicked() {
                 session.agenda_month_offset += 1;
@@ -7675,6 +7720,10 @@ impl App {
                     .unwrap_or_default();
             }
         });
+        if goto_now {
+            session.agenda_month_offset = 0;
+            session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
+        }
         ui.add_space(4.0);
         // Six rows of seven: the day's number, tinted by how loaded it
         // is, with today ringed and the selected day filled.
@@ -7684,6 +7733,17 @@ impl App {
             let w = ui.available_width();
             let cell = (w / 7.0).floor().max(14.0);
             let rows = days.len().div_ceil(7);
+            // **Un chiffre tient dans sa case, pas dans l'échelle du
+            // texte.** La grille est une forme fixe — sept colonnes,
+            // six rangées — dont la case est fixée par la largeur du
+            // volet, et non par `[ui] text_scale`. À 1,6 les deux
+            // chiffres de « 14 » mesuraient plus que leur case, et la
+            // rangée se lisait « 14151617181920 » : les jours se
+            // touchaient, sans qu'aucun soit coupé, ce qu'aucun test de
+            // panique ne voit. Le chiffre suit donc la case tant qu'il
+            // y a le choix, et l'échelle sur un volet large.
+            let digits = motif::pt(ui, 10.5).min(cell * 0.52);
+            let heads = motif::pt(ui, 9.5).min(cell * 0.48);
             let (rect, _) = ui.allocate_exact_size(
                 egui::vec2(cell * 7.0, cell * rows as f32 + 14.0),
                 egui::Sense::hover(),
@@ -7693,7 +7753,7 @@ impl App {
                     egui::pos2(rect.left() + (i as f32 + 0.5) * cell, rect.top() + 6.0),
                     egui::Align2::CENTER_CENTER,
                     *label,
-                    egui::FontId::proportional(motif::pt(ui, 9.5)),
+                    egui::FontId::proportional(heads),
                     motif::text_faint(),
                 );
             }
@@ -7729,7 +7789,7 @@ impl App {
                     r.center(),
                     egui::Align2::CENTER_CENTER,
                     num,
-                    egui::FontId::proportional(motif::pt(ui, 10.5)),
+                    egui::FontId::proportional(digits),
                     if selected {
                         egui::Color32::WHITE
                     } else {
@@ -16255,7 +16315,15 @@ impl App {
                 if session.trans_day == session.today {
                     title.push_str(tr("dash_today"));
                 }
-                ui.label(egui::RichText::new(title).strong());
+                // **Ce qui reste de la rangée, et rien de plus.** Trois
+                // boutons de navigation devant, et à l'échelle 1,6 la
+                // date sortait par la droite du panneau : « Mardi
+                // 08/09/2026 — aujourd'hui » se lisait « … — aujour ».
+                // Un `Label` sans limite s'étale, et un `horizontal` ne
+                // le rattrape pas. La mention du jour est du contexte et
+                // c'est elle qui s'élide ; la date, jamais — c'est le
+                // sujet de la page.
+                ui.add(egui::Label::new(egui::RichText::new(title).strong()).truncate());
             });
             if let Some(day) = goto {
                 session.trans_day = day;
@@ -27623,7 +27691,17 @@ impl App {
             tr("graph_add_treat"),
             tr("graph_new_card"),
         ];
-        let search_w = (work.width() * 0.3).clamp(160.0, 320.0);
+        // **Le champ tient son invite.** Trente pour cent du volet
+        // plafonnés à trois cent vingt pixels, c'est un nombre de
+        // pixels : à l'échelle 1,6 « Mettre au centre… » sortait par la
+        // droite de son propre champ et se lisait « Mettre au centre..
+        // ». Ce que le champ demande, c'est ce que son invite demande —
+        // et l'invite grandit avec `[ui] text_scale`, contrairement au
+        // plafond. Le volet garde le dernier mot : sur un panneau
+        // étroit, c'est l'invite courte qui s'affiche.
+        let search_w = Self::field_width(ui, [tr("graph_hint")].into_iter())
+            .max(work.width() * 0.3)
+            .min((work.width() - 32.0).max(chars_wide(ui, 8.0)));
         let rows = Self::wrapped_rows_of(
             ui,
             work.width() - 32.0,
@@ -27662,7 +27740,7 @@ impl App {
                 let resp = ui.add_sized(
                     [search_w, Self::button_height(ui)],
                     egui::TextEdit::singleline(&mut session.graph_query)
-                        .hint_text(tr("graph_hint")),
+                        .hint_text(Self::hint_that_fits(ui, search_w, tr("graph_hint"))),
                 );
                 motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
                 typed_changed = resp.changed();

@@ -981,6 +981,7 @@ dash_export_error = "Export impossible : {}"
 # --- Agenda ---
 agenda_tomorrow = "  — demain"
 agenda_this_week = "Aujourd'hui"
+agenda_month_tooltip = "{} — cliquer pour revenir au mois courant"
 agenda_prev_week = "Semaine précédente"
 agenda_next_week = "Semaine suivante"
 agenda_week_of = "Semaine du {}"
