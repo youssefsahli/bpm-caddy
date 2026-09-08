@@ -29,8 +29,9 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # Densité de l'interface : "confortable" ou "compact".
 # density = "confortable"
 # Palette de l'interface : "motif", "cde", "decwindows", "indigo",
-# "olive" ou "contraste". La forme ne change pas — angles droits, biseaux
-# de deux pixels — seules les couleurs changent.
+# "olive", "contraste", "nuit" ou "ambre" — les deux dernières sur fond
+# sombre. La forme ne change pas — angles droits, biseaux de deux
+# pixels — seules les couleurs changent.
 # theme = "motif"
 # Pictogrammes dans la barre d'outils.
 # icons = false
@@ -1651,6 +1652,25 @@ mod tests {
         assert!(cfg.templates.bpm_template_path.is_none());
         assert_eq!(cfg.rules.bpm_per_year, 3);
         assert_eq!(cfg.rules.trod_angine_per_year, 0);
+    }
+
+    /// Le modèle nomme les peaux livrées, et il en nommait six quand il
+    /// y en a huit.
+    ///
+    /// C'est le genre de liste qui vieillit sans rien casser : le
+    /// fichier reste valide, l'application démarre, et la seule chose
+    /// qui se passe est qu'une officine ne saura jamais que « nuit »
+    /// existe. Le fichier écrit au premier lancement est la
+    /// documentation que tout le monde lit.
+    #[test]
+    fn the_template_names_every_skin_that_ships() {
+        for t in motif::THEMES.iter() {
+            assert!(
+                CONFIG_TEMPLATE.contains(&format!("\"{}\"", t.key)),
+                "le modèle de config.toml ne nomme pas la palette « {} »",
+                t.key
+            );
+        }
     }
 
     #[test]

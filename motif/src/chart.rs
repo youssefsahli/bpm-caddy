@@ -13,9 +13,41 @@ use crate::bevel;
 /// Gridlines inside a trough: light enough to read numbers through.
 ///
 /// Mixed from the theme rather than fixed — a blue-grey grid drawn on
-/// the HP VUE green reads as a stain, not as a rule.
+/// the HP VUE green reads as a stain, not as a rule — and mixed toward
+/// whichever bevel is *away* from the trough: on a night skin the
+/// trough is already the darkest surface there is, and a rule drawn
+/// darker again is a rule nobody reads a number through.
+/// The five-per-cent film that marks the column the pointer is over.
+///
+/// A *veil* and not a colour: it dims a daylight palette and lifts a
+/// night one, because « a little darker » says nothing on a ground that
+/// is already the darkest thing on the screen.
+fn veil() -> Color32 {
+    if crate::is_dark() {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 14)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 14)
+    }
+}
+
+/// The baseline of a chart: the same rule, drawn firmly. It is the
+/// bevel *away* from the trough for the same reason the gridlines are
+/// mixed toward it.
+fn axis_color() -> Color32 {
+    if crate::is_dark() {
+        crate::bg_light()
+    } else {
+        crate::bg_dark()
+    }
+}
+
 fn grid_color() -> Color32 {
-    crate::trough().lerp_to_gamma(crate::bg_dark(), 0.25)
+    let toward = if crate::is_dark() {
+        crate::bg_light()
+    } else {
+        crate::bg_dark()
+    };
+    crate::trough().lerp_to_gamma(toward, 0.25)
 }
 
 /// How many colours the categorical ramp has.
@@ -29,17 +61,37 @@ pub const SERIES_LEN: usize = 8;
 /// theme, so a chart on the HP VUE green does not go on drawing its
 /// first series in the Motif blue. The other seven are data colours,
 /// chosen to stay apart from each other and readable on every one of the
-/// palettes; they do not move.
+/// palettes.
+///
+/// **Their hue does not move; their lightness is the skin's business.**
+/// Written down for a light grey, all seven are mid-dark, and on the two
+/// night palettes that is a chart drawn in the background's own tone —
+/// eight series and nothing to tell them from the trough they sit in.
+/// [`crate::data_ramp`] keeps the hues and lifts the set as one, so two
+/// screenshots of the same chart under two skins still show the same
+/// series in the same colour family, and no two of them meet on the way.
 pub fn series() -> [Color32; SERIES_LEN] {
+    let lifted = crate::data_ramp(
+        [
+            Color32::from_rgb(0x6b, 0x70, 0x82),
+            Color32::from_rgb(0x2f, 0x6b, 0x5c),
+            Color32::from_rgb(0x8b, 0x1a, 0x1a),
+            Color32::from_rgb(0x7a, 0x5c, 0x1f),
+            Color32::from_rgb(0x54, 0x3d, 0x73),
+            Color32::from_rgb(0x1f, 0x5c, 0x7a),
+            Color32::from_rgb(0x6e, 0x3d, 0x2a),
+        ],
+        crate::AS_FILL,
+    );
     [
         crate::accent(),
-        Color32::from_rgb(0x6b, 0x70, 0x82),
-        Color32::from_rgb(0x2f, 0x6b, 0x5c),
-        Color32::from_rgb(0x8b, 0x1a, 0x1a),
-        Color32::from_rgb(0x7a, 0x5c, 0x1f),
-        Color32::from_rgb(0x54, 0x3d, 0x73),
-        Color32::from_rgb(0x1f, 0x5c, 0x7a),
-        Color32::from_rgb(0x6e, 0x3d, 0x2a),
+        lifted[0],
+        lifted[1],
+        lifted[2],
+        lifted[3],
+        lifted[4],
+        lifted[5],
+        lifted[6],
     ]
 }
 
@@ -99,14 +151,7 @@ fn grid(
         let y = area.bottom() - (area.height() - 16.0) * (i as f32 / steps as f32);
         ui.painter().line_segment(
             [egui::pos2(area.left(), y), egui::pos2(area.right(), y)],
-            Stroke::new(
-                1.0_f32,
-                if i == 0 {
-                    crate::bg_dark()
-                } else {
-                    grid_color()
-                },
-            ),
+            Stroke::new(1.0_f32, if i == 0 { axis_color() } else { grid_color() }),
         );
         ui.painter().text(
             egui::pos2(area.left() - 4.0, y),
@@ -160,8 +205,7 @@ pub fn bars(
         let over = pointer.is_some_and(|p| cell.contains(p));
         if over {
             hovered = Some(i);
-            ui.painter()
-                .rect_filled(cell, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 14));
+            ui.painter().rect_filled(cell, 0.0, veil());
         }
         let n = g.values.len().max(1);
         let bar_w = ((slot - 10.0) / n as f32).clamp(3.0, 26.0);
@@ -675,30 +719,43 @@ mod tests {
     /// counter unnoticed because a chart always *looks* like a chart.
     ///
     /// The separation half is deliberately a ratchet and not a rule.
-    /// The closest pair today is the green of series 2 and the blue of
-    /// series 6, about thirty-seven apart in plain RGB; the legend is
-    /// what tells them apart, and repainting them would change every
+    /// The closest pair today is the amber of series 4 and the brown of
+    /// series 7, a hair over thirty-five apart in plain RGB; the legend
+    /// is what tells them apart, and repainting them would change every
     /// screenshot and every printed sheet for a difference the officine
     /// has not asked for. The test holds the line where it is: no new
     /// colour may come closer than the closest pair already there.
+    ///
+    /// **The ratchet is on the ramp as it is written**, and what each
+    /// skin owes is that adapting it does not close those gaps: a tenth
+    /// is the whole allowance, and it is there for the rounding to a
+    /// byte, not for a design decision. Held that way round because it
+    /// is the truthful reading — the hues are chosen once and `data_ramp`
+    /// promises to carry them, not to re-choose them.
     #[test]
     fn the_data_colours_read_on_every_palette_and_none_repeats_another() {
         use super::Color32;
-        fn lum(c: Color32) -> f32 {
-            (0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32) / 255.0
-        }
+        let _guard = crate::theme_lock();
+        let lum = crate::luminance;
         // Distance in plain RGB: cheap, and enough to catch two colours
         // that would land on the same bar.
         fn apart(a: Color32, b: Color32) -> f32 {
             let d = |x: u8, y: u8| (x as f32 - y as f32).powi(2);
             (d(a.r(), b.r()) + d(a.g(), b.g()) + d(a.b(), b.b())).sqrt()
         }
-        // The first one follows the accent, so it is checked per theme
-        // below; these are the seven that never move.
-        let fixed: Vec<Color32> = super::series()[1..].to_vec();
-        assert_eq!(fixed.len(), super::SERIES_LEN - 1);
-        for (i, a) in fixed.iter().enumerate() {
-            for (j, b) in fixed.iter().enumerate().skip(i + 1) {
+        // Every assertion is made under the theme in force, because the
+        // ramp *is* read off it: series 0 is the accent, and the seven
+        // others are lifted toward the shell they are painted on. Read
+        // once, outside the loop, they would be one palette's ramp
+        // checked against another palette's trough — which is what this
+        // test used to do.
+        // The ramp as written: the seven fixed hues, read off the
+        // palette the application starts on, where nothing is adapted.
+        crate::set_theme(crate::THEMES[0].key);
+        let written: Vec<Color32> = super::series()[1..].to_vec();
+        assert_eq!(written.len(), super::SERIES_LEN - 1);
+        for (i, a) in written.iter().enumerate() {
+            for (j, b) in written.iter().enumerate().skip(i + 1) {
                 assert!(
                     apart(*a, *b) > 35.0,
                     "les séries {} et {} sont plus proches que la paire la plus proche d'aujourd'hui ({:?} / {:?})",
@@ -710,28 +767,45 @@ mod tests {
             }
         }
         for t in crate::THEMES.iter() {
+            crate::set_theme(t.key);
+            let ramp = super::series();
+            let fixed: Vec<Color32> = ramp[1..].to_vec();
+            for (i, a) in fixed.iter().enumerate() {
+                for (j, b) in fixed.iter().enumerate().skip(i + 1) {
+                    assert!(
+                        apart(*a, *b) >= apart(written[i], written[j]) * 0.9,
+                        "{} : la peau a rapproché les séries {} et {} ({:?} / {:?})",
+                        t.key,
+                        i + 1,
+                        j + 1,
+                        a,
+                        b
+                    );
+                }
+            }
             // A chart is painted in the trough and not on the panel:
             // that is the ground the data has to stand off.
-            for (i, c) in super::series().iter().enumerate() {
+            for (i, c) in ramp.iter().enumerate() {
                 assert!(
-                    (lum(t.palette.trough) - lum(*c)).abs() > 0.12,
+                    (lum(crate::trough()) - lum(*c)).abs() > 0.12,
                     "{} : la série {i} se perd dans le fond du graphique",
                     t.key
                 );
             }
             // Series 0 *is* the accent on this theme. It may sit in the
-            // same family as one of the seven — two of the six palettes
-            // are built on a teal and a green — but it must not be one
-            // of them, or a chart would draw two series identically.
+            // same family as one of the seven — two of the palettes are
+            // built on a teal and a green — but it must not be one of
+            // them, or a chart would draw two series identically.
             for (i, c) in fixed.iter().enumerate() {
                 assert!(
-                    apart(t.palette.accent, *c) > 12.0,
+                    apart(crate::accent(), *c) > 12.0,
                     "{} : l'accent est la série {}",
                     t.key,
                     i + 1
                 );
             }
         }
+        crate::set_theme(crate::THEMES[0].key);
     }
 
     /// The ramp wraps rather than panicking: a chart with more series

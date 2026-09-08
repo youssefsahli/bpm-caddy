@@ -74,4 +74,17 @@ shot protocol_open docs/screenshot_protocols.png
 shot dispositif_open docs/screenshot_dispositifs.png
 shot locations docs/screenshot_locations.png
 shot conciliation docs/screenshot_conciliation.png
+
+# The same application after dark. A skin is a palette and nothing else,
+# so this is the *same* view under `[ui] theme` — which is the point,
+# and which a README claiming eight skins has to be able to show.
+# `theme` lives in config.toml and not in the environment, so the file
+# is rewritten between the shots and put back after.
+skin() { printf '[ui]\ndiscreet_finances = false\ntheme = "%s"\n' "$1" \
+    > "$tmp/config/bpm-caddy/config.toml"; }
+skin nuit
+shot dashboard docs/screenshot_nuit.png
+skin ambre
+shot drug_card docs/screenshot_ambre.png
+skin motif
 echo "Screenshots refreshed."

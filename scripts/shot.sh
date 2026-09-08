@@ -23,15 +23,24 @@ export BPM_CADDY_PASSWORD=demo
 export BPM_CADDY_NO_KEYRING=1
 
 mkdir -p "$tmp/config/bpm-caddy"
+: > "$tmp/config/bpm-caddy/layout.toml"
+theme=motif
+for kv in "$@"; do
+    # `theme=` est la seule clé qui vit dans config.toml et non dans la
+    # forme du plan de travail — et c'est celle qu'on veut faire varier
+    # vingt fois de suite quand on regarde une peau.
+    if [ "${kv%%=*}" = theme ]; then
+        theme=${kv#*=}
+    else
+        printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
+    fi
+done
 cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
 [ui]
 discreet_finances = false
 text_scale = $SCALE
+theme = "$theme"
 EOF
-: > "$tmp/config/bpm-caddy/layout.toml"
-for kv in "$@"; do
-    printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
-done
 export XDG_CONFIG_HOME="$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 

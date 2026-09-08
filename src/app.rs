@@ -662,7 +662,7 @@ fn drug_monograph(
                         egui::RichText::new(format!("  {}  ", d.status.trim()))
                             .size(motif::pt(ui, 11.0))
                             .strong()
-                            .color(egui::Color32::WHITE)
+                            .color(motif::on_fill(status_color(&d.status)))
                             .background_color(status_color(&d.status)),
                     );
                 }
@@ -4436,12 +4436,13 @@ fn rich_text(text: &str, size: f32, color: egui::Color32) -> egui::text::LayoutJ
             ..Default::default()
         };
         if bold {
-            // The bundled family has no bold face: a darker ink and the
-            // background are what carry the emphasis.
-            format.color = egui::Color32::BLACK;
+            // The bundled family has no bold face: a stronger ink and
+            // the background are what carry the emphasis.
+            format.color = motif::emphasize(format.color);
         }
         if mark {
             format.background = motif::bg_light();
+            format.color = motif::readable_on(format.color, motif::bg_light());
         }
         job.append(buf, 0.0, format);
         buf.clear();
@@ -4742,7 +4743,7 @@ fn mono_sentence(sentence: &str, query: &str, size: f32) -> egui::text::LayoutJo
                 &sentence[at..end],
                 0.0,
                 egui::TextFormat {
-                    color: egui::Color32::BLACK,
+                    color: motif::readable_on(plain.color, motif::bg_light()),
                     background: motif::bg_light(),
                     ..plain.clone()
                 },
@@ -5534,6 +5535,11 @@ fn bio_level_color(level: crate::biology::Level) -> egui::Color32 {
 
 /// A stable colour per operator's initials, so a journal can be scanned
 /// by who wrote what. Derived from the text, no configuration needed.
+///
+/// Six initials read one under the other, as **text**: the ramp is
+/// adapted as a set (`AS_TEXT`), never colour by colour, or the ones
+/// that already stood off the background would stay where they are while
+/// their neighbours came up to meet them.
 fn operator_color(operator: &str) -> egui::Color32 {
     const PALETTE: [egui::Color32; 6] = [
         egui::Color32::from_rgb(0x3a, 0x54, 0x7e),
@@ -5545,10 +5551,10 @@ fn operator_color(operator: &str) -> egui::Color32 {
     ];
     let key = operator.trim();
     if key.is_empty() {
-        return motif::bg_dark();
+        return motif::text_faint();
     }
     let sum: u32 = key.bytes().map(u32::from).sum();
-    PALETTE[(sum as usize) % PALETTE.len()]
+    motif::data_ramp(PALETTE, motif::AS_TEXT)[(sum as usize) % PALETTE.len()]
 }
 
 /// The three ways the agenda draws time.
@@ -5563,30 +5569,59 @@ enum AgendaMode {
 }
 
 /// Stable color per act kind, for the agenda's week blocks and legend.
+///
+/// A ramp and not ten separate colours, because that is how it is read:
+/// the legend under the agenda puts all ten side by side, and the week
+/// draws them against each other. `motif::data_ramp` lifts the set as
+/// one onto whichever skin is in force — the hues stay where they were,
+/// and so do the distances between them.
 fn kind_color(kind: InterviewKind) -> egui::Color32 {
-    match kind {
-        InterviewKind::Bpm => egui::Color32::from_rgb(0x3a, 0x54, 0x7e),
-        InterviewKind::Aod => egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
-        InterviewKind::Asthme => egui::Color32::from_rgb(0x7e, 0x3a, 0x5e),
-        InterviewKind::TrodAngine => egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
-        InterviewKind::TrodCystite => egui::Color32::from_rgb(0x1a, 0x6e, 0x8b),
-        InterviewKind::Prevention => egui::Color32::from_rgb(0x5e, 0x7e, 0x3a),
-        InterviewKind::Avk => egui::Color32::from_rgb(0x6e, 0x2e, 0x2e),
-        InterviewKind::AnticancereuxLc => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
-        InterviewKind::AnticancereuxAutres => egui::Color32::from_rgb(0x7e, 0x4a, 0x2e),
-        InterviewKind::Vaccination => egui::Color32::from_rgb(0x2e, 0x6e, 0x6e),
-    }
+    const KINDS: [egui::Color32; 10] = [
+        egui::Color32::from_rgb(0x3a, 0x54, 0x7e),
+        egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+        egui::Color32::from_rgb(0x7e, 0x3a, 0x5e),
+        egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
+        egui::Color32::from_rgb(0x1a, 0x6e, 0x8b),
+        egui::Color32::from_rgb(0x5e, 0x7e, 0x3a),
+        egui::Color32::from_rgb(0x6e, 0x2e, 0x2e),
+        egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+        egui::Color32::from_rgb(0x7e, 0x4a, 0x2e),
+        egui::Color32::from_rgb(0x2e, 0x6e, 0x6e),
+    ];
+    let i = match kind {
+        InterviewKind::Bpm => 0,
+        InterviewKind::Aod => 1,
+        InterviewKind::Asthme => 2,
+        InterviewKind::TrodAngine => 3,
+        InterviewKind::TrodCystite => 4,
+        InterviewKind::Prevention => 5,
+        InterviewKind::Avk => 6,
+        InterviewKind::AnticancereuxLc => 7,
+        InterviewKind::AnticancereuxAutres => 8,
+        InterviewKind::Vaccination => 9,
+    };
+    motif::data_ramp(KINDS, motif::AS_FILL)[i]
 }
 
 /// The badge colour of a drug's administrative status: a rupture or a
 /// withdrawal must be seen before the card is read.
+///
+/// The withdrawal is the theme's own alerte — it is the same red as
+/// everything else that stops a dispensation — and the other three are
+/// data colours, lifted together onto the skin in force.
 fn status_color(status: &str) -> egui::Color32 {
+    const BADGES: [egui::Color32; 3] = [
+        egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
+        egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+        egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+    ];
+    let badges = motif::data_ramp(BADGES, motif::AS_FILL);
     match db::DrugStatus::parse(status) {
         Some(db::DrugStatus::Withdrawn) => motif::alert(),
-        Some(db::DrugStatus::Shortage) => egui::Color32::from_rgb(0x8b, 0x5a, 0x1a),
-        Some(db::DrugStatus::OffLabel) => egui::Color32::from_rgb(0x5e, 0x3a, 0x7e),
-        Some(db::DrugStatus::Marketed) => egui::Color32::from_rgb(0x2e, 0x6e, 0x4e),
-        None => motif::bg_dark(),
+        Some(db::DrugStatus::Shortage) => badges[0],
+        Some(db::DrugStatus::OffLabel) => badges[1],
+        Some(db::DrugStatus::Marketed) => badges[2],
+        None => motif::text_faint(),
     }
 }
 
@@ -6861,10 +6896,18 @@ impl App {
         // « about » is the same dialog on its last page: the smoke run
         // and the screenshots need a way in, and the page is the one
         // that reads the base and starts a thread.
-        let options = if start_view == "options" || start_view == "about" || start_view == "base" {
+        let options = if start_view == "options"
+            || start_view == "about"
+            || start_view == "base"
+            || start_view == "peaux"
+        {
             Some(OptionsEditor {
                 page: match start_view.as_str() {
                     "about" => OptionsPage::About,
+                    // The page where the eight skins are chosen. It
+                    // draws each of them in its own palette, which is
+                    // exactly the thing no test can look at for you.
+                    "peaux" => OptionsPage::Ui,
                     // The page that says where the base is and what the
                     // backup folder holds: a screenshot and the smoke
                     // run need a way in, and it is the page that reads
@@ -7826,7 +7869,7 @@ impl App {
                     num,
                     egui::FontId::proportional(digits),
                     if selected {
-                        egui::Color32::WHITE
+                        motif::on_fill(motif::accent())
                     } else {
                         motif::text()
                     },
@@ -8661,7 +8704,7 @@ impl App {
                                 .map(|(_, idx)| idx)
                                 .unwrap_or_default();
                             let base_color = if selected {
-                                egui::Color32::WHITE
+                                motif::on_fill(motif::accent())
                             } else {
                                 motif::text()
                             };
@@ -10453,7 +10496,7 @@ impl App {
                                 egui::RichText::new(format!("  {word}  "))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(color))
                                     .background_color(color),
                             );
                             let row = ui.add(
@@ -11026,7 +11069,7 @@ impl App {
                                 egui::RichText::new(format!("  {label}  "))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(color))
                                     .background_color(color),
                             );
                             ui.label(
@@ -12080,7 +12123,7 @@ impl App {
                                                     ))
                                                     .size(motif::pt(ui, 10.5))
                                                     .strong()
-                                                    .color(egui::Color32::WHITE)
+                                                    .color(motif::on_fill(bio_level_color(level)))
                                                     .background_color(bio_level_color(level)),
                                                 );
                                             } else {
@@ -12380,7 +12423,7 @@ impl App {
                                 egui::RichText::new(format!("  {label}  "))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(color))
                                     .background_color(color),
                             );
                             ui.label(
@@ -12574,7 +12617,7 @@ impl App {
                                 egui::RichText::new(format!("  {tag}  "))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(color))
                                     .background_color(color),
                             );
                             if ui
@@ -12723,7 +12766,7 @@ impl App {
                                     egui::RichText::new(format!("  {tag}  "))
                                         .size(motif::pt(ui, 10.0))
                                         .strong()
-                                        .color(egui::Color32::WHITE)
+                                        .color(motif::on_fill(color))
                                         .background_color(color),
                                 );
                                 ui.label(egui::RichText::new(label).size(motif::pt(ui, 11.5)));
@@ -13142,6 +13185,52 @@ impl App {
     /// operator is *considering*, from the options they have not saved
     /// yet, so the choice is made by looking rather than by saving and
     /// restarting to find out.
+    /// One skin in the picker: its name, written in its own ink on its
+    /// own ground, with four of its colours beside it.
+    ///
+    /// A `selectable_label` said « Nuit » in the palette currently in
+    /// force, which is the one thing it cannot show — the whole question
+    /// being what the *other* one looks like. Eight buttons each drawn
+    /// in the skin they name answer it without a restart, and the four
+    /// chips carry what a name cannot: the ground, the selection, the
+    /// alerte and the sheet a monograph is read on.
+    fn theme_button(ui: &mut egui::Ui, theme: &motif::Theme, selected: bool) -> egui::Response {
+        let p = theme.palette;
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let label = ui.fonts(|f| f.layout_no_wrap(theme.label.to_owned(), font.clone(), p.text));
+        let h = Self::button_height(ui);
+        let chip = (h * 0.45).floor();
+        let pad = ui.spacing().button_padding.x;
+        let chips = [p.bg_light, p.accent, p.alert, p.paper];
+        let strip = chips.len() as f32 * (chip + 2.0);
+        let w = pad * 2.0 + label.size().x + ui.spacing().item_spacing.x + strip;
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
+        let ground = if resp.hovered() { p.bg_hover } else { p.bg };
+        ui.painter().rect_filled(rect, 0.0, ground);
+        // Sunken when it is the one in force: the Motif idiom for a
+        // mode that is on, and the only mark that survives a palette
+        // whose accent is the next one's background.
+        motif::bevel(ui.painter(), rect, !selected);
+        ui.painter().galley(
+            egui::pos2(rect.left() + pad, rect.center().y - label.size().y / 2.0),
+            label,
+            p.text,
+        );
+        for (i, c) in chips.iter().enumerate() {
+            let r = egui::Rect::from_min_size(
+                egui::pos2(
+                    rect.right() - pad - strip + i as f32 * (chip + 2.0),
+                    rect.center().y - chip / 2.0,
+                ),
+                egui::vec2(chip, chip),
+            );
+            ui.painter().rect_filled(r, 0.0, *c);
+            ui.painter()
+                .rect_stroke(r, 0.0, egui::Stroke::new(1.0_f32, p.bg_dark));
+        }
+        resp
+    }
+
     fn theme_swatches(ui: &mut egui::Ui, key: &str) {
         let p = motif::THEMES
             .iter()
@@ -14157,7 +14246,7 @@ impl App {
                         egui::Label::new(
                             egui::RichText::new(format!("  {}  ", t.name))
                                 .size(motif::pt(ui, 12.0))
-                                .color(egui::Color32::WHITE)
+                                .color(motif::on_fill(motif::accent()))
                                 .background_color(motif::accent()),
                         )
                         .sense(egui::Sense::click()),
@@ -14576,7 +14665,7 @@ impl App {
                         egui::RichText::new(format!("  {}  ", point.title))
                             .size(motif::pt(ui, 11.0))
                             .strong()
-                            .color(egui::Color32::WHITE)
+                            .color(motif::on_fill(color))
                             .background_color(color),
                     )
                     .on_hover_text(format!(
@@ -15144,7 +15233,7 @@ impl App {
     fn acts_state(ui: &mut egui::Ui, row: &ActsRow) {
         ui.label(
             egui::RichText::new(row.itv.state.label())
-                .color(egui::Color32::WHITE)
+                .color(motif::on_fill(motif::accent()))
                 .background_color(motif::accent()),
         );
     }
@@ -16083,8 +16172,35 @@ impl App {
         let base = motif::chart::series_color(i);
         match i / motif::chart::SERIES_LEN {
             0 => base,
-            1 => base.gamma_multiply(1.6),
-            _ => base.gamma_multiply(0.55),
+            1 => motif::data_shade(base, true),
+            _ => motif::data_shade(base, false),
+        }
+    }
+
+    /// One step of the map's ordinal scale — « rien à faire » through
+    /// « agir ».
+    ///
+    /// Written **once**: it was a closure inside the tiles and the same
+    /// closure again inside the legend below them, free to drift, and
+    /// those two are the pair a reader consults against each other — a
+    /// legend that no longer matches its map is worse than no legend.
+    ///
+    /// The direction follows the shell rather than being written into
+    /// the colours: on a daylight palette the scale runs pale to dark,
+    /// on a night one it runs quiet to bright. Either way « rien à
+    /// faire » is the ground the tile sits in and « agir » is the
+    /// theme's own alerte.
+    fn map_step(level: u8) -> egui::Color32 {
+        const STEPS: [egui::Color32; 2] = [
+            egui::Color32::from_rgb(0x7a, 0x8c, 0x6e),
+            egui::Color32::from_rgb(0x9a, 0x7e, 0x33),
+        ];
+        let steps = motif::data_ramp(STEPS, motif::AS_FILL);
+        match level {
+            0 => motif::trough(),
+            1 => steps[0],
+            2 => steps[1],
+            _ => motif::alert(),
         }
     }
 
@@ -16096,12 +16212,6 @@ impl App {
     /// consulting the legend twice.
     fn map_tint(lens: MapLens, c: &vaccines::Country) -> egui::Color32 {
         use vaccines::{Palu, Yf};
-        let step = |level: u8| match level {
-            0 => motif::trough(),
-            1 => egui::Color32::from_rgb(0x7a, 0x8c, 0x6e),
-            2 => egui::Color32::from_rgb(0x9a, 0x7e, 0x33),
-            _ => motif::alert(),
-        };
         match lens {
             MapLens::Group => {
                 let i = vaccines::Region::ALL
@@ -16110,49 +16220,45 @@ impl App {
                     .unwrap_or(0);
                 Self::region_color(i)
             }
-            MapLens::YellowFever => step(match c.yf {
+            MapLens::YellowFever => Self::map_step(match c.yf {
                 Yf::No => 0,
                 Yf::RequiredFromEndemic => 1,
                 Yf::Recommended => 2,
                 Yf::Required => 3,
             }),
-            MapLens::Malaria => step(match c.palu {
+            MapLens::Malaria => Self::map_step(match c.palu {
                 Palu::No => 0,
                 Palu::Limited => 1,
                 Palu::Present => 2,
                 Palu::High => 3,
             }),
-            MapLens::Meningo => step(if c.reco & vaccines::reco::MENINGO != 0 {
+            MapLens::Meningo => Self::map_step(if c.reco & vaccines::reco::MENINGO != 0 {
                 3
             } else {
                 0
             }),
-            MapLens::HepatitisA => step(if c.reco & vaccines::reco::HEP_A != 0 {
+            MapLens::HepatitisA => Self::map_step(if c.reco & vaccines::reco::HEP_A != 0 {
                 2
             } else {
                 0
             }),
-            MapLens::Rabies => step(if c.reco & vaccines::reco::RAGE != 0 {
+            MapLens::Rabies => Self::map_step(if c.reco & vaccines::reco::RAGE != 0 {
                 2
             } else {
                 0
             }),
-            MapLens::JapaneseEnceph => step(if c.reco & vaccines::reco::ENCEPH_JAP != 0 {
-                2
-            } else {
-                0
-            }),
+            MapLens::JapaneseEnceph => {
+                Self::map_step(if c.reco & vaccines::reco::ENCEPH_JAP != 0 {
+                    2
+                } else {
+                    0
+                })
+            }
         }
     }
 
     /// What the legend under the map says for the current lens.
     fn map_legend(lens: MapLens) -> Vec<(&'static str, egui::Color32)> {
-        let shade = |l: u8| match l {
-            0 => motif::trough(),
-            1 => egui::Color32::from_rgb(0x7a, 0x8c, 0x6e),
-            2 => egui::Color32::from_rgb(0x9a, 0x7e, 0x33),
-            _ => motif::alert(),
-        };
         match lens {
             MapLens::Group => vaccines::Region::ALL
                 .iter()
@@ -16160,20 +16266,20 @@ impl App {
                 .map(|(i, r)| (r.label(), Self::region_color(i)))
                 .collect(),
             MapLens::YellowFever => vec![
-                (tr("map_yf_no"), shade(0)),
-                (tr("map_yf_from"), shade(1)),
-                (tr("map_yf_reco"), shade(2)),
-                (tr("map_yf_req"), shade(3)),
+                (tr("map_yf_no"), Self::map_step(0)),
+                (tr("map_yf_from"), Self::map_step(1)),
+                (tr("map_yf_reco"), Self::map_step(2)),
+                (tr("map_yf_req"), Self::map_step(3)),
             ],
             MapLens::Malaria => vec![
-                (tr("map_palu_no"), shade(0)),
-                (tr("map_palu_limited"), shade(1)),
-                (tr("map_palu_present"), shade(2)),
-                (tr("map_palu_high"), shade(3)),
+                (tr("map_palu_no"), Self::map_step(0)),
+                (tr("map_palu_limited"), Self::map_step(1)),
+                (tr("map_palu_present"), Self::map_step(2)),
+                (tr("map_palu_high"), Self::map_step(3)),
             ],
             _ => vec![
-                (tr("map_flag_no"), shade(0)),
-                (tr("map_flag_yes"), shade(2)),
+                (tr("map_flag_no"), Self::map_step(0)),
+                (tr("map_flag_yes"), Self::map_step(2)),
             ],
         }
     }
@@ -16314,7 +16420,7 @@ impl App {
                         egui::Align2::CENTER_CENTER,
                         country.code,
                         font.clone(),
-                        egui::Color32::WHITE,
+                        motif::on_fill(fill),
                     );
                 }
                 if resp.clicked() {
@@ -16765,7 +16871,7 @@ impl App {
                 egui::Align2::LEFT_CENTER,
                 label,
                 egui::FontId::proportional(motif::pt(ui, 11.5)),
-                egui::Color32::WHITE,
+                motif::on_fill(color),
             );
             let resp = ui.interact(
                 block,
@@ -17103,7 +17209,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(format!("  {}  ", rdv.kind.label()))
                             .size(motif::pt(ui, 11.0))
-                            .color(egui::Color32::WHITE)
+                            .color(motif::on_fill(kind_color(rdv.kind)))
                             .background_color(kind_color(rdv.kind)),
                     );
                     if ui
@@ -17165,7 +17271,7 @@ impl App {
                     ui.label(
                         egui::RichText::new(format!("  {}  ", ev.category.label()))
                             .size(motif::pt(ui, 11.0))
-                            .color(egui::Color32::WHITE)
+                            .color(motif::on_fill(motif::bg_dark()))
                             .background_color(motif::bg_dark()),
                     );
                     ui.label(&ev.title);
@@ -18104,7 +18210,8 @@ impl App {
                         egui::pos2(col.left() + 3.0, col.top() + 30.0 + bi as f32 * 24.0),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
-                    ui.painter().rect_filled(block, 0.0, kind_color(rdv.kind));
+                    let fill = kind_color(rdv.kind);
+                    ui.painter().rect_filled(block, 0.0, fill);
                     // The hour leads the block when it is known.
                     let label = if rdv.time.is_empty() {
                         rdv.patient_name.clone()
@@ -18117,7 +18224,7 @@ impl App {
                         egui::Align2::LEFT_CENTER,
                         label,
                         egui::FontId::proportional(motif::pt(ui, 11.0)),
-                        egui::Color32::WHITE,
+                        motif::on_fill(fill),
                     );
                     let resp =
                         ui.interact(block, ui.id().with(("wkblk", i, bi)), egui::Sense::click());
@@ -18145,7 +18252,8 @@ impl App {
                         ),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
-                    ui.painter().rect_filled(block, 0.0, motif::bg_dark());
+                    let fill = motif::bg_dark();
+                    ui.painter().rect_filled(block, 0.0, fill);
                     let label = if ev.time.is_empty() {
                         ev.title.clone()
                     } else {
@@ -18157,7 +18265,7 @@ impl App {
                         egui::Align2::LEFT_CENTER,
                         label,
                         egui::FontId::proportional(motif::pt(ui, 11.0)),
-                        egui::Color32::WHITE,
+                        motif::on_fill(fill),
                     );
                     ui.interact(block, ui.id().with(("wkev", i, ei)), egui::Sense::hover())
                         .on_hover_text(format!("{} — {}", ev.category.label(), ev.title));
@@ -24714,7 +24822,7 @@ impl App {
                                             egui::RichText::new(tr("proto_branch_yes"))
                                                 .size(motif::pt(ui, 10.5))
                                                 .strong()
-                                                .color(egui::Color32::WHITE)
+                                                .color(motif::on_fill(motif::accent()))
                                                 .background_color(motif::accent()),
                                         );
                                     }
@@ -24723,7 +24831,7 @@ impl App {
                                             egui::RichText::new(tr("proto_branch_no"))
                                                 .size(motif::pt(ui, 10.5))
                                                 .strong()
-                                                .color(egui::Color32::WHITE)
+                                                .color(motif::on_fill(motif::alert()))
                                                 .background_color(motif::alert()),
                                         );
                                     }
@@ -24977,7 +25085,11 @@ impl App {
                             egui::RichText::new(answer)
                                 .size(motif::pt(ui, 10.5))
                                 .strong()
-                                .color(egui::Color32::WHITE)
+                                .color(motif::on_fill(if answer == tr("proto_walk_yes") {
+                                    motif::accent()
+                                } else {
+                                    motif::alert()
+                                }))
                                 .background_color(if answer == tr("proto_walk_yes") {
                                     motif::accent()
                                 } else {
@@ -25456,7 +25568,7 @@ impl App {
                 // is impossible to follow across without a band behind
                 // it. The band is a shade of the trough the table sits
                 // in, not egui's default hover blue.
-                ui.visuals_mut().faint_bg_color = egui::Color32::from_rgb(0x8b, 0x8f, 0xa1);
+                ui.visuals_mut().faint_bg_color = motif::stripe();
                 // A first-column cell while the table is scrolling: it
                 // takes the height it would have taken — measured in
                 // the face that would have drawn it, so the row is as
@@ -25894,7 +26006,7 @@ impl App {
                                 egui::Align2::CENTER_CENTER,
                                 elide(ui, d.status.trim(), chip_w - 8.0, 10.5),
                                 egui::FontId::proportional(motif::pt(ui, 10.5)),
-                                egui::Color32::WHITE,
+                                motif::on_fill(status_color(&d.status)),
                             );
                             ui.painter().text(
                                 egui::pos2(chip.right() + 10.0, rect.center().y),
@@ -28012,7 +28124,7 @@ impl App {
                                 egui::RichText::new(format!("  {}  ", tag.0))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(tag.1))
                                     .background_color(tag.1),
                             );
                             if motif::list_row(
@@ -28056,7 +28168,7 @@ impl App {
                                 egui::RichText::new(format!("  {word}  "))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(colour))
                                     .background_color(colour),
                             );
                             if motif::list_row(
@@ -28727,7 +28839,7 @@ impl App {
                                 egui::RichText::new(format!("  {}  ", s.kind.label()))
                                     .size(motif::pt(ui, 10.0))
                                     .strong()
-                                    .color(egui::Color32::WHITE)
+                                    .color(motif::on_fill(motif::accent()))
                                     .background_color(motif::accent()),
                             );
                             ui.label(
@@ -30745,37 +30857,44 @@ impl eframe::App for App {
                                             }
                                         });
                                         ui.end_row();
-                                        // The palette. The shape never
-                                        // moves — square corners,
-                                        // two-pixel bevels — so what is
-                                        // chosen here is a skin and not
-                                        // a different application. Each
-                                        // one says on hover where it
-                                        // comes from.
-                                        ui.label(dim(tr("opts_theme")));
-                                        ui.horizontal_wrapped(|ui| {
-                                            for t in motif::THEMES.iter() {
-                                                let on =
-                                                    editor.cfg.ui.theme.eq_ignore_ascii_case(t.key);
-                                                if ui
-                                                    .selectable_label(on, t.label)
-                                                    .on_hover_text(t.note)
-                                                    .clicked()
-                                                {
-                                                    editor.cfg.ui.theme = t.key.to_owned();
-                                                }
-                                            }
-                                        });
-                                        ui.end_row();
-                                        // Seen before it is saved: the
-                                        // eight colours of the chosen
-                                        // palette, side by side, so the
-                                        // choice is made by looking
-                                        // rather than by restarting.
-                                        ui.label(dim(tr("opts_theme_preview")));
-                                        Self::theme_swatches(ui, &editor.cfg.ui.theme);
-                                        ui.end_row();
                                     });
+                                // The palette. The shape never moves —
+                                // square corners, two-pixel bevels — so
+                                // what is chosen here is a skin and not
+                                // a different application. Each one says
+                                // on hover where it comes from.
+                                //
+                                // **Outside the grid**, and that is not
+                                // a matter of taste: eight buttons wrap
+                                // to two rows, and a wrapped row inside
+                                // a `Grid` cell reports the height of
+                                // its first line — the second was drawn
+                                // straight over the « Aperçu » under it,
+                                // which no test would have said and one
+                                // screenshot did. In the dialog's own
+                                // vertical flow the band grows as it
+                                // should.
+                                ui.add_space(6.0);
+                                ui.label(dim(tr("opts_theme")));
+                                ui.horizontal_wrapped(|ui| {
+                                    for t in motif::THEMES.iter() {
+                                        let on = editor.cfg.ui.theme.eq_ignore_ascii_case(t.key);
+                                        if Self::theme_button(ui, t, on)
+                                            .on_hover_text(t.note)
+                                            .clicked()
+                                        {
+                                            editor.cfg.ui.theme = t.key.to_owned();
+                                        }
+                                    }
+                                });
+                                // Seen before it is saved: the eight
+                                // colours of the chosen palette, side by
+                                // side, so the choice is made by looking
+                                // rather than by restarting.
+                                ui.horizontal(|ui| {
+                                    ui.label(dim(tr("opts_theme_preview")));
+                                    Self::theme_swatches(ui, &editor.cfg.ui.theme);
+                                });
                                 ui.checkbox(
                                     &mut editor.cfg.ui.discreet_finances,
                                     tr("opts_discreet"),
@@ -31051,7 +31170,7 @@ impl eframe::App for App {
                                         !maint_busy,
                                         egui::Button::new(
                                             egui::RichText::new(danger)
-                                                .color(egui::Color32::WHITE)
+                                                .color(motif::on_fill(motif::alert()))
                                                 .size(motif::pt(ui, 12.0)),
                                         )
                                         .fill(motif::alert()),
@@ -31817,6 +31936,56 @@ mod tests {
             offenders.is_empty(),
             "une taille de texte passe par motif::pt, elle ne s'écrit pas \
              en pixels :\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// **Et une couleur ne s'écrit pas en hexadécimal.**
+    ///
+    /// La maison veut que toute couleur de chrome vienne du thème
+    /// (`motif::bg()`, `text_dim()`, `alert()`…) : un `from_rgb` écrit
+    /// dans une vue est une couleur juste sur une palette et fausse sur
+    /// les sept autres. `Color32::WHITE` était l'exception qui s'était
+    /// répandue — trente pastilles écrivaient leur texte en blanc parce
+    /// que tous les fonds étaient sombres, ce qui a cessé d'être vrai le
+    /// jour où une peau a eu un fond clair. C'est `motif::on_fill` qui
+    /// choisit cette encre-là, à partir du fond réellement peint.
+    ///
+    /// Reste ce qu'une teinte *catégorielle* a de légitime : le bleu de
+    /// tel opérateur, l'ambre de tel acte. Elle s'écrit alors **dans une
+    /// rampe nommée**, une seule fois, et rejoint l'écran par
+    /// `motif::data_ramp`, qui la porte sur la peau en cours. La règle
+    /// tient donc en une phrase vérifiable : un littéral de couleur ne
+    /// vit que dans un `const` de `Color32`.
+    #[test]
+    fn no_colour_is_written_in_hex_outside_a_named_ramp() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblés, sinon le test se trouve lui-même.
+        let literals = [
+            concat!("Color32::from_", "rgb("),
+            concat!("Color32::WH", "ITE"),
+            concat!("Color32::BL", "ACK"),
+            concat!("Color32::from_g", "ray("),
+        ];
+        let mut in_ramp = false;
+        let mut offenders: Vec<String> = Vec::new();
+        for (i, l) in SOURCE.lines().enumerate() {
+            let t = l.trim();
+            if t.starts_with("const ") && t.contains("[egui::Color32;") {
+                in_ramp = true;
+            } else if in_ramp && t == "];" {
+                in_ramp = false;
+            } else if t.starts_with("//") {
+                // Un commentaire nomme la règle, il ne la viole pas —
+                // celui de ce test le premier.
+            } else if !in_ramp && literals.iter().any(|c| l.contains(c)) {
+                offenders.push(format!("app.rs:{} : {}", i + 1, t));
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "une couleur vient du thème, ou d'une rampe nommée passée à \
+             motif::data_ramp :\n{}",
             offenders.join("\n")
         );
     }

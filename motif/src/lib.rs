@@ -76,11 +76,19 @@ pub struct Theme {
 /// The skins that ship.
 ///
 /// Five palettes off the same workstations the look itself comes from,
-/// plus one that is not history but eyesight: a counter in full sun, or
-/// an operator who wants the contrast turned up. The first is the
-/// default and must stay first — a `config.toml` naming a theme this
-/// version does not know falls back to it.
-pub const THEMES: [Theme; 6] = [
+/// one that is not history but eyesight — a counter in full sun, or an
+/// operator who wants the contrast turned up — and two dark ones, for
+/// the garde de nuit: an officine at three in the morning is lit by
+/// whatever is on the screen. The first is the default and must stay
+/// first — a `config.toml` naming a theme this version does not know
+/// falls back to it.
+///
+/// A dark skin is a palette and nothing else: no branch anywhere draws
+/// differently for it. What it *does* change is that a colour picked
+/// once for a light grey — a categorical hue, an amber warning — can no
+/// longer be written down and drawn as it is, which is what
+/// [`data_ramp`], [`data_shade`] and [`on_fill`] are for.
+pub const THEMES: [Theme; 8] = [
     Theme {
         key: "motif",
         label: "Motif",
@@ -207,6 +215,51 @@ pub const THEMES: [Theme; 6] = [
             ink_light: Color32::from_rgb(0x3c, 0x3c, 0x46),
         },
     },
+    Theme {
+        key: "nuit",
+        label: "Nuit",
+        note: "L'ardoise d'une garde : l'écran éclaire le comptoir, pas l'inverse.",
+        palette: Palette {
+            bg: Color32::from_rgb(0x2c, 0x2f, 0x3a),
+            bg_light: Color32::from_rgb(0x45, 0x4a, 0x5a),
+            bg_dark: Color32::from_rgb(0x17, 0x19, 0x22),
+            trough: Color32::from_rgb(0x21, 0x23, 0x2c),
+            accent: Color32::from_rgb(0x4a, 0x6e, 0xa8),
+            bg_hover: Color32::from_rgb(0x38, 0x3c, 0x49),
+            text: Color32::from_rgb(0xe8, 0xea, 0xf2),
+            text_dim: Color32::from_rgb(0xbc, 0xc1, 0xd0),
+            text_faint: Color32::from_rgb(0x96, 0x9c, 0xae),
+            alert: Color32::from_rgb(0xe0, 0x6a, 0x6a),
+            warn: Color32::from_rgb(0xd0, 0xa2, 0x4a),
+            // The sheet is a sheet at night too — dark, and read with a
+            // pale ink. A white page in the middle of this would be the
+            // one thing on the screen nobody can look at.
+            paper: Color32::from_rgb(0x1e, 0x20, 0x28),
+            ink: Color32::from_rgb(0xe6, 0xe6, 0xee),
+            ink_light: Color32::from_rgb(0xa8, 0xab, 0xba),
+        },
+    },
+    Theme {
+        key: "ambre",
+        label: "Ambre",
+        note: "Le phosphore ambré d'un terminal, en fond sombre.",
+        palette: Palette {
+            bg: Color32::from_rgb(0x2b, 0x27, 0x21),
+            bg_light: Color32::from_rgb(0x4a, 0x44, 0x3a),
+            bg_dark: Color32::from_rgb(0x15, 0x13, 0x10),
+            trough: Color32::from_rgb(0x20, 0x1d, 0x18),
+            accent: Color32::from_rgb(0x8a, 0x5a, 0x1c),
+            bg_hover: Color32::from_rgb(0x39, 0x34, 0x29),
+            text: Color32::from_rgb(0xf2, 0xdc, 0xb4),
+            text_dim: Color32::from_rgb(0xd2, 0xb9, 0x8c),
+            text_faint: Color32::from_rgb(0xab, 0x96, 0x70),
+            alert: Color32::from_rgb(0xe0, 0x7a, 0x5a),
+            warn: Color32::from_rgb(0xd9, 0xb0, 0x4a),
+            paper: Color32::from_rgb(0x1d, 0x1a, 0x15),
+            ink: Color32::from_rgb(0xf0, 0xdc, 0xb8),
+            ink_light: Color32::from_rgb(0xb4, 0xa1, 0x80),
+        },
+    },
 ];
 
 /// Which of [`THEMES`] is in force, by index.
@@ -312,6 +365,272 @@ pub fn ink_light() -> Color32 {
     palette().ink_light
 }
 
+/// Rough perceptual luminance, 0 (black) to 1 (white).
+///
+/// The same weighted sum the readability test uses, and public for the
+/// same reason the palette is: whether a colour can be *read* on another
+/// is a question the chrome asks at run time — a badge does not know
+/// which of the skins is in force.
+#[inline]
+pub fn luminance(c: Color32) -> f32 {
+    (0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32) / 255.0
+}
+
+/// Whether the shell in force is a dark one.
+///
+/// Not a field of the palette: it *is* the background's luminance, and a
+/// second place saying so is a second place to get it wrong.
+#[inline]
+pub fn is_dark() -> bool {
+    luminance(bg()) < 0.5
+}
+
+/// The ink that reads on a chosen fill.
+///
+/// Black or white and nothing from the palette, deliberately: this is
+/// not chrome, it is the only two inks that read on an arbitrary badge
+/// colour. Every filled chip in the application used to write
+/// `Color32::WHITE` by hand — correct as long as every fill was dark,
+/// which stopped being true the day a skin got a light one.
+#[inline]
+pub fn on_fill(fill: Color32) -> Color32 {
+    if luminance(fill) > 0.5 {
+        Color32::BLACK
+    } else {
+        Color32::WHITE
+    }
+}
+
+/// How far from the shell's own lightness a colour has to stand to be
+/// **read as text** — letters are thin, and a hue that shows perfectly
+/// well as a block of colour is a smudge at nine points.
+pub const AS_TEXT: f32 = 0.30;
+/// The same for a **filled shape** — a badge, a bar, a chip — which is
+/// large and needs less.
+pub const AS_FILL: f32 = 0.20;
+/// The far side of the band a data colour may occupy: on a night skin,
+/// the lightness past which a block of colour is a lamp. Somebody who
+/// chooses a dark palette at three in the morning is choosing a screen
+/// that has stopped shouting, and a ramp lifted until it clears the
+/// background can arrive louder than the daylight one it came from —
+/// the agenda's ten act kinds came out at three-quarters white before
+/// this figure existed.
+const NO_GLARE: f32 = 0.66;
+/// Its opposite on a daylight palette: below this everything is black
+/// and one hue is another.
+const NO_MURK: f32 = 0.08;
+
+/// The same colour at another lightness, **by scaling and not by
+/// mixing**.
+///
+/// Mixing toward white is the obvious way to lift a colour onto a dark
+/// shell and it is the wrong one: it walks every hue toward the same
+/// point, so a ramp of eight distinct colours arrives as eight pale
+/// neighbours — the chart test caught the grey-blue of series 1 and the
+/// violet of series 5 landing within twenty-one of each other, where the
+/// ramp's own rule is thirty-five apart. Multiplying the three channels
+/// keeps their ratios, which is what the eye reads as the hue, and
+/// *spreads* the ramp as it lifts it.
+///
+/// Luminance being a weighted sum of the channels, the factor is exact —
+/// until a channel saturates, and the shortfall after that is the one
+/// case where there is nowhere left to go but white.
+fn to_luminance(c: Color32, target: f32) -> Color32 {
+    let l = luminance(c);
+    if l < 0.02 {
+        // A near-black has no ratio to keep: scaling it by fifty would
+        // still be a near-black, and its hue is not information anybody
+        // reads. It becomes a grey of the right weight.
+        let v = (target * 255.0).clamp(0.0, 255.0) as u8;
+        return Color32::from_gray(v);
+    }
+    let k = target / l;
+    let scale = |x: u8| (x as f32 * k).clamp(0.0, 255.0) as u8;
+    let out = Color32::from_rgb(scale(c.r()), scale(c.g()), scale(c.b()));
+    if luminance(out) + 0.01 >= target {
+        return out;
+    }
+    let mut lifted = out;
+    for i in 1..=20 {
+        if luminance(lifted) >= target {
+            break;
+        }
+        lifted = out.lerp_to_gamma(Color32::WHITE, i as f32 / 20.0);
+    }
+    lifted
+}
+
+/// `ink` if it can be read on `surface`, and the plain black or white
+/// that can if it cannot.
+///
+/// For the one case where a colour chosen for one ground is painted on
+/// another: a highlighted run of prose keeps the ink of the sentence it
+/// belongs to, unless the highlight has swallowed it.
+pub fn readable_on(ink: Color32, surface: Color32) -> Color32 {
+    if (luminance(ink) - luminance(surface)).abs() >= AS_TEXT {
+        ink
+    } else {
+        on_fill(surface)
+    }
+}
+
+/// Emphasis where there is no bold face.
+///
+/// The application draws with egui's own faces and the proportional one
+/// has no bold, so `*gras*` is carried by a stronger ink — which was
+/// written as « darker », and darker is emphasis on a daylight palette
+/// and a *whisper* on a night one. What was meant is « further from the
+/// ground », which is the same thing on the six greys and the opposite
+/// on the two dark ones.
+pub fn emphasize(c: Color32) -> Color32 {
+    c.lerp_to_gamma(on_fill(bg()), 0.45)
+}
+
+/// A whole categorical ramp **fitted into the band the shell leaves it**.
+///
+/// Moving each colour as far as that colour needs is the obvious way and
+/// the wrong one for a set read side by side: the members that already
+/// stand off the background stay put while their neighbours come up to
+/// meet them, and a ramp whose closest pair was thirty-five apart
+/// arrives with two at thirty-three. The agenda's ten act kinds and the
+/// chart's eight series are read *against each other*, in one legend —
+/// and a lone badge is a ramp of one, which is why there is no second
+/// function for it.
+///
+/// So the ramp moves as one, by a single `a·c + b` on the three channels
+/// — luminance being a weighted sum, that is an affine move in lightness
+/// too, and the arithmetic is exact. Three cases, tried in order, and
+/// each one gives up something the one before it kept:
+///
+/// 1. **Scale** (`b = 0`): keeps the ratios between the channels, so the
+///    hues arrive saturated as they were written, and *spreads* the ramp
+///    as it lifts it. Taken whenever it fits under [`NO_GLARE`].
+/// 2. **Translate** (`a = 1`): keeps the distances between the members
+///    exactly, at the cost of some saturation. It is what the ten act
+///    kinds take on a night skin — scaling them would have put the
+///    brightest at three-quarters white, a lamp on a screen chosen for
+///    not being one.
+/// 3. **Compress**: only when the band is narrower than the ramp's own
+///    spread. This is the one that loses something real — the members
+///    come closer together — so it is last.
+///
+/// On the daylight palettes no member needs moving and the ramp is
+/// returned as written.
+///
+/// `apart` says what the ramp is *for*: [`AS_TEXT`] or [`AS_FILL`].
+pub fn data_ramp<const N: usize>(ramp: [Color32; N], apart: f32) -> [Color32; N] {
+    let on = luminance(bg());
+    let dark = on < 0.5;
+    let mut lo = 1.0_f32;
+    let mut hi = 0.0_f32;
+    for c in ramp {
+        lo = lo.min(luminance(c));
+        hi = hi.max(luminance(c));
+    }
+    // `near` is the closest to the ground any member may come, `far` the
+    // end of the room it has on the other side.
+    let (near, far) = if dark {
+        ((on + apart).min(1.0), NO_GLARE)
+    } else {
+        ((on - apart).max(0.0), NO_MURK)
+    };
+    // The member nearest the ground is the one that decides, and if it
+    // already clears the ground the ramp is left exactly as it is.
+    let (worst, other) = if dark { (lo, hi) } else { (hi, lo) };
+    if (worst - on).abs() >= apart {
+        return ramp;
+    }
+    // Does the far member still sit inside the room, once moved?
+    let fits = |x: f32| if dark { x <= far } else { x >= far };
+    // A near-black cannot be scaled — multiplying nothing gives nothing,
+    // and the factor runs away — so it goes straight to the translation,
+    // which is the honest answer for it: black lifts to a grey.
+    let scalable = worst > 0.02;
+    let k = if scalable { near / worst } else { 1.0 };
+    let (a, b) = if scalable && fits(other * k) {
+        (k, 0.0)
+    } else if fits(other + (near - worst)) {
+        (1.0, near - worst)
+    } else if (other - worst).abs() > f32::EPSILON {
+        let a = (far - near) / (other - worst);
+        (a, near - a * worst)
+    } else {
+        // One lightness for the whole ramp: nothing to spread, so the
+        // whole of it moves to the near edge together.
+        (1.0, near - worst)
+    };
+    let mut out = ramp;
+    for c in out.iter_mut() {
+        // Rounded and not truncated: a translation is supposed to keep
+        // the distances between the members *exactly*, and a unit of
+        // green lost to a cast is enough to bring the closest pair of
+        // the chart ramp under the line it is held to.
+        let s = |x: u8| (x as f32 * a + b * 255.0).round().clamp(0.0, 255.0) as u8;
+        *c = Color32::from_rgb(s(c.r()), s(c.g()), s(c.b()));
+    }
+    out
+}
+
+/// A second and a third tone of one hue, for a set that has more
+/// members than the ramp has colours.
+///
+/// The vaccine map has seventeen regions and the ramp has eight, so it
+/// draws the second round paler and the third darker. That was a bare
+/// `gamma_multiply(1.6)`, which is unbounded: applied to a colour
+/// already lifted onto a night shell it clipped to **white**, and a
+/// dozen countries came out as a hole in the map — the one thing a
+/// night palette is chosen to avoid. A step inside the same band, then,
+/// and one that turns round when it meets the wall rather than
+/// returning the tone it started from.
+pub fn data_shade(c: Color32, up: bool) -> Color32 {
+    const STEP: f32 = 0.16;
+    let l = luminance(c);
+    let (floor, ceiling) = (NO_MURK + 0.04, NO_GLARE - 0.04);
+    let step = |up: bool| {
+        if up {
+            (l + STEP).min(ceiling)
+        } else {
+            (l - STEP).max(floor)
+        }
+    };
+    let t = step(up);
+    let t = if (t - l).abs() < STEP * 0.5 {
+        step(!up)
+    } else {
+        t
+    };
+    to_luminance(c, t)
+}
+
+/// The band behind every other row of a striped table.
+///
+/// A shade of the trough the table sits in, mixed from the theme — the
+/// literal grey that used to be written here was picked against the
+/// Motif blue and read as a stain on the HP VUE green.
+///
+/// And **toward the bevel that is away from the trough**, not always
+/// toward the shadow: a trough is already the darkest thing on a night
+/// skin, so a band darker again is a band nobody sees. The same lesson
+/// as everywhere else here — what a stripe owes is a distance from the
+/// ground, and the direction is the shell's to choose.
+pub fn stripe() -> Color32 {
+    let toward = if is_dark() { bg_light() } else { bg_dark() };
+    trough().lerp_to_gamma(toward, 0.18)
+}
+
+/// The theme in force is process-wide — an atomic, read thousands of
+/// times a frame — so any test that *moves* it races every other one
+/// that reads it. They take this in turn.
+///
+/// Poisoning is stepped over on purpose: a failed assertion in one test
+/// must report *its* failure, not turn its neighbour into an unwrap
+/// panic that says nothing about either.
+#[cfg(test)]
+pub(crate) fn theme_lock() -> std::sync::MutexGuard<'static, ()> {
+    static THEME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    THEME.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Draw a sheet of paper: flat fill, a thin ink border and a hard
 /// shadow to the lower right, in keeping with the square Motif look.
 pub fn sheet(painter: &egui::Painter, rect: egui::Rect) {
@@ -397,7 +716,11 @@ pub fn apply(ctx: &egui::Context) {
     let mut style = (*ctx.style()).clone();
 
     let v = &mut style.visuals;
-    v.dark_mode = false;
+    // egui reads this back for the handful of colours it still picks
+    // itself — a code block's background, a hyperlink, the text cursor.
+    // Left at `false` under a dark skin they come out as light-theme
+    // defaults on a dark shell.
+    v.dark_mode = crate::is_dark();
     v.override_text_color = Some(crate::text());
     v.panel_fill = crate::bg();
     v.window_fill = crate::bg();
@@ -1258,17 +1581,15 @@ mod tests {
         assert_eq!(icon.rgba.len(), 32 * 32 * 4);
     }
 
+    use super::theme_lock;
+
     /// A theme is chosen by key, and a key this version does not know is
     /// not an error: it is the classic palette. Anything else would mean
     /// a `config.toml` carried from a newer release leaves the officine
     /// staring at a blank window.
-    ///
-    /// One test and not two, deliberately: the palette in force is
-    /// process-wide — an atomic, because it is read thousands of times a
-    /// frame — so two tests setting it would run in parallel and read
-    /// each other's theme. Everything that *moves* it lives here.
     #[test]
     fn the_theme_in_force_is_chosen_by_key() {
+        let _guard = theme_lock();
         for t in super::THEMES.iter() {
             super::set_theme(t.key);
             assert_eq!(super::theme().key, t.key);
@@ -1276,7 +1597,7 @@ mod tests {
             super::set_theme(&t.key.to_uppercase());
             assert_eq!(super::theme().key, t.key);
         }
-        for wrong in ["", "   ", "nuit", "solarized"] {
+        for wrong in ["", "   ", "amiga", "solarized"] {
             super::set_theme(wrong);
             assert_eq!(super::theme().key, super::THEMES[0].key, "{wrong:?}");
         }
@@ -1304,13 +1625,17 @@ mod tests {
     /// of the background, and the text is far enough from the grey it is
     /// written on. A theme that fails this is a screen nobody can work
     /// at, and it would fail silently.
+    ///
+    /// **Every rule here is a distance, never a direction**, and that is
+    /// the whole reason a dark skin could be added at all: « l'encre est
+    /// sombre » is true of six palettes and false of the two written for
+    /// the night, whereas « l'encre est loin du papier » is what was
+    /// meant every time. The two that stayed directional — the bevel and
+    /// the hover tint — are directional in the *look*: a Motif widget is
+    /// lit from the top left whatever the hour.
     #[test]
     fn every_palette_can_be_read() {
-        // Rough perceptual luminance, enough to tell « white reads on
-        // this » from « it does not ».
-        fn lum(c: super::Color32) -> f32 {
-            (0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32) / 255.0
-        }
+        let lum = super::luminance;
         let mut keys: Vec<&str> = Vec::new();
         for t in super::THEMES.iter() {
             let p = &t.palette;
@@ -1324,13 +1649,29 @@ mod tests {
             assert!(lum(p.bg_dark) < lum(p.bg), "{k} : biseau sombre");
             // The hover tint is a tint, not a second background.
             assert!(lum(p.bg_hover) > lum(p.bg), "{k} : survol");
-            // White is drawn on the selection fill and on the alert
-            // badges: both have to be dark enough to carry it.
+            // The selection fill carries white — in `list_row`, in the
+            // scale's thumb, in every progress trough — so it stays dark
+            // enough for it, on a night skin as much as on a day one.
+            // And it has to be *seen* against the shell: a dark blue on
+            // a dark slate is a selection nobody notices moving.
             assert!(lum(p.accent) < 0.45, "{k} : sélection trop claire");
-            assert!(lum(p.alert) < 0.45, "{k} : alerte trop claire");
-            // Et sur l'ambre des mises en garde, qui porte du blanc lui
-            // aussi — c'est une pastille, pas un trait.
-            assert!(lum(p.warn) < 0.45, "{k} : mise en garde trop claire");
+            assert!(
+                (lum(p.accent) - lum(p.bg)).abs() > 0.15,
+                "{k} : sélection noyée dans le fond"
+            );
+            // Alerte and mise en garde are read as *text* far more often
+            // than as a badge — an overdue rendez-vous, a surveillance
+            // late, a forfait that is running out — so what they owe is
+            // distance from the background. The two badges that fill
+            // with them take their ink from `on_fill`, which is why
+            // there is no ceiling here any more: on a dark shell a red
+            // dark enough to carry white is a red nobody can read.
+            for (name, c) in [("alerte", p.alert), ("mise en garde", p.warn)] {
+                assert!(
+                    (lum(c) - lum(p.bg)).abs() > 0.25,
+                    "{k} : {name} illisible sur le fond"
+                );
+            }
             // Elle doit aussi **se distinguer de l'alerte** : les deux
             // se lisent côte à côte sur la même ordonnance, et deux
             // rouges voisins ne disent plus lequel presse.
@@ -1340,7 +1681,9 @@ mod tests {
                 "{k} : mise en garde et alerte trop proches"
             );
             // And the three text shades have to stand off the grey they
-            // are written on, faintest included.
+            // are written on, faintest included — and off the trough,
+            // which is the other surface text is drawn on: it is what
+            // one types into.
             for (name, c) in [
                 ("text", p.text),
                 ("text_dim", p.text_dim),
@@ -1350,11 +1693,194 @@ mod tests {
                     (lum(p.bg) - lum(c)).abs() > 0.25,
                     "{k} : {name} illisible sur le fond"
                 );
+                assert!(
+                    (lum(p.trough) - lum(c)).abs() > 0.25,
+                    "{k} : {name} illisible dans un champ"
+                );
             }
-            // The printed-sheet colours are their own pair.
-            assert!(lum(p.paper) > 0.7, "{k} : papier trop sombre");
-            assert!(lum(p.ink) < 0.3, "{k} : encre trop claire");
-            assert!(lum(p.ink_light) < lum(p.paper), "{k} : encre pâle");
+            // The printed-sheet colours are their own pair, and a pair
+            // is a distance: a night skin reads its monographs off a
+            // dark sheet in a pale ink, which is the same relation the
+            // other way up.
+            assert!(
+                (lum(p.paper) - lum(p.ink)).abs() > 0.55,
+                "{k} : encre trop proche du papier"
+            );
+            assert!(
+                (lum(p.paper) - lum(p.ink_light)).abs() > 0.30,
+                "{k} : encre pâle trop proche du papier"
+            );
+            // The secondary ink lies *between* the two, whichever way
+            // round they are: paler than the ink, darker than the sheet.
+            let (lo, hi) = if lum(p.ink) < lum(p.paper) {
+                (lum(p.ink), lum(p.paper))
+            } else {
+                (lum(p.paper), lum(p.ink))
+            };
+            assert!(
+                lo < lum(p.ink_light) && lum(p.ink_light) < hi,
+                "{k} : encre pâle hors bornes"
+            );
         }
+    }
+
+    /// The three ways a ramp is fitted, each held on the case that
+    /// forced it into existence.
+    ///
+    /// Written as a test because the choice between them is arithmetic
+    /// and invisible: nothing on screen says « this ramp was translated
+    /// rather than scaled », and the difference is a legend whose
+    /// colours have quietly moved together.
+    #[test]
+    fn a_ramp_is_fitted_by_the_gentlest_move_that_works() {
+        let _guard = theme_lock();
+        let lum = super::luminance;
+        let d = |a: super::Color32, b: super::Color32| {
+            let f = |x: u8, y: u8| (x as f32 - y as f32).powi(2);
+            (f(a.r(), b.r()) + f(a.g(), b.g()) + f(a.b(), b.b())).sqrt()
+        };
+
+        // A daylight palette moves nothing: every one of these already
+        // stands off the grey, and a skin that redraws what it did not
+        // have to is a skin that changes every screenshot for nothing.
+        super::set_theme("motif");
+        let day = [
+            super::Color32::from_rgb(0x3a, 0x54, 0x7e),
+            super::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+        ];
+        assert_eq!(super::data_ramp(day, super::AS_FILL), day);
+
+        super::set_theme("nuit");
+        // Two dark neighbours: lifting the lower one by scaling takes
+        // the other nowhere near the ceiling, so the ratios — the hue —
+        // survive, and the pair comes out *further* apart than it went
+        // in. That is the whole reason scaling is tried first.
+        let tight = [
+            super::Color32::from_rgb(0x20, 0x30, 0x40),
+            super::Color32::from_rgb(0x28, 0x38, 0x48),
+        ];
+        let fitted = super::data_ramp(tight, super::AS_FILL);
+        assert!(
+            d(fitted[0], fitted[1]) > d(tight[0], tight[1]),
+            "une mise à l'échelle écarte, elle ne rapproche pas"
+        );
+        for (a, b) in tight.iter().zip(fitted.iter()) {
+            // Same hue: the channels kept their ratios, so the largest
+            // and the smallest are still the same two.
+            assert_eq!(
+                (a.r() < a.g(), a.g() < a.b()),
+                (b.r() < b.g(), b.g() < b.b()),
+                "la teinte a bougé"
+            );
+        }
+
+        // The act kinds: their brightest member is close enough to the
+        // ceiling that scaling would put it through it, so the ramp is
+        // translated instead — and a translation keeps every distance,
+        // to the rounding of a byte.
+        let kinds = [
+            super::Color32::from_rgb(0x6e, 0x2e, 0x2e),
+            super::Color32::from_rgb(0x5e, 0x7e, 0x3a),
+            super::Color32::from_rgb(0x3a, 0x54, 0x7e),
+        ];
+        let fitted = super::data_ramp(kinds, super::AS_FILL);
+        for i in 0..kinds.len() {
+            for j in (i + 1)..kinds.len() {
+                assert!(
+                    (d(fitted[i], fitted[j]) - d(kinds[i], kinds[j])).abs() <= 2.0,
+                    "une translation garde les écarts : {} contre {}",
+                    d(fitted[i], fitted[j]),
+                    d(kinds[i], kinds[j])
+                );
+            }
+        }
+        // And whichever move was made, nothing leaves the band.
+        for c in fitted {
+            assert!(lum(c) >= lum(super::bg()) + super::AS_FILL - 0.01);
+            assert!(lum(c) <= super::NO_GLARE + 0.01);
+        }
+        super::set_theme(super::THEMES[0].key);
+    }
+
+    /// The categorical colours are chosen for their hue and drawn on
+    /// whichever skin is in force. On the light greys they are fine as
+    /// written; on a night one a mid-dark blue is a blue on a blue, and
+    /// the journal loses the column that says who wrote what.
+    ///
+    /// So the two adapters owe an invariant apiece, on **every** palette:
+    /// what is drawn as text stands off the background, and what is
+    /// drawn as a fill stands off it too *and* still carries its ink.
+    #[test]
+    fn a_data_colour_is_legible_under_every_skin() {
+        let _guard = theme_lock();
+        let lum = super::luminance;
+        // The ramp as it is actually written down: the chart's seven
+        // fixed series, plus the hues app.rs assigns to an operator, an
+        // act kind and a drug's administrative status.
+        const RAMP: [super::Color32; 17] = [
+            super::Color32::from_rgb(0x6b, 0x70, 0x82),
+            super::Color32::from_rgb(0x2f, 0x6b, 0x5c),
+            super::Color32::from_rgb(0x8b, 0x1a, 0x1a),
+            super::Color32::from_rgb(0x7a, 0x5c, 0x1f),
+            super::Color32::from_rgb(0x54, 0x3d, 0x73),
+            super::Color32::from_rgb(0x1f, 0x5c, 0x7a),
+            super::Color32::from_rgb(0x6e, 0x3d, 0x2a),
+            super::Color32::from_rgb(0x3a, 0x54, 0x7e),
+            super::Color32::from_rgb(0x2e, 0x6e, 0x4e),
+            super::Color32::from_rgb(0x7e, 0x3a, 0x5e),
+            super::Color32::from_rgb(0x8b, 0x5a, 0x1a),
+            super::Color32::from_rgb(0x1a, 0x6e, 0x8b),
+            super::Color32::from_rgb(0x5e, 0x3a, 0x7e),
+            super::Color32::from_rgb(0x5e, 0x7e, 0x3a),
+            super::Color32::from_rgb(0x6e, 0x2e, 0x2e),
+            super::Color32::from_rgb(0x7e, 0x4a, 0x2e),
+            super::Color32::from_rgb(0x2e, 0x6e, 0x6e),
+        ];
+        for t in super::THEMES.iter() {
+            super::set_theme(t.key);
+            let k = t.key;
+            let on = lum(super::bg());
+            let inks = super::data_ramp(RAMP, super::AS_TEXT);
+            let fills = super::data_ramp(RAMP, super::AS_FILL);
+            for (i, c) in RAMP.iter().copied().enumerate() {
+                let ink = inks[i];
+                assert!(
+                    (lum(ink) - on).abs() > 0.25,
+                    "{k} : {c:?} illisible en texte sur le fond"
+                );
+                let fill = fills[i];
+                assert!(
+                    (lum(fill) - on).abs() > 0.14,
+                    "{k} : {c:?} en pastille se confond avec le fond"
+                );
+                // Ni au-delà de la bande, dans un sens ou dans l'autre :
+                // une pastille qui éclaire est ce qu'une peau de nuit
+                // est choisie pour ne plus avoir.
+                assert!(
+                    lum(fill) <= super::NO_GLARE + 0.01 && lum(fill) >= super::NO_MURK - 0.01,
+                    "{k} : {c:?} sort de la bande ({:.2})",
+                    lum(fill)
+                );
+                // `on_fill` picks the ink; what is asserted is that the
+                // ink it picks is far enough from the fill to be read,
+                // never which of the two it picked.
+                assert!(
+                    (lum(fill) - lum(super::on_fill(fill))).abs() > 0.45,
+                    "{k} : pastille {c:?} ne porte plus son texte"
+                );
+            }
+            // The stripe behind every other row of a table is a shade of
+            // the trough, so the text typed into that table still reads
+            // on it.
+            assert!(
+                (lum(super::stripe()) - lum(super::text())).abs() > 0.25,
+                "{k} : bande zébrée illisible"
+            );
+            assert!(
+                super::stripe() != super::trough(),
+                "{k} : bande zébrée invisible"
+            );
+        }
+        super::set_theme(super::THEMES[0].key);
     }
 }

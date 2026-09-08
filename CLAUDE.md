@@ -127,7 +127,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   linked to `libpcsclite` does not start at all on a post that has none,
   and most posts have none — which is also why no system package is
   needed to build this, in CI or on the release runners either)
-- `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases
+- `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases.
+  It reads `[ui] theme` out of `config.toml` by hand and opens in that
+  skin: it is the first window of the evening, and it does not depend on
+  the application crate
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
 
 Always build/lint with `--workspace`: plain `cargo build` only builds the
@@ -205,12 +208,53 @@ add clicking and typing; it is not the price of entry.
   the register's own templates still counted in pixels after the
   conversion, and the register elided its dates.
 - **Colour comes from the theme, never from a literal.** `motif::bg()`,
-  `text_dim()`, `accent()`… are functions over `motif::THEMES` (six
+  `text_dim()`, `accent()`… are functions over `motif::THEMES` (eight
   palettes, `[ui] theme`); a hard-coded `Color32::from_rgb` in the
-  chrome is a colour that will look wrong on five of the six. Chart
-  *data* colours (`chart::series_color`) are the exception and stay
-  fixed, except the first, which follows the accent. A new palette must
-  pass `every_palette_can_be_read`.
+  chrome is a colour that will look wrong on seven of the eight. A new
+  palette must pass `every_palette_can_be_read`, and
+  `no_colour_is_written_in_hex_outside_a_named_ramp` reads the text of
+  `app.rs` and refuses the next literal — like the two that refuse a
+  pixel size and a pixel-measured layout switch.
+- **Two of the eight are dark, and that is a palette and nothing else:**
+  no branch anywhere draws differently for a night skin. What it does
+  change is that **every rule about colour is a distance, never a
+  direction**. « L'encre est sombre » was true of six palettes and is
+  false of two; « l'encre est loin du papier » is what was meant every
+  time. `every_palette_can_be_read` is written that way now, and the
+  two rules that stayed directional — the bevel and the hover tint —
+  are directional in the *look*: a Motif widget is lit from the top
+  left whatever the hour.
+- **A colour written down for one ground is adapted before it is drawn
+  on another.** `on_fill(fill)` is the ink a badge carries (black or
+  white, decided by the fill actually painted — thirty call sites wrote
+  `Color32::WHITE` by hand, correct only while every fill was dark).
+  `data_ramp(ramp, AS_TEXT | AS_FILL)` fits a categorical set into the
+  band the shell leaves it, **as a set**: moving each member as far as
+  that member needs is what closes the gaps between them, and a lone
+  badge is a ramp of one — there is deliberately no second function for
+  it. Three transforms tried in order, each giving up something the one
+  before kept: **scale** the three channels (keeps the hues saturated
+  and spreads the ramp), **translate** (keeps the distances exactly, at
+  some saturation) when scaling would pass `NO_GLARE`, **compress**
+  only when the band is narrower than the ramp. A mix toward white is
+  never one of them: it walks every hue to the same point, and the
+  chart test caught two series landing within twenty-one of each other
+  where the ramp's own rule is thirty-five. On the daylight palettes no
+  member needs moving and the ramp is returned as written.
+- **A categorical hue lives in one named `const` ramp**, and reaches the
+  screen through `data_ramp`. Adding a colour is adding a line to that
+  array — never a second array, and never a literal at the point of
+  use. `motif::data_shade(c, up)` gives a set with more members than the
+  ramp has colours its second and third tone — a step inside the same
+  band, where a bare `gamma_multiply(1.6)` clipped a dozen countries of
+  the vaccine map to white. `motif::stripe()` is the zebra band,
+  `motif::emphasize(c)` is bold where there is no bold face (further
+  from the ground, not darker), `motif::readable_on(ink, surface)`
+  keeps a sentence's own colour on a highlight unless the highlight has
+  swallowed it.
+- `./scripts/shot.sh <vue> <fichier> <taille> <échelle> theme=nuit`
+  captures a view under a chosen skin — `theme=` is the one key that
+  goes into `config.toml` rather than into `layout.toml`.
 - **Layout is carved, not stacked.** A view computes rectangles with
   `motif::split_rows` / `split_columns` and fills them with
   `motif::panel` / `well` / `inside`; it does not centre a fixed-width
@@ -542,9 +586,12 @@ add clicking and typing; it is not the price of entry.
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|scans|
-  patient_scans|explorer|explorer_organ|classes|classes_outside|export`
+  patient_scans|explorer|explorer_organ|classes|classes_outside|export|
+  peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
-  dialog on its « À propos » page.
+  dialog on its « À propos » page, `base` on « Base », and `peaux` on
+  « Interface », where the eight skins are picked — each drawn in its
+  own palette, which is the one thing only a screenshot can check.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph

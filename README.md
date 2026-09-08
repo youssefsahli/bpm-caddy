@@ -38,6 +38,10 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Carte vaccinale — les pays par groupe, la fièvre jaune, le paludisme](docs/screenshot_map.png)
 
+![Le tableau de bord sous « Nuit » — la même vue, une autre peau : la forme ne bouge jamais](docs/screenshot_nuit.png)
+
+![Une monographie sous « Ambre » — la feuille se lit sombre, à l'encre pâle](docs/screenshot_ambre.png)
+
 ## Key features
 
 - **A full-text search of the monographs** — the name search answers « where is Eliquis » ; « Dans le texte… » answers the other half of the counter's questions. Type a word and every fiche that says it comes back with the sentence that says it, under the name of the section it came from: 116 passages say *pamplemousse*, and each one is one click from its card. Interactions, contre-indications, effets indésirables, surveillance, « en cas d'oubli », the formes et dosages and the team's own notes are all searched — and so are the 1 319 posology lines, dose and remark, each returned under its own indication, because that is where the counter's answers are actually written. Accent- and case-insensitive, the matched word marked in the sentence, and the sentence quoted exactly as the card has it. With a patient file open, one button narrows the whole thing to that ordonnance — « which of *these* say insuffisance rénale » is the counter's actual question, and it now takes one gesture.
@@ -103,6 +107,7 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **Coverage that is measured and held** — `./scripts/coverage.sh` prints the per-file table and fails on two floors that only ever move up, the same ratchet idea as the posology one. The logic modules — everything but the egui view, the launcher and the theme crate — sit at **87 %**. The workspace figure (40 %) is low and says so out loud: `src/app.rs` is fifteen thousand lines of egui layout, more than half the repo, and a view cannot be covered without a UI harness — `egui_kittest` needs egui ≥ 0.30 and this is on 0.29. Until that upgrade, `scripts/smoke.sh` is what holds the interface: thirty-five views opened every run, failing on any panic.
 - **Customizable wording** — every UI string lives in an embedded TOML; drop a `strings.toml` next to `config.toml` to adapt any text (or translate the app) without recompiling.
 - **Old-school X/Motif theme** — the classic `mwm` blue-grey look with square corners and raised/sunken bevels, implemented as a reusable `motif` crate for egui.
+- **Eight skins, and the shape never moves** — five palettes off the workstations the look comes from (mwm, CDE, DECwindows, Indigo Magic, HP VUE), one for a counter in full sun, and two dark ones for the garde de nuit, where the screen is what lights the room. A skin is a palette and nothing else: no branch anywhere draws differently for it, which is why the categorical colours — an act's kind, an operator's initials, a chart's series — are *adapted* rather than rewritten. They are fitted into the band the skin leaves them, as a set, by a single move that keeps their hues and the distances between them; a test holds both, on every palette.
 
 ## Technology
 

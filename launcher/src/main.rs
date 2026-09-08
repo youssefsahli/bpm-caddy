@@ -46,6 +46,45 @@ fn app_dir() -> PathBuf {
         .join("bpm-caddy")
 }
 
+/// The skin the application is set to, read straight out of its
+/// `config.toml`.
+///
+/// The launcher is the first window of the evening, and it opened in the
+/// blue-grey of `mwm` whatever the officine had chosen: an operator who
+/// picked « Nuit » got a lit rectangle in the face before the dark one
+/// arrived. Read by hand and not through the app's `Config`: the
+/// launcher does not depend on the application crate, and a whole
+/// configuration is not needed to answer one key. Anything unreadable —
+/// no file, no key, a name this build does not know — leaves
+/// `motif::set_theme` on the classic palette, which is what it does with
+/// an unknown key anyway.
+fn configured_theme() -> Option<String> {
+    let path = dirs::config_dir()?.join("bpm-caddy").join("config.toml");
+    theme_in(&std::fs::read_to_string(path).ok()?)
+}
+
+/// The `[ui] theme` of a configuration file, or nothing.
+fn theme_in(text: &str) -> Option<String> {
+    let mut in_ui = false;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_ui = line == "[ui]";
+            continue;
+        }
+        if !in_ui {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("theme") {
+            let value = value.trim_start();
+            if let Some(value) = value.strip_prefix('=') {
+                return Some(value.trim().trim_matches('"').to_owned());
+            }
+        }
+    }
+    None
+}
+
 fn bin_path() -> PathBuf {
     app_dir().join(format!("bpm-caddy{}", std::env::consts::EXE_SUFFIX))
 }
@@ -160,6 +199,13 @@ struct Launcher {
 
 impl Launcher {
     fn new(ctx: &egui::Context) -> Self {
+        // The palette before the style: `motif::apply` writes the
+        // palette into egui's own visuals, so a theme set after it would
+        // only reach the widgets Motif paints by hand. Same order as the
+        // application's.
+        if let Some(theme) = configured_theme() {
+            motif::set_theme(&theme);
+        }
         motif::apply(ctx);
         let shared = Arc::new(Shared {
             phase: Mutex::new(Phase::Checking),
@@ -281,6 +327,30 @@ fn main() -> eframe::Result {
 
 #[cfg(test)]
 mod tests {
+    /// The launcher opens in the skin the application is set to, and it
+    /// reads that out of the file by hand — so the reading is held here.
+    ///
+    /// What matters is the two ways of getting it wrong: a `theme` under
+    /// another section is not the interface's, and a key that merely
+    /// starts with the word is not the key.
+    #[test]
+    fn the_skin_is_read_out_of_the_ui_section_and_nowhere_else() {
+        let t = |s: &str| super::theme_in(s);
+        assert_eq!(t("[ui]\ntheme = \"nuit\"\n").as_deref(), Some("nuit"));
+        assert_eq!(t("[ui]\ntheme=\"ambre\"").as_deref(), Some("ambre"));
+        // Sans guillemets, et avec de l'air : un fichier écrit à la main.
+        assert_eq!(t("[ui]\n  theme  =  cde  ").as_deref(), Some("cde"));
+        // Une autre section, une autre clé : ni l'une ni l'autre.
+        assert_eq!(t("[pharmacy]\ntheme = \"nuit\"\n"), None);
+        assert_eq!(t("[ui]\ntheme_de_secours = \"nuit\"\n"), None);
+        // La section se referme.
+        assert_eq!(
+            t("[ui]\ndensity = \"compact\"\n[base]\ntheme = \"x\""),
+            None
+        );
+        assert_eq!(t(""), None);
+    }
+
     /// The release workflow, read at compile time. It is the other half
     /// of this file's only external contract.
     const WORKFLOW: &str = include_str!("../../.github/workflows/release.yml");
