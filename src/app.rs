@@ -13494,7 +13494,39 @@ impl App {
         } else {
             (avail * 0.30).max(avail - 420.0)
         };
-        h.min(cap)
+        if h <= cap {
+            return h;
+        }
+        // **Et le plafond tombe sur une rangée entière.** Plafonnée aux
+        // pixels, la bande s'arrêtait au milieu d'une rangée : à
+        // 1024x700 et à l'échelle 1,6, « Plan de prise… » coupé en deux
+        // dans le sens de la hauteur sur tous les onglets du dossier, et
+        // sur « Entretiens » la rangée des traitements tranchée sous ses
+        // puces. Elle défile, donc rien n'est perdu — mais une rangée
+        // coupée par le milieu se lit « cassé » et non « il y en a
+        // d'autres ». C'est la réponse déjà donnée aux portes de
+        // l'explorateur et à la légende de l'agenda, et la bande du
+        // dossier ne l'avait jamais reçue, alors que c'est elle qu'on a
+        // sous les yeux le plus souvent.
+        //
+        // Ce qui suit l'en-tête est fait de rangées d'une seule hauteur
+        // — les boutons du dossier, les puces des traitements, le choix
+        // rapide des actes. On coupe donc entre deux d'entre elles.
+        //
+        // L'en-tête est compté avec les mêmes nombres que la somme
+        // ci-dessus, et non avec les siens : deux mesures d'une même
+        // chose divergent toujours, et ici la divergence rendrait la
+        // bande *plus haute* que son plafond. C'est aussi pourquoi le
+        // compte de rangées peut tomber à zéro — `whole_rows` en impose
+        // une, ce qui est juste pour une bande de portes où la première
+        // rangée *est* le contenu, et faux ici où l'en-tête porte déjà
+        // le nom : forcée à une rangée de plus, la bande dépassait son
+        // plafond de dix-sept pixels et mangeait la seule ligne du
+        // tableau de biologie.
+        let head =
+            96.0 + if n.has_address { 18.0 } else { 0.0 } + if n.has_notes { 20.0 } else { 0.0 };
+        let below = ((cap - head) / row).floor().max(0.0);
+        (head + below * row).max(Self::row_height(ui) + 2.0)
     }
 
     /// Who the patient is: identity, corrections, treatments, and the
@@ -13518,6 +13550,9 @@ impl App {
         // Une correction en cours déplie le bandeau : on ne replie pas le
         // formulaire dans lequel on tape.
         let folded = session.patient_band_folded && session.edit_patient.is_none();
+        // La date de naissance, quand le nom ne tient pas à côté d'elle.
+        // Voir la mesure plus bas : c'est le nom qui garde la rangée.
+        let mut born_below: Option<String> = None;
         ui.add_space(2.0);
         ui.horizontal(|ui| {
             // « Retour », et la touche dans la bulle : le rappel du
@@ -13569,14 +13604,40 @@ impl App {
             // Une seule gouttière : celle entre le nom et la date. En
             // compter deux élidait « Jean Dupont » en « Jean Du… » sur
             // une rangée où il tenait.
-            let name_w = (room - born_w - ui.spacing().item_spacing.x).max(60.0);
+            let beside = (room - born_w - ui.spacing().item_spacing.x).max(60.0);
+            // **Et quand il n'y tient toujours pas, c'est la date qui
+            // descend.** À 1024x700 et à l'échelle 1,6, « Retour » et
+            // « Replier » plus « Né(e) le 03/07/1958 » ne laissaient au
+            // nom que cent quarante pixels : le dossier ouvert
+            // s'annonçait « Jean… », et « Claire Martin » « Clair… ».
+            // Élider le nom, c'est élider la seule chose qui dise de qui
+            // est le dossier ; la date de naissance est du contexte, et
+            // il y a une ligne de contexte juste dessous, faite pour
+            // envelopper. On mesure le nom dans la fonte qui le
+            // dessinera — jamais un seuil deviné — et on ne descend la
+            // date que lorsqu'elle coûte le nom.
+            let name = patient.full_name();
+            let heading = egui::TextStyle::Heading.resolve(ui.style());
+            let name_w_needed = ui.fonts(|f| {
+                f.layout_no_wrap(name.clone(), heading, motif::text())
+                    .size()
+                    .x
+            });
+            // Repliée, la bande *est* cette rangée : rien ne descend,
+            // puisqu'il n'y a pas de ligne en dessous pour recevoir.
+            let born_here = folded || name_w_needed <= beside;
+            let name_w = if born_here { beside } else { room };
             ui.scope(|ui| {
                 ui.set_max_width(name_w);
-                ui.add(
-                    egui::Label::new(egui::RichText::new(patient.full_name()).heading()).truncate(),
-                );
+                ui.add(egui::Label::new(egui::RichText::new(name).heading()).truncate());
             });
-            ui.add(egui::Label::new(egui::RichText::new(born).color(motif::text_dim())).truncate());
+            if born_here {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(born).color(motif::text_dim())).truncate(),
+                );
+            } else {
+                born_below = Some(born);
+            }
             // The file's own actions live on its header line, hard
             // right — they act on the patient, not on the acts below.
             // Unless the name already fills the line, in which case they
@@ -13634,6 +13695,12 @@ impl App {
             // the name: contact, situation, address, comment. Wrapped,
             // so a long address pushes a line instead of being cut.
             let mut bits: Vec<String> = Vec::new();
+            // La date de naissance en tête, quand le nom lui a pris sa
+            // place sur la rangée du dessus. Elle est du contexte, et
+            // c'est la ligne du contexte.
+            if let Some(born) = born_below {
+                bits.push(born);
+            }
             if !patient.phone.is_empty() {
                 bits.push(trf("patient_phone", &patient.phone));
             }
@@ -31749,6 +31816,11 @@ mod tests {
                     let mut under = base(true, 0, 2000.0);
                     under.cramped = true;
                     v.push(App::patient_band_height(ui, &under));
+                    // La rangée elle-même, mesurée là où la bande la
+                    // mesure : c'est l'unité dans laquelle le plafond
+                    // s'exprime, et un test qui l'écrirait en pixels
+                    // serait le défaut que le reste du fichier refuse.
+                    v.push(App::row_height(ui) + ui.spacing().item_spacing.y + 8.0);
                     *seen.borrow_mut() = v;
                 });
             });
@@ -31805,9 +31877,26 @@ mod tests {
             // Et le plafond **mord** : sur une vue de comptoir, ce que
             // cinq traitements demandent le dépasse. Sans cela l'onglet
             // en dessous n'aurait plus une ligne.
+            //
+            // Mordre, ce n'est pas tomber sur le plafond au pixel : la
+            // bande s'arrête sur une **rangée entière** sous lui. Elle
+            // défile, donc rien n'est perdu — mais un bouton coupé en
+            // deux dans le sens de la hauteur se lit « cassé » et non
+            // « il y en a d'autres », et à 1024x700 à l'échelle 1,6
+            // c'était « Plan de prise… » sur tous les onglets du
+            // dossier. Ce que le test tient, c'est donc l'encadrement :
+            // sous le plafond, et à moins d'une rangée de lui — sans
+            // quoi « s'arrêter sur une rangée entière » couvrirait aussi
+            // une bande qui rend trois rangées pour rien.
+            let row = tail[6];
             assert!(
-                (capped - acts_cap).abs() < 0.5,
+                capped < acts_cap,
                 "échelle {scale} : le plafond ne mord pas — {capped} px, {acts_cap} permis"
+            );
+            assert!(
+                acts_cap - capped < row,
+                "échelle {scale} : {capped} px sous un plafond de {acts_cap}, \
+                 soit plus d'une rangée ({row} px) laissée pour rien"
             );
             assert!(
                 other < capped,
