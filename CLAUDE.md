@@ -310,6 +310,31 @@ add clicking and typing; it is not the price of entry.
   so nothing lines up between rows — and the defect grows with each
   record. `egui::Grid` with headers, inside a `ScrollArea::both` because
   a row that ends in buttons must be able to scroll to them.
+- **And every cell of that `Grid` must announce its width.** A `Grid`
+  column is as wide as its widest cell, so one cell that does not
+  declare its share widens the column and pushes the next one out of the
+  panel. `ui.scope` does not declare it — that is why `Self::grid_cell`
+  allocates — and neither does a bare `ui.horizontal`: in the locations
+  table the three buttons of the tight shape measured 480 px inside a
+  440 px column, and « Renouvellement », the one thing that table exists
+  to say, came out « Renouvellemer ». A row of buttons in a cell takes
+  `allocate_ui_with_layout` **and** `with_main_wrap(true)`, so it wraps
+  instead of shoving its neighbour.
+- **A widget's height comes from the widget.** Three call sites carved
+  24 or 28 px for a strip whose own rule is `font.size + 14` — thirty-
+  eight at `text_scale = 1.6`. Two got away with painting over the panel
+  below; the third, inside a `motif::inside`, drew its tabs cut through
+  the frame. `motif::tab_strip_height(ui)` is that height, written where
+  it is decided. The same for anything a `motif::` function sizes
+  itself: ask it, never copy the number.
+- **A cap that cuts a row is worse than a cap that drops it** —
+  `whole_rows`, already applied to the explorer's doors and the agenda's
+  legend, and now to the patient band. But the patient band showed the
+  limit of the helper: `whole_rows` always keeps one row, which is right
+  for a band of doors where the first row *is* the content, and wrong
+  where a measured head already carries the name. Forced to one row too
+  many the band overran its cap by seventeen pixels and ate the biology
+  table's only line. Below a head, the row count may fall to zero.
 - **A band's floor can starve the pane it shares with.** The conciliation
   showed **no divergence at all** at 1024x700: the answer panel's head
   cost 136 px, the paste band claimed 110 as its floor, and one pixel

@@ -5,6 +5,106 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.158.0] - 2026-09-08
+
+Une passe d'interface et de contenu. Les défauts d'interface viennent
+tous d'une même passe de `eyeball.sh … 1024x700 1.6`, regardée image par
+image — la forme qui trouve ; le contenu vient du gisement que
+`docs/CONTENU.md` désigne, les sections « Toxicité / marge
+thérapeutique » des huit cent cinquante et une fiches.
+
+### Added
+- **Vingt et une règles de revue d'ordonnance de plus** — de
+  soixante-six à quatre-vingt-sept. Ce qui manquait, par famille : la
+  kaliémie qu'aucune classe n'annonce (le triméthoprime et la
+  drospirénone, que personne ne lit comme des traitements
+  hyperkaliémiants) ; l'efficacité perdue sans aucun symptôme
+  (tamoxifène sous paroxétine, anticancéreux oral sous IPP, intégrase
+  sous pansement gastrique, quinolone sous calcium, AVK sous inducteur) ;
+  les couples qu'un métabolisme explique (Méthergin sous macrolide en
+  post-partum, fluconazole sur AVK, élétriptan sous azolé, lamotrigine
+  sur valproate, sofosbuvir sur amiodarone) ; les opioïdes lus autrement
+  (l'agoniste partiel qui déloge l'agoniste pur, la naltrexone, le
+  gabapentinoïde) ; et deux absences, l'anti-aromatase sans rien pour
+  l'os sur cinq ans et l'isoniazide sans pyridoxine.
+- **Onze règles de biologie de plus** — de quatre-vingt-dix-sept à cent
+  huit. Le potassium que rien ne lisait des deux côtés ; le chiffre qui
+  alerte quand le chiffre habituel rassure (la réserve alcaline sous
+  gliflozine, c'est-à-dire l'acidocétose à glycémie normale) ; le
+  chiffre qui se lit à l'envers (une TSH basse sous antithyroïdien n'est
+  pas un surdosage) ; plus la thyroïde sous antiangiogénique et sous
+  anti-PD-1, la thyrotoxicose de l'amiodarone, les CPK sous
+  antipsychotique et sous lévodopa, le LDL sous JAK et sous mTOR, le
+  phosphore sous ténofovir, la lipase sous valproate.
+- **Quatre surveillances de plus** — de soixante et une à
+  soixante-cinq : la T4 libre sous antithyroïdien, et les transaminases
+  sous dronédarone, sous inhibiteur de JAK et sous interféron bêta.
+- **Sept protocoles de plus** — de quarante-sept à cinquante-quatre,
+  tirés de ce que le comptoir refuse ou diffère sans avoir de marche
+  écrite : la recevabilité d'une ordonnance de stupéfiant avant toute
+  délivrance, le méthotrexate dont la dose est hebdomadaire, la
+  prescription restreinte, l'alerte de retrait de lot, la déprescription
+  d'un IPP, la décroissance d'une benzodiazépine, et l'acte vaccinal.
+- **Trois tables de conversion de plus** — de quarante-trois à
+  quarante-six. Les AOD, les HBPM, les statines, les corticoïdes et les
+  opioïdes avaient chacun la leur ; pas les AVK, alors que c'est le
+  traitement dont le comptoir répond le plus souvent. S'y ajoutent la
+  vitamine D — une famille où les compléments sont libellés en µg et les
+  médicaments en UI, où trois dosages d'ampoules partagent un nom, et où
+  trois dérivés hydroxylés n'ont aucune équivalence — et la conversion
+  des unités de biologie, avec les deux pièges qui trompent le plus :
+  l'azote uréique des comptes rendus anglo-saxons, qui n'est pas l'urée,
+  et le DFG de Cockcroft en mL/min, qui ne se compare pas au DFG indexé
+  du laboratoire.
+- **`motif::tab_strip_height`** : ce qu'une bande d'onglets prend, écrit
+  là où la hauteur est décidée.
+
+### Fixed
+- **Le dossier ouvert s'annonçait « Jean… ».** « Retour », « Replier »
+  et « Né(e) le 03/07/1958 » ne laissaient au nom que cent quarante
+  pixels à l'échelle 1,6. Élider le nom, c'est élider la seule chose qui
+  dise de qui est le dossier : la date de naissance descend sur la ligne
+  de contexte, qui est faite pour envelopper, et seulement quand elle
+  coûte le nom.
+- **Le plafond de la bande d'identité tombe sur une rangée entière.**
+  Plafonnée aux pixels, elle s'arrêtait au milieu d'une rangée : « Plan
+  de prise… » coupé en deux dans le sens de la hauteur sur tous les
+  onglets du dossier, et la rangée des traitements tranchée sous ses
+  puces. Le compte de rangées peut tomber à zéro, ce qui distingue ce
+  cas des portes de l'explorateur : là-bas la première rangée *est* le
+  contenu, ici l'en-tête porte déjà le nom.
+- **Le volet de droite débordait par le bas sur les quarante-huit
+  vues.** Il réservait trente-quatre pixels au journal personnel quand
+  la seule phrase de ce cas — « Opérateur non renseigné. » — en
+  demandait quarante à l'échelle 1,6, emportant avec elle le trait du
+  bas de l'éditeur. Le défaut le plus répété de l'application, et le
+  plus discret.
+- **Une bande d'onglets se taillait dans une hauteur devinée.** Trois
+  appelants écrivaient 24 ou 28 pixels pour une bande qui en fait
+  trente-huit à l'échelle 1,6. Deux débordaient sur le panneau d'en
+  dessous ; la troisième, seule posée dans un `inside`, dessinait
+  « Interprétation » et « À surveiller » coupés dans leur cadre.
+- **La rangée où l'on saisit un résultat de biologie**, trois défauts
+  sur cinq contrôles : une largeur de champ écrite deux fois, une mesure
+  qui disait `92.0` pour un champ que le dessin taille à cent
+  quatre-vingt-dix, et des rangées réservées avec `interact_size.y` là
+  où elles portent des boutons. « Ajouter » tombait sous le bord du
+  panneau.
+- **Le volet du mois montrait trois colonnes sur sept.** « Aujourd'hui »
+  se lisait « Aujo » entre deux flèches dont la seconde n'était pas
+  dessinée. Ce qui manquait à cette rangée n'était pas de la place,
+  c'était **quel mois on regarde** : le nom du mois le dit et ramène au
+  mois courant. Et les jours ne se touchent plus — un chiffre suit sa
+  case, qui est fixée par la largeur du volet et non par l'échelle du
+  texte.
+- **Le champ du voisinage ne tenait pas sa propre invite** (« Mettre au
+  centre.. ») et **la date du carnet peignait par-dessus le bord du
+  panneau** (« … — aujour »).
+- **L'invite d'un antibiotique passait sous son bouton** dans la fenêtre
+  d'ordonnance, et **« Renouvellement » se lisait « Renouvellemer »** :
+  la rangée de boutons de la table des locations, non bornée,
+  élargissait la colonne du nom et poussait l'échéance hors du panneau.
+
 ## [0.151.0] - 2026-09-07
 
 ### Added
