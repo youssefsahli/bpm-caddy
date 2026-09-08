@@ -8684,7 +8684,12 @@ impl App {
         let mut open_recent: Option<Patient> = None;
         // The day and the recent files share the top row; the notes run
         // the full width underneath, because they are prose.
-        let split = body.width() >= 760.0;
+        //
+        // Le seuil est en **caractères**, comme les largeurs de champ :
+        // sept cent soixante pixels sont quatre-vingt-quinze caractères
+        // à l'échelle 1 et cinquante-neuf à 1,6, où deux colonnes ne
+        // tiennent plus une ligne lisible chacune.
+        let split = body.width() >= chars_wide(ui, 95.0);
         let rects: [egui::Rect; 3] = if split {
             let rows = motif::split_rows(body, &[body.height() * 0.55, 0.0], 8.0);
             let top = motif::split_columns(rows[0], 2, 8.0);
@@ -8921,10 +8926,12 @@ impl App {
             return;
         }
         // The acts table has ten columns, most of them buttons: it wants
-        // about a thousand pixels. The journal only gets a column of its
-        // own once that is satisfied — below that it goes underneath,
-        // and the table keeps the full width.
-        if work.width() >= 1320.0 {
+        // about a hundred and sixty-five characters. The journal only
+        // gets a column of its own once that is satisfied — below that
+        // it goes underneath, and the table keeps the full width. En
+        // caractères et non en pixels : la table est faite de mots, donc
+        // ce qu'il lui faut suit `[ui] text_scale`.
+        if work.width() >= chars_wide(ui, 165.0) {
             let notes_w = (work.width() * 0.28).clamp(260.0, 400.0);
             let acts = egui::Rect::from_min_size(
                 work.min,
@@ -9394,7 +9401,7 @@ impl App {
     ) {
         // The carnet is a seven-column table; the two reading panels
         // only get a column of their own once it is satisfied.
-        let wide = work.width() >= 1240.0;
+        let wide = work.width() >= chars_wide(ui, 155.0);
         let (carnet, side) = if wide {
             let side_w = (work.width() * 0.32).clamp(300.0, 440.0);
             (
@@ -10100,7 +10107,7 @@ impl App {
         patient: &Patient,
         work: egui::Rect,
     ) {
-        let wide = work.width() >= 1180.0;
+        let wide = work.width() >= chars_wide(ui, 148.0);
         let (table, side) = if wide {
             let side_w = (work.width() * 0.34).clamp(320.0, 460.0);
             (
@@ -10305,7 +10312,7 @@ impl App {
     ) {
         session.refresh_conciliation(patient.id);
         let line = ui.text_style_height(&egui::TextStyle::Body);
-        let wide = work.width() >= 1100.0;
+        let wide = work.width() >= chars_wide(ui, 138.0);
         let (result, side) = if wide {
             let side_w = (work.width() * 0.38).clamp(320.0, 520.0);
             (
@@ -15487,7 +15494,7 @@ impl App {
         });
         // Wide enough for a column beside the map, or a band under it.
         let work = rows[1];
-        let wide = work.width() >= 1080.0;
+        let wide = work.width() >= chars_wide(ui, 135.0);
         let (map_rect, detail_rect) = if wide {
             let side = (work.width() * 0.30).clamp(300.0, 420.0);
             (
@@ -16913,8 +16920,9 @@ impl App {
 
         let work = rows[1];
         // The day panel is a fixed column of forms; the calendar takes
-        // everything else.
-        let wide = work.width() >= 860.0;
+        // everything else. Le seuil est en caractères : il grandit avec
+        // `[ui] text_scale`, comme ce qu'il mesure.
+        let wide = work.width() >= chars_wide(ui, 107.0);
         let (cal, day) = if wide {
             let day_w = (work.width() * 0.3).clamp(300.0, 420.0);
             (
@@ -18710,7 +18718,7 @@ impl App {
         // toujours de la famille à la classe, jamais l'inverse, donc
         // c'est la dernière qui peut passer dessous.
         let work = rows[1];
-        let wide = work.width() >= 860.0;
+        let wide = work.width() >= chars_wide(ui, 107.0);
         let fam_w = (work.width() * 0.26).clamp(190.0, 300.0);
         let cls_w = if wide {
             (work.width() * 0.30).clamp(220.0, 360.0)
@@ -20176,7 +20184,7 @@ impl App {
         // fenêtre ne peut pas les tenir : c'est celle où l'on **écrit**,
         // et elle passe alors sous le registre plutôt que d'être rognée.
         let work = rows[1];
-        let wide = work.width() >= 1080.0;
+        let wide = work.width() >= chars_wide(ui, 135.0);
         let list_w = (work.width() * 0.24).clamp(190.0, 300.0);
         let form_w = if wide {
             (work.width() * 0.28).clamp(240.0, 360.0)
@@ -22209,7 +22217,7 @@ impl App {
         // tableau trié par volume est un classement de suspects.
         let work = rows[1];
         let gap = 8.0;
-        let wide = work.width() >= 900.0;
+        let wide = work.width() >= chars_wide(ui, 112.0);
         let (find_rect, who_rect) = if wide {
             let who_w = (work.width() * 0.34).clamp(260.0, 420.0);
             (
@@ -22658,7 +22666,7 @@ impl App {
         // c'est le document. Le journal est ce qu'on consulte.
         let work = rows[1];
         let gap = 8.0;
-        let wide = work.width() >= 900.0;
+        let wide = work.width() >= chars_wide(ui, 112.0);
         let (ordo_rect, journal_rect) = if wide {
             let journal_w = (work.width() * 0.38).clamp(280.0, 460.0);
             (
@@ -24701,7 +24709,7 @@ impl App {
         classes.truncate(12);
 
         let mut open: Option<Drug> = None;
-        let split = body.width() >= 760.0;
+        let split = body.width() >= chars_wide(ui, 95.0);
         let rects: [egui::Rect; 3] = if split {
             let rows = motif::split_rows(body, &[body.height() * 0.55, 0.0], 8.0);
             let top = motif::split_columns(rows[0], 2, 8.0);
@@ -25581,7 +25589,7 @@ impl App {
             // underneath it.
             let body =
                 egui::Rect::from_min_max(body.min, egui::pos2(body.right() - 14.0, body.bottom()));
-            let wide = body.width() >= 1180.0;
+            let wide = body.width() >= chars_wide(ui, 148.0);
             let (main, side_rect) = if wide {
                 let side_w = (body.width() * 0.28).clamp(260.0, 380.0);
                 (
@@ -25673,7 +25681,7 @@ impl App {
                                 // underneath the other when the window is narrow
                                 // or the side pane is open, where two columns
                                 // left five words to a line.
-                                if ui.available_width() >= 720.0 {
+                                if ui.available_width() >= chars_wide(ui, 90.0) {
                                     ui.columns(2, |cols| {
                                         drug_form_clinical(&mut cols[0], form);
                                         drug_form_pk(&mut cols[1], form);
@@ -30477,6 +30485,57 @@ mod tests {
         assert!(
             offenders.is_empty(),
             "une largeur de champ se mesure, elle ne s'écrit pas en pixels :\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// **Un seuil de bascule non plus.**
+    ///
+    /// « Deux colonnes si la fenêtre fait plus de mille quatre-vingts
+    /// pixels » ne suit pas `[ui] text_scale` : à 1,6 les mêmes mille
+    /// quatre-vingts pixels ne portent plus que les deux tiers du texte,
+    /// et l'application garde deux colonnes qui ne tiennent chacune
+    /// qu'une demi-phrase. Quatorze bascules étaient écrites ainsi ;
+    /// elles se comptent maintenant en caractères, comme les largeurs
+    /// de champ, et grandissent donc avec le texte qu'elles mesurent.
+    ///
+    /// Se lit comme `the_register_can_only_ever_be_written_to` : dans le
+    /// texte du fichier, parce que c'est une règle d'écriture et non un
+    /// résultat de calcul.
+    #[test]
+    fn no_layout_switch_is_measured_in_pixels() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblé, sinon le test se trouve lui-même.
+        let call = concat!("width", "()");
+        let mut offenders: Vec<String> = Vec::new();
+        for (i, l) in SOURCE.lines().enumerate() {
+            let Some((_, rest)) = l.split_once(call) else {
+                continue;
+            };
+            let rest = rest.trim_start();
+            let Some(rest) = rest
+                .strip_prefix(">=")
+                .or_else(|| rest.strip_prefix("<="))
+                .or_else(|| rest.strip_prefix('>'))
+                .or_else(|| rest.strip_prefix('<'))
+            else {
+                continue;
+            };
+            let n: String = rest
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '.')
+                .collect();
+            // Un petit nombre est un plancher de garde — « ce panneau
+            // est trop étroit pour quoi que ce soit » —, pas une
+            // bascule entre deux dispositions.
+            if n.parse::<f32>().is_ok_and(|v| v >= 100.0) {
+                offenders.push(format!("app.rs:{} : {}", i + 1, l.trim()));
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "une bascule de disposition se compte en caractères, pas en pixels :\n{}",
             offenders.join("\n")
         );
     }

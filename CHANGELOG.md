@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   où il part à quatre-vingt-seize pixels *à gauche* de la fenêtre.
 
 ### Changed
+- **Quatorze bascules de disposition se comptent maintenant en
+  caractères, plus en pixels.** « Deux colonnes si la fenêtre fait plus
+  de mille quatre-vingts pixels » ne suit pas `[ui] text_scale` : à 1,6
+  les mêmes mille quatre-vingts pixels ne portent plus que les deux
+  tiers du texte, et l'application gardait deux colonnes qui ne
+  tenaient chacune qu'une demi-phrase. C'est la règle déjà tenue pour
+  les largeurs de champ, étendue aux seuils ; un test la lit dans le
+  texte du fichier, comme celui qui refuse un `UPDATE` au registre, et
+  il a été vérifié en remettant l'un des quatorze.
 - **Les intitulés des tables de conversion passent au registre du
   reste.** Quarante-deux en-têtes de colonne et dix-sept titres
   disaient « Ce qu'on surveille », « Ce qui va de travers », « Le
