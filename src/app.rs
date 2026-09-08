@@ -26309,80 +26309,119 @@ impl App {
                 // Wrapped: a narrow window, or an open side pane, must
                 // push the last actions onto a second line rather than
                 // cut them off.
-                ui.horizontal_wrapped(|ui| {
-                    if reading {
-                        if motif::button(ui, tr("drug_edit")).clicked() {
-                            edit = true;
-                        }
-                    } else if motif::button(ui, tr("form_save")).clicked() {
-                        save = true;
-                    }
-                    if motif::button(ui, tr("drug_close"))
-                        .on_hover_text(tr("drug_close_tooltip"))
-                        .clicked()
-                    {
-                        close = true;
-                    }
-                    if reading {
-                        if !form.class.trim().is_empty()
-                            && motif::button(ui, tr("drug_class_edit"))
-                                .on_hover_text(tr("drug_class_edit_tooltip"))
-                                .clicked()
-                        {
-                            edit_class = true;
-                        }
-                        if motif::button(ui, tr("codex_from_card"))
-                            .on_hover_text(tr("codex_from_card_tooltip"))
-                            .clicked()
-                        {
-                            open_codex = true;
-                        }
-                        // La notice, un courrier de retrait de lot : ce
-                        // qui est du papier et qui appartient à cette
-                        // fiche plutôt qu'à un dossier.
-                        if motif::button(ui, tr("scan_button"))
-                            .on_hover_text(tr("scan_drug_tooltip"))
-                            .clicked()
-                        {
-                            open_scans = true;
-                        }
-                        for (source, label, tooltip) in [
-                            (Lookup::Ansm, tr("drug_lookup"), tr("drug_lookup_tooltip")),
-                            (
-                                Lookup::PubChem,
-                                tr("drug_pubchem"),
-                                tr("drug_pubchem_tooltip"),
-                            ),
-                            (Lookup::PubMed, tr("drug_pubmed"), tr("drug_pubmed_tooltip")),
-                        ] {
-                            if motif::button(ui, label).on_hover_text(tooltip).clicked() {
-                                lookup = Some(source);
+                //
+                // **Et plafonnée comme les autres bandes de la maison.**
+                // Onze boutons enveloppent sur quatre rangées à
+                // 1024x700 et à l'échelle 1,6 : deux cent cinquante
+                // pixels sur cinq cent quarante-cinq, si bien que la
+                // vue la plus ouverte de l'application montrait, au
+                // comptoir, son nom coupé en deux et pas une ligne de
+                // monographie. La règle de la maison est écrite pour
+                // exactement ce cas — une bande dont la hauteur dépend
+                // de son contenu se plafonne en **part du volet**, et
+                // défile au-delà de sa part plutôt que d'étouffer ce
+                // qu'il y a dessous.
+                //
+                // Le plafond tombe sur une rangée entière, et la zone
+                // défilante prend la hauteur du contenu quand il est
+                // plus court : sur un écran large la bande garde ses
+                // une ou deux rangées et rien ne change.
+                // La rangée et la gouttière séparément : `whole_rows`
+                // compte n rangées et n-1 gouttières, pas n de chaque —
+                // les additionner laissait dépasser la rangée suivante
+                // d'une dizaine de pixels sous la coupe, ce qui est
+                // exactement la demi-rangée qu'on voulait éviter.
+                let cap = whole_rows(
+                    ui.available_height() * 0.30,
+                    Self::row_height(ui),
+                    ui.spacing().item_spacing.y,
+                    8.0,
+                );
+                // **Et la barre se voit.** Une bande qui cache la
+                // moitié des siens sans le dire est le défaut déjà
+                // corrigé sur les onglets : montrer moins, mais dire
+                // qu'il y a plus. La demi-rangée qui dépasse ne le dit
+                // pas — elle se lit « cassé » —, la barre le dit.
+                egui::ScrollArea::vertical()
+                    .id_salt("drug_actions")
+                    .max_height(cap)
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            if reading {
+                                if motif::button(ui, tr("drug_edit")).clicked() {
+                                    edit = true;
+                                }
+                            } else if motif::button(ui, tr("form_save")).clicked() {
+                                save = true;
                             }
-                        }
-                        if motif::button(ui, tr("drug_print"))
-                            .on_hover_text(tr("drug_print_tooltip"))
-                            .clicked()
-                        {
-                            print_mono = true;
-                        }
-                    }
-                    if motif::button(ui, tr("drug_to_notes"))
-                        .on_hover_text(tr("drug_to_notes_tooltip"))
-                        .clicked()
-                    {
-                        insert_note = true;
-                    }
-                    // Destructive action last, after a visible gap.
-                    ui.add_space(12.0);
-                    let del_label = if session.confirm_delete_drug {
-                        tr("patient_delete_confirm")
-                    } else {
-                        tr("patient_delete")
-                    };
-                    if motif::button(ui, del_label).clicked() {
-                        delete = true;
-                    }
-                });
+                            if motif::button(ui, tr("drug_close"))
+                                .on_hover_text(tr("drug_close_tooltip"))
+                                .clicked()
+                            {
+                                close = true;
+                            }
+                            if reading {
+                                if !form.class.trim().is_empty()
+                                    && motif::button(ui, tr("drug_class_edit"))
+                                        .on_hover_text(tr("drug_class_edit_tooltip"))
+                                        .clicked()
+                                {
+                                    edit_class = true;
+                                }
+                                if motif::button(ui, tr("codex_from_card"))
+                                    .on_hover_text(tr("codex_from_card_tooltip"))
+                                    .clicked()
+                                {
+                                    open_codex = true;
+                                }
+                                // La notice, un courrier de retrait de lot : ce
+                                // qui est du papier et qui appartient à cette
+                                // fiche plutôt qu'à un dossier.
+                                if motif::button(ui, tr("scan_button"))
+                                    .on_hover_text(tr("scan_drug_tooltip"))
+                                    .clicked()
+                                {
+                                    open_scans = true;
+                                }
+                                for (source, label, tooltip) in [
+                                    (Lookup::Ansm, tr("drug_lookup"), tr("drug_lookup_tooltip")),
+                                    (
+                                        Lookup::PubChem,
+                                        tr("drug_pubchem"),
+                                        tr("drug_pubchem_tooltip"),
+                                    ),
+                                    (Lookup::PubMed, tr("drug_pubmed"), tr("drug_pubmed_tooltip")),
+                                ] {
+                                    if motif::button(ui, label).on_hover_text(tooltip).clicked() {
+                                        lookup = Some(source);
+                                    }
+                                }
+                                if motif::button(ui, tr("drug_print"))
+                                    .on_hover_text(tr("drug_print_tooltip"))
+                                    .clicked()
+                                {
+                                    print_mono = true;
+                                }
+                            }
+                            if motif::button(ui, tr("drug_to_notes"))
+                                .on_hover_text(tr("drug_to_notes_tooltip"))
+                                .clicked()
+                            {
+                                insert_note = true;
+                            }
+                            // Destructive action last, after a visible gap.
+                            ui.add_space(12.0);
+                            let del_label = if session.confirm_delete_drug {
+                                tr("patient_delete_confirm")
+                            } else {
+                                tr("patient_delete")
+                            };
+                            if motif::button(ui, del_label).clicked() {
+                                delete = true;
+                            }
+                        });
+                    });
                 ui.add_space(6.0);
                 let sep = ui.available_rect_before_wrap();
                 let line = egui::Rect::from_min_size(sep.min, egui::vec2(sep.width(), 2.0));
