@@ -33,6 +33,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le workspace passe de 44,9 % à 46,1 % couvert : ce qui se mesure se
   teste, et c'est la moitié de `src/app.rs`.
 
+## [Unreleased]
+
+### Changed
+- **Le même champ portait deux noms.** « Conseils au patient » sur la
+  fiche et sur le papier, « IUP » dans les résultats de « Dans le
+  texte… » : un sigle en dit moins que ce qu'il abrège, et la recherche
+  renvoyait vers une section que la fiche n'appelle pas ainsi. De même
+  « Ce qui doit faire consulter » sur la fiche imprimée, quand l'écran
+  dit « Signes d'alerte » depuis la passe sur les phrases — l'écran et
+  le papier disent maintenant la même chose.
+- Le README comptait trente-huit tables de conversion et huit cent
+  cinquante fiches : il y en a quarante-trois et huit cent cinquante et
+  une. Les cinq dernières tables — LDL, les quatre piliers de
+  l'insuffisance cardiaque, CHA₂DS₂-VASc et HAS-BLED, l'HbA1c, les
+  stades de DFG — y sont décrites comme les autres.
+
 ## [0.155.0] - 2026-09-08
 
 ### Fixed

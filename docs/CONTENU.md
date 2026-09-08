@@ -268,7 +268,7 @@ Deux règles valent partout :
   ont donc quitté la liste, avec leurs posologies écrites. Avant
   d'exempter une classe, se demander si la phrase est vraie.
 
-## « En cas d'oubli » et « Ce qui doit faire consulter »
+## « En cas d'oubli » et « Signes d'alerte »
 
 - **Où** : `src/db.rs`, `STARTER_CONDUITE` : `(mot-clé, conduite en cas
   d'oubli, signes qui font consulter)`.

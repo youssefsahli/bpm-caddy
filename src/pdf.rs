@@ -722,7 +722,7 @@ fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
         ("Surveillance", d.monitoring.as_str()),
         ("Conseils au patient", d.iup.as_str()),
         ("En cas d'oubli", d.missed_dose.as_str()),
-        ("Ce qui doit faire consulter", d.red_flags.as_str()),
+        ("Signes d'alerte", d.red_flags.as_str()),
         ("Évaluation SMR / ASMR", d.smr.as_str()),
     ] {
         if body.trim().is_empty() {
