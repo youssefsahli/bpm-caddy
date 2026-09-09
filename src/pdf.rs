@@ -1196,6 +1196,137 @@ fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
     src
 }
 
+/// Un carnet de suivi, tel que le patient l'emporte.
+///
+/// **Le protocole d'abord, la grille ensuite.** Une grille se photocopie
+/// n'importe où ; ce qu'une officine ne donne jamais, faute de l'avoir
+/// sous la main, c'est la façon de mesurer — et une tension prise après
+/// le café, debout, sur le bras qui traîne ne veut rien dire. La page
+/// est donc ordonnée comme la consigne se dit au comptoir : comment
+/// faire, ce qu'on vise, où écrire, et ce qui ne s'attend pas.
+///
+/// Le nom du patient est imprimé quand un dossier est ouvert, et
+/// remplacé par une ligne à remplir sinon : une feuille vierge se donne
+/// aussi bien, et une feuille au nom de quelqu'un d'autre ne se donne
+/// pas du tout.
+pub fn open_selfcheck(
+    sheet: &crate::selfcheck::Sheet,
+    patient: Option<&str>,
+    pharmacy: &PharmacyConfig,
+    today_french: &str,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        selfcheck_source(sheet, patient, pharmacy, today_french),
+        &format!("carnet_{}", sheet.key),
+    )
+}
+
+fn selfcheck_source(
+    sheet: &crate::selfcheck::Sheet,
+    patient: Option<&str>,
+    pharmacy: &PharmacyConfig,
+    today_french: &str,
+) -> String {
+    let mut src = String::from(
+        "#set page(paper: \"a4\", margin: 1.4cm)\n\
+         #set text(size: 10.5pt, lang: \"fr\", hyphenate: true)\n",
+    );
+    src.push_str(&format!(
+        "#align(center)[#text(17pt, weight: \"bold\")[#{}]]\n#v(1mm)\n",
+        typst_str(sheet.title)
+    ));
+    // Le nom, ou la ligne où l'écrire. Jamais un nom vide entre deux
+    // tirets : une feuille se donne aussi bien vierge.
+    match patient {
+        Some(name) if !name.trim().is_empty() => src.push_str(&format!(
+            "#align(center)[#text(11pt)[#{} — #{}]]\n",
+            typst_str(name.trim()),
+            typst_str(today_french)
+        )),
+        _ => src.push_str(&format!(
+            "#align(center)[#text(11pt)[Nom : #box(width: 7cm, stroke: (bottom: 0.5pt))   #{}]]\n",
+            typst_str(today_french)
+        )),
+    }
+    src.push_str("#v(4mm)\n");
+
+    // --- Comment mesurer ------------------------------------------
+    src.push_str("#text(11pt, weight: \"bold\")[Comment faire]\n#v(1.5mm)\n");
+    for (i, step) in sheet.protocol.iter().enumerate() {
+        src.push_str(&format!(
+            "#text(10pt)[*{}.* #{}]\\\n",
+            i + 1,
+            typst_str(step)
+        ));
+    }
+
+    // --- Ce qu'on vise --------------------------------------------
+    src.push_str(&format!(
+        "#v(3mm)\n#block(width: 100%, inset: 6pt, stroke: 0.6pt)[#text(10pt)[*Ce qu'on vise.* #{} #box(width: 5cm, stroke: (bottom: 0.5pt))]]\n",
+        typst_str(sheet.target)
+    ));
+
+    // --- La grille -------------------------------------------------
+    //
+    // Une colonne de date, puis les colonnes de la feuille, toutes de
+    // même largeur : ce sont des cases où l'on écrit à la main, et une
+    // colonne deux fois plus large que sa voisine invite à y écrire deux
+    // fois plus, ce que le tableau ne relira pas.
+    src.push_str("#v(4mm)\n");
+    let widths = std::iter::once("2.2cm".to_owned())
+        .chain(sheet.columns.iter().map(|_| "1fr".to_owned()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut head = String::from("[*Date*], ");
+    for c in sheet.columns {
+        head.push_str(&format!("[*#{}*], ", typst_str(c)));
+    }
+    // Une case vide s'écrit `[]` et non rien : deux virgules qui se
+    // suivent ne sont pas une case, c'est une erreur de syntaxe.
+    let empty = "[], ".repeat(sheet.columns.len());
+    let mut body = String::new();
+    for _ in 0..sheet.rows {
+        // Une rangée de cases vides, assez hautes pour qu'un chiffre
+        // écrit à la main y tienne.
+        body.push_str(&format!("[#v(6mm)], {empty}\n"));
+    }
+    src.push_str(&format!(
+        "#table(columns: ({widths}), inset: 5pt, stroke: 0.5pt,\n  {head}\n{body})\n"
+    ));
+
+    // --- Ce qui se calcule au bas de la grille ---------------------
+    //
+    // L'automesure tensionnelle n'existe que pour cela : ce que le
+    // médecin lit n'est aucune des dix-huit mesures, c'est leur
+    // moyenne. Sans la case, elle s'additionne en consultation — ou
+    // pas du tout.
+    if !sheet.totals.is_empty() {
+        src.push_str("#v(3mm)\n");
+        for label in sheet.totals {
+            src.push_str(&format!(
+                "#text(10pt)[#{} : #box(width: 3.5cm, stroke: (bottom: 0.5pt))]\\\n",
+                typst_str(label)
+            ));
+        }
+    }
+
+    // --- Ce qui ne s'attend pas ------------------------------------
+    src.push_str(&format!(
+        "#v(4mm)\n#block(width: 100%, inset: 6pt, stroke: 0.8pt)[#text(10pt, weight: \"bold\")[À signaler sans attendre]\\\n#text(10pt)[#{}]]\n",
+        typst_str(sheet.alert)
+    ));
+    src.push_str(&format!(
+        "#v(3mm)\n#text(10pt)[#{}]\n",
+        typst_str(sheet.bring_back)
+    ));
+    src.push_str(&format!(
+        "#v(3mm)\n#text(9.5pt)[Votre pharmacie : #{} — #{}]\n",
+        typst_str(&pharmacy.name),
+        typst_str(&pharmacy.phone)
+    ));
+    src
+}
+
 pub struct CallRow<'a> {
     pub name: &'a str,
     pub phone: &'a str,
@@ -3612,6 +3743,83 @@ mod tests {
         // lorsqu'il y a quelque chose, mais la fonction n'en dépend pas.
         let world = PdfWorld::new(stock_check_source(&[], &sample_pharmacy(), "2026-08-29"));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// **Chaque carnet de suivi compile, et porte son protocole.**
+    ///
+    /// La grille n'est pas ce qui compte : c'est le protocole, la cible
+    /// et la ligne d'alerte, et une feuille qui les perdrait à
+    /// l'impression serait le papier que l'officine donne déjà. Les six
+    /// sont éprouvées, avec et sans nom de patient — une feuille vierge
+    /// se donne aussi bien, et c'est le cas courant au comptoir.
+    #[test]
+    fn every_self_monitoring_sheet_carries_its_protocol_to_paper() {
+        for sheet in crate::selfcheck::SHEETS {
+            let source = selfcheck_source(
+                sheet,
+                Some("Jean #eval \"x\" Dupont"),
+                &sample_pharmacy(),
+                "09/09/2026",
+            );
+            assert!(source.contains(sheet.title), "{} : sans titre", sheet.key);
+            for step in sheet.protocol {
+                // La ponctuation française passe par `typst_str` ; on
+                // vérifie le début de la consigne, qui suffit à dire
+                // qu'elle est là.
+                let head: String = step.chars().take(24).collect();
+                assert!(
+                    source.contains(&head),
+                    "{} : la consigne « {head}… » n'atteint pas le papier",
+                    sheet.key
+                );
+            }
+            assert!(source.contains("À signaler sans attendre"));
+            assert!(source.contains("Ce qu'on vise"));
+            for label in sheet.totals {
+                let head: String = label.chars().take(20).collect();
+                assert!(
+                    source.contains(&head),
+                    "{} : « {head}… » n'atteint pas le papier",
+                    sheet.key
+                );
+            }
+            assert!(source.contains("09/09/2026"));
+            // Rien de ce qui vient de la base n'est du code Typst.
+            assert!(!source.contains("#eval \"x\"]"));
+            let world = PdfWorld::new(source);
+            let document: PagedDocument = typst::compile(&world)
+                .output
+                .unwrap_or_else(|e| panic!("« {} » doit compiler : {e:?}", sheet.title));
+            let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+                .expect("l'export PDF doit réussir");
+            assert!(pdf.starts_with(b"%PDF-"));
+            if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+                let _ = std::fs::write(
+                    std::path::Path::new(&dir).join(format!("carnet_{}.pdf", sheet.key)),
+                    &pdf,
+                );
+            }
+        }
+        // Sans dossier ouvert, la feuille porte une ligne à remplir et
+        // non un nom vide entre deux tirets : c'est le cas courant, on
+        // en donne une au comptoir sans ouvrir de dossier.
+        let blank = selfcheck_source(
+            &crate::selfcheck::SHEETS[0],
+            None,
+            &sample_pharmacy(),
+            "09/09/2026",
+        );
+        assert!(blank.contains("Nom :"), "{blank}");
+        let world = PdfWorld::new(blank);
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+        // Un nom d'espaces est un nom absent, pas un nom.
+        let spaces = selfcheck_source(
+            &crate::selfcheck::SHEETS[0],
+            Some("   "),
+            &sample_pharmacy(),
+            "09/09/2026",
+        );
+        assert!(spaces.contains("Nom :"));
     }
 
     /// Le procès-verbal de destruction : ce qu'on s'apprête à détruire,

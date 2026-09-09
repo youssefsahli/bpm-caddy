@@ -5,6 +5,44 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.171.0] - 2026-09-09
+
+### Added
+- **Les carnets de suivi : les feuilles que le patient emporte.** Une
+  officine en donne tous les jours — trois jours d'automesure avant une
+  consultation, une semaine de glycémies, le poids d'un insuffisant
+  cardiaque — et elle les photocopie, quand elle en a, sur un modèle que
+  personne n'a relu depuis dix ans ; le reste du temps elle dit « notez-le
+  sur un papier », ce qui revient à ne rien donner.
+
+  **Ce qui manque n'est pas la grille, c'est le protocole.** Une tension
+  prise après le café, debout, sur le bras qui traîne ne veut rien dire ;
+  une glycémie notée le soir de mémoire non plus. Chaque feuille porte
+  donc quatre choses, et la grille n'est que la quatrième : comment
+  mesurer, ce qu'on vise, ce qui s'appelle sans attendre, et où écrire.
+
+  Six feuilles, et pas une de plus au hasard — chacune correspond à
+  quelque chose que l'officine suit déjà : **automesure tensionnelle**
+  (la règle des trois, avec les cases de moyenne, puisque ce que le
+  médecin lit n'est aucune des dix-huit mesures), **glycémie
+  capillaire**, **poids** dans l'insuffisance cardiaque, **débit
+  expiratoire de pointe**, **INR** sous AVK, et **douleur** — celle-ci
+  avec le compte des interdoses, qui est le nombre par lequel le registre
+  des stupéfiants dit qu'il faut revoir le traitement de fond.
+
+  Deux règles tenues par des tests. **Aucun chiffre inventé** : là où
+  l'objectif est individuel — la glycémie, la zone d'INR, la meilleure
+  valeur personnelle de souffle —, la feuille dit qu'il est individuel et
+  laisse la ligne à remplir, plutôt qu'imprimer une valeur que le patient
+  prendrait pour la sienne. Et **rien qui remplace le prescripteur** :
+  aucune feuille ne dit d'adapter une dose, toutes disent à qui
+  téléphoner et quand.
+
+  L'écran est fait pour être lu à voix haute au comptoir avant
+  d'imprimer. La feuille porte le nom du dossier ouvert quand il y en a
+  un, et une ligne à remplir sinon — une feuille vierge se donne aussi
+  bien, et c'est le cas courant.
+
 ## [0.170.0] - 2026-09-09
 
 ### Added

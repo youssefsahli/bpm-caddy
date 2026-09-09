@@ -2225,6 +2225,10 @@ struct Session {
     /// Voir [`Stats`] : calculé à l'ouverture de la vue, jamais par
     /// image.
     stats: Stats,
+    /// Les carnets de suivi : la porte est-elle ouverte, et sur quelle
+    /// feuille. Voir [`crate::selfcheck`].
+    show_carnets: bool,
+    carnet_open: Option<&'static crate::selfcheck::Sheet>,
     /// Les scripts enregistrés à côté de la base, leur texte en cours
     /// d'édition, et ce que la dernière exécution a rendu. Voir
     /// [`crate::script`].
@@ -2853,6 +2857,8 @@ impl Session {
             patient_doses_base: Vec::new(),
             patient_strengths: Vec::new(),
             stats: Stats::default(),
+            show_carnets: false,
+            carnet_open: None,
             scripts: Vec::new(),
             script_open: None,
             script_text: String::new(),
@@ -7354,6 +7360,26 @@ impl App {
                         Ok("stats") => {
                             session.refresh_stats();
                             session.view = MainView::Stats;
+                        }
+                        // Les carnets, sur la feuille la plus dense —
+                        // celle qui a le plus de colonnes : c'est elle
+                        // qui met la grille et le volet à l'épreuve.
+                        Ok("carnets") => {
+                            session.show_carnets = true;
+                            // `BPM_CADDY_CARNET=<clé>` ouvre une feuille
+                            // précise ; sans elle, la plus dense — celle
+                            // qui a le plus de colonnes —, parce que
+                            // c'est elle qui met la grille et le volet à
+                            // l'épreuve.
+                            session.carnet_open = std::env::var("BPM_CADDY_CARNET")
+                                .ok()
+                                .and_then(|k| crate::selfcheck::by_key(&k))
+                                .or_else(|| {
+                                    crate::selfcheck::SHEETS
+                                        .iter()
+                                        .max_by_key(|s| s.columns.len())
+                                });
+                            session.view = MainView::Drugs;
                         }
                         Ok("script") => {
                             session.refresh_scripts();
@@ -28564,6 +28590,203 @@ impl App {
     /// card editor (dosage, interactions, IUP, antidote, notes) with
     /// compare-and-set saves. `doc` is the team-notes buffer so a card
     /// can be inserted into the notes in one click.
+    /// Les carnets de suivi : la feuille que le patient emporte.
+    ///
+    /// Une officine en donne tous les jours et les photocopie, quand
+    /// elle en a, sur un modèle que personne n'a relu depuis dix ans —
+    /// le reste du temps elle dit « notez-le sur un papier ». Ce qui
+    /// manque n'est pas la grille, c'est le **protocole** : une tension
+    /// prise après le café, debout, sur le bras qui traîne ne veut rien
+    /// dire, et une glycémie notée le soir de mémoire non plus.
+    ///
+    /// L'écran est donc fait pour être **lu à voix haute** au comptoir
+    /// avant d'imprimer : à gauche les six feuilles, à droite comment
+    /// mesurer, ce qu'on vise et ce qui ne s'attend pas. Voir
+    /// [`crate::selfcheck`], où tout cela est écrit et éprouvé.
+    fn carnets_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let body = motif::visible_rect(ui);
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [Self::button_width(ui, tr("carnets_close"))].into_iter(),
+            tr("carnets_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
+        let mut print: Option<&'static crate::selfcheck::Sheet> = None;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("carnets_title"));
+                if motif::button(ui, tr("carnets_close")).clicked() {
+                    session.show_carnets = false;
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("carnets_subtitle"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+            // À qui la feuille sera au nom : le dossier ouvert, ou
+            // personne — auquel cas elle porte une ligne à remplir, ce
+            // qui est le cas courant au comptoir.
+            let who = match session.viewing.as_ref() {
+                Some(p) => trf("carnets_for", p.full_name()),
+                None => tr("carnets_blank").to_owned(),
+            };
+            ui.label(
+                egui::RichText::new(who)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        });
+
+        let work = rows[1];
+        let gap = 8.0;
+        let list_w = (work.width() * 0.30).clamp(180.0, 320.0);
+        let list_rect = egui::Rect::from_min_size(work.min, egui::vec2(list_w, work.height()));
+        let sheet_rect =
+            egui::Rect::from_min_max(egui::pos2(work.left() + list_w + gap, work.top()), work.max);
+
+        motif::panel(ui, list_rect, Some(tr("carnets_list")), |ui| {
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 24.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("carnets_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for sheet in crate::selfcheck::SHEETS {
+                            let on = session.carnet_open.map(|s| s.key) == Some(sheet.key);
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(sheet.title).size(motif::pt(ui, 11.5)),
+                                on,
+                            )
+                            .on_hover_text(sheet.purpose)
+                            .clicked()
+                            {
+                                session.carnet_open = Some(sheet);
+                            }
+                        }
+                    });
+            });
+        });
+
+        let open = session.carnet_open;
+        motif::panel(
+            ui,
+            sheet_rect,
+            Some(open.map_or(tr("carnets_pick"), |s| s.title)),
+            |ui| {
+                let Some(sheet) = open else {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("carnets_pick"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    return;
+                };
+                let rect = ui.available_rect_before_wrap();
+                // Le bouton d'impression a **sa propre rangée**, prise
+                // sur le bas avant que le texte soit dessiné : sous une
+                // zone qui grandit, une hauteur réservée dans le flux
+                // est toujours de quelques pixels trop courte.
+                let btn = Self::button_height(ui) + 6.0;
+                let split = motif::split_rows(rect, &[0.0, btn], 4.0);
+                motif::inside(ui, split[0], |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("carnet_sheet")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            let para = |ui: &mut egui::Ui, text: &str, size: f32| {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(text).size(motif::pt(ui, size)),
+                                    )
+                                    .wrap(),
+                                );
+                            };
+                            para(ui, sheet.purpose, 11.5);
+                            ui.add_space(6.0);
+                            motif::section(ui, tr("carnets_how"));
+                            for (i, step) in sheet.protocol.iter().enumerate() {
+                                para(ui, &format!("{}. {step}", i + 1), 11.0);
+                            }
+                            ui.add_space(6.0);
+                            motif::section(ui, tr("carnets_target"));
+                            para(ui, sheet.target, 11.0);
+                            ui.add_space(6.0);
+                            motif::section(ui, tr("carnets_alert"));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(sheet.alert)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::alert()),
+                                )
+                                .wrap(),
+                            );
+                            ui.add_space(6.0);
+                            motif::section(ui, tr("carnets_grid"));
+                            para(
+                                ui,
+                                &trn(
+                                    "carnets_grid_line",
+                                    &[
+                                        &sheet.rows,
+                                        &sheet.columns.len(),
+                                        // Ce que la feuille **demande** :
+                                        // trois colonnes de plus sur
+                                        // quatorze jours, ce sont
+                                        // quarante-deux cases de plus à
+                                        // remplir, et c'est ce chiffre
+                                        // qui dit si on la donne à ce
+                                        // patient-là.
+                                        &crate::selfcheck::cells(sheet),
+                                        &sheet.columns.join(" · "),
+                                    ],
+                                ),
+                                11.0,
+                            );
+                        });
+                });
+                motif::inside(ui, split[1], |ui| {
+                    ui.horizontal(|ui| {
+                        if motif::button(ui, tr("carnets_print"))
+                            .on_hover_text(tr("carnets_print_tooltip"))
+                            .clicked()
+                        {
+                            print = Some(sheet);
+                        }
+                    });
+                });
+            },
+        );
+
+        if let Some(sheet) = print {
+            let today = session
+                .db
+                .today_french()
+                .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+            let name = session.viewing.as_ref().map(Patient::full_name);
+            if let Err(e) =
+                crate::pdf::open_selfcheck(sheet, name.as_deref(), &config.pharmacy, &today)
+            {
+                session.error = Some(e);
+            } else {
+                session.error = None;
+            }
+        }
+    }
+
     fn drugs_view(
         ui: &mut egui::Ui,
         ctx: &egui::Context,
@@ -28602,6 +28825,12 @@ impl App {
                     session.codex_open = None;
                 } else {
                     session.show_codex = false;
+                }
+            } else if session.show_carnets {
+                if session.carnet_open.is_some() {
+                    session.carnet_open = None;
+                } else {
+                    session.show_carnets = false;
                 }
             } else if session.show_tables {
                 // A search in progress is what Escape clears first:
@@ -28646,6 +28875,10 @@ impl App {
             Self::tables_view(ui, session, config);
             return;
         }
+        if session.show_carnets {
+            Self::carnets_view(ui, session, config);
+            return;
+        }
         if session.show_protocols {
             Self::protocols_view(ui, session, operator);
             return;
@@ -28681,6 +28914,7 @@ impl App {
                 // the page, so there was never a width that worked.
                 let gap = ui.spacing().item_spacing.x;
                 let doors_width: f32 = [
+                    tr("carnets_button"),
                     tr("graph_button"),
                     tr("drugs_classes"),
                     tr("tables_button"),
@@ -28757,6 +28991,19 @@ impl App {
                     {
                         session.show_dispositifs = true;
                         session.reload_dispositifs();
+                    }
+                    // Les carnets de suivi : c'est de la référence à
+                    // imprimer, comme les tables de conversion et les
+                    // fiches de dispositifs, et c'est pour cela que la
+                    // porte est ici. La feuille porte le nom du dossier
+                    // ouvert quand il y en a un — le cas courant, on
+                    // les donne pendant l'entretien.
+                    if motif::button(ui, tr("carnets_button"))
+                        .on_hover_text(tr("carnets_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_carnets = true;
+                        session.carnet_open = crate::selfcheck::SHEETS.first();
                     }
                 };
                 ui.horizontal(|ui| {

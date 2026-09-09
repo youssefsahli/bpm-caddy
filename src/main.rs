@@ -24,6 +24,7 @@ mod release;
 mod revue;
 mod scans;
 mod script;
+mod selfcheck;
 mod strings;
 mod surveillance;
 mod tables;

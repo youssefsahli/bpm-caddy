@@ -36,6 +36,20 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
+  `src/selfcheck.rs` (the sheets a patient takes home: automesure
+  tensionnelle, glycémie, poids, débit de pointe, INR, douleur. **What
+  is missing from a photocopied grid is not the grid, it is the
+  protocol** — a blood pressure taken after the coffee, standing, on
+  whichever arm is free means nothing, and a glucose written up from
+  memory in the evening means nothing either. Each sheet therefore
+  carries four things and the grid is the fourth: how to measure, what
+  to aim for, what not to wait on, and where to write. Two rules held by
+  tests: **no invented figure** — where the target is individual (the
+  glucose, the INR range, a personal best peak flow) the sheet says so
+  and leaves the line blank rather than print a number the patient would
+  take for theirs; and **nothing that replaces the prescriber** — no
+  sheet adjusts a dose, every sheet says whom to telephone and when.
+  Pure, tested, no clock),
   `src/script.rs` (the console: what the officine can ask its own base
   in a few lines, without waiting for someone to write a screen for it.
   Two rules make it possible at all, and both are tested: the engine has
@@ -655,7 +669,7 @@ add clicking and typing; it is not the price of entry.
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|script|peaux`
+  finances|stats|companion|script|carnets|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its
@@ -677,6 +691,12 @@ add clicking and typing; it is not the price of entry.
   or the next session would open on a 460 px workspace
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
+- `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that
+  self-monitoring sheet (`tension`, `glycemie`, `poids`, `souffle`,
+  `inr`, `douleur`) rather than the widest one
+- `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that
+  self-monitoring sheet (`tension`, `glycemie`, `poids`, `souffle`,
+  `inr`, `douleur`) rather than the widest one
 - `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card
   rather than Eliquis (checking an insulin's action profile, say)
 - `BPM_CADDY_KIN=dci|class` — with `START_VIEW=drug_card`, land with that
