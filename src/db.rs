@@ -19624,6 +19624,237 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         toxicity: "",
         forms: "",
     },
+    StarterDetail {
+        name: "Sevredol",
+        indications: "Douleurs intenses ou rebelles aux antalgiques de niveau plus faible : accès douloureux paroxystiques d'un patient sous morphinique de fond, et titration d'un traitement morphinique qui débute. Comprimé à libération immédiate, sécable, qui agit en vingt à trente minutes pour environ quatre heures.",
+        mechanism: "Sulfate de morphine en comprimé pelliculé sécable à libération immédiate, agoniste pur des récepteurs opioïdes mu. Sa particularité tient à la forme : contrairement aux gélules à microgranules et à toutes les formes à libération prolongée, il se coupe en deux, ce qui donne un demi-palier de titration là où les autres n'en ont pas. Métabolisme hépatique par glucuroconjugaison, métabolite actif à élimination rénale.",
+        dosage: "En interdose, un dixième à un sixième de la dose quotidienne totale de morphine orale, renouvelable au bout d'une heure. Plus de quatre interdoses par vingt-quatre heures imposent de revoir la dose de fond. En titration d'un adulte naïf, 10 mg toutes les quatre heures, 5 mg — un demi-comprimé — chez le sujet âgé, l'insuffisant rénal ou le patient fragile ; on totalise les prises de vingt-quatre à quarante-huit heures avant de convertir en forme à libération prolongée. Pas de dose plafond.",
+        contraindications: "Insuffisance respiratoire décompensée, insuffisance hépatique sévère, traumatisme crânien et hypertension intracrânienne, épilepsie non contrôlée, syndrome abdominal aigu d'étiologie inconnue, association aux agonistes-antagonistes morphiniques et aux IMAO non sélectifs, allaitement en traitement prolongé.",
+        ddi: "Additivité avec tout dépresseur central : benzodiazépines, hypnotiques, gabapentinoïdes, antihistaminiques sédatifs, neuroleptiques, alcool. Les agonistes-antagonistes (nalbuphine, buprénorphine, pentazocine) déplacent la morphine et déclenchent un sevrage. Anticholinergiques et sétrons aggravent la constipation. La rifampicine abaisse la concentration de morphine.",
+        adverse: "Constipation quasi constante et durable, à prévenir d'emblée. Nausées et vomissements des premiers jours. Somnolence initiale ; une sédation qui s'aggrave est un signe de surdosage et non un effet qui s'installe. Myosis, prurit, sécheresse buccale, rétention urinaire, sueurs. Confusion chez le sujet âgé et l'insuffisant rénal.",
+        monitoring: "Nombre d'interdoses par vingt-quatre heures, qui commande la dose de fond. Vigilance et fréquence respiratoire à l'instauration et à chaque augmentation. Transit à chaque contact, laxatif prescrit d'emblée. Fonction rénale chez le sujet âgé. Devant une somnolence diurne persistante, chercher un syndrome d'apnées du sommeil.",
+        iup: "Ce comprimé est celui des douleurs qui percent : il agit en vingt à trente minutes et dure environ quatre heures. Il est sécable — la barre au milieu permet de le couper en deux, ce que la plupart des autres formes de morphine ne permettent pas —, alors ne coupez que si le médecin l'a écrit. Prenez-le dès que la douleur revient plutôt qu'au dernier moment, et notez chaque prise : ce nombre est ce qui permet d'ajuster le traitement de fond. Plus de quatre par jour plusieurs jours de suite, il faut appeler. Un laxatif vous est prescrit en même temps : prenez-le tous les jours dès le premier. Nausées et somnolence des premiers jours sont habituelles et passent en une semaine ; une somnolence qui s'aggrave, une respiration lente, une personne qu'on n'arrive pas à réveiller sont des urgences — appelez le 15. Pas d'alcool, aucun somnifère ni calmant sans en parler. Boîtes sous clé et hors de portée des enfants.",
+        half_life: "≈ 2 à 4 heures",
+        elimination: "Glucuroconjugaison hépatique en morphine-3- et morphine-6-glucuronide, ce dernier analgésique. Élimination rénale des métabolites, avec accumulation dès que la clairance baisse.",
+        renal: "Réduire la dose et espacer les prises dès l'insuffisance rénale, en surveillant la vigilance. En insuffisance sévère, préférer un opioïde dont les métabolites ne s'accumulent pas.",
+        pregnancy: "Possible si nécessaire, à la dose efficace la plus faible et le moins longtemps possible. À forte dose en fin de grossesse, dépression respiratoire et syndrome de sevrage néonatals : la maternité doit être prévenue. Allaitement déconseillé au long cours.",
+        sources: "RCP Sevredol — base de données publique des médicaments (ANSM)\nHAS — bon usage des opioïdes forts dans la douleur chronique\nAFSOS — référentiel douleur et soins oncologiques de support",
+        status: "",
+        smr: "",
+        tags: "opioïde, stupéfiant, douleur, marge étroite, ordonnance sécurisée",
+        toxicity: "Même marge que toute morphine à libération immédiate, et le même piège : la sédation précède la dépression respiratoire, et une personne difficile à réveiller est en surdosage jusqu'à preuve du contraire. Myosis serré, fréquence respiratoire sous dix par minute. Antidote : naloxone, d'action plus brève que la morphine, donc surveillance prolongée après l'injection. La sécabilité est un avantage de titration et un risque d'erreur : un comprimé de 20 mg coupé et pris entier fait le double de la dose prévue.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Moscontin",
+        indications: "Douleurs persistantes intenses ou rebelles aux antalgiques de niveau plus faible, notamment cancéreuses, sur un fond douloureux continu. Comprimé à libération prolongée sur douze heures, destiné au traitement de fond : les accès douloureux relèvent d'une forme à libération immédiate.",
+        mechanism: "Sulfate de morphine en comprimé à matrice à libération prolongée, agoniste pur des récepteurs opioïdes mu. La libération est portée par la matrice du comprimé lui-même, et non par des microgranules : c'est ce qui interdit absolument de l'écraser ou de le croquer, là où les gélules à microgranules peuvent au moins s'ouvrir. Métabolisme hépatique par glucuroconjugaison, métabolite actif éliminé par le rein.",
+        dosage: "Chez l'adulte naïf d'opioïde fort, 30 mg toutes les douze heures ; 10 mg toutes les douze heures chez le sujet âgé, fragile ou insuffisant rénal. La morphine orale est la référence des tables d'équianalgésie : 60 mg par jour correspondent à environ 30 mg d'oxycodone orale, 20 mg de morphine parentérale, et un dispositif de fentanyl transdermique de 25 µg/h selon l'équivalence retenue en France. La titration se fait sur les interdoses de forme à libération immédiate, un dixième à un sixième de la dose quotidienne, que l'on totalise sur vingt-quatre à quarante-huit heures avant de les intégrer au fond. Pas de dose plafond.",
+        contraindications: "Insuffisance respiratoire décompensée, insuffisance hépatique sévère, traumatisme crânien et hypertension intracrânienne, épilepsie non contrôlée, syndrome abdominal aigu d'étiologie inconnue, association aux agonistes-antagonistes morphiniques et aux IMAO non sélectifs, allaitement en traitement prolongé. Troubles de la déglutition : le comprimé ne peut être ni écrasé ni ouvert, et il faut alors une autre forme.",
+        ddi: "Additivité avec tout dépresseur central : benzodiazépines, hypnotiques, gabapentinoïdes, antihistaminiques sédatifs, neuroleptiques, alcool. Agonistes-antagonistes morphiniques : déplacement du récepteur et sevrage. Anticholinergiques et sétrons : constipation aggravée jusqu'à l'occlusion. Rifampicine : concentration abaissée.",
+        adverse: "Constipation quasi constante, durable, à prévenir d'emblée. Nausées et vomissements des premiers jours. Somnolence initiale ; une sédation croissante est un surdosage. Myosis, prurit, sécheresse buccale, rétention urinaire, sueurs. Confusion et hallucinations chez le sujet âgé et l'insuffisant rénal.",
+        monitoring: "Efficacité sur le fond douloureux et nombre d'interdoses consommées. Vigilance et fréquence respiratoire à l'instauration et à chaque palier. Transit à chaque contact, laxatif d'emblée. Fonction rénale chez le sujet âgé. Vérifier à chaque délivrance que le comprimé est bien avalé entier.",
+        iup: "Ce comprimé est le traitement de fond : il travaille pendant douze heures, à heure fixe, matin et soir, que la douleur soit là ou non. Il doit être avalé **entier**, avec un verre d'eau : ni croqué, ni coupé, ni écrasé, ni mis dans une sonde. La libération lente est dans le comprimé lui-même ; l'écraser délivre douze heures de morphine d'un seul coup, et c'est un accident grave. Si vous n'arrivez plus à l'avaler, ne le cassez pas : appelez, il existe d'autres formes. Pour les douleurs qui percent entre deux prises, c'est l'autre médicament, celui qui agit vite, et il faut noter chaque prise. En cas d'oubli, prenez le comprimé dès que vous y pensez et décalez la prise suivante d'au moins huit heures ; jamais deux comprimés à la fois. Un laxatif est prescrit en même temps : tous les jours, dès le premier. N'arrêtez jamais brutalement un traitement installé depuis plusieurs semaines — la diminution se fait par paliers, avec le médecin. Pas d'alcool, aucun somnifère ni calmant sans en parler. Une somnolence qui s'aggrave, une respiration lente, une personne qu'on ne réveille pas : appelez le 15. Boîtes sous clé, hors de portée des enfants.",
+        half_life: "≈ 2 à 4 heures (libération prolongée sur 12 heures)",
+        elimination: "Glucuroconjugaison hépatique en morphine-3- et morphine-6-glucuronide, ce dernier analgésique. Élimination rénale des métabolites, avec accumulation dès que la clairance baisse.",
+        renal: "Réduire la dose et espacer les prises ; en insuffisance sévère, la morphine n'est pas le premier choix, l'accumulation du métabolite actif donnant une sédation retardée.",
+        pregnancy: "Possible si nécessaire, dose efficace la plus faible, durée la plus courte. En fin de grossesse et à forte dose, dépression respiratoire et sevrage néonatals : maternité prévenue. Allaitement déconseillé au long cours.",
+        sources: "RCP Moscontin — base de données publique des médicaments (ANSM)\nHAS — bon usage des opioïdes forts dans la douleur chronique\nAFSOS — référentiel douleur et soins oncologiques de support",
+        status: "",
+        smr: "",
+        tags: "opioïde, stupéfiant, douleur, marge étroite, ne pas écraser, ordonnance sécurisée",
+        toxicity: "Le risque propre de cette forme n'est pas la dose, c'est le **broyage** : un comprimé à matrice écrasé libère d'un coup ce qui devait passer en douze heures, et c'est le mécanisme des accidents à domicile chez les patients qui n'avalent plus. La question « arrivez-vous à l'avaler entier ? » vaut à chaque délivrance. Pour le reste, marge étroite habituelle des morphiniques : la sédation précède la dépression respiratoire, myosis serré, fréquence respiratoire sous dix. Antidote : naloxone, d'action plus brève que la morphine — et bien plus brève que douze heures de forme prolongée, donc surveillance hospitalière prolongée.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Abstral",
+        indications: "Accès douloureux paroxystiques du patient adulte déjà sous morphinique de fond équilibré pour une douleur chronique d'origine cancéreuse. Ce n'est ni un antalgique de première intention, ni un traitement de fond : le fond doit être en place et stable — au moins soixante milligrammes de morphine orale par jour, ou l'équivalent — avant qu'un fentanyl transmuqueux soit envisagé.",
+        mechanism: "Citrate de fentanyl en comprimé sublingual à dissolution rapide, agoniste pur et très puissant des récepteurs opioïdes mu. La muqueuse sublinguale est richement vascularisée et court-circuite le premier passage hépatique : l'effet apparaît en dix à quinze minutes, contre trente à quarante-cinq minutes pour une morphine orale. C'est ce délai qui justifie la classe, et c'est lui qui la rend dangereuse hors indication.",
+        dosage: "La dose efficace ne se déduit **jamais** de la dose du traitement de fond : elle se titre pour chaque patient à partir du dosage le plus faible, cent microgrammes, quel que soit le morphinique de fond. Si l'accès n'est pas soulagé au bout de quinze à trente minutes, un second comprimé de même dosage peut être pris pour ce même accès ; à l'accès suivant, on monte d'un palier. Une fois la dose trouvée, elle vaut pour les accès suivants, à raison de quatre accès traités par vingt-quatre heures au maximum et d'un intervalle d'au moins deux heures entre deux accès traités. Au-delà de quatre accès par jour, c'est le traitement de fond qu'il faut réévaluer.",
+        contraindications: "Patient naïf d'opioïdes ou dont le traitement de fond n'est pas équilibré, douleur aiguë ou postopératoire, insuffisance respiratoire sévère, association aux IMAO non sélectifs ou dans les quinze jours suivant leur arrêt, hypersensibilité au fentanyl. Enfant et adolescent.",
+        ddi: "Les inhibiteurs puissants du CYP3A4 — ritonavir, kétoconazole, itraconazole, clarithromycine, jus de pamplemousse — augmentent l'exposition au fentanyl et peuvent provoquer une dépression respiratoire fatale ; les inducteurs (rifampicine, carbamazépine, millepertuis) la diminuent. Additivité avec tout dépresseur central, benzodiazépines en tête. Agonistes-antagonistes morphiniques : sevrage. Sérotoninergiques : syndrome sérotoninergique.",
+        adverse: "Somnolence, nausées, vomissements, constipation, sécheresse buccale. Sensations vertigineuses, confusion. Irritation locale de la muqueuse sublinguale, plus rarement ulcération. Dépression respiratoire, dose-dépendante et favorisée par toute association sédative. Dépendance et mésusage, sur lesquels la classe est particulièrement surveillée.",
+        monitoring: "Nombre d'accès traités par vingt-quatre heures : au-delà de quatre, le fond est insuffisant. Vigilance et fréquence respiratoire, surtout à chaque changement de dosage. État de la muqueuse buccale. Recherche active d'un mésusage : escalade de dose sans progression de la maladie, demandes anticipées, prescripteurs multiples. Transit, laxatif d'emblée.",
+        iup: "Ce comprimé est réservé aux crises de douleur qui percent malgré votre traitement de fond ; il ne remplace pas ce traitement, qu'il faut continuer exactement comme d'habitude. Placez-le sous la langue, au plus profond, et laissez-le fondre : ne le sucez pas, ne le croquez pas, ne l'avalez pas, ne buvez pas pendant qu'il fond — avalé, il ne fait presque rien et le soulagement n'arrive pas. Il agit en dix à quinze minutes. Si la crise n'est pas calmée au bout d'un quart d'heure à une demi-heure, vous pouvez prendre un second comprimé du même dosage, et pas davantage pour cette crise-là. Attendez au moins deux heures avant de traiter une nouvelle crise. Pas plus de quatre crises traitées par jour : au-delà, c'est le traitement de fond qui doit être revu, et il faut appeler. La dose de ce comprimé n'a rien à voir avec la dose de votre traitement de fond : ne la changez jamais de vous-même, même si vous avez l'impression qu'elle est trop faible. Ne prenez pas de jus de pamplemousse. Pas d'alcool, aucun somnifère ni calmant sans en parler. Ce médicament est extrêmement puissant : un seul comprimé peut tuer un enfant ou une personne qui ne prend pas de morphine. Gardez-le sous clé, et rapportez à la pharmacie ce qui reste.",
+        half_life: "≈ 5 à 12 heures (terminale)",
+        elimination: "Métabolisme hépatique par le CYP3A4 en norfentanyl, inactif ; élimination urinaire des métabolites. Le premier passage hépatique est en partie évité par l'absorption sublinguale, ce qui explique la rapidité d'action.",
+        renal: "Pas d'adaptation formelle, mais prudence : la titration est de toute façon individuelle, et l'insuffisance rénale majore la sensibilité aux opioïdes. Surveiller la vigilance.",
+        pregnancy: "Non recommandé pendant la grossesse ; l'indication elle-même est rare dans ce contexte. À forte dose en fin de grossesse, dépression respiratoire et sevrage néonatals. Allaitement déconseillé : passage dans le lait.",
+        sources: "RCP Abstral — base de données publique des médicaments (ANSM)\nANSM — mise au point sur les fentanyls à action rapide transmuqueuse\nAFSOS — référentiel douleur et soins oncologiques de support",
+        status: "",
+        smr: "",
+        tags: "opioïde, stupéfiant, fentanyl, douleur, marge étroite, ordonnance sécurisée, mésusage",
+        toxicity: "Marge très étroite et particularité de classe : la dose efficace **ne se déduit pas** de la dose de fond, et une dose calculée par équianalgésie plutôt que titrée est le mécanisme des accidents décrits sur toute la classe. Chez un sujet non tolérant aux opioïdes, cent microgrammes suffisent à provoquer une dépression respiratoire mortelle — d'où la contre-indication absolue chez le patient naïf. Le CYP3A4 est l'autre porte : un antifongique azolé ou un macrolide introduit sans y penser double l'exposition. Antidote : naloxone, d'action plus brève que le fentanyl, donc surveillance prolongée. Les comprimés restants se rapportent à l'officine.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Effentora",
+        indications: "Accès douloureux paroxystiques du patient adulte déjà sous morphinique de fond équilibré pour une douleur chronique d'origine cancéreuse. Le fond doit être stable — au moins soixante milligrammes de morphine orale par jour ou l'équivalent — avant qu'un fentanyl transmuqueux soit envisagé.",
+        mechanism: "Citrate de fentanyl en comprimé gingival effervescent : posé entre la joue et la gencive, il libère du gaz carbonique qui modifie localement le pH et accélère le passage du fentanyl à travers la muqueuse buccale. L'effet apparaît en dix à quinze minutes. La voie transmuqueuse évite en partie le premier passage hépatique, ce qui explique la rapidité — et la dangerosité hors indication.",
+        dosage: "La dose se titre pour chaque patient à partir du dosage le plus faible, cent microgrammes, quel que soit le morphinique de fond : elle ne se déduit jamais de la dose de fond. Si l'accès n'est pas soulagé au bout de trente minutes, un second comprimé de même dosage peut être pris pour ce même accès ; à l'accès suivant on monte d'un palier. Quatre accès traités par vingt-quatre heures au maximum, avec au moins quatre heures entre deux accès traités. Au-delà, c'est la dose de fond qui doit être réévaluée.",
+        contraindications: "Patient naïf d'opioïdes ou dont le fond n'est pas équilibré, douleur aiguë ou postopératoire, insuffisance respiratoire sévère, association aux IMAO non sélectifs ou dans les quinze jours suivant leur arrêt, hypersensibilité au fentanyl. Enfant et adolescent.",
+        ddi: "Inhibiteurs puissants du CYP3A4 (ritonavir, azolés, macrolides, pamplemousse) : exposition augmentée, dépression respiratoire possible. Inducteurs (rifampicine, carbamazépine, millepertuis) : efficacité diminuée. Additivité avec tout dépresseur central, benzodiazépines en tête. Agonistes-antagonistes morphiniques : sevrage. Sérotoninergiques : syndrome sérotoninergique.",
+        adverse: "Somnolence, nausées, vomissements, constipation, sécheresse buccale. Vertiges, confusion. Réactions locales au site d'application : irritation, douleur, ulcération de la muqueuse gingivale. Dépression respiratoire dose-dépendante. Dépendance et mésusage.",
+        monitoring: "Nombre d'accès traités par jour. Vigilance et fréquence respiratoire à chaque changement de dosage. Inspection de la muqueuse buccale, cet effet local étant propre à la forme gingivale. Recherche d'un mésusage. Transit, laxatif d'emblée.",
+        iup: "Ce comprimé traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Posez-le entre la joue et la gencive, au-dessus d'une molaire, et laissez-le se dissoudre : il pétille, c'est normal, c'est ce qui le fait passer. Ne le sucez pas, ne le croquez pas, ne l'avalez pas. Il faut compter environ quinze à vingt-cinq minutes ; s'il reste des morceaux au bout d'une demi-heure, vous pouvez les avaler avec un verre d'eau. Changez de côté d'une fois sur l'autre, pour ménager la gencive. Il agit en dix à quinze minutes. Si la crise n'est pas calmée au bout d'une demi-heure, vous pouvez prendre un second comprimé du même dosage, et pas plus pour cette crise-là. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez, c'est le traitement de fond qui doit être revu. Ne changez jamais le dosage de vous-même. Pas de jus de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Un seul comprimé peut tuer un enfant ou une personne qui ne prend pas de morphine : gardez-le sous clé, et rapportez à la pharmacie ce qui reste.",
+        half_life: "≈ 3 à 12 heures (terminale)",
+        elimination: "Métabolisme hépatique par le CYP3A4 en norfentanyl inactif, élimination urinaire des métabolites. Une partie de la dose est avalée et subit le premier passage hépatique, ce qui explique que les formes transmuqueuses ne soient pas interchangeables entre elles.",
+        renal: "Pas d'adaptation formelle ; prudence et surveillance de la vigilance, la titration étant de toute façon individuelle.",
+        pregnancy: "Non recommandé pendant la grossesse. À forte dose en fin de grossesse, dépression respiratoire et sevrage néonatals. Allaitement déconseillé.",
+        sources: "RCP Effentora — base de données publique des médicaments (ANSM)\nANSM — mise au point sur les fentanyls à action rapide transmuqueuse\nAFSOS — référentiel douleur et soins oncologiques de support",
+        status: "",
+        smr: "",
+        tags: "opioïde, stupéfiant, fentanyl, douleur, marge étroite, ordonnance sécurisée, mésusage",
+        toxicity: "Marge très étroite, et deux pièges propres à la classe. Le premier : la dose **ne se déduit pas** du traitement de fond, elle se titre depuis le dosage le plus faible — une dose calculée par équianalgésie est le mécanisme des accidents décrits sur toute la classe. Le second : les formes transmuqueuses ne sont **pas interchangeables** microgramme pour microgramme, parce que la fraction absorbée par la muqueuse diffère de l'une à l'autre ; passer d'Effentora à un autre fentanyl rapide impose une nouvelle titration. Chez un sujet non tolérant, cent microgrammes peuvent tuer. Le CYP3A4 est la troisième porte. Antidote : naloxone, d'action plus brève que le fentanyl, surveillance prolongée.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Instanyl",
+        indications: "Accès douloureux paroxystiques du patient adulte déjà sous morphinique de fond équilibré pour une douleur chronique d'origine cancéreuse. Le fond doit être stable — au moins soixante milligrammes de morphine orale par jour ou l'équivalent — avant qu'un fentanyl transmuqueux soit envisagé.",
+        mechanism: "Fentanyl en solution pour pulvérisation nasale. La muqueuse nasale est très vascularisée et l'absorption y est la plus rapide de toute la classe : le début d'action est de l'ordre de cinq à dix minutes. Agoniste pur et très puissant des récepteurs opioïdes mu.",
+        dosage: "Titration individuelle à partir de cinquante microgrammes, une pulvérisation dans une narine, quel que soit le morphinique de fond : la dose ne se déduit jamais de la dose de fond. Si l'accès n'est pas soulagé au bout de dix minutes, une seconde pulvérisation peut être faite dans l'autre narine pour ce même accès ; à l'accès suivant, on monte d'un palier. Quatre accès traités par vingt-quatre heures au maximum, avec au moins quatre heures entre deux accès traités. Le flacon doit être amorcé avant la première utilisation, selon la notice.",
+        contraindications: "Patient naïf d'opioïdes ou dont le fond n'est pas équilibré, douleur aiguë ou postopératoire, insuffisance respiratoire sévère, radiothérapie antérieure de la face, épisodes récurrents d'épistaxis, association aux IMAO non sélectifs ou dans les quinze jours suivant leur arrêt, hypersensibilité au fentanyl. Enfant et adolescent.",
+        ddi: "Inhibiteurs puissants du CYP3A4 (ritonavir, azolés, macrolides, pamplemousse) : exposition augmentée, dépression respiratoire possible. Inducteurs : efficacité diminuée. Additivité avec tout dépresseur central. Les vasoconstricteurs nasaux modifient l'absorption. Agonistes-antagonistes morphiniques : sevrage. Sérotoninergiques : syndrome sérotoninergique.",
+        adverse: "Somnolence, nausées, vomissements, constipation. Vertiges. Irritation nasale, épistaxis, rhinorrhée, mauvais goût. Dépression respiratoire dose-dépendante. Dépendance et mésusage : la voie nasale et la rapidité d'action en font la forme la plus détournée de la classe.",
+        monitoring: "Nombre d'accès traités par jour. Vigilance et fréquence respiratoire à chaque changement de dosage. État de la muqueuse nasale, épistaxis. Recherche active d'un mésusage. Transit, laxatif d'emblée. Vérifier que le flacon a bien été amorcé et que le patient sait le faire.",
+        iup: "Ce spray traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Avant la toute première utilisation, il faut amorcer le flacon en pulvérisant dans le vide comme l'explique la notice, sinon la première dose part incomplète. Mouchez-vous doucement, tenez-vous assis ou debout, tête droite, et faites une pulvérisation dans une narine en respirant doucement — pas de grande inspiration, le produit doit rester sur la muqueuse. Il agit en cinq à dix minutes. Si la crise n'est pas calmée au bout de dix minutes, vous pouvez faire une seconde pulvérisation dans l'autre narine, et pas davantage pour cette crise-là. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez. Ne changez jamais le dosage de vous-même : la dose de ce spray n'a aucun rapport avec la dose de votre traitement de fond. N'échangez jamais ce spray contre un autre fentanyl à action rapide — ils ne sont pas équivalents pulvérisation pour comprimé. Pas de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Ce flacon contient de quoi tuer un enfant : gardez-le dans sa sécurité enfant, sous clé, et rapportez-le à la pharmacie même vide.",
+        half_life: "≈ 3 à 12 heures (terminale)",
+        elimination: "Métabolisme hépatique par le CYP3A4 en norfentanyl inactif, élimination urinaire des métabolites. L'absorption nasale évite le premier passage hépatique, d'où la rapidité et la biodisponibilité élevée.",
+        renal: "Pas d'adaptation formelle ; prudence et surveillance de la vigilance.",
+        pregnancy: "Non recommandé pendant la grossesse. À forte dose en fin de grossesse, dépression respiratoire et sevrage néonatals. Allaitement déconseillé.",
+        sources: "RCP Instanyl — base de données publique des médicaments (ANSM)\nANSM — mise au point sur les fentanyls à action rapide transmuqueuse\nAFSOS — référentiel douleur et soins oncologiques de support",
+        status: "",
+        smr: "",
+        tags: "opioïde, stupéfiant, fentanyl, douleur, marge étroite, ordonnance sécurisée, mésusage",
+        toxicity: "La forme la plus rapide de la classe, donc la plus à risque : cinq à dix minutes de délai, une biodisponibilité nasale élevée, et une dose qui **ne se déduit pas** du traitement de fond mais se titre depuis cinquante microgrammes. Chez un sujet non tolérant, une seule pulvérisation peut provoquer une dépression respiratoire mortelle. Les fentanyls transmuqueux ne sont pas interchangeables entre eux : passer d'un spray à un comprimé, ou d'un spray à l'autre, impose une nouvelle titration — c'est l'erreur la plus fréquente de la classe. Le CYP3A4 est l'autre porte. Antidote : naloxone, d'action plus brève, surveillance prolongée. Le flacon garde une dose active même « vide » : il se rapporte à l'officine.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Pecfent",
+        indications: "Accès douloureux paroxystiques du patient adulte déjà sous morphinique de fond équilibré pour une douleur chronique d'origine cancéreuse. Le fond doit être stable — au moins soixante milligrammes de morphine orale par jour ou l'équivalent — avant qu'un fentanyl transmuqueux soit envisagé.",
+        mechanism: "Fentanyl en solution nasale à base de pectine : au contact des ions calcium de la muqueuse, la pectine gélifie et retient la solution sur place, ce qui étale l'absorption et limite l'écoulement pharyngé. Le début d'action reste rapide, de l'ordre de dix minutes, avec un profil plus régulier que les sprays sans pectine — c'est la raison d'être de la forme, et c'est aussi pourquoi elle n'est pas interchangeable avec les autres.",
+        dosage: "Titration individuelle à partir de cent microgrammes, une pulvérisation dans une narine, quel que soit le morphinique de fond : la dose ne se déduit jamais de la dose de fond. Si l'accès n'est pas soulagé, une seconde pulvérisation peut être faite dans l'autre narine selon le schéma de la notice ; à l'accès suivant, on monte d'un palier. Quatre accès traités par vingt-quatre heures au maximum, avec au moins quatre heures entre deux accès traités. Le flacon s'amorce avant la première utilisation ; il porte un compteur de doses.",
+        contraindications: "Patient naïf d'opioïdes ou dont le fond n'est pas équilibré, douleur aiguë ou postopératoire, insuffisance respiratoire sévère, radiothérapie antérieure de la face, épistaxis récidivantes, association aux IMAO non sélectifs ou dans les quinze jours suivant leur arrêt, hypersensibilité au fentanyl. Enfant et adolescent.",
+        ddi: "Inhibiteurs puissants du CYP3A4 (ritonavir, azolés, macrolides, pamplemousse) : exposition augmentée, dépression respiratoire possible. Inducteurs : efficacité diminuée. Additivité avec tout dépresseur central. Vasoconstricteurs nasaux : absorption modifiée. Agonistes-antagonistes morphiniques : sevrage. Sérotoninergiques : syndrome sérotoninergique.",
+        adverse: "Somnolence, nausées, vomissements, constipation. Vertiges. Irritation nasale, épistaxis, mauvais goût, gêne pharyngée. Dépression respiratoire dose-dépendante. Dépendance et mésusage.",
+        monitoring: "Nombre d'accès traités par jour, et le compteur de doses du flacon, qui dit ce qui a été réellement consommé. Vigilance et fréquence respiratoire à chaque changement de dosage. État de la muqueuse nasale. Recherche d'un mésusage. Transit, laxatif d'emblée.",
+        iup: "Ce spray traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Avant la première utilisation, amorcez le flacon comme l'explique la notice : la fenêtre du compteur doit afficher une barre verte avant la première dose. Mouchez-vous doucement, tenez-vous assis, tête droite, une pulvérisation dans une narine en respirant doucement — pas de grande inspiration. La solution se transforme en gel au contact du nez : c'est normal, c'est ce qui la fait tenir en place. Elle agit en une dizaine de minutes. Suivez exactement le schéma que le médecin a écrit pour une seconde pulvérisation. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez. Ne changez jamais le dosage de vous-même, et n'échangez jamais ce spray contre un autre fentanyl à action rapide : ils ne sont pas équivalents, même à nombre de microgrammes égal. Pas de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Le flacon contient de quoi tuer un enfant, même quand le compteur est à zéro : gardez-le dans son étui de sécurité, sous clé, et rapportez-le à la pharmacie.",
+        half_life: "≈ 3 à 12 heures (terminale)",
+        elimination: "Métabolisme hépatique par le CYP3A4 en norfentanyl inactif, élimination urinaire des métabolites. L'absorption nasale évite en grande partie le premier passage hépatique.",
+        renal: "Pas d'adaptation formelle ; prudence et surveillance de la vigilance.",
+        pregnancy: "Non recommandé pendant la grossesse. À forte dose en fin de grossesse, dépression respiratoire et sevrage néonatals. Allaitement déconseillé.",
+        sources: "RCP Pecfent — base de données publique des médicaments (ANSM)\nANSM — mise au point sur les fentanyls à action rapide transmuqueuse\nAFSOS — référentiel douleur et soins oncologiques de support",
+        status: "",
+        smr: "",
+        tags: "opioïde, stupéfiant, fentanyl, douleur, marge étroite, ordonnance sécurisée, mésusage",
+        toxicity: "Marge très étroite. Trois règles de classe, et la troisième est celle qu'on oublie : la dose **ne se déduit pas** du traitement de fond mais se titre depuis le dosage le plus faible ; chez un sujet non tolérant, une pulvérisation peut tuer ; et les fentanyls transmuqueux **ne sont pas interchangeables** entre eux — la pectine change la cinétique, et cent microgrammes de Pecfent ne valent pas cent microgrammes d'un autre spray. Toute substitution impose une nouvelle titration. Le CYP3A4 est l'autre porte : un azolé ou un macrolide introduit sans y penser double l'exposition. Antidote : naloxone, d'action plus brève que le fentanyl, surveillance prolongée.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Orobupré",
+        indications: "Traitement substitutif des pharmacodépendances majeures aux opioïdes, dans le cadre d'une prise en charge médicale, sociale et psychologique, chez l'adulte et l'adolescent de plus de quinze ans.",
+        mechanism: "Buprénorphine en comprimé orodispersible : agoniste partiel des récepteurs mu et antagoniste des récepteurs kappa. L'agonisme partiel donne un effet plafond sur la dépression respiratoire, ce qui explique la marge de sécurité de la classe ; la très forte affinité pour le récepteur mu explique qu'elle déplace les autres opioïdes et précipite un sevrage si elle est prise trop tôt. La forme orodispersible se délite en quelques secondes sur la langue avant d'être absorbée par la muqueuse buccale, là où le comprimé sublingual classique demande cinq à dix minutes — c'est ce qui la distingue, et ce qui rend la prise supervisée plus courte.",
+        dosage: "Induction au moins quatre heures après la dernière prise d'opioïde de courte durée d'action, ou à l'apparition des premiers signes de sevrage : 2 à 4 mg le premier jour, en une prise. Adaptation par paliers de 2 à 4 mg selon la clinique, dose d'entretien usuelle de 8 à 16 mg par jour en une prise, sans dépasser 16 mg. Délivrance fractionnée par sept jours sauf mention expresse du prescripteur, et le nom du pharmacien qui délivre est porté sur l'ordonnance.",
+        contraindications: "Insuffisance respiratoire sévère, insuffisance hépatique sévère, intoxication alcoolique aiguë et delirium tremens, hypersensibilité, enfant de moins de quinze ans. Association aux IMAO non sélectifs.",
+        ddi: "Benzodiazépines : c'est l'association qui tue dans cette classe, par dépression respiratoire — l'effet plafond de la buprénorphine ne protège plus quand un dépresseur s'y ajoute. Méthadone et opioïdes agonistes purs : la buprénorphine les déplace du récepteur et précipite un sevrage. Inhibiteurs du CYP3A4 (ritonavir, azolés, macrolides) : exposition augmentée ; inducteurs (rifampicine, carbamazépine, millepertuis) : efficacité diminuée et sevrage. Alcool.",
+        adverse: "Constipation, sueurs, céphalées, insomnie, nausées. Hypotension orthostatique. Élévation des transaminases, hépatite cytolytique rare mais décrite, notamment en cas de co-infection virale ou d'injection. Syndrome de sevrage si la prise est trop précoce. Dépression respiratoire, essentiellement en association ou par mésusage intraveineux.",
+        monitoring: "Assiduité et régularité de la délivrance, dont le fractionnement fait partie du traitement. Recherche d'un mésusage : injection, sniff, chevauchement, prescripteurs multiples. Transaminases à l'instauration puis régulièrement, surtout en cas d'hépatite virale. Signes de sevrage ou de surdosage. Association benzodiazépine, à repérer à chaque délivrance.",
+        iup: "Ce comprimé se pose sur la langue et se délite en quelques secondes : laissez-le fondre, gardez la salive en bouche deux minutes environ, puis avalez. Ne le croquez pas, ne l'avalez pas entier, ne buvez pas juste avant ni juste après — avalé, il ne passe presque pas et la journée est manquée. Une seule prise par jour, à heure régulière. La première prise se fait au moins quatre heures après le dernier opioïde, quand les signes de manque commencent : si vous la prenez trop tôt, elle déclenche un manque brutal — ce n'est pas une allergie, c'est le mécanisme du médicament. N'associez jamais de somnifère, de calmant ou d'alcool sans en parler : c'est cette association, et pratiquement elle seule, qui provoque des accidents graves. Ne l'injectez jamais et ne le sniffez jamais : c'est ainsi que surviennent les hépatites et les abcès. La délivrance se fait par périodes de sept jours, c'est la règle et non une méfiance. Si vous ratez une journée, reprenez le lendemain à la dose habituelle sans doubler. Signalez une fatigue inhabituelle, des urines foncées ou un jaunissement des yeux : le foie se surveille.",
+        half_life: "≈ 24 à 42 heures",
+        elimination: "Métabolisme hépatique par le CYP3A4 en norbuprénorphine, puis glucuroconjugaison ; élimination majoritairement fécale, faiblement rénale. La longue demi-vie et la forte affinité pour le récepteur expliquent la prise unique quotidienne.",
+        renal: "Pas d'adaptation nécessaire : l'élimination est essentiellement biliaire. Prudence de principe en insuffisance sévère.",
+        pregnancy: "La buprénorphine peut être poursuivie pendant la grossesse : l'arrêt expose à une rechute et à une souffrance fœtale, et le maintien est la règle. Syndrome de sevrage néonatal possible, à anticiper avec la maternité. Allaitement possible sous surveillance du nourrisson.",
+        sources: "RCP Orobupré — base de données publique des médicaments (ANSM)\nHAS — traitements de substitution aux opiacés\nANSM — buprénorphine haut dosage et risque de mésusage",
+        status: "",
+        smr: "",
+        tags: "opioïde, assimilé stupéfiant, substitution, ordonnance sécurisée, mésusage",
+        toxicity: "Marge large en monothérapie grâce à l'effet plafond sur la dépression respiratoire — et cette marge disparaît dès qu'une benzodiazépine s'y ajoute : c'est le mécanisme de la quasi-totalité des décès de cette classe, et la question se pose à chaque délivrance. Le second risque est le mésusage par voie injectable ou nasale, à l'origine d'hépatites, d'abcès et d'endocardites. Enfin, la prise trop précoce après un agoniste pur précipite un sevrage brutal, ce qui n'est pas dangereux mais fait abandonner le traitement. La naloxone est peu efficace sur la buprénorphine, du fait de son affinité : un surdosage relève de l'hôpital et de la ventilation, pas d'un antidote.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Concerta",
+        indications: "Trouble déficit de l'attention avec ou sans hyperactivité chez l'enfant de plus de six ans, l'adolescent et l'adulte, dans le cadre d'une prise en charge globale, lorsque les mesures non médicamenteuses seules sont insuffisantes. La prescription initiale est annuelle et réservée aux spécialistes en psychiatrie, neurologie ou pédiatrie ; les renouvellements de l'année peuvent être faits par tout médecin.",
+        mechanism: "Méthylphénidate en comprimé osmotique à libération prolongée. Inhibiteur de la recapture de la dopamine et de la noradrénaline dans le cortex préfrontal et les noyaux gris centraux, ce qui améliore l'attention soutenue et le contrôle inhibiteur. La forme est le point : environ vingt-deux pour cent de la dose sont libérés immédiatement par l'enrobage, le reste est poussé pendant dix à douze heures par une pompe osmotique dont l'enveloppe rigide n'est pas absorbée. Les formes à libération prolongée de méthylphénidate **ne sont pas interchangeables** entre elles, parce que cette part immédiate diffère d'une marque à l'autre.",
+        dosage: "Une prise unique le matin, avalée entière. Chez l'enfant naïf, débuter à 18 mg par jour, avec adaptation hebdomadaire par paliers de 18 mg selon la réponse et la tolérance ; dose usuelle 18 à 54 mg par jour, sans dépasser 54 mg chez l'enfant et 72 mg chez l'adulte selon les recommandations retenues. Le relais depuis une forme à libération immédiate se fait à dose quotidienne totale approximativement équivalente, puis se réajuste. Des fenêtres thérapeutiques peuvent être discutées pour réévaluer l'utilité du traitement et suivre la croissance.",
+        contraindications: "Hyperthyroïdie, glaucome, phéochromocytome, troubles cardiovasculaires préexistants sévères (arythmie, cardiomyopathie, insuffisance cardiaque, hypertension sévère), antécédents vasculaires cérébraux, troubles psychiatriques préexistants sévères (psychose, manie, dépression sévère, anorexie mentale, tendances suicidaires), association aux IMAO non sélectifs ou dans les quatorze jours suivant leur arrêt, hypersensibilité.",
+        ddi: "IMAO : crise hypertensive, association contre-indiquée. Sympathomimétiques et vasoconstricteurs nasaux : effet additif sur la pression artérielle. Antihypertenseurs : efficacité diminuée. Antiépileptiques et antivitamines K : concentrations possiblement augmentées, surveillance. Alcool : tolérance diminuée et libération modifiée. Les médicaments abaissant le seuil épileptogène demandent prudence.",
+        adverse: "Diminution de l'appétit et perte de poids, presque constantes au début. Insomnie d'endormissement, surtout si la prise est tardive. Céphalées, douleurs abdominales, nervosité, irritabilité, labilité de l'humeur. Élévation modérée de la fréquence cardiaque et de la pression artérielle. Ralentissement de la croissance staturo-pondérale au long cours chez l'enfant, à surveiller. Tics, aggravation d'un tic préexistant. Rares idées suicidaires et symptômes psychotiques.",
+        monitoring: "Poids et taille à chaque consultation chez l'enfant, reportés sur la courbe : c'est la surveillance la plus spécifique de cette classe. Pression artérielle et fréquence cardiaque à l'instauration et à chaque adaptation. Sommeil, appétit, humeur, apparition de tics. Réévaluation annuelle de l'utilité du traitement, la prescription initiale l'imposant de toute façon. Recherche d'un mésusage ou d'un détournement, en particulier chez l'adolescent et l'étudiant.",
+        iup: "Un seul comprimé, le matin, avalé **entier** avec un verre d'eau : il ne se coupe pas, ne se croque pas et ne s'écrase pas. La libération lente est assurée par une petite pompe à l'intérieur du comprimé ; le casser délivre douze heures d'effet d'un seul coup. **Vous retrouverez l'enveloppe du comprimé dans les selles** : c'est normal, ce n'est pas un comprimé non digéré, le médicament en est sorti. Prenez-le tôt, avant huit heures si possible : pris trop tard, il empêche de s'endormir. Une baisse de l'appétit le midi est fréquente au début : proposez un petit-déjeuner consistant et un vrai repas le soir, quand l'effet s'estompe. Pesez et mesurez l'enfant régulièrement, le médecin suivra la courbe. Ne doublez jamais une dose oubliée : si le matin est passé depuis longtemps, sautez la prise du jour. N'échangez pas ce médicament contre un autre méthylphénidate à libération prolongée, même au même dosage : ils ne se libèrent pas de la même façon. Ce médicament ne se prête ni ne se revend : c'est un stupéfiant, et l'ordonnance est nominative.",
+        half_life: "≈ 3 à 4 heures (libération prolongée sur 10 à 12 heures)",
+        elimination: "Hydrolyse rapide par les estérases en acide ritalinique, inactif ; élimination urinaire, principalement sous cette forme. Le foie n'est pratiquement pas sollicité par les cytochromes, ce qui limite les interactions métaboliques.",
+        renal: "Pas d'adaptation établie : le métabolite éliminé par le rein est inactif. Prudence de principe.",
+        pregnancy: "Données limitées ; à éviter, sauf nécessité et après évaluation du rapport bénéfice-risque avec le spécialiste. Allaitement déconseillé : passage dans le lait.",
+        sources: "RCP Concerta LP — base de données publique des médicaments (ANSM)\nANSM — méthylphénidate : conditions de prescription et de délivrance\nHAS — trouble déficit de l'attention/hyperactivité : repérage et prise en charge",
+        status: "",
+        smr: "",
+        tags: "psychostimulant, stupéfiant, TDAH, ordonnance sécurisée, ne pas écraser, surveillance croissance",
+        toxicity: "Le risque n'est pas la marge analgésique d'un opioïde mais la **cardiovasculaire et la croissance**. Avant l'instauration, un interrogatoire cardiaque et familial est demandé ; sous traitement, pression artérielle, fréquence cardiaque, poids et taille sont la surveillance. En surdosage : agitation, tachycardie, hypertension, hyperthermie, convulsions, rhabdomyolyse. Deux pièges de délivrance propres à la forme : le comprimé ne s'écrase pas, sous peine de libérer douze heures d'effet d'un coup ; et les formes LP ne sont **pas interchangeables** entre marques, la part libérée immédiatement allant d'environ vingt à cinquante pour cent selon les produits. Il n'y a pas d'antidote : la prise en charge est symptomatique.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Quasym",
+        indications: "Trouble déficit de l'attention avec ou sans hyperactivité chez l'enfant de plus de six ans et l'adolescent, dans le cadre d'une prise en charge globale, lorsque les mesures non médicamenteuses seules sont insuffisantes. Prescription initiale annuelle réservée aux spécialistes ; renouvellements de l'année par tout médecin.",
+        mechanism: "Méthylphénidate en gélule à libération modifiée contenant deux types de microgranules : environ trente pour cent à libération immédiate et soixante-dix pour cent à libération retardée, pour une couverture d'environ huit heures. Inhibiteur de la recapture de la dopamine et de la noradrénaline. Ce rapport trente/soixante-dix lui est propre : les formes à libération prolongée de méthylphénidate ne sont pas interchangeables entre elles, et c'est la part immédiate qui les distingue.",
+        dosage: "Une prise unique le matin. Chez l'enfant naïf, débuter à 10 mg par jour, avec adaptation hebdomadaire selon la réponse et la tolérance ; dose usuelle 10 à 60 mg par jour, la dose maximale relevant du spécialiste. La gélule peut être ouverte et son contenu versé sur une cuillerée de compote ou de yaourt, à avaler immédiatement sans croquer les microgranules. Le relais depuis une autre forme se fait sous contrôle du spécialiste et non microgramme pour microgramme.",
+        contraindications: "Hyperthyroïdie, glaucome, phéochromocytome, troubles cardiovasculaires préexistants sévères, antécédents vasculaires cérébraux, troubles psychiatriques préexistants sévères (psychose, manie, dépression sévère, anorexie mentale, tendances suicidaires), association aux IMAO non sélectifs ou dans les quatorze jours suivant leur arrêt, hypersensibilité.",
+        ddi: "IMAO : crise hypertensive, association contre-indiquée. Sympathomimétiques et vasoconstricteurs nasaux : effet additif sur la pression artérielle. Antihypertenseurs : efficacité diminuée. Antiépileptiques et antivitamines K : surveillance. Alcool : tolérance diminuée.",
+        adverse: "Diminution de l'appétit et perte de poids, fréquentes au début. Insomnie d'endormissement. Céphalées, douleurs abdominales, nervosité, irritabilité, labilité de l'humeur. Augmentation modérée de la fréquence cardiaque et de la pression artérielle. Ralentissement de la croissance au long cours. Tics.",
+        monitoring: "Poids et taille à chaque consultation, reportés sur la courbe. Pression artérielle et fréquence cardiaque à l'instauration et à chaque adaptation. Sommeil, appétit, humeur, tics. Réévaluation annuelle. Recherche d'un mésusage chez l'adolescent.",
+        iup: "Une seule gélule, le matin, avant huit heures si possible : prise plus tard, elle empêche de s'endormir. Elle couvre environ huit heures, c'est-à-dire la journée d'école mais pas la soirée. Si l'enfant ne sait pas avaler la gélule, ouvrez-la et versez les petits grains sur une cuillerée de compote ou de yaourt, à avaler tout de suite et **sans croquer** : les grains portent la libération lente, les croquer la supprime. Ne mélangez pas à une boisson chaude ni à un liquide, et ne préparez pas à l'avance. Une baisse de l'appétit le midi est fréquente au début : un petit-déjeuner consistant et un vrai repas le soir compensent. Pesez et mesurez l'enfant régulièrement. Ne doublez jamais une dose oubliée. N'échangez pas cette gélule contre un autre méthylphénidate à libération prolongée, même au même dosage : la part qui agit tout de suite n'est pas la même. Ce médicament est un stupéfiant : il ne se prête pas, ne se revend pas, et se garde hors de portée.",
+        half_life: "≈ 2 à 3 heures (libération modifiée sur ≈ 8 heures)",
+        elimination: "Hydrolyse par les estérases en acide ritalinique inactif, élimination urinaire. Peu d'interactions métaboliques par les cytochromes.",
+        renal: "Pas d'adaptation établie, le métabolite éliminé étant inactif. Prudence de principe.",
+        pregnancy: "Données limitées ; à éviter, sauf nécessité et après évaluation par le spécialiste. Allaitement déconseillé.",
+        sources: "RCP Quasym LP — base de données publique des médicaments (ANSM)\nANSM — méthylphénidate : conditions de prescription et de délivrance\nHAS — trouble déficit de l'attention/hyperactivité : repérage et prise en charge",
+        status: "",
+        smr: "",
+        tags: "psychostimulant, stupéfiant, TDAH, ordonnance sécurisée, surveillance croissance",
+        toxicity: "Surveillance cardiovasculaire et staturo-pondérale, comme toute la classe : pression artérielle, fréquence cardiaque, poids et taille sur la courbe. En surdosage : agitation, tachycardie, hypertension, hyperthermie, convulsions. Deux pièges de délivrance propres à la forme : les microgranules s'avalent mais ne se croquent pas — croqués, ils délivrent d'un coup ce qui devait durer huit heures ; et le rapport trente/soixante-dix de cette gélule n'est pas celui des autres formes LP, qui vont d'environ vingt à cinquante pour cent de part immédiate. Une substitution entre marques est une nouvelle instauration. Pas d'antidote : prise en charge symptomatique.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Medikinet",
+        indications: "Trouble déficit de l'attention avec ou sans hyperactivité chez l'enfant de plus de six ans, l'adolescent et, pour certaines présentations, l'adulte, dans le cadre d'une prise en charge globale. Prescription initiale annuelle réservée aux spécialistes ; renouvellements de l'année par tout médecin. Deux formes cohabitent sous ce nom : une forme à libération immédiate et une forme LM à libération modifiée, qui ne s'emploient pas de la même façon.",
+        mechanism: "Méthylphénidate, inhibiteur de la recapture de la dopamine et de la noradrénaline dans le cortex préfrontal. La forme LM contient environ cinquante pour cent de microgranules à libération immédiate et cinquante pour cent à libération retardée, pour une couverture d'environ huit heures. Sa particularité tient à l'absorption : **la prise doit se faire avec un repas**, faute de quoi la fraction retardée est libérée trop tôt et l'effet ne dure pas la journée. Les formes LP de méthylphénidate ne sont pas interchangeables entre elles.",
+        dosage: "Forme LM : une prise le matin, pendant ou juste après le petit-déjeuner. Chez l'enfant naïf, débuter à 10 mg par jour, adaptation hebdomadaire selon la réponse et la tolérance ; dose usuelle 10 à 60 mg par jour. Forme à libération immédiate : deux à trois prises par jour, aux repas, la dernière suffisamment tôt pour ne pas gêner l'endormissement. La gélule LM peut être ouverte et son contenu versé sur une cuillerée de compote, à avaler immédiatement sans croquer.",
+        contraindications: "Hyperthyroïdie, glaucome, phéochromocytome, troubles cardiovasculaires préexistants sévères, antécédents vasculaires cérébraux, troubles psychiatriques préexistants sévères (psychose, manie, dépression sévère, anorexie mentale, tendances suicidaires), association aux IMAO non sélectifs ou dans les quatorze jours suivant leur arrêt, hypersensibilité.",
+        ddi: "IMAO : crise hypertensive, association contre-indiquée. Sympathomimétiques et vasoconstricteurs nasaux : effet additif sur la pression artérielle. Antihypertenseurs : efficacité diminuée. Antiépileptiques et antivitamines K : surveillance. Alcool : tolérance diminuée et libération modifiée.",
+        adverse: "Diminution de l'appétit et perte de poids. Insomnie d'endormissement, surtout si la prise est tardive. Céphalées, douleurs abdominales, nervosité, irritabilité, labilité de l'humeur. Augmentation modérée de la fréquence cardiaque et de la pression artérielle. Ralentissement de la croissance au long cours. Tics.",
+        monitoring: "Poids et taille à chaque consultation, sur la courbe. Pression artérielle et fréquence cardiaque à l'instauration et à chaque adaptation. Sommeil, appétit, humeur, tics. Vérifier à chaque délivrance que la forme LM est bien prise **avec un repas** : c'est la première cause d'inefficacité apparente de cette marque. Réévaluation annuelle.",
+        iup: "Prenez la gélule le matin **pendant ou juste après le petit-déjeuner** : à jeun, elle se libère trop vite et l'effet ne tient pas jusqu'à la fin de la matinée. C'est la particularité de ce médicament-là ; les autres méthylphénidates n'ont pas la même règle. Si l'enfant ne sait pas avaler la gélule, ouvrez-la et versez les grains sur une cuillerée de compote, à avaler tout de suite et sans croquer. Prenez-la tôt : trop tard, elle empêche de s'endormir. Une baisse de l'appétit le midi est fréquente au début ; un petit-déjeuner consistant et un vrai repas le soir compensent. Pesez et mesurez l'enfant régulièrement. Ne doublez jamais une dose oubliée. N'échangez pas cette gélule contre un autre méthylphénidate à libération prolongée, même au même dosage : ni la part qui agit tout de suite ni la règle du repas ne sont les mêmes. Ce médicament est un stupéfiant : il ne se prête pas et se garde hors de portée.",
+        half_life: "≈ 2 à 3 heures (forme LM : couverture ≈ 8 heures)",
+        elimination: "Hydrolyse par les estérases en acide ritalinique inactif, élimination urinaire. Peu d'interactions métaboliques par les cytochromes.",
+        renal: "Pas d'adaptation établie, le métabolite éliminé étant inactif. Prudence de principe.",
+        pregnancy: "Données limitées ; à éviter, sauf nécessité et après évaluation par le spécialiste. Allaitement déconseillé.",
+        sources: "RCP Medikinet et Medikinet LM — base de données publique des médicaments (ANSM)\nANSM — méthylphénidate : conditions de prescription et de délivrance\nHAS — trouble déficit de l'attention/hyperactivité : repérage et prise en charge",
+        status: "",
+        smr: "",
+        tags: "psychostimulant, stupéfiant, TDAH, ordonnance sécurisée, à prendre avec un repas, surveillance croissance",
+        toxicity: "Surveillance cardiovasculaire et staturo-pondérale comme toute la classe. En surdosage : agitation, tachycardie, hypertension, hyperthermie, convulsions ; pas d'antidote, prise en charge symptomatique. Trois pièges propres à cette marque : la forme LM se prend **avec un repas**, sans quoi elle se libère trop vite ; les microgranules s'avalent mais ne se croquent pas ; et deux formes très différentes portent le même nom — Medikinet à libération immédiate en deux ou trois prises, Medikinet LM en une seule —, ce qui fait de la lecture exacte de l'ordonnance un contrôle de délivrance à part entière.",
+        forms: "",
+    },
+    StarterDetail {
+        name: "Elvanse",
+        indications: "Trouble déficit de l'attention avec ou sans hyperactivité chez l'enfant de plus de six ans et l'adolescent, en cas de réponse insuffisante ou de tolérance inacceptable au méthylphénidate, dans le cadre d'une prise en charge globale ; une présentation distincte est destinée à l'adulte. Prescription initiale annuelle réservée aux spécialistes en psychiatrie, neurologie ou pédiatrie ; renouvellements de l'année par tout médecin.",
+        mechanism: "Lisdexamfétamine : dexamfétamine liée de façon covalente à la lysine, donc **prodrogue inactive** telle qu'elle est avalée. L'hydrolyse se fait dans le sang, par les érythrocytes, et libère progressivement la dexamfétamine, qui augmente la libération et bloque la recapture de la dopamine et de la noradrénaline. Ce mécanisme explique le délai d'action d'environ une heure, la durée de treize à quatorze heures, et le fait qu'écraser, sniffer ou injecter le produit n'accélère rien — l'hydrolyse restant l'étape limitante, ce qui limite le potentiel de détournement sans le supprimer.",
+        dosage: "Une prise unique le matin, avec ou sans aliment. Chez l'enfant, débuter à 30 mg par jour, avec adaptation hebdomadaire par paliers de 10 ou 20 mg selon la réponse et la tolérance ; dose usuelle 30 à 70 mg par jour. Chez l'adulte, l'instauration relève de la présentation qui lui est destinée. La gélule peut être ouverte et son contenu entièrement dispersé dans un verre d'eau ou de yaourt, à boire aussitôt et en totalité — la dose ne se partage pas entre deux prises. Des fenêtres thérapeutiques peuvent être discutées pour réévaluer l'utilité du traitement.",
+        contraindications: "Hyperthyroïdie, glaucome, phéochromocytome, troubles cardiovasculaires préexistants sévères (arythmie, cardiomyopathie, insuffisance cardiaque, hypertension sévère), antécédents vasculaires cérébraux, hyperthyroïdie, troubles psychiatriques préexistants sévères (psychose, manie, anorexie mentale, tendances suicidaires), association aux IMAO non sélectifs ou dans les quatorze jours suivant leur arrêt, hypersensibilité aux amines sympathomimétiques.",
+        ddi: "IMAO : crise hypertensive, association contre-indiquée. Sympathomimétiques, vasoconstricteurs nasaux : effet additif sur la pression artérielle. Antihypertenseurs : efficacité diminuée. Les agents qui alcalinisent les urines augmentent l'exposition à la dexamfétamine, ceux qui les acidifient la diminuent. Sérotoninergiques : risque de syndrome sérotoninergique. Alcool.",
+        adverse: "Diminution de l'appétit et perte de poids, très fréquentes au début. Insomnie d'endormissement. Céphalées, douleurs abdominales, sécheresse buccale, nausées. Nervosité, irritabilité, labilité de l'humeur, effet rebond en fin de journée. Augmentation modérée de la fréquence cardiaque et de la pression artérielle. Ralentissement de la croissance au long cours chez l'enfant. Tics. Rares symptômes psychotiques et idées suicidaires.",
+        monitoring: "Poids et taille à chaque consultation, reportés sur la courbe : la perte d'appétit est plus marquée qu'avec le méthylphénidate. Pression artérielle et fréquence cardiaque à l'instauration et à chaque adaptation. Sommeil, humeur, apparition de tics, effet rebond en fin d'après-midi. Réévaluation annuelle de l'utilité du traitement. Recherche d'un mésusage, en particulier chez l'adolescent et l'étudiant.",
+        iup: "Une seule gélule, le matin, avec ou sans petit-déjeuner. L'effet met environ une heure à venir : c'est normal, ce médicament doit d'abord être transformé par le sang, et rien ne l'accélère — ni écraser, ni sniffer, ni prendre à jeun. Il couvre ensuite treize à quatorze heures. Prenez-le tôt : pris après le milieu de matinée, il empêche de s'endormir le soir. Si l'enfant ne sait pas avaler la gélule, ouvrez-la et versez tout son contenu dans un verre d'eau ou dans un yaourt, remuez et faites boire aussitôt, en totalité : la dose ne se coupe pas en deux et ne se garde pas pour plus tard. L'appétit baisse souvent nettement au début : un petit-déjeuner consistant, un goûter et un vrai repas le soir, quand l'effet s'estompe. Pesez et mesurez l'enfant régulièrement, le médecin suivra la courbe. En fin d'après-midi, une irritabilité au moment où l'effet retombe est fréquente : signalez-la, elle se corrige. Ne doublez jamais une dose oubliée : si la matinée est passée, sautez la prise du jour. Ce médicament est un stupéfiant : ordonnance sécurisée, il ne se prête pas, ne se revend pas, et se garde hors de portée des enfants.",
+        half_life: "≈ 1 heure (prodrogue) ; ≈ 10 à 12 heures pour la dexamfétamine libérée",
+        elimination: "Hydrolyse sanguine par les érythrocytes en dexamfétamine et lysine ; la dexamfétamine est ensuite métabolisée par le foie et éliminée par le rein, d'autant plus vite que les urines sont acides. Peu d'interactions par les cytochromes, mais une sensibilité au pH urinaire qui est propre aux amfétamines.",
+        renal: "Réduire la dose en insuffisance rénale sévère et éviter en cas de clairance très basse ou de dialyse : l'élimination de la dexamfétamine est rénale.",
+        pregnancy: "Données limitées ; à éviter, sauf nécessité et après évaluation du rapport bénéfice-risque avec le spécialiste. Allaitement contre-indiqué : passage dans le lait.",
+        sources: "RCP Elvanse et Elvanse Adulte — base de données publique des médicaments (ANSM)\nANSM — conditions de prescription et de délivrance des psychostimulants\nHAS — trouble déficit de l'attention/hyperactivité : repérage et prise en charge",
+        status: "",
+        smr: "",
+        tags: "psychostimulant, stupéfiant, amfétamine, TDAH, ordonnance sécurisée, surveillance croissance",
+        toxicity: "Amfétamine : le risque est cardiovasculaire, psychiatrique et staturo-pondéral, et non respiratoire. Interrogatoire cardiaque et familial avant l'instauration ; pression artérielle, fréquence cardiaque, poids et taille ensuite. En surdosage : agitation, tremblements, tachycardie, hypertension, hyperthermie, rhabdomyolyse, convulsions, puis épuisement et dépression ; pas d'antidote, prise en charge symptomatique et refroidissement. La forme prodrogue limite le détournement — l'hydrolyse sanguine est l'étape limitante, donc sniffer ou injecter n'accélère pas l'effet — mais ne l'annule pas : la surveillance du mésusage reste de mise chez l'adolescent et l'étudiant. Enfin, la dose ne se fractionne pas : une gélule ouverte se boit en entier.",
+        forms: "",
+    },
 ];
 
 /// Shipped posologies: `(brand, indication, posologie, remarque)`, in
@@ -21414,6 +21645,23 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Xyrem", "Narcolepsie avec cataplexie de l'adulte", "4,5 g par nuit répartis en deux prises, augmentés par paliers de 1,5 g par semaine jusqu'à 9 g au maximum", "Les deux prises se font au lit : la première au coucher, la seconde deux heures et demie à quatre heures plus tard, réveil programmé. Le produit endort en quelques minutes et une chute est vite arrivée."),
     ("Xyrem", "Précautions de délivrance et de conservation", "Solution buvable à diluer dans l'eau, préparée au moment du coucher", "Stupéfiant : ordonnance sécurisée, délivrance pour vingt-huit jours au maximum, inscription au registre. Aucun alcool ni dépresseur du système nerveux central le soir de la prise — l'association est ce qui provoque les dépressions respiratoires."),
     // GENERATED-POSOLOGIES-END
+    ("Sevredol", "Accès douloureux paroxystique chez le patient déjà sous morphine", "Un dixième à un sixième de la dose quotidienne totale de morphine, renouvelable au bout d'une heure", "Comprimé sécable : c'est la seule forme de morphine qui donne un demi-palier de titration. Ne couper que si l'ordonnance le dit — un comprimé de 20 mg pris entier là où il en fallait la moitié fait le double."),
+    ("Sevredol", "Titration d'un adulte naïf d'opioïde fort", "10 mg toutes les quatre heures, 5 mg — un demi-comprimé — chez le sujet âgé, fragile ou insuffisant rénal", "On totalise les prises de vingt-quatre à quarante-huit heures avant de convertir en forme à libération prolongée. Laxatif prescrit d'emblée."),
+    ("Moscontin", "Traitement de fond d'une douleur intense continue", "Un comprimé toutes les douze heures, à heure fixe ; 30 mg chez l'adulte naïf, 10 mg chez le sujet âgé ou l'insuffisant rénal", "Comprimé à matrice : avalé entier, jamais écrasé ni coupé ni mis dans une sonde. Écrasé, il délivre douze heures de morphine d'un coup."),
+    ("Moscontin", "Trouble de la déglutition sous morphine à libération prolongée", "Aucune adaptation possible sur cette forme : il faut changer de présentation", "À la différence des gélules à microgranules, la matrice ne se partage pas. La question « arrivez-vous à l'avaler entier ? » se pose à chaque délivrance."),
+    ("Abstral", "Accès douloureux paroxystique sous morphinique de fond équilibré", "Titration à partir de 100 µg en sublingual, quel que soit le traitement de fond ; second comprimé de même dosage possible après quinze à trente minutes pour le même accès", "La dose ne se déduit jamais de la dose de fond. Quatre accès traités par jour au maximum, deux heures entre deux accès : au-delà, c'est le fond qu'il faut revoir."),
+    ("Effentora", "Accès douloureux paroxystique sous morphinique de fond équilibré", "Titration à partir de 100 µg en gingival, quel que soit le traitement de fond ; second comprimé possible après trente minutes pour le même accès", "Le comprimé pétille entre la joue et la gencive : ni sucé, ni croqué, ni avalé, et on change de côté d'une fois sur l'autre. Quatre accès par jour au maximum, quatre heures entre deux."),
+    ("Instanyl", "Accès douloureux paroxystique sous morphinique de fond équilibré", "Titration à partir de 50 µg, une pulvérisation dans une narine ; seconde pulvérisation dans l'autre narine possible après dix minutes pour le même accès", "Le flacon s'amorce avant la première dose. Ne jamais substituer un fentanyl rapide par un autre à nombre de microgrammes égal : la titration est à refaire."),
+    ("Pecfent", "Accès douloureux paroxystique sous morphinique de fond équilibré", "Titration à partir de 100 µg, une pulvérisation dans une narine, selon le schéma de la notice", "La pectine gélifie au contact de la muqueuse : la cinétique n'est pas celle des autres sprays, et cent microgrammes de Pecfent ne valent pas cent microgrammes d'un autre fentanyl rapide."),
+    ("Orobupré", "Traitement substitutif d'une pharmacodépendance aux opioïdes", "Induction 2 à 4 mg au moins quatre heures après le dernier opioïde ou aux premiers signes de sevrage, puis 8 à 16 mg par jour en une prise", "Le comprimé se délite en quelques secondes sur la langue, puis la salive se garde deux minutes : avalé, il ne passe pas. Délivrance fractionnée par sept jours sauf mention expresse."),
+    ("Orobupré", "Association benzodiazépine chez un patient substitué", "Aucune dose n'est sûre : c'est l'association qui tue dans cette classe", "L'effet plafond de la buprénorphine sur la respiration disparaît dès qu'un dépresseur s'y ajoute. La question se pose à chaque délivrance, sans reproche et sans exception."),
+    ("Concerta", "Trouble déficit de l'attention avec hyperactivité", "Une prise unique le matin, comprimé avalé entier ; 18 mg chez l'enfant naïf, paliers hebdomadaires de 18 mg", "L'enveloppe du comprimé se retrouve dans les selles : c'est normal, il faut le dire avant que la famille s'en inquiète. Jamais écrasé : ce serait douze heures d'effet d'un coup."),
+    ("Concerta", "Substitution entre formes à libération prolongée de méthylphénidate", "Aucune équivalence milligramme pour milligramme : la part libérée immédiatement va d'environ vingt à cinquante pour cent selon les marques", "Une substitution est une nouvelle instauration, et elle relève du prescripteur. Taille, poids et tension à chaque consultation."),
+    ("Quasym", "Trouble déficit de l'attention avec hyperactivité", "Une prise unique le matin ; 10 mg chez l'enfant naïf, adaptation hebdomadaire, couverture d'environ huit heures", "La gélule s'ouvre sur une cuillerée de compote, à avaler aussitôt et sans croquer les microgranules. Huit heures couvrent l'école, pas la soirée."),
+    ("Medikinet", "Trouble déficit de l'attention avec hyperactivité, forme LM", "Une prise le matin pendant ou juste après le petit-déjeuner ; 10 mg chez l'enfant naïf", "À jeun, la fraction retardée part trop tôt et l'effet ne tient pas la matinée : c'est la première cause d'inefficacité apparente de cette marque, et elle se vérifie à la délivrance."),
+    ("Medikinet", "Deux formes sous un même nom", "Medikinet à libération immédiate en deux ou trois prises aux repas ; Medikinet LM en une prise le matin", "Lire l'ordonnance jusqu'au bout : « LM » ou non change le rythme de la journée. Dernière prise de la forme immédiate suffisamment tôt pour ne pas gêner l'endormissement."),
+    ("Elvanse", "Trouble déficit de l'attention avec hyperactivité, après échec du méthylphénidate", "Une prise unique le matin, 30 mg chez l'enfant naïf, paliers de 10 à 20 mg ; couverture de treize à quatorze heures", "L'effet met une heure à venir : c'est une prodrogue, et rien ne l'accélère. La gélule s'ouvre dans un verre d'eau, à boire en entier — la dose ne se partage pas."),
+    ("Elvanse", "Perte d'appétit et croissance sous psychostimulant", "Pas d'adaptation de dose : on déplace les repas plutôt que la dose", "Petit-déjeuner consistant avant la prise, goûter, et vrai repas le soir quand l'effet retombe. Poids et taille sur la courbe à chaque consultation."),
 ];
 
 /// One shipped protocol, before it reaches the base.
@@ -25801,6 +26049,25 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Skenan", "morphine", "opioïde", "Naloxone"),
     ("Oxycontin", "oxycodone", "opioïde", "Naloxone"),
     ("Durogesic", "fentanyl", "opioïde", "Naloxone"),
+    // Les stupéfiants que le catalogue du registre propose et dont la
+    // base ne portait aucune monographie : on suivait le produit, on
+    // cliquait sur sa fiche, et il n'y en avait pas. Chacun a une
+    // particularité de comptoir que son cousin n'a pas — l'enveloppe du
+    // Concerta dans les selles, le repas obligatoire du Medikinet LM,
+    // le comprimé de Moscontin qui ne s'écrase pas, la titration d'un
+    // fentanyl rapide qui ne se déduit jamais de la dose de fond — et
+    // c'est pour cela que ce sont douze fiches et non quatre.
+    ("Sevredol", "morphine", "opioïde", "Naloxone"),
+    ("Moscontin", "morphine", "opioïde", "Naloxone"),
+    ("Abstral", "fentanyl", "opioïde", "Naloxone"),
+    ("Effentora", "fentanyl", "opioïde", "Naloxone"),
+    ("Instanyl", "fentanyl", "opioïde", "Naloxone"),
+    ("Pecfent", "fentanyl", "opioïde", "Naloxone"),
+    ("Orobupré", "buprénorphine", "opioïde", "Naloxone"),
+    ("Concerta", "méthylphénidate", "psychostimulant — TDAH", ""),
+    ("Quasym", "méthylphénidate", "psychostimulant — TDAH", ""),
+    ("Medikinet", "méthylphénidate", "psychostimulant — TDAH", ""),
+    ("Elvanse", "lisdexamfétamine", "psychostimulant — TDAH", ""),
     // Benzodiazépines / hypnotiques
     ("Xanax", "alprazolam", "benzodiazépine", "Flumazénil"),
     ("Lexomil", "bromazépam", "benzodiazépine", "Flumazénil"),
@@ -29609,53 +29876,86 @@ impl Db {
     /// is only set where it is still empty. Returns how many fields
     /// were filled, so the maintenance button can report it.
     pub fn fill_starter_details(&self) -> Result<usize, String> {
+        // **Une requête préparée par colonne, et non une par case.**
+        //
+        // La boucle allait fiche par fiche et, pour chacune, colonne par
+        // colonne : huit cent soixante-deux fois dix-huit, soit plus de
+        // quinze mille `format!` suivis de quinze mille analyses SQL. Le
+        // premier lancement d'une officine y passait **quatre secondes**
+        // — mesurées, pas devinées : `perf_probe` les affiche. En
+        // tournant colonne par colonne, la requête se prépare dix-huit
+        // fois et s'exécute quinze mille fois, ce que SQLite fait sans
+        // relire une syntaxe qu'il connaît déjà.
+        //
+        // Le nom de colonne vient de cette table de littéraux et jamais
+        // d'une saisie : c'est ce qui autorise le `format!`.
+        type Col = (&'static str, fn(&StarterDetail) -> &'static str);
+        const COLUMNS: [Col; 18] = [
+            ("indications", |d| d.indications),
+            ("mechanism", |d| d.mechanism),
+            ("dosage", |d| d.dosage),
+            ("contraindications", |d| d.contraindications),
+            ("ddi", |d| d.ddi),
+            ("adverse", |d| d.adverse),
+            ("monitoring", |d| d.monitoring),
+            ("iup", |d| d.iup),
+            ("half_life", |d| d.half_life),
+            ("elimination", |d| d.elimination),
+            ("renal", |d| d.renal),
+            ("pregnancy", |d| d.pregnancy),
+            ("sources", |d| d.sources),
+            ("status", |d| d.status),
+            ("smr", |d| d.smr),
+            ("tags", |d| d.tags),
+            ("toxicity", |d| d.toxicity),
+            ("forms", |d| d.forms),
+        ];
         let tx = self
             .conn
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
         let mut filled = 0;
+        // Les dix-huit requêtes sont préparées **une fois**, puis la
+        // boucle va fiche par fiche. Les trois formes ont été mesurées
+        // par `perf_probe`, sur la même machine et le même disque :
+        //
+        // * une analyse SQL par case — douze mille cinq cents `format!`
+        //   suivis d'autant d'analyses : **789 ms** ;
+        // * préparée une fois par colonne, en tournant colonne par
+        //   colonne : **674 ms** — chaque requête traverse alors la
+        //   table entière ;
+        // * préparée une fois par colonne, en tournant fiche par
+        //   fiche : **404 ms**, parce que les dix-huit écritures d'une
+        //   fiche tombent sur la même page.
+        //
+        // C'est la seule façon de choisir : l'intuition disait que
+        // l'analyse SQL était le coût, et la première tentative — celle
+        // du milieu — a rendu la passe *plus lente*.
+        let mut stmts: Vec<rusqlite::Statement> = Vec::with_capacity(COLUMNS.len());
+        for (column, _) in COLUMNS {
+            // A column the team has written to — including one they
+            // deliberately emptied — is theirs: the top-up never puts
+            // the reference text back.
+            let sql = format!(
+                "UPDATE drugs SET {column} = ?1
+                 WHERE name = ?2 AND {column} = ''
+                   AND id NOT IN (SELECT drug_id FROM drug_field_locks
+                                  WHERE column_name = ?3)"
+            );
+            stmts.push(tx.prepare(&sql).map_err(|e| e.to_string())?);
+        }
         for d in STARTER_DETAILS {
-            for (column, value) in [
-                ("indications", d.indications),
-                ("mechanism", d.mechanism),
-                ("dosage", d.dosage),
-                ("contraindications", d.contraindications),
-                ("ddi", d.ddi),
-                ("adverse", d.adverse),
-                ("monitoring", d.monitoring),
-                ("iup", d.iup),
-                ("half_life", d.half_life),
-                ("elimination", d.elimination),
-                ("renal", d.renal),
-                ("pregnancy", d.pregnancy),
-                ("sources", d.sources),
-                ("status", d.status),
-                ("smr", d.smr),
-                ("tags", d.tags),
-                ("toxicity", d.toxicity),
-                ("forms", d.forms),
-            ] {
+            for (i, (column, get)) in COLUMNS.into_iter().enumerate() {
+                let value = get(d);
                 if value.is_empty() {
                     continue;
                 }
-                filled += tx
-                    .execute(
-                        // The column name comes from the literal list
-                        // above, never from user input. A column the
-                        // team has written to — including one they
-                        // deliberately emptied — is theirs: the top-up
-                        // never puts the reference text back.
-                        &format!(
-                            "UPDATE drugs SET {column} = ?1
-                             WHERE name = ?2 AND {column} = ''
-                               AND id NOT IN (SELECT drug_id FROM drug_field_locks
-                                              WHERE column_name = ?3)"
-                        ),
-                        (value, d.name, column),
-                    )
+                filled += stmts[i]
+                    .execute((value, d.name, column))
                     .map_err(|e| e.to_string())?;
             }
         }
+        drop(stmts);
         tx.commit().map_err(|e| e.to_string())?;
         Ok(filled)
     }
@@ -30334,28 +30634,82 @@ impl Db {
         if done.as_deref() == Some(mark.as_str()) {
             return Ok(0);
         }
+        // **Le rapprochement se fait en mémoire, pas en SQL.**
+        //
+        // Une règle se reconnaît à quatre `LIKE '%clé%'` sur la classe,
+        // les étiquettes, la DCI et le nom : aucun index ne les sert, et
+        // chaque règle balayait donc les huit cent soixante-deux fiches
+        // en évaluant quatre motifs. Cent dix règles font trois cent
+        // quatre-vingt mille comparaisons de chaînes **dans le moteur**,
+        // et la passe coûtait trois secondes sept — mesurées par
+        // `perf_probe`, pas devinées, et sur un disque local : sur le
+        // partage réseau d'une officine, davantage.
+        //
+        // Une lecture, le rapprochement en Rust, puis une écriture par
+        // fiche retenue, sur sa clé primaire. Le `LIKE` de SQLite est
+        // insensible à la casse **pour l'ASCII seulement** : la
+        // comparaison se fait donc en minuscules ASCII, et non par un
+        // `to_lowercase` complet qui apparierait des accents que le
+        // moteur n'appariait pas.
+        //
+        // La règle **la première qui prend, garde** est conservée : la
+        // requête d'origine la tenait par « missed_dose = '' », qui
+        // devenait faux dès la première écriture ; ici, un ensemble.
         let tx = self
             .conn
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
-        let mut filled = 0;
-        for (key, missed, flags) in STARTER_CONDUITE {
-            let like = format!("%{key}%");
-            filled += tx
-                .execute(
-                    "UPDATE drugs SET missed_dose = ?1, red_flags = ?2
-                     WHERE missed_dose = '' AND red_flags = ''
-                       AND (class LIKE ?3 OR tags LIKE ?3 OR dci LIKE ?3 OR name LIKE ?3)
-                       -- A field the team has written to — including one
-                       -- it cleared on purpose — is locked, and stays as
-                       -- they left it.
-                       AND id NOT IN (
-                           SELECT drug_id FROM drug_field_locks
-                           WHERE column_name IN ('missed_dose', 'red_flags')
-                       )",
-                    (missed, flags, &like),
+        struct Card {
+            id: i64,
+            haystack: String,
+        }
+        let cards: Vec<Card> = {
+            let mut st = tx
+                .prepare(
+                    "SELECT id, name, dci, class, tags FROM drugs
+                      WHERE missed_dose = '' AND red_flags = ''
+                        -- A field the team has written to — including
+                        -- one it cleared on purpose — is locked, and
+                        -- stays as they left it.
+                        AND id NOT IN (
+                            SELECT drug_id FROM drug_field_locks
+                            WHERE column_name IN ('missed_dose', 'red_flags')
+                        )",
                 )
                 .map_err(|e| e.to_string())?;
+            let rows = st
+                .query_map([], |r| {
+                    let name: String = r.get(1)?;
+                    let dci: String = r.get(2)?;
+                    let class: String = r.get(3)?;
+                    let tags: String = r.get(4)?;
+                    Ok(Card {
+                        id: r.get(0)?,
+                        haystack: format!("{name}\u{1}{dci}\u{1}{class}\u{1}{tags}")
+                            .to_ascii_lowercase(),
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let mut filled = 0;
+        {
+            let mut up = tx
+                .prepare("UPDATE drugs SET missed_dose = ?1, red_flags = ?2 WHERE id = ?3")
+                .map_err(|e| e.to_string())?;
+            let mut taken: std::collections::HashSet<i64> = std::collections::HashSet::new();
+            for (key, missed, flags) in STARTER_CONDUITE {
+                let needle = key.to_ascii_lowercase();
+                for card in &cards {
+                    if taken.contains(&card.id) || !card.haystack.contains(&needle) {
+                        continue;
+                    }
+                    filled += up
+                        .execute((missed, flags, card.id))
+                        .map_err(|e| e.to_string())?;
+                    taken.insert(card.id);
+                }
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         self.set_seed_mark("conduite", &mark)?;
@@ -34158,7 +34512,7 @@ mod tests {
     fn every_starter_card_carries_a_sourced_monograph() {
         // The reference base only ever grows: a fiche removed is a
         // question the counter can no longer answer from the app.
-        const DRUGS_FLOOR: usize = 851;
+        const DRUGS_FLOOR: usize = 862;
         assert!(
             STARTER_DRUGS.len() >= DRUGS_FLOOR,
             "{} fiches livrées, il y en avait {DRUGS_FLOOR}",
@@ -34184,7 +34538,7 @@ mod tests {
         // The floor is a single constant the message reads back: it was
         // spelled out in words beside the figure, and the two drifted
         // apart the third time the batch was raised.
-        const TOXIC_FLOOR: usize = 473;
+        const TOXIC_FLOOR: usize = 484;
         let toxic: Vec<&StarterDetail> = STARTER_DETAILS
             .iter()
             .filter(|d| !d.toxicity.trim().is_empty())
@@ -37878,17 +38232,22 @@ mod tests {
         // Nor two spellings of the same brand: "Kaléorid" and
         // "Kaleorid" were both in the list, giving one product two
         // cards and only one of them a monograph.
-        let mut folded: Vec<String> = STARTER_DRUGS
+        // Et le message **nomme** les deux : « 862 au lieu de 863 » est
+        // exact et n'apprend rien, sur une liste de huit cent
+        // soixante-trois lignes qu'on ne relit pas à l'œil.
+        let mut folded: Vec<(String, &str)> = STARTER_DRUGS
             .iter()
-            .map(|(n, _, _, _)| crate::fuzzy::sort_key(n).replace([' ', '-'], ""))
+            .map(|(n, _, _, _)| (crate::fuzzy::sort_key(n).replace([' ', '-'], ""), *n))
             .collect();
         folded.sort();
-        let total = folded.len();
-        folded.dedup();
-        assert_eq!(
-            folded.len(),
-            total,
-            "deux orthographes d'une même spécialité dans la liste de départ"
+        let twins: Vec<(&str, &str)> = folded
+            .windows(2)
+            .filter(|w| w[0].0 == w[1].0)
+            .map(|w| (w[0].1, w[1].1))
+            .collect();
+        assert!(
+            twins.is_empty(),
+            "deux orthographes d'une même spécialité dans la liste de départ : {twins:?}"
         );
 
         let n = db.seed_drugs_if_empty().unwrap();
@@ -38288,6 +38647,189 @@ mod tests {
         assert_eq!(export[0].scheduled_date.as_deref(), Some("2030-05-12"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// **Le chronomètre.** Ce que l'ouverture d'une session coûte, et
+    /// ce que coûte chacune des lectures qu'une vue refait.
+    ///
+    /// Ignoré par défaut : ce n'est pas une assertion, c'est une mesure,
+    /// et une mesure qui échoue sur une machine chargée serait un
+    /// garde-fou qu'on apprend à ignorer. Il se lance à la main :
+    ///
+    /// ```text
+    /// BPM_CADDY_PERF=1 cargo test perf_probe -- --ignored --nocapture
+    /// ```
+    ///
+    /// Ce qu'il faut y lire n'est pas un chiffre absolu — il dépend de
+    /// la machine et du disque — mais **le rapport entre les lignes** :
+    /// une lecture qui coûte cent fois une autre est celle qui décide
+    /// d'un écran lent, et c'est elle qu'il faut mémoïser ou déplacer.
+    ///
+    /// Le test **tourne toujours**, et ses lignes ne s'affichent qu'avec
+    /// `--nocapture` — c'est ce que le harnais de Rust fait de tout ce
+    /// qu'un test écrit. Il n'a donc pas eu besoin d'être ignoré, et
+    /// c'est mieux ainsi : un corps ignoré est du code que rien
+    /// n'exécute, et le premier lancement d'une officine — huit passes
+    /// de contenu livré — n'était couvert par aucun autre test.
+    ///
+    /// Ce qui est **affirmé** ici, ce sont les comptes : chaque passe
+    /// doit remplir ce qu'elle prétend remplir. C'est exactement ce
+    /// qu'une réécriture pour la vitesse peut casser sans que rien ne le
+    /// dise — le rapprochement des règles de conduite est passé de
+    /// quatre `LIKE` par règle à un appariement en mémoire, et seuls ces
+    /// nombres disent qu'il remplit toujours les mêmes fiches.
+    #[test]
+    fn the_first_launch_seeds_what_it_says_and_is_timed() {
+        use std::time::Instant;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-perf-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("perf.db");
+
+        let t = Instant::now();
+        let db = Db::open(&path, "secret").unwrap();
+        println!("{:>9} µs  Db::open (base vide)", t.elapsed().as_micros());
+
+        // Les huit passes, une par une : « quatre secondes » ne dit
+        // pas laquelle, et la première tentative d'optimisation a porté
+        // sur la mauvaise — mesurée après coup, elle avait *ralenti*
+        // l'ensemble de moitié.
+        let t = Instant::now();
+        let n = db.insert_missing_drugs().unwrap();
+        println!(
+            "{:>9} µs  insert_missing_drugs ({n} fiches)",
+            t.elapsed().as_micros()
+        );
+        assert_eq!(n, STARTER_DRUGS.len(), "toutes les fiches livrées");
+        let t = Instant::now();
+        let f = db.fill_starter_details().unwrap();
+        println!(
+            "{:>9} µs  fill_starter_details ({f} cases)",
+            t.elapsed().as_micros()
+        );
+        let t = Instant::now();
+        let p = db.seed_posologies().unwrap();
+        println!(
+            "{:>9} µs  seed_posologies ({p} lignes)",
+            t.elapsed().as_micros()
+        );
+        let t = Instant::now();
+        let c = db.seed_conduite().unwrap();
+        println!("{:>9} µs  seed_conduite ({c})", t.elapsed().as_micros());
+        // **Le compte, et c'est là qu'est l'assertion.** Le
+        // rapprochement des règles de conduite est passé de quatre
+        // `LIKE` par règle à un appariement en mémoire ; seul ce nombre
+        // dit qu'il remplit toujours les mêmes fiches. Un plancher et
+        // non une égalité : ajouter une règle en remplit davantage, et
+        // ce sens-là n'est pas une régression.
+        assert!(
+            c >= 830,
+            "{c} fiches reçoivent une conduite à tenir, il y en avait 830"
+        );
+        // Et les deux autres passes remplissent ce qu'elles annoncent.
+        assert_eq!(f, 12_557, "cases de monographie remplies");
+        assert_eq!(p, STARTER_POSOLOGIES.len(), "lignes de posologie");
+        let t = Instant::now();
+        db.seed_preparations().unwrap();
+        db.seed_protocols().unwrap();
+        db.seed_dispositifs().unwrap();
+        println!(
+            "{:>9} µs  seed codex + protocoles + dispositifs",
+            t.elapsed().as_micros()
+        );
+
+        // Un dossier, quelques actes, un registre : de quoi que les
+        // lectures aient à lire.
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        for _ in 0..20 {
+            let _ = db.add_interview(pid, InterviewKind::Bpm);
+        }
+        let sid = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 10.0)
+            .unwrap();
+        for i in 0..500 {
+            let _ = db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: if i % 5 == 0 { "ENTREE" } else { "SORTIE" }.to_owned(),
+                happened_on: format!("2026-{:02}-{:02}", 1 + (i % 12), 1 + (i % 28)),
+                quantity: 14.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: if i % 5 == 0 { 0 } else { pid },
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "CL".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+            });
+        }
+
+        // Chaque lecture, dix fois : une seule mesure sur un disque qui
+        // vient d'écrire ne dit rien.
+        let probe = |label: &str, f: &mut dyn FnMut()| {
+            let t = Instant::now();
+            for _ in 0..10 {
+                f();
+            }
+            println!("{:>9} µs  {label}", t.elapsed().as_micros() / 10);
+        };
+        probe("patients()", &mut || {
+            let _ = db.patients().unwrap();
+        });
+        probe("drugs() — 862 fiches et leur prose", &mut || {
+            let _ = db.drugs().unwrap();
+        });
+        probe("interview_summaries(12)", &mut || {
+            let _ = db.interview_summaries(12).unwrap();
+        });
+        probe("stup_summary() — 500 lignes", &mut || {
+            let _ = db.stup_summary().unwrap();
+        });
+        probe("stup_recent(5000)", &mut || {
+            let _ = db.stup_recent(5000).unwrap();
+        });
+        probe("stup_dispensings_since", &mut || {
+            let _ = db.stup_dispensings_since("2025-01-01").unwrap();
+        });
+        probe("all_patient_drugs()", &mut || {
+            let _ = db.all_patient_drugs().unwrap();
+        });
+        probe("treatment_counts()", &mut || {
+            let _ = db.treatment_counts().unwrap();
+        });
+        probe("watchlist()", &mut || {
+            let _ = db.watchlist().unwrap();
+        });
+
+        // Et les index purs, qui se construisent une fois puis se
+        // relisent : c'est le premier appel qui coûte.
+        let t = Instant::now();
+        let _ = crate::classes::canonical("statine");
+        println!(
+            "{:>9} µs  classes : construction de l'index",
+            t.elapsed().as_micros()
+        );
+        let t = Instant::now();
+        let _ = crate::facets::by_half_life_desc();
+        println!(
+            "{:>9} µs  facets : construction de l'index",
+            t.elapsed().as_micros()
+        );
+
+        // La recherche floue, qui tourne par frappe et non par image.
+        let drugs = db.drugs().unwrap();
+        let t = Instant::now();
+        for _ in 0..10 {
+            let _n = drugs
+                .iter()
+                .filter(|d| crate::fuzzy::score("amlo", &d.name).is_some())
+                .count();
+        }
+        println!("{:>9} µs  fuzzy sur 862 noms", t.elapsed().as_micros() / 10);
     }
 
     /// Not a test of behavior: seeds a demo database when the env asks for

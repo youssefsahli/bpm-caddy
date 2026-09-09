@@ -58,7 +58,7 @@ Deux règles valent partout :
   (la clairance, le poids, l'INR, la kaliémie), l'association qui tue,
   la voie ou le geste à ne pas se tromper, ce qui arrive à l'arrêt, et
   ce que le patient ne dira jamais de lui-même. Le compte est un
-  cliquet (`TOXIC_FLOOR`) : 473 fiches sur 851.
+  cliquet (`TOXIC_FLOOR`) : 484 fiches sur 862.
 - **Remplir la colonne « antidote » oblige à écrire la section.** Nommer
   un antidote, c'est affirmer qu'il existe une dose à partir de laquelle
   il faut le donner ; la fiche doit alors dire laquelle et à quoi on la
@@ -87,7 +87,7 @@ Deux règles valent partout :
   plasmatique en heures, ou la raison pour laquelle il n'y en a pas),
   `BEYOND` (ce qui dure au-delà du plasma) et `IMPACTS` (organe, sens,
   degré, et la clause qui le justifie) — 2 073 lignes sur douze axes,
-  couvrant 733 des 851 fiches.
+  couvrant 733 des 862 fiches.
 - **La question à laquelle ça répond** : toutes les autres vues partent
   du nom — on cherche « Cordarone » et on lit sa fiche. Celle-ci part de
   la propriété : quelle est la plus longue demi-vie, qu'est-ce qui pèse
@@ -102,7 +102,7 @@ Deux règles valent partout :
   ne chiffre pas la demi-vie — « courte », « de l'ordre de quelques
   heures », ou seulement une demi-vie osseuse —, la facette dit
   `NonChiffree` et n'invente pas un nombre que personne ne pourrait
-  relire. 193 fiches sur 851 sont dans ce cas — 139 parce que la notion
+  relire. 193 fiches sur 862 sont dans ce cas — 139 parce que la notion
   n'a pas de sens (produit non absorbé, ion, vaccin), 54 parce que la
   monographie reste qualitative — et elles se corrigent en corrigeant la
   fiche, pas la facette.

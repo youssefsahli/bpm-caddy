@@ -5,6 +5,109 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.170.0] - 2026-09-09
+
+### Added
+- **Le catalogue du registre porte le marché français, génériques
+  compris.** Cent cinquante-huit présentations au lieu de cent six : les
+  dosages qui manquaient aux princeps — Oxycontin 15, 30, 60 et 120 mg,
+  les ampoules de chlorhydrate de morphine à 1 et 40 mg/mL —, les
+  molécules sous lesquelles les génériques se délivrent — morphine
+  sulfate LP et LI, oxycodone LP et LI, fentanyl transdermique,
+  méthylphénidate LP —, et une famille entière qui manquait, la
+  **lisdexamfétamine** (Elvanse), qu'une officine délivre depuis que le
+  méthylphénidate a un recours.
+
+- **Et le laboratoire s'écrit sur la ligne.** Le méthylphénidate LP
+  36 mg d'un laboratoire et celui d'un autre sont deux boîtes, avec deux
+  codes, sur la même étagère : un registre qui les confond compte juste
+  et ne permet plus d'aller chercher la bonne — ce qui est tout ce qu'un
+  comptage physique demande. Un champ en tête du catalogue, et le
+  libellé suivi devient « Méthylphénidate LP 36 mg (EG) ». **Rien n'est
+  livré de ce qui n'est pas vérifiable** : l'application ne dit jamais
+  quel laboratoire vend quel dosage, elle propose d'écrire ce qui est
+  sur la boîte.
+
+- **Onze monographies de stupéfiants qui manquaient.** On suivait le
+  produit au registre, on cliquait sur sa fiche, et il n'y en avait pas.
+  Sevredol, Moscontin, Abstral, Effentora, Instanyl, Pecfent, Orobupré,
+  Concerta, Quasym, Medikinet, Elvanse — chacune avec ses posologies de
+  comptoir. Ce sont onze fiches et non quatre parce que chacune porte
+  une particularité que sa voisine n'a pas : l'enveloppe du Concerta
+  qu'on retrouve dans les selles, le repas obligatoire du Medikinet LM,
+  le comprimé de Moscontin qui ne s'écrase jamais, la titration d'un
+  fentanyl rapide qui ne se déduit **jamais** de la dose de fond, et le
+  fait que deux fentanyls transmuqueux ne sont pas interchangeables
+  microgramme pour microgramme.
+
+- **Un code scanné suit le produit qu'on désigne.** Une boîte arrive, on
+  la scanne, le code n'est attaché à rien : il fallait ouvrir le
+  catalogue, trouver le produit, le suivre, puis **rescanner** la boîte
+  pour lui attacher le code. Le code attend déjà ; il s'attache
+  maintenant à ce qu'on choisit au catalogue. C'est toujours un humain
+  qui désigne : rien n'est deviné d'un code, et l'application n'embarque
+  toujours aucune table CIP.
+
+- **Un chronomètre, dans les tests.** Il mesure ce que coûtent
+  l'ouverture d'une session et chacune des lectures qu'une vue refait ;
+  ses lignes ne s'affichent qu'avec `--nocapture`, ce que le harnais de
+  Rust fait de tout ce qu'un test écrit. Ce qu'il faut y lire n'est pas
+  un chiffre absolu — il dépend de la machine — mais le rapport entre
+  les lignes.
+
+  Ce qu'il **affirme**, en revanche, ce sont les comptes : chaque passe
+  de contenu livré doit remplir ce qu'elle prétend remplir. C'est
+  exactement ce qu'une réécriture pour la vitesse casse sans que rien ne
+  le dise — et c'est aussi le premier test à parcourir les huit passes
+  du premier lancement, qu'aucun autre ne couvrait.
+
+### Changed
+- **Le premier lancement passe de quatre secondes à moins d'une.**
+  Mesuré, pas deviné, et pas là où on croyait. `seed_conduite`
+  reconnaissait ses cent dix règles par quatre `LIKE` sur la classe, les
+  étiquettes, la DCI et le nom : aucun index ne les sert, chaque règle
+  balayait donc les huit cent soixante-deux fiches, et la passe coûtait
+  **3,7 secondes** à elle seule. Une lecture, le rapprochement en Rust,
+  une écriture par fiche retenue sur sa clé primaire : **178 ms**, pour
+  exactement les mêmes 830 fiches remplies.
+
+  Et `fill_starter_details`, douze mille cinq cents cases, est passé de
+  **789 à 404 ms** — en préparant les dix-huit requêtes une fois au lieu
+  d'en analyser une par case. La première tentative avait tourné colonne
+  par colonne plutôt que fiche par fiche : elle a rendu la passe *plus
+  lente* (674 ms), parce que chaque requête traversait alors la table
+  entière. Les trois formes sont mesurées et le choix est écrit à côté
+  du code, faute de quoi la prochaine intuition referait le même détour.
+
+- **Les statistiques ne se recopient plus par image.** La vue clonait
+  ses quatre séries à chaque dessin, soit quelques milliers
+  d'allocations par seconde pour un écran qui ne change pas. Elle
+  emprunte — et la signature l'y oblige désormais.
+
+### Fixed
+- **Le registre se lit à l'ouverture de la session.** Il n'était chargé
+  que par son onglet : tout ce qui le lit ailleurs voyait du vide. Les
+  statistiques annonçaient « rien n'est sorti sur quatre-vingt-dix
+  jours » sur un registre qui portait des lignes, la console rendait un
+  `registre()` vide, et le compte de produits suivis était zéro. Un
+  chiffre à zéro qui a l'air d'une réponse est pire qu'un écran qui dit
+  qu'il ne sait pas.
+
+- **La bande du haut des stupéfiants n'était pas mesurée.** Sa hauteur
+  était écrite « une rangée plus une ligne » : à 1024x700 en texte 1,6
+  les contrôles passent à deux rangées, et « Douchette… » se peignait
+  par-dessus le panneau d'en dessous — un `Painter` peint où on lui dit,
+  rien ne le clippe. Elle se mesure, se plafonne en part du volet et
+  défile dans sa part ; le message qu'elle porte est mesuré comme il est
+  dessiné, c'est-à-dire enveloppé.
+
+- **Un message d'échec qui ne nommait pas le coupable.** Le garde-fou
+  qui refuse deux orthographes d'une même spécialité disait « 862 au
+  lieu de 863 » : exact, et sans usage sur une liste de huit cent
+  soixante-trois lignes. Il nomme la paire — et il a servi tout de
+  suite : « Actiskenan » ajouté à côté d'« Actiskénan », qui était déjà
+  là.
+
 ## [0.169.0] - 2026-09-09
 
 ### Added

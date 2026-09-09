@@ -188,6 +188,23 @@ linted too), `cargo test --workspace`, `./scripts/coverage.sh`, and
 `./scripts/smoke.sh` — which used to run only when somebody remembered,
 and is the only guard the interface has.
 
+**Measure before optimising, and write the measurement down.**
+`the_first_launch_seeds_what_it_says_and_is_timed` (run it with
+`cargo test the_first_launch -- --nocapture`) times the session's
+opening and each read a view repeats. It is **not** ignored — an ignored
+body is code nothing runs, and this is the only test that walks the
+eight seeding passes of a first launch. What it *asserts* is the counts,
+not the durations: a rewrite for speed breaks those silently, and a
+timing that fails on a loaded machine is a guard people learn to skip.
+It earned its keep the day it was written — a first launch cost four seconds, the intuition said « too
+many SQL parses », and the intuition was wrong twice over: the cost was
+`seed_conduite` scanning 862 cards with four `LIKE '%…%'` per rule
+(3.7 s to 178 ms, by matching in Rust), and the first attempt at
+`fill_starter_details` — column-major instead of card-major — made that
+pass *slower* (789 to 674 ms, where card-major with prepared statements
+gives 404). The three timings are written beside the code, so the next
+intuition does not redo the detour.
+
 `scripts/coverage.sh` holds two floors that only ever move up: the
 **logic modules** and the workspace as a whole. The logic set is named
 by what it *leaves out* — `app.rs`, `main.rs`, `winscard.rs` (a library

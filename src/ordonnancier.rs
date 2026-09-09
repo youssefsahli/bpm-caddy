@@ -58,6 +58,46 @@ pub struct Family {
     pub items: &'static [(&'static str, &'static str)],
 }
 
+/// Les laboratoires dont une officine française voit passer les boîtes.
+///
+/// **Ce n'est pas une donnée clinique**, et c'est pour cela qu'elle peut
+/// être livrée : ce sont des noms de laboratoires, pas une affirmation
+/// sur ce que chacun commercialise. L'application ne dit jamais « EG
+/// vend le 36 mg » — elle propose d'écrire « EG » sur la ligne du
+/// produit que l'officine a en main, ce qui est la seule façon honnête
+/// de suivre deux génériques d'un même dosage.
+///
+/// Et c'est nécessaire : le méthylphénidate LP 36 mg d'un laboratoire et
+/// celui d'un autre sont deux boîtes, avec deux codes, sur la même
+/// étagère. Un registre qui les confond compte juste et ne permet plus
+/// d'aller chercher la bonne boîte — ce qui est tout ce qu'un comptage
+/// physique demande.
+///
+/// La liste est ouverte : le champ à côté accepte n'importe quoi, parce
+/// qu'un laboratoire de plus est une ligne à écrire et pas une mise à
+/// jour à attendre.
+/// L'ordre est celui des boîtes qu'une officine française voit le plus
+/// souvent, et non l'alphabet : la liste est **coupée à ce qui tient sur
+/// une rangée**, et l'alphabet mettrait Accord et Arrow devant Biogaran.
+pub const LABS: &[&str] = &[
+    "Biogaran", "EG", "Viatris", "Sandoz", "Teva", "Zentiva", "Arrow", "Accord", "Cristers",
+    "Krka", "Mylan",
+];
+
+/// Le libellé d'une présentation suivie sous un laboratoire donné.
+///
+/// Écrit **une fois** : c'est ce qui s'inscrit sur chaque ligne du
+/// registre, et deux façons de le composer donneraient deux produits
+/// pour une boîte le jour où l'une des deux gagne une espace.
+pub fn labelled(item: &str, lab: &str) -> String {
+    let lab = lab.trim();
+    if lab.is_empty() {
+        item.trim().to_owned()
+    } else {
+        format!("{} ({lab})", item.trim())
+    }
+}
+
 /// Le catalogue des stupéfiants et assimilés du marché français de
 /// ville, par famille.
 ///
@@ -86,6 +126,13 @@ pub const CATALOGUE: &[Family] = &[
             ("Moscontin LP 60 mg", "comprimé"),
             ("Moscontin LP 100 mg", "comprimé"),
             ("Moscontin LP 200 mg", "comprimé"),
+            // Le générique se délivre sous le nom de la molécule, et
+            // c'est *cette* ligne-là que le laboratoire vient préciser.
+            ("Morphine sulfate LP 10 mg", "gélule"),
+            ("Morphine sulfate LP 30 mg", "gélule"),
+            ("Morphine sulfate LP 60 mg", "gélule"),
+            ("Morphine sulfate LP 100 mg", "gélule"),
+            ("Morphine sulfate LP 200 mg", "gélule"),
         ],
     },
     Family {
@@ -104,6 +151,10 @@ pub const CATALOGUE: &[Family] = &[
             ("Oramorph 30 mg/5 mL", "récipient unidose"),
             ("Oramorph 100 mg/5 mL", "récipient unidose"),
             ("Oramorph 20 mg/mL solution buvable", "flacon"),
+            ("Morphine sulfate 5 mg", "gélule"),
+            ("Morphine sulfate 10 mg", "gélule"),
+            ("Morphine sulfate 20 mg", "gélule"),
+            ("Morphine sulfate 30 mg", "gélule"),
         ],
     },
     Family {
@@ -112,10 +163,14 @@ pub const CATALOGUE: &[Family] = &[
         max_days: 7,
         note: "Voie parentérale : prescription limitée à 7 jours, portée à 28 jours lorsque l'administration se fait par un système actif de perfusion. C'est la seule famille où la durée n'est pas de 28 jours, et l'oublier fait délivrer une ordonnance périmée.",
         items: &[
+            ("Chlorhydrate de morphine 1 mg/mL", "ampoule"),
             ("Chlorhydrate de morphine 10 mg/mL", "ampoule"),
             ("Chlorhydrate de morphine 20 mg/mL", "ampoule"),
+            ("Chlorhydrate de morphine 40 mg/mL", "ampoule"),
             ("Chlorhydrate de morphine 50 mg/5 mL", "ampoule"),
+            ("Chlorhydrate de morphine 100 mg/10 mL", "ampoule"),
             ("Oxycodone 10 mg/mL injectable", "ampoule"),
+            ("Oxycodone 50 mg/mL injectable", "ampoule"),
         ],
     },
     Family {
@@ -126,12 +181,28 @@ pub const CATALOGUE: &[Family] = &[
         items: &[
             ("Oxycontin LP 5 mg", "comprimé"),
             ("Oxycontin LP 10 mg", "comprimé"),
+            ("Oxycontin LP 15 mg", "comprimé"),
             ("Oxycontin LP 20 mg", "comprimé"),
+            ("Oxycontin LP 30 mg", "comprimé"),
             ("Oxycontin LP 40 mg", "comprimé"),
+            ("Oxycontin LP 60 mg", "comprimé"),
             ("Oxycontin LP 80 mg", "comprimé"),
+            ("Oxycontin LP 120 mg", "comprimé"),
+            ("Oxycodone LP 5 mg", "comprimé"),
+            ("Oxycodone LP 10 mg", "comprimé"),
+            ("Oxycodone LP 15 mg", "comprimé"),
+            ("Oxycodone LP 20 mg", "comprimé"),
+            ("Oxycodone LP 30 mg", "comprimé"),
+            ("Oxycodone LP 40 mg", "comprimé"),
+            ("Oxycodone LP 60 mg", "comprimé"),
+            ("Oxycodone LP 80 mg", "comprimé"),
+            ("Oxycodone LP 120 mg", "comprimé"),
             ("Oxynorm 5 mg", "gélule"),
             ("Oxynorm 10 mg", "gélule"),
             ("Oxynorm 20 mg", "gélule"),
+            ("Oxycodone 5 mg", "gélule"),
+            ("Oxycodone 10 mg", "gélule"),
+            ("Oxycodone 20 mg", "gélule"),
             ("Oxynormoro 5 mg", "comprimé orodispersible"),
             ("Oxynormoro 10 mg", "comprimé orodispersible"),
             ("Oxynormoro 20 mg", "comprimé orodispersible"),
@@ -161,6 +232,11 @@ pub const CATALOGUE: &[Family] = &[
             ("Durogesic 50 µg/h", "dispositif transdermique"),
             ("Durogesic 75 µg/h", "dispositif transdermique"),
             ("Durogesic 100 µg/h", "dispositif transdermique"),
+            ("Fentanyl 12 µg/h", "dispositif transdermique"),
+            ("Fentanyl 25 µg/h", "dispositif transdermique"),
+            ("Fentanyl 50 µg/h", "dispositif transdermique"),
+            ("Fentanyl 75 µg/h", "dispositif transdermique"),
+            ("Fentanyl 100 µg/h", "dispositif transdermique"),
         ],
     },
     Family {
@@ -243,6 +319,40 @@ pub const CATALOGUE: &[Family] = &[
             ("Medikinet LM 20 mg", "gélule"),
             ("Medikinet LM 30 mg", "gélule"),
             ("Medikinet LM 40 mg", "gélule"),
+            // Les génériques, sous le nom de la molécule. Ce sont ceux
+            // que le laboratoire vient préciser : « Méthylphénidate LP
+            // 36 mg (EG) » et « … (Biogaran) » sont deux boîtes sur la
+            // même étagère, et le comptage physique les distingue.
+            //
+            // Deux formes LP et non une : le comprimé osmotique et la
+            // gélule à microgranules ne se libèrent pas pareil et ne
+            // sont pas interchangeables — c'est la règle de la famille,
+            // et un catalogue qui les mélangerait l'enseignerait mal.
+            ("Méthylphénidate LP 18 mg", "comprimé"),
+            ("Méthylphénidate LP 36 mg", "comprimé"),
+            ("Méthylphénidate LP 54 mg", "comprimé"),
+            ("Méthylphénidate LP 10 mg", "gélule"),
+            ("Méthylphénidate LP 20 mg", "gélule"),
+            ("Méthylphénidate LP 30 mg", "gélule"),
+            ("Méthylphénidate LP 40 mg", "gélule"),
+            ("Méthylphénidate 10 mg", "comprimé"),
+        ],
+    },
+    Family {
+        name: "Lisdexamfétamine",
+        status: "STUPEFIANT",
+        max_days: 28,
+        note: "Prodrogue de la dexamfétamine : elle n'est active qu'une fois hydrolysée dans le sang, ce qui lui donne son délai d'action d'une heure et rend l'écrasement ou l'inhalation sans intérêt. Prescription initiale annuelle réservée aux spécialistes, ordonnance sécurisée, 28 jours. Une prise unique le matin ; une seconde dans la journée fait passer la nuit debout. La gélule peut s'ouvrir et se disperser dans un verre d'eau, à boire aussitôt.",
+        items: &[
+            ("Elvanse 20 mg", "gélule"),
+            ("Elvanse 30 mg", "gélule"),
+            ("Elvanse 40 mg", "gélule"),
+            ("Elvanse 50 mg", "gélule"),
+            ("Elvanse 60 mg", "gélule"),
+            ("Elvanse 70 mg", "gélule"),
+            ("Elvanse Adulte 30 mg", "gélule"),
+            ("Elvanse Adulte 50 mg", "gélule"),
+            ("Elvanse Adulte 70 mg", "gélule"),
         ],
     },
     Family {
@@ -250,7 +360,10 @@ pub const CATALOGUE: &[Family] = &[
         status: "STUPEFIANT",
         max_days: 28,
         note: "Les deux prises se font déjà couché, la seconde deux heures et demie à quatre heures après la première, et au moins deux heures après le dîner. L'alcool et tout autre dépresseur respiratoire sont formellement contre-indiqués le soir de la prise.",
-        items: &[("Xyrem 500 mg/mL solution buvable", "flacon")],
+        items: &[
+            ("Xyrem 500 mg/mL solution buvable", "flacon"),
+            ("Oxybate de sodium 500 mg/mL buvable", "flacon"),
+        ],
     },
     Family {
         name: "Buprénorphine haut dosage",
@@ -1701,8 +1814,51 @@ mod tests {
                 // Le libellé est ce qui s'écrit sur la ligne du registre :
                 // il tient sur une ligne.
                 assert!(label.chars().count() <= 40, "« {label} » est trop long");
+                // **Et il tient encore une fois le laboratoire ajouté.**
+                // C'est le libellé réel d'un générique suivi —
+                // « Méthylphénidate LP 36 mg (Biogaran) » —, et c'est
+                // lui qui s'imprime. Une présentation dont le nom ne
+                // laisse plus la place au laboratoire oblige à choisir
+                // entre suivre le bon produit et lire sa ligne.
+                let longest = LABS.iter().copied().max_by_key(|l| l.chars().count());
+                let full = labelled(label, longest.unwrap_or_default());
+                assert!(
+                    full.chars().count() <= 56,
+                    "« {full} » ne tient plus une fois le laboratoire écrit"
+                );
             }
         }
+    }
+
+    /// Le laboratoire s'écrit **d'une seule façon**.
+    ///
+    /// C'est ce qui part sur chaque ligne du registre : deux façons de
+    /// le composer donneraient deux produits pour une boîte le jour où
+    /// l'une des deux gagne une espace, et le registre est inaltérable.
+    #[test]
+    fn a_generic_is_named_by_its_presentation_and_its_laboratory() {
+        assert_eq!(
+            labelled("Méthylphénidate LP 36 mg", "EG"),
+            "Méthylphénidate LP 36 mg (EG)"
+        );
+        // Sans laboratoire, la présentation garde son nom : le princeps
+        // n'a pas à porter une parenthèse vide.
+        assert_eq!(labelled("Skenan LP 30 mg", ""), "Skenan LP 30 mg");
+        assert_eq!(labelled("Skenan LP 30 mg", "   "), "Skenan LP 30 mg");
+        // Et l'espace autour ne fait pas un second produit.
+        assert_eq!(
+            labelled("  Oxycodone LP 10 mg  ", "  Biogaran  "),
+            "Oxycodone LP 10 mg (Biogaran)"
+        );
+        // La liste livrée ne porte ni doublon ni ligne vide : ce sont
+        // des pastilles, et deux pastilles du même nom ne se
+        // distinguent pas.
+        let mut labs = LABS.to_vec();
+        labs.sort_unstable();
+        let before = labs.len();
+        labs.dedup();
+        assert_eq!(labs.len(), before);
+        assert!(LABS.iter().all(|l| !l.trim().is_empty()));
     }
 
     /// Deux produits ne portent jamais le même libellé.

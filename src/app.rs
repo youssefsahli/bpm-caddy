@@ -2543,6 +2543,14 @@ struct Session {
     /// Ce que la colonne de gauche montre : les produits suivis, ou le
     /// catalogue où l'on choisit ceux qu'on suivra.
     stup_list: StupList,
+    /// Le laboratoire que le catalogue ajoutera au libellé du prochain
+    /// produit suivi — « Méthylphénidate LP 36 mg (EG) ».
+    ///
+    /// Un seul champ pour tout le catalogue, et non une pastille par
+    /// ligne : on inscrit les boîtes d'un laboratoire à la suite, en
+    /// vidant un carton, et une pastille par présentation ferait cent
+    /// soixante rangées de plus dans une liste qu'on parcourt.
+    stup_lab: String,
     /// La recherche dans la liste de gauche. Cent six présentations dans
     /// le catalogue et trente produits suivis se parcourent au clavier,
     /// pas à la molette.
@@ -2979,6 +2987,7 @@ impl Session {
             stup_new_remark: String::new(),
             export_box: None,
             stup_list: StupList::default(),
+            stup_lab: String::new(),
             stup_query: String::new(),
             stup_recent: Vec::new(),
             stup_destruction: Vec::new(),
@@ -3094,6 +3103,23 @@ impl Session {
         // The search view opens on the day's own panels, so the figures
         // they show have to be loaded before the first frame.
         session.refresh_dashboard();
+        // **Et le registre des stupéfiants, à l'ouverture de la
+        // session.**
+        //
+        // Il n'était lu que par `open_registres`, c'est-à-dire seulement
+        // après qu'on avait cliqué sur son onglet — et tout ce qui le
+        // lit ailleurs voyait donc du vide. Les statistiques annonçaient
+        // « rien n'est sorti sur quatre-vingt-dix jours » sur un
+        // registre qui portait des lignes, la console rendait un
+        // `registre()` vide, et le compte de produits suivis était zéro.
+        // Un chiffre à zéro qui a l'air d'une réponse est pire qu'un
+        // écran qui dit qu'il ne sait pas.
+        //
+        // Le coût est celui d'une ouverture d'onglet, payé une fois : le
+        // registre d'une officine, ce sont quelques milliers de lignes
+        // au bout de dix ans, et il vit dans son propre fichier — donc
+        // rien de ce qui suit n'attend après lui.
+        session.reload_stup();
         Ok(session)
     }
 
@@ -3773,8 +3799,13 @@ impl Session {
         self.stup_note = None;
         self.reload_stup();
         if self.stup_open.is_none() {
+            // Le produit à ouvrir se lit du résumé qu'on vient de
+            // relire ; la seconde relecture est celle qui charge *ses*
+            // lignes, et elle n'a lieu que la première fois.
             self.stup_open = self.stup_to_check().first().map(|c| c.id);
-            self.reload_stup();
+            if self.stup_open.is_some() {
+                self.reload_stup();
+            }
         }
     }
 
@@ -22452,8 +22483,49 @@ impl App {
         // Le sous-titre est parti avec eux. Il énonçait la règle du
         // registre en une phrase que personne n'a besoin de relire à
         // chaque délivrance, et la place vaut mieux à une ligne de plus.
-        let head_h = Self::row_height(ui) + line + 16.0;
+        // **La bande du haut se mesure.** Sa hauteur était écrite « une
+        // rangée plus une ligne » : à 1024 px en texte 1,6 les quatre
+        // contrôles passent à deux rangées, et « Douchette… » se
+        // peignait par-dessus le panneau d'en dessous — un `Painter`
+        // peint où on lui dit, rien ne le clippe.
+        //
+        // `motif::inside` ne rogne rien : la largeur du dessin est celle
+        // du rectangle, donc la mesure porte sur `body.width()` et non
+        // sur une estimation.
+        let mut widths: Vec<f32> = vec![
+            Self::button_width(ui, tr("stup_catalogue")),
+            Self::button_width(ui, tr("stup_print")),
+        ];
+        if session.stup_open.is_some() {
+            widths.push(Self::button_width(ui, tr("stup_print_register")));
+        }
+        widths.push(Self::field_width(ui, [tr("stup_scan_hint")].into_iter()).max(140.0));
+        if session.stup_scan_unknown.is_some() && session.stup_open.is_some() {
+            widths.push(Self::button_width(ui, &trf("stup_scan_teach", "…")));
+        }
+        let ctrl_rows = Self::wrapped_rows_of(ui, body.width(), widths.into_iter());
+        // Le message, mesuré comme il est dessiné : il enveloppe, et une
+        // ligne réservée pour une phrase de trois lignes est deux lignes
+        // par-dessus le registre.
+        let note_h = session.stup_note.as_ref().map_or(0.0, |(_, msg)| {
+            ui.fonts(|f| {
+                f.layout(
+                    msg.clone(),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
+                    motif::text(),
+                    body.width(),
+                )
+                .size()
+                .y
+            })
+        });
+        // Mesurée, puis **plafonnée en part du volet** : une bande qui
+        // prendrait tout ne laisserait rien au registre, qui est ce
+        // pour quoi on ouvre l'écran. Elle défile dans sa part.
+        let want = ctrl_rows * Self::row_height(ui) + note_h + 16.0;
+        let head_h = want.min((body.height() * 0.32).max(Self::row_height(ui) + 12.0));
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
+        let _ = line;
         let mut open_patient: Option<i64> = None;
         // Ce que la douchette a désigné. Comme le clic d'une ligne, cela
         // **remonte** hors de la boucle d'affichage : recharger le
@@ -22462,169 +22534,193 @@ impl App {
         let mut scan_pick: Option<i64> = None;
 
         motif::inside(ui, rows[0], |ui| {
-            ui.horizontal_wrapped(|ui| {
-                // Pas de titre : l'onglet au-dessus dit « Stupéfiants ».
-                // Un intitulé répété est une rangée de moins pour le
-                // registre, qui est ce qu'on est venu lire.
-                if motif::toggle(
-                    ui,
-                    tr("stup_catalogue"),
-                    session.stup_list == StupList::Catalogue,
-                )
-                .on_hover_text(tr("stup_catalogue_tooltip"))
-                .clicked()
-                {
-                    session.stup_list = if session.stup_list == StupList::Catalogue {
-                        StupList::Suivis
-                    } else {
-                        StupList::Catalogue
-                    };
-                    session.stup_query.clear();
-                }
-                if motif::button(ui, tr("stup_print"))
-                    .on_hover_text(tr("stup_print_tooltip"))
-                    .clicked()
-                {
-                    let list = session.stup_to_check();
-                    if let Err(e) =
-                        crate::pdf::open_stock_check(&list, &config.pharmacy, &session.today)
-                    {
-                        session.stup_note = Some((true, e));
-                    }
-                }
-                // Le registre du produit ouvert, sur papier — la page
-                // qu'un contrôle demande, et qui ne s'imprimait pas :
-                // seules la liste d'inventaire et l'année de
-                // l'ordonnancier existaient.
-                if let Some(id) = session.stup_open {
-                    if motif::button(ui, tr("stup_print_register"))
-                        .on_hover_text(tr("stup_print_register_tooltip"))
+            // Elle défile dans sa part plutôt que de déborder sur le
+            // registre. Un nom à elle : deux zones de défilement sans
+            // nom dans une même vue prennent le même identifiant et
+            // egui peint « First use of ScrollArea ID… » en rouge en
+            // travers de l'écran.
+            egui::ScrollArea::vertical()
+                .id_salt("stup_top_band")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        // Pas de titre : l'onglet au-dessus dit « Stupéfiants ».
+                        // Un intitulé répété est une rangée de moins pour le
+                        // registre, qui est ce qu'on est venu lire.
+                        if motif::toggle(
+                            ui,
+                            tr("stup_catalogue"),
+                            session.stup_list == StupList::Catalogue,
+                        )
+                        .on_hover_text(tr("stup_catalogue_tooltip"))
                         .clicked()
-                    {
-                        let moves: Vec<crate::ordonnancier::Move> = session
-                            .stup_moves
-                            .iter()
-                            .map(|m| crate::ordonnancier::Move {
-                                kind: Kind::from_key(&m.kind),
-                                quantity: m.quantity,
-                                day: &m.happened_on,
-                                seq: m.id,
-                                cancels: m.cancels,
-                                expected: m.expected,
-                            })
-                            .collect();
-                        let running = crate::ordonnancier::running(&moves);
-                        let (label, unit) = session
-                            .stup_summary
-                            .iter()
-                            .find(|s| s.product.id == id)
-                            .map_or((String::new(), String::new()), |s| {
-                                (s.product.label.clone(), s.product.unit.clone())
-                            });
-                        if let Err(e) = crate::pdf::open_stup_register(
-                            &label,
-                            &unit,
-                            &session.stup_moves,
-                            &running,
-                            &session.stup_cancelled,
-                            &config.pharmacy,
-                            &session.today,
-                        ) {
-                            session.stup_note = Some((true, e));
+                        {
+                            session.stup_list = if session.stup_list == StupList::Catalogue {
+                                StupList::Suivis
+                            } else {
+                                StupList::Catalogue
+                            };
+                            session.stup_query.clear();
                         }
-                    }
-                }
-                // La douchette. Un lecteur USB est un clavier : il tape
-                // la ligne et valide, donc c'est un champ de texte comme
-                // un autre. Tout ce qui le distingue est ce qu'on fait
-                // de son contenu.
-                let scan = ui.add_sized(
-                    [
-                        Self::field_width(ui, [tr("stup_scan_hint")].into_iter()).max(140.0),
-                        Self::button_height(ui),
-                    ],
-                    egui::TextEdit::singleline(&mut session.stup_scan)
-                        .hint_text(tr("stup_scan_hint")),
-                );
-                let scan = scan.on_hover_text(tr("stup_scan_tooltip"));
-                if scan.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
-                    let typed = std::mem::take(&mut session.stup_scan);
-                    match crate::codebar::read(typed.trim(), &session.today) {
-                        None => {
-                            session.stup_note = Some((true, tr("stup_scan_unreadable").to_owned()));
+                        if motif::button(ui, tr("stup_print"))
+                            .on_hover_text(tr("stup_print_tooltip"))
+                            .clicked()
+                        {
+                            let list = session.stup_to_check();
+                            if let Err(e) = crate::pdf::open_stock_check(
+                                &list,
+                                &config.pharmacy,
+                                &session.today,
+                            ) {
+                                session.stup_note = Some((true, e));
+                            }
                         }
-                        Some(s) => {
-                            let taught: Vec<(i64, &str)> = session
-                                .stup_codes
-                                .iter()
-                                .map(|(id, c)| (*id, c.as_str()))
-                                .collect();
-                            match crate::codebar::resolve(&s, &taught) {
-                                crate::codebar::Resolved::Known { stup_id } => {
-                                    scan_pick = Some(stup_id);
-                                    session.stup_scan_unknown = None;
+                        // Le registre du produit ouvert, sur papier — la page
+                        // qu'un contrôle demande, et qui ne s'imprimait pas :
+                        // seules la liste d'inventaire et l'année de
+                        // l'ordonnancier existaient.
+                        if let Some(id) = session.stup_open {
+                            if motif::button(ui, tr("stup_print_register"))
+                                .on_hover_text(tr("stup_print_register_tooltip"))
+                                .clicked()
+                            {
+                                let moves: Vec<crate::ordonnancier::Move> = session
+                                    .stup_moves
+                                    .iter()
+                                    .map(|m| crate::ordonnancier::Move {
+                                        kind: Kind::from_key(&m.kind),
+                                        quantity: m.quantity,
+                                        day: &m.happened_on,
+                                        seq: m.id,
+                                        cancels: m.cancels,
+                                        expected: m.expected,
+                                    })
+                                    .collect();
+                                let running = crate::ordonnancier::running(&moves);
+                                let (label, unit) = session
+                                    .stup_summary
+                                    .iter()
+                                    .find(|s| s.product.id == id)
+                                    .map_or((String::new(), String::new()), |s| {
+                                        (s.product.label.clone(), s.product.unit.clone())
+                                    });
+                                if let Err(e) = crate::pdf::open_stup_register(
+                                    &label,
+                                    &unit,
+                                    &session.stup_moves,
+                                    &running,
+                                    &session.stup_cancelled,
+                                    &config.pharmacy,
+                                    &session.today,
+                                ) {
+                                    session.stup_note = Some((true, e));
+                                }
+                            }
+                        }
+                        // La douchette. Un lecteur USB est un clavier : il tape
+                        // la ligne et valide, donc c'est un champ de texte comme
+                        // un autre. Tout ce qui le distingue est ce qu'on fait
+                        // de son contenu.
+                        let scan = ui.add_sized(
+                            [
+                                Self::field_width(ui, [tr("stup_scan_hint")].into_iter())
+                                    .max(140.0),
+                                Self::button_height(ui),
+                            ],
+                            egui::TextEdit::singleline(&mut session.stup_scan)
+                                .hint_text(tr("stup_scan_hint")),
+                        );
+                        let scan = scan.on_hover_text(tr("stup_scan_tooltip"));
+                        if scan.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
+                        {
+                            let typed = std::mem::take(&mut session.stup_scan);
+                            match crate::codebar::read(typed.trim(), &session.today) {
+                                None => {
                                     session.stup_note =
-                                        Some((false, trf("stup_scan_known", s.code.clone())));
-                                    // Une réception scannée apporte son
-                                    // lot et sa péremption : ils sont
-                                    // sur la boîte, et les retaper est
-                                    // une occasion de se tromper.
-                                    if !s.lot.is_empty() && s.lot_certain {
-                                        session.stup_new_reference = s.lot.clone();
+                                        Some((true, tr("stup_scan_unreadable").to_owned()));
+                                }
+                                Some(s) => {
+                                    let taught: Vec<(i64, &str)> = session
+                                        .stup_codes
+                                        .iter()
+                                        .map(|(id, c)| (*id, c.as_str()))
+                                        .collect();
+                                    match crate::codebar::resolve(&s, &taught) {
+                                        crate::codebar::Resolved::Known { stup_id } => {
+                                            scan_pick = Some(stup_id);
+                                            session.stup_scan_unknown = None;
+                                            session.stup_note = Some((
+                                                false,
+                                                trf("stup_scan_known", s.code.clone()),
+                                            ));
+                                            // Une réception scannée apporte son
+                                            // lot et sa péremption : ils sont
+                                            // sur la boîte, et les retaper est
+                                            // une occasion de se tromper.
+                                            if !s.lot.is_empty() && s.lot_certain {
+                                                session.stup_new_reference = s.lot.clone();
+                                            }
+                                        }
+                                        // L'application ne propose jamais un
+                                        // produit pour un code : elle n'a rien
+                                        // avec quoi le faire, et c'est ce qui
+                                        // garantit que le lien est celui qu'un
+                                        // humain a posé en présentant la boîte.
+                                        _ => {
+                                            session.stup_scan_unknown = Some(s.code.clone());
+                                            session.stup_note =
+                                                Some((true, trf("stup_scan_unknown", s.code)));
+                                        }
                                     }
                                 }
-                                // L'application ne propose jamais un
-                                // produit pour un code : elle n'a rien
-                                // avec quoi le faire, et c'est ce qui
-                                // garantit que le lien est celui qu'un
-                                // humain a posé en présentant la boîte.
-                                _ => {
-                                    session.stup_scan_unknown = Some(s.code.clone());
-                                    session.stup_note =
-                                        Some((true, trf("stup_scan_unknown", s.code)));
+                            }
+                        }
+                        // Ce que le scan attend : que quelqu'un dise de quoi il
+                        // s'agit. Le produit ouvert est le candidat évident,
+                        // mais c'est un clic et jamais une déduction.
+                        if let (Some(code), Some(id)) =
+                            (session.stup_scan_unknown.clone(), session.stup_open)
+                        {
+                            let label = session
+                                .stup_labels
+                                .get(&id)
+                                .cloned()
+                                .unwrap_or_else(|| tr("stup_register").to_owned());
+                            if motif::button(ui, &trf("stup_scan_teach", label))
+                                .on_hover_text(tr("stup_scan_teach_tooltip"))
+                                .clicked()
+                            {
+                                let today = session.today.clone();
+                                match session.db.teach_stup_code(&code, id, &today, operator) {
+                                    Ok(()) => {
+                                        session.stup_scan_unknown = None;
+                                        session.stup_note =
+                                            Some((false, trf("stup_scan_taught", code)));
+                                        session.reload_stup();
+                                    }
+                                    Err(e) => session.stup_note = Some((true, e)),
                                 }
                             }
                         }
+                    });
+                    if let Some((is_error, msg)) = &session.stup_note {
+                        // Enveloppé, et mesuré comme tel plus haut : une phrase
+                        // de trois lignes réservée à une ligne se peint sur le
+                        // registre.
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(msg.as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(if *is_error {
+                                        motif::alert()
+                                    } else {
+                                        motif::accent()
+                                    }),
+                            )
+                            .wrap(),
+                        );
                     }
-                }
-                // Ce que le scan attend : que quelqu'un dise de quoi il
-                // s'agit. Le produit ouvert est le candidat évident,
-                // mais c'est un clic et jamais une déduction.
-                if let (Some(code), Some(id)) =
-                    (session.stup_scan_unknown.clone(), session.stup_open)
-                {
-                    let label = session
-                        .stup_labels
-                        .get(&id)
-                        .cloned()
-                        .unwrap_or_else(|| tr("stup_register").to_owned());
-                    if motif::button(ui, &trf("stup_scan_teach", label))
-                        .on_hover_text(tr("stup_scan_teach_tooltip"))
-                        .clicked()
-                    {
-                        let today = session.today.clone();
-                        match session.db.teach_stup_code(&code, id, &today, operator) {
-                            Ok(()) => {
-                                session.stup_scan_unknown = None;
-                                session.stup_note = Some((false, trf("stup_scan_taught", code)));
-                                session.reload_stup();
-                            }
-                            Err(e) => session.stup_note = Some((true, e)),
-                        }
-                    }
-                }
-            });
-            if let Some((is_error, msg)) = &session.stup_note {
-                ui.label(
-                    egui::RichText::new(msg.as_str())
-                        .size(motif::pt(ui, 11.0))
-                        .color(if *is_error {
-                            motif::alert()
-                        } else {
-                            motif::accent()
-                        }),
-                );
-            }
+                });
         });
 
         // Trois colonnes, et la troisième cède la première quand la
@@ -22690,6 +22786,11 @@ impl App {
         let mut follow: Option<db::Stupefiant> = None;
         let catalogue = session.stup_list == StupList::Catalogue;
         let mut query = session.stup_query.clone();
+        // Comme le motif d'annulation : le texte en cours de frappe
+        // voyage par une copie locale, rendue après. Un `TextEdit` ne
+        // garde pas son contenu, il le tient dans le `String` qu'on lui
+        // prête.
+        let mut lab = session.stup_lab.clone();
         motif::panel(
             ui,
             list_rect,
@@ -22735,7 +22836,13 @@ impl App {
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                             if catalogue {
-                                Self::stup_catalogue_list(ui, session, &query, &mut follow);
+                                Self::stup_catalogue_list(
+                                    ui,
+                                    session,
+                                    &query,
+                                    &mut lab,
+                                    &mut follow,
+                                );
                                 return;
                             }
                             if session.stup_summary.is_empty() {
@@ -22802,6 +22909,7 @@ impl App {
             },
         );
         session.stup_query = query;
+        session.stup_lab = lab;
         if let Some(id) = pick.or(scan_pick) {
             session.stup_open = Some(id);
             session.stup_note = None;
@@ -22822,8 +22930,36 @@ impl App {
                     session.stup_open = Some(id);
                     session.stup_list = StupList::Suivis;
                     session.stup_query.clear();
+                    // **Le code scanné suit le produit qu'on vient de
+                    // choisir.**
+                    //
+                    // Une boîte arrive, on la scanne, le code n'est
+                    // attaché à rien : il fallait alors ouvrir le
+                    // catalogue, trouver le produit, le suivre, puis
+                    // rescanner la boîte pour lui attacher le code —
+                    // trois gestes et un aller-retour à la douchette
+                    // pour une chose qu'on venait de dire. Le code
+                    // attendait déjà ; il s'attache à ce qu'on désigne.
+                    //
+                    // C'est toujours **un humain qui désigne** : rien
+                    // n'est deviné d'un code, et la règle du module
+                    // tient — l'application n'embarque aucune table CIP
+                    // et n'a rien avec quoi proposer.
+                    let taught = session.stup_scan_unknown.take().filter(|code| {
+                        let today = session.today.clone();
+                        session
+                            .db
+                            .teach_stup_code(code, id, &today, operator)
+                            .is_ok()
+                    });
                     session.reload_stup();
-                    session.stup_note = Some((false, trf("stup_followed_now", p.label)));
+                    session.stup_note = Some((
+                        false,
+                        match taught {
+                            Some(code) => trn("stup_followed_scanned", &[&p.label, &code]),
+                            None => trf("stup_followed_now", p.label),
+                        },
+                    ));
                 }
                 Err(e) => session.stup_note = Some((true, e)),
             }
@@ -24314,8 +24450,74 @@ impl App {
         ui: &mut egui::Ui,
         session: &Session,
         query: &str,
+        lab: &mut String,
         follow: &mut Option<db::Stupefiant>,
     ) {
+        // --- Le laboratoire, en tête de la liste ---------------------
+        //
+        // Un générique se suit **avec son laboratoire** : le
+        // méthylphénidate LP 36 mg d'un laboratoire et celui d'un autre
+        // sont deux boîtes, avec deux codes, sur la même étagère. Un
+        // registre qui les confond compte juste et ne permet plus
+        // d'aller chercher la bonne — ce qui est tout ce qu'un comptage
+        // physique demande.
+        //
+        // Un champ pour tout le catalogue et non une pastille par
+        // ligne : on inscrit les boîtes d'un laboratoire à la suite, en
+        // vidant un carton, et cent soixante rangées de plus feraient
+        // une liste qu'on ne parcourt plus.
+        //
+        // Et la liste est **ouverte** : le champ accepte n'importe quoi,
+        // parce qu'un laboratoire de plus est une ligne à écrire et pas
+        // une mise à jour à attendre. Les pastilles ne sont pas une
+        // donnée clinique — ce sont des noms de laboratoires, et
+        // l'application ne dit jamais lequel vend quel dosage.
+        //
+        // **Une rangée, et pas une de plus.** Onze pastilles dans une
+        // colonne de deux cents pixels font huit rangées, c'est-à-dire
+        // huit lignes prises au catalogue qu'elles servent. Le champ
+        // passe donc en premier — il est toujours là, et deux lettres
+        // suffisent —, et les pastilles prennent ce qui reste de la
+        // rangée : mesurées, jamais devinées, et celles qui ne tiennent
+        // pas sont simplement absentes. Une pastille coupée en deux se
+        // lit « cassé » ; une pastille de moins ne se lit pas du tout.
+        let field_w = Self::field_width(ui, [tr("stup_lab_hint")].into_iter()).max(90.0);
+        let gap = ui.spacing().item_spacing.x;
+        let label_w = Self::widest(ui, 11.0, [tr("stup_lab")].into_iter());
+        let mut room = ui.available_width() - label_w - field_w - gap * 3.0;
+        let fitting: Vec<&str> = crate::ordonnancier::LABS
+            .iter()
+            .copied()
+            .take_while(|name| {
+                room -= Self::button_width(ui, name) + gap;
+                room >= 0.0
+            })
+            .collect();
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(tr("stup_lab"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.add_sized(
+                [field_w, Self::button_height(ui)],
+                egui::TextEdit::singleline(lab).hint_text(tr("stup_lab_hint")),
+            )
+            .on_hover_text(tr("stup_lab_tooltip"));
+            for name in fitting {
+                let name: &str = name;
+                if motif::toggle(ui, name, lab.trim() == name).clicked() {
+                    // Recliquer le laboratoire retenu l'efface : c'est
+                    // la seule façon de revenir au princeps.
+                    if lab.trim() == name {
+                        lab.clear();
+                    } else {
+                        (*lab) = name.to_owned();
+                    }
+                }
+            }
+        });
+        ui.add_space(4.0);
         let mut shown = 0usize;
         for family in crate::ordonnancier::CATALOGUE {
             let matching: Vec<&(&str, &str)> = family
@@ -24351,6 +24553,13 @@ impl App {
             .on_hover_text(format!("{}\n\n{}", tr(status.note_key()), family.note));
             for (label, unit) in matching {
                 shown += 1;
+                // Le libellé **avec le laboratoire** : c'est celui qui
+                // partira au registre, donc c'est celui qu'on montre et
+                // celui sur lequel « déjà suivi » se décide. Montrer le
+                // nom nu et en inscrire un autre ferait grisé un produit
+                // qu'on n'a pas.
+                let label = crate::ordonnancier::labelled(label, lab);
+                let label = label.as_str();
                 let already = session
                     .stup_summary
                     .iter()
@@ -24371,7 +24580,7 @@ impl App {
                     *follow = Some(db::Stupefiant {
                         id: 0,
                         drug_id: 0,
-                        label: (*label).to_owned(),
+                        label: label.to_owned(),
                         unit: (*unit).to_owned(),
                         threshold: 0.0,
                         archived: false,
@@ -30009,14 +30218,19 @@ impl App {
     /// décident du semestre suivant. Ils sont calculés au chargement de
     /// la vue et pas par image : la couverture de la base est une passe
     /// sur huit cent cinquante fiches et treize champs.
-    fn stats_view(ui: &mut egui::Ui, session: &mut Session) {
+    fn stats_view(ui: &mut egui::Ui, session: &Session) {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(4.0);
             ui.heading(tr("stats_title"));
         });
         ui.add_space(6.0);
-        let s = session.stats.clone();
+        // Emprunté et non recopié : les quatre séries font une
+        // soixantaine de chaînes, et les recopier par image en fait
+        // trois mille six cents allocations par seconde pour un écran
+        // qui ne change pas. La vue ne fait que lire — d'où le `&` sur
+        // la session, qui est ce qui l'interdit désormais.
+        let s = &session.stats;
         egui::ScrollArea::vertical()
             .id_salt("stats")
             .show(ui, |ui| {
