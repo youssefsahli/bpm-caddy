@@ -38860,6 +38860,12 @@ mod tests {
         })
         .unwrap();
         write(skenan, "SORTIE", 14.0, day(4, 18), pid, 0.0);
+        // Deux délivrances **récentes**, pour que le registre ait
+        // quelque chose à dire des quatre-vingt-dix derniers jours :
+        // c'est la fenêtre sur laquelle « ce qui sort » se lit, et un
+        // registre de démonstration dont la dernière ligne date de cinq
+        // mois montre un écran vide.
+        write(skenan, "SORTIE", 14.0, day(8, 20), pid, 0.0);
 
         // Un produit sous son seuil, jamais recompté : la liste de
         // contrôle a de quoi dire.
@@ -38918,6 +38924,8 @@ mod tests {
         let metha = follow("Méthadone AP-HP gélule 40 mg", 7.0);
         write(metha, "ENTREE", 14.0, day(5, 4), 0, 0.0);
         write(metha, "SORTIE", 7.0, day(5, 11), pid, 0.0);
+        write(metha, "ENTREE", 14.0, day(8, 24), 0, 0.0);
+        write(metha, "SORTIE", 7.0, day(8, 28), pid, 0.0);
         let subutex = follow("Subutex 8 mg", 14.0);
         write(subutex, "ENTREE", 28.0, day(6, 2), 0, 0.0);
         write(subutex, "SORTIE", 7.0, day(6, 9), pid, 0.0);

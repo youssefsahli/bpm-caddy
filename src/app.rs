@@ -1523,6 +1523,11 @@ struct Stats {
     duration: Vec<(String, f64)>,
     /// Combien de dossiers portent 0, 1, 2… traitements.
     treatments: Vec<(String, f64)>,
+    /// Ce qui est sorti du registre sur les quatre-vingt-dix derniers
+    /// jours, produit par produit.
+    stup_out: Vec<(String, f64)>,
+    /// Combien d'actes par mois, sur les douze derniers.
+    per_month: Vec<(String, f64)>,
 }
 
 /// One item open in the workspace notebook.
@@ -3967,7 +3972,18 @@ impl Session {
             .max()
             .unwrap_or(0)
             .max(0) as usize;
-        s.stup_products = self.db.stup_summary().map(|l| l.len()).unwrap_or_default();
+        // Les produits suivis, **et leurs libellés** : `stup_labels`
+        // n'est rempli que par `reload_stup`, c'est-à-dire seulement
+        // après qu'on a ouvert l'onglet du registre. S'y fier ici rendait
+        // « ce qui sort » vide sur une session qui ne l'avait pas
+        // ouvert — un chiffre à zéro qui a l'air d'une réponse. Une
+        // requête, deux réponses.
+        let followed = self.db.stup_summary().unwrap_or_default();
+        s.stup_products = followed.len();
+        let labels: std::collections::HashMap<i64, String> = followed
+            .iter()
+            .map(|st| (st.product.id, st.product.label.clone()))
+            .collect();
 
         // Qui fait les entretiens. Les initiales sont sur chaque ligne
         // depuis toujours et n'atteignaient aucun total.
@@ -4005,6 +4021,68 @@ impl Session {
         }
         s.duration
             .sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        // **Ce qui sort du registre**, tous produits confondus. Le
+        // registre le sait par produit — c'est la courbe de chaque
+        // fiche — et personne ne l'a jamais lu en travers : « qu'est-ce
+        // qui part le plus » est la question qu'on se pose en
+        // commandant.
+        //
+        // Une seule lecture du registre et non une par produit : trente
+        // produits feraient trente allers-retours sur un partage
+        // réseau. Les annulations sont retirées — une délivrance annulée
+        // n'a pas eu lieu — et les pertes ne sont pas des sorties : du
+        // stock qui part n'est pas de la consommation.
+        let cancelled = self.db.stup_cancelled_ids().unwrap_or_default();
+        let mut out: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
+        for m in self.db.stup_recent(5000).unwrap_or_default() {
+            if m.kind != crate::ordonnancier::Kind::Sortie.as_key() || cancelled.contains(&m.id) {
+                continue;
+            }
+            if crate::date::days_between(&m.happened_on, &self.today)
+                .is_some_and(|d| (0..=90).contains(&d))
+            {
+                *out.entry(m.stup_id).or_default() += m.quantity;
+            }
+        }
+        s.stup_out = out
+            .into_iter()
+            .filter_map(|(id, qty)| labels.get(&id).map(|label| (label.clone(), qty)))
+            .collect();
+        s.stup_out
+            .sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        // Et les actes par mois, en **nombre**. La recette par mois est
+        // partie avec les recettes, sur un écran qu'on n'ouvre pas
+        // devant tout le monde ; le rythme, lui, se raconte.
+        let mut months: Vec<String> = self
+            .summaries
+            .iter()
+            .map(|a| a.created_month.clone())
+            .collect();
+        months.sort();
+        months.dedup();
+        s.per_month = months
+            .into_iter()
+            .rev()
+            .take(12)
+            .rev()
+            .map(|m| {
+                let n = self
+                    .summaries
+                    .iter()
+                    .filter(|a| a.created_month == m)
+                    .count();
+                // « 2026-08 » se lit « 08/26 », comme partout où un mois
+                // s'écrit court dans cette application.
+                let label = match (m.get(5..7), m.get(2..4)) {
+                    (Some(mm), Some(yy)) => format!("{mm}/{yy}"),
+                    _ => m.clone(),
+                };
+                #[allow(clippy::cast_precision_loss)]
+                (label, n as f64)
+            })
+            .collect();
         self.stats = s;
     }
 
@@ -30009,12 +30087,21 @@ impl App {
                 // c'est le panneau qui décide de ce qu'on écrit le
                 // semestre prochain, et le tronquer en ferait une
                 // décoration.
-                let panels: Vec<(&str, f32)> = vec![
+                let mut panels: Vec<(&str, f32)> = vec![
                     (tr("stats_coverage"), 300.0),
                     (tr("stats_per_operator"), 190.0),
                     (tr("stats_duration"), 232.0),
                     (tr("stats_treatments"), 232.0),
+                    (tr("stats_per_month"), 232.0),
                 ];
+                // Le registre ne prend un panneau que s'il a quelque
+                // chose à dire : une officine qui ne suit aucun
+                // stupéfiant n'a pas besoin d'un cadre vide de plus, et
+                // un panneau vide sur chaque écran apprend à sauter le
+                // panneau.
+                if !s.stup_out.is_empty() {
+                    panels.push((tr("stats_stup_out"), 232.0));
+                }
                 let mut y = vec![full.top() + kpi_rect.height() + gutter; cols];
                 let lanes = motif::split_columns(
                     egui::Rect::from_min_size(egui::pos2(full.left(), 0.0), egui::vec2(w, 1.0)),
@@ -30048,7 +30135,9 @@ impl App {
                             2 => {
                                 Self::stats_bars(ui, body, &s.duration, &|v| format!("{v:.0} min"))
                             }
-                            _ => Self::stats_bars(ui, body, &s.treatments, &|v| format!("{v:.0}")),
+                            3 => Self::stats_bars(ui, body, &s.treatments, &|v| format!("{v:.0}")),
+                            4 => Self::stats_bars(ui, body, &s.per_month, &|v| format!("{v:.0}")),
+                            _ => Self::stats_bars(ui, body, &s.stup_out, &|v| format!("{v:.0}")),
                         }
                     });
                 }

@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.169.0] - 2026-09-09
+
+### Added
+- **Ce qui sort du registre, tous produits confondus.** Le registre le
+  savait par produit — c'est la courbe de chaque fiche — et personne ne
+  l'avait jamais lu en travers, alors que « qu'est-ce qui part le plus »
+  est la question qu'on se pose en commandant. Une barre par produit sur
+  les quatre-vingt-dix derniers jours, délivrances seules : une ampoule
+  cassée est du stock qui part, ce n'est pas de la consommation, et une
+  ligne annulée n'a pas eu lieu.
+
+- **Et les actes par mois, en nombre.** La recette par mois est partie
+  avec les recettes, sur un écran qu'on n'ouvre pas devant tout le
+  monde ; le rythme, lui, se raconte.
+
+### Fixed
+- **Une statistique lisait le cache d'une autre vue.** « Ce qui sort »
+  cherchait les libellés des produits dans `stup_labels`, que seul
+  l'onglet du registre remplit : sur une session qui ne l'avait pas
+  ouvert, le panneau était vide — c'est-à-dire un zéro qui a l'air d'une
+  réponse. Les libellés viennent de la base, dans la requête qui compte
+  déjà les produits suivis : une requête, deux réponses.
+
 ## [0.168.0] - 2026-09-09
 
 ### Added
