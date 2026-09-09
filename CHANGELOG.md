@@ -5,6 +5,64 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.163.0] - 2026-09-09
+
+### Added
+- **Un traitement porte son dosage.** « Amlor » sur une ordonnance ne dit
+  pas si c'est le 5 ou le 10, et c'est la première chose qu'on vérifie au
+  comptoir : la puce le portait sans le dire, et il fallait ouvrir la
+  posologie pour l'apprendre — quand quelqu'un l'y avait écrit. Une
+  colonne de plus sur la ligne du dossier, séparée de la posologie parce
+  que ce n'est pas la même question : la posologie dit quand et combien,
+  le dosage dit **de quoi**. Il se lit sur la puce, sur le plan de prise
+  qui part à la maison et sur le bilan partagé de médication.
+
+  Il se choisit d'un clic ou **se tape**, et le champ libre est le point :
+  la digoxine n'existe qu'en 0,125 mg quadrisécable, et le quart qu'un
+  patient prend réellement est dans sa boîte à pilules même si aucun
+  laboratoire ne le vend. Une liste fermée dirait qu'il n'existe pas.
+
+- **Et ce que l'application propose, elle l'a appris.** Aucune table des
+  présentations du marché n'est embarquée et il n'y en aura pas : cinq
+  cents dosages écrits en dur seraient cinq cents propositions justes le
+  jour où on les écrit et fausses le jour où un titulaire reconditionne.
+  Les dosages offerts d'un clic sont les formes que l'officine a portées
+  sur la fiche, **et ceux sous lesquels ce médicament est déjà inscrit
+  dans la base** : trois dossiers portent « 5 mg », le quatrième se
+  saisit d'un clic. C'est la règle des codes-barres du registre et des
+  derniers prescripteurs rencontrés, appliquée ici.
+
+  Ce qui n'a **pas** été fait, et pourquoi : une fiche par présentation —
+  « Perindopril 4 mg BGR » — multiplierait les huit cent cinquante
+  monographies par le nombre de laboratoires génériqueurs, et il faudrait
+  tenir vingt copies de chacune. Le laboratoire n'est pas un fait
+  clinique ; le dosage en est un. Une fiche par produit, donc, le dosage
+  sur la ligne du dossier, et le laboratoire dans la posologie si
+  l'officine y tient.
+
+### Fixed
+- **La rangée des traitements passait sous le pli.** À 1024x700 en texte
+  1,6, la bande du dossier est plafonnée à 45 % du volet, et l'en-tête
+  plus les deux rangées de boutons — « Supprimer… », « Modifier »,
+  « Bilan… », « Plan de prise… » — la remplissaient entièrement : on
+  ouvrait une fiche et on ne voyait pas ce que la personne prend. Ce
+  qu'on lit à chaque fois passe devant ce qu'on fait de temps en temps :
+  les boutons descendent sous les traitements quand la rangée du nom ne
+  les porte plus. Rien ne bouge sur une fenêtre qui les porte.
+
+- **Et le plafond coupait la deuxième rangée de puces par le milieu.** Il
+  compte ce qui est dessiné au-dessus de la première rangée qu'on puisse
+  couper, et il oubliait les vingt pixels d'air entre la ligne de
+  contexte et les traitements. Le dessin et le plafond lisent la même
+  constante maintenant, plutôt que deux nombres qu'il faudrait garder
+  d'accord.
+
+- **La bande se mesurait sur un libellé que le dessin n'emploie plus.**
+  La largeur d'une puce était calculée sur le seul nom du médicament
+  quand le dessin y ajoute le dosage : « Aricept ½ de 10 mg » demandait
+  une rangée de plus que la bande n'en réservait. Les deux composent le
+  libellé par la même fonction.
+
 ## [0.162.0] - 2026-09-09
 
 ### Added

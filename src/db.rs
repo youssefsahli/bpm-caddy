@@ -207,6 +207,18 @@ CREATE TABLE IF NOT EXISTS patient_drugs (
     -- celle du dossier, et c'est elle que le plan de prise imprime et
     -- que la conciliation compare.
     posology    TEXT NOT NULL DEFAULT '',
+    -- Le dosage que *ce* patient prend : « 5 mg », « ½ de 0,25 mg ».
+    --
+    -- Séparé de la posologie, et c'est le point : la posologie dit
+    -- quand et combien, le dosage dit de quoi. Amlodipine existe en 5 et
+    -- en 10, et « Amlor » sur une ordonnance ne dit pas lequel — alors
+    -- que c'est la première chose qu'on vérifie au comptoir.
+    --
+    -- Du texte libre, et **volontairement** : l'hémigoxine n'existe
+    -- qu'en 0,125 mg quadrisécable, et une officine doit pouvoir écrire
+    -- le quart qu'un patient prend réellement. Une liste fermée dirait
+    -- que ce quart n'existe pas ; il est dans la boîte à pilules.
+    dosage      TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (patient_id, drug_id)
 );
 CREATE TABLE IF NOT EXISTS notes (
@@ -508,6 +520,7 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (patient_id, country)
     )",
     "ALTER TABLE patient_drugs ADD COLUMN posology TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patient_drugs ADD COLUMN dosage TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS stupefiants (
         id          INTEGER PRIMARY KEY,
         drug_id     INTEGER NOT NULL DEFAULT 0,
@@ -29187,6 +29200,76 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Le dosage que chaque traitement du dossier porte : « 5 mg »,
+    /// « ½ de 0,25 mg ».
+    ///
+    /// Séparé de la posologie parce que ce n'est pas la même question :
+    /// la posologie dit quand et combien, le dosage dit **de quoi**.
+    /// « Amlor » sur une ordonnance ne dit pas si c'est le 5 ou le 10,
+    /// et c'est la première chose qu'on vérifie au comptoir.
+    pub fn patient_dosages(&self, patient_id: i64) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT drug_id, dosage FROM patient_drugs
+                 WHERE patient_id = ?1 AND dosage <> ''",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Sous quels dosages ce médicament est déjà inscrit dans la base,
+    /// du plus employé au moins employé.
+    ///
+    /// **Rien n'est livré et rien n'est deviné** : l'application
+    /// n'embarque aucune table des présentations du marché, et elle
+    /// n'en aura pas — cinq cents fiches dont les dosages changeraient
+    /// sans que personne ne le sache seraient cinq cents propositions
+    /// fausses. Ce qu'elle sait, elle l'a appris : si trois dossiers
+    /// portent « Amlor 5 mg », le quatrième se saisit d'un clic. C'est
+    /// la même règle que les codes-barres du registre et que les
+    /// derniers prescripteurs rencontrés.
+    ///
+    /// Le compte départage, puis l'ordre alphabétique : une liste qui
+    /// change de place à chaque écriture est une liste qu'il faut lire
+    /// avant de cliquer.
+    pub fn dosages_used(&self, drug_id: i64) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT dosage, COUNT(*) AS n FROM patient_drugs
+                 WHERE drug_id = ?1 AND dosage <> ''
+                 GROUP BY dosage ORDER BY n DESC, dosage ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([drug_id], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Écrire le dosage, compare-and-set comme la posologie.
+    pub fn set_patient_dosage(
+        &self,
+        patient_id: i64,
+        drug_id: i64,
+        dosage: &str,
+        expected: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE patient_drugs SET dosage = ?3
+                 WHERE patient_id = ?1 AND drug_id = ?2 AND dosage = ?4",
+                (patient_id, drug_id, dosage.trim(), expected.trim()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// Write it, compare-and-set against what the screen showed. Shared
     /// row, shared base: the same discipline as everywhere else, and
     /// `false` means a colleague got there first.
@@ -34793,6 +34876,8 @@ mod tests {
         db.drugs_for_patient(pid).expect("drugs_for_patient");
         db.patients_for_drug(did).expect("patients_for_drug");
         db.patient_posologies(pid).expect("patient_posologies");
+        db.patient_dosages(pid).expect("patient_dosages");
+        db.dosages_used(did).expect("dosages_used");
         db.posologies(did).expect("posologies");
         db.interviews_for(pid).expect("interviews_for");
         db.bio_results(pid).expect("bio_results");
@@ -34825,6 +34910,12 @@ mod tests {
             db.patient_posologies(pid).unwrap(),
             vec![(did, "5 mg le soir".to_owned())]
         );
+        assert!(db.set_patient_dosage(pid, did, "5 mg", "").unwrap());
+        assert_eq!(
+            db.patient_dosages(pid).unwrap(),
+            vec![(did, "5 mg".to_owned())]
+        );
+        assert_eq!(db.dosages_used(did).unwrap(), vec!["5 mg".to_owned()]);
 
         // And the indexes are there too. They are created after the
         // migrations precisely so that a base of this age gets them:
@@ -36215,6 +36306,54 @@ mod tests {
         db.remove_patient_drug(jean, drug).unwrap();
         db.add_patient_drug(jean, drug).unwrap();
         assert!(db.patient_posologies(jean).unwrap().is_empty());
+
+        // --- Et le dosage, qui n'est pas la posologie ---------------
+        //
+        // La posologie dit quand et combien, le dosage dit **de quoi**.
+        // Les deux vivent sur la même ligne et ne se remplacent pas :
+        // « Amlor » sur une ordonnance ne dit pas si c'est le 5 ou le
+        // 10, et c'est la première chose qu'on vérifie au comptoir.
+        assert!(db.patient_dosages(jean).unwrap().is_empty());
+        assert!(db.set_patient_dosage(jean, drug, "5 mg", "").unwrap());
+        assert!(db.set_patient_dosage(claire, drug, "10 mg", "").unwrap());
+        assert_eq!(
+            db.patient_dosages(jean).unwrap(),
+            vec![(drug, "5 mg".to_owned())]
+        );
+        // Écrire le dosage ne touche pas à la posologie : deux colonnes,
+        // deux questions.
+        assert!(db.patient_posologies(jean).unwrap().is_empty());
+        // Compare-and-set, comme toute ligne partagée.
+        assert!(!db
+            .set_patient_dosage(jean, drug, "2,5 mg", "10 mg")
+            .unwrap());
+
+        // **Ce que l'application propose, elle l'a appris.** Aucune
+        // table des présentations du marché n'est embarquée : les
+        // dosages offerts d'un clic sont ceux sous lesquels ce
+        // médicament est déjà inscrit dans la base, le plus employé en
+        // tête. Un médicament que personne n'a encore dosé n'en propose
+        // aucun plutôt qu'un inventé.
+        let paul = db.add_patient("Bernard", "Paul", "1970-01-01").unwrap();
+        db.add_patient_drug(paul, drug).unwrap();
+        assert!(db.set_patient_dosage(paul, drug, "10 mg", "").unwrap());
+        assert_eq!(
+            db.dosages_used(drug).unwrap(),
+            vec!["10 mg".to_owned(), "5 mg".to_owned()],
+            "deux dossiers en 10, un en 5"
+        );
+        let other = db.add_drug("Hémigoxine").unwrap();
+        assert!(db.dosages_used(other).unwrap().is_empty());
+        // Et le champ est **libre** : la digoxine n'existe qu'en
+        // 0,125 mg quadrisécable, et le quart qu'un patient prend
+        // réellement est dans sa boîte à pilules même si aucun
+        // laboratoire ne le vend. Une liste fermée dirait qu'il
+        // n'existe pas.
+        db.add_patient_drug(jean, other).unwrap();
+        assert!(db
+            .set_patient_dosage(jean, other, "¼ de 0,125 mg", "")
+            .unwrap());
+        assert_eq!(db.dosages_used(other).unwrap(), vec!["¼ de 0,125 mg"]);
 
         let _ = std::fs::remove_file(&path);
     }
@@ -38149,9 +38288,23 @@ mod tests {
             // de médication exists for: the triade néfaste, and the
             // anticholinergique given against the anticholinestérasique.
             if last == "Martin" {
-                for name in ["Coversyl", "Lasilix", "Advil", "Aricept", "Ditropan"] {
+                // Avec leur **dosage** : « Coversyl » ne dit pas si
+                // c'est le 5 ou le 10, et une démonstration où aucune
+                // puce ne le porte ne montre pas ce que la puce sert à
+                // montrer. Le dosage de l'aricept est écrit comme on
+                // l'écrit vraiment — un demi-comprimé n'est pas une
+                // présentation du marché, et c'est pourtant ce que la
+                // personne prend.
+                for (name, dose) in [
+                    ("Coversyl", "5 mg"),
+                    ("Lasilix", "40 mg"),
+                    ("Advil", "400 mg"),
+                    ("Aricept", "½ de 10 mg"),
+                    ("Ditropan", "5 mg"),
+                ] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();
+                        let _ = db.set_patient_dosage(pid, d.id, dose, "");
                     }
                 }
                 db.add_note(

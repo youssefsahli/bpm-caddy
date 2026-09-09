@@ -1687,6 +1687,9 @@ struct BandNeeds<'a> {
     /// Les traitements : leurs noms enveloppent, et c'est leur largeur
     /// qui décide combien de rangées la bande prend.
     treats: &'a [Drug],
+    /// Le dosage que le dossier retient pour chacun : la puce le porte
+    /// avec le nom, donc la mesure doit le porter aussi.
+    strengths: &'a [(i64, String)],
     /// Une fiche dont on a ouvert les posologies.
     dosing: bool,
     /// Quelque chose est tapé dans le champ qui ajoute un traitement,
@@ -2141,6 +2144,13 @@ struct Session {
     /// compare-and-set against what the screen showed.
     patient_doses: Vec<(i64, String)>,
     patient_doses_base: Vec<(i64, String)>,
+    /// Le dosage que le dossier retient pour chaque traitement — « 5 mg »,
+    /// « ½ de 0,25 mg ». Séparé de la posologie parce que ce n'est pas
+    /// la même question : l'une dit quand et combien, l'autre de quoi.
+    patient_strengths: Vec<(i64, String)>,
+    /// Le dosage en cours de frappe dans le champ libre. Voir
+    /// [`StupEdits`] : un `TextEdit` ne garde pas son contenu.
+    strength_edit: String,
     /// Bumped whenever the treatments or their posologies are re-read,
     /// so the conciliation knows its answer is stale.
     treats_rev: u64,
@@ -2746,6 +2756,8 @@ impl Session {
             travel_query: String::new(),
             patient_doses: Vec::new(),
             patient_doses_base: Vec::new(),
+            patient_strengths: Vec::new(),
+            strength_edit: String::new(),
             treats_rev: 0,
             concil_sheet: String::new(),
             concil_sheet_open: false,
@@ -4289,6 +4301,10 @@ impl Session {
             })
             .collect();
         self.patient_doses_base = self.patient_doses.clone();
+        // Le dosage se lit d'un coup pour tout le dossier, comme la
+        // posologie : une requête par traitement serait huit requêtes
+        // sur le chemin d'une fiche qu'on ouvre entre deux clients.
+        self.patient_strengths = self.db.patient_dosages(patient_id).unwrap_or_default();
         self.treats_rev = self.treats_rev.wrapping_add(1);
         // The biology is read against the treatments: change the second
         // and the first has a different answer.
@@ -4301,6 +4317,20 @@ impl Session {
             .iter()
             .find(|(id, _)| *id == drug_id)
             .map(|(_, p)| p.as_str())
+            .unwrap_or_default()
+    }
+
+    /// Le dosage que le dossier retient pour un traitement, ou rien.
+    ///
+    /// Pas de copie de référence ici, contrairement à la posologie : le
+    /// dosage ne se tape pas dans un champ qui vit entre deux images —
+    /// il se choisit d'un clic ou se valide en quittant le champ —, donc
+    /// ce que l'écran a montré *est* ce que la base a rendu.
+    fn strength_of(&self, drug_id: i64) -> &str {
+        self.patient_strengths
+            .iter()
+            .find(|(id, _)| *id == drug_id)
+            .map(|(_, d)| d.as_str())
             .unwrap_or_default()
     }
 
@@ -9345,6 +9375,7 @@ impl App {
                 folded: session.patient_band_folded,
                 correcting: session.edit_patient.is_some(),
                 treats: &session.patient_treats,
+                strengths: &session.patient_strengths,
                 dosing: session.treat_dosing.is_some(),
                 typing: !session.treat_query.trim().is_empty(),
                 interactions: !session.patient_interactions.is_empty(),
@@ -13427,7 +13458,18 @@ impl App {
                 } else {
                     d.missed_dose.trim().to_owned()
                 };
-                (d.name.trim().to_owned(), what, when, know)
+                // **Le dosage avec le nom, sur la feuille qui part à
+                // la maison.** « Amlor » ne dit pas si c'est le 5 ou le
+                // 10, et la personne qui lit ce plan a la boîte en
+                // main : c'est là, plus que partout ailleurs, que les
+                // deux doivent se ressembler.
+                let strength = session.strength_of(d.id).trim().to_owned();
+                let name = if strength.is_empty() {
+                    d.name.trim().to_owned()
+                } else {
+                    format!("{} {}", d.name.trim(), strength)
+                };
+                (name, what, when, know)
             })
             .collect();
         let signature = config.pharmacy.signature_for(operator);
@@ -13470,7 +13512,15 @@ impl App {
                 } else {
                     d.dosage.trim().to_owned()
                 };
-                (d.name.trim().to_owned(), about, poso)
+                // Le dosage du dossier avec le nom, comme sur la puce
+                // et sur le plan de prise : un bilan partagé de
+                // médication qui écrirait « Coversyl » sans dire lequel
+                // ne se relit pas.
+                (
+                    Self::treat_chip(&d.name, session.strength_of(d.id)),
+                    about,
+                    poso,
+                )
             })
             .collect();
         let interactions = session.patient_interactions.clone();
@@ -13902,6 +13952,34 @@ impl App {
     /// Mesurée sur les lignes qui sont là, jamais sur une constante :
     /// c'est une largeur fixe qui poussait « Par » hors du carnet dès
     /// qu'un volet s'ouvrait.
+    /// Ce qu'une puce de traitement porte : le nom, et le dosage quand
+    /// le dossier en connaît un.
+    ///
+    /// Écrit **une fois**. La bande du patient se mesure avant d'être
+    /// dessinée, et le libellé composé à deux endroits est le défaut
+    /// que ce fichier passe son temps à corriger : mesurée sur le seul
+    /// nom, la rangée gardait la hauteur d'une ligne là où « Aricept ½
+    /// de 10 mg » en demandait deux.
+    /// L'air entre la ligne de contexte du dossier et la rangée des
+    /// traitements.
+    ///
+    /// Nommé, parce que **le plafond de la bande a besoin du même
+    /// nombre** : il dit ce qui est dessiné au-dessus de la première
+    /// rangée qu'on puisse couper, et vingt pixels oubliés là coupent
+    /// la deuxième rangée de puces par le milieu — ce qui se lit
+    /// « cassé » et non « il y en a d'autres ».
+    const BAND_TREAT_GAP: f32 = 20.0;
+
+    fn treat_chip(name: &str, strength: &str) -> String {
+        let name = name.trim();
+        let strength = strength.trim();
+        if strength.is_empty() {
+            name.to_owned()
+        } else {
+            format!("{name} {strength}")
+        }
+    }
+
     fn widest<'a>(ui: &egui::Ui, size: f32, texts: impl Iterator<Item = &'a str>) -> f32 {
         // La taille est en points, donc elle passe par `motif::pt` comme
         // celle qui dessinera : une colonne mesurée à onze pixels et
@@ -14278,11 +14356,24 @@ impl App {
             ui,
             w,
             std::iter::once(Self::button_width(ui, tr("treat_label")))
-                .chain(
-                    n.treats
+                .chain(n.treats.iter().flat_map(|t| {
+                    // **Le libellé que le dessin emploiera**, dosage
+                    // compris : mesurée sur le seul nom, la rangée
+                    // gardait la hauteur d'une ligne là où « Aricept ½
+                    // de 10 mg » en demandait deux, et ce qui suit la
+                    // bande sortait par le bas. Deux façons de composer
+                    // le même libellé divergent le jour où l'une des
+                    // deux gagne un mot.
+                    let strength = n
+                        .strengths
                         .iter()
-                        .flat_map(|t| [Self::button_width(ui, &t.name), 16.0]),
-                )
+                        .find(|(id, _)| *id == t.id)
+                        .map_or("", |(_, d)| d.as_str());
+                    [
+                        Self::button_width(ui, &Self::treat_chip(&t.name, strength)),
+                        16.0,
+                    ]
+                }))
                 // Le champ qui ajoute le suivant : c'est lui qu'on perd
                 // en premier quand la rangée déborde.
                 .chain(std::iter::once(140.0)),
@@ -14414,7 +14505,15 @@ impl App {
             head
                 + ui.text_style_height(&egui::TextStyle::Body)
                 + if n.has_address { 18.0 } else { 0.0 }
-                + if n.has_notes { 20.0 } else { 0.0 };
+                + if n.has_notes { 20.0 } else { 0.0 }
+                // **Et l'air au-dessus de la première rangée qu'on
+                // puisse couper.** Vingt pixels, oubliés ici, coupaient
+                // la deuxième rangée de puces par le milieu : le
+                // plafond croyait la rangée des traitements vingt
+                // pixels plus haut qu'elle n'est. C'est la même
+                // constante que le dessin emploie, et non un nombre
+                // recopié — deux mesures d'une même chose divergent.
+                + Self::BAND_TREAT_GAP;
         let below = ((cap - head) / row).floor().max(0.0);
         (head + below * row).max(Self::row_height(ui) + 2.0)
     }
@@ -14563,23 +14662,6 @@ impl App {
             }
             return;
         }
-        if cramped {
-            // **Enveloppée, et non alignée.** Quatre boutons du dossier
-            // sur une rangée `horizontal` sortaient par la droite du
-            // panneau dès l'échelle 1,6 : « Plan de prise » se lisait
-            // « Plan de pr » et rien ne le ramenait. Ce qui dépasse
-            // passe à la ligne, et la bande compte cette ligne.
-            ui.horizontal_wrapped(|ui| {
-                Self::patient_actions(
-                    ui,
-                    session,
-                    &mut start_edit,
-                    &mut delete_click,
-                    &mut print_bilan,
-                    &mut print_plan,
-                );
-            });
-        }
         {
             // Everything else about the patient on one quiet line under
             // the name: contact, situation, address, comment. Wrapped,
@@ -14623,12 +14705,6 @@ impl App {
                     .wrap(),
                 );
             }
-        }
-        if print_bilan {
-            Self::print_bilan(session, patient, config, operator);
-        }
-        if print_plan {
-            Self::print_plan(session, patient, config, operator);
         }
         if back {
             return;
@@ -14762,7 +14838,7 @@ impl App {
                 ui.colored_label(motif::alert(), err.as_str());
             }
         }
-        ui.add_space(16.0);
+        ui.add_space(Self::BAND_TREAT_GAP);
 
         // Current treatments, linked to the drug base: chips open the
         // drug card, "×" unlinks, the small picker adds by fuzzy name.
@@ -14781,19 +14857,37 @@ impl App {
             let mut chip_at: Vec<(String, egui::Rect)> = Vec::new();
             // La posologie qu'un clic vient de choisir : (fiche, texte).
             let mut set_dose: Option<(i64, String)> = None;
-            ui.add_space(4.0);
+            // Le dosage qu'un clic ou une frappe vient de choisir, et
+            // le texte en cours de frappe : il voyage par une copie
+            // locale rendue après, comme le motif d'annulation du
+            // registre — un `TextEdit` ne garde pas son contenu, il le
+            // tient dans le `String` qu'on lui prête, et lui en prêter
+            // un neuf par image efface la lettre avant qu'elle soit
+            // relue.
+            let mut set_strength: Option<(i64, String)> = None;
+            let mut strength_edit = session.strength_edit.clone();
             // Wrapped: a file with five treatments ran the picker off
             // the right of the band at a counter width, and the field
             // that adds the sixth was the part that disappeared.
             ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(tr("treat_label")).color(motif::text_dim()));
                 for t in &session.patient_treats {
+                    // **Le dosage sur la puce, avec le nom.** « Amlor »
+                    // ne dit pas si c'est le 5 ou le 10, et c'est la
+                    // première chose qu'on vérifie au comptoir : la
+                    // puce le portait sans le dire, et il fallait
+                    // ouvrir la posologie pour l'apprendre — quand
+                    // quelqu'un l'y avait écrit.
+                    let strength = session.strength_of(t.id);
                     let chip = ui.add(
                         egui::Label::new(
-                            egui::RichText::new(format!("  {}  ", t.name))
-                                .size(motif::pt(ui, 12.0))
-                                .color(motif::on_fill(motif::accent()))
-                                .background_color(motif::accent()),
+                            egui::RichText::new(format!(
+                                "  {}  ",
+                                Self::treat_chip(&t.name, strength)
+                            ))
+                            .size(motif::pt(ui, 12.0))
+                            .color(motif::on_fill(motif::accent()))
+                            .background_color(motif::accent()),
                         )
                         .sense(egui::Sense::click()),
                     );
@@ -14975,6 +15069,80 @@ impl App {
                             session.treat_dosing = None;
                         }
                     });
+                    // --- Le dosage : de quoi, avant quand et combien
+                    //
+                    // « Amlor » ne dit pas si c'est le 5 ou le 10, et
+                    // c'est la première chose qu'on vérifie. Les
+                    // propositions ne sont **pas livrées** — aucune
+                    // table des présentations du marché n'est
+                    // embarquée, et cinq cents dosages écrits en dur
+                    // seraient cinq cents propositions fausses le jour
+                    // où un titulaire change une boîte. Elles viennent
+                    // de deux endroits qui savent : les formes que
+                    // l'officine a écrites sur la fiche, et les dosages
+                    // sous lesquels ce médicament est déjà inscrit dans
+                    // la base. Trois dossiers portent « 5 mg », le
+                    // quatrième se saisit d'un clic — la règle des
+                    // codes-barres du registre, appliquée ici.
+                    let strength = session.strength_of(id).to_owned();
+                    let mut offered: Vec<String> = session
+                        .patient_treats
+                        .iter()
+                        .find(|t| t.id == id)
+                        .map(|t| {
+                            t.forms
+                                .lines()
+                                .map(|l| l.trim().to_owned())
+                                .filter(|l| !l.is_empty())
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    for d in session.db.dosages_used(id).unwrap_or_default() {
+                        if !offered.iter().any(|o| o.eq_ignore_ascii_case(&d)) {
+                            offered.push(d);
+                        }
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(tr("treat_strength"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        for d in offered.iter().take(6) {
+                            if motif::toggle(ui, d, strength.trim() == d.trim()).clicked() {
+                                // Recliquer le dosage retenu l'efface :
+                                // c'est la seule façon de revenir à
+                                // « on ne sait pas », et une ordonnance
+                                // mal lue doit pouvoir se défaire.
+                                set_strength = Some((
+                                    id,
+                                    if strength.trim() == d.trim() {
+                                        String::new()
+                                    } else {
+                                        d.clone()
+                                    },
+                                ));
+                            }
+                        }
+                        // Et le champ libre, qui est le point : la
+                        // digoxine n'existe qu'en 0,125 mg
+                        // quadrisécable, et le quart qu'un patient
+                        // prend réellement est dans sa boîte à pilules
+                        // même si aucun laboratoire ne le vend. Une
+                        // liste fermée dirait qu'il n'existe pas.
+                        let resp = ui.add_sized(
+                            [
+                                Self::field_width(ui, [tr("treat_strength_hint")].into_iter())
+                                    .max(90.0),
+                                ui.spacing().interact_size.y,
+                            ],
+                            egui::TextEdit::singleline(&mut strength_edit)
+                                .hint_text(tr("treat_strength_hint")),
+                        );
+                        if resp.lost_focus() && strength_edit.trim() != strength.trim() {
+                            set_strength = Some((id, strength_edit.trim().to_owned()));
+                        }
+                    });
                     if lines.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("treat_dose_none"))
@@ -15017,6 +15185,24 @@ impl App {
                             set_dose = Some((id, p.posologie.trim().to_owned()));
                         }
                     }
+                }
+            }
+            session.strength_edit = strength_edit;
+            if let Some((id, dosage)) = set_strength {
+                let expected = session.strength_of(id).to_owned();
+                match session
+                    .db
+                    .set_patient_dosage(patient.id, id, &dosage, &expected)
+                {
+                    Ok(true) => {
+                        session.strength_edit.clear();
+                        session.reload_treatments(patient.id);
+                    }
+                    Ok(false) => {
+                        session.reload_treatments(patient.id);
+                        session.error = Some(tr("concil_stale").to_owned());
+                    }
+                    Err(e) => session.error = Some(e),
                 }
             }
             if let Some((id, dose)) = set_dose {
@@ -15363,6 +15549,49 @@ impl App {
             );
         }
 
+        // **Les boutons du dossier passent en dernier quand la rangée
+        // du nom ne les porte plus.**
+        //
+        // Ils étaient juste sous le nom, avant les traitements. À
+        // 1024x700 en texte 1,6, la bande est plafonnée à 45 % du volet
+        // et l'en-tête plus deux rangées de boutons la remplissent :
+        // « Supprimer… », « Modifier », « Bilan… » et « Plan de
+        // prise… » tenaient toute la place, et **la rangée des
+        // traitements passait sous le pli**. On ouvre une fiche pour
+        // lire ce que la personne prend, pas pour la supprimer ; ce
+        // qu'on lit à chaque fois passe donc devant ce qu'on fait de
+        // temps en temps. Rien n'est perdu — la bande défile —, mais ce
+        // qui est visible sans défiler est ce qu'on est venu voir.
+        //
+        // Sur une fenêtre qui porte les boutons à côté du nom, rien ne
+        // bouge : ce bloc ne s'écrit que serré.
+        if cramped {
+            // **Enveloppée, et non alignée.** Quatre boutons du dossier
+            // sur une rangée `horizontal` sortaient par la droite du
+            // panneau dès l'échelle 1,6 : « Plan de prise » se lisait
+            // « Plan de pr » et rien ne le ramenait. Ce qui dépasse
+            // passe à la ligne, et la bande compte cette ligne.
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                Self::patient_actions(
+                    ui,
+                    session,
+                    &mut start_edit,
+                    &mut delete_click,
+                    &mut print_bilan,
+                    &mut print_plan,
+                );
+            });
+        }
+        // Et les deux impressions se lisent **après** eux, puisque
+        // c'est là qu'ils sont maintenant demandés : consommées plus
+        // haut, un clic sur « Bilan… » se perdait au lieu d'imprimer.
+        if print_bilan {
+            Self::print_bilan(session, patient, config, operator);
+        }
+        if print_plan {
+            Self::print_plan(session, patient, config, operator);
+        }
         if start_edit {
             Self::patient_edit_started(session, patient);
         }
@@ -34023,6 +34252,7 @@ mod tests {
                         folded: false,
                         correcting: false,
                         treats: &treats[..k],
+                        strengths: &[],
                         dosing: false,
                         typing: false,
                         interactions: false,
