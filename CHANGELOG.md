@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.165.0] - 2026-09-09
+
+### Added
+- **Le compagnon (F9) : la fenêtre réduite à une barre, au-dessus de
+  tout.** À l'officine, le logiciel qui délivre est devant et BPM-Caddy
+  est derrière : on tape un nom dans l'un et l'on voudrait la
+  monographie de l'autre, sans changer de fenêtre. Une touche réduit la
+  fenêtre à quatre cent soixante pixels sur trois cents, la pose
+  au-dessus des autres, et n'y laisse qu'un champ, une phrase et quatre
+  gestes — la fiche, un acte, une pièce, une délivrance —, chacun
+  rendant la fenêtre et ouvrant l'écran qui va avec. La même touche la
+  rend.
+
+  Ce n'est **pas** une seconde fenêtre : c'est celle-ci, rétrécie. Une
+  vue secondaire aurait demandé son propre contexte et un partage
+  d'état pour un résultat que l'officine ne distinguerait pas.
+
+  Ce qu'il ne fait **pas**, et délibérément : écouter le clavier des
+  *autres* applications. Le compagnon lit ce qu'on tape dans son champ,
+  et son champ reprend le foyer à chaque image — une douchette y tape
+  comme un clavier. Un crochet à l'échelle du système capterait aussi
+  les mots de passe et les noms de patients tapés ailleurs, dans une
+  application qui tient par ailleurs des données de santé chiffrées ; le
+  jeu n'en vaut pas la chandelle. Le geste qui manque est donc un clic
+  dans le champ, une fois.
+
 ## [0.164.0] - 2026-09-09
 
 ### Added

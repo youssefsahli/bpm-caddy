@@ -6669,6 +6669,30 @@ pub struct App {
     /// time: the buttons are disabled while one runs.
     maint_job: Option<std::sync::mpsc::Receiver<crate::maintenance::Progress>>,
     maint_step: Option<String>,
+    /// **Le compagnon** : la fenêtre réduite à une barre au-dessus de
+    /// tout, dans un coin de l'écran (F9).
+    ///
+    /// À l'officine, le logiciel qui délivre est devant, et BPM-Caddy
+    /// est derrière : on tape un nom dans l'un et l'on voudrait la
+    /// monographie de l'autre, sans changer de fenêtre. Le compagnon est
+    /// cette fenêtre-là — un champ, une phrase, quatre boutons — et rien
+    /// d'autre. Ce n'est pas une seconde fenêtre : c'est **celle-ci**,
+    /// rétrécie et posée au-dessus, ce qui évite un mécanisme entier
+    /// (une vue secondaire, son contexte, son partage d'état) pour un
+    /// résultat que l'officine ne distinguerait pas.
+    ///
+    /// Ce qu'il ne fait **pas**, et délibérément : écouter le clavier
+    /// des *autres* applications. Le compagnon lit ce qu'on tape dans
+    /// son champ, et son champ garde le foyer — cela demande de cliquer
+    /// dedans une fois. Un crochet clavier à l'échelle du système
+    /// capterait aussi les mots de passe et les noms de patients tapés
+    /// ailleurs, dans une application qui tient par ailleurs des données
+    /// de santé chiffrées ; le jeu n'en vaut pas la chandelle.
+    companion: bool,
+    /// La taille de la fenêtre avant le compagnon, pour la rendre.
+    companion_was: Option<egui::Vec2>,
+    /// Ce qu'on tape dans le compagnon.
+    companion_query: String,
 }
 
 /// In-app editor for `config.toml`.
@@ -7068,6 +7092,11 @@ impl App {
                             session.refresh_stats();
                             session.view = MainView::Stats;
                         }
+                        // Le compagnon : le garde-fou l'ouvre par sa
+                        // clé, sinon rien ne le regarderait jamais aux
+                        // trois formes — c'est une fenêtre qu'on ne
+                        // rencontre qu'en pressant F9.
+                        Ok("companion") => {}
                         Ok("explorer") => {
                             session.view = MainView::Explorer;
                         }
@@ -7508,6 +7537,20 @@ impl App {
             update_note: None,
             maint_job: None,
             maint_step: None,
+            // Le compagnon s'ouvre par sa clé, comme toute autre vue :
+            // c'est la seule façon pour `smoke.sh` de le regarder aux
+            // trois formes, puisqu'on ne le rencontre qu'en pressant F9.
+            companion: start_view == "companion",
+            companion_was: None,
+            // Ouvert par sa clé, le compagnon porte déjà une question :
+            // une barre vide n'exerce ni la recherche, ni la phrase, ni
+            // le bouton qui ouvre la fiche. `BPM_CADDY_DRUG` la choisit,
+            // comme pour la carte du médicament.
+            companion_query: if start_view == "companion" {
+                std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| "Eliquis".to_owned())
+            } else {
+                String::new()
+            },
         }
     }
 
@@ -8792,7 +8835,7 @@ impl App {
     /// it acts on.
     fn keys_window(&mut self, ctx: &egui::Context) {
         // (key, what it does). An empty key starts a new group.
-        let rows: [(&str, &str); 25] = [
+        let rows: [(&str, &str); 26] = [
             ("", tr("keys_group_workspace")),
             ("F1", tr("toolbar_docs_tooltip")),
             ("F6", tr("toolbar_nav_tooltip")),
@@ -8806,6 +8849,7 @@ impl App {
             ("F4", tr("tab_agenda")),
             ("F5", tr("tab_carnet")),
             ("F7", tr("tab_map")),
+            ("F9", tr("keys_companion")),
             ("Ctrl+K", tr("keys_goto")),
             ("Ctrl+F", tr("keys_search")),
             ("Échap", tr("keys_back")),
@@ -31172,6 +31216,299 @@ impl App {
     }
 }
 
+impl App {
+    /// La taille du compagnon : assez pour une phrase et quatre boutons,
+    /// et pas un pixel de plus.
+    ///
+    /// Elle ne suit pas `[ui] text_scale` : c'est une **fenêtre**, et
+    /// une fenêtre se pose dans un coin d'écran par des pixels. Ce qui
+    /// suit l'échelle est ce qu'elle contient, qui défile si le texte
+    /// est réglé très grand.
+    const COMPANION_SIZE: [f32; 2] = [460.0, 300.0];
+
+    /// Réduire la fenêtre à la barre, ou la rendre.
+    ///
+    /// Le plancher de taille est déplacé avec elle : la fenêtre est
+    /// née avec un minimum de 960 × 640, et un gestionnaire de fenêtres
+    /// qui l'applique rendrait le compagnon large de neuf cent soixante
+    /// pixels — c'est-à-dire pas un compagnon.
+    fn toggle_companion(&mut self, ctx: &egui::Context) {
+        self.companion = !self.companion;
+        if self.companion {
+            self.companion_was = Some(ctx.screen_rect().size());
+            self.companion_query.clear();
+            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+                320.0, 200.0,
+            )));
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::from(
+                Self::COMPANION_SIZE,
+            )));
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                egui::WindowLevel::AlwaysOnTop,
+            ));
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                egui::WindowLevel::Normal,
+            ));
+            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+                960.0, 640.0,
+            )));
+            if let Some(size) = self.companion_was.take() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
+        }
+    }
+
+    /// Le compagnon : un champ, ce qu'il trouve, et quatre gestes.
+    ///
+    /// **Le champ garde le foyer.** C'est ce qui remplace le crochet
+    /// clavier que le compagnon n'a pas : la fenêtre est au-dessus, on
+    /// clique une fois dedans, et tout ce qu'on tape ensuite y va — y
+    /// compris ce qu'une douchette tape, puisqu'un lecteur USB est un
+    /// clavier.
+    fn companion_view(&mut self, ctx: &egui::Context) {
+        let State::Unlocked(session) = &mut self.state else {
+            return;
+        };
+        let mut leave = false;
+        let mut go: Option<CompanionGo> = None;
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(tr("companion_title"))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if motif::button(ui, tr("companion_restore"))
+                        .on_hover_text(tr("companion_restore_tooltip"))
+                        .clicked()
+                    {
+                        leave = true;
+                    }
+                });
+            });
+            let field = ui.add_sized(
+                [ui.available_width(), Self::button_height(ui)],
+                egui::TextEdit::singleline(&mut self.companion_query)
+                    .hint_text(tr("companion_hint")),
+            );
+            // Le foyer, repris à chaque image tant que rien d'autre ne
+            // le demande : c'est une fenêtre à un seul champ, et devoir
+            // cliquer dedans après chaque geste serait un clic de trop à
+            // chaque fois.
+            if !field.has_focus() && !ctx.wants_keyboard_input() {
+                field.request_focus();
+            }
+            ui.add_space(4.0);
+            let q = self.companion_query.trim();
+            let hit = if q.is_empty() {
+                None
+            } else {
+                session
+                    .drugs
+                    .iter()
+                    .filter_map(|d| {
+                        let a = fuzzy::score(q, &d.name);
+                        let b = if d.dci.is_empty() {
+                            None
+                        } else {
+                            fuzzy::score(q, &d.dci)
+                        };
+                        a.max(b).map(|s| (s, d))
+                    })
+                    .max_by_key(|(s, _)| *s)
+                    .map(|(_, d)| d)
+            };
+            let body = ui.available_rect_before_wrap();
+            let btn_h = Self::button_height(ui) + 8.0;
+            let split = motif::split_rows(body, &[0.0, btn_h], 6.0);
+            motif::inside(ui, split[0], |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("companion_answer")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let Some(d) = hit else {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(if q.is_empty() {
+                                        tr("companion_idle")
+                                    } else {
+                                        tr("companion_none")
+                                    })
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            return;
+                        };
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(d.name.trim())
+                                    .size(motif::pt(ui, 14.0))
+                                    .strong(),
+                            )
+                            .wrap(),
+                        );
+                        // Ce qui identifie la fiche en une ligne : la
+                        // molécule et la classe. Les deux manquent
+                        // parfois, et une ligne de séparateurs sans
+                        // rien entre eux se lit comme un défaut.
+                        let about = [d.dci.trim(), d.class.trim()]
+                            .into_iter()
+                            .filter(|t| !t.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" · ");
+                        if !about.is_empty() {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(about)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        // **Une phrase, pas la monographie.** Le
+                        // compagnon répond « à quoi ça sert » ; la fiche
+                        // entière est à un bouton, et l'afficher ici
+                        // ferait défiler une fenêtre de trois cents
+                        // pixels.
+                        let what = Self::first_sentence(&d.indications)
+                            .or_else(|| Self::first_sentence(&d.mechanism))
+                            .unwrap_or_default();
+                        if !what.is_empty() {
+                            ui.add_space(2.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(what).size(motif::pt(ui, 11.5)),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        // Et ce qui doit se dire au comptoir avant tout
+                        // le reste, quand la fiche le porte.
+                        let flag = Self::first_sentence(&d.red_flags).unwrap_or_default();
+                        if !flag.is_empty() {
+                            ui.add_space(2.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(flag)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::alert()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                    });
+            });
+            // Les quatre gestes. Ils rendent la fenêtre **et** ouvrent
+            // l'écran : un bouton qui préparerait quelque chose derrière
+            // une barre de quatre cents pixels laisserait chercher où il
+            // s'est passé.
+            motif::inside(ui, split[1], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let card = hit.map(|d| d.id);
+                    if motif::button_enabled(ui, tr("companion_card"), card.is_some())
+                        .on_hover_text(tr("companion_card_tooltip"))
+                        .clicked()
+                    {
+                        if let Some(id) = card {
+                            go = Some(CompanionGo::Card(id));
+                        }
+                    }
+                    if motif::button(ui, tr("companion_trod"))
+                        .on_hover_text(tr("companion_trod_tooltip"))
+                        .clicked()
+                    {
+                        go = Some(CompanionGo::Trod);
+                    }
+                    if motif::button(ui, tr("companion_scan"))
+                        .on_hover_text(tr("companion_scan_tooltip"))
+                        .clicked()
+                    {
+                        go = Some(CompanionGo::Scan);
+                    }
+                    if motif::button(ui, tr("companion_stup"))
+                        .on_hover_text(tr("companion_stup_tooltip"))
+                        .clicked()
+                    {
+                        go = Some(CompanionGo::Stup);
+                    }
+                });
+            });
+        });
+        if let Some(dest) = go {
+            match dest {
+                CompanionGo::Card(id) => {
+                    if let Some(d) = session.drugs.iter().find(|d| d.id == id).cloned() {
+                        session.view = MainView::Drugs;
+                        session.open_drug_card(d);
+                    }
+                }
+                CompanionGo::Trod => {
+                    // Le choix rapide des actes, sur le dossier ouvert ;
+                    // sans dossier, la recherche, qui est le moyen d'en
+                    // ouvrir un.
+                    session.view = MainView::Search;
+                    session.act_picker = session.viewing.is_some();
+                }
+                CompanionGo::Scan => {
+                    if session.viewing.is_some() {
+                        session.view = MainView::Search;
+                        session.patient_tab = PatientTab::Scans;
+                    } else {
+                        session.open_registres(RegistreTab::Pieces);
+                    }
+                }
+                CompanionGo::Stup => {
+                    session.open_registres(RegistreTab::Stupefiants);
+                    session.stup_new_kind = crate::ordonnancier::Kind::Sortie;
+                }
+            }
+            leave = true;
+        }
+        if leave {
+            self.toggle_companion(ctx);
+        }
+    }
+
+    /// La première phrase d'un paragraphe, bornée.
+    ///
+    /// « Bornée » parce qu'une monographie écrit parfois trois lignes
+    /// sans point, et qu'une fenêtre de trois cents pixels ne les porte
+    /// pas. On coupe alors au dernier espace, jamais au milieu d'un
+    /// mot — et le caractère de coupure dit que ce n'est pas la fin.
+    fn first_sentence(text: &str) -> Option<String> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+        let first = text.split_terminator(". ").next().unwrap_or(text).trim();
+        const MAX: usize = 220;
+        if first.chars().count() <= MAX {
+            return Some(first.to_owned());
+        }
+        let cut: String = first.chars().take(MAX).collect();
+        let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(head, _)| head);
+        Some(format!("{cut}…"))
+    }
+}
+
+/// Ce qu'un bouton du compagnon a demandé.
+///
+/// Comme les clics des listes du registre : cela **remonte** hors du
+/// dessin. Changer la vue au milieu d'une boucle d'affichage rend
+/// l'écran faux à l'image suivante, et ici cela redimensionnerait la
+/// fenêtre en cours de dessin.
+enum CompanionGo {
+    Card(i64),
+    Trod,
+    Scan,
+    Stup,
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // The look follows the options: applied once, then only when
@@ -31196,8 +31533,13 @@ impl eframe::App for App {
         // of it a setting anyone has to find.
         {
             let size = ctx.screen_rect().size();
-            self.layout.window_width = size.x;
-            self.layout.window_height = size.y;
+            // **Sauf en compagnon.** La barre fait quatre cents pixels
+            // sur trois cents ; enregistrée comme la forme du plan de
+            // travail, la session suivante s'ouvrirait dessus.
+            if !self.companion {
+                self.layout.window_width = size.x;
+                self.layout.window_height = size.y;
+            }
             self.layout.nav_open = Some(self.show_nav);
             self.layout.docs_open = Some(self.show_docs);
             self.layout.side_pane = self.side_pane.clone();
@@ -31386,6 +31728,16 @@ impl eframe::App for App {
         }
         if self.show_keys && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.show_keys = false;
+        }
+        // F9 : le compagnon. Voir `App::companion` — la fenêtre se
+        // réduit à une barre posée au-dessus de tout, et la même touche
+        // la rend.
+        if ctx.input(|i| i.key_pressed(egui::Key::F9)) && matches!(self.state, State::Unlocked(_)) {
+            self.toggle_companion(ctx);
+        }
+        if self.companion && matches!(self.state, State::Unlocked(_)) {
+            self.companion_view(ctx);
+            return;
         }
         let toggle_dashboard = ctx.input(|i| i.key_pressed(egui::Key::F2));
         let toggle_drugs = ctx.input(|i| i.key_pressed(egui::Key::F3));
@@ -34172,6 +34524,48 @@ mod tests {
                 model * 3.0
             );
         }
+    }
+
+    /// **Une phrase, et pas la monographie.**
+    ///
+    /// Le compagnon fait quatre cent soixante pixels sur trois cents :
+    /// ce qu'il montre d'une fiche est une phrase, et l'application en
+    /// écrit qui font trois lignes sans un point. La coupure tombe donc
+    /// sur un espace et se signale, jamais au milieu d'un mot — et
+    /// jamais au milieu d'un **caractère**, ce qu'un découpage en octets
+    /// ferait sur le premier « é » venu.
+    #[test]
+    fn the_companion_shows_a_sentence_and_never_half_a_word() {
+        use super::App;
+        assert_eq!(App::first_sentence("   "), None);
+        assert_eq!(App::first_sentence(""), None);
+        // La première phrase, sans son point.
+        assert_eq!(
+            App::first_sentence("Hypertension artérielle. Insuffisance cardiaque.").as_deref(),
+            Some("Hypertension artérielle")
+        );
+        // Une phrase unique sans point final est rendue entière.
+        assert_eq!(
+            App::first_sentence("Anticoagulant oral direct").as_deref(),
+            Some("Anticoagulant oral direct")
+        );
+        // Un point qui n'est pas une fin de phrase — « 0,5 mg » —
+        // n'en est pas une : la coupure demande le point *et*
+        // l'espace.
+        assert_eq!(
+            App::first_sentence("Dosage de 0.5 mg par prise").as_deref(),
+            Some("Dosage de 0.5 mg par prise")
+        );
+        // Et une phrase trop longue se coupe sur un espace, en le
+        // disant.
+        let long = "é ".repeat(300);
+        let cut = App::first_sentence(&long).expect("une phrase");
+        assert!(cut.ends_with('…'), "{cut}");
+        assert!(!cut.contains("  "), "coupé sur un espace, pas au milieu");
+        assert!(cut.chars().count() <= 221, "{}", cut.chars().count());
+        // Rien n'a été coupé au milieu d'un caractère : la chaîne est
+        // valide, et elle ne porte que les caractères d'origine.
+        assert!(cut.chars().all(|c| c == 'é' || c == ' ' || c == '…'));
     }
 
     /// **La rangée d'ajout d'un journal tient dans ce qu'on lui

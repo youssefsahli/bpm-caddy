@@ -626,7 +626,7 @@ add clicking and typing; it is not the price of entry.
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|peaux`
+  finances|stats|companion|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its
@@ -638,6 +638,14 @@ add clicking and typing; it is not the price of entry.
   fifth line of a menu is not one), and it is also why the smoke test
   has to open it by key: nothing else would.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
+- `companion` (F9) is the window **shrunk to a bar and put on top**, not
+  a second window: one field, one sentence, four buttons. `MinInnerSize`
+  is sent with it, because `main.rs` gives the window a 960x640 floor and
+  a window manager that honours it would make the companion 960 px wide.
+  The size is deliberately *not* scaled by `[ui] text_scale`: a window is
+  placed in a screen corner in pixels; what follows the scale is what it
+  holds, which scrolls. And the layout record skips the companion's size,
+  or the next session would open on a 460 px workspace
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
 - `BPM_CADDY_DRUG=<nom>` — with `START_VIEW=drug_card`, open that card

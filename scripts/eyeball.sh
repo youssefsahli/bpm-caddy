@@ -51,7 +51,7 @@ views=(
     agenda agenda_day agenda_month tables tables_search calc carnet
     vaccins bio watch revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
-    finances stats graph stup stup_catalogue ordonnancier vigilance destruction scans patient_scans fil registres
+    finances stats companion graph stup stup_catalogue ordonnancier vigilance destruction scans patient_scans fil registres
     explorer explorer_organ classes classes_outside export
     template options about base peaux keys act_picker
     goto goto_jump mono_search mono_patient
