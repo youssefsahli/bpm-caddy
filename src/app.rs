@@ -1436,6 +1436,16 @@ enum MainView {
     /// entretiens. Ce sont des chiffres qu'on regarde deux fois par an
     /// et qui décident de ce qu'on fait le semestre suivant.
     Stats,
+    /// La console : ce que l'officine peut demander à sa propre base en
+    /// quelques lignes, sans attendre qu'on l'écrive dans
+    /// l'application.
+    ///
+    /// Voir [`crate::script`] — le script ne peut **rien faire sortir**
+    /// (le moteur n'a aucune entrée-sortie) et **rien écrire** (la
+    /// console lit un instantané). Les deux sont la condition pour
+    /// qu'un langage existe du tout dans une application qui tient des
+    /// données de santé chiffrées.
+    Script,
 }
 
 impl MainView {
@@ -1459,6 +1469,7 @@ impl MainView {
             MainView::Classes => "classes",
             MainView::Finances => "finances",
             MainView::Stats => "stats",
+            MainView::Script => "script",
         }
     }
 
@@ -1475,6 +1486,7 @@ impl MainView {
             "classes" => Some(MainView::Classes),
             "finances" => Some(MainView::Finances),
             "stats" => Some(MainView::Stats),
+            "script" => Some(MainView::Script),
             _ => None,
         }
     }
@@ -1539,6 +1551,8 @@ enum WorkTab {
     Finances,
     /// Les statistiques de la base, des dossiers et du registre.
     Stats,
+    /// La console de scripts.
+    Script,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -2147,6 +2161,12 @@ struct Session {
     /// days' notice the officine asked for (`[locations] notice_days`).
     loc_watch: Vec<LocWatch>,
     loc_notice_days: u32,
+    /// Où vivent les scripts de la console — à côté de la base, comme
+    /// les notes d'équipe. Posé par `App` à l'ouverture de la session :
+    /// la session ne connaît pas la configuration, et une vue qui la
+    /// relirait à chaque image relirait un fichier soixante fois par
+    /// seconde.
+    scripts_dir: std::path::PathBuf,
     /// The master password, as it was typed to open this base.
     ///
     /// Kept so a background pass can open a connection of its own —
@@ -2200,6 +2220,15 @@ struct Session {
     /// Voir [`Stats`] : calculé à l'ouverture de la vue, jamais par
     /// image.
     stats: Stats,
+    /// Les scripts enregistrés à côté de la base, leur texte en cours
+    /// d'édition, et ce que la dernière exécution a rendu. Voir
+    /// [`crate::script`].
+    scripts: Vec<String>,
+    script_open: Option<String>,
+    script_text: String,
+    script_out: Option<crate::script::Outcome>,
+    script_note: Option<(bool, String)>,
+    script_name: String,
     /// Le dosage en cours de frappe dans le champ libre. Voir
     /// [`StupEdits`] : un `TextEdit` ne garde pas son contenu.
     strength_edit: String,
@@ -2787,6 +2816,7 @@ impl Session {
             bio_watch: Vec::new(),
             loc_watch: Vec::new(),
             loc_notice_days: 7,
+            scripts_dir: std::path::PathBuf::new(),
             password: String::new(),
             to_schedule: Vec::new(),
             bio_results: Vec::new(),
@@ -2810,6 +2840,12 @@ impl Session {
             patient_doses_base: Vec::new(),
             patient_strengths: Vec::new(),
             stats: Stats::default(),
+            scripts: Vec::new(),
+            script_open: None,
+            script_text: String::new(),
+            script_out: None,
+            script_note: None,
+            script_name: String::new(),
             strength_edit: String::new(),
             treats_rev: 0,
             concil_sheet: String::new(),
@@ -3068,6 +3104,7 @@ impl Session {
             MainView::Classes => WorkTab::Classes,
             MainView::Finances => WorkTab::Finances,
             MainView::Stats => WorkTab::Stats,
+            MainView::Script => WorkTab::Script,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -3133,6 +3170,10 @@ impl Session {
             WorkTab::Stats => {
                 self.view = MainView::Stats;
                 self.refresh_stats();
+            }
+            WorkTab::Script => {
+                self.view = MainView::Script;
+                self.refresh_scripts();
             }
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
@@ -3260,6 +3301,7 @@ impl Session {
             WorkTab::Explorer,
             WorkTab::Classes,
             WorkTab::Stats,
+            WorkTab::Script,
         ] {
             let label = self.tab_label(&tab);
             let score = if q.is_empty() {
@@ -3731,6 +3773,115 @@ impl Session {
         }
     }
 
+    /// Relire la liste des scripts enregistrés.
+    ///
+    /// Le dossier n'existe pas tant que personne n'a rien enregistré, et
+    /// c'est très bien : la console s'ouvre sur les exemples livrés, et
+    /// « aucun script » n'est pas une erreur.
+    fn refresh_scripts(&mut self) {
+        self.scripts.clear();
+        let Ok(dir) = std::fs::read_dir(self.scripts_dir.clone()) else {
+            return;
+        };
+        for entry in dir.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "rhai") {
+                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
+                    self.scripts.push(name.to_owned());
+                }
+            }
+        }
+        self.scripts.sort_by_key(|n| n.to_lowercase());
+    }
+
+    /// Ce que la console donne à lire : un instantané, pris avant
+    /// l'exécution.
+    ///
+    /// Il se construit à partir de ce qui est **déjà en mémoire** —
+    /// les dossiers, les fiches, les résumés d'actes — plus une lecture
+    /// du registre. Un script qui interrogerait la base au fil de ses
+    /// boucles la lirait mille fois, et rien ne garantirait que la
+    /// moitié de sa réponse parle du même instant que l'autre.
+    fn script_snapshot(&self) -> crate::script::Snapshot {
+        let treats = self.db.all_patient_drugs().unwrap_or_default();
+        crate::script::Snapshot {
+            patients: self
+                .patients
+                .iter()
+                .map(|p| crate::script::Patient {
+                    id: p.id,
+                    nom: p.last_name.clone(),
+                    prenom: p.first_name.clone(),
+                    naissance: p.birth_date.clone(),
+                    traitements: treats
+                        .iter()
+                        .filter(|(id, _)| *id == p.id)
+                        .map(|(_, n)| n.clone())
+                        .collect(),
+                })
+                .collect(),
+            drugs: self
+                .drugs
+                .iter()
+                .map(|d| crate::script::Drug {
+                    id: d.id,
+                    nom: d.name.clone(),
+                    dci: d.dci.clone(),
+                    classe: d.class.clone(),
+                    tags: d.tags.clone(),
+                    statut: d.status.clone(),
+                })
+                .collect(),
+            acts: self
+                .summaries
+                .iter()
+                .map(|a| crate::script::Act {
+                    theme: a.kind.label().to_owned(),
+                    etat: a.state.as_str().to_owned(),
+                    mois: a.created_month.clone(),
+                    minutes: a.duration_minutes,
+                    operateur: a.operator.clone(),
+                })
+                .collect(),
+            moves: self
+                .db
+                .stup_recent(5000)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| crate::script::Move {
+                    produit: self
+                        .stup_labels
+                        .get(&m.stup_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                    nature: m.kind,
+                    jour: m.happened_on,
+                    quantite: m.quantity,
+                    dossier: m.patient_id,
+                })
+                .collect(),
+            // La prose des fiches : `fiche(id)` la demande une par une,
+            // et la carte est construite ici pour toutes. Ce sont les
+            // mêmes champs que « Dans le texte… » cherche — une seule
+            // table, pour que la console et la recherche ne divergent
+            // pas.
+            prose: self
+                .drugs
+                .iter()
+                .map(|d| {
+                    (
+                        d.id,
+                        MONO_FIELDS
+                            .iter()
+                            .filter(|(_, get)| !get(d).trim().is_empty())
+                            .map(|(key, get)| ((*key).to_owned(), get(d).to_owned()))
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+
     /// (Re)compter ce que la base sait d'elle-même.
     ///
     /// Appelé à l'ouverture de la vue et jamais par image : la
@@ -4029,6 +4180,7 @@ impl Session {
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
+            WorkTab::Script => tr("tab_script").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -6804,6 +6956,7 @@ fn restore_view(session: &mut Session, key: &str) {
     match view {
         MainView::Dashboard | MainView::Finances => session.refresh_dashboard(),
         MainView::Stats => session.refresh_stats(),
+        MainView::Script => session.refresh_scripts(),
         MainView::Transmissions => {
             session.trans_day = String::new();
             session.load_transmissions();
@@ -6865,6 +7018,7 @@ impl App {
                 })
                 .map(|mut s| {
                     s.loc_notice_days = config.locations.notice_days;
+                    s.scripts_dir = config.scripts_dir();
                     s.password.clone_from(&pw);
                     s.refresh_dashboard();
                     s
@@ -7091,6 +7245,22 @@ impl App {
                         Ok("stats") => {
                             session.refresh_stats();
                             session.view = MainView::Stats;
+                        }
+                        Ok("script") => {
+                            session.refresh_scripts();
+                            // Ouverte par sa clé, la console porte le
+                            // premier exemple **et son résultat** : une
+                            // console vide n'exerce ni l'éditeur, ni la
+                            // sortie, ni le moteur.
+                            if let Some((name, source)) = crate::script::EXAMPLES.first() {
+                                session.script_open = Some((*name).to_owned());
+                                session.script_name = (*name).to_owned();
+                                session.script_text = (*source).to_owned();
+                                let data = session.script_snapshot();
+                                session.script_out =
+                                    Some(crate::script::run(&session.script_text, &data));
+                            }
+                            session.view = MainView::Script;
                         }
                         // Le compagnon : le garde-fou l'ouvre par sa
                         // clé, sinon rien ne le regarderait jamais aux
@@ -7925,9 +8095,10 @@ impl App {
                             // référentiel : même dock que l'explorateur.
                             // Les statistiques parlent surtout du
                             // référentiel : même dock qu'eux.
-                            MainView::Explorer | MainView::Classes | MainView::Stats => {
-                                Self::nav_drugs(ui, session, focus)
-                            }
+                            MainView::Explorer
+                            | MainView::Classes
+                            | MainView::Stats
+                            | MainView::Script => Self::nav_drugs(ui, session, focus),
                             MainView::Dashboard
                             | MainView::Search
                             | MainView::Registres
@@ -9081,6 +9252,7 @@ impl App {
                 })
                 .map(|mut s| {
                     s.loc_notice_days = self.config.locations.notice_days;
+                    s.scripts_dir = self.config.scripts_dir();
                     s.password.clone_from(&pw);
                     s.refresh_dashboard();
                     s
@@ -9210,6 +9382,10 @@ impl App {
             }
             if session.view == MainView::Stats {
                 Self::stats_view(ui, session);
+                return;
+            }
+            if session.view == MainView::Script {
+                Self::script_view(ui, session, &config);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -29285,6 +29461,309 @@ impl App {
         });
     }
 
+    /// La console : le script à gauche, ce qu'il rend à droite.
+    ///
+    /// **Ce qui la rend possible** est écrit dans [`crate::script`] : le
+    /// moteur n'a aucune entrée-sortie et la console ne lit qu'un
+    /// instantané. Un script ne peut donc ni faire sortir une donnée, ni
+    /// en écrire une — les deux sont la condition pour qu'un langage
+    /// existe du tout dans une application qui tient des données de
+    /// santé chiffrées.
+    ///
+    /// Trois colonnes quand la fenêtre les porte — les scripts
+    /// enregistrés, l'éditeur, la sortie —, et l'éditeur au-dessus de la
+    /// sortie sinon. C'est l'éditeur qui reste entier : c'est là qu'on
+    /// **écrit**, et la règle de la maison est que le volet où l'on tape
+    /// passe devant celui qu'on lit.
+    fn script_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let body = motif::visible_rect(ui);
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                tr("script_run"),
+                tr("script_save"),
+                tr("script_new"),
+                tr("script_reveal"),
+            ]
+            .into_iter()
+            .map(|l| Self::button_width(ui, l)),
+            tr("script_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
+        let mut run = false;
+        let mut save = false;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if motif::button(ui, tr("script_run"))
+                    .on_hover_text(tr("script_run_tooltip"))
+                    .clicked()
+                {
+                    run = true;
+                }
+                let named = !session.script_name.trim().is_empty();
+                if motif::button_enabled(ui, tr("script_save"), named)
+                    .on_hover_text(tr("script_save_tooltip"))
+                    .clicked()
+                {
+                    save = true;
+                }
+                if motif::button(ui, tr("script_new"))
+                    .on_hover_text(tr("script_new_tooltip"))
+                    .clicked()
+                {
+                    session.script_open = None;
+                    session.script_name.clear();
+                    session.script_text.clear();
+                    session.script_out = None;
+                    session.script_note = None;
+                }
+                if motif::button(ui, tr("script_reveal"))
+                    .on_hover_text(tr("script_reveal_tooltip"))
+                    .clicked()
+                {
+                    let dir = session.scripts_dir.clone();
+                    let _ = std::fs::create_dir_all(&dir);
+                    let _ = open::that_detached(&dir);
+                }
+                let w = Self::field_width(ui, [tr("script_name_hint")].into_iter()).max(120.0);
+                ui.add_sized(
+                    [w, Self::button_height(ui)],
+                    egui::TextEdit::singleline(&mut session.script_name)
+                        .hint_text(tr("script_name_hint")),
+                );
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("script_subtitle"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+            if let Some((is_error, msg)) = &session.script_note {
+                ui.label(
+                    egui::RichText::new(msg.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(if *is_error {
+                            motif::alert()
+                        } else {
+                            motif::accent()
+                        }),
+                );
+            }
+        });
+
+        let work = rows[1];
+        let gap = 8.0;
+        // En caractères et non en pixels : les trois colonnes portent du
+        // texte, donc ce qu'il leur faut suit `[ui] text_scale`.
+        let wide = work.width() >= chars_wide(ui, 150.0);
+        let list_w = (work.width() * 0.20).clamp(150.0, 260.0);
+        let rest =
+            egui::Rect::from_min_max(egui::pos2(work.left() + list_w + gap, work.top()), work.max);
+        let (edit_rect, out_rect) = if wide {
+            let out_w = (rest.width() * 0.42).clamp(220.0, 520.0);
+            (
+                egui::Rect::from_min_size(
+                    rest.min,
+                    egui::vec2((rest.width() - out_w - gap).max(160.0), rest.height()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(rest.right() - out_w, rest.top()), rest.max),
+            )
+        } else {
+            // La sortie passe **sous** l'éditeur et prend la plus petite
+            // part : on écrit dans l'un et on lit l'autre.
+            let stacked = motif::split_rows(rest, &[0.0, rest.height() * 0.38], gap);
+            (stacked[0], stacked[1])
+        };
+        let list_rect = egui::Rect::from_min_size(work.min, egui::vec2(list_w, work.height()));
+
+        // --- Les scripts enregistrés, et les exemples livrés ---------
+        let mut open: Option<(String, String)> = None;
+        motif::panel(ui, list_rect, Some(tr("script_saved")), |ui| {
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 24.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("script_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for name in &session.scripts {
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(name.as_str()).size(motif::pt(ui, 11.5)),
+                                session.script_open.as_deref() == Some(name.as_str()),
+                            )
+                            .clicked()
+                            {
+                                let path = session.scripts_dir.join(format!("{name}.rhai"));
+                                if let Ok(text) = std::fs::read_to_string(&path) {
+                                    open = Some((name.clone(), text));
+                                }
+                            }
+                        }
+                        // Les exemples livrés, en dessous et nommés
+                        // comme tels : ils s'ouvrent, se modifient, et
+                        // ce qu'on en fait s'enregistre sous un autre
+                        // nom — comme une formule du codex qu'on
+                        // reprend.
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(tr("script_examples"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                        for (name, source) in crate::script::EXAMPLES {
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(*name)
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(motif::text_dim()),
+                                false,
+                            )
+                            .clicked()
+                            {
+                                open = Some(((*name).to_owned(), (*source).to_owned()));
+                            }
+                        }
+                    });
+            });
+        });
+
+        // --- L'éditeur ----------------------------------------------
+        motif::panel(ui, edit_rect, Some(tr("script_editor")), |ui| {
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 24.0 {
+                return;
+            }
+            motif::inside(ui, rect, |ui| {
+                egui::ScrollArea::both()
+                    .id_salt("script_editor")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add_sized(
+                            [ui.available_width().max(80.0), rect.height().max(60.0)],
+                            egui::TextEdit::multiline(&mut session.script_text)
+                                .code_editor()
+                                .hint_text(tr("script_hint")),
+                        );
+                    });
+            });
+        });
+
+        // --- Ce que la dernière exécution a rendu -------------------
+        motif::panel(ui, out_rect, Some(tr("script_output")), |ui| {
+            let rect = ui.available_rect_before_wrap();
+            if rect.height() < 24.0 {
+                return;
+            }
+            let inner = motif::well(ui, rect);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::both()
+                    .id_salt("script_output")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let Some(out) = &session.script_out else {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("script_never_run"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            return;
+                        };
+                        for l in &out.printed {
+                            ui.label(
+                                egui::RichText::new(l.as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .monospace(),
+                            );
+                        }
+                        if !out.value.is_empty() {
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(out.value.as_str())
+                                        .size(motif::pt(ui, 11.5))
+                                        .monospace()
+                                        .strong(),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        // L'erreur **après** ce qui a été écrit : ce
+                        // qu'un script a imprimé avant de se tromper est
+                        // souvent ce qui dit où il s'est trompé.
+                        if let Some(e) = &out.error {
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(e.as_str())
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::alert()),
+                                )
+                                .wrap(),
+                            );
+                        }
+                    });
+            });
+        });
+
+        if let Some((name, text)) = open {
+            session.script_open = Some(name.clone());
+            session.script_name = name;
+            session.script_text = text;
+            session.script_out = None;
+            session.script_note = None;
+        }
+        if run {
+            let data = session.script_snapshot();
+            let out = crate::script::run(&session.script_text, &data);
+            session.script_note = match &out.error {
+                Some(_) => Some((true, tr("script_failed").to_owned())),
+                None => Some((false, trf("script_ran", out.printed.len()))),
+            };
+            session.script_out = Some(out);
+        }
+        if save {
+            let name = session.script_name.trim().to_owned();
+            // Un nom qui traverserait le dossier — « ../config » — n'est
+            // pas un nom de script. Rien n'est deviné : le nom se
+            // réduit à ce qui peut être un nom de fichier, et s'il n'en
+            // reste rien on le dit plutôt que d'écrire ailleurs.
+            let safe: String = name
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+                .collect();
+            let safe = safe.trim().to_owned();
+            if safe.is_empty() {
+                session.script_note = Some((true, tr("script_bad_name").to_owned()));
+            } else {
+                let dir = session.scripts_dir.clone();
+                let path = dir.join(format!("{safe}.rhai"));
+                let done = std::fs::create_dir_all(&dir)
+                    .and_then(|()| std::fs::write(&path, session.script_text.as_bytes()));
+                match done {
+                    Ok(()) => {
+                        session.script_open = Some(safe.clone());
+                        session.script_name = safe.clone();
+                        session.script_note = Some((false, trf("script_saved_as", safe)));
+                        session.refresh_scripts();
+                    }
+                    Err(e) => session.script_note = Some((true, e.to_string())),
+                }
+            }
+        }
+        let _ = config;
+    }
+
     /// Ce que la base sait d'elle-même.
     ///
     /// Quatre questions qu'aucune vue ne posait : **la base** — huit
@@ -32077,7 +32556,8 @@ impl eframe::App for App {
                     | MainView::Explorer
                     | MainView::Classes
                     | MainView::Finances
-                    | MainView::Stats => {
+                    | MainView::Stats
+                    | MainView::Script => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
@@ -33937,6 +34417,7 @@ impl eframe::App for App {
             if let State::Unlocked(session) = &mut self.state {
                 session.cycle_months = self.config.rules.cycle_months.max(1);
                 session.loc_notice_days = self.config.locations.notice_days;
+                session.scripts_dir = self.config.scripts_dir();
                 session.refresh_dashboard();
             }
         }

@@ -36,6 +36,18 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
+  `src/script.rs` (the console: what the officine can ask its own base
+  in a few lines, without waiting for someone to write a screen for it.
+  Two rules make it possible at all, and both are tested: the engine has
+  **no I/O whatsoever** — no file, no network, no process — so the only
+  path a script has to the world is the pane it prints into, which is
+  why it is Rhai and not something else; and it **cannot write** —
+  the console reads a snapshot taken before the run, and a script that
+  could write to the register of stupéfiants would be a hole in the one
+  place in this application that has none. And it stops: `while true {}`
+  is three characters, so the engine is bounded in **operations** and
+  not in seconds — a clock would make the same script pass on one post
+  and fail on another. Pure, tested; the snapshot is passed in),
   `src/timeline.rs` (the file's thread: everything the base knows about
   one person, in the order of the days. Seven tabs each answer their own
   question and none answers the one you ask opening the file of somebody
@@ -626,7 +638,7 @@ add clicking and typing; it is not the price of entry.
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|peaux`
+  finances|stats|companion|script|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its

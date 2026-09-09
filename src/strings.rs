@@ -138,6 +138,7 @@ mod tests {
             include_str!("vigilance.rs"),
             include_str!("codebar.rs"),
             include_str!("timeline.rs"),
+            include_str!("script.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

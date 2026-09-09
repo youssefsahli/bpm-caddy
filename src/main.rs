@@ -23,6 +23,7 @@ mod pdf;
 mod release;
 mod revue;
 mod scans;
+mod script;
 mod strings;
 mod surveillance;
 mod tables;

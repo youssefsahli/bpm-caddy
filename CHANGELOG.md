@@ -5,6 +5,40 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.166.0] - 2026-09-09
+
+### Added
+- **La console : interroger sa propre base en quelques lignes.** Une
+  officine se pose des questions que personne n'a prévues — « quels
+  dossiers prennent une statine sans bilan lipidique depuis dix-huit
+  mois », « combien de fiches de telle classe n'ont pas d'interaction
+  écrite ». Chacune est un écran de plus si elle doit être programmée, et
+  trois lignes si la base se laisse interroger. Un onglet « Console » :
+  les scripts enregistrés à gauche, l'éditeur au milieu, la sortie à
+  droite, et quatre exemples livrés pour montrer ce qu'on peut demander.
+
+  **Ce qui rend la chose possible, et ce sont deux règles :** le langage
+  n'a *aucune* entrée-sortie — ni fichier, ni réseau, ni processus —, si
+  bien que le seul chemin d'un script vers le monde est le volet où il
+  écrit ; et il ne peut **rien écrire** dans la base, puisqu'il lit un
+  instantané pris avant l'exécution. Un script qui pourrait écrire au
+  registre des stupéfiants serait un trou dans le seul endroit de
+  l'application qui n'en a pas. Les deux sont tenues par des tests, dont
+  un qui vérifie qu'aucune fonction d'ouverture de fichier ni d'écriture
+  n'existe.
+
+  Et il s'arrête : `while true {}` fait trois caractères, et une
+  application de comptoir ne se rouvre pas d'un clic. La borne est en
+  **opérations** et non en secondes — une horloge ferait passer le même
+  script sur un poste et échouer sur l'autre, ce qui est la pire façon
+  d'échouer.
+
+  Les scripts s'enregistrent **à côté de la base**, comme les notes
+  d'équipe : une question qu'une officine s'est écrite vaut pour
+  l'officine et pas pour le poste. En clair, parce que ce sont des
+  questions et non des données de santé — on peut les ouvrir dans un
+  éditeur et les relire dans dix ans sans cette application.
+
 ## [0.165.0] - 2026-09-09
 
 ### Added

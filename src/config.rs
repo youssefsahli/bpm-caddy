@@ -1180,6 +1180,24 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from("notes_equipe.md"))
     }
 
+    /// Où vivent les scripts de la console.
+    ///
+    /// **À côté de la base et non à côté de la configuration** : une
+    /// question qu'une officine s'est écrite vaut pour l'officine et pas
+    /// pour le poste, et la base est ce que les postes partagent. Comme
+    /// les notes d'équipe, et pour la même raison.
+    ///
+    /// Ce ne sont pas des données de santé : ce sont des questions. Le
+    /// dossier est donc en clair, ce qui permet de les ouvrir dans un
+    /// éditeur, de les envoyer par courriel et de les relire dans dix
+    /// ans sans cette application.
+    pub fn scripts_dir(&self) -> PathBuf {
+        self.db_path()
+            .parent()
+            .map(|p| p.join("scripts"))
+            .unwrap_or_else(|| PathBuf::from("scripts"))
+    }
+
     /// The Typst template for the interview sheet: the configured path,
     /// or the editable default next to `config.toml`. The embedded
     /// template is used when the file does not exist.

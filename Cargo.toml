@@ -37,6 +37,13 @@ serde_json = "1"
 # linked against: a binary linked to libpcsclite does not start at all on
 # a post that has none, and most posts have none. See src/winscard.rs.
 libloading = "0.8"
+# La console de scripts (voir src/script.rs). Rhai est du Rust pur et
+# **n'a aucune entrée-sortie** : pas de fichier, pas de réseau, pas de
+# processus. C'est la raison pour laquelle c'est celui-là et pas un
+# autre — un script tapé dans une application qui tient des données de
+# santé chiffrées ne doit pas pouvoir les faire sortir. Le seul chemin
+# qu'un script a vers le monde est le volet où il écrit.
+rhai = { version = "1.25", default-features = false, features = ["std", "sync"] }
 
 
 [profile.release]

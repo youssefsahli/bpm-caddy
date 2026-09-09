@@ -33067,6 +33067,26 @@ impl Db {
         Ok(out)
     }
 
+    /// Tous les liens dossier–médicament de la base, par nom.
+    ///
+    /// Une requête pour tout, parce que la console en a besoin pour tous
+    /// les dossiers à la fois : une par dossier serait mille requêtes
+    /// avant qu'un script n'ait commencé.
+    pub fn all_patient_drugs(&self) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT pd.patient_id, d.name
+                 FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
+                 ORDER BY pd.patient_id, d.name COLLATE NOCASE",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Combien de traitements chaque dossier porte, dossiers vides
     /// compris.
     ///
@@ -34945,6 +34965,7 @@ mod tests {
         // dossier suivi » sur une base qui en portait cinq.
         db.treatment_counts().expect("treatment_counts");
         db.followed_files().expect("followed_files");
+        db.all_patient_drugs().expect("all_patient_drugs");
         db.posologies(did).expect("posologies");
         db.interviews_for(pid).expect("interviews_for");
         db.bio_results(pid).expect("bio_results");
