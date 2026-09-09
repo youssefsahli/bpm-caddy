@@ -5,6 +5,73 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **L'historique de caisse : le mois, soir par soir.** Le comptage
+  répondait à « le tiroir tombe-t-il juste ce soir ? » et à rien
+  d'autre : les vingt derniers comptages défilaient en petites lignes
+  dans un coin de la synthèse, sans total, sans écart cumulé, et sans
+  moyen de remonter à février. La page « Historique » (le bouton de la
+  vue Caisse, ou `caisses` dans la boîte de saut) porte le mois affiché
+  soir par soir — espèces, autres encaissements, recette, attendu,
+  écart, opérateur, remarque —, la bande des recettes par soir, le
+  total, et la liste des soirs qui ne tombent pas juste, le plus gros
+  écart d'abord. Les flèches changent de mois, Échap revient au
+  comptage.
+
+  Trois règles, et chacune est un test. **Un soir recompté ne compte
+  qu'une fois** : la table est en insertion seule, un recomptage est une
+  deuxième ligne, les deux restent à l'écran — la première nommée
+  « recompté », en encre éteinte — et seule la dernière entre dans les
+  totaux. Additionner les deux ferait une journée à double recette, ce
+  qu'un total mensuel ne montre jamais. **L'écart cumulé dit sur combien
+  de soirs il porte**, et quand aucun attendu n'a été saisi il n'y a pas
+  de chiffre du tout, mais une phrase : « 0,00 € » se lirait « tout est
+  tombé juste ». Et **un soir non compté n'est pas un soir à zéro
+  euro** : il n'a ni ligne dans le tableau, ni case dans la bande, et ne
+  pèse sur aucune moyenne.
+
+  La page n'écrit rien. Un historique où l'on pourrait rattraper une
+  soirée serait un historique qui ne prouve plus rien.
+- **Trois feuilles de plus, et chacune a son modèle éditable.**
+  - *Historique de caisse* — le mois qu'on garde ou qu'on donne au
+    comptable, avec ses écarts et ce qu'ils font ensemble.
+  - *Étiquettes de posologie* — le plan de prise découpé : une étiquette
+    par traitement, à coller sur la boîte, avec la posologie **du
+    dossier** et la phrase d'oubli de la fiche. La feuille A4 finit dans
+    un tiroir ; l'étiquette reste sur ce qu'on ouvre. Le nom et la
+    posologie passent entiers — ce sont eux qu'on lit sur la boîte —,
+    c'est la phrase d'oubli qui est coupée, et un traitement qui n'en a
+    pas donne une étiquette sans ligne vide.
+  - *Plan de surveillance* — ce que l'ordonnance demande de faire doser
+    et à quel rythme, avec une case à cocher devant ce qui est en retard
+    ou n'a jamais été fait, et une colonne vide pour le laboratoire. Ce
+    que `surveillance.rs` sait n'atteignait que l'écran et une section
+    du bilan, alors que c'est la feuille qu'on emporte. **Aucun chiffre
+    de résultat n'y figure** : une norme imprimée sur une feuille qui
+    part à la maison est une invitation à s'interpréter seul.
+
+### Changed
+- Le plan de prise et les étiquettes lisent le dossier par **une seule**
+  fonction (`treatment_lines`) : deux constructions d'une même liste
+  finissent par diverger, et rien ne dirait alors laquelle a raison, la
+  boîte ou la feuille.
+- La base de démonstration sème vingt-quatre soirs de caisse, dont un
+  recompté et deux sans recette attendue — sans quoi l'historique
+  s'ouvrait sur une page vide et ne montrait rien de ce qu'il existe
+  pour montrer.
+
+### Fixed
+- **Les montants à quatre chiffres s'écrivaient « 1□240,50 » à
+  l'écran.** Le séparateur de milliers était l'espace fine insécable
+  (U+202F), celle que la typographie française veut — et dont la fonte
+  livrée avec l'application n'a pas de glyphe. C'est l'espace insécable
+  ordinaire désormais, et le test des glyphes passe la **sortie** de
+  `caisse::euros` dans la fonte qui la dessine : un caractère qu'aucune
+  chaîne du fichier ne porte, parce qu'un format le produit, n'échappait
+  à aucun test jusqu'ici.
+
 ## [0.172.0] - 2026-09-09
 
 ### Added

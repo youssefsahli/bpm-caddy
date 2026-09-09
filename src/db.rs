@@ -1514,6 +1514,12 @@ pub struct Scan {
 /// `REAL` qu'un total juste redeviendrait faux.
 #[derive(Clone, Debug, Default)]
 pub struct CaisseCount {
+    /// La ligne, telle que la base l'a numérotée. Elle sert à dire quel
+    /// comptage est le dernier d'un même soir : la table est en
+    /// insertion seule, deux comptages peuvent partager la seconde, et
+    /// c'est l'identifiant qui les ordonne. Voir
+    /// [`crate::caisse::per_day`].
+    pub id: i64,
     /// ISO `AAAA-MM-JJ` — le jour compté, pas celui de la saisie.
     pub day: String,
     /// Les quantités par coupure, dans l'ordre de
@@ -1533,6 +1539,59 @@ pub struct CaisseCount {
     pub operator: String,
     pub remark: String,
     pub created_at: String,
+}
+
+impl CaisseCount {
+    /// Ce comptage sous la forme que [`crate::caisse`] lit, autres
+    /// encaissements repliés en un total.
+    pub fn counted(&self) -> crate::caisse::Counted {
+        crate::caisse::Counted {
+            id: self.id,
+            day: self.day.clone(),
+            cash: self.cash,
+            other: self.others.iter().map(|(_, v)| v).sum(),
+            float_kept: self.float_kept,
+            expected: self.expected,
+        }
+    }
+}
+
+/// Les colonnes d'un comptage, écrites **une** fois.
+///
+/// Deux requêtes qui lisent la même table avec deux listes de colonnes
+/// finissent par diverger, et c'est celle qu'on relit le moins souvent
+/// qui rend le mauvais chiffre.
+const CAISSE_SELECT: &str = "SELECT id, day, quantities, cash, float_kept, others, expected,
+                                    operator, remark, created_at
+                             FROM caisse_counts";
+
+/// Une ligne de `caisse_counts`, lue dans l'ordre de [`CAISSE_SELECT`].
+fn caisse_row(r: &rusqlite::Row) -> rusqlite::Result<CaisseCount> {
+    let quantities: String = r.get(2)?;
+    let others: String = r.get(5)?;
+    let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
+    for (slot, text) in q.iter_mut().zip(quantities.split(',')) {
+        *slot = text.trim().parse().unwrap_or(0);
+    }
+    Ok(CaisseCount {
+        id: r.get(0)?,
+        day: r.get(1)?,
+        quantities: q,
+        cash: r.get(3)?,
+        float_kept: r.get(4)?,
+        others: others
+            .split(';')
+            .filter(|p| !p.is_empty())
+            .map(|p| {
+                let (l, v) = p.split_once('=').unwrap_or((p, "0"));
+                (l.to_owned(), v.trim().parse().unwrap_or(0))
+            })
+            .collect(),
+        expected: r.get(6)?,
+        operator: r.get(7)?,
+        remark: r.get(8)?,
+        created_at: r.get(9)?,
+    })
 }
 
 /// One agenda entry that is not tied to a patient.
@@ -29477,39 +29536,33 @@ impl Db {
     pub fn caisse_counts(&self, limit: i64) -> Result<Vec<CaisseCount>, String> {
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT day, quantities, cash, float_kept, others, expected,
-                        operator, remark, created_at
-                 FROM caisse_counts ORDER BY day DESC, id DESC LIMIT ?1",
-            )
+            .prepare(&format!(
+                "{CAISSE_SELECT} ORDER BY day DESC, id DESC LIMIT ?1"
+            ))
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([limit], |r| {
-                let quantities: String = r.get(1)?;
-                let others: String = r.get(4)?;
-                let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
-                for (slot, text) in q.iter_mut().zip(quantities.split(',')) {
-                    *slot = text.trim().parse().unwrap_or(0);
-                }
-                Ok(CaisseCount {
-                    day: r.get(0)?,
-                    quantities: q,
-                    cash: r.get(2)?,
-                    float_kept: r.get(3)?,
-                    others: others
-                        .split(';')
-                        .filter(|p| !p.is_empty())
-                        .map(|p| {
-                            let (l, v) = p.split_once('=').unwrap_or((p, "0"));
-                            (l.to_owned(), v.trim().parse().unwrap_or(0))
-                        })
-                        .collect(),
-                    expected: r.get(5)?,
-                    operator: r.get(6)?,
-                    remark: r.get(7)?,
-                    created_at: r.get(8)?,
-                })
-            })
+            .query_map([limit], caisse_row)
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les comptages d'une période, bornes comprises, du plus ancien au
+    /// plus récent.
+    ///
+    /// Sans limite de nombre : une période est ce qu'on lui demande, et
+    /// un mois tronqué à vingt lignes serait un total faux qui n'a pas
+    /// l'air faux. Les recomptages en sortent avec le reste — c'est
+    /// [`crate::caisse::per_day`] qui décide lequel fait foi, pas la
+    /// requête.
+    pub fn caisse_counts_between(&self, from: &str, to: &str) -> Result<Vec<CaisseCount>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{CAISSE_SELECT} WHERE day >= ?1 AND day <= ?2 ORDER BY day, id"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([from, to], caisse_row)
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
@@ -34401,6 +34454,7 @@ mod tests {
         q[3] = 4;
         q[9] = 5;
         let first = CaisseCount {
+            id: 0,
             day: "2026-09-08".to_owned(),
             quantities: q,
             cash: 20_250,
@@ -34436,6 +34490,31 @@ mod tests {
         assert_eq!(back[1].operator, "CL");
         assert!(back[1].remark.starts_with("Un billet"));
         assert!(!back[1].created_at.is_empty(), "la base horodate la ligne");
+        // L'identifiant revient, et c'est lui qui ordonne deux
+        // comptages d'un même soir : `caisse::per_day` le lit pour dire
+        // lequel fait foi, parce que deux comptages peuvent partager la
+        // seconde et jamais le numéro de ligne.
+        assert!(
+            back[0].id > back[1].id,
+            "le recomptage porte un identifiant plus grand"
+        );
+
+        // Une période se lit dans l'autre sens — du plus ancien au plus
+        // récent, bornes comprises — et sans limite de nombre : un mois
+        // tronqué serait un total faux qui n'a pas l'air faux.
+        let period = db
+            .caisse_counts_between("2026-09-08", "2026-09-08")
+            .unwrap();
+        assert_eq!(period.len(), 2, "les deux comptages du soir");
+        assert!(period[0].id < period[1].id);
+        assert_eq!(
+            crate::caisse::per_day(&[period[0].counted(), period[1].counted()]).len(),
+            1
+        );
+        assert!(db
+            .caisse_counts_between("2026-09-10", "2026-09-30")
+            .unwrap()
+            .is_empty());
 
         // Un libellé qui contient les séparateurs du champ ne coupe pas
         // la ligne en deux : c'est du texte tapé au comptoir.
@@ -35597,6 +35676,16 @@ mod tests {
         })
         .expect("add_caisse_count");
         assert_eq!(db.caisse_counts(5).unwrap().len(), 1);
+        // Et la lecture par période, que l'historique fait passer par
+        // `unwrap_or_default` : une table mal nommée y rendrait un mois
+        // vide plutôt qu'une erreur — un zéro confiant, comme
+        // `bio_results` en son temps.
+        assert_eq!(
+            db.caisse_counts_between("2026-09-01", "2026-09-30")
+                .expect("caisse_counts_between")
+                .len(),
+            1
+        );
 
         // And the indexes are there too. They are created after the
         // migrations precisely so that a base of this age gets them:
@@ -39448,6 +39537,70 @@ mod tests {
                     "Vérifier le stock d'Eliquis avant la formation.",
                 )
                 .unwrap();
+
+                // Un mois de caisse : sans lui, l'historique s'ouvre sur
+                // une page vide et ne montre rien de ce qu'il existe
+                // pour montrer — ni la bande des soirs, ni un écart, ni
+                // un soir recompté. Les figures sont plausibles et
+                // varient d'un soir à l'autre ; le 3 est **recompté**
+                // (deux lignes le même jour) et deux soirs n'ont pas
+                // d'attendu, parce que ce sont les deux cas que la vue
+                // doit savoir écrire.
+                for back in (0..24_i64).rev() {
+                    let day = db.date_offset(&today, -back).unwrap();
+                    let wobble = (back * 7919) % 400;
+                    let cash = 18_000 + wobble * 37;
+                    let card = 42_000 + wobble * 61;
+                    // Deux soirs sur onze, personne n'a saisi la recette
+                    // attendue : il n'y a pas d'écart ces soirs-là, et
+                    // c'est ce que la vue doit dire plutôt que zéro.
+                    // L'écart tombe des deux côtés de zéro et parfois
+                    // dessus : un mois où tout est en excédent
+                    // n'exercerait jamais l'encre d'alerte, qui est la
+                    // moitié de ce que la vue a à dire.
+                    let drift = (wobble % 7) * 25 - 75;
+                    let expected = if back % 11 == 3 {
+                        None
+                    } else {
+                        Some(cash + card - drift)
+                    };
+                    let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
+                    q[3] = cash / 5_000;
+                    q[4] = (cash % 5_000) / 2_000;
+                    q[9] = (cash % 100) / 50;
+                    db.add_caisse_count(&CaisseCount {
+                        id: 0,
+                        day: day.clone(),
+                        quantities: q,
+                        cash,
+                        float_kept: 15_000,
+                        others: vec![("Carte".to_owned(), card)],
+                        expected,
+                        operator: if back % 2 == 0 { "CL" } else { "MB" }.to_owned(),
+                        remark: String::new(),
+                        created_at: String::new(),
+                    })
+                    .unwrap();
+                    // Le soir recompté n'est pas un des soirs sans
+                    // attendu : la vue doit montrer un recomptage **avec**
+                    // son écart, qui est le cas qu'on relit.
+                    if back == 5 {
+                        db.add_caisse_count(&CaisseCount {
+                            id: 0,
+                            day,
+                            quantities: q,
+                            cash: cash + 2_000,
+                            float_kept: 15_000,
+                            others: vec![("Carte".to_owned(), card)],
+                            expected,
+                            operator: "CL".to_owned(),
+                            remark: "Recompté : un billet de 20 € était resté sous le tiroir."
+                                .to_owned(),
+                            created_at: String::new(),
+                        })
+                        .unwrap();
+                    }
+                }
 
                 // Transmissions: one entry yesterday, two today.
                 let t1 = db

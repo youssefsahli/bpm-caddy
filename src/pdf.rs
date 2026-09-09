@@ -449,6 +449,66 @@ fn sample_pharmacy() -> PharmacyConfig {
     }
 }
 
+/// Trois soirs de caisse pour l'aperçu du modèle : un soir recompté et
+/// un soir sans recette attendue.
+///
+/// Les valeurs d'exemple ne sont **jamais vides** et jamais toutes du
+/// même cas : un modèle validé sur trois lignes qui tombent juste
+/// compile, et casse le premier soir où quelque chose ne tombe pas
+/// juste. Ces deux cas-là sont exactement ceux que la feuille doit
+/// savoir écrire.
+fn sample_counted() -> Vec<crate::caisse::Counted> {
+    vec![
+        crate::caisse::Counted {
+            id: 1,
+            day: "2026-09-07".to_owned(),
+            cash: 20_250,
+            other: 45_075,
+            float_kept: 15_000,
+            expected: Some(66_000),
+        },
+        crate::caisse::Counted {
+            id: 2,
+            day: "2026-09-07".to_owned(),
+            cash: 20_450,
+            other: 45_075,
+            float_kept: 15_000,
+            expected: Some(66_000),
+        },
+        crate::caisse::Counted {
+            id: 3,
+            day: "2026-09-08".to_owned(),
+            cash: 31_200,
+            other: 52_300,
+            float_kept: 15_000,
+            expected: None,
+        },
+    ]
+}
+
+fn sample_caisse_history() -> Vec<CaisseHistoryRow> {
+    let counts = sample_counted();
+    let superseded = crate::caisse::superseded(&counts);
+    counts
+        .iter()
+        .map(|c| CaisseHistoryRow {
+            day: crate::db::format_french_date(&c.day),
+            cash: c.cash,
+            other: c.other,
+            takings: c.takings(),
+            expected: c.expected,
+            gap: c.gap(),
+            operator: "CL".to_owned(),
+            remark: if c.id == 2 {
+                "Recompté : un billet de 20 € était resté sous le tiroir.".to_owned()
+            } else {
+                String::new()
+            },
+            superseded: superseded.contains(&c.id),
+        })
+        .collect()
+}
+
 fn sample_treatments() -> Vec<Drug> {
     vec![
         Drug {
@@ -3472,6 +3532,24 @@ pub const DOCS: &[Doc] = &[
         markers: MARKERS_CAISSE,
         default: DEFAULT_CAISSE_TEMPLATE,
     },
+    Doc {
+        key: "caisses",
+        label: "tpl_target_caisses",
+        markers: MARKERS_CAISSES,
+        default: DEFAULT_CAISSES_TEMPLATE,
+    },
+    Doc {
+        key: "etiquettes",
+        label: "tpl_target_etiquettes",
+        markers: MARKERS_ETIQUETTES,
+        default: DEFAULT_ETIQUETTES_TEMPLATE,
+    },
+    Doc {
+        key: "surveillance",
+        label: "tpl_target_surveillance",
+        markers: MARKERS_SURVEILLANCE,
+        default: DEFAULT_SURVEILLANCE_TEMPLATE,
+    },
 ];
 
 const MARKERS_FICHE: &[&str] = &[
@@ -3926,6 +4004,62 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 "Un billet de 20 € retrouvé sous le tiroir en fin de comptage.",
             )
         }
+        // L'historique : un mois qui porte un recomptage et un soir
+        // sans attendu, parce que ce sont les deux cas que la feuille
+        // doit savoir écrire.
+        "caisses" => {
+            let rows = sample_caisse_history();
+            let counts: Vec<crate::caisse::Counted> = sample_counted();
+            caisse_history_values(
+                &rows,
+                "septembre 2026",
+                &crate::caisse::summarize(&counts),
+                &pharmacy.name,
+            )
+        }
+        "etiquettes" => label_sheet_values(
+            &LabelSheet {
+                patient: &patient,
+                today: "24/08/2026",
+                lines: vec![
+                    (
+                        "Amlodipine 5 mg".to_owned(),
+                        "1 comprimé le matin".to_owned(),
+                        "Prendre le comprimé oublié dans la journée ; ne jamais doubler la dose le lendemain.".to_owned(),
+                    ),
+                    (
+                        "Lévothyrox 75 µg".to_owned(),
+                        "1 comprimé le matin à jeun".to_owned(),
+                        String::new(),
+                    ),
+                ],
+                mention: "Document remis à titre informatif.",
+            },
+            &pharmacy,
+        ),
+        "surveillance" => watch_sheet_values(
+            &WatchSheet {
+                patient: &patient,
+                today: "24/08/2026",
+                rows: vec![
+                    (
+                        "Créatinine et DFG".to_owned(),
+                        "tous les 6 mois".to_owned(),
+                        "jamais noté".to_owned(),
+                        "Amlodipine, Périndopril".to_owned(),
+                    ),
+                    (
+                        "Kaliémie".to_owned(),
+                        "tous les 3 mois".to_owned(),
+                        "12/02/2026".to_owned(),
+                        "Périndopril".to_owned(),
+                    ),
+                ],
+                flagged: vec!["Créatinine et DFG".to_owned()],
+                mention: "Document remis à titre informatif.",
+            },
+            &pharmacy,
+        ),
         // L'ordonnance : son aperçu montre les deux mentions remplies,
         // pour qu'on voie où les siennes tomberaient.
         _ => vec![
@@ -4131,6 +4265,440 @@ pub fn open_caisse(
         remark,
     );
     compile_and_open(fill(&template, &values), "caisse")
+}
+
+/// Une soirée de l'historique de caisse, telle que la feuille l'écrit.
+///
+/// Les montants sont en centimes, comme partout où il est question
+/// d'argent ici ; c'est la feuille qui les met en euros, une fois.
+pub struct CaisseHistoryRow {
+    /// Le jour compté, déjà en français.
+    pub day: String,
+    pub cash: i64,
+    pub other: i64,
+    pub takings: i64,
+    pub expected: Option<i64>,
+    pub gap: Option<i64>,
+    pub operator: String,
+    pub remark: String,
+    /// Un comptage qu'un plus récent a remplacé. Il **reste sur la
+    /// feuille**, marqué, et ne compte pas dans les totaux : une
+    /// histoire de caisse dont on a retiré les comptages refaits ne
+    /// prouve rien, et c'est justement le soir qu'on a recompté qui se
+    /// relit six mois plus tard.
+    pub superseded: bool,
+}
+
+const MARKERS_CAISSES: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PERIOD}}",
+    "{{ROWS}}",
+    "{{DAYS}}",
+    "{{TAKINGS}}",
+    "{{GAP}}",
+    "{{WORST}}",
+];
+
+const DEFAULT_CAISSES_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.4cm)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Historique de caisse]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{PERIOD}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.4pt,
+  align: (left, right, right, right, right, right, left, left),
+  [*Jour*], [*Espèces*], [*Autres*], [*Recette*], [*Attendu*], [*Écart*], [*Par*], [*Remarque*],
+{{ROWS}})
+
+#v(4mm)
+#block(width: 100%, stroke: 0.4pt, inset: 6pt)[
+  #text(weight: "bold")[Sur la période] \
+  {{DAYS}} \
+  Recette encaissée : {{TAKINGS}} \
+  {{GAP}} \
+  {{WORST}}
+]
+
+#v(3mm)
+#text(8pt, style: "italic")[Un soir recompté est une deuxième ligne : les deux figurent ici, et seule la dernière entre dans les totaux. Un écart se note et s'explique ; il ne se corrige pas en changeant le comptage.]
+"##;
+
+fn caisse_history_values(
+    rows: &[CaisseHistoryRow],
+    period: &str,
+    summary: &crate::caisse::Summary,
+    pharmacy: &str,
+) -> Vec<(&'static str, String)> {
+    use crate::caisse::euros;
+    let money = |cents: Option<i64>| -> String {
+        cents.map_or_else(|| "—".to_owned(), |c| format!("{} €", euros(c)))
+    };
+    let signed = |cents: Option<i64>| -> String {
+        cents.map_or_else(
+            || "—".to_owned(),
+            |c| {
+                let sign = if c > 0 { "+" } else { "" };
+                format!("{sign}{} €", euros(c))
+            },
+        )
+    };
+    let mut body = String::new();
+    for r in rows {
+        // Le comptage remplacé se nomme plutôt qu'il ne disparaît : il
+        // est là pour être lu, pas pour être compté. Le jour en gras
+        // est celui qui fait foi.
+        let day = if r.superseded {
+            format!(
+                "[#text(fill: luma(40%))[#{} (recompté)]]",
+                typst_str(&r.day)
+            )
+        } else {
+            format!("[*#{}*]", typst_str(&r.day))
+        };
+        // L'unité sur chaque montant, y compris les trois premiers : une
+        // colonne de chiffres nus à côté d'une colonne en euros se lit
+        // comme deux choses différentes.
+        body.push_str(&format!(
+            "  {day}, [{} €], [{} €], [{} €], [{}], [{}], [#{}], [#text(8pt)[#{}]],\n",
+            euros(r.cash),
+            euros(r.other),
+            euros(r.takings),
+            money(r.expected),
+            signed(r.gap),
+            typst_str(&r.operator),
+            typst_str(r.remark.trim()),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("  [], [], [], [], [], [], [], [],\n");
+    }
+    // Ce que la période dit, et ce qu'elle ne dit pas. Sans attendu
+    // saisi, il n'y a pas d'écart : la ligne le dit en toutes lettres
+    // plutôt que d'écrire « 0,00 € », qui se lirait « tout est tombé
+    // juste ».
+    let gap = match (summary.gap, summary.with_expected) {
+        (Some(g), n) => {
+            let sign = if g > 0 { "+" } else { "" };
+            format!(
+                "Écart cumulé : {sign}{} € — sur {n} {}, {} en moins, {} en plus, {} juste.",
+                euros(g),
+                if n > 1 { "soirs" } else { "soir" },
+                summary.short,
+                summary.over,
+                summary.exact
+            )
+        }
+        (None, _) => {
+            "Écart : aucune recette attendue n'a été saisie sur la période — il n'y a pas d'écart à établir.".to_owned()
+        }
+    };
+    let worst = match &summary.worst {
+        Some((day, gap)) => {
+            let sign = if *gap > 0 { "+" } else { "" };
+            format!(
+                "Le soir le plus loin du compte : {} ({sign}{} €).",
+                crate::db::format_french_date(day),
+                euros(*gap)
+            )
+        }
+        None => String::new(),
+    };
+    // Des soirs comptés, jamais des jours de calendrier : un soir où
+    // personne n'a compté n'est pas un soir à zéro euro, et une
+    // moyenne par jour ouvré se calculerait sur des jours que cette
+    // feuille ne connaît pas.
+    let counted = format!(
+        "{} {}",
+        summary.days,
+        if summary.days > 1 {
+            "soirs comptés"
+        } else {
+            "soir compté"
+        }
+    );
+    let days = match summary.counts.saturating_sub(summary.days) {
+        0 => format!("{counted}."),
+        n => format!(
+            "{counted}, sur {} lignes — {n} {}.",
+            summary.counts,
+            if n > 1 { "recomptages" } else { "recomptage" }
+        ),
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", format!("#{}", typst_str(pharmacy))),
+        ("{{PERIOD}}", format!("#{}", typst_str(period))),
+        ("{{ROWS}}", body),
+        ("{{DAYS}}", format!("#{}", typst_str(&days))),
+        ("{{TAKINGS}}", format!("{} €", euros(summary.takings))),
+        ("{{GAP}}", format!("#{}", typst_str(&gap))),
+        ("{{WORST}}", format!("#{}", typst_str(&worst))),
+    ]
+}
+
+/// L'historique de caisse d'une période, sur une feuille.
+///
+/// Ce n'est pas le comptage du soir (voir [`open_caisse`]) : c'est ce
+/// que le mois a donné, soir par soir, avec ses écarts et le total de
+/// ce qu'ils font. La feuille qu'on garde, ou qu'on donne au
+/// comptable.
+pub fn open_caisse_history(
+    rows: &[CaisseHistoryRow],
+    period: &str,
+    summary: &crate::caisse::Summary,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("caisses", template_path),
+            &caisse_history_values(rows, period, summary, &pharmacy.name),
+        ),
+        "historique_caisse",
+    )
+}
+
+/// Ce qui va sur les boîtes : une étiquette par traitement.
+pub struct LabelSheet<'a> {
+    pub patient: &'a Patient,
+    /// Déjà en français.
+    pub today: &'a str,
+    /// (nom et dosage, la posologie du dossier, que faire en cas
+    /// d'oubli) — une entrée par traitement.
+    pub lines: Vec<(String, String, String)>,
+    /// La mention de l'officine, vide tant qu'elle n'en a pas écrit.
+    pub mention: &'a str,
+}
+
+const MARKERS_ETIQUETTES: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{DATE}}",
+    "{{LABELS}}",
+    "{{PHARMACY_NAME}}",
+    "{{MENTION}}",
+];
+
+const DEFAULT_ETIQUETTES_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#text(9pt)[{{PATIENT_NAME}} — {{DATE}} — {{PHARMACY_NAME}}]
+#v(2mm)
+
+#grid(columns: (1fr, 1fr), rows: 3.3cm, gutter: 3mm,
+{{LABELS}})
+
+#v(2mm)
+{{MENTION}}
+"##;
+
+fn label_sheet_values(data: &LabelSheet, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    // Ce qu'une étiquette de 8 cm sur 3 peut porter sans devenir
+    // illisible. On coupe à la lecture, jamais au sens : le nom et la
+    // posologie passent en entier, c'est la phrase de l'oubli qui
+    // s'arrête — et la feuille de plan de prise, elle, la porte entière.
+    let short = |text: &str, max: usize| -> String {
+        let text = text.trim();
+        if text.chars().count() <= max {
+            return text.to_owned();
+        }
+        let cut: String = text.chars().take(max).collect();
+        let cut = cut
+            .rsplit_once(' ')
+            .map_or(cut.clone(), |(a, _)| a.to_owned());
+        format!("{cut}…")
+    };
+    let mut body = String::new();
+    for (name, dose, missed) in &data.lines {
+        let missed = short(missed, 110);
+        let missed = if missed.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "\n    #v(1mm)\n    #text(7.5pt, style: \"italic\")[Oubli : #{}]",
+                typst_str(&missed)
+            )
+        };
+        body.push_str(&format!(
+            "  box(width: 100%, height: 100%, stroke: 0.5pt, inset: 5pt, clip: true)[\n    #text(11pt, weight: \"bold\")[#{}] \\\n    #text(9.5pt)[#{}]{}\n    #place(bottom + left)[#text(6.5pt)[#{} — #{}]]\n  ],\n",
+            typst_str(name.trim()),
+            typst_str(&short(dose, 70)),
+            missed,
+            typst_str(&data.patient.full_name()),
+            typst_str(data.today),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("  box(width: 100%, height: 100%, stroke: 0.5pt)[],\n");
+    }
+    let mention = if data.mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#text(7.5pt, style: \"italic\")[#{}]",
+            typst_str(data.mention.trim())
+        )
+    };
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{LABELS}}", body),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        ("{{MENTION}}", mention),
+    ]
+}
+
+/// Les étiquettes de posologie, à coller sur les boîtes.
+///
+/// C'est le plan de prise découpé : la même posologie, la même phrase
+/// d'oubli, mais sur la boîte plutôt que sur une feuille qui reste dans
+/// un tiroir. Ce que le pilulier de l'EHPAD et la table de nuit
+/// demandent, et ce qu'aucune feuille A4 ne remplace.
+///
+/// La mention imprimée est celle du plan de prise : c'est le même
+/// document, coupé autrement, et il n'y a pas lieu d'en écrire une
+/// seconde.
+pub fn open_labels(
+    data: &LabelSheet,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("etiquettes", template_path),
+            &label_sheet_values(data, pharmacy),
+        ),
+        "etiquettes",
+    )
+}
+
+/// Le plan de surveillance : ce que l'ordonnance demande de faire
+/// doser, et quand.
+pub struct WatchSheet<'a> {
+    pub patient: &'a Patient,
+    /// Déjà en français.
+    pub today: &'a str,
+    /// (analyse, rythme, dernier résultat noté, ce qui la demande) —
+    /// dans l'ordre où la vue les montre : les retards d'abord.
+    pub rows: Vec<(String, String, String, String)>,
+    /// Les analyses en retard ou jamais faites, par leur libellé : la
+    /// feuille les coche.
+    pub flagged: Vec<String>,
+    pub mention: &'a str,
+}
+
+const MARKERS_SURVEILLANCE: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{DATE}}",
+    "{{ROWS}}",
+    "{{PHARMACY_NAME}}",
+    "{{MENTION}}",
+];
+
+const DEFAULT_SURVEILLANCE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Plan de surveillance]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PATIENT_NAME}} — né(e) le {{BIRTH_DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, 1.1fr, auto, auto, 1.4fr, auto), inset: 5pt, stroke: 0.5pt,
+  align: (center, left, left, left, left, left),
+  [], [*Analyse*], [*Rythme*], [*Dernier*], [*Ce qui la demande*], [*Résultat*],
+{{ROWS}})
+
+#v(5mm)
+#text(9pt)[Feuille établie le {{DATE}} par {{PHARMACY_NAME}} d'après les traitements portés au dossier. Elle ne remplace ni la prescription du médecin ni le compte rendu du laboratoire.]
+#v(2mm)
+{{MENTION}}
+"##;
+
+fn watch_sheet_values(data: &WatchSheet, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let mut body = String::new();
+    for (analyte, rhythm, last, why) in &data.rows {
+        // La case à cocher n'est pas sur toutes les lignes : elle est
+        // sur celles qui sont en retard ou jamais faites. Une feuille
+        // où tout est à cocher ne dit plus ce qui presse.
+        let mark = if data.flagged.contains(analyte) {
+            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)]"
+        } else {
+            "[]"
+        };
+        body.push_str(&format!(
+            "  {mark}, [*#{}*], [#{}], [#{}], [#text(8.5pt)[#{}]], [],\n",
+            typst_str(analyte),
+            typst_str(rhythm),
+            typst_str(last),
+            typst_str(why),
+        ));
+    }
+    if body.is_empty() {
+        body.push_str("  [], [], [], [], [], [],\n");
+    }
+    let mention = if data.mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#text(8.5pt, style: \"italic\")[#{}]",
+            typst_str(data.mention.trim())
+        )
+    };
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        (
+            "{{BIRTH_DATE}}",
+            format!(
+                "#{}",
+                typst_str(&crate::db::format_french_date(&data.patient.birth_date))
+            ),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{ROWS}}", body),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        ("{{MENTION}}", mention),
+    ]
+}
+
+/// Le plan de surveillance du dossier, sur une feuille.
+///
+/// Ce que `surveillance.rs` sait — quelle analyse chaque traitement
+/// réclame, à quel rythme, et ce qui n'a pas été fait — n'atteignait
+/// jusqu'ici que l'écran et une section du bilan. C'est pourtant la
+/// feuille qu'on emporte au laboratoire ou chez le médecin.
+///
+/// **Aucun chiffre n'y figure**, et c'est délibéré : la feuille dit
+/// quoi faire doser et à quel rythme, jamais ce que le résultat devrait
+/// valoir. Une norme imprimée sur une feuille qui part à la maison est
+/// une invitation à s'interpréter soi-même.
+pub fn open_watch_sheet(
+    data: &WatchSheet,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("surveillance", template_path),
+            &watch_sheet_values(data, pharmacy),
+        ),
+        "surveillance",
+    )
 }
 
 #[cfg(test)]
@@ -4370,6 +4938,227 @@ mod tests {
         );
         let world = PdfWorld::new(fill(DEFAULT_CAISSE_TEMPLATE, &values));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// L'historique porte les soirs recomptés **et** ne les compte
+    /// qu'une fois.
+    ///
+    /// C'est la règle de `caisse::per_day` portée jusqu'au papier : les
+    /// deux lignes du 7 sont sur la feuille, la première nommée
+    /// « recompté », et le total ne retient que la seconde. Une
+    /// histoire de caisse d'où l'on aurait retiré les comptages refaits
+    /// ne prouverait rien ; une histoire qui les additionne est fausse.
+    #[test]
+    fn the_till_history_shows_a_recount_and_counts_it_once() {
+        let counts = sample_counted();
+        let summary = crate::caisse::summarize(&counts);
+        let rows = sample_caisse_history();
+        assert_eq!(rows.len(), 3, "les trois lignes sont sur la feuille");
+        assert_eq!(rows.iter().filter(|r| r.superseded).count(), 1);
+        let values =
+            caisse_history_values(&rows, "septembre 2026", &summary, "Pharmacie du Centre");
+        let of = |m: &str| {
+            values
+                .iter()
+                .find(|(k, _)| *k == m)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
+        // 204,50 + 450,75 le 7 (le recomptage), 312,00 + 523,00 le 8 :
+        // 1 490,25 €. Avec les deux comptages du 7 additionnés, on
+        // lirait 1 692,75 — l'erreur que ce test existe pour tenir.
+        assert_eq!(of("{{TAKINGS}}"), "1\u{a0}490,25 €");
+        assert!(of("{{DAYS}}").contains("2 soirs comptés"));
+        assert!(of("{{DAYS}}").contains("1 recomptage"));
+        // L'écart porte sur le seul soir qui avait un attendu, et le
+        // dit : sans ce nombre à côté, la somme se lirait comme si elle
+        // couvrait le mois.
+        assert!(of("{{GAP}}").contains("sur 1 soir"), "{}", of("{{GAP}}"));
+        let src = fill(DEFAULT_CAISSES_TEMPLATE, &values);
+        assert!(src.contains("recompté"));
+        assert!(!src.contains("{{"));
+        let world = PdfWorld::new(src.clone());
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+        // Écrite sur disque quand on demande à la regarder : une feuille
+        // se juge à l'œil, pas à une assertion de sous-chaîne.
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let doc: PagedDocument = typst::compile(&PdfWorld::new(src.clone()))
+                .output
+                .expect("la feuille doit compiler");
+            if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                let _ = std::fs::write(
+                    std::path::Path::new(&dir).join("historique_caisse_exemple.pdf"),
+                    &pdf,
+                );
+            }
+        }
+
+        // Et un mois où personne n'a saisi de recette attendue le dit,
+        // plutôt que d'imprimer « 0,00 € » — qui se lirait « tout est
+        // tombé juste ».
+        let blind: Vec<crate::caisse::Counted> = counts
+            .iter()
+            .cloned()
+            .map(|c| crate::caisse::Counted {
+                expected: None,
+                ..c
+            })
+            .collect();
+        let values = caisse_history_values(
+            &sample_caisse_history()
+                .into_iter()
+                .map(|r| CaisseHistoryRow {
+                    expected: None,
+                    gap: None,
+                    ..r
+                })
+                .collect::<Vec<_>>(),
+            "septembre 2026",
+            &crate::caisse::summarize(&blind),
+            "Pharmacie du Centre",
+        );
+        let gap = values
+            .iter()
+            .find(|(k, _)| *k == "{{GAP}}")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        assert!(gap.contains("aucune recette attendue"), "{gap}");
+        assert!(!gap.contains("0,00"));
+    }
+
+    /// Les étiquettes : une par traitement, la posologie du dossier, et
+    /// la phrase d'oubli coupée à la lecture plutôt qu'au sens.
+    ///
+    /// Ce qui doit tenir : le nom et la posologie passent entiers — ce
+    /// sont eux qu'on lit sur la boîte —, c'est la phrase de l'oubli
+    /// qui s'arrête, et un traitement sans phrase d'oubli donne une
+    /// étiquette sans ligne vide plutôt qu'une étiquette avec « Oubli :
+    /// » et rien derrière.
+    #[test]
+    fn the_labels_carry_the_dose_and_shorten_only_what_they_must() {
+        let patient = sample_patient();
+        let long = "Prendre le comprimé oublié dès que l'on s'en aperçoit, sauf s'il est presque l'heure de la prise suivante, auquel cas on saute la prise oubliée et on reprend le rythme habituel sans jamais doubler la dose.";
+        let data = LabelSheet {
+            patient: &patient,
+            today: "24/08/2026",
+            lines: vec![
+                (
+                    "Lévothyrox 75 µg".to_owned(),
+                    "1 comprimé le matin à jeun, 30 minutes avant le petit-déjeuner".to_owned(),
+                    long.to_owned(),
+                ),
+                (
+                    "Doliprane 1 g #eval \"x\"".to_owned(),
+                    String::new(),
+                    String::new(),
+                ),
+            ],
+            mention: "",
+        };
+        let values = label_sheet_values(&data, &sample_pharmacy());
+        let labels = values
+            .iter()
+            .find(|(k, _)| *k == "{{LABELS}}")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        assert!(
+            labels.contains("30 minutes avant le petit-déjeuner"),
+            "la posologie passe entière : c'est ce qu'on lit sur la boîte"
+        );
+        assert!(labels.contains('…'), "la phrase d'oubli est coupée");
+        assert!(
+            !labels.contains("sans jamais doubler la dose"),
+            "et coupée pour de bon"
+        );
+        // Le second traitement n'a rien à dire sur l'oubli : pas de
+        // ligne du tout, plutôt qu'un « Oubli : » suivi de rien.
+        assert_eq!(labels.matches("Oubli :").count(), 1);
+        assert!(!labels.contains("#eval \"x\"]"), "rien n'est du code Typst");
+        // Une mention vide n'imprime pas un cadre vide.
+        assert_eq!(
+            values
+                .iter()
+                .find(|(k, _)| *k == "{{MENTION}}")
+                .map(|(_, v)| v.as_str()),
+            Some("")
+        );
+        let world = PdfWorld::new(fill(DEFAULT_ETIQUETTES_TEMPLATE, &values));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+        // Écrite sur disque quand on demande à la regarder : une feuille
+        // se juge à l'œil, pas à une assertion de sous-chaîne.
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let doc: PagedDocument =
+                typst::compile(&PdfWorld::new(fill(DEFAULT_ETIQUETTES_TEMPLATE, &values)))
+                    .output
+                    .expect("la feuille doit compiler");
+            if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                let _ = std::fs::write(
+                    std::path::Path::new(&dir).join("etiquettes_exemple.pdf"),
+                    &pdf,
+                );
+            }
+        }
+    }
+
+    /// Le plan de surveillance coche ce qui est en retard, et **n'écrit
+    /// aucun chiffre de résultat**.
+    ///
+    /// La feuille dit quoi faire doser et à quel rythme ; ce que le
+    /// résultat devrait valoir n'y est pas, et la colonne « Résultat »
+    /// est vide, pour le laboratoire. Une norme imprimée sur une
+    /// feuille qui part à la maison est une invitation à s'interpréter
+    /// seul.
+    #[test]
+    fn the_watch_sheet_ticks_what_is_late_and_prints_no_figure() {
+        let patient = sample_patient();
+        let data = WatchSheet {
+            patient: &patient,
+            today: "24/08/2026",
+            rows: vec![
+                (
+                    "Créatinine et DFG".to_owned(),
+                    "tous les 6 mois".to_owned(),
+                    "jamais noté".to_owned(),
+                    "Périndopril, Furosémide".to_owned(),
+                ),
+                (
+                    "Kaliémie".to_owned(),
+                    "tous les 3 mois".to_owned(),
+                    "12/02/2026".to_owned(),
+                    "Périndopril".to_owned(),
+                ),
+            ],
+            flagged: vec!["Créatinine et DFG".to_owned()],
+            mention: "Document remis à titre informatif.",
+        };
+        let values = watch_sheet_values(&data, &sample_pharmacy());
+        let rows = values
+            .iter()
+            .find(|(k, _)| *k == "{{ROWS}}")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+        // Une case à cocher, pas deux : une feuille où tout est à
+        // cocher ne dit plus ce qui presse.
+        assert_eq!(rows.matches("stroke: 0.6pt").count(), 1);
+        assert!(rows.contains("jamais noté"));
+        assert!(rows.contains("Périndopril, Furosémide"));
+        let src = fill(DEFAULT_SURVEILLANCE_TEMPLATE, &values);
+        assert!(!src.contains("{{"));
+        let world = PdfWorld::new(src.clone());
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+        // Écrite sur disque quand on demande à la regarder : une feuille
+        // se juge à l'œil, pas à une assertion de sous-chaîne.
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let doc: PagedDocument = typst::compile(&PdfWorld::new(src.clone()))
+                .output
+                .expect("la feuille doit compiler");
+            if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                let _ = std::fs::write(
+                    std::path::Path::new(&dir).join("surveillance_exemple.pdf"),
+                    &pdf,
+                );
+            }
+        }
     }
 
     /// Et un marqueur inventé est refusé par son nom, plutôt que

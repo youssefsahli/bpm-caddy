@@ -63,7 +63,15 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   leaves the line blank, rather than announcing « + 1 240,50 €
   d'excédent » every evening. Pure, tested, no clock; the day is
   passed. The counts are rows of `caisse_counts`, INSERT-only: a till
-  recounted the same evening is a *second line*, and both are read),
+  recounted the same evening is a *second line*, and both are read.
+  Which is exactly what the month has to reckon with: `per_day` keeps
+  **one count per evening — the last written**, `superseded` names the
+  others so the view can show them struck rather than hide them, and
+  `summarize` adds up only what `per_day` kept. Adding both lines of a
+  recounted evening makes a day with double the takings, and no monthly
+  total ever shows it. The same summary says **over how many evenings**
+  its cumulative gap is computed: a sum of gaps with no such number
+  beside it reads as though it covered the month),
   `src/script.rs` (the console: what the officine can ask its own base
   in a few lines, without waiting for someone to write a screen for it.
   Two rules make it possible at all, and both are tested: the engine has
@@ -287,6 +295,14 @@ add clicking and typing; it is not the price of entry.
   a sentence, and three strings were hollow boxes on screen for months
   because the chip beside them was right. Two tests in `src/strings.rs`
   pass every shipped character through the face that will draw it.
+  **And a character no string carries still reaches the screen**: the
+  thousands separator of `caisse::euros` was U+202F, the narrow no-break
+  space French typography wants and the shipped face has no glyph for,
+  so every four-figure amount drew « 1□240,50 » — invisible to a test
+  that reads the strings file, because nothing writes that character
+  down. The glyph test now passes the *output* of that function, not a
+  constant; a formatted character is checked the same way a written one
+  is.
 - **A font size comes from `motif::pt`, never from a literal.**
   `RichText::size(11.0)` is a number of pixels: `[ui] text_scale` scales
   the `TextStyle` ladder, and a literal does not go through the ladder.
@@ -683,7 +699,7 @@ add clicking and typing; it is not the price of entry.
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|script|carnets|caisse|peaux`
+  finances|stats|companion|script|carnets|caisse|caisses|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its
@@ -691,6 +707,9 @@ add clicking and typing; it is not the price of entry.
   `caisse` opens the till count **with a drawer already counted**:
   fifteen lines at zero show neither the summary, nor the gap, nor the
   red it carries — that is, none of what the view exists to draw.
+  `caisses` is its other page, the month: the demo seeds twenty-four
+  evenings, one of them recounted and two with no expected takings,
+  because those are the two cases the view has to know how to write.
   `finances` is the recettes view, which has **no door**: it is in no
   dock, in no tab strip until it has been opened, and not even in the
   list the jump box offers on an empty query — it is reached by typing

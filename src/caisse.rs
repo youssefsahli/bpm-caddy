@@ -222,10 +222,20 @@ pub fn tally(
     }
 }
 
-/// « 1 240,50 » — le montant sans son unité, en français : espace fine
-/// pour les milliers, virgule décimale. Le signe est celui du nombre,
-/// et un écart positif est écrit avec son `+` par l'appelant : ici, un
-/// zéro est un zéro et non un « +0,00 ».
+/// « 1 240,50 » — le montant sans son unité, en français : espace
+/// insécable pour les milliers, virgule décimale. Le signe est celui du
+/// nombre, et un écart positif est écrit avec son `+` par l'appelant :
+/// ici, un zéro est un zéro et non un « +0,00 ».
+///
+/// **L'espace des milliers est U+00A0 et non l'espace fine U+202F**,
+/// que la typographie française préférerait : la fonte que
+/// l'application dessine avec n'a pas de glyphe pour la seconde, et
+/// tout montant à quatre chiffres sortait « 1□240,50 » au comptoir.
+/// C'est la même règle que les flèches qui restent dans les pastilles —
+/// l'application ne livre aucune police, elle écrit avec ce que la
+/// fonte sait dessiner. `every_symbol_the_code_draws_has_a_glyph…`
+/// (`strings.rs`) passe la sortie de cette fonction dans la fonte qui
+/// la peindra et refuse le prochain caractère sans glyphe.
 #[must_use]
 pub fn euros(cents: i64) -> String {
     let sign = if cents < 0 { "-" } else { "" };
@@ -238,7 +248,7 @@ pub fn euros(cents: i64) -> String {
     let mut i = digits.len();
     while i > 3 {
         i -= 3;
-        digits.insert(i, '\u{202f}');
+        digits.insert(i, '\u{a0}');
     }
     format!("{sign}{digits},{frac:02}")
 }
@@ -288,6 +298,143 @@ pub fn parse_euros(text: &str) -> Option<i64> {
         _ => frac.get(..2)?.parse().ok()?,
     };
     Some(sign * (whole.checked_mul(100)?.checked_add(frac)?))
+}
+
+/// Un comptage déjà rangé, tel que l'historique le relit.
+///
+/// Le module ne connaît pas la base : la vue lit ses lignes et les
+/// donne sous cette forme, comme le plan de journée donne des
+/// intervalles à qui calcule des voies. Tout est en centimes, ici comme
+/// partout ailleurs dans ce fichier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Counted {
+    /// La ligne, telle que la base l'a numérotée. C'est elle qui dit
+    /// quel comptage est le dernier d'un soir : deux comptages peuvent
+    /// partager la seconde, jamais l'identifiant.
+    pub id: i64,
+    /// ISO `AAAA-MM-JJ` — le jour compté.
+    pub day: String,
+    pub cash: i64,
+    /// Carte, chèques : la somme des lignes hors tiroir.
+    pub other: i64,
+    pub float_kept: i64,
+    /// Ce que la journée devait faire, quand quelqu'un l'a saisi.
+    pub expected: Option<i64>,
+}
+
+impl Counted {
+    /// La recette encaissée : le tiroir et le reste.
+    #[must_use]
+    pub fn takings(&self) -> i64 {
+        self.cash + self.other
+    }
+
+    /// L'écart de ce soir-là, ou rien — la règle du module, appliquée
+    /// une ligne à la fois.
+    #[must_use]
+    pub fn gap(&self) -> Option<i64> {
+        self.expected.map(|e| self.takings() - e)
+    }
+}
+
+/// Le comptage qui fait foi pour chaque jour, du plus ancien au plus
+/// récent.
+///
+/// **Un jour ne compte qu'une fois.** La table est en insertion seule :
+/// une caisse recomptée le même soir est une deuxième ligne, et les
+/// deux se lisent — mais les additionner ferait une journée à double
+/// recette. C'est la dernière écrite qui fait foi, la première reste
+/// affichée et marquée. On ne réécrit pas ce qui a été compté ; on lit
+/// ce qui a été compté en dernier.
+#[must_use]
+pub fn per_day(counts: &[Counted]) -> Vec<&Counted> {
+    let mut kept: Vec<&Counted> = Vec::new();
+    for c in counts {
+        match kept.iter().position(|k| k.day == c.day) {
+            Some(at) if kept[at].id < c.id => kept[at] = c,
+            Some(_) => {}
+            None => kept.push(c),
+        }
+    }
+    kept.sort_by(|a, b| a.day.cmp(&b.day).then(a.id.cmp(&b.id)));
+    kept
+}
+
+/// Les comptages qu'un plus récent a remplacés, par identifiant : la
+/// vue les garde à l'écran, en retrait, plutôt que de les cacher.
+#[must_use]
+pub fn superseded(counts: &[Counted]) -> Vec<i64> {
+    let kept: Vec<i64> = per_day(counts).iter().map(|c| c.id).collect();
+    let mut out: Vec<i64> = counts
+        .iter()
+        .map(|c| c.id)
+        .filter(|id| !kept.contains(id))
+        .collect();
+    out.sort_unstable();
+    out
+}
+
+/// Ce qu'une période de comptages dit d'elle-même.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Summary {
+    /// Les lignes lues, recomptages compris.
+    pub counts: usize,
+    /// Les jours qu'elles couvrent — jamais les jours du calendrier :
+    /// un soir où personne n'a compté n'est pas un soir à zéro euro.
+    pub days: usize,
+    pub cash: i64,
+    pub other: i64,
+    pub takings: i64,
+    pub float_kept: i64,
+    /// Sur combien de jours un attendu avait été saisi. Le total des
+    /// écarts porte sur ceux-là et sur aucun autre : sans ce nombre à
+    /// côté, une somme d'écarts se lit comme si elle portait sur la
+    /// période entière.
+    pub with_expected: usize,
+    /// La somme des écarts des jours qui en ont un, `None` quand aucun
+    /// jour n'a d'attendu — et non zéro, qui se lirait « tout tombe
+    /// juste ».
+    pub gap: Option<i64>,
+    /// Les jours en moins, en plus, et ceux qui tombent juste.
+    pub short: usize,
+    pub over: usize,
+    pub exact: usize,
+    /// Le soir le plus loin de zéro, dans un sens ou dans l'autre.
+    pub worst: Option<(String, i64)>,
+}
+
+/// La période lue d'un coup : les totaux, les écarts, et sur combien de
+/// jours ils portent.
+#[must_use]
+pub fn summarize(counts: &[Counted]) -> Summary {
+    let days = per_day(counts);
+    let mut s = Summary {
+        counts: counts.len(),
+        days: days.len(),
+        ..Summary::default()
+    };
+    let mut gap_total = 0_i64;
+    for c in &days {
+        s.cash += c.cash;
+        s.other += c.other;
+        s.takings += c.takings();
+        s.float_kept += c.float_kept;
+        let Some(gap) = c.gap() else { continue };
+        s.with_expected += 1;
+        gap_total += gap;
+        match gap.cmp(&0) {
+            std::cmp::Ordering::Less => s.short += 1,
+            std::cmp::Ordering::Greater => s.over += 1,
+            std::cmp::Ordering::Equal => s.exact += 1,
+        }
+        if s.worst.as_ref().is_none_or(|(_, w)| gap.abs() > w.abs()) {
+            s.worst = Some((c.day.clone(), gap));
+        }
+    }
+    if s.with_expected > 0 {
+        s.gap = Some(gap_total);
+    }
+    s
 }
 
 #[cfg(test)]
@@ -403,9 +550,9 @@ mod tests {
     fn amounts_are_written_and_read_back_the_french_way() {
         assert_eq!(euros(0), "0,00");
         assert_eq!(euros(5), "0,05");
-        assert_eq!(euros(124_050), "1\u{202f}240,50");
+        assert_eq!(euros(124_050), "1\u{a0}240,50");
         assert_eq!(euros(-925), "-9,25");
-        assert_eq!(euros(123_456_789), "1\u{202f}234\u{202f}567,89");
+        assert_eq!(euros(123_456_789), "1\u{a0}234\u{a0}567,89");
         // Ce que le comptoir tape, sous toutes ses formes.
         assert_eq!(parse_euros("1 240,50"), Some(124_050));
         assert_eq!(parse_euros("1240.5"), Some(124_050));
@@ -451,5 +598,117 @@ mod tests {
         // entière en un nombre.
         let all = [1_i64; DENOMINATIONS.len()];
         assert_eq!(euros(cash_total(&all)), "888,88");
+    }
+
+    fn counted(id: i64, day: &str, cash: i64, expected: Option<i64>) -> Counted {
+        Counted {
+            id,
+            day: day.to_owned(),
+            cash,
+            other: 0,
+            float_kept: 15_000,
+            expected,
+        }
+    }
+
+    /// La règle de l'historique : la table est en insertion seule, donc
+    /// un soir recompté est **deux lignes**, et les deux se lisent — mais
+    /// le jour ne compte qu'une fois, sur la dernière écrite.
+    ///
+    /// Additionner les deux ferait une journée à double recette, et
+    /// c'est le genre de faux qu'un total mensuel ne montre jamais.
+    #[test]
+    fn a_day_recounted_is_counted_once() {
+        let counts = [
+            counted(2, "2026-09-08", 21_000, Some(21_000)),
+            counted(1, "2026-09-08", 20_000, Some(21_000)),
+            counted(3, "2026-09-09", 30_000, None),
+        ];
+        let days = per_day(&counts);
+        assert_eq!(days.len(), 2);
+        // Du plus ancien au plus récent, quel que soit l'ordre reçu.
+        assert_eq!(days[0].day, "2026-09-08");
+        assert_eq!(days[0].id, 2, "c'est le dernier comptage qui fait foi");
+        assert_eq!(days[1].id, 3);
+        // Le premier reste lisible, nommé pour que la vue le marque.
+        assert_eq!(superseded(&counts), vec![1]);
+
+        let s = summarize(&counts);
+        assert_eq!(s.counts, 3, "trois lignes ont bien été lues");
+        assert_eq!(s.days, 2);
+        assert_eq!(
+            s.takings, 51_000,
+            "et non 71 000 : le 8 ne compte qu'une fois"
+        );
+        assert_eq!(s.gap, Some(0));
+        assert_eq!(s.with_expected, 1);
+    }
+
+    /// La règle du module, à l'échelle d'une période : sans attendu, pas
+    /// d'écart — et surtout pas un écart de zéro, qui se lirait « tout
+    /// est tombé juste ».
+    ///
+    /// Et quand une partie seulement des soirs porte un attendu, le
+    /// total des écarts dit sur combien il porte : une somme d'écarts
+    /// sans ce nombre à côté se lit comme si elle couvrait le mois.
+    #[test]
+    fn a_period_says_over_how_many_evenings_its_gap_is_computed() {
+        let none = [
+            counted(1, "2026-09-07", 20_000, None),
+            counted(2, "2026-09-08", 30_000, None),
+        ];
+        let s = summarize(&none);
+        assert_eq!(s.gap, None);
+        assert_eq!(s.with_expected, 0);
+        assert_eq!(s.takings, 50_000, "les recettes se comptent quand même");
+
+        let mixed = [
+            counted(1, "2026-09-07", 20_000, Some(20_500)),
+            counted(2, "2026-09-08", 30_000, None),
+            counted(3, "2026-09-09", 40_000, Some(39_600)),
+        ];
+        let s = summarize(&mixed);
+        assert_eq!(s.gap, Some(-100));
+        assert_eq!(s.with_expected, 2, "sur trois soirs comptés");
+        assert_eq!(s.days, 3);
+        assert_eq!(s.short, 1);
+        assert_eq!(s.over, 1);
+        assert_eq!(s.exact, 0);
+        // Le pire soir est le plus loin de zéro, dans un sens ou dans
+        // l'autre — ici le manque de 5,00 €, plus gros que l'excédent
+        // de 4,00 € du 9, alors que le total des deux ne fait qu'un
+        // euro : une somme d'écarts cache toujours les soirs.
+        assert_eq!(s.worst, Some(("2026-09-07".to_owned(), -500)));
+    }
+
+    /// Une période sans comptage n'est pas une période à zéro euro.
+    ///
+    /// C'est la même retenue qu'ailleurs : un jour où personne n'a
+    /// compté ne vaut rien, il ne vaut pas zéro, et une vue qui affiche
+    /// « 0,00 € » sur un mois non saisi annonce une caisse vide.
+    #[test]
+    fn an_empty_period_is_not_a_period_at_zero() {
+        let s = summarize(&[]);
+        assert_eq!(s.days, 0);
+        assert_eq!(s.counts, 0);
+        assert_eq!(s.gap, None);
+        assert_eq!(s.worst, None);
+        assert!(per_day(&[]).is_empty());
+        assert!(superseded(&[]).is_empty());
+    }
+
+    /// Les recettes d'une période se somment en centimes entiers, comme
+    /// tout le reste : trente et un soirs à 12,10 € font 375,10 €.
+    #[test]
+    fn a_period_adds_up_in_whole_centimes() {
+        let counts: Vec<Counted> = (1..=31)
+            .map(|i| counted(i, &format!("2026-08-{i:02}"), 1_210, Some(1_200)))
+            .collect();
+        let s = summarize(&counts);
+        assert_eq!(s.days, 31);
+        assert_eq!(s.takings, 37_510);
+        assert_eq!(euros(s.takings), "375,10");
+        assert_eq!(s.gap, Some(310));
+        assert_eq!(s.over, 31);
     }
 }

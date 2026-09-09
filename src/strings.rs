@@ -247,6 +247,21 @@ mod tests {
                 c as u32
             );
         }
+        // **Et les caractères qu'aucune chaîne ne porte** : ceux qu'un
+        // format produit. Le séparateur de milliers de `caisse::euros`
+        // était une espace fine insécable (U+202F), qui n'a pas de
+        // glyphe dans la fonte livrée : tout montant à quatre chiffres
+        // sortait « 1□240,50 » à l'écran, et aucun test de chaîne ne
+        // pouvait le voir puisque le caractère n'est écrit nulle part.
+        // On passe ici la **sortie de la fonction**, pas une constante.
+        for c in crate::caisse::euros(1_234_567).chars() {
+            assert!(
+                fonts.has_glyph(&body, c),
+                "« {c} » (U+{:04X}) sort de `caisse::euros` et n'a pas de glyphe",
+                c as u32
+            );
+        }
+
         // Only ever set in a key chip, which is monospace.
         for c in ['\u{2190}', '\u{2192}', '\u{2191}', '\u{2193}'] {
             assert!(

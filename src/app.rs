@@ -1454,6 +1454,15 @@ enum MainView {
     /// [`MainView::Finances`] et se cache. C'est un geste de fermeture,
     /// fait par qui ferme, et qui a donc une porte comme les autres.
     Caisse,
+    /// Ce que les comptages disent une fois mis bout à bout : un mois
+    /// de soirs, leurs écarts, et ce qu'ils font ensemble.
+    ///
+    /// La même porte que [`MainView::Caisse`] — un onglet, deux pages —
+    /// parce que c'est le même objet à deux échelles : le soir qu'on
+    /// compte, et le mois qu'on relit. Elle n'écrit rien : la table est
+    /// en insertion seule, et un historique qui pourrait corriger une
+    /// soirée serait un historique qui ne prouve plus rien.
+    CaisseHistory,
 }
 
 impl MainView {
@@ -1479,6 +1488,7 @@ impl MainView {
             MainView::Stats => "stats",
             MainView::Script => "script",
             MainView::Caisse => "caisse",
+            MainView::CaisseHistory => "caisses",
         }
     }
 
@@ -1497,6 +1507,7 @@ impl MainView {
             "stats" => Some(MainView::Stats),
             "script" => Some(MainView::Script),
             "caisse" => Some(MainView::Caisse),
+            "caisses" => Some(MainView::CaisseHistory),
             _ => None,
         }
     }
@@ -2268,6 +2279,26 @@ struct Session {
     caisse_day: String,
     caisse_history: Vec<db::CaisseCount>,
     caisse_note: Option<(bool, String)>,
+    /// Le mois que l'historique lit, « AAAA-MM ».
+    caisse_month: String,
+    /// Les comptages de ce mois, du plus ancien au plus récent,
+    /// recomptages compris — c'est [`crate::caisse::per_day`] qui dit
+    /// lequel fait foi, pas la requête.
+    caisse_period: Vec<db::CaisseCount>,
+    /// Ce que le mois donne, calculé **une fois par chargement** et
+    /// jamais par image : une somme sur trente et un soirs refaite
+    /// soixante fois par seconde est une somme payée soixante fois.
+    caisse_summary: crate::caisse::Summary,
+    /// Les identifiants des comptages qu'un plus récent a remplacés.
+    caisse_superseded: Vec<i64>,
+    /// La recette de chaque soir compté, dans l'ordre des jours : ce que
+    /// la bande de chaleur dessine. **Les soirs comptés et eux seuls** —
+    /// un jour sans comptage n'est pas une case à zéro, il n'a pas de
+    /// case.
+    caisse_daily: Vec<(String, i64)>,
+    /// Les soirs qui ne tombent pas juste, du plus gros écart au plus
+    /// petit. C'est la seule liste sur laquelle on agit.
+    caisse_off: Vec<(String, i64)>,
     /// Le document dont une vue demande à ouvrir le modèle, drainé une
     /// fois par image par [`App`].
     ///
@@ -2911,6 +2942,12 @@ impl Session {
             caisse_day: String::new(),
             caisse_history: Vec::new(),
             caisse_note: None,
+            caisse_month: String::new(),
+            caisse_period: Vec::new(),
+            caisse_summary: crate::caisse::Summary::default(),
+            caisse_superseded: Vec::new(),
+            caisse_daily: Vec::new(),
+            caisse_off: Vec::new(),
             open_template: None,
             strength_edit: String::new(),
             treats_rev: 0,
@@ -3189,7 +3226,7 @@ impl Session {
             MainView::Finances => WorkTab::Finances,
             MainView::Stats => WorkTab::Stats,
             MainView::Script => WorkTab::Script,
-            MainView::Caisse => WorkTab::Caisse,
+            MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -3901,6 +3938,79 @@ impl Session {
             self.caisse_day = self.today.clone();
         }
         self.caisse_history = self.db.caisse_counts(20).unwrap_or_default();
+    }
+
+    /// Les bornes ISO d'un mois « AAAA-MM », premier et dernier jour.
+    ///
+    /// Par le calendrier de [`crate::date`] et non par une requête :
+    /// c'est de l'arithmétique, elle est écrite une fois, et un mois
+    /// n'a pas besoin de la base pour savoir combien il a de jours.
+    fn month_bounds(month: &str) -> Option<(String, String)> {
+        let (y, m) = month.split_once('-')?;
+        let (y, m) = (y.parse::<i64>().ok()?, m.parse::<i64>().ok()?);
+        let last = crate::date::end_of_month(y, m)?;
+        Some((
+            format!("{y:04}-{m:02}-01"),
+            format!("{y:04}-{m:02}-{last:02}"),
+        ))
+    }
+
+    /// Le mois voisin, sans horloge : « 2026-01 » moins un mois est
+    /// « 2025-12 ».
+    fn month_step(month: &str, delta: i64) -> String {
+        let Some((y, m)) = month.split_once('-') else {
+            return month.to_owned();
+        };
+        let (Ok(y), Ok(m)) = (y.parse::<i64>(), m.parse::<i64>()) else {
+            return month.to_owned();
+        };
+        let total = y * 12 + (m - 1) + delta;
+        format!(
+            "{:04}-{:02}",
+            total.div_euclid(12),
+            total.rem_euclid(12) + 1
+        )
+    }
+
+    /// Ouvrir l'historique de caisse sur un mois, et calculer ce qu'il
+    /// donne — une fois, ici, et jamais dans la boucle de dessin.
+    fn load_caisse_month(&mut self) {
+        if self.caisse_month.is_empty() {
+            // Le mois du jour compté plutôt que celui d'aujourd'hui :
+            // on arrive presque toujours ici depuis le comptage.
+            let day = if self.caisse_day.is_empty() {
+                &self.today
+            } else {
+                &self.caisse_day
+            };
+            self.caisse_month = day.get(..7).unwrap_or_default().to_owned();
+        }
+        let (from, to) = match Self::month_bounds(&self.caisse_month) {
+            Some(bounds) => bounds,
+            None => return,
+        };
+        self.caisse_period = self
+            .db
+            .caisse_counts_between(&from, &to)
+            .unwrap_or_default();
+        let counted: Vec<crate::caisse::Counted> = self
+            .caisse_period
+            .iter()
+            .map(db::CaisseCount::counted)
+            .collect();
+        self.caisse_summary = crate::caisse::summarize(&counted);
+        self.caisse_superseded = crate::caisse::superseded(&counted);
+        let days = crate::caisse::per_day(&counted);
+        self.caisse_daily = days.iter().map(|c| (c.day.clone(), c.takings())).collect();
+        // Les soirs qui ne tombent pas juste, le plus gros écart
+        // d'abord — dans un sens comme dans l'autre : un excédent de
+        // quarante euros se cherche autant qu'un manque.
+        self.caisse_off = days
+            .iter()
+            .filter_map(|c| c.gap().filter(|g| *g != 0).map(|g| (c.day.clone(), g)))
+            .collect();
+        self.caisse_off
+            .sort_by_key(|(_, gap)| std::cmp::Reverse(gap.abs()));
     }
 
     /// Ce que le formulaire dit, lu une fois par image et rendu à qui
@@ -7159,6 +7269,10 @@ fn restore_view(session: &mut Session, key: &str) {
         MainView::Stats => session.refresh_stats(),
         MainView::Script => session.refresh_scripts(),
         MainView::Caisse => session.refresh_caisse(),
+        MainView::CaisseHistory => {
+            session.refresh_caisse();
+            session.load_caisse_month();
+        }
         MainView::Transmissions => {
             session.trans_day = String::new();
             session.load_transmissions();
@@ -7499,6 +7613,14 @@ impl App {
                             // c'est celui qui exerce la couleur d'alerte.
                             session.caisse_expected = "820".to_owned();
                             session.view = MainView::Caisse;
+                        }
+                        // L'historique, sur le mois du jour : la démo
+                        // sème vingt-quatre soirs, dont un recompté et
+                        // deux sans attendu.
+                        Ok("caisses") => {
+                            session.refresh_caisse();
+                            session.load_caisse_month();
+                            session.view = MainView::CaisseHistory;
                         }
                         // Le compagnon : le garde-fou l'ouvre par sa
                         // clé, sinon rien ne le regarderait jamais aux
@@ -8363,7 +8485,10 @@ impl App {
                             // Le comptage de caisse ne trie ni le
                             // référentiel ni les dossiers ; il garde le
                             // dock qu'on avait devant soi en fermant.
-                            | MainView::Caisse => Self::nav_patients(ui, session, focus, &config),
+                            | MainView::Caisse
+                            | MainView::CaisseHistory => {
+                                Self::nav_patients(ui, session, focus, &config)
+                            }
                         }
                     });
                 });
@@ -9656,6 +9781,10 @@ impl App {
                 Self::caisse_view(ui, session, &config, &operator);
                 return;
             }
+            if session.view == MainView::CaisseHistory {
+                Self::caisse_history_view(ui, session, &config);
+                return;
+            }
             if let Some(patient) = session.viewing.clone() {
                 Self::patient_view(ui, ctx, session, &patient, &config, &operator);
                 return;
@@ -10150,7 +10279,7 @@ impl App {
             return;
         }
         if session.patient_tab == PatientTab::Bio {
-            Self::patient_bio_pane(ui, session, patient, work);
+            Self::patient_bio_pane(ui, session, patient, work, config);
             return;
         }
         if session.patient_tab == PatientTab::Locations {
@@ -11639,6 +11768,7 @@ impl App {
         session: &mut Session,
         patient: &Patient,
         work: egui::Rect,
+        config: &Config,
     ) {
         let wide = work.width() >= chars_wide(ui, 148.0);
         let (table, side) = if wide {
@@ -11711,7 +11841,7 @@ impl App {
         if session.bio_side_tab == 0 {
             Self::bio_reading_pane(ui, session, strip[1]);
         } else {
-            Self::bio_watch_pane(ui, session, strip[1]);
+            Self::bio_watch_pane(ui, session, patient, strip[1], config);
         }
         Self::bio_trend_pane(ui, session, trend);
     }
@@ -11723,12 +11853,29 @@ impl App {
     /// ceux qui n'y sont pas. Une règle de biologie ne peut rien dire
     /// d'un examen qu'on n'a pas fait, et c'est le trou que personne ne
     /// voit — un INR qui alerte est un INR qu'on a demandé.
-    fn bio_watch_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+    fn bio_watch_pane(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        patient: &Patient,
+        rect: egui::Rect,
+        config: &Config,
+    ) {
         use crate::surveillance::Level;
         // Answered by `Session::refresh_bio_findings`, with the rules.
         let due = std::mem::take(&mut session.surveillance);
         let mut pick: Option<&'static str> = None;
+        let mut print = false;
         motif::panel(ui, rect, Some(tr("watch_section")), |ui| {
+            // La feuille qu'on emporte au laboratoire part d'ici, où la
+            // liste est : c'est là qu'on la regarde, et la bande du
+            // dossier porte déjà quatre boutons.
+            if !due.is_empty()
+                && motif::button(ui, tr("watch_print"))
+                    .on_hover_text(tr("watch_print_tooltip"))
+                    .clicked()
+            {
+                print = true;
+            }
             if due.is_empty() {
                 ui.add(
                     egui::Label::new(
@@ -11812,6 +11959,52 @@ impl App {
                     }
                 });
         });
+        if print {
+            let today = session
+                .db
+                .today_french()
+                .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+            // Ce que la feuille porte est ce que le panneau montre, dans
+            // le même ordre : deux constructions d'une même liste
+            // finissent par diverger, et c'est le papier qui ment.
+            let rows: Vec<(String, String, String, String)> = due
+                .iter()
+                .map(|d| {
+                    let last = match (&d.last, d.months) {
+                        (Some(day), _) => db::format_french_date(day),
+                        _ => tr("watch_never").to_owned(),
+                    };
+                    (
+                        d.label.to_owned(),
+                        crate::surveillance::rhythm_text(d.every_months),
+                        last,
+                        d.drugs.join(", "),
+                    )
+                })
+                .collect();
+            // Cochées : celles qui sont en retard ou jamais faites. Une
+            // feuille où tout est à cocher ne dit plus ce qui presse.
+            let flagged: Vec<String> = due
+                .iter()
+                .filter(|d| matches!(d.level, Level::Overdue | Level::Never))
+                .map(|d| d.label.to_owned())
+                .collect();
+            if let Err(e) = crate::pdf::open_watch_sheet(
+                &crate::pdf::WatchSheet {
+                    patient,
+                    today: &today,
+                    rows,
+                    flagged,
+                    mention: &config.disclaimers.plan,
+                },
+                &config.pharmacy,
+                &config.doc_template_path("surveillance"),
+            ) {
+                session.error = Some(e);
+            } else {
+                session.error = None;
+            }
+        }
         session.surveillance = due;
         // Clicking an analyte loads it into the form at the foot of the
         // table and shows its trend: the panel says what to ask for, and
@@ -14211,6 +14404,7 @@ impl App {
         delete_click: &mut bool,
         bilan: &mut bool,
         plan: &mut bool,
+        labels: &mut bool,
     ) {
         let del_label = if session.confirm_delete {
             tr("patient_delete_confirm")
@@ -14235,17 +14429,24 @@ impl App {
         {
             *plan = true;
         }
+        if motif::button(ui, tr("labels_print"))
+            .on_hover_text(tr("labels_print_tooltip"))
+            .clicked()
+        {
+            *labels = true;
+        }
     }
 
-    /// The patient's own copy: one line per treatment — what it is for,
-    /// when to take it, and what to do when a dose is missed. The bilan
-    /// stays at the officine; this one goes home.
-    fn print_plan(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
-        let today = session
-            .db
-            .today_french()
-            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
-        let lines: Vec<(String, String, String, String)> = session
+    /// Ce que le dossier dit de chaque traitement, pour les feuilles qui
+    /// partent avec le patient : (nom et dosage, à quoi ça sert, quand,
+    /// que faire en cas d'oubli).
+    ///
+    /// **Écrit une fois.** Le plan de prise et les étiquettes disent la
+    /// même chose sur deux papiers différents ; construites séparément,
+    /// les deux listes finiraient par diverger, et rien ne dirait
+    /// laquelle a raison — la boîte ou la feuille.
+    fn treatment_lines(session: &Session) -> Vec<(String, String, String, String)> {
+        session
             .patient_treats
             .iter()
             .map(|d| {
@@ -14297,7 +14498,18 @@ impl App {
                 };
                 (name, what, when, know)
             })
-            .collect();
+            .collect()
+    }
+
+    /// The patient's own copy: one line per treatment — what it is for,
+    /// when to take it, and what to do when a dose is missed. The bilan
+    /// stays at the officine; this one goes home.
+    fn print_plan(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let lines = Self::treatment_lines(session);
         let signature = config.pharmacy.signature_for(operator);
         let data = crate::pdf::PlanData {
             patient,
@@ -14309,6 +14521,41 @@ impl App {
         if let Err(e) =
             crate::pdf::open_plan(&data, &config.pharmacy, &config.doc_template_path("plan"))
         {
+            session.error = Some(e);
+        } else {
+            session.error = None;
+        }
+    }
+
+    /// Le même plan de prise, découpé en étiquettes : ce qui se colle
+    /// sur la boîte.
+    ///
+    /// La feuille A4 finit dans un tiroir ; l'étiquette reste sur ce
+    /// qu'on ouvre. Elle porte la posologie **du dossier** et la phrase
+    /// d'oubli de la fiche, et rien d'autre : sur trois centimètres de
+    /// haut, tout ce qu'on ajoute chasse ce qui devait être lu.
+    ///
+    /// La mention est celle du plan de prise — c'est le même document,
+    /// coupé autrement, et il n'y a pas lieu d'en écrire une seconde.
+    fn print_labels(session: &mut Session, patient: &Patient, config: &Config) {
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let lines: Vec<(String, String, String)> = Self::treatment_lines(session)
+            .into_iter()
+            .map(|(name, _what, when, know)| (name, when, know))
+            .collect();
+        if let Err(e) = crate::pdf::open_labels(
+            &crate::pdf::LabelSheet {
+                patient,
+                today: &today,
+                lines,
+                mention: &config.disclaimers.plan,
+            },
+            &config.pharmacy,
+            &config.doc_template_path("etiquettes"),
+        ) {
             session.error = Some(e);
         } else {
             session.error = None;
@@ -14525,9 +14772,10 @@ impl App {
     /// les met à droite du nom, et leur nombre de rangées décide de la
     /// hauteur de la bande quand elles passent dessous. Deux listes
     /// auraient divergé, et c'est la hauteur qui aurait perdu.
-    fn patient_action_labels(confirm: bool) -> [&'static str; 4] {
+    fn patient_action_labels(confirm: bool) -> [&'static str; 5] {
         [
             tr("plan_print"),
+            tr("labels_print"),
             tr("bilan_print"),
             tr("patient_edit"),
             if confirm {
@@ -15364,6 +15612,7 @@ impl App {
         let mut delete_click = false;
         let mut print_bilan = false;
         let mut print_plan = false;
+        let mut print_labels = false;
         let mut back = false;
         let cramped = !Self::patient_header_fits(ui, session, patient);
         // Une correction en cours déplie le bandeau : on ne replie pas le
@@ -15470,6 +15719,7 @@ impl App {
                         &mut delete_click,
                         &mut print_bilan,
                         &mut print_plan,
+                        &mut print_labels,
                     );
                 });
             }
@@ -15483,6 +15733,9 @@ impl App {
             }
             if print_plan {
                 Self::print_plan(session, patient, config, operator);
+            }
+            if print_labels {
+                Self::print_labels(session, patient, config);
             }
             if start_edit {
                 Self::patient_edit_started(session, patient);
@@ -16410,6 +16663,7 @@ impl App {
                     &mut delete_click,
                     &mut print_bilan,
                     &mut print_plan,
+                    &mut print_labels,
                 );
             });
         }
@@ -16421,6 +16675,9 @@ impl App {
         }
         if print_plan {
             Self::print_plan(session, patient, config, operator);
+        }
+        if print_labels {
+            Self::print_labels(session, patient, config);
         }
         if start_edit {
             Self::patient_edit_started(session, patient);
@@ -30690,6 +30947,7 @@ impl App {
                 Self::button_width(ui, tr("caisse_print")),
                 Self::button_width(ui, tr("caisse_save")),
                 Self::button_width(ui, tr("caisse_clear")),
+                Self::button_width(ui, tr("caisse_history_open")),
                 Self::button_width(ui, "‹"),
                 day_w,
                 Self::button_width(ui, "›"),
@@ -30709,6 +30967,7 @@ impl App {
 
         let mut print = false;
         let mut save = false;
+        let mut open_history = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("caisse_title"));
@@ -30739,6 +30998,15 @@ impl App {
                     session.caisse_expected.clear();
                     session.caisse_remark.clear();
                     session.caisse_note = None;
+                }
+                // La porte vers le mois. Le comptage du soir et
+                // l'histoire des soirs sont le même objet à deux
+                // échelles : un onglet, deux pages.
+                if motif::button(ui, tr("caisse_history_open"))
+                    .on_hover_text(tr("caisse_history_open_tooltip"))
+                    .clicked()
+                {
+                    open_history = true;
                 }
                 // Le jour compté se choisit au pas de la journée
                 // plutôt qu'à la frappe : on compte celui du soir ou
@@ -31101,6 +31369,9 @@ impl App {
         }
         if save {
             let count = db::CaisseCount {
+                // La base le donne à l'insertion : ce qu'on écrit ici
+                // ne serait lu par personne.
+                id: 0,
                 day: session.caisse_day.clone(),
                 quantities,
                 cash: tally.cash,
@@ -31114,10 +31385,521 @@ impl App {
             session.caisse_note = match session.db.add_caisse_count(&count) {
                 Ok(_) => {
                     session.caisse_history = session.db.caisse_counts(20).unwrap_or_default();
+                    // Le mois que l'historique tient en mémoire vient
+                    // de changer sous lui : on le relit, sinon la page
+                    // d'à côté montrerait un total d'avant le comptage
+                    // qu'on vient d'enregistrer.
+                    if session.caisse_day.starts_with(&session.caisse_month)
+                        && !session.caisse_month.is_empty()
+                    {
+                        session.load_caisse_month();
+                    }
                     Some((false, tr("caisse_saved").to_owned()))
                 }
                 Err(e) => Some((true, e)),
             };
+        }
+        if open_history {
+            session.view = MainView::CaisseHistory;
+            // Le mois du jour compté, pas celui d'aujourd'hui : on
+            // arrive ici en regardant une soirée précise.
+            session.caisse_month = session.caisse_day.get(..7).unwrap_or_default().to_owned();
+            session.load_caisse_month();
+        }
+    }
+
+    /// L'historique de caisse : un mois de soirs, ce qu'ils ont fait,
+    /// et ce que leurs écarts font ensemble.
+    ///
+    /// Trois choses qu'elle ne fait pas, et chacune est une règle :
+    ///
+    /// * elle **n'écrit rien**. `caisse_counts` est en insertion seule,
+    ///   et un historique où l'on pourrait rattraper une soirée serait
+    ///   un historique qui ne prouve plus rien — la même discipline
+    ///   qu'au registre des stupéfiants ;
+    /// * elle ne **cache pas** les comptages refaits. Ils sont là,
+    ///   nommés « recompté », en encre éteinte, et ne comptent qu'une
+    ///   fois dans les totaux ([`crate::caisse::per_day`]) ;
+    /// * elle ne **remplit pas** les soirs où personne n'a compté. Ils
+    ///   n'ont pas de case dans la bande, pas de ligne dans le tableau,
+    ///   et ne pèsent sur aucune moyenne : un soir non compté n'est pas
+    ///   un soir à zéro euro.
+    fn caisse_history_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        use crate::caisse::euros;
+        // Échap ramène au comptage : c'est la page dont celle-ci est
+        // l'envers, pas la recherche.
+        if !ui.ctx().wants_keyboard_input() {
+            if ui.ctx().input(|i| i.key_pressed(egui::Key::Escape)) {
+                session.view = MainView::Caisse;
+                session.refresh_caisse();
+                return;
+            }
+            // Et les flèches changent de mois, comme dans l'agenda.
+            let step = ui.ctx().input(|i| {
+                i.key_pressed(egui::Key::ArrowRight) as i64
+                    - i.key_pressed(egui::Key::ArrowLeft) as i64
+            });
+            if step != 0 {
+                session.caisse_month = Session::month_step(&session.caisse_month, step);
+                session.load_caisse_month();
+            }
+        }
+        // La vue se répare elle-même plutôt que de dépendre de la porte
+        // par laquelle on est arrivé — il y en a trois. Sur le mois
+        // seulement, **jamais sur une période vide** : un mois sans
+        // comptage relancerait la requête à chaque image, soixante fois
+        // par seconde, pour rendre chaque fois la même liste vide.
+        if session.caisse_month.is_empty() {
+            session.load_caisse_month();
+        }
+        let body = motif::visible_rect(ui);
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let month_label = db::month_name_fr(&session.caisse_month);
+        // Le mois est **dans** la rangée enveloppée, avec les boutons :
+        // il se mesure avec eux, sinon la bande annonce une rangée là
+        // où elle en dessine deux.
+        let month_w = Self::widest(ui, 12.0, std::iter::once("septembre 2026"));
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        tr("caisses_title").to_owned(),
+                        egui::TextStyle::Heading.resolve(ui.style()),
+                        motif::text(),
+                    )
+                    .size()
+                    .x
+                }) + 8.0,
+                Self::button_width(ui, tr("caisses_count")),
+                Self::button_width(ui, tr("caisses_print")),
+                Self::button_width(ui, "‹"),
+                month_w,
+                Self::button_width(ui, "›"),
+            ]
+            .into_iter(),
+            tr("caisses_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+
+        let mut print = false;
+        let mut back = false;
+        let mut step = 0_i64;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("caisses_title"));
+                ui.add_space(8.0);
+                if motif::button(ui, tr("caisses_count"))
+                    .on_hover_text(tr("caisses_count_tooltip"))
+                    .clicked()
+                {
+                    back = true;
+                }
+                if motif::button(ui, tr("caisses_print"))
+                    .on_hover_text(tr("caisses_print_tooltip"))
+                    .clicked()
+                {
+                    print = true;
+                }
+                ui.add_space(10.0);
+                if motif::button(ui, "‹").clicked() {
+                    step = -1;
+                }
+                ui.add_sized(
+                    [month_w, Self::button_height(ui)],
+                    egui::Label::new(egui::RichText::new(&month_label).strong()),
+                );
+                if motif::button(ui, "›").clicked() {
+                    step = 1;
+                }
+            });
+            ui.label(
+                egui::RichText::new(tr("caisses_subtitle"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        });
+
+        // Le tableau est le sujet ; la synthèse l'accompagne. Le seuil
+        // est en caractères et non en pixels : à l'échelle 1,6 les
+        // mêmes pixels portent deux tiers du texte.
+        let two = body.width() >= chars_wide(ui, 104.0);
+        let panes = if two {
+            let side_w = chars_wide(ui, 34.0).min(rows[1].width() * 0.4);
+            let table_w = (rows[1].width() - side_w - 8.0).max(1.0);
+            vec![
+                egui::Rect::from_min_size(rows[1].min, egui::vec2(table_w, rows[1].height())),
+                egui::Rect::from_min_size(
+                    egui::pos2(rows[1].left() + table_w + 8.0, rows[1].top()),
+                    egui::vec2(side_w, rows[1].height()),
+                ),
+            ]
+        } else {
+            // Empilés, le tableau passe devant : c'est lui le sujet, et
+            // une synthèse qu'on ne voit pas se relit d'un coup de
+            // molette, là où un tableau coupé ne se lit pas du tout. La
+            // synthèse garde un plafond exprimé en lignes — jamais en
+            // pixels — et défile au-delà.
+            let gutter = 8.0;
+            let avail = (rows[1].height() - gutter).max(1.0);
+            let side_h = (7.0 * line).min(avail * 0.4);
+            motif::split_rows(rows[1], &[avail - side_h, 0.0], gutter)
+        };
+
+        motif::panel(ui, panes[0], Some(tr("caisses_month_table")), |ui| {
+            if session.caisse_period.is_empty() {
+                ui.label(
+                    egui::RichText::new(tr("caisses_empty"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                );
+                return;
+            }
+            let inner = motif::visible_rect(ui);
+            // Chaque colonne est aussi large que ce qu'elle porte,
+            // en-têtes compris — et mesurée **dans la fonte qui
+            // dessinera**, c'est-à-dire le style Body des cellules, et
+            // non une taille en points choisie ici : mesurées à douze
+            // points et peintes à quatorze, les dates sortaient
+            // « 06/09/2026 (reco… ».
+            let body = egui::TextStyle::Body.resolve(ui.style());
+            let money_w = Self::widest_in(ui, body.clone(), std::iter::once("-1\u{a0}234,56 €"));
+            // Et la colonne du jour se mesure sur ce qui s'y écrira de
+            // plus large : la date suivie de « (recompté) ».
+            let widest_day = format!("08/09/2026 ({})", tr("caisses_recounted"));
+            let day_w = Self::widest_in(
+                ui,
+                body.clone(),
+                [widest_day.as_str(), tr("caisses_col_day")].into_iter(),
+            );
+            let by_w = Self::widest_in(ui, body, ["CLM", tr("caisses_col_by")].into_iter());
+            // **Le détail cède avant le sujet.** Huit colonnes ne
+            // tiennent pas dans un volet de comptoir, et la table
+            // défilerait latéralement en emportant hors de vue « Écart »
+            // et « Par », qui sont ce qu'on vient lire. À l'étroit, on
+            // laisse tomber les espèces et les autres encaissements :
+            // leur somme est la recette, qui reste, et le détail du
+            // soir se relit sur son comptage. Le reste tient.
+            let gutter = ui.spacing().item_spacing.x;
+            let full = day_w + 5.0 * money_w + by_w + 7.0 * gutter + chars_wide(ui, 12.0);
+            let tight = full > inner.width();
+            let money_cols = if tight { 3.0 } else { 5.0 };
+            let cols = if tight { 6 } else { 8 };
+            let fixed = day_w + money_cols * money_w + by_w + (cols as f32 - 1.0) * gutter;
+            let remark_w = (inner.width() - fixed).max(chars_wide(ui, 8.0));
+            egui::ScrollArea::both()
+                .id_salt("caisse_history_table")
+                .show(ui, |ui| {
+                    egui::Grid::new("caisse_history")
+                        .num_columns(cols)
+                        .striped(true)
+                        .spacing([ui.spacing().item_spacing.x, 4.0])
+                        .show(ui, |ui| {
+                            let dim_pt = motif::pt(ui, 10.5);
+                            let head = |ui: &mut egui::Ui, w: f32, key: &'static str| {
+                                Self::grid_cell(
+                                    ui,
+                                    w,
+                                    egui::RichText::new(tr(key))
+                                        .size(dim_pt)
+                                        .color(motif::text_dim()),
+                                );
+                            };
+                            head(ui, day_w, "caisses_col_day");
+                            if !tight {
+                                head(ui, money_w, "caisses_col_cash");
+                                head(ui, money_w, "caisses_col_other");
+                            }
+                            head(ui, money_w, "caisses_col_takings");
+                            head(ui, money_w, "caisses_col_expected");
+                            head(ui, money_w, "caisses_col_gap");
+                            head(ui, by_w, "caisses_col_by");
+                            head(ui, remark_w, "caisses_col_remark");
+                            ui.end_row();
+                            for c in &session.caisse_period {
+                                let counted = c.counted();
+                                let stale = session.caisse_superseded.contains(&c.id);
+                                // Un comptage remplacé garde sa ligne,
+                                // en encre éteinte et nommé : c'est le
+                                // soir qu'on a recompté qui se relit six
+                                // mois plus tard.
+                                let ink = if stale {
+                                    motif::text_dim()
+                                } else {
+                                    motif::text()
+                                };
+                                let day = if stale {
+                                    format!(
+                                        "{} ({})",
+                                        db::format_french_date(&c.day),
+                                        tr("caisses_recounted")
+                                    )
+                                } else {
+                                    db::format_french_date(&c.day)
+                                };
+                                Self::grid_cell(ui, day_w, egui::RichText::new(day).color(ink));
+                                let detail: &[i64] = if tight {
+                                    &[]
+                                } else {
+                                    &[counted.cash, counted.other]
+                                };
+                                for amount in detail
+                                    .iter()
+                                    .copied()
+                                    .chain(std::iter::once(counted.takings()))
+                                {
+                                    Self::grid_cell(
+                                        ui,
+                                        money_w,
+                                        egui::RichText::new(format!("{} €", euros(amount)))
+                                            .color(ink),
+                                    );
+                                }
+                                // Sans attendu, un tiret : pas un zéro,
+                                // qui se lirait comme une recette nulle.
+                                Self::grid_cell(
+                                    ui,
+                                    money_w,
+                                    egui::RichText::new(counted.expected.map_or_else(
+                                        || "—".to_owned(),
+                                        |e| format!("{} €", euros(e)),
+                                    ))
+                                    .color(ink),
+                                );
+                                let (gap, gap_ink) = match counted.gap() {
+                                    None => ("—".to_owned(), ink),
+                                    Some(0) => ("0,00 €".to_owned(), ink),
+                                    Some(g) if g < 0 => (format!("{} €", euros(g)), motif::alert()),
+                                    Some(g) => (format!("+{} €", euros(g)), motif::emphasize(ink)),
+                                };
+                                Self::grid_cell(
+                                    ui,
+                                    money_w,
+                                    egui::RichText::new(gap).color(if stale {
+                                        motif::text_dim()
+                                    } else {
+                                        gap_ink
+                                    }),
+                                );
+                                Self::grid_cell(
+                                    ui,
+                                    by_w,
+                                    egui::RichText::new(c.operator.clone()).color(ink),
+                                );
+                                Self::grid_cell(
+                                    ui,
+                                    remark_w,
+                                    egui::RichText::new(c.remark.clone())
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+
+        motif::panel(ui, panes[1], Some(tr("caisses_summary")), |ui| {
+            // Un mois sans comptage ne rend pas « 0 soirs · 0,00 € » :
+            // ces deux zéros se lisent comme une caisse vide, alors
+            // qu'ils veulent dire « personne n'a compté ». La même
+            // phrase que le tableau, et rien d'autre.
+            if session.caisse_period.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("caisses_empty"))
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                return;
+            }
+            egui::ScrollArea::vertical()
+                .id_salt("caisse_history_summary")
+                .show(ui, |ui| {
+                    let s = &session.caisse_summary;
+                    let row = |ui: &mut egui::Ui, label: &str, value: String| {
+                        motif::list_row_pair(ui, label, &value, false, 0.0);
+                    };
+                    // **L'écart d'abord.** Sur un volet court — et il
+                    // l'est dès 1024x700 à l'échelle 1,6 — ce qui est
+                    // sous le pli n'est pas lu, et c'est l'écart qu'on
+                    // vient chercher ici. Le compte des soirs, qui n'est
+                    // qu'un contexte, passe après.
+                    // L'écart cumulé ne s'affiche jamais seul : sur
+                    // combien de soirs il porte est ce qui l'empêche
+                    // d'être lu comme le mois entier. Et sans attendu
+                    // saisi, il n'y a pas de chiffre du tout.
+                    match s.gap {
+                        Some(g) => {
+                            let sign = if g > 0 { "+" } else { "" };
+                            row(ui, tr("caisses_gap_total"), format!("{sign}{} €", euros(g)));
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    "caisses_gap_over",
+                                    &[&s.with_expected, &s.short, &s.over, &s.exact],
+                                ))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                            );
+                        }
+                        None => {
+                            ui.label(
+                                egui::RichText::new(tr("caisses_no_expected"))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                    }
+                    row(ui, tr("caisses_days"), s.days.to_string());
+                    // Les recomptages se comptent en **lignes** et se
+                    // disent ainsi : deux recomptages d'un même soir
+                    // font deux lignes et un seul soir, et « 2 soirs
+                    // recomptés » serait faux.
+                    match s.counts.saturating_sub(s.days) {
+                        0 => {}
+                        1 => {
+                            ui.label(
+                                egui::RichText::new(tr("caisses_recount_one"))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        n => {
+                            ui.label(
+                                egui::RichText::new(trf("caisses_recount_many", n))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                    }
+                    row(ui, tr("caisses_takings"), format!("{} €", euros(s.takings)));
+                    if let Some((day, gap)) = &s.worst {
+                        let sign = if *gap > 0 { "+" } else { "" };
+                        row(
+                            ui,
+                            tr("caisses_worst"),
+                            format!("{} · {sign}{} €", db::format_french_date(day), euros(*gap)),
+                        );
+                    }
+                    // La bande de chaleur : une case par soir **compté**.
+                    if session.caisse_daily.len() > 1 {
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(tr("caisses_strip"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                        let w = motif::visible_rect(ui).width();
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(w, line * 1.4), egui::Sense::hover());
+                        let values: Vec<f64> = session
+                            .caisse_daily
+                            .iter()
+                            .map(|(_, cents)| *cents as f64 / 100.0)
+                            .collect();
+                        if let Some(i) =
+                            motif::chart::heat_strip(ui, rect, &values, motif::accent())
+                        {
+                            if let Some((day, cents)) = session.caisse_daily.get(i) {
+                                egui::show_tooltip_text(
+                                    ui.ctx(),
+                                    ui.layer_id(),
+                                    ui.id().with("caisse_heat"),
+                                    format!(
+                                        "{} · {} €",
+                                        db::format_french_date(day),
+                                        euros(*cents)
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                    // Et la seule liste sur laquelle on agit.
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(tr("caisses_off"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                    if session.caisse_off.is_empty() {
+                        ui.label(
+                            egui::RichText::new(if session.caisse_summary.with_expected == 0 {
+                                tr("caisses_off_unknown")
+                            } else {
+                                tr("caisses_all_square")
+                            })
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                        );
+                    }
+                    for (day, gap) in &session.caisse_off {
+                        let sign = if *gap > 0 { "+" } else { "" };
+                        // Le manque est en encre d'alerte, l'excédent
+                        // dans l'encre ordinaire appuyée : les deux se
+                        // cherchent, un seul se paie ce soir. Et
+                        // `list_row` honore la couleur qu'on lui donne
+                        // — c'est pour cela qu'elle prend un
+                        // `RichText`.
+                        motif::list_row(
+                            ui,
+                            egui::RichText::new(format!(
+                                "{} · {sign}{} €",
+                                db::format_french_date(day),
+                                euros(*gap)
+                            ))
+                            .color(if *gap < 0 {
+                                motif::alert()
+                            } else {
+                                motif::emphasize(motif::text())
+                            }),
+                            false,
+                        );
+                    }
+                });
+        });
+
+        if step != 0 {
+            session.caisse_month = Session::month_step(&session.caisse_month, step);
+            session.load_caisse_month();
+        }
+        if back {
+            session.view = MainView::Caisse;
+            session.refresh_caisse();
+        }
+        if print {
+            let rows: Vec<crate::pdf::CaisseHistoryRow> = session
+                .caisse_period
+                .iter()
+                .map(|c| {
+                    let counted = c.counted();
+                    crate::pdf::CaisseHistoryRow {
+                        day: db::format_french_date(&c.day),
+                        cash: counted.cash,
+                        other: counted.other,
+                        takings: counted.takings(),
+                        expected: counted.expected,
+                        gap: counted.gap(),
+                        operator: c.operator.clone(),
+                        remark: c.remark.clone(),
+                        superseded: session.caisse_superseded.contains(&c.id),
+                    }
+                })
+                .collect();
+            // L'erreur passe par le canal du shell et non par un label
+            // posé ici : la vue a découpé ses rectangles, le curseur de
+            // `ui` est resté en haut, et un `colored_label` de plus
+            // peindrait par-dessus le tableau.
+            session.error = crate::pdf::open_caisse_history(
+                &rows,
+                &month_label,
+                &session.caisse_summary,
+                &config.pharmacy,
+                &config.doc_template_path("caisses"),
+            )
+            .err();
         }
     }
 
@@ -33917,7 +34699,8 @@ impl eframe::App for App {
                     | MainView::Finances
                     | MainView::Stats
                     | MainView::Script
-                    | MainView::Caisse => {
+                    | MainView::Caisse
+                    | MainView::CaisseHistory => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
@@ -35841,10 +36624,39 @@ impl eframe::App for App {
 #[cfg(test)]
 mod tests {
     use super::merge_team_notes;
-    use super::{interviews_csv, App, Config};
+    use super::{interviews_csv, App, Config, Session};
     use crate::db::{ExportRow, InterviewKind, InterviewState};
     use crate::strings::tr;
     use eframe::egui;
+
+    /// Le mois de l'historique de caisse se déplace et se borne **sans
+    /// horloge et sans requête** : c'est de l'arithmétique, et janvier
+    /// moins un mois est décembre de l'année d'avant.
+    ///
+    /// Le passage d'année est exactement ce qu'un `mois - 1` écrit à la
+    /// main rate, et un mois mal borné ne se voit pas : il rend une
+    /// période plausible, avec un total faux.
+    #[test]
+    fn the_till_month_steps_and_bounds_itself_without_a_clock() {
+        assert_eq!(Session::month_step("2026-01", -1), "2025-12");
+        assert_eq!(Session::month_step("2026-12", 1), "2027-01");
+        assert_eq!(Session::month_step("2026-09", 0), "2026-09");
+        assert_eq!(Session::month_step("2026-09", -12), "2025-09");
+        assert_eq!(
+            Session::month_bounds("2026-09"),
+            Some(("2026-09-01".to_owned(), "2026-09-30".to_owned()))
+        );
+        // Février, et février bissextile : le dernier jour vient du
+        // calendrier de `date.rs`, pas d'une table de trente jours.
+        assert_eq!(Session::month_bounds("2026-02").unwrap().1, "2026-02-28");
+        assert_eq!(Session::month_bounds("2024-02").unwrap().1, "2024-02-29");
+        assert_eq!(Session::month_bounds("2026-12").unwrap().1, "2026-12-31");
+        // Et ce qui n'est pas un mois n'en devient pas un : la vue ne
+        // charge rien plutôt que de lire une période inventée.
+        assert_eq!(Session::month_bounds("pas-un-mois"), None);
+        assert_eq!(Session::month_bounds("2026-13"), None);
+        assert_eq!(Session::month_step("", 1), "");
+    }
 
     /// **Une invite qui ne tient pas dans son champ est remplacée.**
     ///
