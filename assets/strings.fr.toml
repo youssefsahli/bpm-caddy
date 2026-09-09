@@ -229,8 +229,10 @@ concil_print_tooltip = "Une feuille A4 : le rapprochement complet, reconductions
 concil_journal = "Écrire au journal"
 concil_journal_done = "Conciliation écrite au journal du dossier."
 concil_journal_head = "Conciliation de sortie ({} divergences) :"
-concil_adopt = "Reprendre les posologies"
-concil_adopt_confirm = "Reprendre {} posologie(s) ?"
+concil_adopt = "Reprendre au dossier"
+concil_adopt_tooltip = "Mettre au dossier les traitements que la feuille apporte et les posologies qui changent. Rien n'est arrêté : arrêter un traitement est une décision, et elle se prend puce par puce. Les lignes non rapprochées ne sont jamais reprises."
+concil_add_done = "{} traitement(s) ajouté(s) au dossier."
+concil_adopt_confirm = "Confirmer : {} ajout(s), {} posologie(s)"
 concil_adopt_done = "{} posologie(s) reprises de l'ordonnance de sortie."
 
 # --- Locations de matériel ---

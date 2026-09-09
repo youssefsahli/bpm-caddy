@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.167.0] - 2026-09-09
+
+### Added
+- **Une ordonnance entière se colle, se relit, et se reprend au
+  dossier.** La conciliation savait lire une liste collée et dire ce qui
+  change ; ce qu'elle en faisait s'arrêtait aux posologies. « Reprendre
+  au dossier » met aussi **les traitements que la feuille apporte**,
+  avec leur posologie — c'est ce qui manquait pour que ce volet soit la
+  saisie d'une ordonnance entière, au lieu qu'on retape dans la bande,
+  ligne par ligne, une liste qu'on vient de coller.
+
+  Ce qu'il ne fait pas : arrêter ce que la feuille ne porte plus.
+  Arrêter un traitement est une décision, pas une recopie, et elle se
+  prend puce par puce. Et rien n'est repris d'une ligne que la base n'a
+  pas su rapprocher : une fiche inventée à partir d'un mot mal lu est
+  une fiche de plus dans un référentiel de huit cent cinquante, et
+  personne ne la retrouvera pour la corriger.
+
+  **Un bouton et non deux**, et c'est une mesure et pas un goût : le
+  quatrième bouton faisait passer la rangée à deux lignes, et à 1024x700
+  en texte 1,25 la seconde ligne coûtait la seule ligne que la table des
+  divergences avait. Mesurer ce qu'un en-tête coûte avant de régler ce
+  que les volets reçoivent — la règle de la maison, et cet onglet est
+  celui où elle avait été apprise.
+
 ## [0.166.0] - 2026-09-09
 
 ### Added

@@ -7422,6 +7422,19 @@ impl App {
                                     sheet.push_str(&format!("{} 5 mg le matin\n", swap.name));
                                 }
                             }
+                            // Et un traitement que la feuille **ajoute**
+                            // : c'est la divergence la plus courante
+                            // après un changement de dose, et c'est
+                            // celle que le bouton « Ajouter au dossier »
+                            // traite. Sans elle, la démonstration montre
+                            // le bouton nulle part.
+                            if let Some(new) = session.drugs.iter().find(|d| {
+                                !session.patient_treats.iter().any(|t| t.id == d.id)
+                                    && !sheet.contains(d.name.trim())
+                                    && !d.name.trim().is_empty()
+                            }) {
+                                sheet.push_str(&format!("{} 1 le matin\n", new.name.trim()));
+                            }
                             sheet.push_str("Zorglub lyoc si nausées\n");
                             session.concil_sheet = sheet;
                             session.patient_tab = PatientTab::Conciliation;
@@ -11975,6 +11988,7 @@ impl App {
         let empty_sheet = session.concil_sheet.trim().is_empty();
         let mut journal = false;
         let mut adopt = false;
+        let mut add_new = false;
         let mut print = false;
         let rows = std::mem::take(&mut session.concil_rows);
         motif::panel(ui, rect, Some(tr("concil_result")), |ui| {
@@ -12021,15 +12035,44 @@ impl App {
                 }
                 // Only worth offering when the sheet actually says
                 // something the file does not.
-                if counts.dose_changed > 0 {
+                // **Reprendre la feuille au dossier** : les posologies
+                // qui changent *et* les traitements qui manquent. C'est
+                // ce qui fait de ce volet la saisie d'une ordonnance
+                // entière — on colle les lignes, on lit ce qui change,
+                // et le dossier suit d'un bouton, au lieu qu'on retape
+                // dans la bande une liste qu'on vient de coller.
+                //
+                // **Un bouton et non deux**, et c'est une leçon
+                // mesurée : le quatrième bouton faisait passer cette
+                // rangée à deux lignes, et à 1024x700 en texte 1,25 la
+                // seconde ligne coûtait la seule ligne que la table des
+                // divergences avait. Mesurer ce qu'un en-tête coûte
+                // avant de régler ce que les volets reçoivent — la
+                // règle de la maison, et cet onglet est justement celui
+                // où elle a été apprise.
+                //
+                // Ce qu'il ne fait **pas** : arrêter ce que la feuille
+                // ne porte plus. Arrêter un traitement est une décision,
+                // pas une recopie, et elle se prend puce par puce.
+                //
+                // Deux clics : mettre cinq lignes dans un dossier n'est
+                // pas un geste qu'on veut faire par mégarde.
+                if counts.dose_changed > 0 || counts.added > 0 {
                     let label = if session.concil_adopt_confirm {
-                        trf("concil_adopt_confirm", counts.dose_changed.to_string())
+                        trn(
+                            "concil_adopt_confirm",
+                            &[&counts.added, &counts.dose_changed],
+                        )
                     } else {
                         tr("concil_adopt").to_owned()
                     };
-                    if motif::button(ui, &label).clicked() {
+                    if motif::button(ui, &label)
+                        .on_hover_text(tr("concil_adopt_tooltip"))
+                        .clicked()
+                    {
                         if session.concil_adopt_confirm {
                             adopt = true;
+                            add_new = true;
                         } else {
                             session.concil_adopt_confirm = true;
                         }
@@ -12108,6 +12151,12 @@ impl App {
         session.concil_rows = rows;
         if journal {
             Self::concil_to_journal(session, patient, operator);
+        }
+        // **L'ajout d'abord.** Une posologie s'écrit sur un lien
+        // dossier–médicament, et ce lien doit exister : reprises dans
+        // l'autre ordre, les lignes ajoutées perdraient la leur.
+        if add_new {
+            Self::concil_add_treatments(session, patient);
         }
         if adopt {
             Self::concil_adopt_doses(session, patient);
@@ -12228,6 +12277,58 @@ impl App {
                 session.error = Some(tr("concil_journal_done").to_owned());
             }
             Err(e) => session.error = Some(e),
+        }
+    }
+
+    /// Ajouter au dossier les traitements que la liste collée apporte.
+    ///
+    /// C'est ce qui fait de la conciliation la **saisie d'une ordonnance
+    /// entière** : on colle les lignes, on lit ce qui change, et ce qui
+    /// manque au dossier s'y met d'un bouton — au lieu d'être retapé
+    /// dans la bande, ligne par ligne, alors qu'on vient de le coller.
+    ///
+    /// Rien n'est ajouté d'une ligne que la base n'a pas su rapprocher :
+    /// une fiche inventée à partir d'un mot mal lu est une fiche de plus
+    /// dans un référentiel de huit cent cinquante, et personne ne la
+    /// retrouvera pour la corriger. Ces lignes-là restent affichées comme
+    /// « non rapprochée », qui est le seul motif demandant un geste avant
+    /// tous les autres.
+    fn concil_add_treatments(session: &mut Session, patient: &Patient) {
+        use crate::conciliation::Change;
+        let wanted: Vec<(String, String)> = session
+            .concil_rows
+            .iter()
+            .filter(|d| d.kind == Change::Added)
+            .map(|d| (d.label.clone(), d.after.trim().to_owned()))
+            .collect();
+        let mut done = 0usize;
+        for (name, dose) in wanted {
+            let Some(id) = session
+                .drugs
+                .iter()
+                .find(|d| d.name.trim().eq_ignore_ascii_case(name.trim()))
+                .map(|d| d.id)
+            else {
+                continue;
+            };
+            match session.db.add_patient_drug(patient.id, id) {
+                Ok(()) => {
+                    done += 1;
+                    // La posologie de la feuille avec le traitement :
+                    // elle est sur la ligne qu'on vient de lire, et la
+                    // retaper serait recopier ce qu'on a sous les yeux.
+                    // Le lien vient d'être créé, donc la valeur attendue
+                    // est vide.
+                    if !dose.is_empty() {
+                        let _ = session.db.set_patient_posology(patient.id, id, &dose, "");
+                    }
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        session.reload_treatments(patient.id);
+        if done > 0 {
+            session.error = Some(trf("concil_add_done", done.to_string()));
         }
     }
 
