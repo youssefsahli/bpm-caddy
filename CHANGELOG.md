@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.164.0] - 2026-09-09
+
+### Added
+- **Ce que la base sait d'elle-même.** Tout ce que l'application compte,
+  elle le comptait pour une question à la fois : combien de fiches
+  parlent du foie, combien d'actes ont été facturés ce mois-ci, quel
+  produit ne bouge plus. Aucune vue ne disait ce que l'ensemble vaut.
+  « Statistiques » répond à quatre questions qu'on se pose deux fois par
+  an et qui décident du semestre suivant.
+
+  **La base** : huit cent cinquante et une fiches, trois cent
+  quatre-vingt-trois classes une fois les libellés repliés — et,
+  champ par champ, combien de fiches le portent. C'est la liste de ce
+  qu'il reste à écrire, et elle n'existait nulle part : on le découvrait
+  fiche par fiche.
+
+  **Les dossiers** : combien atteignent les cinq traitements du bilan
+  partagé de médication, combien portent une biologie, un vaccin, une
+  location ou une pièce, et la distribution des traitements par dossier.
+
+  **L'activité** : qui fait les entretiens — les initiales sont sur
+  chaque ligne depuis toujours et n'atteignaient aucun total —, et la
+  durée moyenne par thématique, calculée sur les actes qui portent une
+  durée : un acte dont personne n'a noté le temps n'est pas un acte de
+  zéro minute, et le compter ferait une moyenne qui ne dit plus rien.
+
 ## [0.163.0] - 2026-09-09
 
 ### Added

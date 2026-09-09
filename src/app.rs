@@ -1424,6 +1424,18 @@ enum MainView {
     /// qu'elle existe. C'est exactement ce qu'on demande d'un écran
     /// « pour soi ».
     Finances,
+    /// Ce que la base sait d'elle-même : les fiches, les dossiers,
+    /// l'activité et le registre, en nombres.
+    ///
+    /// Tout ce que l'application compte, elle le comptait **pour une
+    /// question à la fois** : combien de fiches parlent du foie, combien
+    /// d'actes ont été facturés ce mois-ci, quel produit ne bouge plus.
+    /// Aucune vue ne disait ce que l'ensemble vaut — combien de
+    /// monographies portent leur surveillance, combien de dossiers
+    /// atteignent les cinq traitements du bilan partagé, qui fait les
+    /// entretiens. Ce sont des chiffres qu'on regarde deux fois par an
+    /// et qui décident de ce qu'on fait le semestre suivant.
+    Stats,
 }
 
 impl MainView {
@@ -1446,6 +1458,7 @@ impl MainView {
             MainView::Explorer => "explorer",
             MainView::Classes => "classes",
             MainView::Finances => "finances",
+            MainView::Stats => "stats",
         }
     }
 
@@ -1461,9 +1474,43 @@ impl MainView {
             "explorer" => Some(MainView::Explorer),
             "classes" => Some(MainView::Classes),
             "finances" => Some(MainView::Finances),
+            "stats" => Some(MainView::Stats),
             _ => None,
         }
     }
+}
+
+/// Ce que la base sait d'elle-même, calculé une fois par ouverture de la
+/// vue et jamais par image.
+///
+/// Une structure et non huit champs de session : ils se calculent
+/// ensemble, ils se remplacent ensemble, et le jour où l'un d'eux
+/// manquerait la vue afficherait un chiffre d'hier à côté d'un chiffre
+/// d'aujourd'hui.
+#[derive(Clone, Default)]
+struct Stats {
+    /// Combien de fiches la base porte.
+    cards: usize,
+    /// Combien de classes thérapeutiques distinctes, une fois repliées
+    /// par `crate::classes`.
+    classes: usize,
+    files: usize,
+    files_with_treatments: usize,
+    /// Combien de dossiers atteignent le plancher du bilan partagé de
+    /// médication.
+    bpm_ready: usize,
+    /// Combien de dossiers portent une biologie, un vaccin, une
+    /// location ou une pièce.
+    followed: usize,
+    stup_products: usize,
+    /// Combien de fiches portent chaque champ de prose.
+    coverage: Vec<(String, f64)>,
+    /// Combien d'actes chaque opérateur a faits.
+    per_operator: Vec<(String, f64)>,
+    /// La durée moyenne d'un acte, par thématique.
+    duration: Vec<(String, f64)>,
+    /// Combien de dossiers portent 0, 1, 2… traitements.
+    treatments: Vec<(String, f64)>,
 }
 
 /// One item open in the workspace notebook.
@@ -1490,6 +1537,8 @@ enum WorkTab {
     /// Les recettes. Voir [`MainView::Finances`] : l'onglet n'apparaît
     /// qu'une fois la vue ouverte, et rien ne l'ouvre qu'un nom tapé.
     Finances,
+    /// Les statistiques de la base, des dossiers et du registre.
+    Stats,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -2148,6 +2197,9 @@ struct Session {
     /// « ½ de 0,25 mg ». Séparé de la posologie parce que ce n'est pas
     /// la même question : l'une dit quand et combien, l'autre de quoi.
     patient_strengths: Vec<(i64, String)>,
+    /// Voir [`Stats`] : calculé à l'ouverture de la vue, jamais par
+    /// image.
+    stats: Stats,
     /// Le dosage en cours de frappe dans le champ libre. Voir
     /// [`StupEdits`] : un `TextEdit` ne garde pas son contenu.
     strength_edit: String,
@@ -2757,6 +2809,7 @@ impl Session {
             patient_doses: Vec::new(),
             patient_doses_base: Vec::new(),
             patient_strengths: Vec::new(),
+            stats: Stats::default(),
             strength_edit: String::new(),
             treats_rev: 0,
             concil_sheet: String::new(),
@@ -3014,6 +3067,7 @@ impl Session {
             MainView::Explorer => WorkTab::Explorer,
             MainView::Classes => WorkTab::Classes,
             MainView::Finances => WorkTab::Finances,
+            MainView::Stats => WorkTab::Stats,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -3075,6 +3129,10 @@ impl Session {
             WorkTab::Finances => {
                 self.view = MainView::Finances;
                 self.refresh_dashboard();
+            }
+            WorkTab::Stats => {
+                self.view = MainView::Stats;
+                self.refresh_stats();
             }
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
@@ -3201,6 +3259,7 @@ impl Session {
             WorkTab::Registres,
             WorkTab::Explorer,
             WorkTab::Classes,
+            WorkTab::Stats,
         ] {
             let label = self.tab_label(&tab);
             let score = if q.is_empty() {
@@ -3672,6 +3731,132 @@ impl Session {
         }
     }
 
+    /// (Re)compter ce que la base sait d'elle-même.
+    ///
+    /// Appelé à l'ouverture de la vue et jamais par image : la
+    /// couverture est une passe sur huit cent cinquante fiches et treize
+    /// champs, et le reste tient en quatre requêtes d'agrégat.
+    fn refresh_stats(&mut self) {
+        let mut s = Stats {
+            cards: self.drugs.len(),
+            files: self.patients.len(),
+            ..Stats::default()
+        };
+        // Les classes, **repliées** : le champ `class` d'une fiche est
+        // du texte libre et il a dérivé, et compter les libellés bruts
+        // dirait quatre cent quatre-vingt-quinze là où il y a trois cent
+        // quatre-vingt-trois classes. Voir `crate::classes`.
+        let mut classes: Vec<&str> = self
+            .drugs
+            .iter()
+            .filter(|d| !d.class.trim().is_empty())
+            // Une classe que le référentiel ne connaît pas reste lisible
+            // sous son propre libellé plutôt que d'être écartée : c'est
+            // la règle du module, et un compte qui la contredirait
+            // dirait moins de classes qu'il n'y en a.
+            .map(|d| crate::classes::canonical(&d.class).map_or_else(|| d.class.trim(), |c| c.name))
+            .collect();
+        classes.sort_unstable();
+        classes.dedup();
+        s.classes = classes.len();
+
+        // La couverture : pour chaque champ de prose, combien de fiches
+        // le portent. C'est la liste de ce qu'il reste à écrire, et elle
+        // n'existait nulle part — on le découvrait fiche par fiche.
+        for (key, get) in MONO_FIELDS {
+            let n = self
+                .drugs
+                .iter()
+                .filter(|d| !get(d).trim().is_empty())
+                .count();
+            s.coverage.push((tr(key).to_owned(), n as f64));
+        }
+        // Du mieux rempli au moins rempli : ce qu'on cherche est le bas
+        // de la liste, et il se lit d'autant mieux qu'il est au bout.
+        s.coverage
+            .sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        let counts = self.db.treatment_counts().unwrap_or_default();
+        s.files_with_treatments = counts.iter().filter(|n| **n > 0).count();
+        s.bpm_ready = counts
+            .iter()
+            .filter(|n| **n >= db::BPM_MIN_TREATMENTS as i64)
+            .count();
+        // La distribution, en paquets : « aucun », « un ou deux »…
+        // Une barre par nombre exact ferait vingt barres dont dix-huit à
+        // zéro ; les paquets disent ce qu'on vient lire, à savoir
+        // combien de dossiers pourraient recevoir un bilan partagé.
+        let bucket = |n: i64| -> &'static str {
+            match n {
+                0 => "stats_bucket_none",
+                1..=2 => "stats_bucket_few",
+                3..=4 => "stats_bucket_some",
+                5..=9 => "stats_bucket_many",
+                _ => "stats_bucket_lots",
+            }
+        };
+        for key in [
+            "stats_bucket_none",
+            "stats_bucket_few",
+            "stats_bucket_some",
+            "stats_bucket_many",
+            "stats_bucket_lots",
+        ] {
+            let n = counts.iter().filter(|c| bucket(**c) == key).count();
+            s.treatments.push((tr(key).to_owned(), n as f64));
+        }
+        let (bio, vacc, loc, scans) = self.db.followed_files().unwrap_or_default();
+        // Un dossier suivi est un dossier qui porte **au moins une** de
+        // ces quatre choses ; les additionner compterait trois fois le
+        // dossier qui les a toutes. Le maximum est le plus honnête des
+        // nombres qu'on puisse tirer de quatre comptes distincts sans
+        // une cinquième requête.
+        s.followed = [bio, vacc, loc, scans]
+            .into_iter()
+            .max()
+            .unwrap_or(0)
+            .max(0) as usize;
+        s.stup_products = self.db.stup_summary().map(|l| l.len()).unwrap_or_default();
+
+        // Qui fait les entretiens. Les initiales sont sur chaque ligne
+        // depuis toujours et n'atteignaient aucun total.
+        let mut ops: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for i in &self.summaries {
+            let who = i.operator.trim();
+            if !who.is_empty() {
+                *ops.entry(who).or_default() += 1;
+            }
+        }
+        s.per_operator = ops
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v as f64))
+            .collect();
+        s.per_operator
+            .sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        // La durée moyenne par thématique, sur les actes qui en portent
+        // une. Un acte dont personne n'a noté la durée n'est pas un acte
+        // de zéro minute : le compter ferait une moyenne qui ne dit plus
+        // rien.
+        for kind in InterviewKind::ALL {
+            let timed: Vec<i64> = self
+                .summaries
+                .iter()
+                .filter(|i| i.kind == kind && i.duration_minutes > 0)
+                .map(|i| i.duration_minutes)
+                .collect();
+            if timed.is_empty() {
+                continue;
+            }
+            #[allow(clippy::cast_precision_loss)]
+            let mean = timed.iter().sum::<i64>() as f64 / timed.len() as f64;
+            s.duration.push((kind.label().to_owned(), mean));
+        }
+        s.duration
+            .sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        self.stats = s;
+    }
+
     /// Ce que le registre dit des produits suivis, dans la forme que le
     /// module pur attend.
     ///
@@ -3843,6 +4028,7 @@ impl Session {
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
+            WorkTab::Stats => tr("tab_stats").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -6593,6 +6779,7 @@ fn restore_view(session: &mut Session, key: &str) {
     };
     match view {
         MainView::Dashboard | MainView::Finances => session.refresh_dashboard(),
+        MainView::Stats => session.refresh_stats(),
         MainView::Transmissions => {
             session.trans_day = String::new();
             session.load_transmissions();
@@ -6876,6 +7063,10 @@ impl App {
                         Ok("finances") => {
                             session.refresh_dashboard();
                             session.view = MainView::Finances;
+                        }
+                        Ok("stats") => {
+                            session.refresh_stats();
+                            session.view = MainView::Stats;
                         }
                         Ok("explorer") => {
                             session.view = MainView::Explorer;
@@ -7689,7 +7880,9 @@ impl App {
                             // celui des patients.
                             // Les classes trient elles aussi le
                             // référentiel : même dock que l'explorateur.
-                            MainView::Explorer | MainView::Classes => {
+                            // Les statistiques parlent surtout du
+                            // référentiel : même dock qu'eux.
+                            MainView::Explorer | MainView::Classes | MainView::Stats => {
                                 Self::nav_drugs(ui, session, focus)
                             }
                             MainView::Dashboard
@@ -8969,6 +9162,10 @@ impl App {
             }
             if session.view == MainView::Finances {
                 Self::finances_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Stats {
+                Self::stats_view(ui, session);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -29044,6 +29241,178 @@ impl App {
         });
     }
 
+    /// Ce que la base sait d'elle-même.
+    ///
+    /// Quatre questions qu'aucune vue ne posait : **la base** — huit
+    /// cent cinquante fiches, mais combien portent leur surveillance,
+    /// leurs contre-indications, ce qu'on fait quand une prise est
+    /// oubliée ? —, **les dossiers** — combien atteignent les cinq
+    /// traitements du bilan partagé, combien ont une biologie —,
+    /// **l'activité** — qui fait les entretiens, combien de temps ils
+    /// prennent, lesquels s'arrêtent en route —, et **le registre**.
+    ///
+    /// Ce sont des chiffres qu'on regarde deux fois par an et qui
+    /// décident du semestre suivant. Ils sont calculés au chargement de
+    /// la vue et pas par image : la couverture de la base est une passe
+    /// sur huit cent cinquante fiches et treize champs.
+    fn stats_view(ui: &mut egui::Ui, session: &mut Session) {
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            ui.heading(tr("stats_title"));
+        });
+        ui.add_space(6.0);
+        let s = session.stats.clone();
+        egui::ScrollArea::vertical()
+            .id_salt("stats")
+            .show(ui, |ui| {
+                let full = motif::visible_rect(ui).shrink2(egui::vec2(4.0, 0.0));
+                let w = full.width();
+                let gutter = 8.0;
+
+                // La rangée de tuiles : les quatre nombres qui répondent
+                // avant qu'on lise un graphique.
+                let per_row = if w >= 720.0 { 4 } else { 2 };
+                let tile_h = 72.0;
+                let rows = 4_usize.div_ceil(per_row);
+                let kpi_rect = egui::Rect::from_min_size(
+                    full.min,
+                    egui::vec2(w, rows as f32 * (tile_h + gutter) - gutter),
+                );
+                let tiles: [(&str, String, &[f64], Option<String>); 4] = [
+                    (
+                        tr("stats_cards"),
+                        s.cards.to_string(),
+                        &[],
+                        Some(trf("stats_classes_n", s.classes)),
+                    ),
+                    (
+                        tr("stats_files"),
+                        s.files.to_string(),
+                        &[],
+                        Some(trf("stats_treated_n", s.files_with_treatments)),
+                    ),
+                    (
+                        tr("stats_bpm_ready"),
+                        s.bpm_ready.to_string(),
+                        &[],
+                        Some(trf("stats_of_files", s.files)),
+                    ),
+                    (
+                        tr("stats_followed"),
+                        s.followed.to_string(),
+                        &[],
+                        Some(trf("stats_stup_n", s.stup_products)),
+                    ),
+                ];
+                motif::inside(ui, kpi_rect, |ui| {
+                    for r in 0..rows {
+                        let band = egui::Rect::from_min_size(
+                            egui::pos2(
+                                kpi_rect.left(),
+                                kpi_rect.top() + r as f32 * (tile_h + gutter),
+                            ),
+                            egui::vec2(w, tile_h),
+                        );
+                        for (i, cell) in motif::split_columns(band, per_row, gutter)
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let Some((title, value, trend, note)) = tiles.get(r * per_row + i)
+                            else {
+                                break;
+                            };
+                            Self::kpi_tile(ui, cell, title, value, trend, note.as_deref());
+                        }
+                    }
+                });
+                ui.add_space(gutter);
+
+                let cols = motif::column_count(w, 340.0, 2);
+                // La couverture de la base a besoin de treize rangées :
+                // c'est le panneau qui décide de ce qu'on écrit le
+                // semestre prochain, et le tronquer en ferait une
+                // décoration.
+                let panels: Vec<(&str, f32)> = vec![
+                    (tr("stats_coverage"), 300.0),
+                    (tr("stats_per_operator"), 190.0),
+                    (tr("stats_duration"), 232.0),
+                    (tr("stats_treatments"), 232.0),
+                ];
+                let mut y = vec![full.top() + kpi_rect.height() + gutter; cols];
+                let lanes = motif::split_columns(
+                    egui::Rect::from_min_size(egui::pos2(full.left(), 0.0), egui::vec2(w, 1.0)),
+                    cols,
+                    gutter,
+                );
+                let mut bottom = y[0];
+                for (i, (title, height)) in panels.iter().enumerate() {
+                    let lane = if cols == 1 {
+                        0
+                    } else {
+                        y.iter()
+                            .enumerate()
+                            .min_by(|a, b| a.1.total_cmp(b.1))
+                            .map(|(k, _)| k)
+                            .unwrap_or(0)
+                    };
+                    let rect = egui::Rect::from_min_size(
+                        egui::pos2(lanes[lane].left(), y[lane]),
+                        egui::vec2(lanes[lane].width(), *height),
+                    );
+                    y[lane] += height + gutter;
+                    bottom = bottom.max(y[lane]);
+                    motif::panel(ui, rect, Some(title), |ui| {
+                        let body = ui.max_rect();
+                        match i {
+                            0 => Self::stats_bars(ui, body, &s.coverage, &|v| format!("{v:.0}")),
+                            1 => {
+                                Self::stats_bars(ui, body, &s.per_operator, &|v| format!("{v:.0}"))
+                            }
+                            2 => {
+                                Self::stats_bars(ui, body, &s.duration, &|v| format!("{v:.0} min"))
+                            }
+                            _ => Self::stats_bars(ui, body, &s.treatments, &|v| format!("{v:.0}")),
+                        }
+                    });
+                }
+                ui.allocate_space(egui::vec2(w, bottom - full.top() - kpi_rect.height()));
+            });
+    }
+
+    /// Une série nommée, en barres horizontales.
+    ///
+    /// Horizontales parce que les libellés sont des phrases —
+    /// « Surveillance biologique », « Bilan partagé de médication » —,
+    /// et qu'une barre verticale les coucherait ou les couperait.
+    fn stats_bars(
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        rows: &[(String, f64)],
+        fmt: &dyn Fn(f64) -> String,
+    ) {
+        if rows.is_empty() {
+            let inner = motif::chart::frame(ui, rect);
+            ui.painter().text(
+                inner.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("dash_empty"),
+                egui::FontId::proportional(motif::pt(ui, 12.0)),
+                motif::text_dim(),
+            );
+            return;
+        }
+        let bars: Vec<motif::chart::Row> = rows
+            .iter()
+            .map(|(label, value)| motif::chart::Row {
+                label,
+                value: *value,
+                color: motif::accent(),
+            })
+            .collect();
+        motif::chart::hbars(ui, rect, &bars, 150.0, fmt);
+    }
+
     /// Les recettes : ce qui a été facturé, ce qui attend de l'être, et
     /// ce que l'heure passée rapporte.
     ///
@@ -31355,7 +31724,8 @@ impl eframe::App for App {
                     | MainView::Registres
                     | MainView::Explorer
                     | MainView::Classes
-                    | MainView::Finances => {
+                    | MainView::Finances
+                    | MainView::Stats => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard

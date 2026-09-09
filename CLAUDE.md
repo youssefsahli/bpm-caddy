@@ -27,6 +27,15 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   often, read against the dates already in the file — the other half of
   `biology.rs`: that one reads the values that are there, this one names
   the ones that are not),
+  There is no `stats` module: the figures the « Statistiques » view
+  shows are counts over lists the session already holds (the 851 cards,
+  the summaries) plus four aggregate queries, and a module that only
+  counted would be a module that only imports. What *is* worth writing
+  down: the aggregate queries are covered by
+  `a_base_from_an_older_version_still_answers_every_query`, because the
+  view reads them through `unwrap_or_default` and a mistyped table name
+  therefore shows a confident zero rather than an error — which is
+  exactly what happened (`bio_results` for `biology`).
   `src/timeline.rs` (the file's thread: everything the base knows about
   one person, in the order of the days. Seven tabs each answer their own
   question and none answers the one you ask opening the file of somebody
@@ -617,7 +626,7 @@ add clicking and typing; it is not the price of entry.
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|peaux`
+  finances|stats|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its

@@ -1038,6 +1038,14 @@ pub struct InterviewSummary {
     pub fee_year: usize,
     /// Held remotely: TPH is billed on top.
     pub remote: bool,
+    /// Les initiales de qui a fait l'acte, telles que la fiche les
+    /// porte ; vide quand personne ne les a écrites.
+    ///
+    /// Elles étaient sur la ligne de l'entretien depuis toujours et
+    /// n'atteignaient aucun total : « qui fait les entretiens de cette
+    /// officine » ne se lisait nulle part, alors que c'est la question
+    /// qu'on se pose en répartissant le travail.
+    pub operator: String,
 }
 
 /// One interview joined with its patient, for the CSV export.
@@ -32996,7 +33004,7 @@ impl Db {
             .prepare(
                 "SELECT kind, state, substr(created_at, 1, 7), substr(updated_at, 1, 7),
                         duration_minutes, patient_id, substr(created_at, 1, 10), remote,
-                        treatment_change
+                        treatment_change, operator
                  FROM interviews ORDER BY created_at, id",
             )
             .map_err(|e| e.to_string())?;
@@ -33012,6 +33020,7 @@ impl Db {
                     r.get::<_, String>(6)?,
                     r.get::<_, i64>(7)? != 0,
                     r.get::<_, i64>(8)? != 0,
+                    r.get::<_, String>(9)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -33028,6 +33037,7 @@ impl Db {
                 date,
                 remote,
                 treatment_change,
+                operator,
             ) = row.map_err(|e| e.to_string())?;
             let kind = InterviewKind::parse(&kind)
                 .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?;
@@ -33047,6 +33057,7 @@ impl Db {
                 fee_rank: 0,
                 fee_year: 0,
                 remote,
+                operator,
             });
         }
         for (i, (year, rank)) in fee_ranks(&keys, cycle_months.max(1)) {
@@ -33054,6 +33065,54 @@ impl Db {
             out[i].fee_year = year;
         }
         Ok(out)
+    }
+
+    /// Combien de traitements chaque dossier porte, dossiers vides
+    /// compris.
+    ///
+    /// Une requête pour toute la base et non une par dossier : la
+    /// question est « combien de dossiers atteignent les cinq
+    /// traitements du bilan partagé de médication », et la poser dossier
+    /// par dossier serait mille requêtes sur un partage réseau.
+    ///
+    /// Les dossiers **sans aucun traitement** en font partie, avec un
+    /// zéro : ce sont eux la réponse à « combien de dossiers n'ont
+    /// jamais reçu d'ordonnance », et une jointure qui les laisserait
+    /// dehors ferait une moyenne calculée sur ceux qui vont bien.
+    pub fn treatment_counts(&self) -> Result<Vec<i64>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT (SELECT COUNT(*) FROM patient_drugs pd WHERE pd.patient_id = p.id)
+                 FROM patients p",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Combien de dossiers portent au moins une ligne de chacune des
+    /// tables qui font un dossier suivi : biologie, vaccination,
+    /// location, pièce.
+    ///
+    /// Quatre comptes en une requête. La question — « de quoi la base
+    /// se sert-elle vraiment ? » — se pose sur les quatre ensemble, et
+    /// quatre allers-retours pour quatre nombres qui se lisent sur une
+    /// ligne seraient trois de trop.
+    pub fn followed_files(&self) -> Result<(i64, i64, i64, i64), String> {
+        self.conn
+            .query_row(
+                "SELECT (SELECT COUNT(DISTINCT patient_id) FROM biology),
+                        (SELECT COUNT(DISTINCT patient_id) FROM vaccinations),
+                        (SELECT COUNT(DISTINCT patient_id) FROM locations),
+                        (SELECT COUNT(DISTINCT subject_id) FROM scans
+                          WHERE subject_kind = 'PATIENT')",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .map_err(|e| e.to_string())
     }
 
     /// Set (or clear) the hour of a planned interview, `HH:MM`.
@@ -34878,6 +34937,14 @@ mod tests {
         db.patient_posologies(pid).expect("patient_posologies");
         db.patient_dosages(pid).expect("patient_dosages");
         db.dosages_used(did).expect("dosages_used");
+        // Les agrégats des statistiques : quatre noms de tables et une
+        // faute de frappe suffit à rendre zéro sans rien dire, parce que
+        // la vue lit `unwrap_or_default`. Ce test est ce qui l'attrape —
+        // et il l'a attrapée : la table de la biologie s'appelle
+        // `biology` et non `bio_results`, et le tableau annonçait « 0
+        // dossier suivi » sur une base qui en portait cinq.
+        db.treatment_counts().expect("treatment_counts");
+        db.followed_files().expect("followed_files");
         db.posologies(did).expect("posologies");
         db.interviews_for(pid).expect("interviews_for");
         db.bio_results(pid).expect("bio_results");
