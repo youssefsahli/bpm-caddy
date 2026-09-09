@@ -7397,7 +7397,14 @@ impl App {
                             // names a molecule of a class already on the
                             // file (a replacement), and one names a
                             // product the base cannot answer for.
-                            let mut sheet = String::new();
+                            // La ligne que la base ne sait pas
+                            // rapprocher **en tête** : une feuille
+                            // d'hôpital commence souvent par un produit
+                            // qu'une officine de ville ne connaît pas,
+                            // et c'est la ligne que la coloration doit
+                            // montrer — au fond de la boîte, elle est
+                            // hors de vue sur un volet de comptoir.
+                            let mut sheet = String::from("Zorglub lyoc si nausées\n");
                             for (i, d) in session.patient_treats.iter().enumerate() {
                                 let dose = session.dose_of(d.id).trim().to_owned();
                                 match i {
@@ -7435,7 +7442,6 @@ impl App {
                             }) {
                                 sheet.push_str(&format!("{} 1 le matin\n", new.name.trim()));
                             }
-                            sheet.push_str("Zorglub lyoc si nausées\n");
                             session.concil_sheet = sheet;
                             session.patient_tab = PatientTab::Conciliation;
                             session.view = MainView::Search;
@@ -11857,10 +11863,56 @@ impl App {
                 // line and a half of the next entry — is a text box's
                 // business, and the button below is out of its reach.
                 let h = ui.available_height().max(line);
+                // **La coloration : chaque ligne dit si la base l'a
+                // reconnue.**
+                //
+                // La réponse est en bas de l'écran, en tableau, et il
+                // faut la lire pour savoir qu'une ligne sur six n'a
+                // servi à rien. Ici elle est *sur* la ligne, pendant
+                // qu'on tape : ce que la base n'a pas rapproché est en
+                // encre d'alerte, le reste dans l'encre ordinaire.
+                //
+                // Elle ne coûte **rien par image** : les lignes non
+                // rapprochées sont ce que `conciliation` a déjà répondu,
+                // mémoïsé contre le texte collé. Refaire la passe floue
+                // sur huit cent cinquante fiches dans un `layouter`
+                // serait la refaire soixante fois par seconde.
+                let unmatched: Vec<&str> = session
+                    .concil_rows
+                    .iter()
+                    .filter(|d| d.kind == crate::conciliation::Change::Unmatched)
+                    .map(|d| d.note.trim())
+                    .filter(|n| !n.is_empty())
+                    .collect();
+                let font = egui::FontId::proportional(motif::pt(ui, 11.5));
+                let mut layouter = |ui: &egui::Ui, text: &str, wrap: f32| {
+                    let mut job = egui::text::LayoutJob::default();
+                    for (i, raw) in text.split('\n').enumerate() {
+                        if i > 0 {
+                            job.append(
+                                "\n",
+                                0.0,
+                                egui::TextFormat::simple(font.clone(), motif::text()),
+                            );
+                        }
+                        let bad = unmatched.iter().any(|u| *u == raw.trim());
+                        job.append(
+                            raw,
+                            0.0,
+                            egui::TextFormat::simple(
+                                font.clone(),
+                                if bad { motif::alert() } else { motif::text() },
+                            ),
+                        );
+                    }
+                    job.wrap.max_width = wrap;
+                    ui.fonts(|f| f.layout_job(job))
+                };
                 ui.add_sized(
                     [ui.available_width(), h],
                     egui::TextEdit::multiline(&mut session.concil_sheet)
-                        .hint_text(tr("concil_sheet_hint")),
+                        .hint_text(tr("concil_sheet_hint"))
+                        .layouter(&mut layouter),
                 );
             });
             motif::inside(ui, rows[1], |ui| {

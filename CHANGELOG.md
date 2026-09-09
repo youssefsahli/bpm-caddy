@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.168.0] - 2026-09-09
+
+### Added
+- **La feuille collée se colore : chaque ligne dit si la base l'a
+  reconnue.** La réponse était en bas de l'écran, en tableau, et il
+  fallait la lire pour découvrir qu'une ligne sur six n'avait servi à
+  rien. Elle est maintenant *sur* la ligne, pendant qu'on tape : ce que
+  la base n'a pas su rapprocher est en encre d'alerte, le reste dans
+  l'encre ordinaire.
+
+  Elle ne coûte rien par image : les lignes non rapprochées sont ce que
+  la conciliation a déjà répondu, mémoïsé contre le texte collé. Refaire
+  la passe floue sur huit cent cinquante fiches dans un `layouter`, ce
+  serait la refaire soixante fois par seconde.
+
 ## [0.167.0] - 2026-09-09
 
 ### Added
