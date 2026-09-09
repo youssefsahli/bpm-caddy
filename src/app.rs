@@ -1446,6 +1446,14 @@ enum MainView {
     /// qu'un langage existe du tout dans une application qui tient des
     /// données de santé chiffrées.
     Script,
+    /// Le comptage de la caisse : ce qu'il y a dans le tiroir le soir,
+    /// ce qu'on y laisse pour demain, et l'écart avec ce que la journée
+    /// devait rentrer. Voir [`crate::caisse`].
+    ///
+    /// Ce n'est pas un écran de recettes — celui-là est
+    /// [`MainView::Finances`] et se cache. C'est un geste de fermeture,
+    /// fait par qui ferme, et qui a donc une porte comme les autres.
+    Caisse,
 }
 
 impl MainView {
@@ -1470,6 +1478,7 @@ impl MainView {
             MainView::Finances => "finances",
             MainView::Stats => "stats",
             MainView::Script => "script",
+            MainView::Caisse => "caisse",
         }
     }
 
@@ -1487,6 +1496,7 @@ impl MainView {
             "finances" => Some(MainView::Finances),
             "stats" => Some(MainView::Stats),
             "script" => Some(MainView::Script),
+            "caisse" => Some(MainView::Caisse),
             _ => None,
         }
     }
@@ -1558,6 +1568,8 @@ enum WorkTab {
     Stats,
     /// La console de scripts.
     Script,
+    /// Le comptage de la caisse.
+    Caisse,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -2238,6 +2250,32 @@ struct Session {
     script_out: Option<crate::script::Outcome>,
     script_note: Option<(bool, String)>,
     script_name: String,
+    /// Le comptage de caisse en cours. Voir [`crate::caisse`].
+    ///
+    /// Les quantités sont du **texte** et non des entiers : un champ
+    /// qu'on vide pour le retaper vaudrait zéro à chaque frappe, et le
+    /// total sauterait sous les doigts. La conversion se fait à la
+    /// lecture, où une saisie qui n'est pas un nombre vaut zéro sans
+    /// effacer ce qui est écrit.
+    caisse_qty: [String; crate::caisse::DENOMINATIONS.len()],
+    caisse_float: String,
+    caisse_expected: String,
+    caisse_others: Vec<(String, String)>,
+    caisse_remark: String,
+    /// Le jour compté, ISO. Celui de la fermeture, pas celui de la
+    /// saisie : une caisse comptée le lendemain matin reste la caisse
+    /// de la veille.
+    caisse_day: String,
+    caisse_history: Vec<db::CaisseCount>,
+    caisse_note: Option<(bool, String)>,
+    /// Le document dont une vue demande à ouvrir le modèle, drainé une
+    /// fois par image par [`App`].
+    ///
+    /// Une vue est une fonction statique : elle n'atteint pas
+    /// `App::tpl_editor`. Plutôt qu'un paramètre de plus sur chaque
+    /// vue, une boîte aux lettres — et elle sert à toutes, maintenant
+    /// que chaque document imprimable a son modèle.
+    open_template: Option<&'static str>,
     /// Le dosage en cours de frappe dans le champ libre. Voir
     /// [`StupEdits`] : un `TextEdit` ne garde pas son contenu.
     strength_edit: String,
@@ -2865,6 +2903,15 @@ impl Session {
             script_out: None,
             script_note: None,
             script_name: String::new(),
+            caisse_qty: std::array::from_fn(|_| String::new()),
+            caisse_float: String::new(),
+            caisse_expected: String::new(),
+            caisse_others: Vec::new(),
+            caisse_remark: String::new(),
+            caisse_day: String::new(),
+            caisse_history: Vec::new(),
+            caisse_note: None,
+            open_template: None,
             strength_edit: String::new(),
             treats_rev: 0,
             concil_sheet: String::new(),
@@ -3142,6 +3189,7 @@ impl Session {
             MainView::Finances => WorkTab::Finances,
             MainView::Stats => WorkTab::Stats,
             MainView::Script => WorkTab::Script,
+            MainView::Caisse => WorkTab::Caisse,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -3211,6 +3259,10 @@ impl Session {
             WorkTab::Script => {
                 self.view = MainView::Script;
                 self.refresh_scripts();
+            }
+            WorkTab::Caisse => {
+                self.view = MainView::Caisse;
+                self.refresh_caisse();
             }
             WorkTab::Drugs => {
                 self.view = MainView::Drugs;
@@ -3339,6 +3391,7 @@ impl Session {
             WorkTab::Classes,
             WorkTab::Stats,
             WorkTab::Script,
+            WorkTab::Caisse,
         ] {
             let label = self.tab_label(&tab);
             let score = if q.is_empty() {
@@ -3836,6 +3889,43 @@ impl Session {
         self.scripts.sort_by_key(|n| n.to_lowercase());
     }
 
+    /// Ouvrir le comptage de caisse : le jour du jour, et les derniers
+    /// comptages pour comparaison.
+    ///
+    /// Le jour n'est remis à celui d'aujourd'hui que s'il est vide :
+    /// une caisse de la veille comptée le lendemain matin garde sa
+    /// date, et un aller-retour vers une autre vue ne doit pas la
+    /// réécrire par-dessus l'épaule de qui compte.
+    fn refresh_caisse(&mut self) {
+        if self.caisse_day.is_empty() {
+            self.caisse_day = self.today.clone();
+        }
+        self.caisse_history = self.db.caisse_counts(20).unwrap_or_default();
+    }
+
+    /// Ce que le formulaire dit, lu une fois par image et rendu à qui
+    /// dessine.
+    ///
+    /// Une saisie qui n'est pas un nombre vaut zéro **sans effacer ce
+    /// qui est écrit** : corriger le champ de quelqu'un pendant qu'il
+    /// tape est la façon la plus sûre de lui faire perdre sa ligne.
+    fn caisse_reading(&self) -> (crate::caisse::Quantities, Vec<crate::caisse::Other>) {
+        let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
+        for (slot, text) in q.iter_mut().zip(self.caisse_qty.iter()) {
+            *slot = text.trim().parse().unwrap_or(0);
+        }
+        let others = self
+            .caisse_others
+            .iter()
+            .filter(|(l, v)| !l.trim().is_empty() || !v.trim().is_empty())
+            .map(|(l, v)| crate::caisse::Other {
+                label: l.trim().to_owned(),
+                cents: crate::caisse::parse_euros(v).unwrap_or(0),
+            })
+            .collect();
+        (q, others)
+    }
+
     /// Ce que la console donne à lire : un instantané, pris avant
     /// l'exécution.
     ///
@@ -4296,6 +4386,7 @@ impl Session {
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
+            WorkTab::Caisse => tr("tab_caisse").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
             WorkTab::Patient(id) => self
                 .patients
@@ -7031,23 +7122,18 @@ struct OptionsEditor {
 }
 
 struct TplEditor {
-    target: TplTarget,
+    /// La clé du document ouvert, celle du registre `pdf::DOCS`.
+    ///
+    /// Une chaîne et non un `enum` : la liste des documents
+    /// imprimables est le registre, et un `enum` en aurait fait une
+    /// deuxième — à tenir en accord avec la première, ce qui n'arrive
+    /// jamais. Une clé que ce binaire ne connaît pas tombe simplement
+    /// sur le premier document, comme une vue inconnue tombe sur la
+    /// recherche.
+    key: &'static str,
     text: String,
     /// Status line; `true` marks an error.
     message: Option<(bool, String)>,
-}
-
-/// Which Typst template the editor is showing.
-#[derive(Clone, Copy, PartialEq)]
-enum TplTarget {
-    /// The interview sheet ("Fiche PDF").
-    Fiche,
-    /// The CR letter to the médecin traitant.
-    Courrier,
-    /// The carnet de transmissions page.
-    Carnet,
-    /// The ordonnance printed after a positive TROD.
-    Ordonnance,
 }
 
 #[derive(Default)]
@@ -7072,6 +7158,7 @@ fn restore_view(session: &mut Session, key: &str) {
         MainView::Dashboard | MainView::Finances => session.refresh_dashboard(),
         MainView::Stats => session.refresh_stats(),
         MainView::Script => session.refresh_scripts(),
+        MainView::Caisse => session.refresh_caisse(),
         MainView::Transmissions => {
             session.trans_day = String::new();
             session.load_transmissions();
@@ -7396,6 +7483,22 @@ impl App {
                                     Some(crate::script::run(&session.script_text, &data));
                             }
                             session.view = MainView::Script;
+                        }
+                        // La caisse, **comptée** : quinze lignes à zéro
+                        // ne montrent ni la synthèse, ni l'écart, ni le
+                        // rouge qu'il porte — c'est-à-dire rien de ce
+                        // que la vue existe pour dessiner.
+                        Ok("caisse") => {
+                            session.refresh_caisse();
+                            for (i, n) in [(3_usize, "4"), (4, "7"), (7, "9"), (9, "5")] {
+                                session.caisse_qty[i] = n.to_owned();
+                            }
+                            session.caisse_others = vec![("Carte".to_owned(), "450,75".to_owned())];
+                            session.caisse_float = "150".to_owned();
+                            // Un écart petit et négatif : c'est le cas courant, et
+                            // c'est celui qui exerce la couleur d'alerte.
+                            session.caisse_expected = "820".to_owned();
+                            session.view = MainView::Caisse;
                         }
                         // Le compagnon : le garde-fou l'ouvre par sa
                         // clé, sinon rien ne le regarderait jamais aux
@@ -7776,7 +7879,7 @@ impl App {
         let start_view = std::env::var("BPM_CADDY_START_VIEW").unwrap_or_default();
         let tpl_editor = if start_view == "template" {
             Some(TplEditor {
-                target: TplTarget::Fiche,
+                key: "fiche",
                 text: crate::pdf::default_template().to_owned(),
                 message: None,
             })
@@ -8256,7 +8359,11 @@ impl App {
                             MainView::Dashboard
                             | MainView::Search
                             | MainView::Registres
-                            | MainView::Finances => Self::nav_patients(ui, session, focus, &config),
+                            | MainView::Finances
+                            // Le comptage de caisse ne trie ni le
+                            // référentiel ni les dossiers ; il garde le
+                            // dock qu'on avait devant soi en fermant.
+                            | MainView::Caisse => Self::nav_patients(ui, session, focus, &config),
                         }
                     });
                 });
@@ -9260,7 +9367,10 @@ impl App {
                     });
             });
         if print_guide {
-            if let Err(e) = crate::pdf::open_guide(&self.config.pharmacy) {
+            if let Err(e) = crate::pdf::open_guide(
+                &self.config.pharmacy,
+                &self.config.doc_template_path("guide"),
+            ) {
                 if let State::Unlocked(s) = &mut self.state {
                     s.error = Some(e);
                 }
@@ -9540,6 +9650,10 @@ impl App {
             }
             if session.view == MainView::Script {
                 Self::script_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Caisse {
+                Self::caisse_view(ui, session, &config, &operator);
                 return;
             }
             if let Some(patient) = session.viewing.clone() {
@@ -11503,9 +11617,12 @@ impl App {
         }
         if print {
             let lines = session.vaccinations.clone();
-            if let Err(e) =
-                crate::pdf::open_vaccination_carnet(patient, &lines, &config.disclaimers.carnet)
-            {
+            if let Err(e) = crate::pdf::open_vaccination_carnet(
+                patient,
+                &lines,
+                &config.disclaimers.carnet,
+                &config.doc_template_path("vaccination"),
+            ) {
                 session.error = Some(e);
             }
         }
@@ -12420,7 +12537,11 @@ impl App {
             mention: &config.disclaimers.conciliation,
             signature: &signature,
         };
-        if let Err(e) = crate::pdf::open_conciliation(&data, &config.pharmacy) {
+        if let Err(e) = crate::pdf::open_conciliation(
+            &data,
+            &config.pharmacy,
+            &config.doc_template_path("conciliation"),
+        ) {
             session.error = Some(e);
         }
     }
@@ -14185,7 +14306,9 @@ impl App {
             mention: &config.disclaimers.plan,
             signature: &signature,
         };
-        if let Err(e) = crate::pdf::open_plan(&data, &config.pharmacy) {
+        if let Err(e) =
+            crate::pdf::open_plan(&data, &config.pharmacy, &config.doc_template_path("plan"))
+        {
             session.error = Some(e);
         } else {
             session.error = None;
@@ -14377,7 +14500,9 @@ impl App {
             acts,
             signature: &signature,
         };
-        if let Err(e) = crate::pdf::open_bilan(&data, &config.pharmacy) {
+        if let Err(e) =
+            crate::pdf::open_bilan(&data, &config.pharmacy, &config.doc_template_path("bilan"))
+        {
             session.error = Some(e);
         } else {
             session.error = None;
@@ -19176,9 +19301,11 @@ impl App {
                                     .db
                                     .today_french()
                                     .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
-                                if let Err(e) =
-                                    crate::pdf::open_appointment_list(&session.appointments, &today)
-                                {
+                                if let Err(e) = crate::pdf::open_appointment_list(
+                                    &session.appointments,
+                                    &today,
+                                    &config.doc_template_path("rdv"),
+                                ) {
                                     session.error = Some(e);
                                 }
                             }
@@ -19397,6 +19524,7 @@ impl App {
                 &session.appointments,
                 &grid_events,
                 &session.today,
+                &config.doc_template_path("semaine"),
             ) {
                 session.error = Some(e);
             }
@@ -20361,7 +20489,8 @@ impl App {
                     .clicked()
                 {
                     let all = session.preparations.clone();
-                    if let Err(e) = crate::pdf::open_codex(&all) {
+                    if let Err(e) = crate::pdf::open_codex(&all, &config.doc_template_path("codex"))
+                    {
                         session.error = Some(e);
                     }
                 }
@@ -20728,9 +20857,14 @@ impl App {
             } else {
                 session.codex_target.clone()
             };
-            if let Err(e) =
-                crate::pdf::open_preparation(prep, &target, &lines, &config.pharmacy, operator)
-            {
+            if let Err(e) = crate::pdf::open_preparation(
+                prep,
+                &target,
+                &lines,
+                &config.pharmacy,
+                operator,
+                &config.doc_template_path("preparation"),
+            ) {
                 session.error = Some(e);
             }
         }
@@ -22597,6 +22731,7 @@ impl App {
                                 &list,
                                 &config.pharmacy,
                                 &session.today,
+                                &config.doc_template_path("controle"),
                             ) {
                                 session.stup_note = Some((true, e));
                             }
@@ -22638,6 +22773,7 @@ impl App {
                                     &session.stup_cancelled,
                                     &config.pharmacy,
                                     &session.today,
+                                    &config.doc_template_path("registre"),
                                 ) {
                                     session.stup_note = Some((true, e));
                                 }
@@ -25613,6 +25749,7 @@ impl App {
                         &waiting,
                         &config.pharmacy,
                         &session.today,
+                        &config.doc_template_path("destruction"),
                     ) {
                         session.stup_note = Some((true, e));
                     }
@@ -25887,6 +26024,7 @@ impl App {
                         session.stup_year,
                         &config.pharmacy,
                         &session.today,
+                        &config.doc_template_path("ordonnancier"),
                     ) {
                         session.stup_note = Some((true, e));
                     }
@@ -26198,7 +26336,11 @@ impl App {
                     .clicked()
                 {
                     let all = session.dispositifs.clone();
-                    if let Err(e) = crate::pdf::open_dispositifs(&all, &config.pharmacy) {
+                    if let Err(e) = crate::pdf::open_dispositifs(
+                        &all,
+                        &config.pharmacy,
+                        &config.doc_template_path("dispositifs"),
+                    ) {
                         session.error = Some(e);
                     }
                 }
@@ -26483,7 +26625,11 @@ impl App {
             session.error = None;
         }
         if print {
-            if let Err(e) = crate::pdf::open_dispositif(dispo, &config.pharmacy) {
+            if let Err(e) = crate::pdf::open_dispositif(
+                dispo,
+                &config.pharmacy,
+                &config.doc_template_path("dispositif"),
+            ) {
                 session.error = Some(e);
             }
         }
@@ -26611,7 +26757,7 @@ impl App {
     /// on a 1600 px screen with the editor stacked under the list; that
     /// held while there were five protocols and stopped holding at
     /// twenty, which is the shape this application is supposed to avoid.
-    fn protocols_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
+    fn protocols_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
             ui,
@@ -26694,7 +26840,7 @@ impl App {
                 );
             });
         } else {
-            Self::protocol_editor(ui, session, cols[1], operator);
+            Self::protocol_editor(ui, session, cols[1], operator, config);
         }
     }
 
@@ -26834,7 +26980,13 @@ impl App {
         }
     }
 
-    fn protocol_editor(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, operator: &str) {
+    fn protocol_editor(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        operator: &str,
+        config: &Config,
+    ) {
         let Some(proto) = session.protocol_open.clone() else {
             return;
         };
@@ -27194,9 +27346,12 @@ impl App {
             };
         }
         if print {
-            if let Err(e) =
-                crate::pdf::open_protocol(&proto.title, &proto.subject, &session.protocol_nodes)
-            {
+            if let Err(e) = crate::pdf::open_protocol(
+                &proto.title,
+                &proto.subject,
+                &session.protocol_nodes,
+                &config.doc_template_path("protocole"),
+            ) {
                 session.error = Some(e);
             }
         }
@@ -27486,7 +27641,10 @@ impl App {
                     .clicked()
                 {
                     let edits = session.db.all_table_cells().unwrap_or_default();
-                    if let Err(e) = crate::pdf::open_conversion_tables(&edits) {
+                    if let Err(e) = crate::pdf::open_conversion_tables(
+                        &edits,
+                        &config.doc_template_path("tables"),
+                    ) {
                         session.error = Some(e);
                     }
                 }
@@ -28777,9 +28935,13 @@ impl App {
                 .today_french()
                 .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
             let name = session.viewing.as_ref().map(Patient::full_name);
-            if let Err(e) =
-                crate::pdf::open_selfcheck(sheet, name.as_deref(), &config.pharmacy, &today)
-            {
+            if let Err(e) = crate::pdf::open_selfcheck(
+                sheet,
+                name.as_deref(),
+                &config.pharmacy,
+                &today,
+                &config.doc_template_path("suivi"),
+            ) {
                 session.error = Some(e);
             } else {
                 session.error = None;
@@ -28880,7 +29042,7 @@ impl App {
             return;
         }
         if session.show_protocols {
-            Self::protocols_view(ui, session, operator);
+            Self::protocols_view(ui, session, operator, config);
             return;
         }
         if session.show_mono {
@@ -29662,7 +29824,11 @@ impl App {
             }
             if print_mono {
                 if let Some(card) = session.drug_form.clone() {
-                    if let Err(e) = crate::pdf::open_drug_monograph(&card, &session.posologies) {
+                    if let Err(e) = crate::pdf::open_drug_monograph(
+                        &card,
+                        &session.posologies,
+                        &config.doc_template_path("monographie"),
+                    ) {
                         session.error = Some(e);
                     }
                 }
@@ -30063,6 +30229,7 @@ impl App {
                             &rentals,
                             tr("dash_billing_period"),
                             &db::format_french_date(&today),
+                            &config.doc_template_path("facturation"),
                         ) {
                             session.error = Some(e);
                         }
@@ -30141,7 +30308,12 @@ impl App {
                         reason,
                     })
                     .collect();
-                if let Err(e) = crate::pdf::open_call_list(&rows, &today, &config.pharmacy) {
+                if let Err(e) = crate::pdf::open_call_list(
+                    &rows,
+                    &today,
+                    &config.pharmacy,
+                    &config.doc_template_path("appels"),
+                ) {
                     session.error = Some(e);
                 }
             }
@@ -30465,6 +30637,490 @@ impl App {
     /// décident du semestre suivant. Ils sont calculés au chargement de
     /// la vue et pas par image : la couverture de la base est une passe
     /// sur huit cent cinquante fiches et treize champs.
+    /// Le comptage de la caisse.
+    ///
+    /// Deux volets : à gauche on compte, à droite on lit ce que le
+    /// comptage donne et les derniers soirs. Le volet où l'on **tape**
+    /// est celui qui survit quand la fenêtre rétrécit — la règle de la
+    /// maison, et ici elle est littérale : un tableau de synthèse qu'on
+    /// ne voit pas se réimprime, un champ de saisie coupé ne se remplit
+    /// pas.
+    ///
+    /// Ce que la vue ne fait pas, et c'est délibéré : elle ne propose
+    /// jamais d'ajuster le comptage pour tomber sur l'attendu. L'écart
+    /// s'affiche, se signe et s'explique dans la remarque. Voir
+    /// [`crate::caisse`].
+    fn caisse_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
+        use crate::caisse::{euros, DENOMINATIONS};
+        // La vue se répare elle-même plutôt que de dépendre du chemin
+        // par lequel on est arrivé : une date vide imprimerait une
+        // feuille sans jour, et il y a plus d'une porte.
+        if session.caisse_day.is_empty() {
+            session.caisse_day.clone_from(&session.today);
+        }
+        let body = motif::visible_rect(ui);
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        // Le titre est **dans** la rangée enveloppée, avec les boutons
+        // et le sélecteur de jour : il faut donc le mesurer avec eux,
+        // sinon la bande annonce une rangée là où elle en dessine deux
+        // et la phrase du dessous se fait couper — ce qu'un cliché à
+        // l'échelle 1 ne montre jamais.
+        let day_w = ui.fonts(|f| {
+            f.layout_no_wrap(
+                db::format_french_date("2026-09-09"),
+                egui::TextStyle::Body.resolve(ui.style()),
+                motif::text(),
+            )
+            .size()
+            .x
+        });
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        tr("caisse_title").to_owned(),
+                        egui::TextStyle::Heading.resolve(ui.style()),
+                        motif::text(),
+                    )
+                    .size()
+                    .x
+                }) + 8.0,
+                Self::button_width(ui, tr("caisse_print")),
+                Self::button_width(ui, tr("caisse_save")),
+                Self::button_width(ui, tr("caisse_clear")),
+                Self::button_width(ui, "‹"),
+                day_w,
+                Self::button_width(ui, "›"),
+            ]
+            .into_iter(),
+            tr("caisse_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+
+        let (quantities, others) = session.caisse_reading();
+        let tally = crate::caisse::tally(
+            &quantities,
+            crate::caisse::parse_euros(&session.caisse_float).unwrap_or(0),
+            &others,
+            crate::caisse::parse_euros(&session.caisse_expected),
+        );
+
+        let mut print = false;
+        let mut save = false;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("caisse_title"));
+                ui.add_space(8.0);
+                if motif::button(ui, tr("caisse_print"))
+                    .on_hover_text(tr("caisse_print_tooltip"))
+                    .clicked()
+                {
+                    print = true;
+                }
+                if motif::button(ui, tr("caisse_save"))
+                    .on_hover_text(tr("caisse_save_tooltip"))
+                    .clicked()
+                {
+                    save = true;
+                }
+                if motif::button(ui, tr("caisse_template"))
+                    .on_hover_text(tr("tpl_open_tooltip"))
+                    .clicked()
+                {
+                    session.open_template = Some("caisse");
+                }
+                if motif::button(ui, tr("caisse_clear")).clicked() {
+                    for q in &mut session.caisse_qty {
+                        q.clear();
+                    }
+                    session.caisse_others.clear();
+                    session.caisse_expected.clear();
+                    session.caisse_remark.clear();
+                    session.caisse_note = None;
+                }
+                // Le jour compté se choisit au pas de la journée
+                // plutôt qu'à la frappe : on compte celui du soir ou
+                // celui de la veille, jamais une date lointaine, et un
+                // champ à parser pour deux valeurs possibles est un
+                // champ de trop.
+                if motif::button(ui, "‹").clicked() {
+                    if let Some(d) = db::add_days(&session.caisse_day, -1) {
+                        session.caisse_day = d;
+                    }
+                }
+                ui.label(db::format_french_date(&session.caisse_day))
+                    .on_hover_text(tr("caisse_day"));
+                if motif::button(ui, "›").clicked() {
+                    if let Some(d) = db::add_days(&session.caisse_day, 1) {
+                        session.caisse_day = d;
+                    }
+                }
+            });
+            ui.label(
+                egui::RichText::new(tr("caisse_subtitle"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        });
+
+        // Deux colonnes si le compte des coupures et la synthèse tiennent
+        // côte à côte, l'une sous l'autre sinon. Mesuré en caractères et
+        // jamais en pixels : à l'échelle 1,6, la même largeur porte deux
+        // tiers du texte.
+        let two = body.width() >= chars_wide(ui, 96.0);
+        let panes = if two {
+            motif::split_columns(rows[1], 2, 8.0)
+        } else {
+            // Empilés, le volet où l'on **tape** passe devant celui
+            // qu'on lit : le tiroir prend ce qui reste, et la synthèse
+            // un plancher de huit lignes — assez pour que l'écart, qui
+            // est tout l'objet de l'écran, soit sous les yeux sans
+            // dérouler. Les deux `0.0` de `split_rows` donnent la
+            // hauteur entière à chacun : ils se superposent.
+            let gutter = 8.0;
+            let avail = (rows[1].height() - gutter).max(1.0);
+            // Cinq lignes suffisent à la synthèse : l'écart est en
+            // tête avec la phrase qui le commente, et le reste se
+            // déroule. Un plancher plus haut mangeait le tiroir, qui
+            // est le volet où l'on tape.
+            let cap = avail * 0.45;
+            let sum_h = (5.0 * line).min(cap);
+            motif::split_rows(rows[1], &[avail - sum_h, 0.0], gutter)
+        };
+
+        motif::panel(ui, panes[0], Some(tr("caisse_drawer")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("caisse_count")
+                .show(ui, |ui| {
+                    // Chaque colonne est aussi large que le plus large
+                    // de ce qu'elle porte — son en-tête compris. « Combien »
+                    // mesuré sur les sept caractères du champ sortait
+                    // « Combi… », et un en-tête élidé est une colonne
+                    // qu'on ne sait plus lire.
+                    let head = |ui: &egui::Ui, key: &'static str| {
+                        ui.fonts(|f| {
+                            f.layout_no_wrap(
+                                tr(key).to_owned(),
+                                egui::TextStyle::Body.resolve(ui.style()),
+                                motif::text(),
+                            )
+                            .size()
+                            .x
+                        })
+                    };
+                    let field = chars_wide(ui, 7.0).max(head(ui, "caisse_how_many"));
+                    let amount = chars_wide(ui, 10.0)
+                        .max(head(ui, "caisse_denomination"))
+                        .max(head(ui, "caisse_amount"));
+                    egui::Grid::new("caisse_grid")
+                        .num_columns(3)
+                        .spacing([10.0, 3.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            Self::grid_cell(
+                                ui,
+                                amount,
+                                egui::RichText::new(tr("caisse_denomination")).strong(),
+                            );
+                            Self::grid_cell(
+                                ui,
+                                field,
+                                egui::RichText::new(tr("caisse_how_many")).strong(),
+                            );
+                            Self::grid_cell(
+                                ui,
+                                amount,
+                                egui::RichText::new(tr("caisse_amount")).strong(),
+                            );
+                            ui.end_row();
+                            for (i, d) in DENOMINATIONS.iter().enumerate() {
+                                Self::grid_cell(ui, amount, egui::RichText::new(d.label));
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(field, Self::button_height(ui)),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.add_sized(
+                                            [field, 24.0],
+                                            egui::TextEdit::singleline(&mut session.caisse_qty[i])
+                                                .horizontal_align(egui::Align::RIGHT),
+                                        );
+                                    },
+                                );
+                                let n = quantities[i];
+                                Self::grid_cell(
+                                    ui,
+                                    amount,
+                                    egui::RichText::new(if n == 0 {
+                                        "—".to_owned()
+                                    } else {
+                                        format!("{} €", euros(d.cents * n))
+                                    })
+                                    .color(if n == 0 {
+                                        motif::text_dim()
+                                    } else {
+                                        motif::text()
+                                    }),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                    ui.add_space(8.0);
+                    // Ce qui ne se compte pas : la carte et les chèques se
+                    // lisent sur un ticket, pas dans le tiroir.
+                    ui.label(
+                        egui::RichText::new(tr("caisse_others"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    );
+                    let mut drop: Option<usize> = None;
+                    for (i, (label, value)) in session.caisse_others.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.add_sized(
+                                [chars_wide(ui, 18.0), 24.0],
+                                egui::TextEdit::singleline(label)
+                                    .hint_text(tr("caisse_other_hint")),
+                            );
+                            ui.add_sized(
+                                [chars_wide(ui, 10.0), 24.0],
+                                egui::TextEdit::singleline(value)
+                                    .horizontal_align(egui::Align::RIGHT),
+                            );
+                            ui.label("€");
+                            if motif::button(ui, "×").clicked() {
+                                drop = Some(i);
+                            }
+                        });
+                    }
+                    if let Some(i) = drop {
+                        session.caisse_others.remove(i);
+                    }
+                    if motif::button(ui, tr("caisse_other_add")).clicked() {
+                        session.caisse_others.push((String::new(), String::new()));
+                    }
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        ui.label(tr("caisse_float"));
+                        ui.add_sized(
+                            [chars_wide(ui, 10.0), 24.0],
+                            egui::TextEdit::singleline(&mut session.caisse_float)
+                                .horizontal_align(egui::Align::RIGHT),
+                        );
+                        ui.label("€");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(tr("caisse_expected"));
+                        ui.add_sized(
+                            [chars_wide(ui, 10.0), 24.0],
+                            egui::TextEdit::singleline(&mut session.caisse_expected)
+                                .horizontal_align(egui::Align::RIGHT),
+                        )
+                        .on_hover_text(tr("caisse_expected_tooltip"));
+                        ui.label("€");
+                    });
+                });
+        });
+
+        motif::panel(ui, panes[1], Some(tr("caisse_summary")), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("caisse_summary")
+                .show(ui, |ui| {
+                    // `strong` n'est pas une option de `list_row_pair` :
+                    // ce qui distingue un total, ici, c'est qu'il est
+                    // précédé d'un blanc — et le gras d'une police que
+                    // l'application n'embarque pas serait de toute façon
+                    // simulé.
+                    let row = |ui: &mut egui::Ui, label: &str, value: String, strong: bool| {
+                        if strong {
+                            ui.add_space(4.0);
+                        }
+                        motif::list_row_pair(ui, label, &value, false, 0.0);
+                    };
+                    // **L'écart d'abord.** C'est la réponse ; le détail
+                    // qui suit est le calcul. Sur un volet court — et il
+                    // l'est dès qu'on empile — les premières lignes sont
+                    // les seules qu'on voie sans dérouler, et ce qu'on
+                    // vient chercher le soir n'est pas le total des
+                    // pièces de vingt centimes.
+                    //
+                    // Sans attendu il n'y a pas d'écart, et surtout pas
+                    // un écart égal à tout le tiroir.
+                    match tally.gap {
+                        None => {
+                            ui.label(
+                                egui::RichText::new(tr("caisse_no_expected"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        Some(g) => {
+                            let sign = if g > 0 { "+" } else { "" };
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} : {sign}{} €",
+                                    tr("caisse_gap"),
+                                    euros(g)
+                                ))
+                                .size(motif::pt(ui, 15.0))
+                                .strong()
+                                .color(if g == 0 {
+                                    motif::text()
+                                } else {
+                                    motif::alert()
+                                }),
+                            );
+                            if g != 0 {
+                                ui.label(
+                                    egui::RichText::new(tr("caisse_gap_note"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                        }
+                    }
+                    ui.add_space(6.0);
+                    row(
+                        ui,
+                        tr("caisse_notes_total"),
+                        format!("{} €", euros(crate::caisse::notes_total(&quantities))),
+                        false,
+                    );
+                    row(
+                        ui,
+                        tr("caisse_coins_total"),
+                        format!("{} €", euros(crate::caisse::coins_total(&quantities))),
+                        false,
+                    );
+                    row(
+                        ui,
+                        tr("caisse_cash"),
+                        format!("{} €", euros(tally.cash)),
+                        true,
+                    );
+                    // Combien de coupures ont été saisies : zéro veut
+                    // dire « personne n'a rien compté », ce qui n'est
+                    // pas la même chose qu'un tiroir vide — et un
+                    // total de 0,00 € ne fait pas la différence.
+                    row(
+                        ui,
+                        tr("caisse_pieces"),
+                        crate::caisse::pieces(&quantities).to_string(),
+                        false,
+                    );
+                    row(
+                        ui,
+                        tr("caisse_other_total"),
+                        format!("{} €", euros(tally.other)),
+                        false,
+                    );
+                    row(
+                        ui,
+                        tr("caisse_takings"),
+                        format!("{} €", euros(tally.takings)),
+                        true,
+                    );
+                    ui.add_space(6.0);
+                    row(
+                        ui,
+                        tr("caisse_float_kept"),
+                        format!("{} €", euros(tally.float_kept)),
+                        false,
+                    );
+                    row(
+                        ui,
+                        tr("caisse_banked"),
+                        format!("{} €", euros(tally.banked)),
+                        true,
+                    );
+                    ui.add_space(8.0);
+                    ui.label(tr("caisse_remark"));
+                    ui.add_sized(
+                        [motif::visible_rect(ui).width() - 12.0, 3.0 * line + 12.0],
+                        egui::TextEdit::multiline(&mut session.caisse_remark)
+                            .hint_text(tr("caisse_remark_hint")),
+                    );
+                    if let Some((bad, msg)) = &session.caisse_note {
+                        ui.colored_label(
+                            if *bad {
+                                motif::alert()
+                            } else {
+                                motif::text_dim()
+                            },
+                            msg.as_str(),
+                        );
+                    }
+                    if !session.caisse_history.is_empty() {
+                        ui.add_space(10.0);
+                        ui.label(
+                            egui::RichText::new(tr("caisse_history"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        for c in &session.caisse_history {
+                            let gap =
+                                match (c.expected, c.others.iter().map(|(_, v)| v).sum::<i64>()) {
+                                    (Some(e), other) => {
+                                        let g = c.cash + other - e;
+                                        let sign = if g > 0 { "+" } else { "" };
+                                        format!("{sign}{} €", euros(g))
+                                    }
+                                    (None, _) => "—".to_owned(),
+                                };
+                            motif::list_row_pair(
+                                ui,
+                                &db::format_french_date(&c.day),
+                                &format!("{} € · {gap}", euros(c.cash)),
+                                false,
+                                0.0,
+                            )
+                            .on_hover_text(trf(
+                                "caisse_counted_by",
+                                format!("{} — {}", c.operator, c.created_at),
+                            ));
+                        }
+                    }
+                });
+        });
+
+        if print {
+            let date = db::format_french_date(&session.caisse_day);
+            match crate::pdf::open_caisse(
+                &config.pharmacy,
+                &date,
+                operator,
+                &quantities,
+                &others,
+                &tally,
+                &session.caisse_remark,
+                &config.doc_template_path("caisse"),
+            ) {
+                Ok(_) => session.caisse_note = None,
+                Err(e) => session.caisse_note = Some((true, e)),
+            }
+        }
+        if save {
+            let count = db::CaisseCount {
+                day: session.caisse_day.clone(),
+                quantities,
+                cash: tally.cash,
+                float_kept: tally.float_kept,
+                others: others.iter().map(|o| (o.label.clone(), o.cents)).collect(),
+                expected: tally.expected,
+                operator: operator.to_owned(),
+                remark: session.caisse_remark.clone(),
+                created_at: String::new(),
+            };
+            session.caisse_note = match session.db.add_caisse_count(&count) {
+                Ok(_) => {
+                    session.caisse_history = session.db.caisse_counts(20).unwrap_or_default();
+                    Some((false, tr("caisse_saved").to_owned()))
+                }
+                Err(e) => Some((true, e)),
+            };
+        }
+    }
+
     fn stats_view(ui: &mut egui::Ui, session: &Session) {
         ui.add_space(6.0);
         ui.horizontal(|ui| {
@@ -33039,12 +33695,12 @@ impl eframe::App for App {
                         self.tpl_editor = if self.tpl_editor.is_some() {
                             None
                         } else {
-                            let path = self.config.template_path();
-                            let text = std::fs::read_to_string(&path)
-                                .unwrap_or_else(|_| crate::pdf::default_template().to_owned());
                             Some(TplEditor {
-                                target: TplTarget::Fiche,
-                                text,
+                                key: "fiche",
+                                text: crate::pdf::template_source(
+                                    "fiche",
+                                    &self.config.doc_template_path("fiche"),
+                                ),
                                 message: None,
                             })
                         };
@@ -33260,7 +33916,8 @@ impl eframe::App for App {
                     | MainView::Classes
                     | MainView::Finances
                     | MainView::Stats
-                    | MainView::Script => {
+                    | MainView::Script
+                    | MainView::Caisse => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
@@ -33417,48 +34074,56 @@ impl eframe::App for App {
             self.tpl_editor = None;
         }
         let mut close_tpl = false;
-        let mut switch_tpl: Option<TplTarget> = None;
-        if let Some(TplEditor {
-            target,
-            text,
-            message,
-        }) = &mut self.tpl_editor
-        {
-            let path = match target {
-                TplTarget::Fiche => self.config.template_path(),
-                TplTarget::Courrier => self.config.cr_template_path(),
-                TplTarget::Carnet => self.config.carnet_template_path(),
-                TplTarget::Ordonnance => self.config.ordonnance_template_path(),
-            };
+        let mut switch_tpl: Option<&'static str> = None;
+        if let Some(TplEditor { key, text, message }) = &mut self.tpl_editor {
+            let key: &'static str = key;
+            let path = self.config.doc_template_path(key);
             // A Typst source is code: give it the screen. A fixed
             // 680x540 box meant scrolling a page-long template through
             // a porthole on a monitor with room for all of it.
             let screen = ctx.screen_rect().size();
-            let editor_h = (screen.y - 260.0).clamp(300.0, 900.0);
             egui::Window::new(tr("tpl_title"))
                 .collapsible(false)
                 .resizable(true)
+                // La fenêtre ne peut pas être plus haute que l'écran :
+                // ce qui dépasse en haut n'a pas de barre pour revenir.
+                .max_height((screen.y - 40.0).max(240.0))
                 .default_size([
                     (screen.x * 0.62).clamp(620.0, 1100.0),
                     (screen.y * 0.86).clamp(480.0, 1100.0),
                 ])
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
                 .show(ctx, |ui| {
-                    // Which template: the interview sheet or the CR letter.
-                    ui.horizontal(|ui| {
-                        for (t, label) in [
-                            (TplTarget::Fiche, tr("tpl_target_fiche")),
-                            (TplTarget::Courrier, tr("tpl_target_cr")),
-                            (TplTarget::Carnet, tr("tpl_target_carnet")),
-                            (TplTarget::Ordonnance, tr("tpl_target_ordonnance")),
-                        ] {
-                            // Sunken marks the active template.
-                            let btn = motif::toggle(ui, label, *target == t);
-                            if btn.clicked() && *target != t {
-                                switch_tpl = Some(t);
-                            }
-                        }
-                    });
+                    // Quel document. La liste vient du registre
+                    // (`pdf::DOCS`) et non d'un `match` : ajouter un
+                    // document imprimable, c'est ajouter une ligne à ce
+                    // registre, et il apparaît ici. Enveloppée, parce
+                    // qu'il y en a plus que ce qu'une rangée porte.
+                    // **Plafonné, et il défile au-delà.** Vingt-six
+                    // documents enveloppés font cinq rangées à
+                    // l'échelle 1 et treize à 1,6 : sans plafond, le
+                    // sélecteur seul dépasse l'écran et la fenêtre
+                    // déborde en haut comme en bas. Un tiers de la
+                    // hauteur, comme partout ailleurs ici, et son
+                    // propre `id_salt` — une deuxième `ScrollArea`
+                    // sans nom dans la même vue peint ses bannières
+                    // rouges en travers.
+                    let picker_cap = (screen.y * 0.30).max(2.0 * Self::button_height(ui));
+                    egui::ScrollArea::vertical()
+                        .id_salt("tpl_docs")
+                        .max_height(picker_cap)
+                        .show(ui, |ui| {
+                            ui.horizontal_wrapped(|ui| {
+                                for d in crate::pdf::DOCS {
+                                    // Sunken marks the active template.
+                                    if motif::toggle(ui, tr(d.label), key == d.key).clicked()
+                                        && key != d.key
+                                    {
+                                        switch_tpl = Some(d.key);
+                                    }
+                                }
+                            });
+                        });
                     ui.label(
                         egui::RichText::new(trf("tpl_path", path.display()))
                             .size(motif::pt(ui, 11.0))
@@ -33467,12 +34132,6 @@ impl eframe::App for App {
                     // The markers this template may use: one mistyped
                     // is printed as it stands, and one nobody knows
                     // about is one nobody uses.
-                    let key = match target {
-                        TplTarget::Fiche => "fiche",
-                        TplTarget::Courrier => "cr",
-                        TplTarget::Carnet => "carnet",
-                        TplTarget::Ordonnance => "ordonnance",
-                    };
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(trf(
@@ -33485,6 +34144,20 @@ impl eframe::App for App {
                         .wrap(),
                     );
                     ui.add_space(4.0);
+                    // **La rangée du bas se réserve, elle ne se devine
+                    // pas.** La hauteur de l'éditeur était
+                    // `écran − 260` : une constante juste tant que le
+                    // sélecteur tenait sur une rangée de quatre
+                    // documents. Ils sont vingt-six, la rangée en fait
+                    // cinq à l'échelle 1 et davantage au-delà, et
+                    // « Enregistrer » sortait par le bas. Ce qui reste
+                    // après ce qui est déjà dessiné, moins ce qu'il
+                    // faut aux boutons et à la ligne d'état.
+                    let foot = Self::button_height(ui)
+                        + 2.0 * ui.spacing().item_spacing.y
+                        + ui.text_style_height(&egui::TextStyle::Body);
+                    let floor = 4.0 * ui.text_style_height(&egui::TextStyle::Monospace);
+                    let editor_h = (ui.available_height() - foot).max(floor);
                     egui::ScrollArea::vertical()
                         .max_height(editor_h)
                         .show(ui, |ui| {
@@ -33498,15 +34171,7 @@ impl eframe::App for App {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if motif::button(ui, tr("form_save")).clicked() {
-                            let check = match target {
-                                TplTarget::Fiche => crate::pdf::check_template(text),
-                                TplTarget::Courrier => crate::pdf::check_cr_template(text),
-                                TplTarget::Carnet => crate::pdf::check_trans_template(text),
-                                TplTarget::Ordonnance => {
-                                    crate::pdf::check_ordonnance_template(text)
-                                }
-                            };
-                            match check {
+                            match crate::pdf::check_doc(key, text) {
                                 Ok(()) => {
                                     let result = path
                                         .parent()
@@ -33525,15 +34190,7 @@ impl eframe::App for App {
                             .on_hover_text(tr("tpl_preview_tooltip"))
                             .clicked()
                         {
-                            let preview = match target {
-                                TplTarget::Fiche => crate::pdf::preview_template(text),
-                                TplTarget::Courrier => crate::pdf::preview_cr_template(text),
-                                TplTarget::Carnet => crate::pdf::preview_trans_template(text),
-                                TplTarget::Ordonnance => {
-                                    crate::pdf::preview_ordonnance_template(text)
-                                }
-                            };
-                            if let Err(e) = preview {
+                            if let Err(e) = crate::pdf::preview_doc(key, text) {
                                 *message = Some((true, e));
                             }
                         }
@@ -33541,16 +34198,8 @@ impl eframe::App for App {
                             .on_hover_text(tr("tpl_reset_tooltip"))
                             .clicked()
                         {
-                            *text = match target {
-                                TplTarget::Fiche => crate::pdf::default_template().to_owned(),
-                                TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
-                                TplTarget::Carnet => {
-                                    crate::pdf::default_trans_template().to_owned()
-                                }
-                                TplTarget::Ordonnance => {
-                                    crate::pdf::default_ordonnance_template().to_owned()
-                                }
-                            };
+                            *text = crate::pdf::doc(key)
+                                .map_or(String::new(), |d| d.default.to_owned());
                             *message = None;
                         }
                         if motif::button(ui, tr("tpl_close")).clicked() {
@@ -33571,22 +34220,18 @@ impl eframe::App for App {
         if close_tpl {
             self.tpl_editor = None;
         }
+        // Une vue a demandé le modèle d'un document : c'est le même
+        // geste qu'un changement d'onglet dans l'éditeur.
+        if let State::Unlocked(session) = &mut self.state {
+            if let Some(key) = session.open_template.take() {
+                switch_tpl = Some(key);
+            }
+        }
         if let Some(t) = switch_tpl {
             // Load the other template (unsaved edits are discarded).
-            let path = match t {
-                TplTarget::Fiche => self.config.template_path(),
-                TplTarget::Courrier => self.config.cr_template_path(),
-                TplTarget::Carnet => self.config.carnet_template_path(),
-                TplTarget::Ordonnance => self.config.ordonnance_template_path(),
-            };
-            let text = std::fs::read_to_string(&path).unwrap_or_else(|_| match t {
-                TplTarget::Fiche => crate::pdf::default_template().to_owned(),
-                TplTarget::Courrier => crate::pdf::default_cr_template().to_owned(),
-                TplTarget::Carnet => crate::pdf::default_trans_template().to_owned(),
-                TplTarget::Ordonnance => crate::pdf::default_ordonnance_template().to_owned(),
-            });
+            let text = crate::pdf::template_source(t, &self.config.doc_template_path(t));
             self.tpl_editor = Some(TplEditor {
-                target: t,
+                key: t,
                 text,
                 message: None,
             });

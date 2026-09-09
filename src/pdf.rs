@@ -282,48 +282,7 @@ pub fn open_interview_sheet(
 /// about is a marker nobody uses, and a mistyped one silently prints
 /// itself.
 pub fn template_markers(target: &str) -> &'static [&'static str] {
-    match target {
-        "fiche" => &[
-            "{{PATIENT_NAME}}",
-            "{{BIRTH_DATE}}",
-            "{{DATE}}",
-            "{{KIND}}",
-            "{{THEME}}",
-            "{{TREATMENTS}}",
-            "{{CHECKLIST}}",
-            "{{PHARMACIST}}",
-        ],
-        "cr" => &[
-            "{{POINTS}}",
-            "{{PHARMACY_NAME}}",
-            "{{PHARMACY_ADDRESS}}",
-            "{{PHARMACY_PHONE}}",
-            "{{PHYSICIAN}}",
-            "{{PATIENT_NAME}}",
-            "{{BIRTH_DATE}}",
-            "{{KIND}}",
-            "{{DATE}}",
-            "{{THEME}}",
-            "{{TREATMENTS}}",
-            "{{PHARMACIST}}",
-        ],
-        "carnet" => &["{{DAY}}", "{{ENTRIES}}"],
-        _ => &[
-            "{{PHARMACY_NAME}}",
-            "{{PHARMACY_ADDRESS}}",
-            "{{PHARMACY_PHONE}}",
-            "{{PHARMACY_AM}}",
-            "{{PATIENT_NAME}}",
-            "{{BIRTH_DATE}}",
-            "{{INDICATION}}",
-            "{{DATE}}",
-            "{{LINES}}",
-            "{{ADVICE}}",
-            "{{MENTION_HEADER}}",
-            "{{MENTION_FOOTER}}",
-            "{{PHARMACIST}}",
-        ],
-    }
+    doc(target).map_or(MARKERS_ORDONNANCE, |d| d.markers)
 }
 
 /// The embedded interview-sheet template, as a starting point for the
@@ -340,47 +299,6 @@ fn sample_patient() -> Patient {
         birth_date: "1958-07-03".to_owned(),
         ..Default::default()
     }
-}
-
-/// Compile `template` with sample data, reporting Typst errors —
-/// validation for the in-app template editor.
-pub fn check_template(template: &str) -> Result<(), String> {
-    let filled = fill_interview_template(
-        template,
-        &sample_patient(),
-        InterviewKind::Bpm,
-        "24/08/2026",
-        "Observance",
-        "Claire Leroy, Pharmacien titulaire",
-        &sample_treatments(),
-        crate::entretien::checklist("Observance"),
-    );
-    let world = PdfWorld::new(filled);
-    typst::compile::<PagedDocument>(&world)
-        .output
-        .map(|_| ())
-        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
-}
-
-/// Compile `template` with sample data and open the result — the
-/// editor's preview button.
-pub fn preview_template(template: &str) -> Result<PathBuf, String> {
-    let filled = fill_interview_template(
-        template,
-        &sample_patient(),
-        InterviewKind::Bpm,
-        "24/08/2026",
-        "Observance",
-        "Claire Leroy, Pharmacien titulaire",
-        &sample_treatments(),
-        crate::entretien::checklist("Observance"),
-    );
-    compile_and_open(filled, "apercu")
-}
-
-/// The embedded CR-letter template, for the in-app editor.
-pub fn default_cr_template() -> &'static str {
-    DEFAULT_CR_TEMPLATE
 }
 
 /// One markup list line per treatment, each value escaped.
@@ -549,63 +467,23 @@ fn sample_treatments() -> Vec<Drug> {
     ]
 }
 
-/// Validation for the CR template editor.
-pub fn check_cr_template(template: &str) -> Result<(), String> {
-    let filled = fill_cr_template(
-        template,
-        &sample_patient(),
-        InterviewKind::Bpm,
-        "24/08/2026",
-        "Observance",
-        &sample_treatments(),
-        &sample_pharmacy(),
-        "Claire Leroy, Pharmacien titulaire",
-        // L'aperçu montre le cas où l'on a coché : c'est celui qui peut
-        // déborder la page, donc celui qu'un modèle doit être vérifié
-        // sur. Le cadre vide, lui, n'a jamais fait déborder personne.
-        &[
-            "Observance sur la semaine écoulée",
-            "Effets indésirables signalés",
-        ],
-    );
-    let world = PdfWorld::new(filled);
-    typst::compile::<PagedDocument>(&world)
-        .output
-        .map(|_| ())
-        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
-}
-
-/// Sample-data preview for the CR template editor.
-pub fn preview_cr_template(template: &str) -> Result<PathBuf, String> {
-    let filled = fill_cr_template(
-        template,
-        &sample_patient(),
-        InterviewKind::Bpm,
-        "24/08/2026",
-        "Observance",
-        &sample_treatments(),
-        &sample_pharmacy(),
-        "Claire Leroy, Pharmacien titulaire",
-        &[
-            "Observance sur la semaine écoulée",
-            "Effets indésirables signalés",
-        ],
-    );
-    compile_and_open(filled, "apercu_cr")
-}
-
 /// Build the Typst source for the conversion tables (all of them, one
 /// A4 document). Every cell goes through the string escaping.
 type TableEdits = std::collections::HashMap<(String, usize, usize), String>;
 
-fn conversion_tables_source(edits: &TableEdits) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n\
-         #align(center)[#text(15pt, weight: \"bold\")[Tables de conversion]]\n",
-    );
+const MARKERS_TABLES: &[&str] = &["{{TABLES}}"];
+
+const DEFAULT_TABLES_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+#align(center)[#text(15pt, weight: "bold")[Tables de conversion]]
+{{TABLES}}
+"##;
+
+fn conversion_tables_values(edits: &TableEdits) -> Vec<(&'static str, String)> {
+    let mut out = String::new();
     for t in crate::tables::TABLES {
-        src.push_str(&format!(
+        out.push_str(&format!(
             "#v(4mm)\n#text(weight: \"bold\", size: 12pt)[#{}]\n#v(1mm)\n",
             typst_str(t.title)
         ));
@@ -619,11 +497,11 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
             ))
             .collect::<Vec<_>>()
             .join(", ");
-        src.push_str(&format!(
+        out.push_str(&format!(
             "#table(\n  columns: ({widths}),\n  inset: 5pt,\n  stroke: 0.6pt,\n"
         ));
         for c in t.columns {
-            src.push_str(&format!("  [*#{}*],\n", typst_str(c)));
+            out.push_str(&format!("  [*#{}*],\n", typst_str(c)));
         }
         for (ri, row) in t.rows.iter().enumerate() {
             for (ci, cell) in row.iter().enumerate() {
@@ -633,10 +511,10 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
                     .get(&(t.short.to_owned(), ri, ci))
                     .map(String::as_str)
                     .unwrap_or(cell);
-                src.push_str(&format!("  [#{}],\n", typst_str(text)));
+                out.push_str(&format!("  [#{}],\n", typst_str(text)));
             }
         }
-        src.push_str(")\n");
+        out.push_str(")\n");
         let sources = t
             .sources
             .iter()
@@ -644,13 +522,13 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
             .map(|(i, s)| format!("{}. {}", i + 1, s))
             .collect::<Vec<_>>()
             .join("   ");
-        src.push_str(&format!(
+        out.push_str(&format!(
             "#text(size: 8pt)[Relu en : #{} — Sources : #{}]\n",
             typst_str(t.reviewed),
             typst_str(&sources)
         ));
     }
-    src
+    vec![("{{TABLES}}", out)]
 }
 
 /// One drug card as a printable A4 monograph: identity, every filled
@@ -659,22 +537,19 @@ fn conversion_tables_source(edits: &TableEdits) -> String {
 pub fn open_drug_monograph(
     d: &Drug,
     posologies: &[crate::db::Posologie],
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        monograph_source(d, posologies),
+        fill(
+            &template_source("monographie", template_path),
+            &monograph_values(d, posologies),
+        ),
         &format!("monographie_{}", d.id),
     )
 }
 
-fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 2cm)\n#set text(size: 10.5pt)\n\
-         #set par(justify: true, leading: 0.6em, spacing: 0.7em)\n\
-         #let sec(title, body) = block(above: 4.5mm, below: 0mm)[\n  \
-         #block(above: 0mm, below: 1.2mm)[\
-         #text(size: 9pt, weight: \"bold\")[#upper(title)]\n  \
-         #v(-1.2mm)\n  #line(length: 100%, stroke: 0.4pt)]\n  #body\n]\n",
-    );
+fn monograph_values(d: &Drug, posologies: &[crate::db::Posologie]) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
     let mut sub = d.dci.trim().to_owned();
     if !d.class.trim().is_empty() {
         if !sub.is_empty() {
@@ -809,8 +684,26 @@ fn monograph_source(d: &Drug, posologies: &[crate::db::Posologie]) -> String {
             typst_str(&list)
         ));
     }
-    src
+    vec![("{{BODY}}", src)]
 }
+
+const MARKERS_MONOGRAPHIE: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_MONOGRAPHIE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 10.5pt)
+#set par(justify: true, leading: 0.6em, spacing: 0.7em)
+
+// Le style d'un intertitre de monographie, appelé par le corps.
+#let sec(title, body) = block(above: 4.5mm, below: 0mm)[
+  #block(above: 0mm, below: 1.2mm)[#text(size: 9pt, weight: "bold")[#upper(title)]
+  #v(-1.2mm)
+  #line(length: 100%, stroke: 0.4pt)]
+  #body
+]
+
+{{BODY}}
+"##;
 
 /// Everything the file knows about one patient, gathered for the bilan
 /// partagé de médication. The caller assembles it; this module only
@@ -845,19 +738,22 @@ pub struct BilanData<'a> {
 /// The bilan partagé de médication on paper: what the file knows, laid
 /// out so the entretien can be held with it in hand, and with the
 /// blanks the pharmacist fills during it.
-pub fn open_bilan(data: &BilanData, pharmacy: &PharmacyConfig) -> Result<PathBuf, String> {
+pub fn open_bilan(
+    data: &BilanData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
     compile_and_open(
-        bilan_source(data, pharmacy),
+        fill(
+            &template_source("bilan", template_path),
+            &bilan_values(data, pharmacy),
+        ),
         &format!("bilan_{}", data.patient.id),
     )
 }
 
-fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.6cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n\
-         #let sec(t) = [#v(3mm) #text(11pt, weight: \"bold\")[#t] #v(1mm) #line(length: 100%, stroke: 0.6pt) #v(1.5mm)]\n",
-    );
+fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
     src.push_str(&format!(
         "#grid(columns: (1fr, auto), [#text(weight: \"bold\")[#{}]], [#align(right)[#text(9pt)[Bilan partagé de médication — #{}]]])\n",
         typst_str(&pharmacy.name),
@@ -1016,42 +912,78 @@ fn bilan_source(data: &BilanData, pharmacy: &PharmacyConfig) -> String {
         "#grid(columns: (1fr, auto), [#text(9pt)[Pharmacien : #{}]], [#box(width: 6cm, height: 1.8cm, stroke: 0.7pt)])\n",
         typst_str(data.signature)
     ));
-    src
+    vec![("{{BODY}}", src)]
 }
+
+const MARKERS_BILAN: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_BILAN_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.6cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#let sec(t) = [#v(3mm) #text(11pt, weight: "bold")[#t] #v(1mm) #line(length: 100%, stroke: 0.6pt) #v(1.5mm)]
+
+{{BODY}}
+"##;
 
 /// The team's handout: what the application is for, view by view, with
 /// the shortcuts at the foot. Printed rather than shown — it lives
 /// beside the counter PC, not behind a menu.
-pub fn open_guide(pharmacy: &PharmacyConfig) -> Result<PathBuf, String> {
-    compile_and_open(guide_source(pharmacy), "mode_emploi")
+pub fn open_guide(
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("guide", template_path),
+            &guide_values(pharmacy),
+        ),
+        "mode_emploi",
+    )
 }
 
-fn guide_source(pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm, columns: 2)\n\
-         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n\
-         #set par(justify: true)\n\
-         #let sec(t) = [#v(2.4mm) #text(10pt, weight: \"bold\")[#t] #v(0.8mm) #line(length: 100%, stroke: 0.5pt) #v(1mm)]\n\
-         #place(top + center, scope: \"parent\", float: true)[\n\
-           #text(15pt, weight: \"bold\")[BPM-Caddy — mode d'emploi]\n\
-           #v(1mm)\n",
-    );
-    src.push_str(&format!(
-        "  #text(9pt)[#{}]\n  #v(2mm)\n]\n",
-        typst_str(if pharmacy.name.trim().is_empty() {
-            "Un exemplaire près du poste, un dans le classeur."
-        } else {
-            pharmacy.name.trim()
-        })
-    ));
+const MARKERS_GUIDE: &[&str] = &["{{PHARMACY_NAME}}", "{{SECTIONS}}"];
+
+const DEFAULT_GUIDE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm, columns: 2)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+
+#let sec(t) = [#v(2.4mm) #text(10pt, weight: "bold")[#t] #v(0.8mm) #line(length: 100%, stroke: 0.5pt) #v(1mm)]
+
+#place(top + center, scope: "parent", float: true)[
+  #text(15pt, weight: "bold")[BPM-Caddy — mode d'emploi]
+  #v(1mm)
+  #text(9pt)[{{PHARMACY_NAME}}]
+  #v(2mm)
+]
+
+{{SECTIONS}}
+"##;
+
+fn guide_values(pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let mut sections = String::new();
     for (title, body) in GUIDE_SECTIONS {
-        src.push_str(&format!(
+        sections.push_str(&format!(
             "#sec[#{}]\n#text(9pt)[#{}]\n",
             typst_str(title),
             typst_str(body)
         ));
     }
-    src
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!(
+                "#{}",
+                typst_str(if pharmacy.name.trim().is_empty() {
+                    "Un exemplaire près du poste, un dans le classeur."
+                } else {
+                    pharmacy.name.trim()
+                })
+            ),
+        ),
+        ("{{SECTIONS}}", sections),
+    ]
 }
 
 /// The guide itself: one paragraph per thing the counter does. Written
@@ -1140,60 +1072,103 @@ pub struct PlanData<'a> {
 
 /// The plan de prise on one sheet, in a size that is read without
 /// glasses.
-pub fn open_plan(data: &PlanData, pharmacy: &PharmacyConfig) -> Result<PathBuf, String> {
+pub fn open_plan(
+    data: &PlanData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
     compile_and_open(
-        plan_source(data, pharmacy),
+        fill(
+            &template_source("plan", template_path),
+            &plan_values(data, pharmacy),
+        ),
         &format!("plan_{}", data.patient.id),
     )
 }
 
-fn plan_source(data: &PlanData, pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.6cm)\n\
-         #set text(size: 11.5pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(17pt, weight: \"bold\")[Plan de prise]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n",
-        typst_str(&data.patient.full_name()),
-        typst_str(data.today)
-    ));
-    src.push_str("#v(4mm)\n");
+const MARKERS_PLAN: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{DATE}}",
+    "{{ROWS}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{SIGNATURE}}",
+    "{{MENTION}}",
+];
+
+const DEFAULT_PLAN_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.6cm)
+#set text(size: 11.5pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(17pt, weight: "bold")[Plan de prise]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PATIENT_NAME}} — {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,
+  [*Médicament*], [*Indication*], [*Posologie*], [*Remarques*],
+{{ROWS}})
+
+#v(4mm)
+#text(10.5pt, weight: "bold")[Questions à poser]
+#v(1.5mm)
+#box(width: 100%, height: 3cm, stroke: 0.7pt)
+#v(4mm)
+#text(10pt)[Votre pharmacie : {{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]
+{{SIGNATURE}}
+{{MENTION}}
+"##;
+
+fn plan_values(data: &PlanData, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
     let mut rows = String::new();
     for (name, what, when, know) in &data.lines {
         rows.push_str(&format!(
-            "[*#{}*], {}, {}, {},\n",
+            "  [*#{}*], {}, {}, {},\n",
             typst_str(name),
             typst_str(what),
             typst_str(when),
             typst_str(know)
         ));
     }
+    // Un tableau Typst sans cellule ne compile pas : une ligne vide
+    // vaut mieux qu'une erreur devant le patient.
     if rows.is_empty() {
-        rows.push_str("[], [], [], [],\n");
+        rows.push_str("  [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, 1fr, 1fr, 1.2fr), inset: 7pt, stroke: 0.6pt,\n  [*Médicament*], [*Indication*], [*Posologie*], [*Remarques*],\n{rows})\n"
-    ));
-    src.push_str("#v(4mm)\n#text(10.5pt, weight: \"bold\")[Questions à poser]\n#v(1.5mm)\n#box(width: 100%, height: 3cm, stroke: 0.7pt)\n");
-    src.push_str("#v(4mm)\n");
-    src.push_str(&format!(
-        "#text(10pt)[Votre pharmacie : #{} — #{}]\n",
-        typst_str(&pharmacy.name),
-        typst_str(&pharmacy.phone)
-    ));
-    if !data.signature.trim().is_empty() {
-        src.push_str(&format!(
-            "\\\n#text(10pt)[Préparé par #{}]\n",
+    let signature = if data.signature.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\\\n#text(10pt)[Préparé par #{}]",
             typst_str(data.signature.trim())
-        ));
-    }
-    if !data.mention.trim().is_empty() {
-        src.push_str(&format!(
-            "#v(3mm)\n#text(8.5pt, style: \"italic\")[#{}]\n",
+        )
+    };
+    let mention = if data.mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(3mm)\n#text(8.5pt, style: \"italic\")[#{}]",
             typst_str(data.mention.trim())
-        ));
-    }
-    src
+        )
+    };
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{ROWS}}", rows),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{PHARMACY_PHONE}}",
+            format!("#{}", typst_str(&pharmacy.phone)),
+        ),
+        ("{{SIGNATURE}}", signature),
+        ("{{MENTION}}", mention),
+    ]
 }
 
 /// Un carnet de suivi, tel que le patient l'emporte.
@@ -1214,23 +1189,24 @@ pub fn open_selfcheck(
     patient: Option<&str>,
     pharmacy: &PharmacyConfig,
     today_french: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        selfcheck_source(sheet, patient, pharmacy, today_french),
+        fill(
+            &template_source("suivi", template_path),
+            &selfcheck_values(sheet, patient, pharmacy, today_french),
+        ),
         &format!("carnet_{}", sheet.key),
     )
 }
 
-fn selfcheck_source(
+fn selfcheck_values(
     sheet: &crate::selfcheck::Sheet,
     patient: Option<&str>,
     pharmacy: &PharmacyConfig,
     today_french: &str,
-) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.4cm)\n\
-         #set text(size: 10.5pt, lang: \"fr\", hyphenate: true)\n",
-    );
+) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
     src.push_str(&format!(
         "#align(center)[#text(17pt, weight: \"bold\")[#{}]]\n#v(1mm)\n",
         typst_str(sheet.title)
@@ -1324,8 +1300,17 @@ fn selfcheck_source(
         typst_str(&pharmacy.name),
         typst_str(&pharmacy.phone)
     ));
-    src
+    vec![("{{BODY}}", src)]
 }
+
+const MARKERS_SUIVI: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_SUIVI_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.4cm)
+#set text(size: 10.5pt, lang: "fr", hyphenate: true)
+
+{{BODY}}
+"##;
 
 pub struct CallRow<'a> {
     pub name: &'a str,
@@ -1347,24 +1332,45 @@ pub fn open_call_list(
     rows: &[CallRow],
     today: &str,
     pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    compile_and_open(call_list_source(rows, today, pharmacy), "liste_appel")
+    compile_and_open(
+        fill(
+            &template_source("appels", template_path),
+            &call_list_values(rows, today, pharmacy),
+        ),
+        "liste_appel",
+    )
 }
 
-fn call_list_source(rows: &[CallRow], today: &str, pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[Liste d'appel]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n#v(4mm)\n",
-        typst_str(&pharmacy.name),
-        typst_str(today)
-    ));
+const MARKERS_APPELS: &[&str] = &["{{PHARMACY_NAME}}", "{{DATE}}", "{{ROWS}}"];
+
+const DEFAULT_APPELS_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Liste d'appel]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, auto, auto, 1.4fr, 1fr), inset: 5pt, stroke: 0.5pt,
+  [], [*Patient*], [*Téléphone*], [*Motif*], [*Ce que dit le dossier*], [*Ce qui a été dit*],
+{{ROWS}})
+
+#v(4mm)
+#text(9pt, style: "italic")[Liste établie le {{DATE}} : elle vieillit avec la base, et se réimprime plutôt qu'elle ne se conserve.]
+"##;
+
+fn call_list_values(
+    rows: &[CallRow],
+    today: &str,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
     let mut body = String::new();
     for r in rows {
         body.push_str(&format!(
-            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], {}, [#text(8pt, weight: \"bold\")[#{}]], {}, [],\n",
+            "  [#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], {}, [#text(8pt, weight: \"bold\")[#{}]], {}, [],\n",
             typst_str(r.name),
             typst_str(r.phone),
             typst_str(r.tag),
@@ -1372,16 +1378,16 @@ fn call_list_source(rows: &[CallRow], today: &str, pharmacy: &PharmacyConfig) ->
         ));
     }
     if body.is_empty() {
-        body.push_str("[], [], [], [], [], [],\n");
+        body.push_str("  [], [], [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, auto, auto, auto, 1.4fr, 1fr), inset: 5pt, stroke: 0.5pt,\n  [], [*Patient*], [*Téléphone*], [*Motif*], [*Ce que dit le dossier*], [*Ce qui a été dit*],\n{body})\n"
-    ));
-    src.push_str(&format!(
-        "#v(4mm)\n#text(9pt, style: \"italic\")[Liste établie le #{} : elle vieillit avec la base, et se réimprime plutôt qu'elle ne se conserve.]\n",
-        typst_str(today)
-    ));
-    src
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(today))),
+        ("{{ROWS}}", body),
+    ]
 }
 
 /// La liste de ce qu'il faut aller compter, sur papier.
@@ -1397,8 +1403,15 @@ pub fn open_stock_check(
     rows: &[crate::ordonnancier::ToCheck],
     pharmacy: &PharmacyConfig,
     today: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    compile_and_open(stock_check_source(rows, pharmacy, today), "controle_stock")
+    compile_and_open(
+        fill(
+            &template_source("controle", template_path),
+            &stock_check_values(rows, pharmacy, today),
+        ),
+        "controle_stock",
+    )
 }
 
 /// Le procès-verbal de destruction : ce qu'on s'apprête à détruire, et
@@ -1418,27 +1431,45 @@ pub fn open_destruction_list(
     rows: &[crate::ordonnancier::Awaiting],
     pharmacy: &PharmacyConfig,
     today: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        destruction_list_source(rows, pharmacy, today),
+        fill(
+            &template_source("destruction", template_path),
+            &destruction_list_values(rows, pharmacy, today),
+        ),
         "proces_verbal_destruction",
     )
 }
 
-fn destruction_list_source(
+const MARKERS_DESTRUCTION: &[&str] = &["{{PHARMACY_NAME}}", "{{DATE}}", "{{ROWS}}"];
+
+const DEFAULT_DESTRUCTION_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Procès-verbal de destruction de stupéfiants]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, 1.4fr, auto, auto, auto, 1fr), inset: 5pt, stroke: 0.5pt,
+  [], [*Produit*], [*Au coffre*], [*En attente depuis*], [*Détruit*], [*Observation*],
+{{ROWS}})
+
+#v(6mm)
+#text(9pt)[Dénaturation effectuée le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Procédé : #box(width: 6cm, stroke: (bottom: 0.5pt))]
+#v(4mm)
+#text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]
+#v(3mm)
+#text(9pt, style: "italic")[Les quantités portées ci-dessus sont celles que le registre tient au compte « à détruire » : ce que des patients ont rapporté et qui n'a pas été remis au stock délivrable. La destruction se porte au registre ligne par ligne, en citant le numéro du présent procès-verbal. Un stupéfiant rapporté ne se redélivre jamais.]
+"##;
+
+fn destruction_list_values(
     rows: &[crate::ordonnancier::Awaiting],
     pharmacy: &PharmacyConfig,
     today: &str,
-) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[Procès-verbal de destruction de stupéfiants]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n#v(4mm)\n",
-        typst_str(&pharmacy.name),
-        typst_str(&crate::db::format_french_date(today))
-    ));
+) -> Vec<(&'static str, String)> {
     let mut body = String::new();
     for r in rows {
         let since = match (r.since.is_empty(), r.days) {
@@ -1447,7 +1478,7 @@ fn destruction_list_source(
             (true, _) => String::new(),
         };
         body.push_str(&format!(
-            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [], [],\n",
+            "  [#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [], [],\n",
             typst_str(&r.label),
             typst_str(&format!(
                 "{} {}",
@@ -1458,37 +1489,47 @@ fn destruction_list_source(
         ));
     }
     if body.is_empty() {
-        body.push_str("[], [], [], [], [], [],\n");
+        body.push_str("  [], [], [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, 1.4fr, auto, auto, auto, 1fr), inset: 5pt, stroke: 0.5pt,\n  [], [*Produit*], [*Au coffre*], [*En attente depuis*], [*Détruit*], [*Observation*],\n{body})\n"
-    ));
-    src.push_str(
-        "#v(6mm)\n#text(9pt)[Dénaturation effectuée le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Procédé : #box(width: 6cm, stroke: (bottom: 0.5pt))]\n",
-    );
-    src.push_str(
-        "#v(4mm)\n#text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]\n",
-    );
-    src.push_str(
-        "#v(3mm)\n#text(9pt, style: \"italic\")[Les quantités portées ci-dessus sont celles que le registre tient au compte « à détruire » : ce que des patients ont rapporté et qui n'a pas été remis au stock délivrable. La destruction se porte au registre ligne par ligne, en citant le numéro du présent procès-verbal. Un stupéfiant rapporté ne se redélivre jamais.]\n",
-    );
-    src
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{DATE}}",
+            format!("#{}", typst_str(&crate::db::format_french_date(today))),
+        ),
+        ("{{ROWS}}", body),
+    ]
 }
 
-fn stock_check_source(
+const MARKERS_CONTROLE: &[&str] = &["{{PHARMACY_NAME}}", "{{DATE}}", "{{ROWS}}"];
+
+const DEFAULT_CONTROLE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Contrôle des stupéfiants]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, 1.4fr, auto, auto, auto, auto, 1fr), inset: 5pt, stroke: 0.5pt,
+  [], [*Produit*], [*Au registre*], [*Motif*], [*Dernier comptage*], [*Compté*], [*Observation*],
+{{ROWS}})
+
+#v(6mm)
+#text(9pt)[Compté par : #box(width: 5cm, stroke: (bottom: 0.5pt))   Le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Signature : #box(width: 4cm, stroke: (bottom: 0.5pt))]
+#v(3mm)
+#text(9pt, style: "italic")[Tout écart entre le comptage et le registre est porté au registre par une ligne d'inventaire, avec son explication. Le registre ne se rature pas.]
+"##;
+
+fn stock_check_values(
     rows: &[crate::ordonnancier::ToCheck],
     pharmacy: &PharmacyConfig,
     today: &str,
-) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[Contrôle des stupéfiants]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — #{}]]\n#v(4mm)\n",
-        typst_str(&pharmacy.name),
-        typst_str(&crate::db::format_french_date(today))
-    ));
+) -> Vec<(&'static str, String)> {
     let mut body = String::new();
     for r in rows {
         let since = match r.days {
@@ -1496,7 +1537,7 @@ fn stock_check_source(
             None => "jamais".to_owned(),
         };
         body.push_str(&format!(
-            "[#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [#{}], [], [],\n",
+            "  [#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [#{}], [], [],\n",
             typst_str(&r.label),
             typst_str(&format!(
                 "{} {}",
@@ -1508,18 +1549,19 @@ fn stock_check_source(
         ));
     }
     if body.is_empty() {
-        body.push_str("[], [], [], [], [], [], [],\n");
+        body.push_str("  [], [], [], [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, 1.4fr, auto, auto, auto, auto, 1fr), inset: 5pt, stroke: 0.5pt,\n  [], [*Produit*], [*Au registre*], [*Motif*], [*Dernier comptage*], [*Compté*], [*Observation*],\n{body})\n"
-    ));
-    src.push_str(
-        "#v(6mm)\n#text(9pt)[Compté par : #box(width: 5cm, stroke: (bottom: 0.5pt))   Le : #box(width: 3cm, stroke: (bottom: 0.5pt))   Signature : #box(width: 4cm, stroke: (bottom: 0.5pt))]\n",
-    );
-    src.push_str(
-        "#v(3mm)\n#text(9pt, style: \"italic\")[Tout écart entre le comptage et le registre est porté au registre par une ligne d'inventaire, avec son explication. Le registre ne se rature pas.]\n",
-    );
-    src
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{DATE}}",
+            format!("#{}", typst_str(&crate::db::format_french_date(today))),
+        ),
+        ("{{ROWS}}", body),
+    ]
 }
 
 /// L'ordonnancier d'une année : la suite des délivrances, tous produits
@@ -1541,6 +1583,7 @@ fn stock_check_source(
 /// la page qu'une inspection demande : un produit, ses lignes dans
 /// l'ordre des jours, ce qui entre, ce qui sort, et le solde en face de
 /// chacune.
+#[allow(clippy::too_many_arguments)]
 pub fn open_stup_register(
     label: &str,
     unit: &str,
@@ -1549,14 +1592,18 @@ pub fn open_stup_register(
     cancelled: &std::collections::HashSet<i64>,
     pharmacy: &PharmacyConfig,
     today: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        stup_register_source(label, unit, rows, running, cancelled, pharmacy, today),
+        fill(
+            &template_source("registre", template_path),
+            &stup_register_values(label, unit, rows, running, cancelled, pharmacy, today),
+        ),
         "registre_stupefiant",
     )
 }
 
-fn stup_register_source(
+fn stup_register_values(
     label: &str,
     unit: &str,
     rows: &[crate::db::StupMove],
@@ -1564,18 +1611,8 @@ fn stup_register_source(
     cancelled: &std::collections::HashSet<i64>,
     pharmacy: &PharmacyConfig,
     today: &str,
-) -> String {
+) -> Vec<(&'static str, String)> {
     use crate::ordonnancier::Kind;
-    let mut src = String::from(
-        "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
-         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[Registre des stupéfiants — #{}]]\n#v(1mm)\n#align(center)[#text(9pt)[#{} — édité le #{}]]\n#v(4mm)\n",
-        typst_str(label),
-        typst_str(&pharmacy.name),
-        typst_str(&crate::db::format_french_date(today))
-    ));
     let mut body = String::new();
     for (i, m) in rows.iter().enumerate() {
         let struck = cancelled.contains(&m.id);
@@ -1653,16 +1690,50 @@ fn stup_register_source(
     if body.is_empty() {
         body.push_str("[], [], [], [], [], [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,\n  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*À détruire*], [*Dossier*], [*Mention*],\n{body})\n"
-    ));
-    src.push_str(&format!(
-        "#v(4mm)\n#text(8pt, style: \"italic\")[{} ligne(s) au registre, comptées en {}. Une ligne écrite ne se rature pas : elle reste, barrée, et une ligne de plus la désigne et défait ce qu'elle avait fait au stock. Un inventaire **pose** le solde au lieu de s'y ajouter, si bien que les colonnes ne s'additionnent pas au solde final dès qu'un comptage a trouvé un écart — c'est le comptage qui l'explique. Deux soldes et non un : ce qu'un patient rapporte entre à l'officine et se justifie ici, mais ne se délivre plus, et reste au compte « à détruire » jusqu'au procès-verbal. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]\n",
-        rows.len(),
-        if unit.is_empty() { "unités" } else { unit }
-    ));
-    src
+    vec![
+        ("{{PRODUCT}}", format!("#{}", typst_str(label))),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{DATE}}",
+            format!("#{}", typst_str(&crate::db::format_french_date(today))),
+        ),
+        ("{{ROWS}}", body),
+        ("{{COUNT}}", rows.len().to_string()),
+        (
+            "{{UNIT}}",
+            if unit.is_empty() { "unités" } else { unit }.to_owned(),
+        ),
+    ]
 }
+
+const MARKERS_REGISTRE: &[&str] = &[
+    "{{PRODUCT}}",
+    "{{PHARMACY_NAME}}",
+    "{{DATE}}",
+    "{{ROWS}}",
+    "{{COUNT}}",
+    "{{UNIT}}",
+];
+
+const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.2cm)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Registre des stupéfiants — {{PRODUCT}}]]
+#v(1mm)
+#align(center)[#text(9pt)[{{PHARMACY_NAME}} — édité le {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,
+  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*À détruire*], [*Dossier*], [*Mention*],
+{{ROWS}})
+
+#v(4mm)
+#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, comptées en {{UNIT}}. Une ligne écrite ne se rature pas : elle reste, barrée, et une ligne de plus la désigne et défait ce qu'elle avait fait au stock. Un inventaire *pose* le solde au lieu de s'y ajouter, si bien que les colonnes ne s'additionnent pas au solde final dès qu'un comptage a trouvé un écart — c'est le comptage qui l'explique. Deux soldes et non un : ce qu'un patient rapporte entre à l'officine et se justifie ici, mais ne se délivre plus, et reste au compte « à détruire » jusqu'au procès-verbal. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]
+"##;
 
 pub fn open_ordonnancier(
     rows: &[crate::db::StupMove],
@@ -1671,31 +1742,25 @@ pub fn open_ordonnancier(
     year: i64,
     pharmacy: &PharmacyConfig,
     today: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        ordonnancier_source(rows, labels, cancelled, year, pharmacy, today),
+        fill(
+            &template_source("ordonnancier", template_path),
+            &ordonnancier_values(rows, labels, cancelled, year, pharmacy, today),
+        ),
         &format!("ordonnancier_{year}"),
     )
 }
 
-fn ordonnancier_source(
+fn ordonnancier_values(
     rows: &[crate::db::StupMove],
     labels: &std::collections::HashMap<i64, String>,
     cancelled: &std::collections::HashSet<i64>,
     year: i64,
     pharmacy: &PharmacyConfig,
     today: &str,
-) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
-         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[Ordonnancier des stupéfiants — #{}]]\n#v(1mm)\n#align(center)[#text(9pt)[#{} — édité le #{}]]\n#v(4mm)\n",
-        typst_str(&year.to_string()),
-        typst_str(&pharmacy.name),
-        typst_str(&crate::db::format_french_date(today))
-    ));
+) -> Vec<(&'static str, String)> {
     let mut body = String::new();
     for m in rows {
         let struck = cancelled.contains(&m.id);
@@ -1724,15 +1789,45 @@ fn ordonnancier_source(
     if body.is_empty() {
         body.push_str("[], [], [], [], [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, auto, 1.4fr, auto, auto, 1fr, auto, auto), inset: 4pt, stroke: 0.5pt,\n  [*N°*], [*Date*], [*Produit*], [*Quantité*], [*Dossier*], [*Prescripteur*], [*Par*], [*État*],\n{body})\n"
-    ));
-    src.push_str(&format!(
-        "#v(4mm)\n#text(8pt, style: \"italic\")[{} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée garde le sien, et la suite continue après lui. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]\n",
-        rows.len()
-    ));
-    src
+    vec![
+        ("{{YEAR}}", format!("#{}", typst_str(&year.to_string()))),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{DATE}}",
+            format!("#{}", typst_str(&crate::db::format_french_date(today))),
+        ),
+        ("{{ROWS}}", body),
+        ("{{COUNT}}", rows.len().to_string()),
+    ]
 }
+
+const MARKERS_ORDONNANCIER: &[&str] = &[
+    "{{YEAR}}",
+    "{{PHARMACY_NAME}}",
+    "{{DATE}}",
+    "{{ROWS}}",
+    "{{COUNT}}",
+];
+
+const DEFAULT_ORDONNANCIER_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.2cm)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Ordonnancier des stupéfiants — {{YEAR}}]]
+#v(1mm)
+#align(center)[#text(9pt)[{{PHARMACY_NAME}} — édité le {{DATE}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, 1.4fr, auto, auto, 1fr, auto, auto), inset: 4pt, stroke: 0.5pt,
+  [*N°*], [*Date*], [*Produit*], [*Quantité*], [*Dossier*], [*Prescripteur*], [*Par*], [*État*],
+{{ROWS}})
+
+#v(4mm)
+#text(8pt, style: "italic")[{{COUNT}} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée garde le sien, et la suite continue après lui. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]
+"##;
 
 pub struct ConciliationData<'a> {
     pub patient: &'a Patient,
@@ -1759,38 +1854,64 @@ pub struct ConciliationData<'a> {
 pub fn open_conciliation(
     data: &ConciliationData,
     pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        conciliation_source(data, pharmacy),
+        fill(
+            &template_source("conciliation", template_path),
+            &conciliation_values(data, pharmacy),
+        ),
         &format!("conciliation_{}", data.patient.id),
     )
 }
 
-fn conciliation_source(data: &ConciliationData, pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[Conciliation médicamenteuse]]\n#v(1mm)\n#align(center)[#text(10pt)[#{} — né(e) le #{} — le #{}]]\n",
-        typst_str(&data.patient.full_name()),
-        typst_str(&crate::db::format_french_date(&data.patient.birth_date)),
-        typst_str(data.today)
-    ));
-    if !data.physician.trim().is_empty() {
-        src.push_str(&format!(
-            "#align(center)[#text(10pt)[À l'attention du #{}]]\n",
-            typst_str(data.physician.trim())
-        ));
-    }
-    src.push_str(&format!(
-        "#v(2mm)\n#align(center)[#text(9.5pt, style: \"italic\")[#{}]]\n#v(3mm)\n",
-        typst_str(data.summary)
-    ));
+const MARKERS_CONCILIATION: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{DATE}}",
+    "{{PHYSICIAN}}",
+    "{{SUMMARY}}",
+    "{{ROWS}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{SIGNATURE}}",
+    "{{MENTION}}",
+];
+
+const DEFAULT_CONCILIATION_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Conciliation médicamenteuse]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PATIENT_NAME}} — né(e) le {{BIRTH_DATE}} — le {{DATE}}]]
+{{PHYSICIAN}}
+#v(2mm)
+#align(center)[#text(9.5pt, style: "italic")[{{SUMMARY}}]]
+#v(3mm)
+
+#table(columns: (auto, auto, 1fr, 1fr, 1.1fr), inset: 5pt, stroke: 0.5pt,
+  [*Statut*], [*Traitement*], [*Au dossier*], [*Sur l'ordonnance de sortie*], [*Remarque*],
+{{ROWS}})
+
+#v(4mm)
+#text(10pt, weight: "bold")[Avis du prescripteur]
+#v(1.5mm)
+#box(width: 100%, height: 3.5cm, stroke: 0.7pt)
+#v(4mm)
+#text(9.5pt)[{{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]
+{{SIGNATURE}}
+{{MENTION}}
+"##;
+
+fn conciliation_values(
+    data: &ConciliationData,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
     let mut rows = String::new();
     for (status, name, before, after, note) in &data.rows {
         rows.push_str(&format!(
-            "[#text(8pt, weight: \"bold\")[#{}]], [*#{}*], {}, {}, [#text(8.5pt, style: \"italic\")[#{}]],\n",
+            "  [#text(8pt, weight: \"bold\")[#{}]], [*#{}*], {}, {}, [#text(8.5pt, style: \"italic\")[#{}]],\n",
             typst_str(status),
             typst_str(name),
             typst_str(before),
@@ -1799,31 +1920,59 @@ fn conciliation_source(data: &ConciliationData, pharmacy: &PharmacyConfig) -> St
         ));
     }
     if rows.is_empty() {
-        rows.push_str("[], [], [], [], [],\n");
+        rows.push_str("  [], [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (auto, auto, 1fr, 1fr, 1.1fr), inset: 5pt, stroke: 0.5pt,\n  [*Statut*], [*Traitement*], [*Au dossier*], [*Sur l'ordonnance de sortie*], [*Remarque*],\n{rows})\n"
-    ));
-    src.push_str("#v(4mm)\n#text(10pt, weight: \"bold\")[Avis du prescripteur]\n#v(1.5mm)\n#box(width: 100%, height: 3.5cm, stroke: 0.7pt)\n");
-    src.push_str("#v(4mm)\n");
-    src.push_str(&format!(
-        "#text(9.5pt)[#{} — #{}]\n",
-        typst_str(&pharmacy.name),
-        typst_str(&pharmacy.phone)
-    ));
-    if !data.signature.trim().is_empty() {
-        src.push_str(&format!(
-            "\\\n#text(9.5pt)[Rapprochement établi par #{}]\n",
+    let physician = if data.physician.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#align(center)[#text(10pt)[À l'attention du #{}]]",
+            typst_str(data.physician.trim())
+        )
+    };
+    let signature = if data.signature.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\\\n#text(9.5pt)[Rapprochement établi par #{}]",
             typst_str(data.signature.trim())
-        ));
-    }
-    if !data.mention.trim().is_empty() {
-        src.push_str(&format!(
-            "#v(3mm)\n#text(8pt, style: \"italic\")[#{}]\n",
+        )
+    };
+    let mention = if data.mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(3mm)\n#text(8pt, style: \"italic\")[#{}]",
             typst_str(data.mention.trim())
-        ));
-    }
-    src
+        )
+    };
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        (
+            "{{BIRTH_DATE}}",
+            format!(
+                "#{}",
+                typst_str(&crate::db::format_french_date(&data.patient.birth_date))
+            ),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{PHYSICIAN}}", physician),
+        ("{{SUMMARY}}", format!("#{}", typst_str(data.summary))),
+        ("{{ROWS}}", rows),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{PHARMACY_PHONE}}",
+            format!("#{}", typst_str(&pharmacy.phone)),
+        ),
+        ("{{SIGNATURE}}", signature),
+        ("{{MENTION}}", mention),
+    ]
 }
 
 /// The fiche de fabrication of a preparation: the formula at the
@@ -1837,63 +1986,78 @@ pub fn open_preparation(
     lines: &[(String, String, String)],
     pharmacy: &PharmacyConfig,
     operator: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        preparation_source(prep, target, lines, pharmacy, operator),
+        fill(
+            &template_source("preparation", template_path),
+            &preparation_values(prep, target, lines, pharmacy, operator),
+        ),
         &format!("preparation_{}", prep.id),
     )
 }
 
-fn preparation_source(
+const MARKERS_PREPARATION: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{NAME}}",
+    "{{FORM}}",
+    "{{TARGET}}",
+    "{{OPERATOR}}",
+    "{{ROWS}}",
+    "{{SECTIONS}}",
+    "{{SOURCES}}",
+];
+
+const DEFAULT_PREPARATION_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.8cm)
+#set text(size: 10.5pt, lang: "fr", hyphenate: true)
+
+#grid(columns: (1fr, auto), [#text(weight: "bold")[{{PHARMACY_NAME}}]], [#align(right)[#text(9pt)[Fiche de fabrication]]])
+#v(2mm)
+#line(length: 100%, stroke: 0.8pt)
+#v(3mm)
+#align(center)[#text(15pt, weight: "bold")[{{NAME}}]]
+{{FORM}}
+#v(4mm)
+#text(weight: "bold")[Quantité préparée :] {{TARGET}} #h(1fr) #text(weight: "bold")[Date :] #box(width: 3cm, stroke: (bottom: 0.6pt))[] #h(6mm) #text(weight: "bold")[Par :] #box(width: 2.5cm, stroke: (bottom: 0.6pt))[{{OPERATOR}}]
+#v(4mm)
+
+#table(columns: (1fr, auto, auto, 3.4cm), inset: 6pt, stroke: 0.6pt,
+  [*Matière première*], [*Formule*], [*À peser*], [*N° de lot*],
+{{ROWS}})
+
+{{SECTIONS}}
+
+#v(5mm)
+#line(length: 100%, stroke: 0.4pt)
+#v(2mm)
+#grid(columns: (1fr, 1fr), gutter: 8mm,
+  [#text(9.5pt, weight: "bold")[Contrôle] #v(1mm) #box(width: 100%, height: 2cm, stroke: 0.6pt)],
+  [#text(9.5pt, weight: "bold")[Étiquetage et remise] #v(1mm) #box(width: 100%, height: 2cm, stroke: 0.6pt)])
+{{SOURCES}}
+"##;
+
+fn preparation_values(
     prep: &crate::db::Preparation,
     target: &str,
     lines: &[(String, String, String)],
     pharmacy: &PharmacyConfig,
     operator: &str,
-) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.8cm)\n\
-         #set text(size: 10.5pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#grid(columns: (1fr, auto), [#text(weight: \"bold\")[#{}]], [#align(right)[#text(9pt)[Fiche de fabrication]]])\n",
-        typst_str(&pharmacy.name)
-    ));
-    src.push_str("#v(2mm)\n#line(length: 100%, stroke: 0.8pt)\n#v(3mm)\n");
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[#{}]]\n",
-        typst_str(&prep.name)
-    ));
-    if !prep.form.trim().is_empty() {
-        src.push_str(&format!(
-            "#align(center)[#text(10pt, style: \"italic\")[#{}]]\n",
-            typst_str(prep.form.trim())
-        ));
-    }
-    src.push_str("#v(4mm)\n");
-    src.push_str(&format!(
-        "#text(weight: \"bold\")[Quantité préparée :] #{} #h(1fr) #text(weight: \"bold\")[Date :] #box(width: 3cm, stroke: (bottom: 0.6pt))[] #h(6mm) #text(weight: \"bold\")[Par :] #box(width: 2.5cm, stroke: (bottom: 0.6pt))[#{}]\n",
-        typst_str(target),
-        typst_str(operator)
-    ));
-    src.push_str("#v(4mm)\n");
-    // The formula, with a blank column for the lot of every raw
-    // material: that column is the point of the sheet.
+) -> Vec<(&'static str, String)> {
+    // La colonne du lot reste vide : c'est elle qui fait la fiche.
     let mut rows = String::new();
     for (name, written, weighed) in lines {
         rows.push_str(&format!(
-            "{}, {}, {}, [],\n",
+            "  {}, {}, {}, [],\n",
             typst_str(name),
             typst_str(written),
             typst_str(weighed)
         ));
     }
     if rows.is_empty() {
-        rows.push_str("[], [], [], [],\n");
+        rows.push_str("  [], [], [], [],\n");
     }
-    src.push_str(&format!(
-        "#table(columns: (1fr, auto, auto, 3.4cm), inset: 6pt, stroke: 0.6pt,\n  [*Matière première*], [*Formule*], [*À peser*], [*N° de lot*],\n{rows})\n"
-    ));
+    let mut sections = String::new();
     for (title, body) in [
         ("Mode opératoire", prep.method.as_str()),
         ("Conservation", prep.conservation.as_str()),
@@ -1903,31 +2067,47 @@ fn preparation_source(
         if body.trim().is_empty() {
             continue;
         }
-        src.push_str(&format!(
+        sections.push_str(&format!(
             "#v(3mm)\n#text(weight: \"bold\", size: 10pt)[#{}]\n#v(1mm)\n#text(9.5pt)[#{}]\n",
             typst_str(title),
             typst_str(body.trim())
         ));
     }
-    src.push_str(
-        "#v(5mm)\n#line(length: 100%, stroke: 0.4pt)\n#v(2mm)\n\
-         #grid(columns: (1fr, 1fr), gutter: 8mm,\n\
-           [#text(9.5pt, weight: \"bold\")[Contrôle] #v(1mm) #box(width: 100%, height: 2cm, stroke: 0.6pt)],\n\
-           [#text(9.5pt, weight: \"bold\")[Étiquetage et remise] #v(1mm) #box(width: 100%, height: 2cm, stroke: 0.6pt)])\n",
-    );
     let sources: Vec<&str> = prep
         .sources
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty())
         .collect();
-    if !sources.is_empty() {
-        src.push_str(&format!(
-            "#v(3mm)\n#text(size: 8pt)[Sources : #{}]\n",
+    let sources = if sources.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(3mm)\n#text(size: 8pt)[Sources : #{}]",
             typst_str(&sources.join(" · "))
-        ));
-    }
-    src
+        )
+    };
+    let form = if prep.form.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#align(center)[#text(10pt, style: \"italic\")[#{}]]",
+            typst_str(prep.form.trim())
+        )
+    };
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        ("{{NAME}}", format!("#{}", typst_str(&prep.name))),
+        ("{{FORM}}", form),
+        ("{{TARGET}}", format!("#{}", typst_str(target))),
+        ("{{OPERATOR}}", format!("#{}", typst_str(operator))),
+        ("{{ROWS}}", rows),
+        ("{{SECTIONS}}", sections),
+        ("{{SOURCES}}", sources),
+    ]
 }
 
 /// One substitution protocol as a printable A4 page: the decision tree
@@ -1936,27 +2116,38 @@ pub fn open_protocol(
     title: &str,
     subject: &str,
     nodes: &[crate::db::ProtocolNode],
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    compile_and_open(protocol_source(title, subject, nodes), "protocole")
+    compile_and_open(
+        fill(
+            &template_source("protocole", template_path),
+            &protocol_values(title, subject, nodes),
+        ),
+        "protocole",
+    )
 }
 
-fn protocol_source(title: &str, subject: &str, nodes: &[crate::db::ProtocolNode]) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 2cm)\n\
-         #set text(size: 11pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(15pt, weight: \"bold\")[#{}]]\n",
-        typst_str(title)
-    ));
-    if !subject.trim().is_empty() {
-        src.push_str(&format!(
-            "#align(center)[#text(10pt, style: \"italic\")[#{}]]\n",
-            typst_str(subject.trim())
-        ));
-    }
-    src.push_str("#v(3mm)\n#line(length: 100%, stroke: 0.6pt)\n#v(2mm)\n");
+const MARKERS_PROTOCOLE: &[&str] = &["{{TITLE}}", "{{SUBJECT}}", "{{TREE}}"];
+
+const DEFAULT_PROTOCOLE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[{{TITLE}}]]
+{{SUBJECT}}
+#v(3mm)
+#line(length: 100%, stroke: 0.6pt)
+#v(2mm)
+{{TREE}}
+"##;
+
+fn protocol_values(
+    title: &str,
+    subject: &str,
+    nodes: &[crate::db::ProtocolNode],
+) -> Vec<(&'static str, String)> {
     // Depth-first, "yes" branch before "no", same order as on screen.
+    let mut tree = String::new();
     let mut stack: Vec<(&crate::db::ProtocolNode, usize)> = nodes
         .iter()
         .filter(|n| n.parent_id.is_none())
@@ -1977,7 +2168,7 @@ fn protocol_source(title: &str, subject: &str, nodes: &[crate::db::ProtocolNode]
         } else {
             format!("#{}", typst_str(&format!("{tag}{}", node.text.trim())))
         };
-        src.push_str(&format!(
+        tree.push_str(&format!(
             "#pad(left: {}mm)[{}]\n#v(1.2mm)\n",
             depth * 7,
             body
@@ -1991,7 +2182,19 @@ fn protocol_source(title: &str, subject: &str, nodes: &[crate::db::ProtocolNode]
             stack.push((child, depth + 1));
         }
     }
-    src
+    let subject = if subject.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#align(center)[#text(10pt, style: \"italic\")[#{}]]",
+            typst_str(subject.trim())
+        )
+    };
+    vec![
+        ("{{TITLE}}", format!("#{}", typst_str(title))),
+        ("{{SUBJECT}}", subject),
+        ("{{TREE}}", tree),
+    ]
 }
 
 /// The week on one landscape A4 page: a column per day, rendez-vous
@@ -2001,31 +2204,42 @@ pub fn open_week_plan(
     appointments: &[Appointment],
     events: &[crate::db::Event],
     today: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     if week.is_empty() {
         return Err("semaine vide".to_owned());
     }
     compile_and_open(
-        week_plan_source(week, appointments, events, today),
+        fill(
+            &template_source("semaine", template_path),
+            &week_plan_values(week, appointments, events, today),
+        ),
         "semaine",
     )
 }
 
-fn week_plan_source(
+const MARKERS_SEMAINE: &[&str] = &["{{MONDAY}}", "{{CELLS}}"];
+
+const DEFAULT_SEMAINE_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.2cm)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(14pt, weight: "bold")[Semaine du {{MONDAY}}]]
+#v(3mm)
+
+// Des colonnes pleine hauteur : la feuille se punaise et s'annote
+// pendant la semaine, elle ne se lit pas seulement.
+#table(columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr), rows: 16cm, inset: 4pt, stroke: 0.5pt, align: top,
+{{CELLS}})
+"##;
+
+fn week_plan_values(
     week: &[String],
     appointments: &[Appointment],
     events: &[crate::db::Event],
     today: &str,
-) -> String {
+) -> Vec<(&'static str, String)> {
     let monday = week.first().map(String::as_str).unwrap_or("");
-    let mut src = String::from(
-        "#set page(paper: \"a4\", flipped: true, margin: 1.2cm)\n\
-         #set text(size: 9pt, lang: \"fr\", hyphenate: true)\n",
-    );
-    src.push_str(&format!(
-        "#align(center)[#text(14pt, weight: \"bold\")[Semaine du #{}]]\n#v(3mm)\n",
-        typst_str(&crate::db::format_french_date(monday))
-    ));
     let mut cells = String::new();
     for day in week {
         let name = crate::db::weekday_fr(day).unwrap_or("");
@@ -2077,36 +2291,46 @@ fn week_plan_source(
             body
         ));
     }
-    // Full-height columns: the sheet is meant to be written on during
-    // the week, not just read.
-    src.push_str(&format!(
-        "#table(columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr), rows: 16cm, inset: 4pt, \
-         stroke: 0.5pt, align: top,\n{cells})\n"
-    ));
-    src
+    vec![
+        (
+            "{{MONDAY}}",
+            format!("#{}", typst_str(&crate::db::format_french_date(monday))),
+        ),
+        ("{{CELLS}}", cells),
+    ]
 }
 
 /// Compile and open the conversion tables as a printable A4 reference.
-pub fn open_conversion_tables(edits: &TableEdits) -> Result<PathBuf, String> {
-    compile_and_open(conversion_tables_source(edits), "tables")
+pub fn open_conversion_tables(
+    edits: &TableEdits,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("tables", template_path),
+            &conversion_tables_values(edits),
+        ),
+        "tables",
+    )
 }
 
 /// The whole codex as a booklet: one block per preparation, in the
 /// order the list shows them. What goes in the préparatoire's binder.
-pub fn open_codex(preparations: &[crate::db::Preparation]) -> Result<PathBuf, String> {
-    compile_and_open(codex_source(preparations), "codex")
+pub fn open_codex(
+    preparations: &[crate::db::Preparation],
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("codex", template_path),
+            &codex_values(preparations),
+        ),
+        "codex",
+    )
 }
 
-fn codex_source(preparations: &[crate::db::Preparation]) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.6cm)\n\
-         #set text(size: 9.5pt, lang: \"fr\", hyphenate: true)\n\
-         #set par(justify: true)\n\
-         #align(center)[#text(15pt, weight: \"bold\")[Codex des préparations]]\n\
-         #v(1mm)\n\
-         #align(center)[#text(9pt, style: \"italic\")[Une préparation ne se fait que sur ordonnance et selon les bonnes pratiques de préparation.]]\n\
-         #v(4mm)\n",
-    );
+fn codex_values(preparations: &[crate::db::Preparation]) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
     for prep in preparations {
         src.push_str(&format!(
             "#block(breakable: false, below: 5mm)[\n#text(11pt, weight: \"bold\")[#{}]",
@@ -2169,25 +2393,44 @@ fn codex_source(preparations: &[crate::db::Preparation]) -> String {
         }
         src.push_str("]\n");
     }
-    src
+    vec![("{{BODY}}", src)]
 }
+
+const MARKERS_CODEX: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_CODEX_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.6cm)
+#set text(size: 9.5pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+#align(center)[#text(15pt, weight: "bold")[Codex des préparations]]
+#v(1mm)
+#align(center)[#text(9pt, style: "italic")[Une préparation ne se fait que sur ordonnance et selon les bonnes pratiques de préparation.]]
+#v(4mm)
+
+{{BODY}}
+"##;
 
 /// One dispositif as a printable A4 sheet — the one that goes in the
 /// drawer beside the box, or in the patient's hand at the counter.
 pub fn open_dispositif(
     dispo: &crate::db::Dispositif,
     pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    compile_and_open(dispositif_source(dispo, pharmacy), "dispositif")
+    compile_and_open(
+        fill(
+            &template_source("dispositif", template_path),
+            &dispositif_values(dispo, pharmacy),
+        ),
+        "dispositif",
+    )
 }
 
-fn dispositif_source(dispo: &crate::db::Dispositif, pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.8cm)\n\
-         #set text(size: 10pt, lang: \"fr\", hyphenate: true)\n\
-         #set par(justify: true)\n\
-         #let sec(t) = [#v(3mm) #text(10.5pt, weight: \"bold\")[#t] #v(1mm) #line(length: 100%, stroke: 0.5pt) #v(1.5mm)]\n",
-    );
+fn dispositif_values(
+    dispo: &crate::db::Dispositif,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
     if !pharmacy.name.trim().is_empty() {
         src.push_str(&format!(
             "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
@@ -2226,8 +2469,20 @@ fn dispositif_source(dispo: &crate::db::Dispositif, pharmacy: &PharmacyConfig) -
     src.push_str(
         "#v(2mm)\n#text(8pt, style: \"italic\")[La ligne LPP et son tarif se vérifient au moment de la délivrance : cette fiche en donne la règle, pas le prix.]\n",
     );
-    src
+    vec![("{{BODY}}", src)]
 }
+
+const MARKERS_DISPOSITIF: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_DISPOSITIF_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.8cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+
+#let sec(t) = [#v(3mm) #text(10.5pt, weight: "bold")[#t] #v(1mm) #line(length: 100%, stroke: 0.5pt) #v(1.5mm)]
+
+{{BODY}}
+"##;
 
 /// The sections of a dispositif fiche, in the order of the gesture —
 /// shared by the single sheet and the whole booklet so the two can
@@ -2251,27 +2506,22 @@ fn dispositif_sections(dispo: &crate::db::Dispositif) -> Vec<(&'static str, &str
 pub fn open_dispositifs(
     dispositifs: &[crate::db::Dispositif],
     pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
-    compile_and_open(dispositifs_source(dispositifs, pharmacy), "dispositifs")
+    compile_and_open(
+        fill(
+            &template_source("dispositifs", template_path),
+            &dispositifs_values(dispositifs, pharmacy),
+        ),
+        "dispositifs",
+    )
 }
 
-fn dispositifs_source(dispositifs: &[crate::db::Dispositif], pharmacy: &PharmacyConfig) -> String {
-    let mut src = String::from(
-        "#set page(paper: \"a4\", margin: 1.5cm, columns: 2)\n\
-         #set text(size: 8.5pt, lang: \"fr\", hyphenate: true)\n\
-         #set par(justify: true)\n\
-         #place(top + center, scope: \"parent\", float: true)[\n\
-           #text(15pt, weight: \"bold\")[Dispositifs médicaux]\n\
-           #v(1mm)\n",
-    );
-    src.push_str(&format!(
-        "  #text(8.5pt, style: \"italic\")[#{}]\n  #v(3mm)\n]\n",
-        typst_str(if pharmacy.name.trim().is_empty() {
-            "La ligne LPP et son tarif se vérifient au moment de la délivrance."
-        } else {
-            pharmacy.name.trim()
-        })
-    ));
+fn dispositifs_values(
+    dispositifs: &[crate::db::Dispositif],
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
     let mut family = String::new();
     for dispo in dispositifs {
         if dispo.family != family {
@@ -2296,8 +2546,38 @@ fn dispositifs_source(dispositifs: &[crate::db::Dispositif], pharmacy: &Pharmacy
         }
         src.push_str("]\n");
     }
-    src
+    vec![
+        (
+            "{{PHARMACY_NAME}}",
+            format!(
+                "#{}",
+                typst_str(if pharmacy.name.trim().is_empty() {
+                    "La ligne LPP et son tarif se vérifient au moment de la délivrance."
+                } else {
+                    pharmacy.name.trim()
+                })
+            ),
+        ),
+        ("{{BODY}}", src),
+    ]
 }
+
+const MARKERS_DISPOSITIFS: &[&str] = &["{{PHARMACY_NAME}}", "{{BODY}}"];
+
+const DEFAULT_DISPOSITIFS_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.5cm, columns: 2)
+#set text(size: 8.5pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+
+#place(top + center, scope: "parent", float: true)[
+  #text(15pt, weight: "bold")[Dispositifs médicaux]
+  #v(1mm)
+  #text(8.5pt, style: "italic")[{{PHARMACY_NAME}}]
+  #v(3mm)
+]
+
+{{BODY}}
+"##;
 
 /// One day of the transmission logbook as a printable A4 page.
 pub fn open_transmission_day(
@@ -2312,11 +2592,6 @@ pub fn open_transmission_day(
         DEFAULT_TRANS_TEMPLATE.to_owned()
     };
     compile_and_open(fill_trans_template(&template, day_title, entries), "carnet")
-}
-
-/// The embedded carnet template, for the in-app editor.
-pub fn default_trans_template() -> &'static str {
-    DEFAULT_TRANS_TEMPLATE
 }
 
 fn trans_entries_markup(entries: &[crate::db::Note]) -> String {
@@ -2344,22 +2619,6 @@ fn fill_trans_template(template: &str, day_title: &str, entries: &[crate::db::No
     template
         .replace("{{DAY}}", &format!("#{}", typst_str(day_title)))
         .replace("{{ENTRIES}}", &trans_entries_markup(entries))
-}
-
-/// Validation for the carnet template editor.
-pub fn check_trans_template(template: &str) -> Result<(), String> {
-    let filled = fill_trans_template(template, "Lundi 24/08/2026", &sample_transmissions());
-    let world = PdfWorld::new(filled);
-    typst::compile::<PagedDocument>(&world)
-        .output
-        .map(|_| ())
-        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
-}
-
-/// Sample-data preview for the carnet template editor.
-pub fn preview_trans_template(template: &str) -> Result<PathBuf, String> {
-    let filled = fill_trans_template(template, "Lundi 24/08/2026", &sample_transmissions());
-    compile_and_open(filled, "apercu_carnet")
 }
 
 fn sample_transmissions() -> Vec<crate::db::Note> {
@@ -2483,38 +2742,44 @@ fn theme_or_dash(theme: &str) -> &str {
 
 /// Build the printable list of upcoming appointments (date, patient,
 /// kind, phone) — a paper companion for the counter.
-fn appointment_list_source(rdvs: &[Appointment], today_french: &str) -> String {
-    let mut rows = String::new();
-    for rdv in rdvs {
-        rows.push_str(&format!(
-            "{}, {}, {}, {},\n",
-            typst_str(&crate::db::format_french_date(&rdv.date)),
-            typst_str(&rdv.patient_name),
-            typst_str(rdv.kind.label()),
-            typst_str(&rdv.phone),
-        ));
-    }
-    format!(
-        r#"
+const MARKERS_RDV: &[&str] = &["{{DATE}}", "{{ROWS}}"];
+
+const DEFAULT_RDV_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 1.5cm)
 #set text(size: 11pt)
 #align(center)[#text(16pt, weight: "bold")[Rendez-vous à venir]]
 #v(1mm)
-#align(center)[Édité le {today_french}]
+#align(center)[Édité le {{DATE}}]
 #v(5mm)
 #table(
   columns: (auto, 1fr, auto, auto),
   inset: 7pt,
   stroke: 0.6pt,
   [*Date*], [*Patient*], [*Type*], [*Téléphone*],
-{rows})
-"#
-    )
-}
+{{ROWS}})
+"##;
 
-/// The embedded ordonnance template, for the in-app editor.
-pub fn default_ordonnance_template() -> &'static str {
-    DEFAULT_ORDONNANCE_TEMPLATE
+fn appointment_list_values(
+    rdvs: &[Appointment],
+    today_french: &str,
+) -> Vec<(&'static str, String)> {
+    let mut rows = String::new();
+    for rdv in rdvs {
+        rows.push_str(&format!(
+            "  {}, {}, {}, {},\n",
+            typst_str(&crate::db::format_french_date(&rdv.date)),
+            typst_str(&rdv.patient_name),
+            typst_str(rdv.kind.label()),
+            typst_str(&rdv.phone),
+        ));
+    }
+    if rows.is_empty() {
+        rows.push_str("  [], [], [], [],\n");
+    }
+    vec![
+        ("{{DATE}}", format!("#{}", typst_str(today_french))),
+        ("{{ROWS}}", rows),
+    ]
 }
 
 /// Render the prescribed lines as a numbered block.
@@ -2668,48 +2933,6 @@ pub fn open_ordonnance(
     compile_and_open(filled, &format!("ordonnance_{}", patient.id))
 }
 
-/// Validation and preview for the ordonnance template editor.
-pub fn check_ordonnance_template(template: &str) -> Result<(), String> {
-    let _ = ordonnance_preview_source(template)?;
-    Ok(())
-}
-
-pub fn preview_ordonnance_template(template: &str) -> Result<PathBuf, String> {
-    let filled = ordonnance_preview_source(template)?;
-    compile_and_open(filled, "apercu_ordonnance")
-}
-
-fn ordonnance_preview_source(template: &str) -> Result<String, String> {
-    let lines = [crate::ordonnance::Line {
-        name: "Amoxicilline 1 g".to_owned(),
-        posology: "1 g deux fois par jour pendant 6 jours".to_owned(),
-        caution: String::new(),
-    }];
-    let advice = ["Boire fréquemment, par petites quantités."];
-    // The preview shows the template itself: both mentions are filled
-    // with a sample, so an officine editing the layout can see where
-    // its own would land.
-    let filled = fill_ordonnance_template(
-        template,
-        &sample_patient(),
-        &sample_pharmacy(),
-        "Angine à streptocoque du groupe A — TROD positif",
-        "26/08/2026",
-        &lines,
-        &advice,
-        &sample_pharmacy().pharmacist,
-        (
-            "Mention d'en-tête (facultative, [disclaimers] du config.toml)",
-            "Mention de pied (facultative)",
-        ),
-    );
-    let world = PdfWorld::new(filled.clone());
-    let _: PagedDocument = typst::compile(&world)
-        .output
-        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))?;
-    Ok(filled)
-}
-
 /// Fill the official bulletin d'adhésion for this act's theme and hand
 /// it to the OS viewer. The PDF is the Assurance Maladie's own; only
 /// its form fields are written (see [`crate::bulletin`]).
@@ -2740,18 +2963,22 @@ pub fn open_vaccination_carnet(
     patient: &Patient,
     lines: &[crate::db::Vaccination],
     mention: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        vaccination_carnet_source(patient, lines, mention),
+        fill(
+            &template_source("vaccination", template_path),
+            &vaccination_carnet_values(patient, lines, mention),
+        ),
         "carnet_vaccination",
     )
 }
 
-fn vaccination_carnet_source(
+fn vaccination_carnet_values(
     patient: &Patient,
     lines: &[crate::db::Vaccination],
     mention: &str,
-) -> String {
+) -> Vec<(&'static str, String)> {
     let mut rows = String::new();
     // Oldest first on paper: a carnet is read forwards, unlike the
     // screen's table, where the dose just given belongs on top.
@@ -2802,24 +3029,36 @@ fn vaccination_carnet_source(
             typst_str(mention.trim())
         )
     };
-    format!(
-        r#"
+    vec![
+        ("{{PATIENT_NAME}}", format!("#{head}")),
+        ("{{BIRTH_DATE}}", format!("#{born}")),
+        ("{{ROWS}}", rows),
+        ("{{MENTION}}", foot),
+    ]
+}
+
+const MARKERS_VACCINATION: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{ROWS}}",
+    "{{MENTION}}",
+];
+
+const DEFAULT_VACCINATION_TEMPLATE: &str = r##"
 #set page(paper: "a4", flipped: true, margin: 1.4cm)
 #set text(size: 10pt, lang: "fr")
 #align(center)[#text(16pt, weight: "bold")[Carnet de vaccination]]
 #v(1mm)
-#align(center)[#text(12pt)[#{head}] — né(e) le #{born}]
+#align(center)[#text(12pt)[{{PATIENT_NAME}}] — né(e) le {{BIRTH_DATE}}]
 #v(5mm)
 #table(
   columns: (auto, 1fr, auto, auto, auto, auto, 1fr),
   inset: 6pt,
   stroke: 0.6pt,
   [*Date*], [*Vaccin*], [*Dose*], [*Lot*], [*Site*], [*Par*], [*Remarque*],
-{rows})
-{foot}
-"#
-    )
-}
+{{ROWS}})
+{{MENTION}}
+"##;
 
 /// One line of the printable billing recap: what the memo asks the
 /// pharmacy to send — the act code, the step it pays, the situation to
@@ -2851,12 +3090,12 @@ pub struct BillingRental {
     pub amount: f64,
 }
 
-fn billing_recap_source(
+fn billing_recap_values(
     lines: &[BillingLine],
     rentals: &[BillingRental],
     period: &str,
     today_french: &str,
-) -> String {
+) -> Vec<(&'static str, String)> {
     let mut rows = String::new();
     let mut total = 0.0;
     for l in lines {
@@ -2923,13 +3162,31 @@ fn billing_recap_source(
             n = rentals.len()
         );
     }
-    format!(
-        r#"
+    vec![
+        ("{{PERIOD}}", period.to_owned()),
+        ("{{DATE}}", today_french.to_owned()),
+        ("{{ROWS}}", rows),
+        ("{{COUNT}}", count.to_string()),
+        ("{{TOTAL}}", total),
+        ("{{RENTALS}}", rental_block),
+    ]
+}
+
+const MARKERS_FACTURATION: &[&str] = &[
+    "{{PERIOD}}",
+    "{{DATE}}",
+    "{{ROWS}}",
+    "{{COUNT}}",
+    "{{TOTAL}}",
+    "{{RENTALS}}",
+];
+
+const DEFAULT_FACTURATION_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 1.5cm, flipped: true)
 #set text(size: 10pt)
 #align(center)[#text(16pt, weight: "bold")[Récapitulatif de facturation]]
 #v(1mm)
-#align(center)[{period} — édité le {today_french}]
+#align(center)[{{PERIOD}} — édité le {{DATE}}]
 #v(5mm)
 #table(
   columns: (auto, 1fr, auto, auto, auto, auto, auto, auto),
@@ -2937,14 +3194,13 @@ fn billing_recap_source(
   stroke: 0.6pt,
   [*Date*], [*Patient*], [*Thème*], [*Code acte*], [*Étape*], [*Situation*],
   [*Prise en charge*], [*Montant*],
-{rows})
+{{ROWS}})
 #v(4mm)
-#text(weight: "bold")[{count} acte(s) — total {total}]
+#text(weight: "bold")[{{COUNT}} acte(s) — total {{TOTAL}}]
 #v(3mm)
 #text(9pt)[Prestation facturée en tiers payant, indépendamment de tout code CIP, aux prix TTC. Une seule pharmacie accompagne un patient : celle qui a débuté la séquence annuelle perçoit la rémunération.]
-{rental_block}"#
-    )
-}
+{{RENTALS}}
+"##;
 
 /// Compile and open the billing recap for printing.
 pub fn open_billing_recap(
@@ -2952,16 +3208,30 @@ pub fn open_billing_recap(
     rentals: &[BillingRental],
     period: &str,
     today_french: &str,
+    template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        billing_recap_source(lines, rentals, period, today_french),
+        fill(
+            &template_source("facturation", template_path),
+            &billing_recap_values(lines, rentals, period, today_french),
+        ),
         "facturation",
     )
 }
 
 /// Compile and open the RDV list for printing.
-pub fn open_appointment_list(rdvs: &[Appointment], today_french: &str) -> Result<PathBuf, String> {
-    compile_and_open(appointment_list_source(rdvs, today_french), "rdv")
+pub fn open_appointment_list(
+    rdvs: &[Appointment],
+    today_french: &str,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("rdv", template_path),
+            &appointment_list_values(rdvs, today_french),
+        ),
+        "rdv",
+    )
 }
 
 fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
@@ -2971,9 +3241,1162 @@ fn format_diagnostics(errs: &[typst::diag::SourceDiagnostic]) -> String {
         .join(" ; ")
 }
 
+// ===================================================================
+// Le registre des documents imprimables
+// ===================================================================
+//
+// Quatre documents avaient un modèle éditable — la fiche, le courrier,
+// le carnet, l'ordonnance — et vingt-deux n'en avaient pas : leur
+// Typst était écrit en Rust, avec la mise en page et les données
+// mélangées dans le même `format!`. Une officine qui voulait sa
+// marge, son en-tête ou sa police sur la liste d'appel n'avait rien à
+// ouvrir.
+//
+// Le registre les met tous sur le même pied. Un document, c'est :
+// une clé, un nom, un modèle Typst par défaut, et la liste des
+// marqueurs `{{…}}` qu'il accepte. L'appelant construit les valeurs,
+// `fill` les substitue, et le modèle vient du disque s'il existe.
+//
+// **Trois règles, chacune tenue par un test**, parce qu'un modèle est
+// la seule chose ici que l'utilisateur peut casser :
+//
+// * Les marqueurs déclarés et ceux qui apparaissent dans le modèle par
+//   défaut sont **exactement les mêmes**. Un marqueur oublié dans la
+//   liste est un marqueur que l'éditeur ne montre pas, donc que
+//   personne n'utilise ; un marqueur déclaré et absent du modèle est
+//   une promesse que rien ne tient.
+// * Un modèle rempli ne contient plus de `{{`. Un marqueur mal tapé
+//   s'imprime tel quel, en toutes lettres, au milieu de la page.
+// * Chaque modèle par défaut **compile** avec ses valeurs d'exemple.
+//   C'est aussi ce qui donne l'aperçu de l'éditeur sans dossier ouvert.
+
+/// Une ligne de registre d'exemple, pour vérifier et prévisualiser les
+/// modèles du registre sans ouvrir la base.
+fn sample_stup_move() -> crate::db::StupMove {
+    crate::db::StupMove {
+        id: 1,
+        stup_id: 1,
+        kind: "SORTIE".to_owned(),
+        happened_on: "2026-08-29".to_owned(),
+        quantity: 14.0,
+        ordo_year: 2026,
+        ordo_no: 37,
+        patient_id: 12,
+        prescriber: "Dr Martin".to_owned(),
+        supplier: String::new(),
+        reference: String::new(),
+        expected: 0.0,
+        operator: "CL".to_owned(),
+        remark: String::new(),
+        cancels: 0,
+    }
+}
+
+/// Un document imprimable et son modèle.
+pub struct Doc {
+    /// La clé : le nom du fichier `<clé>.typ` et l'identifiant partout.
+    pub key: &'static str,
+    /// La **clé de chaîne** du nom que l'éditeur affiche, résolue par
+    /// `strings::tr` au moment du dessin — jamais le libellé lui-même :
+    /// les textes de l'interface vivent tous dans
+    /// `assets/strings.fr.toml`, où l'officine peut les remplacer.
+    pub label: &'static str,
+    /// Les marqueurs que ce modèle accepte, dans l'ordre où ils
+    /// apparaissent sur la page.
+    pub markers: &'static [&'static str],
+    /// Le modèle embarqué, utilisé tant que l'officine n'en a pas
+    /// écrit un.
+    pub default: &'static str,
+}
+
+/// Tous les documents imprimables de l'application.
+///
+/// Le bulletin d'adhésion n'y est pas et ne doit pas y être : ce n'est
+/// pas un Typst mais le PDF de l'Assurance Maladie, rempli champ par
+/// champ (voir `bulletin.rs`). Le rendre « éditable » serait le
+/// redessiner, ce que le CLAUDE.md interdit explicitement.
+pub const DOCS: &[Doc] = &[
+    Doc {
+        key: "fiche",
+        label: "tpl_target_fiche",
+        markers: MARKERS_FICHE,
+        default: DEFAULT_TEMPLATE,
+    },
+    Doc {
+        key: "cr",
+        label: "tpl_target_cr",
+        markers: MARKERS_CR,
+        default: DEFAULT_CR_TEMPLATE,
+    },
+    Doc {
+        key: "carnet",
+        label: "tpl_target_carnet",
+        markers: MARKERS_CARNET,
+        default: DEFAULT_TRANS_TEMPLATE,
+    },
+    Doc {
+        key: "ordonnance",
+        label: "tpl_target_ordonnance",
+        markers: MARKERS_ORDONNANCE,
+        default: DEFAULT_ORDONNANCE_TEMPLATE,
+    },
+    Doc {
+        key: "plan",
+        label: "tpl_target_plan",
+        markers: MARKERS_PLAN,
+        default: DEFAULT_PLAN_TEMPLATE,
+    },
+    Doc {
+        key: "controle",
+        label: "tpl_target_controle",
+        markers: MARKERS_CONTROLE,
+        default: DEFAULT_CONTROLE_TEMPLATE,
+    },
+    Doc {
+        key: "destruction",
+        label: "tpl_target_destruction",
+        markers: MARKERS_DESTRUCTION,
+        default: DEFAULT_DESTRUCTION_TEMPLATE,
+    },
+    Doc {
+        key: "appels",
+        label: "tpl_target_appels",
+        markers: MARKERS_APPELS,
+        default: DEFAULT_APPELS_TEMPLATE,
+    },
+    Doc {
+        key: "rdv",
+        label: "tpl_target_rdv",
+        markers: MARKERS_RDV,
+        default: DEFAULT_RDV_TEMPLATE,
+    },
+    Doc {
+        key: "guide",
+        label: "tpl_target_guide",
+        markers: MARKERS_GUIDE,
+        default: DEFAULT_GUIDE_TEMPLATE,
+    },
+    Doc {
+        key: "conciliation",
+        label: "tpl_target_conciliation",
+        markers: MARKERS_CONCILIATION,
+        default: DEFAULT_CONCILIATION_TEMPLATE,
+    },
+    Doc {
+        key: "preparation",
+        label: "tpl_target_preparation",
+        markers: MARKERS_PREPARATION,
+        default: DEFAULT_PREPARATION_TEMPLATE,
+    },
+    Doc {
+        key: "protocole",
+        label: "tpl_target_protocole",
+        markers: MARKERS_PROTOCOLE,
+        default: DEFAULT_PROTOCOLE_TEMPLATE,
+    },
+    Doc {
+        key: "semaine",
+        label: "tpl_target_semaine",
+        markers: MARKERS_SEMAINE,
+        default: DEFAULT_SEMAINE_TEMPLATE,
+    },
+    Doc {
+        key: "tables",
+        label: "tpl_target_tables",
+        markers: MARKERS_TABLES,
+        default: DEFAULT_TABLES_TEMPLATE,
+    },
+    Doc {
+        key: "ordonnancier",
+        label: "tpl_target_ordonnancier",
+        markers: MARKERS_ORDONNANCIER,
+        default: DEFAULT_ORDONNANCIER_TEMPLATE,
+    },
+    Doc {
+        key: "vaccination",
+        label: "tpl_target_vaccination",
+        markers: MARKERS_VACCINATION,
+        default: DEFAULT_VACCINATION_TEMPLATE,
+    },
+    Doc {
+        key: "facturation",
+        label: "tpl_target_facturation",
+        markers: MARKERS_FACTURATION,
+        default: DEFAULT_FACTURATION_TEMPLATE,
+    },
+    Doc {
+        key: "monographie",
+        label: "tpl_target_monographie",
+        markers: MARKERS_MONOGRAPHIE,
+        default: DEFAULT_MONOGRAPHIE_TEMPLATE,
+    },
+    Doc {
+        key: "bilan",
+        label: "tpl_target_bilan",
+        markers: MARKERS_BILAN,
+        default: DEFAULT_BILAN_TEMPLATE,
+    },
+    Doc {
+        key: "suivi",
+        label: "tpl_target_suivi",
+        markers: MARKERS_SUIVI,
+        default: DEFAULT_SUIVI_TEMPLATE,
+    },
+    Doc {
+        key: "codex",
+        label: "tpl_target_codex",
+        markers: MARKERS_CODEX,
+        default: DEFAULT_CODEX_TEMPLATE,
+    },
+    Doc {
+        key: "dispositif",
+        label: "tpl_target_dispositif",
+        markers: MARKERS_DISPOSITIF,
+        default: DEFAULT_DISPOSITIF_TEMPLATE,
+    },
+    Doc {
+        key: "dispositifs",
+        label: "tpl_target_dispositifs",
+        markers: MARKERS_DISPOSITIFS,
+        default: DEFAULT_DISPOSITIFS_TEMPLATE,
+    },
+    Doc {
+        key: "registre",
+        label: "tpl_target_registre",
+        markers: MARKERS_REGISTRE,
+        default: DEFAULT_REGISTRE_TEMPLATE,
+    },
+    Doc {
+        key: "caisse",
+        label: "tpl_target_caisse",
+        markers: MARKERS_CAISSE,
+        default: DEFAULT_CAISSE_TEMPLATE,
+    },
+];
+
+const MARKERS_FICHE: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{DATE}}",
+    "{{KIND}}",
+    "{{THEME}}",
+    "{{TREATMENTS}}",
+    "{{CHECKLIST}}",
+    "{{PHARMACIST}}",
+];
+
+const MARKERS_CR: &[&str] = &[
+    "{{POINTS}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_ADDRESS}}",
+    "{{PHARMACY_PHONE}}",
+    "{{PHYSICIAN}}",
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{KIND}}",
+    "{{DATE}}",
+    "{{THEME}}",
+    "{{TREATMENTS}}",
+    "{{PHARMACIST}}",
+];
+
+const MARKERS_CARNET: &[&str] = &["{{DAY}}", "{{ENTRIES}}"];
+
+const MARKERS_ORDONNANCE: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_ADDRESS}}",
+    "{{PHARMACY_PHONE}}",
+    "{{PHARMACY_AM}}",
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{INDICATION}}",
+    "{{DATE}}",
+    "{{LINES}}",
+    "{{ADVICE}}",
+    "{{MENTION_HEADER}}",
+    "{{MENTION_FOOTER}}",
+    "{{PHARMACIST}}",
+];
+
+const MARKERS_CAISSE: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{DATE}}",
+    "{{OPERATOR}}",
+    "{{NOTES_ROWS}}",
+    "{{COINS_ROWS}}",
+    "{{NOTES_TOTAL}}",
+    "{{COINS_TOTAL}}",
+    "{{CASH}}",
+    "{{OTHERS}}",
+    "{{OTHER_TOTAL}}",
+    "{{TAKINGS}}",
+    "{{EXPECTED}}",
+    "{{GAP}}",
+    "{{FLOAT}}",
+    "{{BANKED}}",
+    "{{REMARK}}",
+];
+
+/// Le document de cette clé.
+#[must_use]
+pub fn doc(key: &str) -> Option<&'static Doc> {
+    DOCS.iter().find(|d| d.key == key)
+}
+
+/// Substituer les marqueurs. Les valeurs sont déjà du Typst : un texte
+/// venu d'un dossier passe par [`typst_str`] avant d'arriver ici, de
+/// sorte qu'un nom contenant `#` ou `*` ne peut ni casser la
+/// compilation ni redessiner la page.
+#[must_use]
+pub fn fill(template: &str, values: &[(&str, String)]) -> String {
+    let mut out = template.to_owned();
+    for (marker, value) in values {
+        out = out.replace(marker, value);
+    }
+    out
+}
+
+/// Le modèle de ce document : celui du disque s'il existe, sinon celui
+/// qui est embarqué.
+///
+/// Une erreur de lecture n'est pas silencieuse — mais elle ne doit pas
+/// empêcher d'imprimer : un modèle illisible rend le modèle par
+/// défaut, et l'éditeur, lui, dit pourquoi.
+#[must_use]
+pub fn template_source(key: &str, path: &std::path::Path) -> String {
+    let embedded = doc(key).map_or("", |d| d.default);
+    if path.exists() {
+        std::fs::read_to_string(path).unwrap_or_else(|_| embedded.to_owned())
+    } else {
+        embedded.to_owned()
+    }
+}
+
+/// Compiler un modèle avec des valeurs d'exemple : la validation de
+/// l'éditeur.
+pub fn check_doc(key: &str, template: &str) -> Result<(), String> {
+    let filled = fill(template, &sample_values(key));
+    if let Some(rest) = filled.split_once("{{") {
+        let stray: String = rest.1.chars().take_while(|c| *c != '}').collect();
+        return Err(format!(
+            "marqueur inconnu « {{{{{stray}}}}} » : il s'imprimerait tel quel."
+        ));
+    }
+    let world = PdfWorld::new(filled);
+    typst::compile::<PagedDocument>(&world)
+        .output
+        .map(|_| ())
+        .map_err(|errs| format!("compilation Typst : {}", format_diagnostics(&errs)))
+}
+
+/// Compiler un modèle avec des valeurs d'exemple et l'ouvrir : le
+/// bouton « Aperçu » de l'éditeur.
+pub fn preview_doc(key: &str, template: &str) -> Result<PathBuf, String> {
+    check_doc(key, template)?;
+    compile_and_open(
+        fill(template, &sample_values(key)),
+        &format!("apercu_{key}"),
+    )
+}
+
+/// Les valeurs d'exemple d'un document, pour vérifier et prévisualiser
+/// un modèle sans dossier ouvert.
+///
+/// Elles ne sont pas vides : un modèle validé sur des chaînes vides
+/// compile toujours, et se casse à la première vraie impression.
+fn sample_values(key: &str) -> Vec<(&'static str, String)> {
+    let patient = sample_patient();
+    let pharmacy = sample_pharmacy();
+    let s = |v: &str| format!("#{}", typst_str(v));
+    match key {
+        "fiche" => vec![
+            ("{{PATIENT_NAME}}", s(&patient.full_name())),
+            (
+                "{{BIRTH_DATE}}",
+                s(&crate::db::format_french_date(&patient.birth_date)),
+            ),
+            ("{{DATE}}", s("24/08/2026")),
+            ("{{KIND}}", s(InterviewKind::Bpm.label())),
+            ("{{THEME}}", s("Observance")),
+            (
+                "{{TREATMENTS}}",
+                sample_treatments()
+                    .iter()
+                    .map(|d| format!("- #{}", typst_str(&d.name)))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            (
+                "{{CHECKLIST}}",
+                crate::entretien::checklist("Observance")
+                    .iter()
+                    .map(|p| {
+                        format!(
+                            "#block(below: 2mm)[#box(width: 3.4mm, height: 3.4mm, stroke: 0.7pt) #h(2mm) #{}]",
+                            typst_str(p)
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
+        ],
+        "cr" => vec![
+            (
+                "{{POINTS}}",
+                "- #\"Observance satisfaisante sur les trois derniers mois.\"".to_owned(),
+            ),
+            ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
+            ("{{PHARMACY_ADDRESS}}", s(&pharmacy.address)),
+            ("{{PHARMACY_PHONE}}", s(&pharmacy.phone)),
+            ("{{PHYSICIAN}}", s("Docteur Martin")),
+            ("{{PATIENT_NAME}}", s(&patient.full_name())),
+            (
+                "{{BIRTH_DATE}}",
+                s(&crate::db::format_french_date(&patient.birth_date)),
+            ),
+            ("{{KIND}}", s(InterviewKind::Bpm.label())),
+            ("{{DATE}}", s("24/08/2026")),
+            ("{{THEME}}", s("Observance")),
+            (
+                "{{TREATMENTS}}",
+                sample_treatments()
+                    .iter()
+                    .map(|d| format!("- #{}", typst_str(&d.name)))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+            ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
+        ],
+        // Le carnet : les mêmes transmissions d'exemple que le test du
+        // carnet, et par la même fonction de remplissage — deux
+        // constructions d'une même page finissent toujours par
+        // diverger, et c'est l'aperçu qui ment.
+        "carnet" => {
+            let filled = fill_trans_template(
+                "{{DAY}}\u{1}{{ENTRIES}}",
+                "Lundi 24/08/2026",
+                &sample_transmissions(),
+            );
+            let (day, entries) = filled.split_once('\u{1}').unwrap_or((&filled, ""));
+            vec![
+                ("{{DAY}}", day.to_owned()),
+                ("{{ENTRIES}}", entries.to_owned()),
+            ]
+        }
+        "plan" => plan_values(
+            &PlanData {
+                patient: &patient,
+                today: "24/08/2026",
+                lines: vec![(
+                    "Amlodipine 5 mg".to_owned(),
+                    "Tension artérielle".to_owned(),
+                    "1 comprimé le matin".to_owned(),
+                    "Ne pas arrêter sans avis.".to_owned(),
+                )],
+                mention: "Document remis à titre informatif.",
+                signature: &pharmacy.pharmacist,
+            },
+            &pharmacy,
+        ),
+        "appels" => call_list_values(
+            &[CallRow {
+                name: "Jean Dupont",
+                phone: "04 67 00 00 00",
+                tag: "2 alerte(s)",
+                reason: "Kaliémie à 5,4 sous IEC.",
+            }],
+            "24/08/2026",
+            &pharmacy,
+        ),
+        "rdv" => appointment_list_values(
+            &[Appointment {
+                id: 1,
+                patient_id: 1,
+                patient_name: patient.full_name(),
+                phone: "04 67 00 00 00".to_owned(),
+                kind: InterviewKind::Bpm,
+                date: "2026-09-14".to_owned(),
+                time: "09:30".to_owned(),
+            }],
+            "24/08/2026",
+        ),
+        "guide" => guide_values(&pharmacy),
+        "monographie" => monograph_values(&sample_treatments()[0], &[]),
+        "dispositifs" => dispositifs_values(
+            &[crate::db::Dispositif {
+                id: 1,
+                name: "Bas de compression classe 2".to_owned(),
+                ..Default::default()
+            }],
+            &pharmacy,
+        ),
+        "registre" => stup_register_values(
+            "Skenan LP 30 mg",
+            "gélule",
+            &[sample_stup_move()],
+            &[crate::ordonnancier::Balance {
+                stock: 24.0,
+                to_destroy: 0.0,
+            }],
+            &std::collections::HashSet::new(),
+            &pharmacy,
+            "2026-08-29",
+        ),
+        "bilan" => bilan_values(
+            &BilanData {
+                patient: &patient,
+                today: "24/08/2026",
+                treatments: vec![(
+                    "Eliquis 5 mg".to_owned(),
+                    "apixaban — anticoagulant oral direct".to_owned(),
+                    "1 comprimé matin et soir".to_owned(),
+                )],
+                interactions: Vec::new(),
+                review: Vec::new(),
+                biology: Vec::new(),
+                findings: Vec::new(),
+                watch: Vec::new(),
+                vaccines: vec!["Grippe saisonnière".to_owned()],
+                acts: Vec::new(),
+                signature: &pharmacy.pharmacist,
+            },
+            &pharmacy,
+        ),
+        "suivi" => selfcheck_values(
+            &crate::selfcheck::SHEETS[0],
+            Some(&patient.full_name()),
+            &pharmacy,
+            "24/08/2026",
+        ),
+        "codex" => codex_values(&[crate::db::Preparation {
+            id: 1,
+            name: "Pommade à l'oxyde de zinc".to_owned(),
+            form: "pommade".to_owned(),
+            formula: "Oxyde de zinc | 15 g\nVaseline | qsp 100 g".to_owned(),
+            yield_amount: "100 g".to_owned(),
+            ..Default::default()
+        }]),
+        "dispositif" => dispositif_values(
+            &crate::db::Dispositif {
+                id: 1,
+                name: "Bas de compression classe 2".to_owned(),
+                ..Default::default()
+            },
+            &pharmacy,
+        ),
+        "vaccination" => vaccination_carnet_values(
+            &patient,
+            &[crate::db::Vaccination {
+                id: 1,
+                label: "dTPolio".to_owned(),
+                dose: "rappel".to_owned(),
+                given_on: "2026-03-14".to_owned(),
+                lot: "K2341".to_owned(),
+                site: "deltoïde gauche".to_owned(),
+                operator: "CL".to_owned(),
+                ..Default::default()
+            }],
+            "Document remis à titre informatif.",
+        ),
+        "facturation" => billing_recap_values(&[], &[], "Août 2026", "24/08/2026"),
+        "ordonnancier" => ordonnancier_values(
+            &[sample_stup_move()],
+            &std::collections::HashMap::from([(1_i64, "Skenan LP 30 mg".to_owned())]),
+            &std::collections::HashSet::new(),
+            2026,
+            &pharmacy,
+            "2026-08-29",
+        ),
+        "tables" => conversion_tables_values(&TableEdits::new()),
+        "preparation" => preparation_values(
+            &crate::db::Preparation {
+                id: 1,
+                name: "Pommade à l'oxyde de zinc".to_owned(),
+                form: "pommade".to_owned(),
+                indication: "Érythème fessier du nourrisson.".to_owned(),
+                method: "Triturer l'oxyde de zinc dans une petite quantité d'excipient, puis compléter.".to_owned(),
+                conservation: "À l'abri de la lumière, 3 mois.".to_owned(),
+                caution: "Ne pas appliquer sur peau lésée suintante.".to_owned(),
+                sources: "Formulaire national".to_owned(),
+                ..Default::default()
+            },
+            "60 g",
+            &[(
+                "Oxyde de zinc".to_owned(),
+                "15 g".to_owned(),
+                "9 g".to_owned(),
+            )],
+            &pharmacy,
+            "CL",
+        ),
+        "protocole" => protocol_values(
+            "Rupture d'AOD",
+            "Anticoagulants oraux directs",
+            &[crate::db::ProtocolNode {
+                id: 1,
+                parent_id: None,
+                branch: crate::db::Branch::Root,
+                kind: crate::db::NodeKind::Question,
+                text: "Le patient a-t-il une ordonnance en cours ?".to_owned(),
+                position: 0,
+            }],
+        ),
+        "semaine" => week_plan_values(
+            &[
+                "2026-08-24".to_owned(),
+                "2026-08-25".to_owned(),
+                "2026-08-26".to_owned(),
+                "2026-08-27".to_owned(),
+                "2026-08-28".to_owned(),
+                "2026-08-29".to_owned(),
+                "2026-08-30".to_owned(),
+            ],
+            &[Appointment {
+                id: 1,
+                patient_id: 1,
+                patient_name: patient.full_name(),
+                phone: "04 67 00 00 00".to_owned(),
+                kind: InterviewKind::Bpm,
+                date: "2026-08-25".to_owned(),
+                time: "09:30".to_owned(),
+            }],
+            &[],
+            "2026-08-24",
+        ),
+        "conciliation" => conciliation_values(
+            &ConciliationData {
+                patient: &patient,
+                today: "24/08/2026",
+                summary: "3 divergences sur 7 lignes.",
+                rows: vec![(
+                    "Arrêté".to_owned(),
+                    "Furosémide 40 mg".to_owned(),
+                    "1 le matin".to_owned(),
+                    String::new(),
+                    "Absent de l'ordonnance de sortie.".to_owned(),
+                )],
+                physician: "Docteur Martin",
+                mention: "Document remis à titre informatif.",
+                signature: &pharmacy.pharmacist,
+            },
+            &pharmacy,
+        ),
+        "controle" => stock_check_values(
+            &[crate::ordonnancier::ToCheck {
+                id: 1,
+                label: "Skenan LP 30 mg".to_owned(),
+                unit: "gélule".to_owned(),
+                stock: 24.0,
+                days: Some(63),
+                why: crate::ordonnancier::Why::Uncounted,
+            }],
+            &pharmacy,
+            "2026-08-29",
+        ),
+        "destruction" => destruction_list_values(
+            &[crate::ordonnancier::Awaiting {
+                id: 1,
+                label: "Skenan LP 30 mg".to_owned(),
+                unit: "gélule".to_owned(),
+                quantity: 14.0,
+                since: "2026-07-02".to_owned(),
+                days: Some(68),
+            }],
+            &pharmacy,
+            "2026-09-08",
+        ),
+        "caisse" => {
+            let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
+            q[3] = 4;
+            q[4] = 7;
+            q[7] = 9;
+            q[9] = 5;
+            let others = [crate::caisse::Other {
+                label: "Carte".to_owned(),
+                cents: 45_075,
+            }];
+            caisse_values(
+                &pharmacy.name,
+                "24/08/2026",
+                "Claire Leroy",
+                &q,
+                &others,
+                &crate::caisse::tally(&q, 15_000, &others, Some(66_000)),
+                "Un billet de 20 € retrouvé sous le tiroir en fin de comptage.",
+            )
+        }
+        // L'ordonnance : son aperçu montre les deux mentions remplies,
+        // pour qu'on voie où les siennes tomberaient.
+        _ => vec![
+            ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
+            ("{{PHARMACY_ADDRESS}}", s(&pharmacy.address)),
+            ("{{PHARMACY_PHONE}}", s(&pharmacy.phone)),
+            ("{{PHARMACY_AM}}", s(&pharmacy.am_number)),
+            ("{{PATIENT_NAME}}", s(&patient.full_name())),
+            (
+                "{{BIRTH_DATE}}",
+                s(&crate::db::format_french_date(&patient.birth_date)),
+            ),
+            (
+                "{{INDICATION}}",
+                s("Angine à streptocoque du groupe A — TROD positif"),
+            ),
+            ("{{DATE}}", s("26/08/2026")),
+            (
+                "{{LINES}}",
+                "+ #\"Amoxicilline 1 g\" \\\n  #\"1 g deux fois par jour pendant 6 jours\""
+                    .to_owned(),
+            ),
+            (
+                "{{ADVICE}}",
+                "- #\"Boire fréquemment, par petites quantités.\"".to_owned(),
+            ),
+            (
+                "{{MENTION_HEADER}}",
+                s("Mention d'en-tête (facultative, [disclaimers] du config.toml)"),
+            ),
+            ("{{MENTION_FOOTER}}", s("Mention de pied (facultative)")),
+            ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
+        ],
+    }
+}
+
+// ===================================================================
+// Le comptage de caisse
+// ===================================================================
+
+/// La feuille de comptage : ce qu'on a trouvé, ce qu'on laisse, et
+/// l'écart — signé et **jamais résorbé**.
+const DEFAULT_CAISSE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.6cm)
+#set text(size: 10.5pt, lang: "fr")
+
+#align(center)[#text(16pt, weight: "bold")[Comptage de caisse]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{DATE}} — {{OPERATOR}}]]
+#v(5mm)
+
+#grid(columns: (1fr, 1fr), gutter: 8mm,
+  [
+    #text(weight: "bold")[Billets]
+    #v(1.5mm)
+    #table(columns: (1fr, auto, auto), inset: 4pt, stroke: 0.4pt,
+      [*Coupure*], [*Nombre*], [*Montant*],
+      {{NOTES_ROWS}}
+      [*Total billets*], [], [*{{NOTES_TOTAL}} €*],
+    )
+  ],
+  [
+    #text(weight: "bold")[Pièces]
+    #v(1.5mm)
+    #table(columns: (1fr, auto, auto), inset: 4pt, stroke: 0.4pt,
+      [*Coupure*], [*Nombre*], [*Montant*],
+      {{COINS_ROWS}}
+      [*Total pièces*], [], [*{{COINS_TOTAL}} €*],
+    )
+  ],
+)
+
+#v(5mm)
+#table(columns: (1fr, auto), inset: 5pt, stroke: 0.4pt,
+  [Espèces comptées], [{{CASH}} €],
+  {{OTHERS}}
+  [Autres encaissements], [{{OTHER_TOTAL}} €],
+  [*Recette encaissée*], [*{{TAKINGS}} €*],
+  [Recette attendue], [{{EXPECTED}}],
+  [*Écart*], [*{{GAP}}*],
+)
+
+#v(4mm)
+#table(columns: (1fr, auto), inset: 5pt, stroke: 0.4pt,
+  [Fond de caisse laissé pour demain], [{{FLOAT}} €],
+  [*Sorti du tiroir*], [*{{BANKED}} €*],
+)
+
+{{REMARK}}
+
+#v(10mm)
+#grid(columns: (1fr, 1fr), gutter: 10mm,
+  [Compté par : #v(9mm) #line(length: 100%, stroke: 0.5pt)],
+  [Vérifié par : #v(9mm) #line(length: 100%, stroke: 0.5pt)],
+)
+
+#v(4mm)
+#text(8.5pt, style: "italic")[Un écart se note et s'explique ; il ne se corrige pas en changeant le comptage.]
+"##;
+
+/// Les valeurs de la feuille de caisse.
+///
+/// Extraite pour que l'aperçu de l'éditeur et l'impression réelle
+/// passent par la **même** fonction : deux constructions d'une même
+/// page finissent toujours par diverger, et c'est l'aperçu qui ment.
+fn caisse_values(
+    pharmacy: &str,
+    date_french: &str,
+    operator: &str,
+    quantities: &crate::caisse::Quantities,
+    others: &[crate::caisse::Other],
+    tally: &crate::caisse::Tally,
+    remark: &str,
+) -> Vec<(&'static str, String)> {
+    use crate::caisse::{euros, DENOMINATIONS};
+    // Une coupure qu'on n'a pas trouvée reste sur la feuille, à zéro :
+    // la ligne vide est ce qui prouve qu'on l'a regardée.
+    let rows = |note: bool| -> String {
+        DENOMINATIONS
+            .iter()
+            .zip(quantities.iter())
+            .filter(|(d, _)| d.note == note)
+            .map(|(d, q)| {
+                let q = (*q).max(0);
+                format!(
+                    "[#{}], [{q}], [{} €],\n      ",
+                    typst_str(d.label),
+                    euros(d.cents * q)
+                )
+            })
+            .collect()
+    };
+    let others_rows: String = others
+        .iter()
+        .map(|o| format!("[#{}], [{} €],\n  ", typst_str(&o.label), euros(o.cents)))
+        .collect();
+    // Sans attendu, la ligne reste vide et l'écart aussi : la règle du
+    // module, portée jusqu'au papier.
+    let expected = tally
+        .expected
+        .map_or_else(|| "—".to_owned(), |e| format!("{} €", euros(e)));
+    let gap = tally.gap.map_or_else(
+        || "—".to_owned(),
+        |g| {
+            let sign = if g > 0 { "+" } else { "" };
+            format!("{sign}{} €", euros(g))
+        },
+    );
+    let remark = if remark.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n#v(4mm)\n#block(width: 100%, stroke: 0.4pt, inset: 6pt)[#text(weight: \"bold\")[Remarque] \\\n#{}]\n",
+            typst_str(remark.trim())
+        )
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", format!("#{}", typst_str(pharmacy))),
+        ("{{DATE}}", format!("#{}", typst_str(date_french))),
+        ("{{OPERATOR}}", format!("#{}", typst_str(operator))),
+        ("{{NOTES_ROWS}}", rows(true)),
+        ("{{COINS_ROWS}}", rows(false)),
+        (
+            "{{NOTES_TOTAL}}",
+            euros(crate::caisse::notes_total(quantities)),
+        ),
+        (
+            "{{COINS_TOTAL}}",
+            euros(crate::caisse::coins_total(quantities)),
+        ),
+        ("{{CASH}}", euros(tally.cash)),
+        ("{{OTHERS}}", others_rows),
+        ("{{OTHER_TOTAL}}", euros(tally.other)),
+        ("{{TAKINGS}}", euros(tally.takings)),
+        ("{{EXPECTED}}", expected),
+        ("{{GAP}}", gap),
+        ("{{FLOAT}}", euros(tally.float_kept)),
+        ("{{BANKED}}", euros(tally.banked)),
+        ("{{REMARK}}", remark),
+    ]
+}
+
+/// Imprimer le comptage de caisse.
+#[allow(clippy::too_many_arguments)]
+pub fn open_caisse(
+    pharmacy: &PharmacyConfig,
+    date_french: &str,
+    operator: &str,
+    quantities: &crate::caisse::Quantities,
+    others: &[crate::caisse::Other],
+    tally: &crate::caisse::Tally,
+    remark: &str,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let template = template_source("caisse", template_path);
+    let values = caisse_values(
+        &pharmacy.name,
+        date_french,
+        operator,
+        quantities,
+        others,
+        tally,
+        remark,
+    );
+    compile_and_open(fill(&template, &values), "caisse")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Tous les marqueurs `{{…}}` écrits dans un texte, dans l'ordre.
+    fn markers_in(text: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = text;
+        while let Some(open) = rest.find("{{") {
+            rest = &rest[open..];
+            let Some(close) = rest.find("}}") else { break };
+            out.push(rest[..close + 2].to_owned());
+            rest = &rest[close + 2..];
+        }
+        out.dedup();
+        out
+    }
+
+    /// La règle du registre : ce qu'un document déclare accepter et ce
+    /// que son modèle par défaut écrit sont **la même liste**.
+    ///
+    /// Un marqueur déclaré mais absent du modèle est une promesse que
+    /// rien ne tient ; un marqueur du modèle qu'on a oublié de
+    /// déclarer est un marqueur que l'éditeur ne montre pas, donc que
+    /// personne n'utilisera — et que la première réécriture du modèle
+    /// fera disparaître sans que rien ne le dise.
+    #[test]
+    fn every_document_declares_exactly_the_markers_its_template_writes() {
+        for d in DOCS {
+            let mut declared: Vec<String> = d.markers.iter().map(|m| (*m).to_owned()).collect();
+            let mut written = markers_in(d.default);
+            declared.sort();
+            written.sort();
+            written.dedup();
+            assert_eq!(
+                declared, written,
+                "modèle « {} » : les marqueurs déclarés et ceux du modèle diffèrent",
+                d.key
+            );
+            assert!(
+                !d.markers.is_empty(),
+                "un document sans marqueur n'est pas un modèle, c'est une page fixe ({})",
+                d.key
+            );
+        }
+    }
+
+    /// Les clés : uniques, en ASCII minuscule (elles nomment un
+    /// fichier), et retrouvables.
+    #[test]
+    fn the_document_keys_name_a_file_and_are_unique() {
+        let mut keys: Vec<&str> = DOCS.iter().map(|d| d.key).collect();
+        let n = keys.len();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), n, "deux documents partagent une clé");
+        for d in DOCS {
+            assert!(
+                !d.key.is_empty() && d.key.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "« {} » ne peut pas nommer un fichier",
+                d.key
+            );
+            // Le nom affiché est une **clé de chaîne**, et elle doit
+            // exister : un libellé écrit en dur ici serait le seul
+            // texte de l'interface que l'officine ne pourrait pas
+            // remplacer.
+            assert!(
+                crate::strings::tr(d.label) != d.label,
+                "« {} » : {} n'est pas dans assets/strings.fr.toml",
+                d.key,
+                d.label
+            );
+            assert_eq!(doc(d.key).map(|f| f.key), Some(d.key));
+        }
+        assert!(doc("inexistant").is_none());
+    }
+
+    /// Chaque modèle par défaut compile avec ses valeurs d'exemple, et
+    /// il ne reste pas un seul `{{` dedans — un marqueur non substitué
+    /// s'imprime en toutes lettres au milieu de la page.
+    #[test]
+    fn every_default_template_compiles_with_its_sample_values() {
+        for d in DOCS {
+            let filled = fill(d.default, &sample_values(d.key));
+            assert!(
+                !filled.contains("{{"),
+                "modèle « {} » : un marqueur n'a pas été remplacé",
+                d.key
+            );
+            check_doc(d.key, d.default).unwrap_or_else(|e| panic!("modèle « {} » : {e}", d.key));
+        }
+    }
+
+    /// **La règle qui empêche le registre de retomber en arrière** :
+    /// toute fonction `open_*` de ce module prend un chemin de modèle.
+    ///
+    /// Vingt-deux documents étaient écrits en Rust, mise en page et
+    /// données mélangées dans le même `format!`, et une officine qui
+    /// voulait sa marge ou son en-tête sur la liste d'appel n'avait
+    /// rien à ouvrir. Le prochain document imprimable ajouté sans
+    /// modèle recommencerait cette histoire en petit : ce test lit le
+    /// texte du module et le refuse, comme
+    /// `no_font_size_is_written_in_pixels` refuse le prochain pixel.
+    ///
+    /// Une seule exemption, et elle est nommée : le bulletin
+    /// d'adhésion n'est pas un Typst mais le PDF de l'Assurance
+    /// Maladie, dont on ne remplit que les champs de formulaire (voir
+    /// `bulletin.rs`). Lui donner un « modèle » serait le redessiner.
+    #[test]
+    fn every_printable_document_takes_a_template() {
+        const EXEMPT: &[&str] = &["open_bulletin"];
+        let source = include_str!("pdf.rs");
+        let mut rest = source;
+        let mut checked = 0;
+        while let Some(at) = rest.find("\npub fn open_") {
+            rest = &rest[at + 1..];
+            let name: String = rest["pub fn ".len()..]
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let Some(end) = rest.find(") -> Result") else {
+                break;
+            };
+            let signature = &rest[..end];
+            if EXEMPT.contains(&name.as_str()) {
+                continue;
+            }
+            checked += 1;
+            assert!(
+                signature.contains("template_path: &std::path::Path"),
+                "{name} imprime sans modèle : ajoutez son entrée à DOCS \
+                 et un `template_path` à sa signature"
+            );
+        }
+        // Le compte est là pour que le test ne passe pas en n'ayant
+        // rien lu — un analyseur qui ne trouve plus rien est vert.
+        assert!(
+            checked >= 25,
+            "seulement {checked} fonctions lues : l'analyse a décroché"
+        );
+        // Et chaque clé citée par une de ces signatures est bien au
+        // registre : `template_source(\"typo\", …)` rendrait
+        // silencieusement une page vide.
+        let mut rest = source;
+        while let Some(at) = rest.find("template_source(\"") {
+            rest = &rest[at + "template_source(\"".len()..];
+            let key: String = rest.chars().take_while(|c| *c != '"').collect();
+            assert!(
+                doc(&key).is_some(),
+                "« {key} » n'est pas au registre des documents"
+            );
+        }
+    }
+
+    /// La feuille de caisse : ce qui a été compté, et l'écart tel
+    /// qu'il est — signé, jamais résorbé.
+    ///
+    /// Et la règle du module portée jusqu'au papier : **sans recette
+    /// attendue, la ligne de l'écart est vide**, pas remplie de tout
+    /// le contenu du tiroir.
+    #[test]
+    fn the_caisse_sheet_prints_the_gap_it_found() {
+        use crate::caisse::{tally, Other, DENOMINATIONS};
+        let mut q = [0_i64; DENOMINATIONS.len()];
+        q[3] = 4; // 4 × 50 €
+        q[4] = 7; // 7 × 20 €
+        q[9] = 5; // 5 × 50 c
+        let others = [Other {
+            // Un libellé hostile est échappé comme partout ailleurs.
+            label: "Carte #eval \"x\"".to_owned(),
+            cents: 45_075,
+        }];
+        let t = tally(&q, 15_000, &others, Some(80_000));
+        let src = fill(
+            DEFAULT_CAISSE_TEMPLATE,
+            &caisse_values(
+                "Pharmacie du Centre",
+                "24/08/2026",
+                "Claire Leroy",
+                &q,
+                &others,
+                &t,
+                "Un billet de 20 € retrouvé sous le tiroir.",
+            ),
+        );
+        assert!(src.contains("Comptage de caisse"));
+        // 340,00 + 2,50 = 342,50 en espèces ; 793,25 encaissés ; il
+        // manque 6,75.
+        assert!(src.contains("342,50"), "les espèces comptées");
+        assert!(src.contains("793,25"), "la recette encaissée");
+        assert!(src.contains("-6,75"), "l'écart, avec son signe : {src}");
+        // Les coupures absentes restent sur la feuille, à zéro : la
+        // ligne vide prouve qu'on les a regardées.
+        assert!(src.contains("500 €") && src.contains("1 c"));
+        assert!(src.contains("Un billet de 20 €"), "la remarque");
+        assert!(!src.contains("#eval \"x\"]"), "rien n'est du code Typst");
+        let world = PdfWorld::new(src);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la feuille de caisse doit compiler");
+        let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+            .expect("l'export PDF doit réussir");
+        assert!(pdf.starts_with(b"%PDF-"));
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let _ = std::fs::write(std::path::Path::new(&dir).join("caisse_exemple.pdf"), &pdf);
+        }
+
+        // Sans attendu : pas d'écart, et pas de cadre de remarque non
+        // plus — un tiret plutôt qu'un chiffre inventé. On vérifie la
+        // **valeur** du marqueur et non la page rendue : le total des
+        // espèces y figure de toute façon, sous son propre libellé.
+        let values = caisse_values(
+            "Pharmacie du Centre",
+            "24/08/2026",
+            "Claire Leroy",
+            &q,
+            &[],
+            &tally(&q, 0, &[], None),
+            "   ",
+        );
+        let of = |m: &str| {
+            values
+                .iter()
+                .find(|(k, _)| *k == m)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
+        assert_eq!(of("{{GAP}}"), "—", "l'écart ne vaut pas tout le tiroir");
+        assert_eq!(of("{{EXPECTED}}"), "—");
+        assert_eq!(of("{{CASH}}"), "342,50");
+        assert_eq!(
+            of("{{REMARK}}"),
+            "",
+            "une remarque d'espaces n'en est pas une"
+        );
+        let world = PdfWorld::new(fill(DEFAULT_CAISSE_TEMPLATE, &values));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// Et un marqueur inventé est refusé par son nom, plutôt que
+    /// silencieusement imprimé.
+    #[test]
+    fn an_unknown_marker_is_named_rather_than_printed() {
+        let err = check_doc("carnet", "#set page(paper: \"a4\")\n{{JOURNEE}}\n")
+            .expect_err("un marqueur inconnu doit être refusé");
+        assert!(
+            err.contains("JOURNEE"),
+            "l'erreur doit nommer le marqueur : {err}"
+        );
+    }
+
+    /// Un modèle absent du disque rend celui qui est embarqué ; un
+    /// modèle écrit par l'officine le remplace.
+    #[test]
+    fn the_officine_template_wins_over_the_embedded_one() {
+        let dir = std::env::temp_dir().join(format!("bpm_tpl_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("caisse.typ");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(template_source("caisse", &path), DEFAULT_CAISSE_TEMPLATE);
+        std::fs::write(&path, "#set page(paper: \"a5\")\n{{DATE}}\n").unwrap();
+        assert!(template_source("caisse", &path).contains("a5"));
+        let _ = std::fs::remove_file(&path);
+    }
 
     #[test]
     fn billing_recap_compiles_and_totals_the_acts() {
@@ -3004,7 +4427,10 @@ mod tests {
             period_word: "semaine".to_owned(),
             amount: 48.0,
         }];
-        let src = billing_recap_source(&lines, &rentals, "Août 2026", "24/08/2026");
+        let src = fill(
+            DEFAULT_FACTURATION_TEMPLATE,
+            &billing_recap_values(&lines, &rentals, "Août 2026", "24/08/2026"),
+        );
         assert!(!src.contains("#eval \"Bernard\"]"));
         // The TPH code sits beside the act code, and the total adds up.
         assert!(src.contains("BMI + TPH"));
@@ -3013,7 +4439,10 @@ mod tests {
         assert!(src.contains("48,00 EUR"));
         assert!(src.contains("en cours"));
         // No rental, no second table: an empty heading reads as a bug.
-        let bare = billing_recap_source(&lines, &[], "Août 2026", "24/08/2026");
+        let bare = fill(
+            DEFAULT_FACTURATION_TEMPLATE,
+            &billing_recap_values(&lines, &[], "Août 2026", "24/08/2026"),
+        );
         assert!(!bare.contains("Locations de matériel"));
         let world = PdfWorld::new(src);
         let document: PagedDocument = typst::compile(&world)
@@ -3063,13 +4492,16 @@ mod tests {
         labels.insert(7_i64, "Skenan LP 30 mg".to_owned());
         let mut cancelled = std::collections::HashSet::new();
         cancelled.insert(2_i64);
-        let src = ordonnancier_source(
-            &rows,
-            &labels,
-            &cancelled,
-            2026,
-            &PharmacyConfig::default(),
-            "2026-08-30",
+        let src = fill(
+            DEFAULT_ORDONNANCIER_TEMPLATE,
+            &ordonnancier_values(
+                &rows,
+                &labels,
+                &cancelled,
+                2026,
+                &PharmacyConfig::default(),
+                "2026-08-30",
+            ),
         );
         assert!(!src.contains("#eval \"Martin\"]"));
         assert!(src.contains("2026-0001") && src.contains("2026-0002"));
@@ -3083,25 +4515,31 @@ mod tests {
         assert_eq!(src.matches("annulée").count(), 2, "la cellule, et le pied");
         // Un produit que la table des libellés ne connaît pas n'imprime
         // pas un identifiant nu.
-        let orphan = ordonnancier_source(
-            &[line(3, 3, 99, 7.0, 55)],
-            &labels,
-            &std::collections::HashSet::new(),
-            2026,
-            &PharmacyConfig::default(),
-            "2026-08-30",
+        let orphan = fill(
+            DEFAULT_ORDONNANCIER_TEMPLATE,
+            &ordonnancier_values(
+                &[line(3, 3, 99, 7.0, 55)],
+                &labels,
+                &std::collections::HashSet::new(),
+                2026,
+                &PharmacyConfig::default(),
+                "2026-08-30",
+            ),
         );
         assert!(!orphan.contains("#strike["), "rien n'y est annulé");
         assert!(orphan.contains("—"));
         // Une année sans délivrance imprime un tableau vide plutôt que
         // rien : c'est aussi une réponse.
-        let empty = ordonnancier_source(
-            &[],
-            &labels,
-            &std::collections::HashSet::new(),
-            2025,
-            &PharmacyConfig::default(),
-            "2026-08-30",
+        let empty = fill(
+            DEFAULT_ORDONNANCIER_TEMPLATE,
+            &ordonnancier_values(
+                &[],
+                &labels,
+                &std::collections::HashSet::new(),
+                2025,
+                &PharmacyConfig::default(),
+                "2026-08-30",
+            ),
         );
         let world = PdfWorld::new(empty);
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
@@ -3175,14 +4613,17 @@ mod tests {
 
         let mut cancelled = std::collections::HashSet::new();
         cancelled.insert(2_i64);
-        let src = stup_register_source(
-            "Skenan LP 30 mg",
-            "gélule",
-            &rows,
-            &running,
-            &cancelled,
-            &PharmacyConfig::default(),
-            "2026-08-30",
+        let src = fill(
+            DEFAULT_REGISTRE_TEMPLATE,
+            &stup_register_values(
+                "Skenan LP 30 mg",
+                "gélule",
+                &rows,
+                &running,
+                &cancelled,
+                &PharmacyConfig::default(),
+                "2026-08-30",
+            ),
         );
         assert!(src.contains("Registre des stupéfiants"));
         assert!(src.contains("Skenan LP 30 mg"));
@@ -3196,14 +4637,17 @@ mod tests {
 
         // Un registre vide compile aussi : un produit suivi qu'on n'a
         // pas encore mouvementé est une page blanche, pas une erreur.
-        let empty = stup_register_source(
-            "Skenan LP 30 mg",
-            "",
-            &[],
-            &[],
-            &std::collections::HashSet::new(),
-            &PharmacyConfig::default(),
-            "2026-08-30",
+        let empty = fill(
+            DEFAULT_REGISTRE_TEMPLATE,
+            &stup_register_values(
+                "Skenan LP 30 mg",
+                "",
+                &[],
+                &[],
+                &std::collections::HashSet::new(),
+                &PharmacyConfig::default(),
+                "2026-08-30",
+            ),
         );
         let world = PdfWorld::new(empty);
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
@@ -3257,7 +4701,10 @@ mod tests {
             repeat_days: 0,
             source_id: 1,
         }];
-        let src = week_plan_source(&week, &rdvs, &events, "2026-08-25");
+        let src = fill(
+            DEFAULT_SEMAINE_TEMPLATE,
+            &week_plan_values(&week, &rdvs, &events, "2026-08-25"),
+        );
         // The hostile name is escaped, and the timed rendez-vous leads.
         assert!(!src.contains("#eval \"Bernard\"]"));
         assert!(src.find("09:30").unwrap() < src.find("Paul").unwrap());
@@ -3312,7 +4759,10 @@ mod tests {
             ),
             node(4, Some(3), Branch::Yes, NodeKind::Action, "Délivrer", 3),
         ];
-        let source = protocol_source("AOD indisponible", "AOD", &nodes);
+        let source = fill(
+            DEFAULT_PROTOCOLE_TEMPLATE,
+            &protocol_values("AOD indisponible", "AOD", &nodes),
+        );
         // The "yes" branch is written before the "no" one, and deeper
         // steps are indented further.
         let yes = source.find("Appeler le prescripteur").unwrap();
@@ -3338,7 +4788,7 @@ mod tests {
     fn carnet_template_compiles_with_operator_colours() {
         // The default template must compile, colour each operator, and
         // survive a page with no entry at all.
-        check_trans_template(DEFAULT_TRANS_TEMPLATE).expect("le carnet par défaut doit compiler");
+        check_doc("carnet", DEFAULT_TRANS_TEMPLATE).expect("le carnet par défaut doit compiler");
         let empty = fill_trans_template(DEFAULT_TRANS_TEMPLATE, "Lundi 24/08/2026", &[]);
         let world = PdfWorld::new(empty);
         let document: PagedDocument = typst::compile(&world)
@@ -3394,7 +4844,7 @@ mod tests {
             missed_dose: "Dans les 6 heures, sinon sauter la prise.".to_owned(),
             red_flags: "Selles noires, traumatisme crânien.".to_owned(),
         };
-        let source = monograph_source(&d, &[]);
+        let source = fill(DEFAULT_MONOGRAPHIE_TEMPLATE, &monograph_values(&d, &[]));
         // Hostile text is escaped, never interpreted as Typst markup.
         assert!(!source.contains("#eval \"X\"]"));
         let world = PdfWorld::new(source);
@@ -3420,7 +4870,10 @@ mod tests {
         d.monitoring.clear();
         d.iup.clear();
         d.sources.clear();
-        let world = PdfWorld::new(monograph_source(&d, &[]));
+        let world = PdfWorld::new(fill(
+            DEFAULT_MONOGRAPHIE_TEMPLATE,
+            &monograph_values(&d, &[]),
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -3469,8 +4922,8 @@ mod tests {
 
     #[test]
     fn template_check_accepts_default_and_reports_errors() {
-        assert!(check_template(DEFAULT_TEMPLATE).is_ok());
-        let err = check_template("#broken(").unwrap_err();
+        assert!(check_doc("fiche", DEFAULT_TEMPLATE).is_ok());
+        let err = check_doc("fiche", "#broken(").unwrap_err();
         assert!(err.contains("compilation Typst"));
     }
 
@@ -3482,7 +4935,7 @@ mod tests {
             (crate::tables::TABLES[0].short.to_owned(), 0, 1),
             "20 mg (protocole interne)".to_owned(),
         );
-        let source = conversion_tables_source(&edits);
+        let source = fill(DEFAULT_TABLES_TEMPLATE, &conversion_tables_values(&edits));
         assert!(source.contains("protocole interne"));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
@@ -3498,8 +4951,8 @@ mod tests {
 
     #[test]
     fn cr_letter_compiles_with_treatments_and_hostile_names() {
-        assert!(check_cr_template(DEFAULT_CR_TEMPLATE).is_ok());
-        assert!(check_cr_template("#broken(").is_err());
+        assert!(check_doc("cr", DEFAULT_CR_TEMPLATE).is_ok());
+        assert!(check_doc("cr", "#broken(").is_err());
         // Hostile patient name through the real fill path.
         let mut patient = sample_patient();
         patient.last_name = "#eval \"X\" *gras*".to_owned();
@@ -3559,7 +5012,10 @@ mod tests {
                 date: "2026-09-03".to_owned(),
             },
         ];
-        let source = appointment_list_source(&rdvs, "23/08/2026");
+        let source = fill(
+            DEFAULT_RDV_TEMPLATE,
+            &appointment_list_values(&rdvs, "23/08/2026"),
+        );
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
             .output
@@ -3622,43 +5078,6 @@ mod tests {
         }
     }
 
-    /// Every marker the editor advertises must actually be filled, and
-    /// every marker the default template uses must be advertised. A
-    /// marker that is only half of that prints itself on the page.
-    #[test]
-    fn the_editor_advertises_the_markers_the_templates_fill() {
-        let cases: [(&str, &str); 4] = [
-            ("fiche", default_template()),
-            ("cr", default_cr_template()),
-            ("carnet", default_trans_template()),
-            ("ordonnance", default_ordonnance_template()),
-        ];
-        for (key, template) in cases {
-            let listed = template_markers(key);
-            for marker in listed {
-                assert!(
-                    template.contains(marker),
-                    "{key} : {marker} annoncé mais absent du modèle par défaut"
-                );
-            }
-            // And the other way round: every {{MARKER}} of the default
-            // template is listed.
-            let mut rest = template;
-            while let Some(at) = rest.find("{{") {
-                rest = &rest[at..];
-                let Some(end) = rest.find("}}") else { break };
-                let marker = &rest[..end + 2];
-                assert!(
-                    listed.contains(&marker),
-                    "{key} : {marker} utilisé mais non annoncé"
-                );
-                rest = &rest[end + 2..];
-            }
-        }
-    }
-
-    /// The handout must compile and say what it is about — an empty
-    /// section would be a paragraph nobody wrote.
     #[test]
     fn the_guide_prints_on_one_sheet() {
         for (title, body) in GUIDE_SECTIONS {
@@ -3668,7 +5087,7 @@ mod tests {
                 "section « {title} » trop courte pour dire quoi que ce soit"
             );
         }
-        let source = guide_source(&sample_pharmacy());
+        let source = fill(DEFAULT_GUIDE_TEMPLATE, &guide_values(&sample_pharmacy()));
         assert!(source.contains("mode d'emploi"));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
@@ -3712,7 +5131,10 @@ mod tests {
                 days: None,
             },
         ];
-        let source = stock_check_source(&rows, &sample_pharmacy(), "2026-08-29");
+        let source = fill(
+            DEFAULT_CONTROLE_TEMPLATE,
+            &stock_check_values(&rows, &sample_pharmacy(), "2026-08-29"),
+        );
         assert!(source.contains("Contrôle des stupéfiants"));
         assert!(source.contains("29/08/2026"), "la date se lit en français");
         // Le solde du registre est imprimé en face : recompter tout un
@@ -3741,7 +5163,10 @@ mod tests {
         }
         // Rien à compter compile aussi : le bouton n'apparaît que
         // lorsqu'il y a quelque chose, mais la fonction n'en dépend pas.
-        let world = PdfWorld::new(stock_check_source(&[], &sample_pharmacy(), "2026-08-29"));
+        let world = PdfWorld::new(fill(
+            DEFAULT_CONTROLE_TEMPLATE,
+            &stock_check_values(&[], &sample_pharmacy(), "2026-08-29"),
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -3755,11 +5180,14 @@ mod tests {
     #[test]
     fn every_self_monitoring_sheet_carries_its_protocol_to_paper() {
         for sheet in crate::selfcheck::SHEETS {
-            let source = selfcheck_source(
-                sheet,
-                Some("Jean #eval \"x\" Dupont"),
-                &sample_pharmacy(),
-                "09/09/2026",
+            let source = fill(
+                DEFAULT_SUIVI_TEMPLATE,
+                &selfcheck_values(
+                    sheet,
+                    Some("Jean #eval \"x\" Dupont"),
+                    &sample_pharmacy(),
+                    "09/09/2026",
+                ),
             );
             assert!(source.contains(sheet.title), "{} : sans titre", sheet.key);
             for step in sheet.protocol {
@@ -3803,21 +5231,27 @@ mod tests {
         // Sans dossier ouvert, la feuille porte une ligne à remplir et
         // non un nom vide entre deux tirets : c'est le cas courant, on
         // en donne une au comptoir sans ouvrir de dossier.
-        let blank = selfcheck_source(
-            &crate::selfcheck::SHEETS[0],
-            None,
-            &sample_pharmacy(),
-            "09/09/2026",
+        let blank = fill(
+            DEFAULT_SUIVI_TEMPLATE,
+            &selfcheck_values(
+                &crate::selfcheck::SHEETS[0],
+                None,
+                &sample_pharmacy(),
+                "09/09/2026",
+            ),
         );
         assert!(blank.contains("Nom :"), "{blank}");
         let world = PdfWorld::new(blank);
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
         // Un nom d'espaces est un nom absent, pas un nom.
-        let spaces = selfcheck_source(
-            &crate::selfcheck::SHEETS[0],
-            Some("   "),
-            &sample_pharmacy(),
-            "09/09/2026",
+        let spaces = fill(
+            DEFAULT_SUIVI_TEMPLATE,
+            &selfcheck_values(
+                &crate::selfcheck::SHEETS[0],
+                Some("   "),
+                &sample_pharmacy(),
+                "09/09/2026",
+            ),
         );
         assert!(spaces.contains("Nom :"));
     }
@@ -3855,7 +5289,10 @@ mod tests {
                 days: None,
             },
         ];
-        let source = destruction_list_source(&rows, &sample_pharmacy(), "2026-09-08");
+        let source = fill(
+            DEFAULT_DESTRUCTION_TEMPLATE,
+            &destruction_list_values(&rows, &sample_pharmacy(), "2026-09-08"),
+        );
         assert!(source.contains("Procès-verbal de destruction"));
         assert!(source.contains("08/09/2026"), "la date se lit en français");
         assert!(
@@ -3891,10 +5328,9 @@ mod tests {
         }
         // Un coffre vide compile aussi : le bouton ne s'active que
         // lorsqu'il y a quelque chose, mais la fonction n'en dépend pas.
-        let world = PdfWorld::new(destruction_list_source(
-            &[],
-            &sample_pharmacy(),
-            "2026-09-08",
+        let world = PdfWorld::new(fill(
+            DEFAULT_DESTRUCTION_TEMPLATE,
+            &destruction_list_values(&[], &sample_pharmacy(), "2026-09-08"),
         ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
@@ -3917,7 +5353,10 @@ mod tests {
                 reason: "ALAT — dernier résultat il y a 30 mois, demandé par Tahor",
             },
         ];
-        let source = call_list_source(&rows, "29/08/2026", &sample_pharmacy());
+        let source = fill(
+            DEFAULT_APPELS_TEMPLATE,
+            &call_list_values(&rows, "29/08/2026", &sample_pharmacy()),
+        );
         assert!(source.contains("Liste d'appel"));
         assert!(source.contains("06 01 02 03 04"));
         // A tick box and a column to write in: without them it is a
@@ -3940,7 +5379,10 @@ mod tests {
         }
         // Nothing to call about still compiles: the button only appears
         // when there is, but the function must not depend on that.
-        let world = PdfWorld::new(call_list_source(&[], "29/08/2026", &sample_pharmacy()));
+        let world = PdfWorld::new(fill(
+            DEFAULT_APPELS_TEMPLATE,
+            &call_list_values(&[], "29/08/2026", &sample_pharmacy()),
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -3985,7 +5427,10 @@ mod tests {
             mention: "Il ne vaut pas avis médical.",
             signature: "Claire Leroy",
         };
-        let source = conciliation_source(&data, &sample_pharmacy());
+        let source = fill(
+            DEFAULT_CONCILIATION_TEMPLATE,
+            &conciliation_values(&data, &sample_pharmacy()),
+        );
         assert!(source.contains("Conciliation médicamenteuse"));
         assert!(source.contains("Dr Morel"));
         // The reconduction is on the sheet: a list of changes alone says
@@ -4018,7 +5463,10 @@ mod tests {
             mention: "",
             signature: "",
         };
-        let world = PdfWorld::new(conciliation_source(&empty, &sample_pharmacy()));
+        let world = PdfWorld::new(fill(
+            DEFAULT_CONCILIATION_TEMPLATE,
+            &conciliation_values(&empty, &sample_pharmacy()),
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -4047,7 +5495,10 @@ mod tests {
             mention: "Ce plan ne remplace pas votre ordonnance.",
             signature: "Claire Leroy",
         };
-        let source = plan_source(&data, &sample_pharmacy());
+        let source = fill(
+            DEFAULT_PLAN_TEMPLATE,
+            &plan_values(&data, &sample_pharmacy()),
+        );
         assert!(source.contains("Plan de prise"));
         assert!(source.contains("Dans les 6 heures"));
         assert!(source.contains("Questions à poser"));
@@ -4071,7 +5522,10 @@ mod tests {
             mention: "",
             signature: "",
         };
-        let world = PdfWorld::new(plan_source(&empty, &sample_pharmacy()));
+        let world = PdfWorld::new(fill(
+            DEFAULT_PLAN_TEMPLATE,
+            &plan_values(&empty, &sample_pharmacy()),
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -4137,7 +5591,10 @@ mod tests {
             )],
             signature: "Claire Leroy, pharmacien titulaire",
         };
-        let source = bilan_source(&data, &sample_pharmacy());
+        let source = fill(
+            DEFAULT_BILAN_TEMPLATE,
+            &bilan_values(&data, &sample_pharmacy()),
+        );
         assert!(source.contains("Interactions repérées"));
         assert!(source.contains("Revue de l'ordonnance"));
         assert!(source.contains("Plan d'action"));
@@ -4177,7 +5634,10 @@ mod tests {
             acts: Vec::new(),
             signature: "",
         };
-        let world = PdfWorld::new(bilan_source(&data, &sample_pharmacy()));
+        let world = PdfWorld::new(fill(
+            DEFAULT_BILAN_TEMPLATE,
+            &bilan_values(&data, &sample_pharmacy()),
+        ));
         let document: PagedDocument = typst::compile(&world)
             .output
             .expect("un bilan vide doit compiler");
@@ -4207,7 +5667,7 @@ mod tests {
                 sources: p.sources.to_owned(),
             })
             .collect();
-        let source = codex_source(&preparations);
+        let source = fill(DEFAULT_CODEX_TEMPLATE, &codex_values(&preparations));
         assert!(source.contains("Vaseline salicylée à 5 %"));
         assert!(source.contains("Mise en garde"));
         let world = PdfWorld::new(source);
@@ -4222,7 +5682,7 @@ mod tests {
         }
         // An empty codex still prints its cover line rather than
         // failing: a base whose team deleted everything is legitimate.
-        let world = PdfWorld::new(codex_source(&[]));
+        let world = PdfWorld::new(fill(DEFAULT_CODEX_TEMPLATE, &codex_values(&[])));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -4247,7 +5707,10 @@ mod tests {
                 sources: d.sources.to_owned(),
             })
             .collect();
-        let booklet = dispositifs_source(&all, &sample_pharmacy());
+        let booklet = fill(
+            DEFAULT_DISPOSITIFS_TEMPLATE,
+            &dispositifs_values(&all, &sample_pharmacy()),
+        );
         assert!(booklet.contains("Hydrocolloïde"));
         assert!(booklet.contains("PANSEMENT"));
         assert!(booklet.contains("Renouvellement"));
@@ -4279,11 +5742,17 @@ mod tests {
             tags: "pansement".to_owned(),
             sources: "Fiche de l'officine".to_owned(),
         };
-        let sheet = dispositif_source(&one, &sample_pharmacy());
+        let sheet = fill(
+            DEFAULT_DISPOSITIF_TEMPLATE,
+            &dispositif_values(&one, &sample_pharmacy()),
+        );
         let world = PdfWorld::new(sheet);
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
         // An empty list still prints its cover rather than failing.
-        let world = PdfWorld::new(dispositifs_source(&[], &sample_pharmacy()));
+        let world = PdfWorld::new(fill(
+            DEFAULT_DISPOSITIFS_TEMPLATE,
+            &dispositifs_values(&[], &sample_pharmacy()),
+        ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
@@ -4319,7 +5788,10 @@ mod tests {
                 "qsp 60 g".to_owned(),
             ),
         ];
-        let source = preparation_source(&prep, "60 g", &lines, &sample_pharmacy(), "CL");
+        let source = fill(
+            DEFAULT_PREPARATION_TEMPLATE,
+            &preparation_values(&prep, "60 g", &lines, &sample_pharmacy(), "CL"),
+        );
         assert!(
             source.contains("qsp 60 g"),
             "la quantité pesée doit figurer"
@@ -4376,7 +5848,7 @@ mod tests {
 
     #[test]
     fn the_default_ordonnance_template_passes_its_own_validation() {
-        check_ordonnance_template(DEFAULT_ORDONNANCE_TEMPLATE)
+        check_doc("ordonnance", DEFAULT_ORDONNANCE_TEMPLATE)
             .expect("le modèle par défaut doit compiler");
     }
 
@@ -4407,7 +5879,10 @@ mod tests {
                 ..Default::default()
             },
         ];
-        let source = vaccination_carnet_source(&patient, &lines, "Mention de l'officine");
+        let source = fill(
+            DEFAULT_VACCINATION_TEMPLATE,
+            &vaccination_carnet_values(&patient, &lines, "Mention de l'officine"),
+        );
         // Oldest first on paper, whatever order the screen showed.
         let dtp = source.find("Rappel 45 ans").expect("le dTP doit figurer");
         let flu = source.find("FLU25-208").expect("la grippe doit figurer");
@@ -4436,7 +5911,10 @@ mod tests {
     fn an_empty_carnet_still_produces_a_sheet() {
         // No mention configured: the page carries none, and still
         // compiles.
-        let source = vaccination_carnet_source(&sample_patient(), &[], "");
+        let source = fill(
+            DEFAULT_VACCINATION_TEMPLATE,
+            &vaccination_carnet_values(&sample_patient(), &[], ""),
+        );
         assert!(!source.contains("style: \"italic\""));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)

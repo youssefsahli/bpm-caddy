@@ -3,6 +3,7 @@
 mod app;
 mod biology;
 mod bulletin;
+mod caisse;
 mod classes;
 mod codebar;
 mod codex;

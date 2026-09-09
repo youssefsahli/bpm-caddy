@@ -50,6 +50,20 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   take for theirs; and **nothing that replaces the prescriber** — no
   sheet adjusts a dose, every sheet says whom to telephone and when.
   Pure, tested, no clock),
+  `src/caisse.rs` (counting the till: what is in the drawer at closing,
+  what is left for tomorrow, and the gap against what the day should
+  have taken. Three rules, one test each. **Money is counted in whole
+  centimes, never in floats** — twelve ten-cent coins make 1,20 € and
+  not 1.1999999999999997, and a centime is exactly what a till count
+  exists to see; everything is `i64` and the conversion happens at the
+  display. **A gap is not a correction**: the module states it, never
+  resorbs it, and the count is never recomputed from the expected —
+  the same discipline as the register of stupéfiants. And **with no
+  expected takings there is no gap** — `gap` is `None` and the sheet
+  leaves the line blank, rather than announcing « + 1 240,50 €
+  d'excédent » every evening. Pure, tested, no clock; the day is
+  passed. The counts are rows of `caisse_counts`, INSERT-only: a till
+  recounted the same evening is a *second line*, and both are read),
   `src/script.rs` (the console: what the officine can ask its own base
   in a few lines, without waiting for someone to write a screen for it.
   Two rules make it possible at all, and both are tested: the engine has
@@ -669,11 +683,14 @@ add clicking and typing; it is not the price of entry.
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|script|carnets|peaux`
+  finances|stats|companion|script|carnets|caisse|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its
   own palette, which is the one thing only a screenshot can check.
+  `caisse` opens the till count **with a drawer already counted**:
+  fifteen lines at zero show neither the summary, nor the gap, nor the
+  red it carries — that is, none of what the view exists to draw.
   `finances` is the recettes view, which has **no door**: it is in no
   dock, in no tab strip until it has been opened, and not even in the
   list the jump box offers on an empty query — it is reached by typing
@@ -786,6 +803,47 @@ The ordonnance's adjuvants are **not** a list in the code: they are the
 drug cards tagged `[ordonnance] adjuvant_tag` (default `probiotique`),
 with that card's own posology lines as its schemas. Adding a product is
 adding a fiche. Resist any pull to hard-code a second catalogue.
+
+## Every printable document has an editable template
+
+`pdf::DOCS` is the register: one entry per printable document, carrying
+its key, the strings key of its name, its embedded Typst default and the
+`{{MARKERS}}` it accepts. `pdf::fill` substitutes, `pdf::template_source`
+reads the officine's own file when there is one, and Options › Modèles
+iterates `DOCS` rather than matching on an enum — **adding a printable
+document is adding one line to that array**, and it appears in the
+editor. The four historical `[templates] *_path` keys still point where
+they always did (an officine that wrote `bpm_layout.typ` a year ago must
+keep printing with it); everything else lives in `[templates] dir`
+(default `modeles/` beside `config.toml`) as `<clé>.typ`.
+
+Four rules, each a test:
+
+- **A document's declared markers and the ones its default template
+  writes are the same list.** A marker declared and absent is a promise
+  nothing keeps; one written and undeclared is a marker the editor never
+  shows, so nobody uses it and the next rewrite of the template deletes
+  it silently.
+- **A filled template contains no `{{`.** A mistyped marker prints
+  itself, in full, in the middle of the page — so `check_doc` names it
+  instead, and the editor refuses to save.
+- **Every default template compiles with its sample values**, which are
+  never empty: a template validated on empty strings compiles and breaks
+  on the first real printing. Those same values are the editor's preview,
+  so preview and printing go through *one* function — two constructions
+  of one page always diverge, and it is the preview that lies.
+- **Every `pub fn open_*` of `pdf.rs` takes a `template_path`**, checked
+  by reading the module's own text (`every_printable_document_takes_a_template`),
+  with exactly one named exemption: `open_bulletin`, which is not Typst
+  but the Assurance Maladie's own PDF with its form fields written (see
+  `bulletin.rs`). Giving that one a "template" would mean redrawing it.
+
+Some documents expose a marker per field (the ordonnance, the caisse, the
+register); others — the monograph, the bilan, the codex — expose the
+frame (`#set page`, `#set text`, the `#let sec` helper) plus one
+`{{BODY}}`. That is the honest split: the frame is what an officine
+edits, and a body whose structure is computed from a file cannot be
+re-columned from a template.
 
 ## Releases
 

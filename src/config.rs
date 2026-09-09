@@ -74,7 +74,13 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # prevention = 30.0
 
 [templates]
-# Modèles Typst personnalisés (fiche d'entretien et courrier CR).
+# Modèles Typst personnalisés. Chaque document imprimable en a un ;
+# ils s'éditent dans Options › Modèles, et le modèle embarqué sert tant
+# qu'aucun fichier n'existe. « dir » est le dossier où ils sont rangés,
+# un « <clé>.typ » par document.
+# dir = "modeles"
+# Les quatre premiers gardent leur chemin historique, pour qu'une
+# officine qui en a écrit un ne perde pas sa mise en page.
 # bpm_template_path = "templates/bpm_layout.typ"
 # cr_template_path = "templates/cr_layout.typ"
 # carnet_template_path = "templates/carnet_layout.typ"
@@ -814,6 +820,11 @@ pub struct TemplatesConfig {
     pub cr_template_path: Option<PathBuf>,
     pub carnet_template_path: Option<PathBuf>,
     pub ordonnance_template_path: Option<PathBuf>,
+    /// Le dossier où vivent les modèles des autres documents, un
+    /// `<clé>.typ` par document. Les quatre chemins ci-dessus restent
+    /// lus tels quels : une officine qui en a écrit un ne doit pas
+    /// perdre sa mise en page parce qu'une option est apparue.
+    pub dir: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -1229,6 +1240,34 @@ impl Config {
             .ordonnance_template_path
             .clone()
             .unwrap_or_else(|| Self::path().with_file_name("ordonnance_layout.typ"))
+    }
+
+    /// Où vit le modèle d'un document imprimable, par sa clé.
+    ///
+    /// Les quatre premiers modèles ont chacun leur clé dans
+    /// `[templates]` et un nom de fichier hérité : une officine qui a
+    /// écrit `bpm_layout.typ` il y a un an doit continuer d'imprimer
+    /// avec le sien, et une clé nommée `dir` ne peut pas le savoir. Les
+    /// autres vivent dans un dossier, un fichier `<clé>.typ` par
+    /// document — c'est ce qui permet d'en ajouter un sans ajouter une
+    /// option.
+    pub fn doc_template_path(&self, key: &str) -> PathBuf {
+        match key {
+            "fiche" => self.template_path(),
+            "cr" => self.cr_template_path(),
+            "carnet" => self.carnet_template_path(),
+            "ordonnance" => self.ordonnance_template_path(),
+            _ => self.templates_dir().join(format!("{key}.typ")),
+        }
+    }
+
+    /// Le dossier des modèles : `modeles/` à côté de `config.toml` tant
+    /// que `[templates] dir` ne dit pas autre chose.
+    pub fn templates_dir(&self) -> PathBuf {
+        self.templates
+            .dir
+            .clone()
+            .unwrap_or_else(|| Self::path().with_file_name("modeles"))
     }
 
     /// The yearly quota for an act kind (0 = no rule).
@@ -1668,6 +1707,19 @@ mod tests {
             ActFees::staged([15.0, 15.0, 15.0, 20.0], [10.0, 20.0, 0.0, 0.0])
         );
         assert!(cfg.templates.bpm_template_path.is_none());
+        // Le dossier des modèles est commenté comme le reste : rien
+        // n'est écrit tant que l'officine ne le demande pas, et
+        // `templates_dir()` rend alors `modeles/` à côté du config.
+        assert!(cfg.templates.dir.is_none());
+        assert!(
+            cfg.templates_dir().ends_with("modeles"),
+            "{}",
+            cfg.templates_dir().display()
+        );
+        // Un document du registre tombe dans ce dossier ; les quatre
+        // modèles historiques gardent leur chemin à eux.
+        assert!(cfg.doc_template_path("caisse").ends_with("caisse.typ"));
+        assert!(cfg.doc_template_path("fiche").ends_with("bpm_layout.typ"));
         assert_eq!(cfg.rules.bpm_per_year, 3);
         assert_eq!(cfg.rules.trod_angine_per_year, 0);
     }

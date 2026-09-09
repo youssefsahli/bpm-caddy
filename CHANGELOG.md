@@ -5,6 +5,64 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.172.0] - 2026-09-09
+
+### Added
+- **Le comptage de caisse, avec sa feuille à signer.** Une officine
+  compte son tiroir tous les soirs, sur un carnet ou sur un coin de
+  papier, et l'écart se perd entre les deux. La vue « Caisse » (`F`
+  « caisse » dans la boîte de saut) porte les quinze coupures de l'euro,
+  les encaissements qui ne sont pas dans le tiroir (carte, chèques : lus
+  sur le ticket, pas comptés), le fond laissé pour demain, et ce que la
+  journée devait faire.
+
+  Trois règles, et chacune est un test. **L'argent se compte en centimes
+  entiers, jamais en flottants** : douze pièces de dix centimes font
+  1,20 € et non 1,1999999999999997, et un centime est exactement ce
+  qu'un comptage de caisse existe pour voir — jusque dans la base, où la
+  colonne est un `INTEGER`, parce que c'est en repassant par un `REAL`
+  qu'un total juste redeviendrait faux. **Un écart n'est pas une
+  correction** : il s'affiche, signé, en tête de la synthèse ; rien ne
+  propose de le résorber en changeant le comptage, et la remarque est là
+  pour l'expliquer — la discipline du registre des stupéfiants, appliquée
+  à un tiroir. Et **sans recette attendue, il n'y a pas d'écart** : la
+  ligne reste vide plutôt que d'annoncer « + 1 240,50 € d'excédent »
+  tous les soirs.
+
+  Les comptages se rangent dans la base et ne s'écrasent jamais : une
+  caisse recomptée le même soir est une **deuxième ligne**, et les deux
+  se lisent. La feuille imprimée porte le détail des coupures, la
+  synthèse, l'écart et deux signatures.
+
+### Changed
+- **Chaque document imprimable a désormais son modèle éditable.** Quatre
+  en avaient un — la fiche d'entretien, le courrier, le carnet,
+  l'ordonnance — et vingt-deux n'en avaient pas : leur Typst était écrit
+  en Rust, mise en page et données mélangées dans le même `format!`. Une
+  officine qui voulait sa marge, son en-tête ou sa police sur la liste
+  d'appel, le bilan, la monographie ou le registre n'avait rien à ouvrir.
+
+  Les vingt-six sont maintenant au même registre (`pdf::DOCS`) : une
+  clé, un nom, un modèle par défaut, la liste des marqueurs. Options ›
+  Modèles parcourt ce registre au lieu d'énumérer quatre cas —
+  **ajouter un document imprimable, c'est ajouter une ligne**, et il
+  apparaît dans l'éditeur. Les modèles vivent dans `[templates] dir`
+  (`modeles/` à côté de `config.toml` par défaut), un `<clé>.typ` par
+  document ; les quatre chemins historiques restent lus tels quels, pour
+  qu'une officine qui en a écrit un ne perde pas sa mise en page.
+
+  Quatre règles, chacune tenue par un test : les marqueurs déclarés et
+  ceux du modèle par défaut sont la même liste ; un modèle rempli ne
+  contient plus de `{{` (un marqueur mal tapé s'imprimait en toutes
+  lettres au milieu de la page — il est maintenant nommé et le modèle
+  refusé) ; chaque modèle par défaut compile avec ses valeurs d'exemple,
+  qui sont aussi celles de l'aperçu, de sorte que l'aperçu et
+  l'impression passent par **une seule** fonction ; et toute fonction
+  `open_*` de `pdf.rs` prend un chemin de modèle — vérifié en lisant le
+  texte du module, avec une exemption nommée, le bulletin d'adhésion,
+  qui n'est pas un Typst mais le PDF de l'Assurance Maladie dont on ne
+  remplit que les champs.
+
 ## [0.171.0] - 2026-09-09
 
 ### Added

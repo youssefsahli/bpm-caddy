@@ -338,6 +338,37 @@ CREATE TABLE IF NOT EXISTS scans (
     stup_move    INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+-- Le comptage de la caisse, un par fermeture.
+--
+-- Tous les montants sont en **centimes entiers** : voir `caisse.rs`.
+-- Un `REAL` ici rendrait inutile toute la discipline du module, parce
+-- que c'est en repassant par la base qu'un total juste redeviendrait
+-- faux.
+--
+-- `expected` est nullable, et c'est la seule colonne qui l'est : elle
+-- porte la différence entre « la journée devait faire 0 € » et
+-- « personne n'a saisi ce que la journée devait faire ». Un
+-- `DEFAULT 0` confondrait les deux, et l'écart imprimé serait alors
+-- tout le contenu du tiroir.
+CREATE TABLE IF NOT EXISTS caisse_counts (
+    id           INTEGER PRIMARY KEY,
+    day          TEXT NOT NULL,
+    -- Les quinze quantités, séparées par des virgules, dans l'ordre de
+    -- `caisse::DENOMINATIONS`. Une table fille pour quinze entiers qui
+    -- ne se lisent et ne s'écrivent qu'ensemble serait quinze lignes à
+    -- joindre pour une addition.
+    quantities   TEXT NOT NULL DEFAULT '',
+    cash         INTEGER NOT NULL DEFAULT 0,
+    float_kept   INTEGER NOT NULL DEFAULT 0,
+    -- Carte, chèques : « libellé=centimes », séparés par des
+    -- points-virgules.
+    others       TEXT NOT NULL DEFAULT '',
+    expected     INTEGER,
+    operator     TEXT NOT NULL DEFAULT '',
+    remark       TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 ";
 
 /// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
@@ -557,6 +588,18 @@ const MIGRATIONS: &[&str] = &[
         bytes        BLOB NOT NULL,
         size         INTEGER NOT NULL DEFAULT 0,
         taken_on     TEXT NOT NULL DEFAULT '',
+        operator     TEXT NOT NULL DEFAULT '',
+        remark       TEXT NOT NULL DEFAULT '',
+        created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
+    "CREATE TABLE IF NOT EXISTS caisse_counts (
+        id           INTEGER PRIMARY KEY,
+        day          TEXT NOT NULL,
+        quantities   TEXT NOT NULL DEFAULT '',
+        cash         INTEGER NOT NULL DEFAULT 0,
+        float_kept   INTEGER NOT NULL DEFAULT 0,
+        others       TEXT NOT NULL DEFAULT '',
+        expected     INTEGER,
         operator     TEXT NOT NULL DEFAULT '',
         remark       TEXT NOT NULL DEFAULT '',
         created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -1462,6 +1505,34 @@ pub struct Scan {
     /// ou zéro. Un contrôle demande la ligne **et** l'ordonnance qui la
     /// porte ; sans lien, les rapprocher se fait à la main.
     pub stup_move: i64,
+}
+
+/// Un comptage de caisse, tel qu'il est rangé.
+///
+/// Tous les montants sont en **centimes entiers** (`caisse.rs`), y
+/// compris ceux qui traversent la base : c'est en repassant par un
+/// `REAL` qu'un total juste redeviendrait faux.
+#[derive(Clone, Debug, Default)]
+pub struct CaisseCount {
+    /// ISO `AAAA-MM-JJ` — le jour compté, pas celui de la saisie.
+    pub day: String,
+    /// Les quantités par coupure, dans l'ordre de
+    /// `caisse::DENOMINATIONS`.
+    pub quantities: [i64; crate::caisse::DENOMINATIONS.len()],
+    /// Le total des espèces, tel qu'il a été calculé au moment du
+    /// comptage. Redondant avec `quantities`, et gardé exprès : c'est
+    /// le chiffre qui a été lu et signé ce soir-là.
+    pub cash: i64,
+    pub float_kept: i64,
+    /// Carte, chèques : le libellé et le montant.
+    pub others: Vec<(String, i64)>,
+    /// Ce que la journée devait faire, ou `None` quand personne ne l'a
+    /// saisi — auquel cas il n'y a pas d'écart, et surtout pas un écart
+    /// égal à tout le tiroir.
+    pub expected: Option<i64>,
+    pub operator: String,
+    pub remark: String,
+    pub created_at: String,
 }
 
 /// One agenda entry that is not tied to a patient.
@@ -29362,6 +29433,87 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Enregistrer un comptage de caisse.
+    ///
+    /// Rien n'est mis à jour : un comptage refait le même soir est une
+    /// **deuxième ligne**, et les deux se lisent. C'est la règle du
+    /// registre appliquée à un tiroir — la caisse comptée deux fois
+    /// parce que la première ne tombait pas juste est précisément ce
+    /// qu'on veut pouvoir relire six mois plus tard.
+    pub fn add_caisse_count(&self, c: &CaisseCount) -> Result<i64, String> {
+        let quantities = c
+            .quantities
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let others = c
+            .others
+            .iter()
+            .map(|(l, v)| format!("{}={v}", l.replace([';', '='], " ")))
+            .collect::<Vec<_>>()
+            .join(";");
+        self.conn
+            .execute(
+                "INSERT INTO caisse_counts
+                   (day, quantities, cash, float_kept, others, expected, operator, remark)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    c.day,
+                    quantities,
+                    c.cash,
+                    c.float_kept,
+                    others,
+                    c.expected,
+                    c.operator,
+                    c.remark,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Les derniers comptages, du plus récent au plus ancien.
+    pub fn caisse_counts(&self, limit: i64) -> Result<Vec<CaisseCount>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT day, quantities, cash, float_kept, others, expected,
+                        operator, remark, created_at
+                 FROM caisse_counts ORDER BY day DESC, id DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([limit], |r| {
+                let quantities: String = r.get(1)?;
+                let others: String = r.get(4)?;
+                let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
+                for (slot, text) in q.iter_mut().zip(quantities.split(',')) {
+                    *slot = text.trim().parse().unwrap_or(0);
+                }
+                Ok(CaisseCount {
+                    day: r.get(0)?,
+                    quantities: q,
+                    cash: r.get(2)?,
+                    float_kept: r.get(3)?,
+                    others: others
+                        .split(';')
+                        .filter(|p| !p.is_empty())
+                        .map(|p| {
+                            let (l, v) = p.split_once('=').unwrap_or((p, "0"));
+                            (l.to_owned(), v.trim().parse().unwrap_or(0))
+                        })
+                        .collect(),
+                    expected: r.get(5)?,
+                    operator: r.get(6)?,
+                    remark: r.get(7)?,
+                    created_at: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// The personal notes of one operator, newest first.
     pub fn notes_for_operator(&self, operator: &str) -> Result<Vec<Note>, String> {
         let mut stmt = self
@@ -34225,6 +34377,79 @@ mod tests {
     ///
     /// Two things are asserted, and they are the whole contract. It is
     /// **idempotent**: a base already at this version gains nothing from
+    /// Un comptage de caisse fait l'aller-retour sans perdre un
+    /// centime, et **un attendu absent reste absent**.
+    ///
+    /// C'est la moitié base de la règle du module : `expected` est la
+    /// seule colonne nullable de la table, parce qu'elle porte la
+    /// différence entre « la journée devait faire 0 € » et « personne
+    /// n'a saisi ce que la journée devait faire ». Un `DEFAULT 0`
+    /// confondrait les deux, et l'écart imprimé serait tout le tiroir.
+    ///
+    /// Et rien ne se met à jour : un comptage refait le même soir est
+    /// une deuxième ligne, les deux se lisent.
+    #[test]
+    fn a_till_count_goes_to_the_base_and_comes_back_to_the_centime() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-caisse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+        assert!(db.caisse_counts(20).unwrap().is_empty());
+
+        let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
+        q[3] = 4;
+        q[9] = 5;
+        let first = CaisseCount {
+            day: "2026-09-08".to_owned(),
+            quantities: q,
+            cash: 20_250,
+            float_kept: 15_000,
+            others: vec![("Carte".to_owned(), 45_075)],
+            expected: Some(66_000),
+            operator: "CL".to_owned(),
+            remark: "Un billet retrouvé sous le tiroir.".to_owned(),
+            created_at: String::new(),
+        };
+        assert!(db.add_caisse_count(&first).unwrap() > 0);
+
+        // Le même soir, recompté : une deuxième ligne, et sans attendu
+        // cette fois.
+        let second = CaisseCount {
+            day: "2026-09-08".to_owned(),
+            expected: None,
+            cash: 20_260,
+            ..first.clone()
+        };
+        db.add_caisse_count(&second).unwrap();
+
+        let back = db.caisse_counts(20).unwrap();
+        assert_eq!(back.len(), 2, "un recomptage n'écrase pas le premier");
+        // Le plus récent d'abord : c'est celui du recomptage.
+        assert_eq!(back[0].expected, None, "un attendu absent reste absent");
+        assert_eq!(back[0].cash, 20_260);
+        assert_eq!(back[1].expected, Some(66_000));
+        assert_eq!(back[1].quantities, q, "les quinze quantités reviennent");
+        assert_eq!(back[1].cash, 20_250);
+        assert_eq!(back[1].float_kept, 15_000);
+        assert_eq!(back[1].others, vec![("Carte".to_owned(), 45_075)]);
+        assert_eq!(back[1].operator, "CL");
+        assert!(back[1].remark.starts_with("Un billet"));
+        assert!(!back[1].created_at.is_empty(), "la base horodate la ligne");
+
+        // Un libellé qui contient les séparateurs du champ ne coupe pas
+        // la ligne en deux : c'est du texte tapé au comptoir.
+        let hostile = CaisseCount {
+            day: "2026-09-09".to_owned(),
+            others: vec![("Chèques; lot=3".to_owned(), 12_000)],
+            ..first.clone()
+        };
+        db.add_caisse_count(&hostile).unwrap();
+        let back = db.caisse_counts(1).unwrap();
+        assert_eq!(back[0].others.len(), 1, "{:?}", back[0].others);
+        assert_eq!(back[0].others[0].1, 12_000);
+    }
+
     /// a second pass, so the button can be pressed twice without
     /// doubling anything. And it **never rewrites the team's own text**:
     /// a fiche the officine has edited comes out of the sync exactly as
@@ -35358,6 +35583,20 @@ mod tests {
             vec![(did, "5 mg".to_owned())]
         );
         assert_eq!(db.dosages_used(did).unwrap(), vec!["5 mg".to_owned()]);
+        // Le comptage de caisse : sa table est arrivée après cette
+        // photographie du schéma, donc c'est exactement le cas que ce
+        // test existe pour attraper — l'`ALTER`/`CREATE` oublié dans
+        // `MIGRATIONS`, invisible partout ailleurs puisque tous les
+        // autres tests tournent sur des bases que `SCHEMA` a créées.
+        db.caisse_counts(5).expect("caisse_counts");
+        db.add_caisse_count(&CaisseCount {
+            day: "2026-09-08".to_owned(),
+            cash: 20_250,
+            expected: None,
+            ..Default::default()
+        })
+        .expect("add_caisse_count");
+        assert_eq!(db.caisse_counts(5).unwrap().len(), 1);
 
         // And the indexes are there too. They are created after the
         // migrations precisely so that a base of this age gets them:
