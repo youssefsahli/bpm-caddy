@@ -5,6 +5,40 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.178.0] - 2026-09-10
+
+### Added
+- **Les heures du mois, par personne**, dans « Statistiques » — l'écran
+  des agrégats, qui n'a pas besoin d'un frère. Le panneau n'apparaît que
+  si l'officine saisit un planning : un cadre vide sur chaque écran
+  apprend à sauter le cadre.
+
+  L'écart au contrat n'y est **pas**, et c'est un choix : un contrat est
+  hebdomadaire, et en faire une cible mensuelle demande de décider
+  combien de semaines compte un mois. C'est l'annualisation que ce
+  module a dit qu'il ne connaîtrait pas. L'écart reste donc sur la ligne
+  de la semaine, dans la grille, où il compare deux semaines.
+
+### Fixed
+- **Les légendes des graphiques en barres se peignaient par-dessus leurs
+  barres.** La colonne des libellés était un nombre de pixels que chaque
+  appelant devinait — 96, 130, 150, 160, 200 — et les cinq devinettes
+  étaient fausses dans deux directions : « Méthadone AP-HP gélule 40 mg »
+  perdait ses deux derniers mots *et* débordait sur sa barre, et à
+  `[ui] text_scale = 1,6` c'était à peu près toutes les légendes. Un
+  nombre de pixels ne suit pas l'échelle du texte.
+
+  La colonne se mesure désormais dans `motif::chart`, seul endroit qui
+  connaisse la fonte dans laquelle elle sera dessinée — et la colonne des
+  valeurs avec elle, parce que « 124 h 30 » ne tient pas dans les
+  quarante-six pixels que « 14 » demandait. Bornée à la moitié du
+  panneau, et ce qui dépasse encore est élidé plutôt que peint sur la
+  barre.
+- Les panneaux de « Statistiques » choisissaient leur série **par leur
+  rang dans une liste**, avec un bras `_` pour la dernière : insérer un
+  panneau au milieu aurait dessiné la mauvaise série dans le bon cadre,
+  sans rien casser et sans que rien ne le dise. Chacun nomme la sienne.
+
 ## [0.177.0] - 2026-09-10
 
 ### Added

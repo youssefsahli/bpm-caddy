@@ -1586,6 +1586,19 @@ struct Stats {
     stup_out: Vec<(String, f64)>,
     /// Combien d'actes par mois, sur les douze derniers.
     per_month: Vec<(String, f64)>,
+    /// Les heures du mois en cours, par personne — en **minutes**,
+    /// converties à l'affichage seulement, comme tout ce que
+    /// `planning` compte.
+    hours_per_person: Vec<(String, f64)>,
+    /// Les heures de chaque jour du mois, dans l'ordre : la ligne qui
+    /// montre les semaines creuses et les ponts.
+    hours_per_day: Vec<f64>,
+    /// Combien de postes du mois n'ont pas de fin écrite. Dit à côté
+    /// des heures, jamais tu : une somme sans ce nombre se lirait comme
+    /// le mois entier.
+    hours_unknown: usize,
+    /// Le mois que ces trois-là décrivent, en français.
+    hours_period: String,
 }
 
 /// One item open in the workspace notebook.
@@ -4435,6 +4448,61 @@ impl Session {
                 (label, n as f64)
             })
             .collect();
+
+        // Les heures du mois en cours, par personne et par jour. Une
+        // requête de plus, donc **une ligne de plus dans
+        // `a_base_from_an_older_version_still_answers_every_query`** :
+        // la vue lit par `unwrap_or_default`, et une table mal nommée y
+        // rendrait un zéro confiant plutôt qu'une erreur — c'est
+        // exactement ce qui était arrivé à `bio_results`.
+        if let Ok(today) = self.db.today_iso() {
+            if let (Some(y), Some(m)) = (
+                today.get(0..4).and_then(|y| y.parse::<i64>().ok()),
+                today.get(5..7).and_then(|m| m.parse::<i64>().ok()),
+            ) {
+                if let Some(last) = crate::date::end_of_month(y, m) {
+                    let (from, to) = (format!("{y}-{m:02}-01"), format!("{y}-{m:02}-{last:02}"));
+                    let shifts = self.db.shifts_between(&from, &to).unwrap_or_default();
+                    let mut per: std::collections::BTreeMap<String, u32> =
+                        std::collections::BTreeMap::new();
+                    let mut days: Vec<f64> = Vec::with_capacity(last as usize);
+                    for d in 1..=last {
+                        let date = format!("{y}-{m:02}-{d:02}");
+                        let of_day: Vec<planning::Shift> = shifts
+                            .iter()
+                            .filter(|x| x.day == date)
+                            .filter_map(planned_shift)
+                            .collect();
+                        let mut total = 0_u32;
+                        for who in of_day
+                            .iter()
+                            .map(|x| x.operator.clone())
+                            .collect::<std::collections::BTreeSet<String>>()
+                        {
+                            if let Some(mins) = planning::day_total(&of_day, &who) {
+                                total += u32::from(mins);
+                                *per.entry(who).or_default() += u32::from(mins);
+                            }
+                        }
+                        days.push(f64::from(total));
+                    }
+                    s.hours_unknown = shifts
+                        .iter()
+                        .filter_map(planned_shift)
+                        .filter(|x| x.kind.worked() && x.minutes().is_none())
+                        .count();
+                    s.hours_per_person = per
+                        .into_iter()
+                        .map(|(who, mins)| (who, f64::from(mins)))
+                        .collect();
+                    s.hours_per_day = days;
+                    s.hours_period = trn(
+                        "planning_hours_period",
+                        &[&db::month_name_fr(&format!("{y}-{m:02}")), &y],
+                    );
+                }
+            }
+        }
         self.stats = s;
     }
 
@@ -6750,6 +6818,39 @@ fn undo_label(what: &PlanningUndo) -> String {
         PlanningUndo::Copied { ids, .. } => trf("planning_undo_copied", ids.len()),
     }
 }
+
+/// One stored shift as the pure module sees it, or `None` when the
+/// row cannot be read as one.
+///
+/// **Une nature que cette version ne connaît pas ne devient pas une
+/// journée de présence** : elle se range en absence, qui ne porte
+/// pas d'heures. Inventer des heures depuis une ligne illisible est
+/// la direction dangereuse — et une base écrite par une version
+/// plus récente, ou corrigée à la main, en produit.
+///
+/// Écrite une fois : la grille et la bande de couverture la lisent
+/// toutes les deux, et deux conversions d'une même ligne finissent
+/// toujours par diverger.
+fn planned_shift(s: &db::PlannedShift) -> Option<planning::Shift> {
+    Some(planning::Shift {
+        id: s.id,
+        operator: s.operator.trim().to_owned(),
+        // `planning::parse_bound` et non l'horloge du jour : une
+        // garde finit à « 26:00 », et l'horloge du jour la refuse.
+        start: planning::parse_bound(&s.start_time)?,
+        end: planning::parse_bound(&s.end_time),
+        pause: u16::try_from(s.pause_minutes.max(0)).unwrap_or(0),
+        kind: planning::ShiftKind::parse(&s.kind).unwrap_or(planning::ShiftKind::Recup),
+    })
+}
+
+/// One panel of the « Statistiques » view: its title, the height it
+/// asks for, the series it draws, and how that series reads.
+///
+/// A named type because the tuple is four wide, and because it is the
+/// thing that makes each panel carry **its own** series rather than be
+/// matched by its position in a list.
+type StatsPanel<'a> = (&'a str, f32, &'a [(String, f64)], &'a dyn Fn(f64) -> String);
 
 /// The days the agenda is showing, whichever mode it is in.
 fn scope_days(session: &Session) -> Vec<String> {
@@ -18983,7 +19084,7 @@ impl App {
         let mut by_day: std::collections::HashMap<&str, Vec<planning::Shift>> =
             std::collections::HashMap::new();
         for s in &session.shifts {
-            if let Some(sh) = Self::planned_shift(s) {
+            if let Some(sh) = planned_shift(s) {
                 by_day.entry(s.day.as_str()).or_default().push(sh);
             }
         }
@@ -20987,7 +21088,7 @@ impl App {
             .shifts
             .iter()
             .filter(|s| s.day == day)
-            .filter_map(Self::planned_shift)
+            .filter_map(planned_shift)
             .collect();
         if shifts.is_empty() {
             return 0.0;
@@ -21071,31 +21172,6 @@ impl App {
             end.saturating_add(24 * 60)
         } else {
             end
-        })
-    }
-
-    /// One stored shift as the pure module sees it, or `None` when the
-    /// row cannot be read as one.
-    ///
-    /// **Une nature que cette version ne connaît pas ne devient pas une
-    /// journée de présence** : elle se range en absence, qui ne porte
-    /// pas d'heures. Inventer des heures depuis une ligne illisible est
-    /// la direction dangereuse — et une base écrite par une version
-    /// plus récente, ou corrigée à la main, en produit.
-    ///
-    /// Écrite une fois : la grille et la bande de couverture la lisent
-    /// toutes les deux, et deux conversions d'une même ligne finissent
-    /// toujours par diverger.
-    fn planned_shift(s: &db::PlannedShift) -> Option<planning::Shift> {
-        Some(planning::Shift {
-            id: s.id,
-            operator: s.operator.trim().to_owned(),
-            // `planning::parse_bound` et non l'horloge du jour : une
-            // garde finit à « 26:00 », et l'horloge du jour la refuse.
-            start: planning::parse_bound(&s.start_time)?,
-            end: planning::parse_bound(&s.end_time),
-            pause: u16::try_from(s.pause_minutes.max(0)).unwrap_or(0),
-            kind: planning::ShiftKind::parse(&s.kind).unwrap_or(planning::ShiftKind::Recup),
         })
     }
 
@@ -21517,7 +21593,7 @@ impl App {
                     people.iter().position(|p| p == who)
                 }?;
                 let col = week.iter().position(|d| *d == s.day)?;
-                Some((row, col, Self::planned_shift(s)?, s))
+                Some((row, col, planned_shift(s)?, s))
             })
             .collect();
         let rows = people.len() + usize::from(orphan);
@@ -22097,7 +22173,7 @@ impl App {
             let mine: Vec<planning::Shift> = shifts
                 .iter()
                 .filter(|s| s.day == date && s.operator.trim() == who)
-                .filter_map(Self::planned_shift)
+                .filter_map(planned_shift)
                 .collect();
             for sh in &mine {
                 // **Un jour sans poste n'a pas de ligne.** Il ne vaut
@@ -30836,7 +30912,7 @@ impl App {
                     color: motif::accent(),
                 })
                 .collect();
-            if let Some(i) = motif::chart::hbars(ui, rect, &rows, 200.0, &|v| format!("{v:.0}")) {
+            if let Some(i) = motif::chart::hbars(ui, rect, &rows, &|v| format!("{v:.0}")) {
                 egui::show_tooltip_text(
                     ui.ctx(),
                     ui.layer_id(),
@@ -34407,12 +34483,23 @@ impl App {
                 // c'est le panneau qui décide de ce qu'on écrit le
                 // semestre prochain, et le tronquer en ferait une
                 // décoration.
-                let mut panels: Vec<(&str, f32)> = vec![
-                    (tr("stats_coverage"), 300.0),
-                    (tr("stats_per_operator"), 190.0),
-                    (tr("stats_duration"), 232.0),
-                    (tr("stats_treatments"), 232.0),
-                    (tr("stats_per_month"), 232.0),
+                // **Chaque panneau nomme sa série.** Elles étaient
+                // choisies par l'indice dans cette liste, avec un bras
+                // `_` pour la dernière : insérer un panneau au milieu
+                // aurait dessiné la mauvaise série dans le bon cadre,
+                // sans rien casser et sans que rien ne le dise.
+                let pct = |v: f64| format!("{v:.0}");
+                let mins = |v: f64| format!("{v:.0} min");
+                // Des minutes, converties **à l'affichage seulement** —
+                // la règle de tout ce que `planning` compte.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let hours = |v: f64| planning::hhmm(v.clamp(0.0, f64::from(u16::MAX)) as u16);
+                let mut panels: Vec<StatsPanel> = vec![
+                    (tr("stats_coverage"), 300.0, &s.coverage, &pct),
+                    (tr("stats_per_operator"), 190.0, &s.per_operator, &pct),
+                    (tr("stats_duration"), 232.0, &s.duration, &mins),
+                    (tr("stats_treatments"), 232.0, &s.treatments, &pct),
+                    (tr("stats_per_month"), 232.0, &s.per_month, &pct),
                 ];
                 // Le registre ne prend un panneau que s'il a quelque
                 // chose à dire : une officine qui ne suit aucun
@@ -34420,7 +34507,13 @@ impl App {
                 // un panneau vide sur chaque écran apprend à sauter le
                 // panneau.
                 if !s.stup_out.is_empty() {
-                    panels.push((tr("stats_stup_out"), 232.0));
+                    panels.push((tr("stats_stup_out"), 232.0, &s.stup_out, &pct));
+                }
+                // Les heures du mois par personne — seulement si
+                // l'officine saisit un planning : un cadre vide sur
+                // chaque écran apprend à sauter le cadre.
+                if !s.hours_per_person.is_empty() {
+                    panels.push((tr("stats_hours"), 232.0, &s.hours_per_person, &hours));
                 }
                 let mut y = vec![full.top() + kpi_rect.height() + gutter; cols];
                 let lanes = motif::split_columns(
@@ -34429,7 +34522,7 @@ impl App {
                     gutter,
                 );
                 let mut bottom = y[0];
-                for (i, (title, height)) in panels.iter().enumerate() {
+                for (title, height, rows, fmt) in &panels {
                     let lane = if cols == 1 {
                         0
                     } else {
@@ -34447,18 +34540,7 @@ impl App {
                     bottom = bottom.max(y[lane]);
                     motif::panel(ui, rect, Some(title), |ui| {
                         let body = ui.max_rect();
-                        match i {
-                            0 => Self::stats_bars(ui, body, &s.coverage, &|v| format!("{v:.0}")),
-                            1 => {
-                                Self::stats_bars(ui, body, &s.per_operator, &|v| format!("{v:.0}"))
-                            }
-                            2 => {
-                                Self::stats_bars(ui, body, &s.duration, &|v| format!("{v:.0} min"))
-                            }
-                            3 => Self::stats_bars(ui, body, &s.treatments, &|v| format!("{v:.0}")),
-                            4 => Self::stats_bars(ui, body, &s.per_month, &|v| format!("{v:.0}")),
-                            _ => Self::stats_bars(ui, body, &s.stup_out, &|v| format!("{v:.0}")),
-                        }
+                        Self::stats_bars(ui, body, rows, *fmt);
                     });
                 }
                 ui.allocate_space(egui::vec2(w, bottom - full.top() - kpi_rect.height()));
@@ -34495,7 +34577,10 @@ impl App {
                 color: motif::accent(),
             })
             .collect();
-        motif::chart::hbars(ui, rect, &bars, 150.0, fmt);
+        // La colonne des libellés se mesure — dans `motif::chart`, qui
+        // est le seul endroit qui connaisse la fonte dans laquelle elle
+        // sera dessinée. Elle valait ici cent cinquante pixels.
+        motif::chart::hbars(ui, rect, &bars, fmt);
     }
 
     /// Les recettes : ce qui a été facturé, ce qui attend de l'être, et
@@ -34866,7 +34951,7 @@ impl App {
                 color: colour,
             })
             .collect();
-        motif::chart::hbars(ui, rect, &bars, 130.0, &|v| format!("{v:.0} €"));
+        motif::chart::hbars(ui, rect, &bars, &|v| format!("{v:.0} €"));
     }
 
     /// La recette par année, facturé contre attente.
@@ -35969,7 +36054,7 @@ impl App {
                 ),
             })
             .collect();
-        motif::chart::hbars(ui, rect, &rows, 96.0, &|v| format!("{v:.0}"));
+        motif::chart::hbars(ui, rect, &rows, &|v| format!("{v:.0}"));
     }
 
     /// Billed against pending revenue, one column per month.
@@ -36072,7 +36157,7 @@ impl App {
                 color: kind_color(*k),
             })
             .collect();
-        let hovered = motif::chart::hbars(ui, rows[1], &bars, 160.0, &|v| format!("{v:.0}"));
+        let hovered = motif::chart::hbars(ui, rows[1], &bars, &|v| format!("{v:.0}"));
         if let Some(i) = hovered {
             let (kind, n) = counts[i];
             let quota = config.per_year(kind);

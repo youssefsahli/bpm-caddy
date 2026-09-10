@@ -256,13 +256,24 @@ pub struct Row<'a> {
 }
 
 /// A list of horizontal bars — the shape a funnel or a ranking wants.
-/// Each row is `row_h` tall; the caption column is `label_w` wide.
-/// Returns the hovered row.
+/// Each row is `row_h` tall. Returns the hovered row.
+///
+/// **The caption column measures itself.** It used to be a number of
+/// pixels every caller guessed — 96, 130, 150, 160, 200 — and the
+/// guesses were wrong in two directions at once: « Méthadone AP-HP
+/// gélule » painted straight over its own bar, and at
+/// `[ui] text_scale = 1,6` almost every caption did. A count of pixels
+/// does not follow the text scale, and the label is drawn here, in a
+/// face this function chooses from the row height — so this is the only
+/// place that can measure it in the face that will draw it.
+///
+/// Bounded both ways: never more than half the plot, or a long caption
+/// would leave no bar to look at; never less than a few characters. And
+/// what still does not fit is elided rather than painted over the bar.
 pub fn hbars(
     ui: &mut egui::Ui,
     rect: egui::Rect,
     rows: &[Row],
-    label_w: f32,
     fmt: &dyn Fn(f64) -> String,
 ) -> Option<usize> {
     if rows.is_empty() {
@@ -275,7 +286,25 @@ pub fn hbars(
         .max(1.0);
     let row_h = (rect.height() / rows.len() as f32).clamp(14.0, 30.0);
     let font = egui::FontId::proportional((row_h * 0.46).clamp(10.0, 13.0));
-    let value_w = 46.0;
+    let text_w = |t: &str| {
+        ui.fonts(|f| {
+            f.layout_no_wrap(t.to_owned(), font.clone(), crate::text())
+                .size()
+                .x
+        })
+    };
+    // La colonne des valeurs aussi : « 124 h 30 » ne tient pas dans les
+    // quarante-six pixels que « 14 » demandait.
+    let value_w = rows
+        .iter()
+        .map(|r| text_w(&fmt(r.value)))
+        .fold(0.0_f32, f32::max)
+        + 8.0;
+    let label_w = rows.iter().map(|r| text_w(r.label)).fold(0.0_f32, f32::max) + 8.0;
+    let label_w = label_w.clamp(
+        text_w("0000").min(rect.width() * 0.5),
+        (rect.width() * 0.5).max(1.0),
+    );
     let mut hovered = None;
     let pointer = ui
         .interact(rect, ui.id().with("motif_hbars"), egui::Sense::hover())
@@ -289,13 +318,21 @@ pub fn hbars(
             hovered = Some(i);
             ui.painter().rect_filled(line, 0.0, crate::bg_hover());
         }
-        ui.painter().text(
-            egui::pos2(rect.left() + 2.0, line.center().y),
-            egui::Align2::LEFT_CENTER,
-            r.label,
-            font.clone(),
-            crate::text(),
-        );
+        // Découpé à sa colonne : sans cela, une longue légende se
+        // peint par-dessus la barre qu'elle nomme, et on ne lit plus
+        // ni l'une ni l'autre.
+        ui.painter()
+            .with_clip_rect(egui::Rect::from_min_size(
+                egui::pos2(rect.left(), top),
+                Vec2::new(label_w - 4.0, row_h),
+            ))
+            .text(
+                egui::pos2(rect.left() + 2.0, line.center().y),
+                egui::Align2::LEFT_CENTER,
+                r.label,
+                font.clone(),
+                crate::text(),
+            );
         let trough = egui::Rect::from_min_max(
             egui::pos2(rect.left() + label_w, top + 3.0),
             egui::pos2(rect.right() - value_w, top + row_h - 3.0),
