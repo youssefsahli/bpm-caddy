@@ -812,6 +812,11 @@ mod tests {
     /// than colours is a chart that repeats, not a crash at the counter.
     #[test]
     fn the_colour_ramp_wraps_instead_of_running_out() {
+        // `series_color(0)` **is** the accent of the theme in force,
+        // and the theme is process-wide: without this the two halves of
+        // an assertion could be read under two different skins, and the
+        // test failed once in ten runs saying nothing about wrapping.
+        let _guard = crate::theme_lock();
         for i in [0usize, 7, 8, 15, 1_000, usize::MAX] {
             let _ = super::series_color(i);
         }

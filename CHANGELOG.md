@@ -5,6 +5,71 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.174.0] - 2026-09-10
+
+### Added
+- **L'agenda sait enfin ce qu'est un chevauchement — et le filtre
+  n'efface plus rien.** Le plan de journée plaçait ses blocs par seau
+  d'heure : 9 h 00 et 9 h 45 étaient dessinées côte à côte alors
+  qu'elles ne se rencontrent jamais, la troisième entrée d'une même
+  heure repeignait la première, et un rendez-vous était haut d'une ligne
+  quelle que soit sa durée. `src/agenda.rs` remplace cela par de vraies
+  voies : un coloriage du graphe d'intervalles, dont le nombre de
+  colonnes est le nombre d'entrées qui partagent réellement une minute.
+  Deux blocs qui en partagent une portent un liseré rouge — un conflit
+  n'est pas une erreur, une officine en prend, à deux personnes, donc
+  c'est un liseré et jamais un refus.
+
+  Les rendez-vous portent désormais leur **durée**, leur **lieu** (au
+  comptoir ou à distance) et l'**opérateur** qui les prend : les trois
+  colonnes étaient en base depuis leurs migrations, seule la requête de
+  l'agenda les laissait derrière.
+
+  Deux interrupteurs « Au comptoir » · « À distance » s'ajoutent aux
+  pastilles par type d'acte, et la règle qui les tient est la
+  fonction : **un filtre n'efface pas, il éteint — et il n'éteint pas ce
+  qui chevauche ce qu'il garde.** Un entretien à distance de 14 h 00 à
+  14 h 30 reste dessiné, en aplat éteint, quand une vaccination au
+  comptoir est posée à 14 h 15 : la cacher fabriquerait le conflit
+  qu'elle devait montrer, et la question qu'on pose à un agenda est
+  « puis-je prendre quelqu'un à 14 h 15 ? ». Ce qui ne passe pas le
+  filtre et ne rencontre rien devient un trait de 3 px contre la
+  gouttière des heures — la journée garde sa densité vraie, et le survol
+  le nomme. Un compteur dit « 12 rendez-vous · 3 masqués · 1
+  chevauchement » : le mot « masqués » est ce qui empêche de lire une
+  journée filtrée comme une journée vide, et une journée vide est une
+  journée où l'on prend un rendez-vous de plus.
+
+  La semaine pâlit ses blocs éteints sans changer leur ligne et porte
+  une pastille rouge sur le jour qui a un chevauchement ; le mois porte
+  le même point dans le coin de la case. Et parce que la bande est
+  plafonnée au tiers du volet — à `[ui] text_scale = 1,6` sur un écran
+  de comptoir, les boutons de mode prennent à eux seuls les trois
+  rangées qu'elle a —, le titre du panneau porte « JOUR — 2 masqué(s) »
+  quand un filtre est posé. Un filtre qui éteint des rendez-vous sans
+  qu'on puisse voir qu'il est là serait pire que pas de filtre.
+- **Un rendez-vous est dessiné à sa durée.** Le plancher d'un bloc était
+  une heure entière : tout ce qui dure moins — c'est-à-dire à peu près
+  tous les entretiens — se dessinait comme un rendez-vous dont personne
+  n'a noté la durée. Le plancher est désormais la ligne de texte du
+  libellé, mesurée dans la fonte qui la dessine.
+
+### Fixed
+- **Filtrer l'agenda supprimait les rendez-vous.** La bande de filtres
+  faisait un `retain` sur la liste de la session : ce qu'elle cachait,
+  elle le jetait — le tableau de bord, le dock et la liste imprimée y
+  perdaient les mêmes lignes jusqu'au rechargement suivant, sans que
+  rien ne le dise. Le filtre est une lecture maintenant, posée à
+  l'endroit du dessin.
+- La légende de la semaine a disparu : elle disait exactement ce que la
+  rangée de filtres dit déjà, à cela près qu'on ne pouvait pas cliquer
+  dessus. Le calendrier récupère les deux lignes qu'elle prenait — à
+  l'échelle 1,6, une rangée de rendez-vous de plus par jour.
+- Un test de `motif` échouait une fois sur dix : `series_color(0)` est
+  l'accent de la peau en vigueur, la peau est globale au processus, et
+  ce test-là ne prenait pas le verrou que ses voisins prennent. Les deux
+  moitiés d'une assertion pouvaient donc être lues sous deux peaux.
+
 ## [0.173.0] - 2026-09-10
 
 ### Added

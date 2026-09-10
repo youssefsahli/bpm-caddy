@@ -3796,6 +3796,9 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 kind: InterviewKind::Bpm,
                 date: "2026-09-14".to_owned(),
                 time: "09:30".to_owned(),
+                remote: false,
+                duration_minutes: 30,
+                operator: "CL".to_owned(),
             }],
             "24/08/2026",
         ),
@@ -3938,6 +3941,9 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 kind: InterviewKind::Bpm,
                 date: "2026-08-25".to_owned(),
                 time: "09:30".to_owned(),
+                remote: false,
+                duration_minutes: 30,
+                operator: "CL".to_owned(),
             }],
             &[],
             "2026-08-24",
@@ -5533,6 +5539,9 @@ mod tests {
                 phone: "06 12 34 56 78".to_owned(),
                 kind: InterviewKind::Aod,
                 date: "2026-08-27".to_owned(),
+                remote: false,
+                duration_minutes: 30,
+                operator: "CL".to_owned(),
             },
             Appointment {
                 id: 2,
@@ -5542,6 +5551,9 @@ mod tests {
                 phone: String::new(),
                 kind: InterviewKind::Asthme,
                 date: "2026-08-27".to_owned(),
+                remote: true,
+                duration_minutes: 0,
+                operator: String::new(),
             },
         ];
         let events = vec![Event {
@@ -5854,6 +5866,9 @@ mod tests {
                 phone: "06 12 34 56 78".to_owned(),
                 kind: InterviewKind::Bpm,
                 date: "2026-09-01".to_owned(),
+                remote: false,
+                duration_minutes: 0,
+                operator: String::new(),
             },
             Appointment {
                 id: 2,
@@ -5863,6 +5878,9 @@ mod tests {
                 phone: String::new(),
                 kind: InterviewKind::Aod,
                 date: "2026-09-03".to_owned(),
+                remote: false,
+                duration_minutes: 45,
+                operator: "CL".to_owned(),
             },
         ];
         let source = fill(

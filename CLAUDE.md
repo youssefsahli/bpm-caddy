@@ -98,6 +98,23 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   rendez-vous next week is not the last act** — which is the only reason
   `latest` knows what day it is. Pure, tested, writes nothing: the
   thread is a reading, so `Kind` has no database key),
+  `src/agenda.rs` (the day's intervals: what overlaps, which lane it is
+  drawn in, and what a filter is allowed to turn down. The day plan used
+  to place its blocks by **hour bucket** — `offset / row_h`, then
+  `index % 2` — so 9 h 00 and 9 h 45 sat side by side though they never
+  meet, and the third entry of an hour repainted the first. Three rules:
+  **touching bounds do not overlap** (an interval covers `[start, end[`,
+  never the minute of its end), **a rendez-vous with no duration is not
+  a rendez-vous of zero minutes** but a point in the day, and — the one
+  that is the whole function — **a filter does not erase, it dims, and
+  it does not dim what overlaps what it keeps**. Cacher l'entretien à
+  distance de 14 h 00 – 14 h 30 quand une vaccination est posée à 14 h 15
+  au comptoir *fabrique* le conflit qu'il devait montrer: the filtered
+  entry stays drawn, in context. The module knows **neither egui, nor
+  the base, nor the act kinds** — the view posts a `kept: bool` per
+  entry — the same boundary as `timeline.rs`, and for the same reason:
+  the day the team's shifts overlap, they go through this calculation
+  untouched. Pure, tested, no clock),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints),
@@ -692,7 +709,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
-  agenda_month|protocols|protocol_open|template|options|about|tables|
+  agenda_filtre|agenda_month|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|

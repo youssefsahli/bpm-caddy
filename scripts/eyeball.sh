@@ -48,7 +48,7 @@ printf 'ceci n%s est pas une carte' "'" > "$card"
 
 views=(
     search dashboard patient drugs drug_card drug_edit drug_kin
-    agenda agenda_day agenda_month tables tables_search calc carnet
+    agenda agenda_day agenda_filtre agenda_month tables tables_search calc carnet
     vaccins bio watch revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
     finances stats companion script carnets graph stup stup_catalogue ordonnancier vigilance destruction scans patient_scans fil registres

@@ -1631,6 +1631,19 @@ pub struct Appointment {
     pub date: String,
     /// `HH:MM`, empty when the hour is not fixed.
     pub time: String,
+    /// Held remotely: the convention adds the TPH code, and the agenda
+    /// filters on it — someone at the counter and someone on the
+    /// telephone are not in the same place at the same minute.
+    pub remote: bool,
+    /// How long the act is planned to take. `0` on every act booked
+    /// before the column existed, and **zero is not a duration**: the
+    /// agenda draws such a rendez-vous as a point in the day rather
+    /// than invent an average and fabricate a conflict.
+    pub duration_minutes: i64,
+    /// Who is to hold it, by initials. May be empty — that is the
+    /// « non attribué » of the agenda, and it is a fact, not a gap to
+    /// be filled in.
+    pub operator: String,
 }
 
 #[derive(Clone, Debug)]
@@ -33515,8 +33528,16 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
+                // `remote`, `duration_minutes` and `operator` have been
+                // columns of `interviews` since their migrations, and
+                // `Interview` has always read them; only this SELECT
+                // left them behind. Without them the agenda cannot tell
+                // the counter from the telephone, cannot know that a
+                // rendez-vous lasts half an hour, and shows an act
+                // nobody has taken charge of exactly like the rest.
                 "SELECT i.patient_id, p.first_name || ' ' || p.last_name, p.phone, i.kind,
-                        i.scheduled_date, i.id, i.scheduled_time
+                        i.scheduled_date, i.id, i.scheduled_time,
+                        i.remote, i.duration_minutes, i.operator
                  FROM interviews i JOIN patients p ON p.id = i.patient_id
                  WHERE i.scheduled_date IS NOT NULL
                    AND i.state IN ('IDENTIFIED', 'SCHEDULED')
@@ -33535,13 +33556,26 @@ impl Db {
                     r.get::<_, String>(4)?,
                     r.get::<_, i64>(5)?,
                     r.get::<_, String>(6)?,
+                    r.get::<_, i64>(7)?,
+                    r.get::<_, i64>(8)?,
+                    r.get::<_, String>(9)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (patient_id, patient_name, phone, kind, date, id, time) =
-                row.map_err(|e| e.to_string())?;
+            let (
+                patient_id,
+                patient_name,
+                phone,
+                kind,
+                date,
+                id,
+                time,
+                remote,
+                duration_minutes,
+                operator,
+            ) = row.map_err(|e| e.to_string())?;
             out.push(Appointment {
                 id,
                 time,
@@ -33551,6 +33585,9 @@ impl Db {
                 kind: InterviewKind::parse(&kind)
                     .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?,
                 date,
+                remote: remote != 0,
+                duration_minutes,
+                operator,
             });
         }
         Ok(out)
@@ -39682,6 +39719,83 @@ mod tests {
                 } else {
                     db.set_scheduled_time(iid, "16:15", "").unwrap();
                 }
+            }
+        }
+
+        // La journée d'aujourd'hui, telle que le plan de journée doit
+        // savoir la dessiner. Sans ces quatre lignes le mode « Jour »
+        // s'ouvre sur une grille d'heures vide : la démo n'avait de
+        // rendez-vous qu'à deux jours d'ici et à trois jours de là, et
+        // aucune capture ne montrait donc ni les voies, ni le liseré
+        // d'un chevauchement, ni ce qu'un filtre éteint.
+        //
+        // Les quatre cas sont choisis, pas pris au hasard :
+        //
+        // * 9 h 00 – 9 h 45 au comptoir et 9 h 15 – 9 h 45 au
+        //   téléphone : ils partagent une demi-heure, donc deux voies
+        //   et un liseré. Filtrer « à distance » laisse le premier
+        //   **en contexte** — c'est exactement la règle que le module
+        //   existe pour tenir.
+        // * 9 h 45 – 10 h 15 : bord à bord avec les deux précédents.
+        //   Les bornes se touchent, la salle est libre, une seule voie.
+        //   L'ancien placement par seau d'heure le mettait en deuxième
+        //   colonne pour rien.
+        // * 14 h 00 sans durée : un point dans la journée, qui garde sa
+        //   ligne et ne prend une voie à personne.
+        let today: String = db
+            .conn
+            .query_row("SELECT date('now', 'localtime')", [], |r| r.get(0))
+            .unwrap();
+        for (last, kind, time, minutes, remote, theme) in [
+            (
+                "Dupont",
+                InterviewKind::Bpm,
+                "09:00",
+                45,
+                false,
+                "Observance",
+            ),
+            (
+                "Moreau",
+                InterviewKind::Aod,
+                "09:15",
+                30,
+                true,
+                "Suivi téléphonique",
+            ),
+            (
+                "Bernard",
+                InterviewKind::Asthme,
+                "09:45",
+                30,
+                false,
+                "Technique d'inhalation",
+            ),
+            (
+                "Martin",
+                InterviewKind::Prevention,
+                "14:00",
+                0,
+                true,
+                "Vaccination — conseil",
+            ),
+        ] {
+            let Some(p) = db
+                .patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.last_name == last)
+            else {
+                continue;
+            };
+            let iid = db.add_interview_by(p.id, kind, theme, "CL").unwrap();
+            db.set_scheduled_date(iid, Some(&today), None).unwrap();
+            db.set_scheduled_time(iid, time, "").unwrap();
+            if minutes > 0 {
+                db.set_duration(iid, minutes, 0).unwrap();
+            }
+            if remote {
+                db.set_remote(iid, true, false).unwrap();
             }
         }
 

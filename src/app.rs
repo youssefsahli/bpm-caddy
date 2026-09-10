@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
+use crate::agenda;
 use crate::config::{ActFees, Config, RuleEnforcement};
 use crate::db::{
     self, Appointment, Db, Drug, Interview, InterviewKind, InterviewState, InterviewSummary, Note,
@@ -2430,6 +2431,14 @@ struct Session {
     /// Agenda filter: the act kinds shown (all when empty), and the
     /// rendez-vous whose hour or date is being changed.
     agenda_filter: std::collections::HashSet<InterviewKind>,
+    /// Where the act is held: `[au comptoir, à distance]`, both on at
+    /// the start. Nothing of this reaches the disk — neither
+    /// `config.toml`, which the team shares, nor `layout.toml`: a
+    /// filter that survived the night would hide half of tomorrow
+    /// morning's agenda without anyone having asked it to. One opens
+    /// the agenda complete, and narrows it for the minute one is
+    /// reading.
+    agenda_places: [bool; 2],
     rdv_time_edit: Option<(i64, String)>,
     rdv_move_edit: Option<(i64, String)>,
     /// Week shown in the agenda, relative to the current one.
@@ -3006,6 +3015,7 @@ impl Session {
             event_category: db::EventCategory::Formation,
             event_repeat: 0,
             agenda_filter: std::collections::HashSet::new(),
+            agenda_places: [true, true],
             rdv_time_edit: None,
             rdv_move_edit: None,
             agenda_offset: 0,
@@ -6521,6 +6531,24 @@ enum AgendaMode {
     Month,
 }
 
+/// What the filter and the clashes make of one day of the agenda.
+///
+/// `hidden` is the word the band has to say out loud: without it a
+/// filtered day reads as an empty day, and an empty day is a day one
+/// books into.
+#[derive(Default, Clone, Copy)]
+struct AgendaDayCount {
+    /// Rendez-vous that pass the filter.
+    kept: usize,
+    /// Rendez-vous the filter turns down — never removed from the day,
+    /// only drawn quiet or reduced to a tick against the hours.
+    hidden: usize,
+    /// Entries of that day caught in at least one overlap. Counted on
+    /// the **whole** day: a filter that could hide a clash would be
+    /// worse than no filter at all.
+    clashes: usize,
+}
+
 /// Stable color per act kind, for the agenda's week blocks and legend.
 ///
 /// A ramp and not ten separate colours, because that is how it is read:
@@ -7491,6 +7519,18 @@ impl App {
                         Ok("agenda_day") => {
                             session.refresh_dashboard();
                             session.agenda_mode = AgendaMode::Day;
+                            session.view = MainView::Agenda;
+                        }
+                        // Le plan de journée **filtré**, qui est le seul
+                        // endroit où l'on voit la règle à l'œuvre : sans
+                        // ce crochet, l'état filtré n'est jamais
+                        // photographié et les trois états — retenu, en
+                        // contexte, écarté — ne se distinguent sur
+                        // aucune capture.
+                        Ok("agenda_filtre") => {
+                            session.refresh_dashboard();
+                            session.agenda_mode = AgendaMode::Day;
+                            session.agenda_places = [false, true];
                             session.view = MainView::Agenda;
                         }
                         Ok("agenda_month") => {
@@ -18624,6 +18664,171 @@ impl App {
         });
     }
 
+    /// Every day the agenda knows about, counted once for the frame.
+    ///
+    /// One pass over the appointments and the calendar entries, and the
+    /// per-day work is quadratic in a handful of entries. The week and
+    /// the month then read this map instead of sweeping the whole list
+    /// per cell, which is what they used to do — forty-two cells, two
+    /// sweeps each.
+    fn agenda_counts(
+        appointments: &[Appointment],
+        events: &[db::Event],
+        places: [bool; 2],
+        kinds: &std::collections::HashSet<InterviewKind>,
+    ) -> std::collections::HashMap<String, AgendaDayCount> {
+        let mut counts: std::collections::HashMap<String, AgendaDayCount> =
+            std::collections::HashMap::new();
+        let mut by_day: std::collections::HashMap<String, Vec<agenda::Entry>> =
+            std::collections::HashMap::new();
+        for rdv in appointments {
+            let kept = Self::agenda_keeps(places, kinds, rdv);
+            let c = counts.entry(rdv.date.clone()).or_default();
+            if kept {
+                c.kept += 1;
+            } else {
+                c.hidden += 1;
+            }
+            if let Some(slot) = agenda::slot_of(&rdv.time, rdv.duration_minutes) {
+                by_day
+                    .entry(rdv.date.clone())
+                    .or_default()
+                    .push(agenda::Entry::new(rdv.id, slot, kept));
+            }
+        }
+        for ev in events {
+            if let Some(slot) = agenda::slot_between(&ev.time, &ev.end_time) {
+                by_day
+                    .entry(ev.day.clone())
+                    .or_default()
+                    .push(agenda::Entry::new(-(ev.id + 1), slot, true));
+            }
+        }
+        for (day, entries) in by_day {
+            // Des **paires**, pas des entrées prises dans une paire :
+            // deux rendez-vous qui se rencontrent sont un
+            // chevauchement, et `in_conflict` en aurait annoncé deux.
+            counts.entry(day).or_default().clashes = agenda::conflicts(&entries).len();
+        }
+        counts
+    }
+
+    /// Does this rendez-vous pass the agenda's filters — the place it
+    /// is held in, and the kind of act it is?
+    ///
+    /// It answers « passe-t-il », never « faut-il le dessiner » : an
+    /// act that does not pass is still drawn when it overlaps one that
+    /// does. That second question is [`agenda::states`]'s, and keeping
+    /// the two apart is the whole point of the module.
+    ///
+    /// It takes the two filters rather than the whole session, so a
+    /// test can ask it the question without a database behind it.
+    fn agenda_keeps(
+        places: [bool; 2],
+        kinds: &std::collections::HashSet<InterviewKind>,
+        rdv: &Appointment,
+    ) -> bool {
+        places[usize::from(rdv.remote)] && (kinds.is_empty() || kinds.contains(&rdv.kind))
+    }
+
+    /// One day of the agenda laid out: every entry with its interval,
+    /// the lane it is drawn in, what the filter made of it, and which
+    /// ids share a minute with another.
+    ///
+    /// The entries are the day's rendez-vous **then** its other entries
+    /// (formation, réunion, livraison), in that order, so a caller can
+    /// index straight back into its own two lists. A calendar entry has
+    /// no place and no kind: no filter applies to it, and it is always
+    /// retained.
+    fn agenda_day_layout(
+        appointments: &[Appointment],
+        events: &[db::Event],
+        places: [bool; 2],
+        kinds: &std::collections::HashSet<InterviewKind>,
+        day: &str,
+    ) -> (
+        Vec<agenda::Entry>,
+        Vec<agenda::State>,
+        std::collections::HashSet<i64>,
+    ) {
+        let mut entries: Vec<agenda::Entry> = Vec::new();
+        for rdv in appointments.iter().filter(|r| r.date == day) {
+            if let Some(slot) = agenda::slot_of(&rdv.time, rdv.duration_minutes) {
+                entries.push(agenda::Entry::new(
+                    rdv.id,
+                    slot,
+                    Self::agenda_keeps(places, kinds, rdv),
+                ));
+            }
+        }
+        for ev in events.iter().filter(|e| e.day == day) {
+            if let Some(slot) = agenda::slot_between(&ev.time, &ev.end_time) {
+                // Negative, so a calendar entry can never be mistaken
+                // for an interview of the same id.
+                entries.push(agenda::Entry::new(-(ev.id + 1), slot, true));
+            }
+        }
+        let states = agenda::states(&entries);
+        // The conflicts are read off the **whole** day, filter or no
+        // filter: a filter that could hide a clash would be worse than
+        // no filter at all.
+        let clashing = agenda::in_conflict(&entries);
+        (entries, states, clashing)
+    }
+
+    /// The lane each drawn entry takes, by id — and how many lanes the
+    /// plan needs.
+    ///
+    /// **Une voie se calcule en pixels, un conflit en minutes**, et
+    /// c'est la seule raison pour laquelle cette fonction existe à côté
+    /// de `agenda::lanes`. Un bloc ne descend jamais sous la hauteur de
+    /// son libellé (sans quoi il ne se lit pas), donc à l'échelle 1,6
+    /// sur un écran de comptoir — une heure fait vingt-quatre pixels,
+    /// une ligne de texte vingt-six — un rendez-vous de quarante-cinq
+    /// minutes en occupe soixante-cinq à l'écran. Placé dans la voie de
+    /// son voisin de 9 h 45 parce que les *minutes* ne se rencontrent
+    /// pas, il le repeint : exactement le défaut que ce module a été
+    /// écrit pour supprimer, sur l'autre axe.
+    ///
+    /// Les voies se calculent donc sur l'étendue **dessinée**. Le
+    /// liseré rouge, lui, continue de se lire sur les minutes : gonfler
+    /// les intervalles pour le conflit annoncerait un chevauchement que
+    /// la journée n'a pas, et un logiciel qui fabrique des conflits
+    /// n'est pas cru longtemps.
+    ///
+    /// Ce qui est hors de la fenêtre d'affichage (`[ui] day_start_hour`
+    /// / `day_end_hour`) n'y est pas non plus : deux rendez-vous de 7 h
+    /// qui se rencontrent auraient coupé en deux la largeur d'une
+    /// journée qui commence à 9 h, pour deux blocs que personne ne voit.
+    fn agenda_day_lanes(
+        entries: &[agenda::Entry],
+        states: &[agenda::State],
+        window: std::ops::Range<u16>,
+        min_span: u16,
+    ) -> (std::collections::HashMap<i64, usize>, usize) {
+        let drawn: Vec<agenda::Entry> = entries
+            .iter()
+            .zip(states)
+            .filter(|(e, s)| s.drawn() && window.contains(&e.slot.start))
+            .map(|(e, _)| {
+                agenda::Entry::new(
+                    e.id,
+                    agenda::Slot::new(
+                        e.slot.start,
+                        e.slot.end.max(e.slot.start.saturating_add(min_span)),
+                    ),
+                    e.kept,
+                )
+            })
+            .collect();
+        let lanes = agenda::lanes(&drawn);
+        let count = agenda::lane_count(&lanes);
+        (
+            drawn.iter().zip(&lanes).map(|(e, l)| (e.id, *l)).collect(),
+            count,
+        )
+    }
+
     /// Agenda (F4): the upcoming patient appointments grouped by day,
     /// soonest first, overdue days flagged. Clicking an entry opens the
     /// patient; the list is printable.
@@ -18715,49 +18920,150 @@ impl App {
             format!("{:02}:{:02}", start + quarters / 4, (quarters % 4) * 15)
         };
         let mut untimed: Vec<String> = Vec::new();
-        let mut slots: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+        // Where each entry of the day belongs: its own lane, computed
+        // over the whole day rather than per hour bucket, so the columns
+        // do not shift from one hour to the next.
+        let (entries, states, clashing) = Self::agenda_day_layout(
+            &session.appointments,
+            events,
+            session.agenda_places,
+            &session.agenda_filter,
+            &day,
+        );
+        let by_id: std::collections::HashMap<i64, usize> =
+            entries.iter().enumerate().map(|(i, e)| (e.id, i)).collect();
+        // La hauteur d'une ligne de libellé, et donc le plancher d'un
+        // bloc : au-dessous, il ne se lit pas. Mesurée dans la fonte qui
+        // dessinera, jamais devinée.
+        let label_h =
+            ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5)))) + 4.0;
+        // Ce plancher, retraduit en minutes : c'est l'étendue minimale
+        // qu'un bloc occupe **à l'écran**, et c'est sur elle que les
+        // voies se calculent. Voir `agenda_day_lanes`.
+        let min_span = ((label_h / row_h) * 60.0).ceil().clamp(0.0, 1440.0) as u16;
+        let (lane_of, lane_count) = Self::agenda_day_lanes(
+            &entries,
+            &states,
+            // `start` et `end` sont déjà bornés à 23 et 24 plus haut.
+            (start as u16 * 60)..(end as u16 * 60),
+            min_span,
+        );
+        let width = (inner.width() - gutter - 8.0) / lane_count as f32;
+        #[allow(clippy::too_many_arguments)]
         let draw = |ui: &mut egui::Ui,
+                    entry_id: i64,
                     time: &str,
-                    end: &str,
                     label: String,
                     color: egui::Color32,
                     hover: String,
                     patient: Option<i64>,
                     untimed: &mut Vec<String>,
-                    slots: &mut std::collections::HashMap<i64, usize>,
                     open_id: &mut Option<i64>| {
             let Some(offset) = place(time) else {
                 untimed.push(label);
                 return;
             };
-            let hour_key = (offset / row_h) as i64;
-            let column = slots.entry(hour_key).or_insert(0);
-            let index = *column;
-            *column += 1;
-            let width = (inner.width() - gutter - 8.0) / 2.0;
-            // An entry that runs to an hour is drawn to it; one that is
-            // a point in the day keeps its single row.
-            let height = place(end)
-                .map(|e| (e - offset - 4.0).max(row_h - 6.0))
-                .unwrap_or(row_h - 6.0);
+            let Some(&i) = by_id.get(&entry_id) else {
+                // Outside the displayed window, or no readable hour:
+                // `place` has already sent it to the untimed list.
+                return;
+            };
+            let (slot, state) = (entries[i].slot, states[i]);
+            // **Un filtre n'efface pas, il éteint.** Ce qui ne passe
+            // pas et ne chevauche rien de retenu n'est plus un bloc,
+            // mais il reste un trait à sa minute, contre la gouttière :
+            // la journée garde sa densité vraie, et le survol le nomme.
+            if state == agenda::State::Ecarte {
+                let tick = egui::Rect::from_min_size(
+                    egui::pos2(inner.left() + gutter - 7.0, inner.top() + offset),
+                    egui::vec2(4.0, (row_h * 0.7).max(9.0)),
+                );
+                ui.painter().rect_filled(tick, 0.0, color);
+                ui.interact(
+                    tick.expand2(egui::vec2(3.0, 0.0)),
+                    ui.id().with(("daytick", entry_id)),
+                    egui::Sense::hover(),
+                )
+                .on_hover_text(format!("{hover}\n{}", tr("agenda_hidden_tooltip")));
+                return;
+            }
+            // A block runs to its end; a point in the day keeps its
+            // single row. `slot.minutes()` is `None` on a rendez-vous
+            // nobody timed — not zero.
+            //
+            // **Le plancher est la ligne de texte, pas l'heure.** Il
+            // valait `row_h - 6`, c'est-à-dire une heure entière : tout
+            // ce qui dure moins d'une heure — c'est-à-dire à peu près
+            // tous les entretiens — se dessinait de la même hauteur
+            // qu'un rendez-vous dont personne n'a noté la durée, et la
+            // colonne `duration_minutes` n'aurait rien changé à
+            // l'image. Un bloc doit rester lisible, donc il ne descend
+            // pas sous la hauteur de son libellé ; au-delà, il dit sa
+            // durée.
+            let height = slot
+                .minutes()
+                .map(|m| (f32::from(m) / 60.0 * row_h - 4.0).max(label_h))
+                .unwrap_or(label_h);
+            let lane = lane_of.get(&entry_id).copied().unwrap_or(0);
             let block = egui::Rect::from_min_size(
                 egui::pos2(
-                    inner.left() + gutter + 4.0 + (index % 2) as f32 * width,
+                    inner.left() + gutter + 4.0 + lane as f32 * width,
                     inner.top() + offset + 2.0,
                 ),
                 egui::vec2(width - 4.0, height),
             );
-            ui.painter().rect_filled(block, 0.0, color);
+            // En contexte : dessiné à sa place, dans sa voie, en aplat
+            // éteint, le trait de sa couleur au bord gauche. On lit
+            // qu'il est là et qu'il n'est pas le sujet.
+            let context = state == agenda::State::Contexte;
+            let fill = if context { motif::stripe() } else { color };
+            ui.painter().rect_filled(block, 0.0, fill);
+            if context {
+                // `stripe()` n'est qu'à 18 % du fond sur lequel il est
+                // posé — c'est ce qu'on veut d'une bande éteinte, et
+                // c'est trop peu pour dire où le bloc s'arrête. Sa
+                // couleur de nature le borde donc, et l'épaissit à
+                // gauche : on lit son étendue, sa nature et le fait
+                // qu'il n'est pas le sujet, dans cet ordre.
+                ui.painter()
+                    .rect_stroke(block, 0.0, egui::Stroke::new(1.0_f32, color));
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(block.min, egui::vec2(4.0, block.height())),
+                    0.0,
+                    color,
+                );
+            }
+            // Un chevauchement n'est pas une erreur — l'officine en
+            // prend, à deux personnes. C'est donc un liseré, jamais un
+            // refus ni une boîte de dialogue.
+            if clashing.contains(&entry_id) {
+                ui.painter()
+                    .rect_stroke(block, 0.0, egui::Stroke::new(1.5_f32, motif::alert()));
+            }
+            let ink = if context {
+                motif::readable_on(motif::text_dim(), fill)
+            } else {
+                motif::on_fill(fill)
+            };
+            // Le libellé se pose en tête du bloc et non en son milieu :
+            // un bloc de deux heures dont le nom flotte au centre se
+            // lit mal en regardant l'heure, et un bloc au plancher n'a
+            // de toute façon que cette ligne-là.
             ui.painter().with_clip_rect(block.shrink(2.0)).text(
-                egui::pos2(block.left() + 5.0, block.top() + (row_h - 6.0) / 2.0),
+                egui::pos2(block.left() + 6.0, block.top() + label_h / 2.0),
                 egui::Align2::LEFT_CENTER,
                 label,
                 egui::FontId::proportional(motif::pt(ui, 11.5)),
-                motif::on_fill(color),
+                ink,
             );
+            let mut hover = hover;
+            if clashing.contains(&entry_id) {
+                hover.push('\n');
+                hover.push_str(tr("agenda_clash_tooltip"));
+            }
             let resp = ui.interact(
                 block,
-                ui.id().with(("dayblk", hour_key, index)),
+                ui.id().with(("dayblk", entry_id)),
                 egui::Sense::click(),
             );
             if resp.on_hover_text(hover).clicked() {
@@ -18774,17 +19080,22 @@ impl App {
             .collect::<Vec<_>>()
         {
             let label = format!("{} {}", rdv.time, rdv.patient_name);
-            let hover = format!("{} — {}", rdv.patient_name, rdv.kind.label());
+            let mut hover = format!("{} — {}", rdv.patient_name, rdv.kind.label());
+            if rdv.remote {
+                hover.push_str(&format!(" · {}", tr("agenda_place_remote")));
+            }
+            if !rdv.operator.is_empty() {
+                hover.push_str(&format!(" · {}", rdv.operator));
+            }
             draw(
                 ui,
+                rdv.id,
                 &rdv.time,
-                "",
                 label,
                 kind_color(rdv.kind),
                 hover,
                 Some(rdv.patient_id),
                 &mut untimed,
-                &mut slots,
                 open_id,
             );
         }
@@ -18797,14 +19108,13 @@ impl App {
             let hover = format!("{} — {}", ev.category.label(), ev.title);
             draw(
                 ui,
+                -(ev.id + 1),
                 &ev.time,
-                &ev.end_time,
                 label,
                 motif::bg_dark(),
                 hover,
                 None,
                 &mut untimed,
-                &mut slots,
                 open_id,
             );
         }
@@ -18879,6 +19189,7 @@ impl App {
         ui: &mut egui::Ui,
         session: &mut Session,
         events: &[db::Event],
+        counts: &std::collections::HashMap<String, AgendaDayCount>,
         pick_day: &mut Option<String>,
         _open_id: &mut Option<i64>,
     ) {
@@ -18986,26 +19297,57 @@ impl App {
                 }
                 x += 12.0;
             };
+            // Une case de mois ne dessine pas de blocs : elle compte.
+            // Un rendez-vous que le filtre éteint garde donc sa
+            // pastille, en encre de fond — la densité du mois est ce
+            // qu'on lit ici, et un mois qui maigrit sous un filtre se
+            // lit comme un mois vide.
             for rdv in session.appointments.iter().filter(|r| r.date == *date) {
-                chip(kind_color(rdv.kind), ui.painter());
+                let full = Self::agenda_keeps(session.agenda_places, &session.agenda_filter, rdv);
+                chip(
+                    if full {
+                        kind_color(rdv.kind)
+                    } else {
+                        motif::stripe()
+                    },
+                    ui.painter(),
+                );
             }
             for _ in events.iter().filter(|e| e.day == *date) {
                 chip(motif::bg_dark(), ui.painter());
             }
+            let count = counts.get(date).copied().unwrap_or_default();
+            // Un jour qui porte un conflit prend un point rouge dans le
+            // coin de sa case, pour qu'on sache où aller sans ouvrir
+            // les trente.
+            if count.clashes > 0 {
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::pos2(cell.right() - 9.0, cell.top() + 4.0),
+                        egui::vec2(5.0, 5.0),
+                    ),
+                    0.0,
+                    motif::alert(),
+                );
+            }
             let resp = ui.interact(cell, ui.id().with(("mcell", idx)), egui::Sense::click());
-            let n_rdv = session
-                .appointments
-                .iter()
-                .filter(|r| r.date == *date)
-                .count();
             let n_ev = events.iter().filter(|e| e.day == *date).count();
-            if resp
-                .on_hover_text(trn(
-                    "agenda_day_summary",
-                    &[&db::format_french_date(date), &n_rdv, &n_ev],
-                ))
-                .clicked()
-            {
+            let mut hover = trn(
+                "agenda_day_summary",
+                &[
+                    &db::format_french_date(date),
+                    &(count.kept + count.hidden),
+                    &n_ev,
+                ],
+            );
+            if count.hidden > 0 {
+                hover.push_str(&trf("agenda_day_hidden", count.hidden));
+            }
+            if count.clashes > 0 {
+                hover.push('\n');
+                hover.push_str(tr("agenda_clash_tooltip"));
+            }
+            if resp.on_hover_text(hover).clicked() {
                 *pick_day = Some(date.clone());
             }
         }
@@ -19461,11 +19803,16 @@ impl App {
         let mut print_week = false;
         let red = motif::alert();
         let mut open_id: Option<i64> = None;
-        // The filter applies to every part of the view at once.
-        if !session.agenda_filter.is_empty() {
-            let keep = session.agenda_filter.clone();
-            session.appointments.retain(|r| keep.contains(&r.kind));
-        }
+        // **Le filtre n'efface pas.** Il retenait — `retain` — les
+        // rendez-vous de la session : ce que la vue cachait, elle le
+        // jetait, pour de bon et pour tout le monde. Le tableau de
+        // bord, le dock et la liste imprimée y perdaient les mêmes
+        // lignes jusqu'au rechargement suivant, sans que rien ne le
+        // dise. La liste est intacte désormais ; le filtre est une
+        // lecture, posée entrée par entrée à l'endroit du dessin, et
+        // `agenda::states` décide de ce qu'il éteint et de ce qu'il
+        // garde en contexte.
+        //
         // What has slipped past its date and is still waiting: the
         // agenda says so before anything else.
         let overdue: Vec<Appointment> = session
@@ -19480,6 +19827,30 @@ impl App {
             session.agenda_day = session.today.clone();
             session.load_day();
         }
+        // Every day counted once for the frame, and the tally of the
+        // period on screen. « 12 rendez-vous · 3 masqués · 1
+        // chevauchement » is what stops a filtered day from being read
+        // as an empty one — and an empty day is a day one books into.
+        let counts = Self::agenda_counts(
+            &session.appointments,
+            &grid_events,
+            session.agenda_places,
+            &session.agenda_filter,
+        );
+        let scope: Vec<String> = match session.agenda_mode {
+            AgendaMode::Day => vec![session.agenda_day.clone()],
+            AgendaMode::Week => session.agenda_week.clone(),
+            AgendaMode::Month => session.agenda_month_days.clone(),
+        };
+        let tally = scope.iter().filter_map(|d| counts.get(d)).fold(
+            AgendaDayCount::default(),
+            |mut acc, c| {
+                acc.kept += c.kept;
+                acc.hidden += c.hidden;
+                acc.clashes += c.clashes;
+                acc
+            },
+        );
 
         // A control band across the top, then the calendar and the
         // selected day side by side. The five sections used to run down
@@ -19491,8 +19862,14 @@ impl App {
         let filter_lines = Self::wrapped_rows(
             ui,
             body.width() - 60.0,
-            std::iter::once(tr("agenda_filter_all"))
-                .chain(InterviewKind::ALL.iter().map(|k| k.label())),
+            [
+                tr("agenda_place_counter"),
+                tr("agenda_place_remote"),
+                tr("agenda_filter_all"),
+            ]
+            .into_iter()
+            .chain(InterviewKind::ALL.iter().map(|k| k.label()))
+            .chain(std::iter::once(tr("agenda_counts"))),
         );
         let control_lines = Self::wrapped_rows(
             ui,
@@ -19591,8 +19968,16 @@ impl App {
                         }
                     });
                     ui.add_space(4.0);
-                    // Filter by act kind: an empty set shows everything, so the
-                    // agenda opens complete and narrows only on demand.
+                    // Filter by place and by act kind: everything on
+                    // shows everything, so the agenda opens complete and
+                    // narrows only on demand.
+                    //
+                    // **Une seule bande.** Les pastilles servaient de
+                    // légende sous la grille de la semaine et de filtre
+                    // ici : deux rangées pour un même vocabulaire, dont
+                    // une qu'on pouvait cliquer. La légende a disparu ;
+                    // c'est cette rangée-ci qui la remplace, et elle
+                    // rend au calendrier la hauteur qu'elle prenait.
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             egui::RichText::new(tr("agenda_filter"))
@@ -19602,12 +19987,27 @@ impl App {
                         if motif::toggle(
                             ui,
                             tr("agenda_filter_all"),
-                            session.agenda_filter.is_empty(),
+                            session.agenda_filter.is_empty()
+                                && session.agenda_places == [true, true],
                         )
                         .on_hover_text(tr("agenda_filter_tooltip"))
                         .clicked()
                         {
                             session.agenda_filter.clear();
+                            session.agenda_places = [true, true];
+                        }
+                        // Le comptoir et le téléphone : deux endroits,
+                        // et une personne ne peut pas être aux deux.
+                        for (i, label) in [tr("agenda_place_counter"), tr("agenda_place_remote")]
+                            .into_iter()
+                            .enumerate()
+                        {
+                            if motif::toggle(ui, label, session.agenda_places[i])
+                                .on_hover_text(tr("agenda_place_tooltip"))
+                                .clicked()
+                            {
+                                session.agenda_places[i] = !session.agenda_places[i];
+                            }
                         }
                         for kind in InterviewKind::ALL {
                             let on = session.agenda_filter.contains(&kind);
@@ -19628,6 +20028,23 @@ impl App {
                                 }
                             }
                         }
+                        // Le compteur, et c'est lui qui empêche de
+                        // croire une journée vide alors qu'elle est
+                        // filtrée. Le mot « masqués » y est nécessaire.
+                        ui.add_space(8.0);
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "agenda_counts",
+                                &[&tally.kept, &tally.hidden, &tally.clashes],
+                            ))
+                            .size(motif::pt(ui, 11.0))
+                            .color(if tally.clashes > 0 {
+                                motif::alert()
+                            } else {
+                                motif::text_dim()
+                            }),
+                        )
+                        .on_hover_text(tr("agenda_counts_tooltip"));
                     });
                     if !overdue.is_empty() {
                         {
@@ -19697,7 +20114,21 @@ impl App {
             AgendaMode::Week => tr("agenda_mode_week"),
             AgendaMode::Month => tr("agenda_mode_month"),
         };
-        motif::panel(ui, cal, Some(cal_title), |ui| {
+        // **Le fait qu'un filtre est posé se dit au-dessus du
+        // calendrier, pas seulement dans la bande.** La bande est
+        // plafonnée à un tiers du volet et défile au-delà : à
+        // `[ui] text_scale = 1,6` sur un écran de comptoir, les
+        // boutons de mode prennent déjà les trois rangées qu'elle a, et
+        // la rangée des filtres — donc le compteur qui dit « 3
+        // masqués » — est sous le pli. Un filtre invisible qui éteint
+        // des rendez-vous est précisément ce que le §4 du plan
+        // interdit ; le titre du panneau, lui, est toujours là.
+        let cal_title = if tally.hidden > 0 {
+            format!("{cal_title}{}", trf("agenda_title_hidden", tally.hidden))
+        } else {
+            cal_title.to_owned()
+        };
+        motif::panel(ui, cal, Some(&cal_title), |ui| {
             let rect = ui.max_rect();
             match session.agenda_mode {
                 AgendaMode::Day => {
@@ -19724,6 +20155,7 @@ impl App {
                                     ui,
                                     session,
                                     &grid_events,
+                                    &counts,
                                     &mut pick_day,
                                     &mut open_id,
                                 );
@@ -19735,6 +20167,7 @@ impl App {
                         ui,
                         session,
                         &grid_events,
+                        &counts,
                         rect,
                         &mut pick_day,
                         &mut open_id,
@@ -19968,6 +20401,7 @@ impl App {
         ui: &mut egui::Ui,
         session: &mut Session,
         grid_events: &[db::Event],
+        counts: &std::collections::HashMap<String, AgendaDayCount>,
         rect: egui::Rect,
         pick_day: &mut Option<String>,
         open_id: &mut Option<i64>,
@@ -19980,27 +20414,15 @@ impl App {
             // height its busiest day happens to need: a week was 150 px
             // tall on a 1000 px screen, hiding entries behind a "+N"
             // with the room to show them sitting empty underneath.
-            // The legend has nine chips: at a narrow grid width it needs
-            // two lines, and a fixed one line dropped the last kinds.
-            let legend_rows = {
-                let font = egui::FontId::proportional(motif::pt(ui, 11.0));
-                let mut x = 0.0_f32;
-                let mut lines = 1.0_f32;
-                for kind in InterviewKind::ALL {
-                    let w = ui.fonts(|f| {
-                        f.layout_no_wrap(kind.label().to_owned(), font.clone(), motif::text())
-                            .size()
-                            .x
-                    }) + 28.0;
-                    if x + w > rect.width() && x > 0.0 {
-                        lines += 1.0;
-                        x = 0.0;
-                    }
-                    x += w;
-                }
-                lines
-            };
-            let legend_h = 4.0 + 18.0 * legend_rows;
+            //
+            // **La légende a disparu, et c'est un gain.** Elle disait
+            // exactement ce que la rangée de filtres de la bande dit
+            // déjà, une pastille par nature d'acte, à cela près qu'ici
+            // on ne pouvait pas cliquer dessus. Deux rangées pour un
+            // vocabulaire, dont une inerte : la commande a mangé la
+            // légende, et la semaine récupère les deux lignes que
+            // celle-ci prenait sous la grille — à 1,6 c'est une rangée
+            // de rendez-vous de plus par jour.
             // The scale the per-day load bars are drawn against.
             let busiest = session
                 .agenda_week
@@ -20011,10 +20433,7 @@ impl App {
                 })
                 .max()
                 .unwrap_or(0);
-            let grid = egui::Rect::from_min_max(
-                rect.min,
-                egui::pos2(rect.right(), rect.bottom() - legend_h),
-            );
+            let grid = rect;
             ui.painter().rect_filled(grid, 0.0, motif::trough());
             motif::bevel(ui.painter(), grid, false);
             let inner = grid.shrink(4.0);
@@ -20061,6 +20480,19 @@ impl App {
                         motif::text()
                     },
                 );
+                let count = counts.get(date).copied().unwrap_or_default();
+                // Une pastille rouge dans l'en-tête du jour qui porte un
+                // chevauchement : on sait où aller sans ouvrir les sept.
+                if count.clashes > 0 {
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_size(
+                            egui::pos2(col.right() - 10.0, col.top() + 5.0),
+                            egui::vec2(5.0, 5.0),
+                        ),
+                        0.0,
+                        motif::alert(),
+                    );
+                }
                 // A hairline under the header, filled in proportion to
                 // the busiest day of the week: the week's shape is read
                 // off the top of the grid without counting blocks.
@@ -20095,8 +20527,21 @@ impl App {
                         egui::pos2(col.left() + 3.0, col.top() + 30.0 + bi as f32 * 24.0),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
-                    let fill = kind_color(rdv.kind);
+                    // La colonne du jour garde ses entrées dans l'ordre,
+                    // et un éteint reste à sa ligne : la semaine ne se
+                    // resserre pas sous un filtre, elle pâlit.
+                    let kept =
+                        Self::agenda_keeps(session.agenda_places, &session.agenda_filter, rdv);
+                    let colour = kind_color(rdv.kind);
+                    let fill = if kept { colour } else { motif::stripe() };
                     ui.painter().rect_filled(block, 0.0, fill);
+                    if !kept {
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_size(block.min, egui::vec2(3.0, block.height())),
+                            0.0,
+                            colour,
+                        );
+                    }
                     // The hour leads the block when it is known.
                     let label = if rdv.time.is_empty() {
                         rdv.patient_name.clone()
@@ -20105,17 +20550,28 @@ impl App {
                     };
                     let label = elide(ui, &label, block.width() - 8.0, 11.0);
                     ui.painter().text(
-                        egui::pos2(block.left() + 4.0, block.center().y),
+                        egui::pos2(block.left() + 6.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
                         label,
                         egui::FontId::proportional(motif::pt(ui, 11.0)),
-                        motif::on_fill(fill),
+                        if kept {
+                            motif::on_fill(fill)
+                        } else {
+                            motif::readable_on(motif::text_dim(), fill)
+                        },
                     );
                     let resp =
                         ui.interact(block, ui.id().with(("wkblk", i, bi)), egui::Sense::click());
                     let mut hover = format!("{} ({})", rdv.patient_name, rdv.kind.label());
+                    if rdv.remote {
+                        hover.push_str(&format!(" · {}", tr("agenda_place_remote")));
+                    }
                     if !rdv.phone.is_empty() {
                         hover.push_str(&format!(" — {}", rdv.phone));
+                    }
+                    if !kept {
+                        hover.push('\n');
+                        hover.push_str(tr("agenda_hidden_tooltip"));
                     }
                     if resp.on_hover_text(hover).clicked() {
                         *open_id = Some(rdv.patient_id);
@@ -20173,25 +20629,6 @@ impl App {
                         motif::text(),
                     );
                 }
-            }
-            // Legend: one colored chip per act kind, on the strip left
-            // under the grid.
-            let legend =
-                egui::Rect::from_min_max(egui::pos2(rect.left(), grid.bottom() + 4.0), rect.max);
-            // **Entière ou pas du tout.** La légende est une garniture :
-            // une bande qui n'a pas la hauteur d'une de ses rangées en
-            // dessine une moitié, et une demi-pastille de couleur ne dit
-            // rien de plus qu'une pastille absente. Au-delà d'une
-            // rangée, `chart::legend` se limite elle-même et compte ce
-            // qu'elle laisse.
-            if legend.height() >= motif::chart::legend_row_height(ui) {
-                motif::inside(ui, legend, |ui| {
-                    let items: Vec<(&str, egui::Color32)> = InterviewKind::ALL
-                        .iter()
-                        .map(|k| (k.label(), kind_color(*k)))
-                        .collect();
-                    motif::chart::legend(ui, &items);
-                });
             }
         }
     }
@@ -36741,8 +37178,9 @@ impl eframe::App for App {
 mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, App, Config, Session};
-    use crate::db::{ExportRow, InterviewKind, InterviewState};
-    use crate::strings::tr;
+    use crate::agenda;
+    use crate::db::{Appointment, ExportRow, InterviewKind, InterviewState};
+    use crate::strings::{tr, trn};
     use eframe::egui;
 
     /// Le mois de l'historique de caisse se déplace et se borne **sans
@@ -37219,6 +37657,170 @@ mod tests {
                 "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
             );
         }
+    }
+
+    /// **La rangée de filtres de l'agenda tient dans ce qu'elle
+    /// annonce.**
+    ///
+    /// Elle a grossi de trois éléments — les deux lieux et le
+    /// compteur — et c'est elle qui décide de la hauteur de la bande,
+    /// donc de ce qui reste au calendrier. Une rangée de plus dessinée
+    /// que comptée, et le mois perd une semaine sous le filet du
+    /// panneau ; une de moins, et la bande mange la grille pour rien.
+    ///
+    /// Trois échelles, parce que c'est `[ui] text_scale` qui fait
+    /// passer la rangée de deux lignes à trois, et que la 1,6 est
+    /// exactement là où un plancher calculé croise un plafond calculé.
+    #[test]
+    fn the_agenda_filter_row_is_as_tall_as_it_says() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    // Les libellés réels de la rangée, dans l'ordre où
+                    // elle les pose : « Tout afficher », les deux
+                    // lieux, une pastille par nature d'acte, puis le
+                    // compteur.
+                    let chips: Vec<&str> = [
+                        tr("agenda_filter_all"),
+                        tr("agenda_place_counter"),
+                        tr("agenda_place_remote"),
+                    ]
+                    .into_iter()
+                    .chain(InterviewKind::ALL.iter().map(|k| k.label()))
+                    .collect();
+                    let tally = trn("agenda_counts", &[&12, &3, &1]);
+                    // La même largeur que `agenda_view` mesure, et la
+                    // même que le dessin reçoit.
+                    let w = 720.0;
+                    let counted = App::wrapped_rows(
+                        ui,
+                        w,
+                        chips
+                            .iter()
+                            .copied()
+                            .chain(std::iter::once(tr("agenda_counts"))),
+                    );
+                    let drawn = ui
+                        .scope(|ui| {
+                            ui.set_max_width(w);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tr("agenda_filter"))
+                                        .size(motif::pt(ui, 11.0)),
+                                );
+                                for c in &chips {
+                                    motif::toggle(ui, c, false);
+                                }
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new(&tally).size(motif::pt(ui, 11.0)));
+                            });
+                        })
+                        .response
+                        .rect
+                        .height();
+                    *seen.borrow_mut() = (
+                        counted,
+                        drawn,
+                        App::row_height(ui),
+                        ui.spacing().item_spacing.y,
+                    );
+                });
+            });
+            let (counted, drawn, row, gap) = seen.into_inner();
+            let drawn_rows = ((drawn + gap) / (row + gap)).round();
+            assert!(
+                counted >= drawn_rows,
+                "échelle {scale} : {counted} rangée(s) comptée(s) pour {drawn_rows} dessinée(s)"
+            );
+            assert!(
+                counted <= drawn_rows + 1.0,
+                "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
+            );
+        }
+    }
+
+    /// **Un filtre n'efface pas, et surtout pas ce qui chevauche ce
+    /// qu'il garde.**
+    ///
+    /// La règle est tenue par `agenda.rs` sur des intervalles nus ;
+    /// celui-ci la tient de bout en bout, sur de vrais rendez-vous avec
+    /// leur lieu, leur nature et leur durée, en passant par le même
+    /// chemin que la vue.
+    ///
+    /// La journée : un entretien AOD à distance de 14 h 00 à 14 h 30,
+    /// une vaccination au comptoir à 14 h 15 dont personne n'a noté la
+    /// durée, et un BPM au comptoir à 17 h. On ne coche que « à
+    /// distance ». Ce qui doit se produire : la vaccination reste
+    /// **dessinée** — c'est elle qui rend le filtre utilisable, puisque
+    /// la question posée est « puis-je prendre quelqu'un à 14 h 15 ? »
+    /// — le BPM devient un trait, et les deux du milieu se signalent
+    /// comme un chevauchement.
+    #[test]
+    fn a_filtered_agenda_still_shows_what_overlaps() {
+        let rdv =
+            |id: i64, kind: InterviewKind, time: &str, minutes: i64, remote: bool| Appointment {
+                id,
+                patient_id: id,
+                patient_name: format!("Patient {id}"),
+                phone: String::new(),
+                kind,
+                date: "2026-09-14".to_owned(),
+                time: time.to_owned(),
+                remote,
+                duration_minutes: minutes,
+                operator: String::new(),
+            };
+        let day = [
+            rdv(1, InterviewKind::Aod, "14:00", 30, true),
+            rdv(2, InterviewKind::Prevention, "14:15", 0, false),
+            rdv(3, InterviewKind::Bpm, "17:00", 0, false),
+        ];
+        let kinds = std::collections::HashSet::new();
+        let (entries, states, clashing) =
+            App::agenda_day_layout(&day, &[], [false, true], &kinds, "2026-09-14");
+        assert_eq!(entries.len(), 3);
+        assert_eq!(
+            states,
+            vec![
+                agenda::State::Retenu,
+                agenda::State::Contexte,
+                agenda::State::Ecarte
+            ]
+        );
+        // Les deux qui se rencontrent occupent deux voies : dessinées
+        // dans la même, l'une repeindrait l'autre — le défaut que le
+        // module a été écrit pour corriger. L'écarté n'en prend pas.
+        let day_window = 0..24 * 60;
+        let (lane_of, lane_count) = App::agenda_day_lanes(&entries, &states, day_window.clone(), 0);
+        assert_eq!(lane_count, 2);
+        assert_ne!(lane_of[&1], lane_of[&2]);
+        assert!(!lane_of.contains_key(&3));
+        // Et le chevauchement se voit **malgré** le filtre : un filtre
+        // qui pourrait cacher un conflit serait pire que pas de filtre.
+        assert!(clashing.contains(&1) && clashing.contains(&2));
+        assert!(!clashing.contains(&3));
+
+        // **Une voie se calcule en pixels, un conflit en minutes.** Le
+        // 17 h — seul, une fois le filtre levé — ne rencontre personne
+        // en minutes ; avec un plancher d'affichage d'une heure et
+        // demie, le 14 h 00 – 14 h 30 le rattraperait. Le liseré ne
+        // bouge pas pour autant : gonfler les intervalles pour le
+        // conflit annoncerait un chevauchement que la journée n'a pas.
+        let (_, states_all, clashes_all) =
+            App::agenda_day_layout(&day, &[], [true, true], &kinds, "2026-09-14");
+        assert!(states_all.iter().all(|s| *s == agenda::State::Retenu));
+        let (_, wide) = App::agenda_day_lanes(&entries, &states_all, day_window, 200);
+        assert_eq!(wide, 3);
+        assert!(!clashes_all.contains(&3));
+
+        // Et le compteur dit ce que le filtre éteint. « 3 masqués »
+        // sans le mot est une journée qu'on lit comme vide.
+        let counts = App::agenda_counts(&day, &[], [false, true], &kinds);
+        let c = counts["2026-09-14"];
+        assert_eq!((c.kept, c.hidden, c.clashes), (1, 2, 1));
     }
 
     /// **Une ligne du résumé du fil tient dans ce qu'on lui réserve.**
