@@ -5,6 +5,38 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.177.0] - 2026-09-10
+
+### Added
+- **« Recopier » : la semaine affichée, écrite sur la suivante.** La
+  commande la plus utile d'un planning d'officine, et elle tient en deux
+  règles. Une **trame hebdomadaire n'est pas recopiée** — elle couvre
+  déjà la semaine suivante, et la doubler ferait un planning où chacun
+  travaille deux fois. Et **ce qui est déjà posé sur la semaine
+  d'arrivée gagne** : on recopie une trame, pas les absences de
+  quelqu'un. Le nombre de postes écrits est dit ; un bouton silencieux
+  laisse croire qu'il a fait quelque chose.
+- **Un retour arrière sur le planning** — `Ctrl+Z`, et un bouton qui
+  **nomme** ce qu'il va défaire (« le poste posé pour CL », « les 12
+  postes recopiés ») : un geste qu'on ne reconnaît pas, on ne le presse
+  pas. Vingt gestes gardés, en session et rien en base — un retour
+  arrière qui survivrait à la nuit défferait le geste de quelqu'un
+  d'autre.
+
+  Défaire une suppression **réinsère**, donc les identifiants changent.
+  Et comme une exception nomme sa ligne rangée, la réinsertion réécrit
+  le lien de chaque exception avec l'identifiant que la base vient de
+  rendre : sans cela, annuler la suppression d'une trame rendrait la
+  trame et perdrait les absences qui la corrigeaient.
+- Le titre du panneau porte le total de la semaine **et sur combien de
+  jours il porte** : un jour dont un poste n'a pas de fin écrite n'a pas
+  de total et n'entre pas dans la somme, et « 50 h 00 sur la semaine »
+  se lirait comme la semaine entière alors qu'il y manque un jeudi.
+  C'est la discipline de l'écart cumulé de la caisse. Il est dans le
+  titre parce que le pied de la grille est la dernière rangée d'une
+  région défilante — sur un écran de comptoir, exactement ce qu'on ne
+  voit pas.
+
 ## [0.176.0] - 2026-09-10
 
 ### Added

@@ -33719,6 +33719,45 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// One stored row and the exceptions that only mean something
+    /// against it, in a shape that can be written back.
+    ///
+    /// Read **before** deleting, so undoing a deletion can put the
+    /// whole family back. The base row comes first; the exceptions
+    /// carry the *old* base id in `supersedes`, and the caller rewrites
+    /// it with the id the re-insertion hands out — a re-inserted row is
+    /// a new row, and an exception pointing at a row that no longer
+    /// exists is an exception nothing reads.
+    pub fn shift_family(&self, id: i64) -> Result<Vec<NewShift>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT operator, day, start_time, end_time, pause_minutes, kind,
+                        repeat_days, repeat_until, note, supersedes, cancelled
+                 FROM shifts WHERE id = ?1 OR supersedes = ?1
+                 ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END, day, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([id], |r| {
+                Ok(NewShift {
+                    operator: r.get(0)?,
+                    day: r.get(1)?,
+                    start_time: r.get(2)?,
+                    end_time: r.get(3)?,
+                    pause_minutes: r.get(4)?,
+                    kind: r.get(5)?,
+                    repeat_days: r.get(6)?,
+                    repeat_until: r.get(7)?,
+                    note: r.get(8)?,
+                    supersedes: r.get(9)?,
+                    cancelled: r.get::<_, i64>(10)? != 0,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Remove a shift, and the exceptions that only meant something
     /// against it — in **one** transaction, so a pattern never survives
     /// as a handful of orphan days nobody can explain.
@@ -36567,6 +36606,99 @@ mod tests {
             .shifts_between("2026-01-01", "2026-12-31")
             .unwrap()
             .is_empty());
+    }
+
+    /// **Défaire une suppression doit rendre la famille entière.**
+    ///
+    /// Le plan disait « rien ne référence un poste, donc le changement
+    /// d'identifiant est sans conséquence ». C'est faux : **une
+    /// exception référence sa ligne rangée**. Réinsérer la trame seule
+    /// rendrait les mardis de Claire et perdrait l'absence qui en
+    /// corrigeait un — et personne ne s'en apercevrait avant ce
+    /// mardi-là.
+    ///
+    /// `shift_family` est ce qui se lit **avant** la suppression, et ce
+    /// test fait le tour complet : lire, supprimer, réinsérer en
+    /// réécrivant les liens, et retrouver exactement la même semaine.
+    #[test]
+    fn a_deleted_pattern_can_be_put_back_with_its_exceptions() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shifts4-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("shifts.db"), "secret").unwrap();
+
+        let trame = db
+            .add_shift(&NewShift {
+                operator: "CL".to_owned(),
+                day: "2026-09-01".to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: "19:00".to_owned(),
+                kind: "JOURNEE".to_owned(),
+                repeat_days: 7,
+                ..Default::default()
+            })
+            .unwrap();
+        for (day, cancelled, end) in [("2026-09-15", false, "12:30"), ("2026-09-22", true, "")] {
+            db.add_shift(&NewShift {
+                operator: "CL".to_owned(),
+                day: day.to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: end.to_owned(),
+                kind: if cancelled { "CONGE" } else { "JOURNEE" }.to_owned(),
+                supersedes: trame,
+                cancelled,
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let before: Vec<(String, String)> = db
+            .shifts_between("2026-09-01", "2026-09-30")
+            .unwrap()
+            .into_iter()
+            .map(|s| (s.day, s.end_time))
+            .collect();
+        assert_eq!(before.len(), 4);
+
+        // La famille se lit avant : la ligne rangée d'abord, puis ses
+        // exceptions. Après la suppression il n'y a plus rien à lire.
+        let family = db.shift_family(trame).unwrap();
+        assert_eq!(family.len(), 3);
+        assert_eq!(family[0].supersedes, 0, "la trame vient en tête");
+        assert!(family[1..].iter().all(|f| f.supersedes == trame));
+        assert!(db.delete_shift(trame, "CL").unwrap());
+        assert!(db
+            .shifts_between("2026-09-01", "2026-09-30")
+            .unwrap()
+            .is_empty());
+
+        // Le retour arrière : la trame d'abord, et chaque exception
+        // renumérotée sur l'identifiant que la base vient de rendre.
+        let mut base = 0;
+        for row in family {
+            let mut row = row;
+            if row.supersedes != 0 {
+                row.supersedes = base;
+            }
+            let id = db.add_shift(&row).unwrap();
+            if row.supersedes == 0 {
+                base = id;
+            }
+        }
+        let after: Vec<(String, String)> = db
+            .shifts_between("2026-09-01", "2026-09-30")
+            .unwrap()
+            .into_iter()
+            .map(|s| (s.day, s.end_time))
+            .collect();
+        assert_eq!(after, before, "la semaine doit être exactement la même");
+        // Et la famille est de nouveau entière **sous le nouvel
+        // identifiant**, quel qu'il soit. C'est cela qu'il fallait
+        // vérifier et non qu'il ait changé : SQLite réattribue le même
+        // `rowid` quand la table s'est vidée, si bien qu'un
+        // `assert_ne!` passerait ou non selon ce qu'il y a d'autre dans
+        // la base — un test qui dépend de cela ne prouve rien.
+        assert_eq!(db.shift_family(base).unwrap().len(), 3);
     }
 
     /// **Deux PC ne déplacent pas le même poste chacun de son côté.**

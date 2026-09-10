@@ -2490,6 +2490,13 @@ struct Session {
     /// Cleared as soon as it is done.
     planning_print: bool,
     planning_print_hours: bool,
+    /// The last twenty planning gestures, most recent last. Session
+    /// only: nothing of this reaches the disk.
+    planning_undo: Vec<PlanningUndo>,
+    /// What the last planning command did, in French. « Rien recopié »
+    /// et « douze postes recopiés » sont deux issues, et un bouton
+    /// silencieux laisse croire à la seconde.
+    planning_notice: Option<String>,
     /// The team's shifts for the week on screen, patterns unfolded and
     /// exceptions applied.
     shifts: Vec<db::PlannedShift>,
@@ -3095,6 +3102,8 @@ impl Session {
             shift_pick: None,
             planning_print: false,
             planning_print_hours: false,
+            planning_undo: Vec::new(),
+            planning_notice: None,
             shifts: Vec::new(),
             shifts_week: None,
             drug_tech_open: true,
@@ -4845,6 +4854,19 @@ impl Session {
     /// a pattern to unfold: keyed on the Monday it belongs to, it is
     /// asked again only when the week actually moves. `force` is for
     /// after a write, which is the other thing that can make it stale.
+    /// Keep one more planning gesture, and forget the twenty-first.
+    ///
+    /// Vingt, parce qu'un retour arrière sert à rattraper le geste
+    /// qu'on vient de faire et les quelques-uns d'avant : une pile sans
+    /// fond garderait en mémoire une semaine de saisie pour un usage
+    /// que personne n'a.
+    fn remember(&mut self, what: PlanningUndo) {
+        self.planning_undo.push(what);
+        if self.planning_undo.len() > 20 {
+            self.planning_undo.remove(0);
+        }
+    }
+
     fn load_shifts(&mut self, force: bool) {
         // La plage couvre la semaine affichée **et** la journée
         // sélectionnée : le plan de journée dessine la couverture du
@@ -6681,6 +6703,52 @@ enum AgendaMode {
     /// Framed on the week, and it takes the ‹ › already in place rather
     /// than a second set of arrows for the same movement.
     Planning,
+}
+
+/// A planning gesture that can be taken back.
+///
+/// **Une manipulation sans retour arrière est un piège** : « Supprimer »
+/// sur une trame emporte quatorze journées et les exceptions qui les
+/// corrigeaient, et rien n'est plus écrit nulle part. Vingt gestes
+/// gardés en session — rien en base : un retour arrière qui survivrait
+/// à la nuit défferait le geste de quelqu'un d'autre.
+enum PlanningUndo {
+    /// Un poste posé : on l'enlève.
+    Added { id: i64, who: String },
+    /// Des heures réécrites : on remet les anciennes.
+    Edited {
+        id: i64,
+        start: String,
+        end: String,
+        pause: i64,
+        /// Ce que l'écriture avait mis — le compare-and-set du retour
+        /// arrière porte là-dessus, pas sur ce qu'on croit savoir.
+        now_start: String,
+        now_end: String,
+    },
+    /// Une famille supprimée : la ligne rangée **et** ses exceptions.
+    /// Les réinsérer donne de nouveaux identifiants, et le
+    /// `supersedes` de chaque exception est réécrit avec celui que la
+    /// base vient de rendre. Rien ne pointe vers un poste, donc le
+    /// changement d'identifiant est sans conséquence — mais une
+    /// exception qui nommerait la ligne d'avant serait muette.
+    Deleted { family: Vec<db::NewShift> },
+    /// Une semaine recopiée : les postes écrits d'un coup s'enlèvent
+    /// d'un coup.
+    Copied { ids: Vec<i64>, who: Vec<String> },
+}
+
+/// What the pending undo would take back, in French.
+fn undo_label(what: &PlanningUndo) -> String {
+    match what {
+        PlanningUndo::Added { who, .. } => trf("planning_undo_added", who),
+        PlanningUndo::Edited { .. } => tr("planning_undo_edited").to_owned(),
+        PlanningUndo::Deleted { family } => trf(
+            "planning_undo_deleted",
+            family.first().map_or("", |f| f.operator.as_str()),
+        ),
+        PlanningUndo::Copied { ids, .. } => trf("planning_undo_copied", ids.len()),
+    }
 }
 
 /// The days the agenda is showing, whichever mode it is in.
@@ -20108,6 +20176,16 @@ impl App {
             session.view = MainView::Search;
             return;
         }
+        // Ctrl+Z défait le dernier geste du planning. Seulement dans
+        // ce mode : ailleurs il n'y a pas de geste à défaire, et une
+        // touche qui ne fait rien là où on l'attend est pire qu'une
+        // touche qui n'existe pas.
+        if session.agenda_mode == AgendaMode::Planning
+            && !ctx.wants_keyboard_input()
+            && ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z))
+        {
+            Self::planning_undo(session);
+        }
         // Left and right arrows move the week or the month shown.
         if !ctx.wants_keyboard_input() {
             let step = ctx.input(|i| {
@@ -20550,6 +20628,40 @@ impl App {
             format!("{cal_title}{}", trf("agenda_title_hidden", tally.hidden))
         } else {
             cal_title.to_owned()
+        };
+        // **Le total de la semaine est le chiffre du mode Planning, et
+        // il ne doit pas être celui qui passe sous le pli.** Le pied de
+        // la grille est la dernière rangée d'une région défilante : sur
+        // un écran de comptoir c'est exactement ce qu'on ne voit pas.
+        // Le titre du panneau, lui, est toujours là.
+        let cal_title = if session.agenda_mode == AgendaMode::Planning {
+            let known: Vec<u16> = scope
+                .iter()
+                .filter_map(|d| digests.get(d).and_then(|g| g.minutes))
+                .collect();
+            if known.is_empty() {
+                cal_title
+            } else {
+                // **Et sur combien de jours il porte.** Un jour dont
+                // un poste n'a pas de fin écrite n'a pas de total, donc
+                // il n'entre pas dans la somme : « 50 h 00 sur la
+                // semaine » se lirait comme la semaine entière alors
+                // qu'il y manque un jeudi. C'est la discipline de
+                // l'écart cumulé de la caisse, qui dit toujours sur
+                // combien de soirs il porte.
+                format!(
+                    "{cal_title}{}",
+                    trn(
+                        "planning_title_total",
+                        &[
+                            &planning::hhmm(known.iter().fold(0_u16, |a, m| a.saturating_add(*m))),
+                            &known.len(),
+                        ],
+                    )
+                )
+            }
+        } else {
+            cal_title
         };
         motif::panel(ui, cal, Some(&cal_title), |ui| {
             let rect = ui.max_rect();
@@ -21017,6 +21129,8 @@ impl App {
         let mut write = false;
         let mut edit: Option<i64> = None;
         let mut remove: Option<i64> = None;
+        let mut copy_week = false;
+        let mut undo = false;
         motif::inside(ui, rect, |ui| {
             // Une deuxième région défilante sans nom dans la même vue
             // peint ses deux bannières rouges en travers de l'écran.
@@ -21122,6 +21236,30 @@ impl App {
                         {
                             session.planning_print_hours = true;
                         }
+                        if motif::button(ui, tr("planning_copy"))
+                            .on_hover_text(tr("planning_copy_tooltip"))
+                            .clicked()
+                        {
+                            copy_week = true;
+                        }
+                        // Le retour arrière se nomme : « Annuler » seul
+                        // ne dit pas ce qu'on va défaire, et un geste
+                        // qu'on ne reconnaît pas, on ne le presse pas.
+                        if let Some(last) = session.planning_undo.last() {
+                            if motif::button(ui, tr("planning_undo"))
+                                .on_hover_text(trf("planning_undo_tooltip", undo_label(last)))
+                                .clicked()
+                            {
+                                undo = true;
+                            }
+                        }
+                        if let Some(note) = &session.planning_notice {
+                            ui.label(
+                                egui::RichText::new(note)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
                         if let Some(id) = session.shift_pick {
                             // Corriger un poste, c'est retaper ses heures : le
                             // glissé du §4 viendra, l'erreur de frappe est de
@@ -21172,7 +21310,11 @@ impl App {
                 ..Default::default()
             };
             match session.db.add_shift(&new) {
-                Ok(_) => {
+                Ok(id) => {
+                    session.remember(PlanningUndo::Added {
+                        id,
+                        who: new.operator.clone(),
+                    });
                     session.shift_form.from.clear();
                     session.shift_form.to.clear();
                     session.shift_form.pause.clear();
@@ -21180,6 +21322,20 @@ impl App {
                 }
                 Err(e) => session.error = Some(e),
             }
+        }
+        // Le compte de la dernière commande ne survit pas à la
+        // suivante : « 12 postes recopiés » resté à l'écran après une
+        // suppression se lirait comme le résultat de la suppression.
+        if copy_week || undo || write || edit.is_some() || remove.is_some() {
+            session.planning_notice = None;
+        }
+        if copy_week {
+            Self::planning_copy_week(session);
+            return;
+        }
+        if undo {
+            Self::planning_undo(session);
+            return;
         }
         if let Some(id) = edit {
             let form = session.shift_form.clone();
@@ -21198,6 +21354,11 @@ impl App {
                 .find(|s| s.id == id)
                 .map(|s| (s.start_time.clone(), s.end_time.clone()));
             if let Some((was_from, was_to)) = was {
+                let was_pause = session
+                    .shifts
+                    .iter()
+                    .find(|s| s.id == id)
+                    .map_or(0, |s| s.pause_minutes);
                 match session.db.update_shift(
                     id,
                     &from,
@@ -21206,7 +21367,17 @@ impl App {
                     &was_from,
                     &was_to,
                 ) {
-                    Ok(true) => session.load_shifts(true),
+                    Ok(true) => {
+                        session.remember(PlanningUndo::Edited {
+                            id,
+                            start: was_from.clone(),
+                            end: was_to.clone(),
+                            pause: was_pause,
+                            now_start: from.clone(),
+                            now_end: to.clone(),
+                        });
+                        session.load_shifts(true);
+                    }
                     Ok(false) => {
                         session.error = Some(tr("planning_stale").to_owned());
                         session.load_shifts(true);
@@ -21225,8 +21396,14 @@ impl App {
                 .find(|s| s.id == id)
                 .map(|s| (s.source_id, s.operator.clone()));
             if let Some((source_id, who)) = source {
+                // La famille est lue **avant** la suppression : après,
+                // il n'y a plus rien à lire, et un retour arrière qui
+                // ne remettrait que la ligne rangée aurait perdu les
+                // exceptions qui la corrigeaient.
+                let family = session.db.shift_family(source_id).unwrap_or_default();
                 match session.db.delete_shift(source_id, &who) {
                     Ok(true) => {
+                        session.remember(PlanningUndo::Deleted { family });
                         session.shift_pick = None;
                         session.load_shifts(true);
                     }
@@ -21283,6 +21460,10 @@ impl App {
                 tr("planning_add"),
                 tr("planning_edit"),
                 tr("planning_delete"),
+                tr("planning_print"),
+                tr("planning_hours"),
+                tr("planning_copy"),
+                tr("planning_undo"),
             ]
             .into_iter(),
         );
@@ -21697,6 +21878,176 @@ impl App {
         if std::mem::take(&mut session.planning_print_hours) {
             Self::print_hours_sheet(session, config);
         }
+    }
+
+    /// Take back the last planning gesture.
+    ///
+    /// Ce qu'il faut savoir, et qui est écrit ici parce que cela se
+    /// saurait mal ailleurs : **défaire une suppression réinsère**,
+    /// donc les identifiants changent. Rien ne pointe vers un poste, ce
+    /// qui rend le changement sans conséquence — et les exceptions, qui
+    /// pointent vers *leur* ligne rangée, sont réécrites avec le nouvel
+    /// identifiant plutôt que laissées à nommer une ligne disparue.
+    fn planning_undo(session: &mut Session) {
+        let Some(what) = session.planning_undo.pop() else {
+            return;
+        };
+        let outcome = match what {
+            PlanningUndo::Added { id, who } => session.db.delete_shift(id, &who).map(|_| ()),
+            PlanningUndo::Copied { ids, who } => {
+                let mut last = Ok(());
+                for (id, w) in ids.iter().zip(&who) {
+                    if let Err(e) = session.db.delete_shift(*id, w) {
+                        last = Err(e);
+                    }
+                }
+                last
+            }
+            PlanningUndo::Edited {
+                id,
+                start,
+                end,
+                pause,
+                now_start,
+                now_end,
+            } => session
+                .db
+                // Le compare-and-set porte sur ce que l'écriture avait
+                // mis : si quelqu'un d'autre a bougé le poste depuis,
+                // le retour arrière ne passe pas — et c'est ce qu'on
+                // veut, plutôt qu'écraser son travail.
+                .update_shift(id, &start, &end, pause, &now_start, &now_end)
+                .and_then(|ok| {
+                    if ok {
+                        Ok(())
+                    } else {
+                        Err(tr("planning_stale").to_owned())
+                    }
+                }),
+            PlanningUndo::Deleted { family } => {
+                let mut base: Option<i64> = None;
+                let mut last = Ok(());
+                for row in family {
+                    let mut row = row;
+                    if row.supersedes != 0 {
+                        // L'exception nomme la ligne rangée telle que
+                        // la base vient de la renuméroter.
+                        match base {
+                            Some(id) => row.supersedes = id,
+                            None => continue,
+                        }
+                    }
+                    match session.db.add_shift(&row) {
+                        Ok(id) if row.supersedes == 0 => base = Some(id),
+                        Ok(_) => {}
+                        Err(e) => last = Err(e),
+                    }
+                }
+                last
+            }
+        };
+        if let Err(e) = outcome {
+            session.error = Some(e);
+        }
+        session.shift_pick = None;
+        session.load_shifts(true);
+    }
+
+    /// Write the shown week onto the next one.
+    ///
+    /// **La commande la plus utile d'un planning d'officine**, et elle
+    /// tient en deux règles.
+    ///
+    /// Une **trame** n'est pas recopiée : `repeat_days = 7` couvre déjà
+    /// la semaine suivante, et la doubler écrirait deux fois la même
+    /// journée. Ce qui se recopie, ce sont les postes d'un seul jour.
+    ///
+    /// Et **ce qui est déjà posé sur la semaine d'arrivée gagne** : on
+    /// recopie une trame, pas les absences de quelqu'un. Un jour où la
+    /// personne a déjà quelque chose d'écrit est laissé tel quel.
+    fn planning_copy_week(session: &mut Session) {
+        let week = session.agenda_week.clone();
+        let (Some(first), Some(last)) = (week.first().cloned(), week.last().cloned()) else {
+            return;
+        };
+        let (Some(next_first), Some(next_last)) = (
+            crate::date::add_days(&first, 7),
+            crate::date::add_days(&last, 7),
+        ) else {
+            return;
+        };
+        let target = session
+            .db
+            .shifts_between(&next_first, &next_last)
+            .unwrap_or_default();
+        let source: Vec<db::PlannedShift> = session
+            .shifts
+            .iter()
+            .filter(|s| s.day >= first && s.day <= last)
+            .cloned()
+            .collect();
+        let mut ids = Vec::new();
+        let mut who = Vec::new();
+        for new in Self::planning_copies(&source, &target) {
+            match session.db.add_shift(&new) {
+                Ok(id) => {
+                    ids.push(id);
+                    who.push(new.operator.clone());
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        let n = ids.len();
+        if n > 0 {
+            session.remember(PlanningUndo::Copied { ids, who });
+        }
+        // Le compte est dit : « rien recopié » et « douze postes
+        // recopiés » sont deux issues, et un bouton silencieux laisse
+        // croire à la seconde.
+        session.planning_notice = Some(trf("planning_copied", n));
+        session.load_shifts(true);
+    }
+
+    /// Which of a week's shifts are written onto the next one.
+    ///
+    /// The two rules, and they are the whole command:
+    ///
+    /// * une **trame** n'est pas recopiée. `repeat_days = 7` couvre
+    ///   déjà la semaine suivante, et la doubler écrirait deux fois la
+    ///   même journée — un planning où chacun travaille deux fois.
+    /// * **ce qui est déjà posé sur la semaine d'arrivée gagne.** On
+    ///   recopie une trame, pas les absences de quelqu'un : un jour où
+    ///   la personne a déjà quelque chose d'écrit est laissé tel quel.
+    ///
+    /// Pure, pour que les deux règles se tiennent par un test et non
+    /// par une lecture attentive.
+    fn planning_copies(
+        source: &[db::PlannedShift],
+        target: &[db::PlannedShift],
+    ) -> Vec<db::NewShift> {
+        source
+            .iter()
+            .filter(|s| s.repeat_days == 0)
+            .filter_map(|s| {
+                let day = crate::date::add_days(&s.day, 7)?;
+                if target
+                    .iter()
+                    .any(|t| t.day == day && t.operator == s.operator)
+                {
+                    return None;
+                }
+                Some(db::NewShift {
+                    operator: s.operator.clone(),
+                    day,
+                    start_time: s.start_time.clone(),
+                    end_time: s.end_time.clone(),
+                    pause_minutes: s.pause_minutes,
+                    kind: s.kind.clone(),
+                    note: s.note.clone(),
+                    ..Default::default()
+                })
+            })
+            .collect()
     }
 
     /// The month of one person, day by day — the sheet the accountant
@@ -38701,7 +39052,7 @@ mod tests {
     use super::merge_team_notes;
     use super::{interviews_csv, App, Config, Session};
     use crate::agenda;
-    use crate::db::{Appointment, ExportRow, InterviewKind, InterviewState};
+    use crate::db::{self, Appointment, ExportRow, InterviewKind, InterviewState};
     use crate::strings::{tr, trn};
     use eframe::egui;
 
@@ -39262,6 +39613,54 @@ mod tests {
                 "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
             );
         }
+    }
+
+    /// **« Recopier la semaine » recopie une trame, pas les absences de
+    /// quelqu'un.**
+    ///
+    /// Deux règles, et elles sont toute la commande : une trame
+    /// hebdomadaire n'est pas recopiée — elle couvre déjà la semaine
+    /// suivante, et la doubler ferait un planning où chacun travaille
+    /// deux fois —, et ce qui est déjà posé sur la semaine d'arrivée
+    /// gagne, parce que c'est là que vivent les absences qu'on vient
+    /// d'accorder.
+    #[test]
+    fn copying_a_week_keeps_what_is_already_on_the_next_one() {
+        let shift = |id: i64, who: &str, day: &str, repeat: i64| db::PlannedShift {
+            id,
+            source_id: id,
+            day: day.to_owned(),
+            operator: who.to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "19:00".to_owned(),
+            pause_minutes: 90,
+            kind: "JOURNEE".to_owned(),
+            repeat_days: repeat,
+            note: String::new(),
+        };
+        let source = [
+            // Un poste d'un seul jour : il se recopie.
+            shift(1, "CL", "2026-09-07", 0),
+            // Une trame : elle couvre déjà le 14, on ne la double pas.
+            shift(2, "YS", "2026-09-08", 7),
+            // Un jour où quelqu'un a déjà posé une absence la semaine
+            // d'après : on ne l'écrase pas.
+            shift(3, "MB", "2026-09-09", 0),
+        ];
+        let target = [shift(9, "MB", "2026-09-16", 0)];
+        let copies = App::planning_copies(&source, &target);
+        assert_eq!(copies.len(), 1);
+        assert_eq!(copies[0].operator, "CL");
+        assert_eq!(copies[0].day, "2026-09-14");
+        // Une copie est un poste d'un seul jour : recopier une semaine
+        // ne fabrique pas de trames.
+        assert_eq!(copies[0].repeat_days, 0);
+        assert_eq!(copies[0].pause_minutes, 90);
+        // Et sur une semaine d'arrivée vide, tout ce qui n'est pas une
+        // trame passe.
+        let copies = App::planning_copies(&source, &[]);
+        assert_eq!(copies.len(), 2);
+        assert!(copies.iter().all(|c| c.repeat_days == 0));
     }
 
     /// **Un filtre n'efface pas, et surtout pas ce qui chevauche ce
