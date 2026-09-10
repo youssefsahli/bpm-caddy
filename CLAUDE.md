@@ -707,6 +707,13 @@ add clicking and typing; it is not the price of entry.
   `caisse` opens the till count **with a drawer already counted**:
   fifteen lines at zero show neither the summary, nor the gap, nor the
   red it carries — that is, none of what the view exists to draw.
+  Counting against expected takings is `[ui] caisse_expected`, true by
+  default: with it off the field, the gap and the two history columns
+  are **gone**, not filled with dashes — and the filter is applied once,
+  where the month is read (`load_caisse_month`), never at each figure
+  drawn. What is already stored is never rewritten: the expected figures
+  of past evenings come back with their gaps the day the box is ticked
+  again.
   `caisses` is its other page, the month: the demo seeds twenty-four
   evenings, one of them recounted and two with no expected takings,
   because those are the two cases the view has to know how to write.

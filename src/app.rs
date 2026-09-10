@@ -2291,6 +2291,11 @@ struct Session {
     caisse_summary: crate::caisse::Summary,
     /// Les identifiants des comptages qu'un plus récent a remplacés.
     caisse_superseded: Vec<i64>,
+    /// Les mêmes comptages sous la forme que `caisse` lit, dans l'ordre
+    /// de `caisse_period` — construits **une fois** au chargement, et
+    /// déjà privés de leur attendu si l'officine a décoché la case. La
+    /// vue n'en dérive plus aucun : elle les lit.
+    caisse_counted: Vec<crate::caisse::Counted>,
     /// La recette de chaque soir compté, dans l'ordre des jours : ce que
     /// la bande de chaleur dessine. **Les soirs comptés et eux seuls** —
     /// un jour sans comptage n'est pas une case à zéro, il n'a pas de
@@ -2946,6 +2951,7 @@ impl Session {
             caisse_period: Vec::new(),
             caisse_summary: crate::caisse::Summary::default(),
             caisse_superseded: Vec::new(),
+            caisse_counted: Vec::new(),
             caisse_daily: Vec::new(),
             caisse_off: Vec::new(),
             open_template: None,
@@ -3974,7 +3980,14 @@ impl Session {
 
     /// Ouvrir l'historique de caisse sur un mois, et calculer ce qu'il
     /// donne — une fois, ici, et jamais dans la boucle de dessin.
-    fn load_caisse_month(&mut self) {
+    ///
+    /// `want_expected` est `[ui] caisse_expected`. À faux, l'attendu des
+    /// soirs déjà rangés est **écarté à la lecture** : rien n'est effacé
+    /// en base, mais plus rien en aval n'a d'écart à montrer — ni le
+    /// tableau, ni la synthèse, ni la feuille imprimée. Une seule
+    /// coupure, ici, plutôt qu'un `if` à chaque endroit qui dessine un
+    /// chiffre, dont un finit toujours par être oublié.
+    fn load_caisse_month(&mut self, want_expected: bool) {
         if self.caisse_month.is_empty() {
             // Le mois du jour compté plutôt que celui d'aujourd'hui :
             // on arrive presque toujours ici depuis le comptage.
@@ -3993,24 +4006,29 @@ impl Session {
             .db
             .caisse_counts_between(&from, &to)
             .unwrap_or_default();
-        let counted: Vec<crate::caisse::Counted> = self
+        self.caisse_counted = self
             .caisse_period
             .iter()
-            .map(db::CaisseCount::counted)
+            .map(|c| crate::caisse::Counted {
+                expected: c.expected.filter(|_| want_expected),
+                ..c.counted()
+            })
             .collect();
-        self.caisse_summary = crate::caisse::summarize(&counted);
-        self.caisse_superseded = crate::caisse::superseded(&counted);
-        let days = crate::caisse::per_day(&counted);
-        self.caisse_daily = days.iter().map(|c| (c.day.clone(), c.takings())).collect();
+        let counted = &self.caisse_counted;
+        self.caisse_summary = crate::caisse::summarize(counted);
+        self.caisse_superseded = crate::caisse::superseded(counted);
+        let days = crate::caisse::per_day(counted);
+        let daily: Vec<(String, i64)> = days.iter().map(|c| (c.day.clone(), c.takings())).collect();
         // Les soirs qui ne tombent pas juste, le plus gros écart
         // d'abord — dans un sens comme dans l'autre : un excédent de
         // quarante euros se cherche autant qu'un manque.
-        self.caisse_off = days
+        let mut off: Vec<(String, i64)> = days
             .iter()
             .filter_map(|c| c.gap().filter(|g| *g != 0).map(|g| (c.day.clone(), g)))
             .collect();
-        self.caisse_off
-            .sort_by_key(|(_, gap)| std::cmp::Reverse(gap.abs()));
+        off.sort_by_key(|(_, gap)| std::cmp::Reverse(gap.abs()));
+        self.caisse_daily = daily;
+        self.caisse_off = off;
     }
 
     /// Ce que le formulaire dit, lu une fois par image et rendu à qui
@@ -7260,7 +7278,7 @@ struct PwChangeForm {
 /// toolbar keys do it; the search is the fallback and needs nothing. A
 /// name this version does not know is not an error: the view it named
 /// has been renamed or removed, and the search is where you start.
-fn restore_view(session: &mut Session, key: &str) {
+fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
     let Some(view) = MainView::from_key(key) else {
         return;
     };
@@ -7271,7 +7289,7 @@ fn restore_view(session: &mut Session, key: &str) {
         MainView::Caisse => session.refresh_caisse(),
         MainView::CaisseHistory => {
             session.refresh_caisse();
-            session.load_caisse_month();
+            session.load_caisse_month(caisse_expected);
         }
         MainView::Transmissions => {
             session.trans_day = String::new();
@@ -7619,7 +7637,7 @@ impl App {
                         // deux sans attendu.
                         Ok("caisses") => {
                             session.refresh_caisse();
-                            session.load_caisse_month();
+                            session.load_caisse_month(config.ui.caisse_expected);
                             session.view = MainView::CaisseHistory;
                         }
                         // Le compagnon : le garde-fou l'ouvre par sa
@@ -7981,7 +7999,7 @@ impl App {
                         // No hook: reopen where the last session was
                         // left. The hooks are for screenshots and the
                         // e2e run, and they must keep the last word.
-                        _ => restore_view(&mut session, &layout.view),
+                        _ => restore_view(&mut session, &layout.view, config.ui.caisse_expected),
                     }
                     // Le bandeau tel que le poste l'a laissé.
                     session.patient_band_folded = layout.patient_band_folded;
@@ -9655,7 +9673,11 @@ impl App {
                     );
                     // Unlocking after the auto-lock, or first thing in
                     // the morning: reopen the view the post was left on.
-                    restore_view(&mut session, &self.layout.view);
+                    restore_view(
+                        &mut session,
+                        &self.layout.view,
+                        self.config.ui.caisse_expected,
+                    );
                     session.patient_band_folded = self.layout.patient_band_folded;
                     self.state = State::Unlocked(Box::new(session));
                     if let Some(entry) = keyring_entry() {
@@ -30915,6 +30937,16 @@ impl App {
         if session.caisse_day.is_empty() {
             session.caisse_day.clone_from(&session.today);
         }
+        // La phrase sous le titre annonce ce que l'écran fait. Sans
+        // recette attendue, il ne fait plus la moitié de ce qu'elle
+        // promet : on compte le tiroir, et il n'est plus question
+        // d'écart. Elle est mesurée avec la bande, donc elle est choisie
+        // avant.
+        let caisse_subtitle = if config.ui.caisse_expected {
+            tr("caisse_subtitle")
+        } else {
+            tr("caisse_subtitle_no_gap")
+        };
         let body = motif::visible_rect(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
         // Le titre est **dans** la rangée enveloppée, avec les boutons
@@ -30953,16 +30985,24 @@ impl App {
                 Self::button_width(ui, "›"),
             ]
             .into_iter(),
-            tr("caisse_subtitle"),
+            caisse_subtitle,
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
 
         let (quantities, others) = session.caisse_reading();
+        // L'officine qui ne compte pas contre une recette attendue
+        // (`[ui] caisse_expected = false`) n'a ni le champ, ni l'écart,
+        // ni la ligne à « — » : l'attendu n'est pas lu, donc il n'y a
+        // pas d'écart — la règle du module, atteinte par le haut plutôt
+        // que par un `if` sur chaque affichage.
+        let want_expected = config.ui.caisse_expected;
         let tally = crate::caisse::tally(
             &quantities,
             crate::caisse::parse_euros(&session.caisse_float).unwrap_or(0),
             &others,
-            crate::caisse::parse_euros(&session.caisse_expected),
+            want_expected
+                .then(|| crate::caisse::parse_euros(&session.caisse_expected))
+                .flatten(),
         );
 
         let mut print = false;
@@ -31027,7 +31067,7 @@ impl App {
                 }
             });
             ui.label(
-                egui::RichText::new(tr("caisse_subtitle"))
+                egui::RichText::new(caisse_subtitle)
                     .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
             );
@@ -31177,16 +31217,18 @@ impl App {
                         );
                         ui.label("€");
                     });
-                    ui.horizontal(|ui| {
-                        ui.label(tr("caisse_expected"));
-                        ui.add_sized(
-                            [chars_wide(ui, 10.0), 24.0],
-                            egui::TextEdit::singleline(&mut session.caisse_expected)
-                                .horizontal_align(egui::Align::RIGHT),
-                        )
-                        .on_hover_text(tr("caisse_expected_tooltip"));
-                        ui.label("€");
-                    });
+                    if want_expected {
+                        ui.horizontal(|ui| {
+                            ui.label(tr("caisse_expected"));
+                            ui.add_sized(
+                                [chars_wide(ui, 10.0), 24.0],
+                                egui::TextEdit::singleline(&mut session.caisse_expected)
+                                    .horizontal_align(egui::Align::RIGHT),
+                            )
+                            .on_hover_text(tr("caisse_expected_tooltip"));
+                            ui.label("€");
+                        });
+                    }
                 });
         });
 
@@ -31215,6 +31257,12 @@ impl App {
                     // Sans attendu il n'y a pas d'écart, et surtout pas
                     // un écart égal à tout le tiroir.
                     match tally.gap {
+                        // La phrase « sans recette attendue, pas
+                        // d'écart » explique une absence : elle n'a de
+                        // sens que si l'on attendait un écart. La case
+                        // décochée, on ne l'attend plus, et la phrase
+                        // devient du bruit.
+                        None if !want_expected => {}
                         None => {
                             ui.label(
                                 egui::RichText::new(tr("caisse_no_expected"))
@@ -31305,8 +31353,13 @@ impl App {
                     ui.label(tr("caisse_remark"));
                     ui.add_sized(
                         [motif::visible_rect(ui).width() - 12.0, 3.0 * line + 12.0],
-                        egui::TextEdit::multiline(&mut session.caisse_remark)
-                            .hint_text(tr("caisse_remark_hint")),
+                        egui::TextEdit::multiline(&mut session.caisse_remark).hint_text(
+                            if want_expected {
+                                tr("caisse_remark_hint")
+                            } else {
+                                tr("caisse_remark_hint_no_gap")
+                            },
+                        ),
                     );
                     if let Some((bad, msg)) = &session.caisse_note {
                         ui.colored_label(
@@ -31326,8 +31379,17 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                         for c in &session.caisse_history {
-                            let gap =
-                                match (c.expected, c.others.iter().map(|(_, v)| v).sum::<i64>()) {
+                            // Les derniers soirs : ce qu'ils avaient
+                            // dans le tiroir, et leur écart — celui-là
+                            // seulement si l'officine compte contre une
+                            // recette attendue. Sinon la ligne s'arrête
+                            // au montant : un « · — » à chaque soir est
+                            // une colonne qui ne dit rien.
+                            let tail = if want_expected {
+                                let gap = match (
+                                    c.expected,
+                                    c.others.iter().map(|(_, v)| v).sum::<i64>(),
+                                ) {
                                     (Some(e), other) => {
                                         let g = c.cash + other - e;
                                         let sign = if g > 0 { "+" } else { "" };
@@ -31335,10 +31397,14 @@ impl App {
                                     }
                                     (None, _) => "—".to_owned(),
                                 };
+                                format!(" · {gap}")
+                            } else {
+                                String::new()
+                            };
                             motif::list_row_pair(
                                 ui,
                                 &db::format_french_date(&c.day),
-                                &format!("{} € · {gap}", euros(c.cash)),
+                                &format!("{} €{tail}", euros(c.cash)),
                                 false,
                                 0.0,
                             )
@@ -31392,7 +31458,7 @@ impl App {
                     if session.caisse_day.starts_with(&session.caisse_month)
                         && !session.caisse_month.is_empty()
                     {
-                        session.load_caisse_month();
+                        session.load_caisse_month(want_expected);
                     }
                     Some((false, tr("caisse_saved").to_owned()))
                 }
@@ -31404,7 +31470,7 @@ impl App {
             // Le mois du jour compté, pas celui d'aujourd'hui : on
             // arrive ici en regardant une soirée précise.
             session.caisse_month = session.caisse_day.get(..7).unwrap_or_default().to_owned();
-            session.load_caisse_month();
+            session.load_caisse_month(want_expected);
         }
     }
 
@@ -31426,6 +31492,16 @@ impl App {
     ///   un soir à zéro euro.
     fn caisse_history_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         use crate::caisse::euros;
+        // `[ui] caisse_expected` décoché : l'officine compte son tiroir
+        // sans le confronter à une recette attendue. Les deux colonnes
+        // et tout ce qui parle d'écart s'en vont — le mois reste ce
+        // qu'il est, une suite de recettes.
+        let want_expected = config.ui.caisse_expected;
+        let caisses_subtitle = if want_expected {
+            tr("caisses_subtitle")
+        } else {
+            tr("caisses_subtitle_no_gap")
+        };
         // Échap ramène au comptage : c'est la page dont celle-ci est
         // l'envers, pas la recherche.
         if !ui.ctx().wants_keyboard_input() {
@@ -31441,7 +31517,7 @@ impl App {
             });
             if step != 0 {
                 session.caisse_month = Session::month_step(&session.caisse_month, step);
-                session.load_caisse_month();
+                session.load_caisse_month(want_expected);
             }
         }
         // La vue se répare elle-même plutôt que de dépendre de la porte
@@ -31450,7 +31526,7 @@ impl App {
         // comptage relancerait la requête à chaque image, soixante fois
         // par seconde, pour rendre chaque fois la même liste vide.
         if session.caisse_month.is_empty() {
-            session.load_caisse_month();
+            session.load_caisse_month(want_expected);
         }
         let body = motif::visible_rect(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
@@ -31479,7 +31555,7 @@ impl App {
                 Self::button_width(ui, "›"),
             ]
             .into_iter(),
-            tr("caisses_subtitle"),
+            caisses_subtitle,
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
 
@@ -31515,7 +31591,7 @@ impl App {
                 }
             });
             ui.label(
-                egui::RichText::new(tr("caisses_subtitle"))
+                egui::RichText::new(caisses_subtitle)
                     .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
             );
@@ -31581,11 +31657,25 @@ impl App {
             // laisse tomber les espèces et les autres encaissements :
             // leur somme est la recette, qui reste, et le détail du
             // soir se relit sur son comptage. Le reste tient.
+            //
+            // Et l'attendu et l'écart ne sont là que si l'officine
+            // compte contre une recette attendue : décochée, la case
+            // n'enlève pas deux colonnes de tirets, elle enlève deux
+            // colonnes.
             let gutter = ui.spacing().item_spacing.x;
-            let full = day_w + 5.0 * money_w + by_w + 7.0 * gutter + chars_wide(ui, 12.0);
+            let gap_cols = if want_expected { 2.0 } else { 0.0 };
+            // La forme large est-elle possible ? On la mesure avec les
+            // colonnes réellement voulues, sinon le seuil parlerait
+            // d'une table qui n'existe pas.
+            let full = day_w
+                + (3.0 + gap_cols) * money_w
+                + by_w
+                + (4.0 + gap_cols) * gutter
+                + chars_wide(ui, 12.0);
             let tight = full > inner.width();
-            let money_cols = if tight { 3.0 } else { 5.0 };
-            let cols = if tight { 6 } else { 8 };
+            let detail_cols = if tight { 0.0 } else { 2.0 };
+            let money_cols = 1.0 + detail_cols + gap_cols;
+            let cols = 4 + detail_cols as usize + gap_cols as usize;
             let fixed = day_w + money_cols * money_w + by_w + (cols as f32 - 1.0) * gutter;
             let remark_w = (inner.width() - fixed).max(chars_wide(ui, 8.0));
             egui::ScrollArea::both()
@@ -31612,13 +31702,16 @@ impl App {
                                 head(ui, money_w, "caisses_col_other");
                             }
                             head(ui, money_w, "caisses_col_takings");
-                            head(ui, money_w, "caisses_col_expected");
-                            head(ui, money_w, "caisses_col_gap");
+                            if want_expected {
+                                head(ui, money_w, "caisses_col_expected");
+                                head(ui, money_w, "caisses_col_gap");
+                            }
                             head(ui, by_w, "caisses_col_by");
                             head(ui, remark_w, "caisses_col_remark");
                             ui.end_row();
-                            for c in &session.caisse_period {
-                                let counted = c.counted();
+                            for (c, counted) in
+                                session.caisse_period.iter().zip(&session.caisse_counted)
+                            {
                                 let stale = session.caisse_superseded.contains(&c.id);
                                 // Un comptage remplacé garde sa ligne,
                                 // en encre éteinte et nommé : c'est le
@@ -31656,32 +31749,39 @@ impl App {
                                             .color(ink),
                                     );
                                 }
-                                // Sans attendu, un tiret : pas un zéro,
-                                // qui se lirait comme une recette nulle.
-                                Self::grid_cell(
-                                    ui,
-                                    money_w,
-                                    egui::RichText::new(counted.expected.map_or_else(
-                                        || "—".to_owned(),
-                                        |e| format!("{} €", euros(e)),
-                                    ))
-                                    .color(ink),
-                                );
-                                let (gap, gap_ink) = match counted.gap() {
-                                    None => ("—".to_owned(), ink),
-                                    Some(0) => ("0,00 €".to_owned(), ink),
-                                    Some(g) if g < 0 => (format!("{} €", euros(g)), motif::alert()),
-                                    Some(g) => (format!("+{} €", euros(g)), motif::emphasize(ink)),
-                                };
-                                Self::grid_cell(
-                                    ui,
-                                    money_w,
-                                    egui::RichText::new(gap).color(if stale {
-                                        motif::text_dim()
-                                    } else {
-                                        gap_ink
-                                    }),
-                                );
+                                if want_expected {
+                                    // Sans attendu, un tiret : pas un
+                                    // zéro, qui se lirait comme une
+                                    // recette nulle.
+                                    Self::grid_cell(
+                                        ui,
+                                        money_w,
+                                        egui::RichText::new(counted.expected.map_or_else(
+                                            || "—".to_owned(),
+                                            |e| format!("{} €", euros(e)),
+                                        ))
+                                        .color(ink),
+                                    );
+                                    let (gap, gap_ink) = match counted.gap() {
+                                        None => ("—".to_owned(), ink),
+                                        Some(0) => ("0,00 €".to_owned(), ink),
+                                        Some(g) if g < 0 => {
+                                            (format!("{} €", euros(g)), motif::alert())
+                                        }
+                                        Some(g) => {
+                                            (format!("+{} €", euros(g)), motif::emphasize(ink))
+                                        }
+                                    };
+                                    Self::grid_cell(
+                                        ui,
+                                        money_w,
+                                        egui::RichText::new(gap).color(if stale {
+                                            motif::text_dim()
+                                        } else {
+                                            gap_ink
+                                        }),
+                                    );
+                                }
                                 Self::grid_cell(
                                     ui,
                                     by_w,
@@ -31728,11 +31828,15 @@ impl App {
                     // sous le pli n'est pas lu, et c'est l'écart qu'on
                     // vient chercher ici. Le compte des soirs, qui n'est
                     // qu'un contexte, passe après.
+                    //
                     // L'écart cumulé ne s'affiche jamais seul : sur
                     // combien de soirs il porte est ce qui l'empêche
                     // d'être lu comme le mois entier. Et sans attendu
-                    // saisi, il n'y a pas de chiffre du tout.
-                    match s.gap {
+                    // saisi, il n'y a pas de chiffre du tout — ni
+                    // phrase, quand l'officine a décoché la case : elle
+                    // expliquerait une absence que personne n'attend.
+                    match s.gap.filter(|_| want_expected) {
+                        None if !want_expected => {}
                         Some(g) => {
                             let sign = if g > 0 { "+" } else { "" };
                             row(ui, tr("caisses_gap_total"), format!("{sign}{} €", euros(g)));
@@ -31776,7 +31880,7 @@ impl App {
                         }
                     }
                     row(ui, tr("caisses_takings"), format!("{} €", euros(s.takings)));
-                    if let Some((day, gap)) = &s.worst {
+                    if let Some((day, gap)) = s.worst.as_ref().filter(|_| want_expected) {
                         let sign = if *gap > 0 { "+" } else { "" };
                         row(
                             ui,
@@ -31817,7 +31921,11 @@ impl App {
                             }
                         }
                     }
-                    // Et la seule liste sur laquelle on agit.
+                    // Et la seule liste sur laquelle on agit — quand il
+                    // y a un compte à tenir.
+                    if !want_expected {
+                        return;
+                    }
                     ui.add_space(6.0);
                     ui.label(
                         egui::RichText::new(tr("caisses_off"))
@@ -31863,29 +31971,31 @@ impl App {
 
         if step != 0 {
             session.caisse_month = Session::month_step(&session.caisse_month, step);
-            session.load_caisse_month();
+            session.load_caisse_month(want_expected);
         }
         if back {
             session.view = MainView::Caisse;
             session.refresh_caisse();
         }
         if print {
+            // Les mêmes lignes que le tableau, prises à la même
+            // source : celles que le chargement a préparées, déjà
+            // privées de leur attendu si la case est décochée. La
+            // feuille et l'écran ne peuvent pas diverger.
             let rows: Vec<crate::pdf::CaisseHistoryRow> = session
                 .caisse_period
                 .iter()
-                .map(|c| {
-                    let counted = c.counted();
-                    crate::pdf::CaisseHistoryRow {
-                        day: db::format_french_date(&c.day),
-                        cash: counted.cash,
-                        other: counted.other,
-                        takings: counted.takings(),
-                        expected: counted.expected,
-                        gap: counted.gap(),
-                        operator: c.operator.clone(),
-                        remark: c.remark.clone(),
-                        superseded: session.caisse_superseded.contains(&c.id),
-                    }
+                .zip(&session.caisse_counted)
+                .map(|(c, counted)| crate::pdf::CaisseHistoryRow {
+                    day: db::format_french_date(&c.day),
+                    cash: counted.cash,
+                    other: counted.other,
+                    takings: counted.takings(),
+                    expected: counted.expected,
+                    gap: counted.gap(),
+                    operator: c.operator.clone(),
+                    remark: c.remark.clone(),
+                    superseded: session.caisse_superseded.contains(&c.id),
                 })
                 .collect();
             // L'erreur passe par le canal du shell et non par un label
@@ -31897,6 +32007,7 @@ impl App {
                 &month_label,
                 &session.caisse_summary,
                 &config.pharmacy,
+                want_expected,
                 &config.doc_template_path("caisses"),
             )
             .err();
@@ -35863,6 +35974,11 @@ impl eframe::App for App {
                                     &mut editor.cfg.ui.discreet_finances,
                                     tr("opts_discreet"),
                                 );
+                                ui.checkbox(
+                                    &mut editor.cfg.ui.caisse_expected,
+                                    tr("opts_caisse_expected"),
+                                )
+                                .on_hover_text(tr("opts_caisse_expected_tooltip"));
                             }
                             if page == OptionsPage::Database {
                                 motif::section(ui, tr("opts_db"));

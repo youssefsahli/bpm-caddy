@@ -46,6 +46,11 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # discreet_finances = true
 # Initiales de l'opérateur par défaut pour les entrées de notes.
 # operator = "CL"
+# Compter la caisse contre une recette attendue. À false, le champ, l'écart
+# et les colonnes « Attendu » et « Écart » de l'historique disparaissent :
+# on compte le tiroir, on lit la recette, et il n'est plus question
+# d'écart. Ce qui est déjà rangé n'est pas effacé.
+# caisse_expected = true
 
 [billing]
 # Honoraires en euros, tels que le mémo « Aide à la facturation » de
@@ -882,6 +887,20 @@ pub struct UiConfig {
     pub discreet_finances: bool,
     /// Default operator initials for note stamps (editable in the app).
     pub operator: String,
+    /// Compter la caisse **contre une recette attendue**, ou seulement
+    /// la compter.
+    ///
+    /// Vrai par défaut : c'est l'écart qui fait qu'un comptage se relit.
+    /// Mais l'attendu se saisit à la main, et une officine qui ne le
+    /// saisit pas voit un champ qu'elle laisse vide tous les soirs, une
+    /// ligne d'écart à « — » et, dans l'historique, deux colonnes de
+    /// tirets. À faux, tout cela disparaît : le tiroir se compte, la
+    /// recette se lit, et il n'est plus question d'écart nulle part.
+    ///
+    /// Ce qui est déjà rangé n'est **pas** effacé — les attendus des
+    /// soirs passés restent en base, et le jour où la case est
+    /// recochée ils reviennent avec leurs écarts.
+    pub caisse_expected: bool,
 }
 
 impl Default for UiConfig {
@@ -899,6 +918,7 @@ impl Default for UiConfig {
             day_end_hour: 20,
             discreet_finances: true,
             operator: String::new(),
+            caisse_expected: true,
         }
     }
 }
@@ -1488,6 +1508,33 @@ mod tests {
             ActFees::staged([15.0, 15.0, 20.0, 0.0], [10.0, 20.0, 0.0, 0.0])
         );
         assert!(cfg.team_doc_path().ends_with("notes_equipe.md"));
+    }
+
+    /// La caisse se compte contre une recette attendue **par défaut** :
+    /// une officine qui n'a rien écrit garde l'écran qu'elle avait, et
+    /// c'est l'écart qui fait qu'un comptage se relit.
+    ///
+    /// Et la clé s'écrit dans `[ui]`, où elle se lit et se relit : une
+    /// option ajoutée dans une section que personne ne documente est une
+    /// option que personne ne trouve.
+    #[test]
+    fn the_till_is_counted_against_an_expected_figure_unless_said_otherwise() {
+        assert!(Config::default().ui.caisse_expected);
+        let cfg: Config = toml::from_str(
+            r#"
+            [ui]
+            caisse_expected = false
+            "#,
+        )
+        .unwrap();
+        assert!(!cfg.ui.caisse_expected);
+        // Et le reste de `[ui]` garde ses valeurs par défaut : une clé
+        // écrite seule n'en efface pas d'autres.
+        assert_eq!(cfg.ui.text_scale, 1.0);
+        assert!(cfg.ui.show_docs_on_start);
+        // Le gabarit commenté livré avec l'application la mentionne,
+        // faute de quoi personne ne saurait qu'elle existe.
+        assert!(CONFIG_TEMPLATE.contains("caisse_expected"));
     }
 
     #[test]

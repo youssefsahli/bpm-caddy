@@ -4015,6 +4015,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 "septembre 2026",
                 &crate::caisse::summarize(&counts),
                 &pharmacy.name,
+                true,
             )
         }
         "etiquettes" => label_sheet_values(
@@ -4331,6 +4332,7 @@ fn caisse_history_values(
     period: &str,
     summary: &crate::caisse::Summary,
     pharmacy: &str,
+    want_expected: bool,
 ) -> Vec<(&'static str, String)> {
     use crate::caisse::euros;
     let money = |cents: Option<i64>| -> String {
@@ -4379,7 +4381,15 @@ fn caisse_history_values(
     // saisi, il n'y a pas d'écart : la ligne le dit en toutes lettres
     // plutôt que d'écrire « 0,00 € », qui se lirait « tout est tombé
     // juste ».
+    // L'officine qui ne compte pas contre une recette attendue
+    // (`[ui] caisse_expected = false`) n'a pas d'écart à lire : la
+    // phrase disparaît de la feuille plutôt que d'annoncer qu'aucun
+    // attendu n'a été saisi, ce qui parlerait d'un manque là où il y a
+    // un choix. Les deux colonnes, elles, restent en tirets : leur
+    // en-tête est dans le modèle, et c'est le modèle qu'on modifie pour
+    // les retirer du papier — c'est à cela qu'il sert.
     let gap = match (summary.gap, summary.with_expected) {
+        _ if !want_expected => String::new(),
         (Some(g), n) => {
             let sign = if g > 0 { "+" } else { "" };
             format!(
@@ -4395,7 +4405,7 @@ fn caisse_history_values(
             "Écart : aucune recette attendue n'a été saisie sur la période — il n'y a pas d'écart à établir.".to_owned()
         }
     };
-    let worst = match &summary.worst {
+    let worst = match summary.worst.as_ref().filter(|_| want_expected) {
         Some((day, gap)) => {
             let sign = if *gap > 0 { "+" } else { "" };
             format!(
@@ -4419,6 +4429,13 @@ fn caisse_history_values(
             "soir compté"
         }
     );
+    let sentence = |text: &str| -> String {
+        if text.is_empty() {
+            String::new()
+        } else {
+            format!("#{}", typst_str(text))
+        }
+    };
     let days = match summary.counts.saturating_sub(summary.days) {
         0 => format!("{counted}."),
         n => format!(
@@ -4433,8 +4450,11 @@ fn caisse_history_values(
         ("{{ROWS}}", body),
         ("{{DAYS}}", format!("#{}", typst_str(&days))),
         ("{{TAKINGS}}", format!("{} €", euros(summary.takings))),
-        ("{{GAP}}", format!("#{}", typst_str(&gap))),
-        ("{{WORST}}", format!("#{}", typst_str(&worst))),
+        // Une phrase vide sort **vide**, et non `#""` : la ligne du
+        // modèle ne doit rien laisser derrière elle, pas même une chaîne
+        // qui ne s'imprime pas mais qui garde son saut de ligne.
+        ("{{GAP}}", sentence(&gap)),
+        ("{{WORST}}", sentence(&worst)),
     ]
 }
 
@@ -4449,12 +4469,13 @@ pub fn open_caisse_history(
     period: &str,
     summary: &crate::caisse::Summary,
     pharmacy: &PharmacyConfig,
+    want_expected: bool,
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
             &template_source("caisses", template_path),
-            &caisse_history_values(rows, period, summary, &pharmacy.name),
+            &caisse_history_values(rows, period, summary, &pharmacy.name, want_expected),
         ),
         "historique_caisse",
     )
@@ -4955,8 +4976,13 @@ mod tests {
         let rows = sample_caisse_history();
         assert_eq!(rows.len(), 3, "les trois lignes sont sur la feuille");
         assert_eq!(rows.iter().filter(|r| r.superseded).count(), 1);
-        let values =
-            caisse_history_values(&rows, "septembre 2026", &summary, "Pharmacie du Centre");
+        let values = caisse_history_values(
+            &rows,
+            "septembre 2026",
+            &summary,
+            "Pharmacie du Centre",
+            true,
+        );
         let of = |m: &str| {
             values
                 .iter()
@@ -5016,6 +5042,7 @@ mod tests {
             "septembre 2026",
             &crate::caisse::summarize(&blind),
             "Pharmacie du Centre",
+            true,
         );
         let gap = values
             .iter()
@@ -5024,6 +5051,43 @@ mod tests {
             .unwrap_or_default();
         assert!(gap.contains("aucune recette attendue"), "{gap}");
         assert!(!gap.contains("0,00"));
+    }
+
+    /// L'officine qui ne compte pas contre une recette attendue n'a pas
+    /// d'écart **sur le papier non plus**.
+    ///
+    /// Et la feuille ne dit pas « aucune recette attendue n'a été
+    /// saisie » : ce serait annoncer un manque là où il y a un choix.
+    /// La phrase disparaît, le reste du mois est écrit comme d'habitude.
+    #[test]
+    fn a_till_history_without_expected_takings_prints_no_gap_at_all() {
+        let rows = sample_caisse_history();
+        let summary = crate::caisse::summarize(&sample_counted());
+        let values = caisse_history_values(
+            &rows,
+            "septembre 2026",
+            &summary,
+            "Pharmacie du Centre",
+            false,
+        );
+        let of = |m: &str| {
+            values
+                .iter()
+                .find(|(k, _)| *k == m)
+                .map(|(_, v)| v.as_str())
+                .unwrap_or("")
+        };
+        assert_eq!(of("{{GAP}}"), "", "pas d'écart, pas de phrase d'écart");
+        assert_eq!(of("{{WORST}}"), "");
+        // Le mois, lui, est toujours là : c'est un historique de caisse
+        // avant d'être un relevé d'écarts.
+        assert!(of("{{DAYS}}").contains("2 soirs comptés"));
+        assert!(!of("{{TAKINGS}}").is_empty());
+        let src = fill(DEFAULT_CAISSES_TEMPLATE, &values);
+        assert!(!src.contains("{{"));
+        assert!(!src.contains("aucune recette attendue"));
+        let world = PdfWorld::new(src);
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 
     /// Les étiquettes : une par traitement, la posologie du dossier, et

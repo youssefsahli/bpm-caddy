@@ -62,6 +62,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   s'ouvrait sur une page vide et ne montrait rien de ce qu'il existe
   pour montrer.
 
+- **La caisse peut se compter sans recette attendue.**
+  `[ui] caisse_expected = false` (Options › Interface, « Comparer la
+  caisse à une recette attendue ») retire le champ, la ligne d'écart, sa
+  phrase, les deux colonnes « Attendu » et « Écart » de l'historique,
+  l'écart cumulé, le plus loin du compte et la liste des soirs qui ne
+  tombent pas juste. Reste ce qui est vrai sans attendu : le tiroir
+  compté, la recette, les soirs du mois et leur bande.
+
+  L'attendu se saisit à la main, et une officine qui ne le saisit pas
+  voyait un champ laissé vide tous les soirs et deux colonnes de tirets.
+  Vrai par défaut : c'est l'écart qui fait qu'un comptage se relit, et
+  rien ne change pour qui s'en sert. **Ce qui est déjà rangé n'est pas
+  effacé** — les attendus des soirs passés restent en base et
+  reviennent, avec leurs écarts, le jour où la case est recochée : le
+  filtre est à la lecture, en un seul endroit, et non un `if` à chaque
+  chiffre dessiné.
+
+  Une réserve, et elle est dite parce qu'elle se voit : sur la **feuille
+  du soir**, « Recette attendue » et « Écart » restent, à « — ». Leurs
+  libellés sont dans le modèle Typst, et c'est le modèle qu'on modifie
+  pour les retirer du papier — deux lignes à effacer dans Options ›
+  Modèles. Les mettre sous condition depuis le code reviendrait à
+  remonter la mise en page dans le programme, ce que le registre des
+  documents existe justement pour éviter.
+
 ### Fixed
 - **Les montants à quatre chiffres s'écrivaient « 1□240,50 » à
   l'écran.** Le séparateur de milliers était l'espace fine insécable
