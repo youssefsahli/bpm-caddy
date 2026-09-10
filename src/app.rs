@@ -1670,6 +1670,12 @@ enum Goto {
     Preparation(i64),
     Dispositif(i64),
     Protocol(i64),
+    /// A followed narcotic, by its id in the register.
+    Stupefiant(i64),
+    /// A self-monitoring sheet, by its stable key.
+    Carnet(&'static str),
+    /// A saved console script, by its name.
+    Script(String),
     /// Not a destination but a question: search this word in the prose
     /// of every fiche. Always the last row, so a name search that found
     /// nothing has somewhere to go.
@@ -1884,6 +1890,8 @@ struct ActsOut {
     regress: Option<(i64, db::InterviewState)>,
     print_req: Option<(InterviewKind, Option<String>, String, String)>,
     cr_req: Option<(InterviewKind, Option<String>, String, String)>,
+    /// La liasse de fin d'entretien : fiche, bilan et plan de prise.
+    bundle_req: Option<(InterviewKind, Option<String>, String, String)>,
     bulletin_req: Option<InterviewKind>,
     set_trod: Option<(i64, String, String)>,
     open_ordonnance: Option<(i64, InterviewKind)>,
@@ -2058,6 +2066,11 @@ enum ExportTarget {
     Fiche,
     /// Le courrier au médecin traitant.
     Cr,
+    /// **Tout ce qui part à la fin de l'entretien, en un seul PDF** :
+    /// la fiche, le bilan et le plan de prise. C'était quatre boutons
+    /// dans trois écrans, à la fin d'un rendez-vous où l'on est déjà en
+    /// retard.
+    Liasse,
 }
 
 /// The codex's four calculators, as the fields hold them. Strings and
@@ -3675,6 +3688,49 @@ impl Session {
                 );
             }
         }
+        // **Ce que la boîte ne trouvait pas.** Elle savait les dossiers,
+        // les fiches, les tables, les préparations, les dispositifs et
+        // les protocoles ; elle ignorait le registre, la console et les
+        // carnets — c'est-à-dire trois écrans qu'on atteint en cliquant
+        // trois fois alors qu'on sait déjà comment ils s'appellent.
+        for st in &self.stup_summary {
+            if st.product.archived {
+                continue;
+            }
+            if let Some(sc) = fuzzy::score(q, &st.product.label) {
+                push(
+                    sc,
+                    Goto::Stupefiant(st.product.id),
+                    st.product.label.clone(),
+                    tr("goto_kind_stup"),
+                );
+            }
+        }
+        for sheet in crate::selfcheck::SHEETS {
+            // Le titre **et** le propos : on cherche « tension » et la
+            // feuille s'appelle « Automesure tensionnelle », mais on
+            // cherche aussi « INR » quand elle s'appelle « Carnet
+            // d'INR ».
+            let sc = fuzzy::score(q, sheet.title).max(fuzzy::score(q, sheet.purpose));
+            if let Some(sc) = sc {
+                push(
+                    sc,
+                    Goto::Carnet(sheet.key),
+                    sheet.title.to_owned(),
+                    tr("goto_kind_carnet"),
+                );
+            }
+        }
+        for name in &self.scripts {
+            if let Some(sc) = fuzzy::score(q, name) {
+                push(
+                    sc,
+                    Goto::Script(name.clone()),
+                    name.clone(),
+                    tr("goto_kind_script"),
+                );
+            }
+        }
         // The last row is the way out of a name search: what the box
         // could not match by name may still be written inside a fiche.
         // It costs one row and it is the answer often enough — « QT »,
@@ -3734,6 +3790,34 @@ impl Session {
                 self.dispo_open = Some(id);
                 self.dispo_edit = None;
                 self.dispo_base = None;
+            }
+            // Les trois destinations que la boîte ignorait. Chacune
+            // fait exactement ce que le chemin long ferait : la même
+            // vue, les mêmes lectures, le même état.
+            Goto::Stupefiant(id) => {
+                self.open_registres(RegistreTab::Stupefiants);
+                self.stup_list = StupList::Suivis;
+                self.stup_open = Some(id);
+                self.reload_stup();
+            }
+            Goto::Carnet(key) => {
+                self.enter_drug_panel();
+                self.show_carnets = true;
+                self.carnet_open = crate::selfcheck::by_key(key);
+            }
+            Goto::Script(name) => {
+                self.refresh_scripts();
+                let path = self.scripts_dir.join(format!("{name}.rhai"));
+                // Un script que la boîte propose et que le disque n'a
+                // plus ouvre la console vide plutôt que rien : le nom
+                // vient d'une lecture du répertoire, mais un répertoire
+                // se modifie entre deux images.
+                self.script_text = std::fs::read_to_string(&path).unwrap_or_default();
+                self.script_open = Some(name.clone());
+                self.script_name = name;
+                self.script_out = None;
+                self.script_note = None;
+                self.view = MainView::Script;
             }
             Goto::Text(word) => {
                 self.enter_drug_panel();
@@ -7280,6 +7364,7 @@ fn export_window(
     egui::Window::new(match box_.target {
         ExportTarget::Fiche => tr("export_title_fiche"),
         ExportTarget::Cr => tr("export_title_cr"),
+        ExportTarget::Liasse => tr("export_title_bundle"),
     })
     .collapsible(false)
     .resizable(false)
@@ -15224,6 +15309,18 @@ impl App {
     /// when to take it, and what to do when a dose is missed. The bilan
     /// stays at the officine; this one goes home.
     fn print_plan(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
+        let _ = Self::plan_body(session, patient, config, operator, false);
+    }
+
+    /// Le plan de prise : construit une fois, imprimé seul ou mis dans
+    /// la liasse. Voir [`Self::bilan_body`].
+    fn plan_body(
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+        operator: &str,
+        want_source: bool,
+    ) -> String {
         let today = session
             .db
             .today_french()
@@ -15237,6 +15334,13 @@ impl App {
             mention: &config.disclaimers.plan,
             signature: &signature,
         };
+        if want_source {
+            return crate::pdf::plan_source(
+                &data,
+                &config.pharmacy,
+                &config.doc_template_path("plan"),
+            );
+        }
         if let Err(e) =
             crate::pdf::open_plan(&data, &config.pharmacy, &config.doc_template_path("plan"))
         {
@@ -15244,6 +15348,7 @@ impl App {
         } else {
             session.error = None;
         }
+        String::new()
     }
 
     /// Le même plan de prise, découpé en étiquettes : ce qui se colle
@@ -15287,6 +15392,23 @@ impl App {
     /// calendrier vaccinal owes, the year's acts — and the blanks the
     /// pharmacist fills during the entretien.
     fn print_bilan(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
+        let _ = Self::bilan_body(session, patient, config, operator, false);
+    }
+
+    /// Le bilan : construit une fois, imprimé seul ou mis dans la
+    /// liasse.
+    ///
+    /// `want_source` rend la page remplie au lieu de la compiler.
+    /// **Une seule construction** : le bilan de la liasse et le bilan
+    /// du bouton doivent être le même papier, et deux assemblages de la
+    /// même page finissent toujours par diverger.
+    fn bilan_body(
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+        operator: &str,
+        want_source: bool,
+    ) -> String {
         let today = session
             .db
             .today_french()
@@ -15466,6 +15588,13 @@ impl App {
             acts,
             signature: &signature,
         };
+        if want_source {
+            return crate::pdf::bilan_source(
+                &data,
+                &config.pharmacy,
+                &config.doc_template_path("bilan"),
+            );
+        }
         if let Err(e) =
             crate::pdf::open_bilan(&data, &config.pharmacy, &config.doc_template_path("bilan"))
         {
@@ -15473,6 +15602,7 @@ impl App {
         } else {
             session.error = None;
         }
+        String::new()
     }
 
     /// The width a Motif button with this label occupies.
@@ -17837,6 +17967,19 @@ impl App {
                     row.itv.operator.clone(),
                 ));
             }
+            // Tout ce qui part à la fin de l'entretien, d'un bouton et
+            // dans un seul PDF.
+            if motif::button(ui, tr("itv_bundle"))
+                .on_hover_text(tr("itv_bundle_tooltip"))
+                .clicked()
+            {
+                out.bundle_req = Some((
+                    row.itv.kind,
+                    row.itv.scheduled_date.clone(),
+                    row.itv.theme.clone(),
+                    row.itv.operator.clone(),
+                ));
+            }
             // Only the themes under the accompaniment
             // convention have an adhésion to sign.
             if crate::bulletin::has_bulletin(row.itv.kind)
@@ -18200,6 +18343,7 @@ impl App {
             regress,
             mut print_req,
             mut cr_req,
+            mut bundle_req,
             bulletin_req,
             set_trod,
             open_ordonnance,
@@ -18392,6 +18536,7 @@ impl App {
         for (req, target) in [
             (print_req.take(), ExportTarget::Fiche),
             (cr_req.take(), ExportTarget::Cr),
+            (bundle_req.take(), ExportTarget::Liasse),
         ] {
             let Some((kind, scheduled, theme, by)) = req else {
                 continue;
@@ -18451,6 +18596,34 @@ impl App {
                     &session.patient_treats,
                     &lines,
                 ),
+                // La liasse : les trois documents remplis puis
+                // compilés d'un coup. Chacun est **construit par la
+                // même fonction** que son bouton — deux assemblages
+                // d'une même page finissent toujours par diverger, et
+                // c'est celui qu'on regarde le moins qui a tort.
+                ExportTarget::Liasse => {
+                    let fiche = crate::pdf::interview_source(
+                        patient,
+                        kind,
+                        &date,
+                        &theme,
+                        &config.template_path(),
+                        &signature,
+                        &session.patient_treats,
+                        &lines,
+                    );
+                    match fiche {
+                        Ok(fiche) => {
+                            let bilan = Self::bilan_body(session, patient, config, &by, true);
+                            let plan = Self::plan_body(session, patient, config, &by, true);
+                            crate::pdf::open_bundle(
+                                &[fiche, bilan, plan],
+                                &format!("liasse_{}", patient.id),
+                            )
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
                 ExportTarget::Cr => crate::pdf::open_cr_letter(
                     patient,
                     kind,

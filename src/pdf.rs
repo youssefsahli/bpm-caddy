@@ -263,18 +263,79 @@ pub fn open_interview_sheet(
     treats: &[Drug],
     checklist: &[&str],
 ) -> Result<PathBuf, String> {
+    let filled = interview_source(
+        patient,
+        kind,
+        today,
+        theme,
+        template_path,
+        signature,
+        treats,
+        checklist,
+    )?;
+    let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
+    compile_and_open(filled, &stem)
+}
+
+/// La fiche d'entretien, remplie mais pas encore compilée. Voir
+/// [`bilan_source`].
+#[allow(clippy::too_many_arguments)]
+pub fn interview_source(
+    patient: &Patient,
+    kind: InterviewKind,
+    today: &str,
+    theme: &str,
+    template_path: &std::path::Path,
+    signature: &str,
+    treats: &[Drug],
+    checklist: &[&str],
+) -> Result<String, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
             .map_err(|e| format!("modèle {} illisible : {e}", template_path.display()))?
     } else {
         DEFAULT_TEMPLATE.to_owned()
     };
-    let filled = fill_interview_template(
+    Ok(fill_interview_template(
         &template, patient, kind, today, theme, signature, treats, checklist,
-    );
+    ))
+}
 
-    let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
-    compile_and_open(filled, &stem)
+/// Plusieurs documents en un seul PDF, dans l'ordre reçu.
+///
+/// **C'est la fin d'un entretien qu'on imprime**, pas un document :
+/// bilan, plan de prise et fiche font trois boutons dans trois écrans,
+/// à la fin d'un rendez-vous où l'on est déjà en retard.
+///
+/// Les pages se suivent par un `#pagebreak()` et chaque partie garde son
+/// `#set page` — c'est ainsi que Typst change de mise en page en cours
+/// de document, et c'est ce qui permet à un A4 portrait de suivre un
+/// paysage sans que l'un impose sa marge à l'autre.
+///
+/// Une partie vide est sautée plutôt que de faire une page blanche : un
+/// dossier sans traitement n'a pas de plan de prise, et une feuille
+/// vierge au milieu d'une liasse se lit comme une erreur d'impression.
+pub fn open_bundle(parts: &[String], stem: &str) -> Result<PathBuf, String> {
+    compile_and_open(bundle_source(parts)?, stem)
+}
+
+/// Les parties mises bout à bout, pas encore compilées.
+///
+/// Séparée d'[`open_bundle`] pour que le test assemble **la liasse
+/// elle-même** et non une copie de son assemblage : une deuxième
+/// jonction écrite dans un test finirait par prouver que le test
+/// fonctionne.
+pub fn bundle_source(parts: &[String]) -> Result<String, String> {
+    let joined = parts
+        .iter()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n#pagebreak()\n");
+    if joined.is_empty() {
+        return Err("rien à imprimer".to_owned());
+    }
+    Ok(joined)
 }
 
 /// The markers a template of each kind may use, in the order they
@@ -805,11 +866,26 @@ pub fn open_bilan(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        fill(
-            &template_source("bilan", template_path),
-            &bilan_values(data, pharmacy),
-        ),
+        bilan_source(data, pharmacy, template_path),
         &format!("bilan_{}", data.patient.id),
+    )
+}
+
+/// Le bilan, rempli mais pas encore compilé.
+///
+/// Séparé de [`open_bilan`] pour que l'impression groupée puisse le
+/// mettre bout à bout avec les autres. **Le remplissage passe par la
+/// même fonction dans les deux cas** : deux constructions d'une même
+/// page finissent toujours par diverger, et c'est la version qu'on
+/// regarde le moins qui a tort.
+pub fn bilan_source(
+    data: &BilanData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("bilan", template_path),
+        &bilan_values(data, pharmacy),
     )
 }
 
@@ -1139,11 +1215,21 @@ pub fn open_plan(
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
-        fill(
-            &template_source("plan", template_path),
-            &plan_values(data, pharmacy),
-        ),
+        plan_source(data, pharmacy, template_path),
         &format!("plan_{}", data.patient.id),
+    )
+}
+
+/// Le plan de prise, rempli mais pas encore compilé. Voir
+/// [`bilan_source`].
+pub fn plan_source(
+    data: &PlanData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("plan", template_path),
+        &plan_values(data, pharmacy),
     )
 }
 
@@ -5272,6 +5358,62 @@ mod tests {
         }
     }
 
+    /// **La liasse compile en un seul PDF.**
+    ///
+    /// C'est le point risqué de l'impression groupée : chaque partie
+    /// porte son propre `#set page`, et trois mises en page dans un
+    /// document sont trois `#set page` séparés par des sauts. Typst
+    /// sait le faire — c'est ainsi qu'on change de format en cours de
+    /// document — mais rien ne le prouvait, et une liasse qui ne
+    /// compile pas se découvre à la fin d'un entretien.
+    ///
+    /// Les trois parties sont les modèles livrés, remplis de leurs
+    /// valeurs d'exemple : les mêmes que l'aperçu de l'éditeur.
+    #[test]
+    fn a_bundle_of_three_documents_compiles_as_one() {
+        let parts: Vec<String> = ["fiche", "bilan", "plan"]
+            .into_iter()
+            .map(|key| {
+                let d = doc(key).expect("le document est au registre");
+                fill(d.default, &sample_values(key))
+            })
+            .collect();
+        assert_eq!(parts.len(), 3);
+        for p in &parts {
+            assert!(!p.contains("{{"), "un marqueur non remplacé");
+        }
+        // Assemblée par la fonction de la liasse, pas par une copie.
+        let joined = bundle_source(&parts).expect("trois parties non vides");
+        let world = PdfWorld::new(joined);
+        let out = typst::compile::<PagedDocument>(&world).output;
+        let doc = out.unwrap_or_else(|errs| {
+            panic!("la liasse ne compile pas : {}", format_diagnostics(&errs))
+        });
+        // Et elle fait bien plusieurs pages : trois documents qui
+        // rendraient une page seraient trois documents écrasés l'un sur
+        // l'autre.
+        assert!(
+            doc.pages.len() >= 3,
+            "{} page(s) pour trois documents",
+            doc.pages.len()
+        );
+        // Et une partie vide est sautée plutôt que de faire une page
+        // blanche : une feuille vierge au milieu d'une liasse se lit
+        // comme une erreur d'impression.
+        let with_hole = [parts[0].clone(), "  \n ".to_owned(), parts[1].clone()];
+        let holed = bundle_source(&with_hole).expect("deux parties restent");
+        assert_eq!(
+            holed.matches("#pagebreak()").count(),
+            1,
+            "deux parties, un seul saut"
+        );
+        // Rien du tout n'est une erreur et non un PDF vide : une liasse
+        // vide qui s'ouvrirait quand même ferait croire à une
+        // impression réussie.
+        assert!(bundle_source(&[]).is_err());
+        assert!(bundle_source(&[String::new(), "   ".to_owned()]).is_err());
+    }
+
     /// **La règle qui empêche le registre de retomber en arrière** :
     /// toute fonction `open_*` de ce module prend un chemin de modèle.
     ///
@@ -5283,13 +5425,25 @@ mod tests {
     /// texte du module et le refuse, comme
     /// `no_font_size_is_written_in_pixels` refuse le prochain pixel.
     ///
-    /// Une seule exemption, et elle est nommée : le bulletin
-    /// d'adhésion n'est pas un Typst mais le PDF de l'Assurance
-    /// Maladie, dont on ne remplit que les champs de formulaire (voir
-    /// `bulletin.rs`). Lui donner un « modèle » serait le redessiner.
+    /// **Deux exemptions, et chacune est nommée**, pour la même raison :
+    /// le document n'est pas dessiné ici. Le bulletin d'adhésion est le
+    /// PDF de l'Assurance Maladie, dont on ne remplit que les champs de
+    /// formulaire (voir `bulletin.rs`) — lui donner un « modèle » serait
+    /// le redessiner. Et la liasse met bout à bout des pages que leurs
+    /// propres modèles ont déjà remplies.
     #[test]
     fn every_printable_document_takes_a_template() {
-        const EXEMPT: &[&str] = &["open_bulletin"];
+        // Deux exemptions, chacune nommée et chacune pour la même
+        // raison : le document n'a pas de modèle **parce qu'il n'est
+        // pas dessiné ici**.
+        //
+        // `open_bulletin` écrit les champs du PDF de l'Assurance
+        // Maladie ; lui donner un modèle voudrait dire le redessiner.
+        // `open_bundle` met bout à bout des pages déjà remplies par
+        // *leurs* modèles ; lui en donner un serait un modèle de
+        // modèles, et les quatre règles s'appliquent déjà à chacune des
+        // parties.
+        const EXEMPT: &[&str] = &["open_bulletin", "open_bundle"];
         let source = include_str!("pdf.rs");
         let mut rest = source;
         let mut checked = 0;
@@ -6817,10 +6971,9 @@ mod tests {
             mention: "Ce plan ne remplace pas votre ordonnance.",
             signature: "Claire Leroy",
         };
-        let source = fill(
-            DEFAULT_PLAN_TEMPLATE,
-            &plan_values(&data, &sample_pharmacy()),
-        );
+        // Par `plan_source` : c'est ce que la liasse et le bouton
+        // appellent tous les deux.
+        let source = plan_source(&data, &sample_pharmacy(), std::path::Path::new(""));
         assert!(source.contains("Plan de prise"));
         assert!(source.contains("Dans les 6 heures"));
         assert!(source.contains("Questions à poser"));
@@ -6913,10 +7066,10 @@ mod tests {
             )],
             signature: "Claire Leroy, pharmacien titulaire",
         };
-        let source = fill(
-            DEFAULT_BILAN_TEMPLATE,
-            &bilan_values(&data, &sample_pharmacy()),
-        );
+        // Par `bilan_source`, qui est ce que la liasse et le bouton
+        // appellent tous les deux : un test qui remplirait le modèle
+        // lui-même prouverait que le test sait remplir.
+        let source = bilan_source(&data, &sample_pharmacy(), std::path::Path::new(""));
         assert!(source.contains("Interactions repérées"));
         assert!(source.contains("Revue de l'ordonnance"));
         assert!(source.contains("Plan d'action"));

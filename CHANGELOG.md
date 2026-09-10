@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.182.0] - 2026-09-10
+
+### Added
+- **« Tout » : la fin d'un entretien en un bouton et un seul PDF.**
+  Fiche d'entretien, bilan et plan de prise, remplis et compilés d'un
+  coup — c'était quatre boutons dans trois écrans, à la fin d'un
+  rendez-vous où l'on est déjà en retard. Chaque partie est construite
+  par la **même fonction** que son bouton : deux assemblages d'une même
+  page finissent toujours par diverger, et c'est celui qu'on regarde le
+  moins qui a tort.
+
+  Le carnet de suivi n'y est pas, et c'est un choix : lequel ? Tension,
+  glycémie, INR, souffle — le choisir est une décision, et une liasse qui
+  devinerait imprimerait la mauvaise grille.
+- **Ctrl+K trouve le registre, les carnets et les scripts.** Il savait
+  les dossiers, les fiches, les tables, les préparations, les dispositifs
+  et les protocoles ; il ignorait trois écrans qu'on atteignait en
+  cliquant trois fois alors qu'on savait déjà comment ils s'appellent.
+
+  Un produit suivi ouvre le registre sur *lui* ; un carnet ouvre sa
+  feuille — et se trouve par son titre **et par son propos**, parce qu'on
+  cherche « tension » quand la feuille s'appelle « Automesure
+  tensionnelle » ; un script ouvre la console avec son texte.
+
 ## [0.181.0] - 2026-09-10
 
 ### Added
