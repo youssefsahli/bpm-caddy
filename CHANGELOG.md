@@ -5,6 +5,69 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.175.0] - 2026-09-10
+
+### Added
+- **Le planning de l'équipe : qui est là, quand, et combien d'heures
+  cela fait.** Un quatrième mode de l'agenda, cadré sur la semaine :
+  une ligne par personne, sept colonnes de jours, le total de chacun à
+  droite et le total de chaque jour en pied. La colonne des noms est
+  gelée au bord gauche — une case qui dit « 9 h–19 h 30 » sans dire de
+  qui ne dit rien —, et une ligne « non attribué » ferme la grille,
+  parce qu'un poste écrit au nom d'une initiale que l'équipe ne connaît
+  pas doit se voir quelque part.
+
+  On y écrit : poser un poste, corriger ses heures, le supprimer.
+  « Toutes les semaines » écrit **une trame**, pas cinquante-deux
+  lignes — et c'est ce qui permet à une absence d'en contredire un seul
+  jour sans effacer les autres. « Claire est absente mardi prochain » ne
+  doit pas effacer les mardis de Claire : la ligne rangée reste, une
+  seconde ligne la remplace ce jour-là, et la semaine dit la vérité.
+  C'est l'idée de l'annulation du registre, sans son inaltérabilité —
+  un planning se rectifie, un registre non.
+
+  `src/planning.rs` porte les règles, une par test. **Les heures se
+  comptent en minutes entières**, jamais en heures décimales : sept
+  heures trente-cinq est 455, la même discipline qu'aux centimes de la
+  caisse et pour la même raison. **Un poste sans fin n'est pas un poste
+  de zéro heure** — la ligne affiche « — », et le total du jour aussi.
+  **Une nuit est comptée au jour qui la commence** : une garde de 20 h à
+  2 h fait six heures, en entier, au jour de début, et la semaine ne les
+  voit pas deux fois. **Deux postes de la même personne qui se touchent
+  ne sont pas un conflit** — 9 h–12 h 30 puis 14 h–19 h 30 est une
+  journée coupée à midi. Et **une pause plus longue que le poste est
+  refusée, pas soustraite** : une durée négative se propage dans la
+  semaine sans se voir.
+
+  Ce que le module ne fait pas, et ne fera pas : la paie. Ni majoration,
+  ni heure supplémentaire, ni convention collective. Il compte des
+  présences saisies ; ce qu'on en déduit est du droit du travail, il
+  change, et une application de pharmacie qui imprimerait « dont 2 h
+  majorées » se tromperait un jour sans que personne le voie.
+- **La couverture du comptoir, le long des heures du plan de journée.**
+  À chaque quart d'heure, combien de personnes sont là — une colonne
+  étroite collée à la gouttière, qui se lit sans qu'on la cherche. Le
+  rouge est le creux : une tranche pendant laquelle l'officine est
+  ouverte et où personne n'est inscrit. Et **sans horaires d'ouverture
+  écrits il n'y a pas de creux** : la bande se dessine quand même, elle
+  compte des têtes ; ce qui disparaît, c'est le rouge. Une officine qui
+  n'a rien déclaré ne se fait pas dire tous les matins qu'elle n'ouvre
+  pas — la même règle qu'à la caisse.
+- `[pharmacy] horaires` (les heures d'ouverture, deux lignes pour un
+  jour à midi fermé) et, sur chaque opérateur, `heures_semaine` (le
+  contrat — **sans contrat écrit, pas d'écart au contrat**) et
+  `couleur`. Livrés vides.
+
+### Fixed
+- **La bande de l'agenda se coupait en son milieu.** Elle se mesurait
+  sur « Semaine du {} » et dessinait « Semaine du 07/09/2026 », dix
+  caractères de plus ; son plafond, arrondi à une hauteur de bouton,
+  tombait au milieu d'une rangée dessinée. Elle prend désormais ce
+  qu'elle a **réellement occupé** à l'image précédente. Et
+  l'étiquette de la semaine ne s'enveloppe plus : dans une rangée
+  enveloppée, egui la coupait en deux et la moitié basse se peignait
+  par-dessus la rangée du dessus.
+
 ## [0.174.0] - 2026-09-10
 
 ### Added

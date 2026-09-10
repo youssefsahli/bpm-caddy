@@ -9,6 +9,7 @@ use crate::db::{
     NoteSubject, Patient,
 };
 use crate::fuzzy;
+use crate::planning;
 use crate::strings::{tr, trf, trn};
 use crate::vaccines;
 
@@ -1139,6 +1140,41 @@ fn frozen_cell(x: f32, col_w: f32, pad: f32, rect: egui::Rect) -> (egui::Rect, e
     )
     .expand2(egui::vec2(0.0, 4.0));
     (band, egui::pos2(x, rect.top()))
+}
+
+/// « lundi » → « Lun » : the three letters a day column has room for,
+/// capitalised. Written once because three call sites wanted it.
+fn three_letters(day: &str) -> String {
+    day.chars()
+        .take(3)
+        .enumerate()
+        .map(|(i, c)| {
+            if i == 0 {
+                c.to_uppercase().next().unwrap_or(c)
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// 540 → « 9 h », 575 → « 9 h 35 ».
+///
+/// The round hour drops its zeroes: a planning cell is a dozen
+/// characters wide, and « 9 h 00 – 19 h 00 » spends four of them saying
+/// nothing. `planning::hhmm` is the other one, for totals, where the
+/// minutes are always written because a total of « 37 h » would be read
+/// as rounded.
+fn short_hour(minutes: u16) -> String {
+    match minutes % 60 {
+        0 => format!("{} h", minutes / 60),
+        m => format!("{} h {m:02}", minutes / 60),
+    }
+}
+
+/// The body text style, for a row that must be as tall as its text.
+fn body_style(_ui: &egui::Ui) -> egui::TextStyle {
+    egui::TextStyle::Body
 }
 
 fn notes_add_button_width(ui: &egui::Ui) -> f32 {
@@ -2443,6 +2479,36 @@ struct Session {
     rdv_move_edit: Option<(i64, String)>,
     /// Week shown in the agenda, relative to the current one.
     agenda_offset: i64,
+    /// The form under the planning grid: whom, which day, from when to
+    /// when, and whether it repeats every week.
+    shift_form: ShiftForm,
+    /// The shift the planning has selected, if any — what « Modifier »
+    /// and « Supprimer » act on.
+    shift_pick: Option<i64>,
+    /// The team's shifts for the week on screen, patterns unfolded and
+    /// exceptions applied.
+    shifts: Vec<db::PlannedShift>,
+    /// The height the agenda's control band actually took, last frame —
+    /// `0` until it has been drawn once.
+    ///
+    /// **Une estimation ne tombe jamais juste sur une rangée
+    /// enveloppée.** `wrapped_rows` simule `horizontal_wrapped` depuis
+    /// une liste de libellés : elle ignore les `add_space` que la
+    /// rangée s'ajoute, et deux groupes séparés par un espace vertical
+    /// ne font pas des rangées d'une hauteur ronde. Le plafond arrondi
+    /// à un nombre entier de `pitch` tombait donc **au milieu** de la
+    /// troisième rangée, qui se dessinait coupée par le filet du
+    /// panneau.
+    ///
+    /// Ce que la zone défilante a réellement occupé, lui, est exact.
+    /// Une image de retard, et la boucle converge du premier coup : la
+    /// hauteur du contenu dépend de la largeur, jamais de la hauteur
+    /// qu'on lui donne.
+    agenda_band_h: f32,
+    /// The range the loaded shifts cover. One query, asked again only
+    /// when the range actually moves — never per frame, like every
+    /// other read a view repeats.
+    shifts_week: Option<(String, String)>,
     /// Whether the card's technical sheet is unfolded beside it.
     drug_tech_open: bool,
     /// The prose of the open card, cut into plain text and links to
@@ -3019,6 +3085,11 @@ impl Session {
             rdv_time_edit: None,
             rdv_move_edit: None,
             agenda_offset: 0,
+            agenda_band_h: 0.0,
+            shift_form: ShiftForm::default(),
+            shift_pick: None,
+            shifts: Vec::new(),
+            shifts_week: None,
             drug_tech_open: true,
             mono_links: MonoLinks::new(),
             date_edits: std::collections::HashMap::new(),
@@ -4758,6 +4829,44 @@ impl Session {
             (Some(from), Some(to)) => self.db.events_between(&from, &to).unwrap_or_default(),
             _ => Vec::new(),
         }
+    }
+
+    /// The week's shifts, read once per week rather than once per
+    /// frame.
+    ///
+    /// A view is redrawn sixty times a second and this is a query with
+    /// a pattern to unfold: keyed on the Monday it belongs to, it is
+    /// asked again only when the week actually moves. `force` is for
+    /// after a write, which is the other thing that can make it stale.
+    fn load_shifts(&mut self, force: bool) {
+        // La plage couvre la semaine affichée **et** la journée
+        // sélectionnée : le plan de journée dessine la couverture du
+        // jour, et ce jour n'est pas toujours dans la semaine que la
+        // grille montre. Deux clés séparées se seraient écrasées l'une
+        // l'autre à chaque changement de mode.
+        let (Some(first), Some(last)) = (
+            self.agenda_week.first().cloned(),
+            self.agenda_week.last().cloned(),
+        ) else {
+            return;
+        };
+        let day = self.agenda_day.clone();
+        let from = if day.is_empty() || day >= first {
+            first
+        } else {
+            day.clone()
+        };
+        let to = if day.is_empty() || day <= last {
+            last
+        } else {
+            day
+        };
+        let key = (from.clone(), to.clone());
+        if !force && self.shifts_week.as_ref() == Some(&key) {
+            return;
+        }
+        self.shifts = self.db.shifts_between(&from, &to).unwrap_or_default();
+        self.shifts_week = Some(key);
     }
 
     fn load_transmissions(&mut self) {
@@ -6520,7 +6629,26 @@ fn operator_color(operator: &str) -> egui::Color32 {
     motif::data_ramp(PALETTE, motif::AS_TEXT)[(sum as usize) % PALETTE.len()]
 }
 
-/// The three ways the agenda draws time.
+/// What the planning's own row is holding: one shift being written.
+///
+/// The hours are text, not minutes, because that is what a keyboard
+/// produces and because `db::parse_hour` already accepts « 9 », « 930 »
+/// and « 9h30 » — the same shorthand as everywhere else here.
+#[derive(Clone, Default)]
+struct ShiftForm {
+    operator: String,
+    day: String,
+    from: String,
+    to: String,
+    pause: String,
+    kind: Option<planning::ShiftKind>,
+    /// Every week, rather than this once. `repeat_days = 7` in the
+    /// base — the pattern, which an exception can contradict one day at
+    /// a time without erasing it.
+    weekly: bool,
+}
+
+/// The four ways the agenda draws time.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum AgendaMode {
     /// One hour column for the selected day.
@@ -6529,6 +6657,12 @@ enum AgendaMode {
     Week,
     /// The month as a grid of chips.
     Month,
+    /// Who is at the counter, and when: the week by person, with the
+    /// hours each one adds up to.
+    ///
+    /// Framed on the week, and it takes the ‹ › already in place rather
+    /// than a second set of arrows for the same movement.
+    Planning,
 }
 
 /// What the filter and the clashes make of one day of the agenda.
@@ -7531,6 +7665,14 @@ impl App {
                             session.refresh_dashboard();
                             session.agenda_mode = AgendaMode::Day;
                             session.agenda_places = [false, true];
+                            session.view = MainView::Agenda;
+                        }
+                        // Le planning de l'équipe : la grille
+                        // semaine x personne, avec ses totaux.
+                        Ok("planning") => {
+                            session.refresh_dashboard();
+                            session.agenda_mode = AgendaMode::Planning;
+                            session.load_shifts(true);
                             session.view = MainView::Agenda;
                         }
                         Ok("agenda_month") => {
@@ -18948,6 +19090,29 @@ impl App {
             (start as u16 * 60)..(end as u16 * 60),
             min_span,
         );
+        // **La couverture, et c'est le dessin le plus utile du lot** :
+        // à chaque quart d'heure, combien de personnes sont au
+        // comptoir. Elle se lit sans la chercher, parce qu'elle est
+        // collée aux heures qu'elle annote.
+        //
+        // Une colonne étroite entre la gouttière et les voies, et non
+        // une bande horizontale sous le plan : le plan de journée
+        // descend, et un dessin qui n'est pas aligné sur ce qu'il
+        // commente demande de compter les lignes des yeux.
+        let cover_w = Self::planning_coverage_band(
+            ui,
+            session,
+            config,
+            &day,
+            egui::Rect::from_min_max(
+                egui::pos2(inner.left() + gutter + 1.0, inner.top()),
+                egui::pos2(inner.left() + gutter + 7.0, inner.bottom()),
+            ),
+            start,
+            end,
+            row_h,
+        );
+        let gutter = gutter + cover_w;
         let width = (inner.width() - gutter - 8.0) / lane_count as f32;
         #[allow(clippy::too_many_arguments)]
         let draw = |ui: &mut egui::Ui,
@@ -19823,6 +19988,11 @@ impl App {
             .collect();
         // The grid's entries that are not acts (formation, réunion…).
         let grid_events = session.load_grid_events();
+        // Et les postes de l'équipe : le plan de journée en dessine la
+        // couverture, pas seulement le mode Planning. Chargés ici, une
+        // fois pour les quatre modes — la fonction se garde elle-même
+        // de redemander tant que la plage n'a pas bougé.
+        session.load_shifts(false);
         if session.agenda_day.is_empty() {
             session.agenda_day = session.today.clone();
             session.load_day();
@@ -19839,7 +20009,7 @@ impl App {
         );
         let scope: Vec<String> = match session.agenda_mode {
             AgendaMode::Day => vec![session.agenda_day.clone()],
-            AgendaMode::Week => session.agenda_week.clone(),
+            AgendaMode::Week | AgendaMode::Planning => session.agenda_week.clone(),
             AgendaMode::Month => session.agenda_month_days.clone(),
         };
         let tally = scope.iter().filter_map(|d| counts.get(d)).fold(
@@ -19859,6 +20029,10 @@ impl App {
         let body = motif::visible_rect(ui).shrink2(egui::vec2(4.0, 0.0));
         // Both rows of the band wrap: measure them rather than assume
         // one line each, which cut the last act kinds off the bottom.
+        let counts_label = trn(
+            "agenda_counts",
+            &[&tally.kept, &tally.hidden, &tally.clashes],
+        );
         let filter_lines = Self::wrapped_rows(
             ui,
             body.width() - 60.0,
@@ -19869,27 +20043,52 @@ impl App {
             ]
             .into_iter()
             .chain(InterviewKind::ALL.iter().map(|k| k.label()))
-            .chain(std::iter::once(tr("agenda_counts"))),
+            // Le compteur aussi se mesure rempli : « {} rendez-vous
+            // affiché(s) » n'a pas la largeur de « 12 rendez-vous
+            // affiché(s) ».
+            .chain(std::iter::once(counts_label.as_str())),
         );
+        // **On mesure la chaîne qu'on va dessiner, pas son gabarit.**
+        // « Semaine du {} » fait dix caractères de moins que « Semaine
+        // du 07/09/2026 » : la bande comptait deux rangées, en
+        // dessinait trois, et la troisième — la date et les deux
+        // boutons d'impression — sortait par le bas, coupée en son
+        // milieu par le filet du panneau. Le quatrième bouton de mode a
+        // rendu l'écart visible ; il était là avant.
+        //
+        // Et l'`add_space(10.0)` posé avant les flèches est retiré de
+        // la largeur : la gouttière que la rangée s'ajoute elle-même ne
+        // se devine pas depuis la liste des libellés.
+        let week_label = session
+            .agenda_week
+            .first()
+            .map(|m| trf("agenda_week_of", db::format_french_date(m)))
+            .unwrap_or_default();
         let control_lines = Self::wrapped_rows(
             ui,
-            body.width() - 20.0,
+            body.width() - 30.0,
             [
                 tr("agenda_mode_day"),
                 tr("agenda_mode_week"),
                 tr("agenda_mode_month"),
+                tr("agenda_mode_planning"),
                 "‹",
                 tr("agenda_this_week"),
                 "›",
-                tr("agenda_week_of"),
+                week_label.as_str(),
                 tr("dash_print"),
                 tr("agenda_print_week"),
             ]
             .into_iter(),
         );
         let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
-        let want =
-            row * (control_lines + filter_lines) + if overdue.is_empty() { 6.0 } else { row + 6.0 };
+        // L'estimation sert au premier dessin ; ensuite c'est ce que la
+        // bande a réellement occupé qui décide, et celui-là tombe juste.
+        let want = if session.agenda_band_h > 0.0 {
+            session.agenda_band_h + 16.0
+        } else {
+            row * (control_lines + filter_lines) + if overdue.is_empty() { 6.0 } else { row + 6.0 }
+        };
         // However much the band would like, the calendar keeps most of
         // the screen: past the cap the band scrolls instead.
         //
@@ -19909,182 +20108,228 @@ impl App {
         // pixel d'intérieur.
         let pitch = Self::row_height(ui) + ui.spacing().item_spacing.y;
         let cap = (body.height() * 0.32).max(120.0);
-        let band_h = want.min(16.0 + ((cap - 16.0) / pitch).floor().max(1.0) * pitch);
+        // **La bande prend ce qu'il lui faut, jusqu'à une limite ; au
+        // delà, elle défile.**
+        //
+        // Le tiers seul ne suffisait plus : avec un quatrième bouton de
+        // mode, la rangée de contrôle passe à trois lignes à
+        // `text_scale = 1,6`, et le plafond — arrondi à un nombre entier
+        // de `pitch` — tombait au **milieu** de la troisième. Une bande
+        // coupée en son milieu se lit comme cassée, et rien ne disait
+        // qu'il y avait autre chose dessous.
+        //
+        // L'arrondi ne pouvait pas y arriver : `pitch` est la hauteur
+        // d'un bouton, et une rangée dessinée, ce sont des boutons plus
+        // les `add_space` que la bande s'ajoute. Alors on ne devine plus
+        // — `want` est ce que la bande a *réellement* occupé à l'image
+        // précédente. Si cela tient sous une limite un peu plus large
+        // que le tiers, elle l'obtient en entier ; sinon on retombe sur
+        // le tiers arrondi et la barre de défilement fait son travail.
+        //
+        // Ce n'est pas le retour des deux cinquièmes qu'on avait
+        // écartés : ceux-là étaient pris **toujours**, et le mois y
+        // perdait la moitié de ses semaines. Ici la bande ne prend que
+        // ce qu'elle a mesuré.
+        let generous = body.height() * 0.45;
+        let band_h = if want <= generous {
+            want
+        } else {
+            16.0 + ((cap - 16.0) / pitch).floor().max(1.0) * pitch
+        };
         let rows = motif::split_rows(body, &[band_h, 0.0], 6.0);
         // Set inside the band's closure, applied after it: the closure
         // already holds `session` uniquely.
         let mut banner_open: Option<i64> = None;
+        let mut took = 0.0_f32;
         motif::panel(ui, rows[0], None, |ui| {
             let inner = ui.max_rect();
-            egui::ScrollArea::vertical()
-                .id_salt("agenda_band")
-                .show(ui, |ui| {
-                    ui.set_max_width(inner.width());
-                    ui.horizontal_wrapped(|ui| {
-                        for (mode, label) in [
-                            (AgendaMode::Day, tr("agenda_mode_day")),
-                            (AgendaMode::Week, tr("agenda_mode_week")),
-                            (AgendaMode::Month, tr("agenda_mode_month")),
-                        ] {
-                            let btn = motif::toggle(ui, label, session.agenda_mode == mode);
-                            if btn.clicked() {
-                                session.agenda_mode = mode;
-                                session.agenda_month = mode == AgendaMode::Month;
-                                if mode == AgendaMode::Month && session.agenda_month_days.is_empty()
-                                {
-                                    session.agenda_month_days = session
-                                        .db
-                                        .month_grid(session.agenda_month_offset)
-                                        .unwrap_or_default();
-                                }
-                            }
-                        }
-                        ui.add_space(10.0);
-                        Self::agenda_nav_buttons(ui, session);
-                        {
-                            if motif::button(ui, tr("agenda_print_week"))
-                                .on_hover_text(tr("agenda_print_week_tooltip"))
-                                .clicked()
-                            {
-                                print_week = true;
-                            }
-                            if !session.appointments.is_empty()
-                                && motif::button(ui, tr("dash_print"))
-                                    .on_hover_text(tr("dash_print_tooltip"))
-                                    .clicked()
-                            {
-                                let today = session
-                                    .db
-                                    .today_french()
-                                    .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
-                                if let Err(e) = crate::pdf::open_appointment_list(
-                                    &session.appointments,
-                                    &today,
-                                    &config.doc_template_path("rdv"),
-                                ) {
-                                    session.error = Some(e);
-                                }
-                            }
-                        }
-                    });
-                    ui.add_space(4.0);
-                    // Filter by place and by act kind: everything on
-                    // shows everything, so the agenda opens complete and
-                    // narrows only on demand.
-                    //
-                    // **Une seule bande.** Les pastilles servaient de
-                    // légende sous la grille de la semaine et de filtre
-                    // ici : deux rangées pour un même vocabulaire, dont
-                    // une qu'on pouvait cliquer. La légende a disparu ;
-                    // c'est cette rangée-ci qui la remplace, et elle
-                    // rend au calendrier la hauteur qu'elle prenait.
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(
-                            egui::RichText::new(tr("agenda_filter"))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
-                        );
-                        if motif::toggle(
-                            ui,
-                            tr("agenda_filter_all"),
-                            session.agenda_filter.is_empty()
-                                && session.agenda_places == [true, true],
-                        )
-                        .on_hover_text(tr("agenda_filter_tooltip"))
-                        .clicked()
-                        {
-                            session.agenda_filter.clear();
-                            session.agenda_places = [true, true];
-                        }
-                        // Le comptoir et le téléphone : deux endroits,
-                        // et une personne ne peut pas être aux deux.
-                        for (i, label) in [tr("agenda_place_counter"), tr("agenda_place_remote")]
-                            .into_iter()
-                            .enumerate()
-                        {
-                            if motif::toggle(ui, label, session.agenda_places[i])
-                                .on_hover_text(tr("agenda_place_tooltip"))
-                                .clicked()
-                            {
-                                session.agenda_places[i] = !session.agenda_places[i];
-                            }
-                        }
-                        for kind in InterviewKind::ALL {
-                            let on = session.agenda_filter.contains(&kind);
-                            // The same sunken-when-on idiom as everywhere else,
-                            // with the act's own colour as a marker so the
-                            // filter row and the grid read as one thing.
-                            let resp = motif::toggle(ui, kind.label(), on);
-                            let dot = egui::Rect::from_center_size(
-                                egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
-                                egui::vec2(4.0, resp.rect.height() - 10.0),
-                            );
-                            ui.painter().rect_filled(dot, 0.0, kind_color(kind));
-                            if resp.clicked() {
-                                if on {
-                                    session.agenda_filter.remove(&kind);
-                                } else {
-                                    session.agenda_filter.insert(kind);
-                                }
-                            }
-                        }
-                        // Le compteur, et c'est lui qui empêche de
-                        // croire une journée vide alors qu'elle est
-                        // filtrée. Le mot « masqués » y est nécessaire.
-                        ui.add_space(8.0);
-                        ui.label(
-                            egui::RichText::new(trn(
-                                "agenda_counts",
-                                &[&tally.kept, &tally.hidden, &tally.clashes],
-                            ))
-                            .size(motif::pt(ui, 11.0))
-                            .color(if tally.clashes > 0 {
-                                motif::alert()
-                            } else {
-                                motif::text_dim()
-                            }),
-                        )
-                        .on_hover_text(tr("agenda_counts_tooltip"));
-                    });
-                    if !overdue.is_empty() {
-                        {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    egui::RichText::new(trn(
-                                        "agenda_overdue_banner",
-                                        &[
-                                            &overdue.len(),
-                                            &db::format_french_date(&overdue[0].date),
-                                        ],
-                                    ))
-                                    .strong()
-                                    .color(motif::alert()),
-                                );
-                                for rdv in overdue.iter().take(4) {
-                                    if ui
-                                        .selectable_label(
-                                            false,
-                                            egui::RichText::new(&rdv.patient_name)
-                                                .color(motif::alert()),
-                                        )
-                                        .on_hover_text(tr("agenda_overdue_tooltip"))
-                                        .clicked()
+            // **`motif::panel` ne découpe pas.** Il pose un rectangle
+            // maximal et egui peint au travers : la rangée en trop se
+            // dessinait par-dessus le filet du panneau, coupée en son
+            // milieu, et aucune barre ne disait qu'il y avait autre
+            // chose dessous. Le quatrième bouton de mode a suffi à
+            // faire déborder ce qui tenait à trois. `motif::inside`
+            // découpe, et la zone défilante retrouve sa barre.
+            took = motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("agenda_band")
+                    .show(ui, |ui| {
+                        ui.set_max_width(inner.width());
+                        ui.horizontal_wrapped(|ui| {
+                            for (mode, label) in [
+                                (AgendaMode::Day, tr("agenda_mode_day")),
+                                (AgendaMode::Week, tr("agenda_mode_week")),
+                                (AgendaMode::Month, tr("agenda_mode_month")),
+                                (AgendaMode::Planning, tr("agenda_mode_planning")),
+                            ] {
+                                let btn = motif::toggle(ui, label, session.agenda_mode == mode);
+                                if btn.clicked() {
+                                    session.agenda_mode = mode;
+                                    session.agenda_month = mode == AgendaMode::Month;
+                                    if mode == AgendaMode::Month
+                                        && session.agenda_month_days.is_empty()
                                     {
-                                        banner_open = Some(rdv.patient_id);
+                                        session.agenda_month_days = session
+                                            .db
+                                            .month_grid(session.agenda_month_offset)
+                                            .unwrap_or_default();
+                                    }
+                                    if mode == AgendaMode::Planning {
+                                        session.load_shifts(false);
                                     }
                                 }
-                                if overdue.len() > 4 {
+                            }
+                            ui.add_space(10.0);
+                            Self::agenda_nav_buttons(ui, session);
+                            {
+                                if motif::button(ui, tr("agenda_print_week"))
+                                    .on_hover_text(tr("agenda_print_week_tooltip"))
+                                    .clicked()
+                                {
+                                    print_week = true;
+                                }
+                                if !session.appointments.is_empty()
+                                    && motif::button(ui, tr("dash_print"))
+                                        .on_hover_text(tr("dash_print_tooltip"))
+                                        .clicked()
+                                {
+                                    let today = session
+                                        .db
+                                        .today_french()
+                                        .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+                                    if let Err(e) = crate::pdf::open_appointment_list(
+                                        &session.appointments,
+                                        &today,
+                                        &config.doc_template_path("rdv"),
+                                    ) {
+                                        session.error = Some(e);
+                                    }
+                                }
+                            }
+                        });
+                        ui.add_space(4.0);
+                        // Filter by place and by act kind: everything on
+                        // shows everything, so the agenda opens complete and
+                        // narrows only on demand.
+                        //
+                        // **Une seule bande.** Les pastilles servaient de
+                        // légende sous la grille de la semaine et de filtre
+                        // ici : deux rangées pour un même vocabulaire, dont
+                        // une qu'on pouvait cliquer. La légende a disparu ;
+                        // c'est cette rangée-ci qui la remplace, et elle
+                        // rend au calendrier la hauteur qu'elle prenait.
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(tr("agenda_filter"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            if motif::toggle(
+                                ui,
+                                tr("agenda_filter_all"),
+                                session.agenda_filter.is_empty()
+                                    && session.agenda_places == [true, true],
+                            )
+                            .on_hover_text(tr("agenda_filter_tooltip"))
+                            .clicked()
+                            {
+                                session.agenda_filter.clear();
+                                session.agenda_places = [true, true];
+                            }
+                            // Le comptoir et le téléphone : deux endroits,
+                            // et une personne ne peut pas être aux deux.
+                            for (i, label) in
+                                [tr("agenda_place_counter"), tr("agenda_place_remote")]
+                                    .into_iter()
+                                    .enumerate()
+                            {
+                                if motif::toggle(ui, label, session.agenda_places[i])
+                                    .on_hover_text(tr("agenda_place_tooltip"))
+                                    .clicked()
+                                {
+                                    session.agenda_places[i] = !session.agenda_places[i];
+                                }
+                            }
+                            for kind in InterviewKind::ALL {
+                                let on = session.agenda_filter.contains(&kind);
+                                // The same sunken-when-on idiom as everywhere else,
+                                // with the act's own colour as a marker so the
+                                // filter row and the grid read as one thing.
+                                let resp = motif::toggle(ui, kind.label(), on);
+                                let dot = egui::Rect::from_center_size(
+                                    egui::pos2(resp.rect.left() + 6.0, resp.rect.center().y),
+                                    egui::vec2(4.0, resp.rect.height() - 10.0),
+                                );
+                                ui.painter().rect_filled(dot, 0.0, kind_color(kind));
+                                if resp.clicked() {
+                                    if on {
+                                        session.agenda_filter.remove(&kind);
+                                    } else {
+                                        session.agenda_filter.insert(kind);
+                                    }
+                                }
+                            }
+                            // Le compteur, et c'est lui qui empêche de
+                            // croire une journée vide alors qu'elle est
+                            // filtrée. Le mot « masqués » y est nécessaire.
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(&counts_label)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(if tally.clashes > 0 {
+                                        motif::alert()
+                                    } else {
+                                        motif::text_dim()
+                                    }),
+                            )
+                            .on_hover_text(tr("agenda_counts_tooltip"));
+                        });
+                        if !overdue.is_empty() {
+                            {
+                                ui.horizontal_wrapped(|ui| {
                                     ui.label(
-                                        egui::RichText::new(trf("dash_more", overdue.len() - 4))
+                                        egui::RichText::new(trn(
+                                            "agenda_overdue_banner",
+                                            &[
+                                                &overdue.len(),
+                                                &db::format_french_date(&overdue[0].date),
+                                            ],
+                                        ))
+                                        .strong()
+                                        .color(motif::alert()),
+                                    );
+                                    for rdv in overdue.iter().take(4) {
+                                        if ui
+                                            .selectable_label(
+                                                false,
+                                                egui::RichText::new(&rdv.patient_name)
+                                                    .color(motif::alert()),
+                                            )
+                                            .on_hover_text(tr("agenda_overdue_tooltip"))
+                                            .clicked()
+                                        {
+                                            banner_open = Some(rdv.patient_id);
+                                        }
+                                    }
+                                    if overdue.len() > 4 {
+                                        ui.label(
+                                            egui::RichText::new(trf(
+                                                "dash_more",
+                                                overdue.len() - 4,
+                                            ))
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::alert()),
-                                    );
-                                }
-                            });
+                                        );
+                                    }
+                                });
+                            }
                         }
-                    }
-                });
+                    })
+                    .content_size
+                    .y
+            });
         });
+        session.agenda_band_h = took;
 
         open_id = open_id.or(banner_open);
 
@@ -20093,7 +20338,16 @@ impl App {
         // everything else. Le seuil est en caractères : il grandit avec
         // `[ui] text_scale`, comme ce qu'il mesure.
         let wide = work.width() >= chars_wide(ui, 107.0);
-        let (cal, day) = if wide {
+        let (cal, day) = if session.agenda_mode == AgendaMode::Planning {
+            // **Le planning prend tout le plan de travail.** Le volet
+            // « Journée du … » liste les rendez-vous d'un jour et les
+            // formulaires qui vont avec : utile dans les trois autres
+            // modes, hors sujet quand on lit la semaine de l'équipe. À
+            // 1024x700 en texte 1,6 il prenait la moitié de la place, et
+            // la grille descendait à une ligne — la garniture avant le
+            // sujet, ce que la maison refuse partout ailleurs.
+            (work, egui::Rect::NOTHING)
+        } else if wide {
             let day_w = (work.width() * 0.3).clamp(300.0, 420.0);
             (
                 egui::Rect::from_min_max(
@@ -20113,6 +20367,7 @@ impl App {
             AgendaMode::Day => tr("agenda_mode_day"),
             AgendaMode::Week => tr("agenda_mode_week"),
             AgendaMode::Month => tr("agenda_mode_month"),
+            AgendaMode::Planning => tr("agenda_mode_planning"),
         };
         // **Le fait qu'un filtre est posé se dit au-dessus du
         // calendrier, pas seulement dans la bande.** La bande est
@@ -20173,6 +20428,9 @@ impl App {
                         &mut open_id,
                     );
                 }
+                AgendaMode::Planning => {
+                    Self::agenda_planning_grid(ui, session, config, rect, &mut pick_day);
+                }
             }
         });
 
@@ -20180,42 +20438,52 @@ impl App {
         // coming after. On a narrow window the queue is dropped: the
         // left dock already lists it, and the calendar needs the height
         // more than a second copy of it does.
-        let day_rows = if wide {
+        let day_rows = if day == egui::Rect::NOTHING {
+            // Le planning a pris tout le plan de travail : il n'y a pas
+            // de volet du jour à découper.
+            vec![egui::Rect::NOTHING, egui::Rect::NOTHING]
+        } else if wide {
             motif::split_rows(day, &[0.0, (day.height() * 0.38).clamp(110.0, 260.0)], 6.0)
         } else {
             vec![day, egui::Rect::NOTHING]
         };
-        motif::panel(
-            ui,
-            day_rows[0],
-            Some(&trf(
-                "agenda_day_title",
-                db::format_french_date(&session.agenda_day),
-            )),
-            |ui| {
-                // Le bord droit appartient à la barre de défilement : un
-                // contenu posé jusqu'au bord du panneau se dessine
-                // dessous, et c'est ce qui coupait « Ajouter » en
-                // « Ajout » sous les notes du jour. La monographie
-                // réserve les mêmes quatorze pixels pour la même raison.
-                let rect = ui.max_rect();
-                let rect = egui::Rect::from_min_max(
-                    rect.min,
-                    egui::pos2(rect.right() - 14.0, rect.bottom()),
-                );
-                motif::inside(ui, rect, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("agenda_day_panel")
-                        .show(ui, |ui| {
-                            Self::agenda_day_panel(ui, session, operator, &mut open_id);
-                        });
+        // En mode Planning il n'y a pas de volet du jour du tout :
+        // `motif::panel` n'est pas fait pour un rectangle vide, et un
+        // panneau dessiné sur `Rect::NOTHING` ne serait de toute façon
+        // pas un panneau.
+        if day_rows[0] != egui::Rect::NOTHING {
+            motif::panel(
+                ui,
+                day_rows[0],
+                Some(&trf(
+                    "agenda_day_title",
+                    db::format_french_date(&session.agenda_day),
+                )),
+                |ui| {
+                    // Le bord droit appartient à la barre de défilement : un
+                    // contenu posé jusqu'au bord du panneau se dessine
+                    // dessous, et c'est ce qui coupait « Ajouter » en
+                    // « Ajout » sous les notes du jour. La monographie
+                    // réserve les mêmes quatorze pixels pour la même raison.
+                    let rect = ui.max_rect();
+                    let rect = egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2(rect.right() - 14.0, rect.bottom()),
+                    );
+                    motif::inside(ui, rect, |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("agenda_day_panel")
+                            .show(ui, |ui| {
+                                Self::agenda_day_panel(ui, session, operator, &mut open_id);
+                            });
+                    });
+                },
+            );
+            if wide && day_rows[1] != egui::Rect::NOTHING {
+                motif::panel(ui, day_rows[1], Some(tr("nav_next")), |ui| {
+                    Self::agenda_upcoming(ui, session, &mut open_id);
                 });
-            },
-        );
-        if wide {
-            motif::panel(ui, day_rows[1], Some(tr("nav_next")), |ui| {
-                Self::agenda_upcoming(ui, session, &mut open_id);
-            });
+            }
         }
 
         if let Some(day) = pick_day.take() {
@@ -20270,12 +20538,13 @@ impl App {
                     .month_grid(session.agenda_month_offset)
                     .unwrap_or_default();
             }
-            AgendaMode::Week => {
+            AgendaMode::Week | AgendaMode::Planning => {
                 session.agenda_offset += delta;
                 session.agenda_week = session
                     .db
                     .week_dates(session.agenda_offset)
                     .unwrap_or_default();
+                session.load_shifts(false);
             }
         };
         if motif::button(ui, "‹")
@@ -20294,9 +20563,10 @@ impl App {
                     session.agenda_month_offset = 0;
                     session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
                 }
-                AgendaMode::Week => {
+                AgendaMode::Week | AgendaMode::Planning => {
                     session.agenda_offset = 0;
                     session.agenda_week = session.db.week_dates(0).unwrap_or_default();
+                    session.load_shifts(false);
                 }
             }
         }
@@ -20313,13 +20583,25 @@ impl App {
                 .month_of(session.agenda_month_offset)
                 .map(|m| trf("agenda_month_of", db::month_name_fr(&m)))
                 .unwrap_or_default(),
-            AgendaMode::Week => session
+            AgendaMode::Week | AgendaMode::Planning => session
                 .agenda_week
                 .first()
                 .map(|m| trf("agenda_week_of", db::format_french_date(m)))
                 .unwrap_or_default(),
         };
-        ui.label(egui::RichText::new(label).color(motif::text_dim()));
+        // **Une étiquette qui s'enveloppe dans une rangée enveloppée
+        // dessine sa deuxième ligne hors de sa rangée.** `horizontal_
+        // wrapped` alloue une hauteur d'une ligne ; egui, lui, coupe
+        // « Semaine du 07/09/2026 » en deux quand la place manque, et
+        // la seconde moitié se peint par-dessus la rangée du dessus. À
+        // `text_scale = 1,6` sur un écran de comptoir, c'est ce qui
+        // faisait une bande à l'air cassée. En `Extend`, l'étiquette
+        // reste entière et c'est la rangée qui passe à la ligne — ce
+        // qu'elle sait faire.
+        ui.add(
+            egui::Label::new(egui::RichText::new(label).color(motif::text_dim()))
+                .wrap_mode(egui::TextWrapMode::Extend),
+        );
     }
 
     /// Every planned rendez-vous still to come, day by day.
@@ -20394,6 +20676,852 @@ impl App {
         });
     }
 
+    /// Who is at the counter, quarter of an hour by quarter of an hour,
+    /// painted down the day plan beside the hours it annotates.
+    ///
+    /// Returns the width it took, so the blocks start after it — `0`
+    /// when no shift is written for that day, and then the plan is
+    /// exactly what it was before: **une officine qui ne saisit pas de
+    /// postes ne doit rien perdre**.
+    ///
+    /// Le rouge est le creux : une tranche pendant laquelle l'officine
+    /// est ouverte et où personne n'est inscrit. Et **sans horaires
+    /// d'ouverture écrits il n'y a pas de creux** — la bande se dessine
+    /// quand même, elle compte des têtes ; ce qui disparaît, c'est le
+    /// rouge. La même règle qu'à la caisse : sans recette attendue, pas
+    /// d'écart.
+    #[allow(clippy::too_many_arguments)]
+    fn planning_coverage_band(
+        ui: &mut egui::Ui,
+        session: &Session,
+        config: &Config,
+        day: &str,
+        rect: egui::Rect,
+        start: u32,
+        end: u32,
+        row_h: f32,
+    ) -> f32 {
+        let shifts: Vec<planning::Shift> = session
+            .shifts
+            .iter()
+            .filter(|s| s.day == day)
+            .filter_map(Self::planned_shift)
+            .collect();
+        if shifts.is_empty() {
+            return 0.0;
+        }
+        const STEP: u16 = 15;
+        let (from, to) = (start as u16 * 60, end as u16 * 60);
+        let band = planning::coverage(&shifts, from, to, STEP);
+        // Les creux ne se lisent que contre des horaires déclarés.
+        let weekday = db::weekday_fr(day).unwrap_or("");
+        let opening = planning::opening_slots(
+            config
+                .pharmacy
+                .horaires
+                .iter()
+                .map(|h| (h.jour.as_str(), h.de.as_str(), h.a.as_str())),
+            weekday,
+        );
+        let holes = planning::gaps(&shifts, &opening);
+        let busiest = band.iter().copied().max().unwrap_or(0).max(1);
+        let cell_h = row_h * f32::from(STEP) / 60.0;
+        for (i, n) in band.iter().enumerate() {
+            let top = rect.top() + i as f32 * cell_h;
+            let slice = agenda::Slot::new(
+                from + u16::try_from(i).unwrap_or(0) * STEP,
+                from + u16::try_from(i).unwrap_or(0) * STEP + STEP,
+            );
+            let hole = holes.iter().any(|h| agenda::overlaps(h, &slice));
+            let cell = egui::Rect::from_min_size(
+                egui::pos2(rect.left(), top),
+                egui::vec2(rect.width(), (cell_h - 1.0).max(1.0)),
+            );
+            let fill = if hole {
+                motif::alert()
+            } else if *n == 0 {
+                motif::trough()
+            } else {
+                // Plus il y a de monde, plus la teinte est franche.
+                motif::accent().gamma_multiply(0.35 + 0.65 * f32::from(*n) / f32::from(busiest))
+            };
+            ui.painter().rect_filled(cell, 0.0, fill);
+        }
+        let hover = if holes.is_empty() {
+            trf("planning_coverage_tooltip", busiest)
+        } else {
+            let mut t = trf("planning_coverage_tooltip", busiest);
+            t.push('\n');
+            t.push_str(&trn(
+                "planning_gaps",
+                &[
+                    &holes.len(),
+                    &planning::hhmm(holes[0].start),
+                    &planning::hhmm(holes[0].end),
+                ],
+            ));
+            t
+        };
+        ui.interact(rect, ui.id().with(("coverage", day)), egui::Sense::hover())
+            .on_hover_text(hover);
+        8.0
+    }
+
+    /// The stored end of a shift, from what was typed in both fields.
+    ///
+    /// Empty when no end was written — **et cela ne vaut pas zéro
+    /// heure**. Otherwise `HH:MM`, and a end earlier than the start is
+    /// the next morning rather than a mistake: a garde is typed
+    /// « 20 h » → « 2 h » and stored « 26:00 », one interval, filed
+    /// under the day it begins.
+    fn shift_end(from: &str, to: &str) -> String {
+        let Some(end) = db::parse_hour(to)
+            .as_deref()
+            .and_then(planning::parse_bound)
+        else {
+            return String::new();
+        };
+        let start = db::parse_hour(from)
+            .as_deref()
+            .and_then(planning::parse_bound)
+            .unwrap_or(0);
+        planning::format_bound(if end <= start && start > 0 {
+            end.saturating_add(24 * 60)
+        } else {
+            end
+        })
+    }
+
+    /// One stored shift as the pure module sees it, or `None` when the
+    /// row cannot be read as one.
+    ///
+    /// **Une nature que cette version ne connaît pas ne devient pas une
+    /// journée de présence** : elle se range en absence, qui ne porte
+    /// pas d'heures. Inventer des heures depuis une ligne illisible est
+    /// la direction dangereuse — et une base écrite par une version
+    /// plus récente, ou corrigée à la main, en produit.
+    ///
+    /// Écrite une fois : la grille et la bande de couverture la lisent
+    /// toutes les deux, et deux conversions d'une même ligne finissent
+    /// toujours par diverger.
+    fn planned_shift(s: &db::PlannedShift) -> Option<planning::Shift> {
+        Some(planning::Shift {
+            id: s.id,
+            operator: s.operator.trim().to_owned(),
+            // `planning::parse_bound` et non l'horloge du jour : une
+            // garde finit à « 26:00 », et l'horloge du jour la refuse.
+            start: planning::parse_bound(&s.start_time)?,
+            end: planning::parse_bound(&s.end_time),
+            pause: u16::try_from(s.pause_minutes.max(0)).unwrap_or(0),
+            kind: planning::ShiftKind::parse(&s.kind).unwrap_or(planning::ShiftKind::Recup),
+        })
+    }
+
+    /// The planning's own row: write a shift, or remove the one that is
+    /// selected.
+    ///
+    /// The hours accept the same shorthand as everywhere else here —
+    /// « 9 », « 930 », « 9h30 » — through `db::parse_hour`, because a
+    /// planning is typed between two customers and a field that demands
+    /// « 09:30 » is a field one gets wrong twice a day.
+    ///
+    /// **« Toutes les semaines » écrit une trame, pas cinquante-deux
+    /// lignes** : `repeat_days = 7`, une ligne rangée, dépliée à la
+    /// lecture. C'est ce qui permet à une exception d'en contredire un
+    /// jour sans effacer les autres.
+    fn planning_form(ui: &mut egui::Ui, session: &mut Session, config: &Config, rect: egui::Rect) {
+        // Le jour par défaut est celui que l'agenda a sélectionné, et
+        // la personne la première de l'équipe : deux champs de moins à
+        // remplir pour le cas ordinaire.
+        if session.shift_form.day.is_empty() {
+            session.shift_form.day = session.agenda_day.clone();
+        }
+        if session.shift_form.operator.is_empty() {
+            session.shift_form.operator = config
+                .pharmacy
+                .operators
+                .first()
+                .map(|o| o.initials.trim().to_owned())
+                .unwrap_or_default();
+        }
+        let mut write = false;
+        let mut edit: Option<i64> = None;
+        let mut remove: Option<i64> = None;
+        motif::inside(ui, rect, |ui| {
+            // Une deuxième région défilante sans nom dans la même vue
+            // peint ses deux bannières rouges en travers de l'écran.
+            egui::ScrollArea::vertical()
+                .id_salt("planning_form")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(tr("planning_who"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        // Les initiales se choisissent dans l'équipe déclarée,
+                        // et se tapent si l'officine n'a rien déclaré : une
+                        // liste vide ne doit pas empêcher d'écrire.
+                        if config.pharmacy.operators.is_empty() {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut session.shift_form.operator)
+                                    .desired_width(chars_wide(ui, 6.0)),
+                            );
+                        } else {
+                            egui::ComboBox::from_id_salt("planning_who")
+                                .selected_text(session.shift_form.operator.clone())
+                                .show_ui(ui, |ui| {
+                                    for o in &config.pharmacy.operators {
+                                        let initials = o.initials.trim().to_owned();
+                                        ui.selectable_value(
+                                            &mut session.shift_form.operator,
+                                            initials.clone(),
+                                            o.label(),
+                                        );
+                                    }
+                                });
+                        }
+                        egui::ComboBox::from_id_salt("planning_kind")
+                            .selected_text(
+                                session
+                                    .shift_form
+                                    .kind
+                                    .unwrap_or(planning::ShiftKind::Journee)
+                                    .label(),
+                            )
+                            .show_ui(ui, |ui| {
+                                for k in planning::ShiftKind::ALL {
+                                    ui.selectable_value(
+                                        &mut session.shift_form.kind,
+                                        Some(k),
+                                        k.label(),
+                                    );
+                                }
+                            });
+                        let day_field = Self::field_width(
+                            ui,
+                            [tr("agenda_hour_hint"), tr("agenda_end_hint")].into_iter(),
+                        );
+                        // **Les libellés « de », « à », « pause » ont été
+                        // retirés** : les champs portent déjà « 9h30 », « 10h »
+                        // et « 45 » en invite, qui disent la même chose et
+                        // n'occupent la place que tant que la case est vide.
+                        // À `text_scale = 1,6` sur un écran de comptoir, ces
+                        // trois mots-là faisaient passer la rangée de deux
+                        // lignes à trois, et la troisième était coupée.
+                        ui.label(
+                            egui::RichText::new(db::format_french_date(&session.shift_form.day))
+                                .size(motif::pt(ui, 11.0)),
+                        );
+                        ui.add(
+                            egui::TextEdit::singleline(&mut session.shift_form.from)
+                                .hint_text(tr("agenda_hour_hint"))
+                                .desired_width(day_field),
+                        )
+                        .on_hover_text(tr("planning_from_tooltip"));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut session.shift_form.to)
+                                .hint_text(tr("agenda_end_hint"))
+                                .desired_width(day_field),
+                        )
+                        .on_hover_text(tr("planning_to_tooltip"));
+                        ui.add(
+                            egui::TextEdit::singleline(&mut session.shift_form.pause)
+                                .hint_text("45")
+                                .desired_width(chars_wide(ui, 5.0)),
+                        )
+                        .on_hover_text(tr("planning_pause_tooltip"));
+                        if motif::toggle(ui, tr("planning_weekly"), session.shift_form.weekly)
+                            .on_hover_text(tr("planning_weekly_tooltip"))
+                            .clicked()
+                        {
+                            session.shift_form.weekly = !session.shift_form.weekly;
+                        }
+                        if motif::button(ui, tr("planning_add")).clicked() {
+                            write = true;
+                        }
+                        if let Some(id) = session.shift_pick {
+                            // Corriger un poste, c'est retaper ses heures : le
+                            // glissé du §4 viendra, l'erreur de frappe est de
+                            // tous les jours.
+                            if motif::button(ui, tr("planning_edit"))
+                                .on_hover_text(tr("planning_edit_tooltip"))
+                                .clicked()
+                            {
+                                edit = Some(id);
+                            }
+                            if motif::button(ui, tr("planning_delete"))
+                                .on_hover_text(tr("planning_delete_tooltip"))
+                                .clicked()
+                            {
+                                remove = Some(id);
+                            }
+                        }
+                    });
+                });
+        });
+        if write {
+            let form = session.shift_form.clone();
+            // Une heure de début est le seul champ obligatoire : sans
+            // elle le poste n'a pas de place dans la journée. La fin
+            // peut manquer, et **cela ne vaut pas zéro heure**.
+            let Some(from) = db::parse_hour(&form.from) else {
+                session.error = Some(tr("planning_needs_an_hour").to_owned());
+                return;
+            };
+            // **Une garde se tape « 20 h » → « 2 h ».** Personne
+            // n'écrit « 26:00 », et c'est pourtant ce que la base
+            // range — un seul intervalle, au jour qui le commence.
+            // Une fin antérieure au début est donc le lendemain, et
+            // non une faute de frappe à refuser.
+            let to = Self::shift_end(&form.from, &form.to);
+            let new = db::NewShift {
+                operator: form.operator.trim().to_owned(),
+                day: form.day.clone(),
+                start_time: from,
+                end_time: to,
+                pause_minutes: form.pause.trim().parse().unwrap_or(0),
+                kind: form
+                    .kind
+                    .unwrap_or(planning::ShiftKind::Journee)
+                    .as_str()
+                    .to_owned(),
+                repeat_days: if form.weekly { 7 } else { 0 },
+                ..Default::default()
+            };
+            match session.db.add_shift(&new) {
+                Ok(_) => {
+                    session.shift_form.from.clear();
+                    session.shift_form.to.clear();
+                    session.shift_form.pause.clear();
+                    session.load_shifts(true);
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(id) = edit {
+            let form = session.shift_form.clone();
+            let Some(from) = db::parse_hour(&form.from) else {
+                session.error = Some(tr("planning_needs_an_hour").to_owned());
+                return;
+            };
+            let to = Self::shift_end(&form.from, &form.to);
+            // **Compare-and-set**, comme toute ligne partagée : le
+            // `WHERE` porte les heures que *cet écran* affichait. Deux
+            // PC qui déplacent le même poste ne doivent pas voir chacun
+            // le sien.
+            let was = session
+                .shifts
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| (s.start_time.clone(), s.end_time.clone()));
+            if let Some((was_from, was_to)) = was {
+                match session.db.update_shift(
+                    id,
+                    &from,
+                    &to,
+                    form.pause.trim().parse().unwrap_or(0),
+                    &was_from,
+                    &was_to,
+                ) {
+                    Ok(true) => session.load_shifts(true),
+                    Ok(false) => {
+                        session.error = Some(tr("planning_stale").to_owned());
+                        session.load_shifts(true);
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if let Some(id) = remove {
+            // On supprime la **ligne rangée**, pas l'occurrence : c'est
+            // elle qui porte la trame, et ses exceptions partent avec
+            // elle dans la même transaction.
+            let source = session
+                .shifts
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| (s.source_id, s.operator.clone()));
+            if let Some((source_id, who)) = source {
+                match session.db.delete_shift(source_id, &who) {
+                    Ok(true) => {
+                        session.shift_pick = None;
+                        session.load_shifts(true);
+                    }
+                    Ok(false) => {
+                        session.error = Some(tr("planning_stale").to_owned());
+                        session.load_shifts(true);
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+    }
+
+    /// The team's week: one row per person, seven day columns, the
+    /// hours each adds up to.
+    ///
+    /// Une ligne « non attribué » ferme la grille : les postes d'une
+    /// personne que `[pharmacy] operators` ne nomme pas — parce qu'on
+    /// l'a retirée de la liste, ou qu'une initiale a été tapée de
+    /// travers — y tombent. C'est la seule façon de les voir, et sans
+    /// elle ils seraient écrits en base et invisibles à l'écran.
+    ///
+    /// La colonne des noms est **gelée au bord gauche** du viewport,
+    /// comme les tables de conversion : une case qui dit « 9 h – 19 h 30 »
+    /// sans dire de qui ne dit rien, et c'est le nom que le défilement
+    /// horizontal emporte en premier.
+    fn agenda_planning_grid(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        config: &Config,
+        rect: egui::Rect,
+        pick_day: &mut Option<String>,
+    ) {
+        session.load_shifts(false);
+        if session.agenda_week.len() != 7 {
+            return;
+        }
+        // La rangée de saisie prend **sa propre bande, découpée par le
+        // bas** avant que la grille ne soit dessinée : une hauteur
+        // réservée dans le flux au-dessus est toujours de quelques
+        // pixels courte, et le bouton finit peint à moitié. Et c'est la
+        // saisie qui gagne quand les deux ne tiennent pas : une grille
+        // à qui il manque une ligne se lit et défile, un formulaire
+        // dont la deuxième rangée est coupée ne s'utilise pas.
+        let form_rows = Self::wrapped_rows(
+            ui,
+            rect.width() - 20.0,
+            [
+                tr("planning_who"),
+                planning::ShiftKind::Journee.label(),
+                tr("agenda_hour_hint"),
+                tr("agenda_end_hint"),
+                tr("planning_weekly"),
+                tr("planning_add"),
+                tr("planning_edit"),
+                tr("planning_delete"),
+            ]
+            .into_iter(),
+        );
+        let pitch = Self::row_height(ui) + ui.spacing().item_spacing.y;
+        // **La saisie gagne.** Une grille à qui il manque une ligne se
+        // lit et défile ; un formulaire dont la dernière rangée est
+        // coupée ne s'utilise pas. Il prend donc ce qu'il a mesuré — et
+        // ce qu'on lui retire, c'est seulement de quoi laisser **une**
+        // ligne à la grille, jamais la moitié du volet. Au-delà, c'est
+        // lui qui défile, dans sa propre région nommée.
+        let want = form_rows * pitch + 14.0;
+        let form_h = want.min((rect.height() - pitch - 6.0).max(pitch));
+        let split = motif::split_rows(rect, &[0.0, form_h], 6.0);
+        let (rect, form_rect) = (split[0], split[1]);
+        Self::planning_form(ui, session, config, form_rect);
+        let week = session.agenda_week.clone();
+        // L'ordre est celui de `config.operators` — écrit, donc stable —
+        // puis les personnes que la liste ne connaît pas, par ordre
+        // alphabétique. Une grille dont les lignes changent de place
+        // d'une semaine à l'autre ne se lit pas.
+        let mut people: Vec<String> = config
+            .pharmacy
+            .operators
+            .iter()
+            .map(|o| o.initials.trim().to_owned())
+            .filter(|i| !i.is_empty())
+            .collect();
+        let mut strays: Vec<String> = session
+            .shifts
+            .iter()
+            .map(|s| s.operator.trim().to_owned())
+            .filter(|o| !o.is_empty() && !people.contains(o))
+            .collect();
+        strays.sort();
+        strays.dedup();
+        let known = people.len();
+        people.extend(strays);
+        // Et la ligne des postes que personne ne réclame, s'il y en a.
+        let orphan = session.shifts.iter().any(|s| s.operator.trim().is_empty());
+        // Les postes de la semaine, convertis une fois : la conversion
+        // lit une nature et deux heures, et la refaire par cellule
+        // serait sept fois par ligne et par image.
+        let parsed: Vec<(usize, usize, planning::Shift, &db::PlannedShift)> = session
+            .shifts
+            .iter()
+            .filter_map(|s| {
+                let who = s.operator.trim();
+                let row = if who.is_empty() {
+                    orphan.then_some(people.len())
+                } else {
+                    people.iter().position(|p| p == who)
+                }?;
+                let col = week.iter().position(|d| *d == s.day)?;
+                Some((row, col, Self::planned_shift(s)?, s))
+            })
+            .collect();
+        let rows = people.len() + usize::from(orphan);
+        if rows == 0 {
+            motif::inside(ui, rect, |ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(tr("planning_empty"))
+                        .size(motif::pt(ui, 12.0))
+                        .color(motif::text_dim()),
+                );
+            });
+            return;
+        }
+        // Une deuxième région défilante sans nom dans la même vue peint
+        // ses deux bannières rouges en travers de l'écran.
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::both().id_salt("planning").show(ui, |ui| {
+                let body = egui::TextStyle::Body.resolve(ui.style());
+                // Les largeurs sont mesurées, jamais écrites en
+                // pixels : la colonne des noms tient les initiales
+                // les plus larges, celle des totaux « 37 h 55 ».
+                let name_w = people
+                    .iter()
+                    .map(String::as_str)
+                    .chain(std::iter::once(tr("planning_unassigned")))
+                    .map(|t| {
+                        ui.fonts(|f| {
+                            f.layout_no_wrap(t.to_owned(), body.clone(), motif::text())
+                                .size()
+                                .x
+                        })
+                    })
+                    .fold(0.0_f32, f32::max)
+                    + 12.0;
+                let total_w = chars_wide(ui, 12.0);
+                let day_w = chars_wide(ui, 13.0);
+                let clip_left = ui.clip_rect().left();
+                egui::Grid::new("planning_grid")
+                    .striped(true)
+                    .show(ui, |ui| {
+                        Self::grid_cell(ui, name_w, egui::RichText::new(""));
+                        for date in &week {
+                            let head = format!(
+                                "{} {}",
+                                db::weekday_fr(date).map(three_letters).unwrap_or_default(),
+                                date.get(8..10).unwrap_or("")
+                            );
+                            Self::grid_cell(
+                                ui,
+                                day_w,
+                                egui::RichText::new(head)
+                                    .color(if *date == session.today {
+                                        motif::accent()
+                                    } else {
+                                        motif::text_dim()
+                                    })
+                                    .size(motif::pt(ui, 11.0)),
+                            );
+                        }
+                        Self::grid_cell(
+                            ui,
+                            total_w,
+                            egui::RichText::new(tr("planning_total"))
+                                .color(motif::text_dim())
+                                .size(motif::pt(ui, 11.0)),
+                        );
+                        ui.end_row();
+
+                        for (r, who) in people
+                            .iter()
+                            .map(String::as_str)
+                            .chain(orphan.then_some(tr("planning_unassigned")))
+                            .enumerate()
+                        {
+                            // La ligne « non attribué » porte un
+                            // libellé et non des initiales : les postes
+                            // qu'elle rassemble ont un opérateur
+                            // **vide**, et c'est sur cette clé-là que
+                            // les totaux se cherchent. Sans quoi elle
+                            // afficherait « — » avec des heures dedans.
+                            let key = if r >= people.len() { "" } else { who };
+                            // Le nom, alloué là où la grille le met
+                            // et **peint au bord du viewport** : le
+                            // défilement horizontal l'emporterait
+                            // en premier, et « 9 h – 19 h 30 » sans
+                            // le nom de qui ne dit rien.
+                            let cell = ui
+                                .allocate_exact_size(
+                                    egui::vec2(name_w, ui.text_style_height(&body_style(ui))),
+                                    egui::Sense::hover(),
+                                )
+                                .0;
+                            let x = frozen_left(clip_left, cell.left(), 4.0);
+                            let (band, at) = frozen_cell(x, name_w, 4.0, cell);
+                            ui.painter().rect_filled(band, 0.0, motif::bg());
+                            ui.painter().text(
+                                at + egui::vec2(0.0, cell.height() / 2.0),
+                                egui::Align2::LEFT_CENTER,
+                                who,
+                                body.clone(),
+                                if r >= known {
+                                    motif::text_dim()
+                                } else {
+                                    motif::text()
+                                },
+                            );
+                            // **Une seule addition.** Les totaux de la
+                            // ligne passent par `planning::week_totals`
+                            // et ceux d'une case par `day_total` : une
+                            // seconde addition écrite ici finirait par
+                            // dire autre chose que le module, et c'est
+                            // le module qui porte les règles — la nuit
+                            // comptée une fois, la pause refusée, le
+                            // poste sans fin qui ne vaut pas zéro.
+                            let by_day: Vec<(String, Vec<planning::Shift>)> = week
+                                .iter()
+                                .enumerate()
+                                .map(|(c, date)| {
+                                    (
+                                        date.clone(),
+                                        parsed
+                                            .iter()
+                                            .filter(|(rr, cc, _, _)| *rr == r && *cc == c)
+                                            .map(|(_, _, sh, _)| sh.clone())
+                                            .collect(),
+                                    )
+                                })
+                                .collect();
+                            let row_total = planning::week_totals(&by_day)
+                                .into_iter()
+                                .find(|t| t.who == key)
+                                .unwrap_or(planning::WeekTotal {
+                                    who: key.to_owned(),
+                                    minutes: 0,
+                                    unknown: 0,
+                                });
+                            let (known_minutes, unknown) = (row_total.minutes, row_total.unknown);
+                            for (c, date) in week.iter().enumerate() {
+                                let mine: Vec<&planning::Shift> = parsed
+                                    .iter()
+                                    .filter(|(rr, cc, _, _)| *rr == r && *cc == c)
+                                    .map(|(_, _, sh, _)| sh)
+                                    .collect();
+                                let text = Self::planning_cell_text(&mine);
+                                // Deux postes de la même personne à la
+                                // même minute : elle ne peut pas les
+                                // tenir tous les deux. Un liseré, jamais
+                                // un refus — la règle de partout ici.
+                                let clash = !planning::double_booked(&by_day[c].1).is_empty();
+                                let ink = if clash {
+                                    motif::alert()
+                                } else if mine.iter().any(|sh| sh.kind.is_absence()) {
+                                    motif::text_dim()
+                                } else {
+                                    motif::text()
+                                };
+                                let ink = if mine.iter().any(|sh| Some(sh.id) == session.shift_pick)
+                                {
+                                    motif::emphasize(ink)
+                                } else {
+                                    ink
+                                };
+                                let resp = ui.allocate_ui_with_layout(
+                                    egui::vec2(day_w, ui.text_style_height(&body_style(ui))),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.set_width(day_w);
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(&text)
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(ink),
+                                            )
+                                            .truncate()
+                                            .sense(egui::Sense::click()),
+                                        )
+                                    },
+                                );
+                                let mut hover = Self::planning_cell_hover(&mine, date);
+                                if !mine.is_empty() {
+                                    hover.push_str(&trf(
+                                        "planning_day_total",
+                                        planning::hhmm_or_dash(planning::day_total(
+                                            &by_day[c].1,
+                                            key,
+                                        )),
+                                    ));
+                                }
+                                if clash {
+                                    hover.push('\n');
+                                    hover.push_str(tr("planning_clash"));
+                                }
+                                if !mine.is_empty() {
+                                    hover.push('\n');
+                                    hover.push_str(tr("planning_pick"));
+                                }
+                                let picked =
+                                    mine.iter().any(|sh| Some(sh.id) == session.shift_pick);
+                                if resp.inner.on_hover_text(hover).clicked() {
+                                    *pick_day = Some(date.clone());
+                                    // Cliquer une case, c'est dire
+                                    // « celui-ci » : le formulaire se
+                                    // pose dessus, et « Supprimer » sait
+                                    // sur quoi porter. Re-cliquer le
+                                    // même le désélectionne, sans quoi
+                                    // on ne peut plus rien poser
+                                    // ailleurs sans risquer d'effacer.
+                                    session.shift_pick = match mine.first() {
+                                        Some(_) if picked => None,
+                                        Some(sh) => Some(sh.id),
+                                        None => None,
+                                    };
+                                    session.shift_form.day = date.clone();
+                                    if !picked {
+                                        if let Some(sh) = mine.first() {
+                                            session.shift_form.operator = sh.operator.clone();
+                                            session.shift_form.kind = Some(sh.kind);
+                                        }
+                                    }
+                                }
+                            }
+                            // **Sans contrat écrit, pas d'écart** —
+                            // et surtout pas un écart de moins
+                            // trente-cinq heures.
+                            let contract = config
+                                .pharmacy
+                                .operators
+                                .iter()
+                                .find(|o| o.initials.trim() == key)
+                                .and_then(|o| planning::parse_duration(&o.heures_semaine));
+                            let total = match (known_minutes, unknown, contract) {
+                                (0, 0, _) => "—".to_owned(),
+                                (m, 0, Some(c)) => {
+                                    format!("{} / {}", planning::hhmm(m), planning::hhmm(c))
+                                }
+                                (m, 0, None) => planning::hhmm(m),
+                                // Le nombre de postes sans durée est
+                                // dit, jamais tu : « 34 h 15 » seul
+                                // se lirait comme la semaine entière.
+                                (m, n, _) => format!("{} +{n}", planning::hhmm(m)),
+                            };
+                            Self::grid_cell(
+                                ui,
+                                total_w,
+                                egui::RichText::new(total)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text()),
+                            );
+                            ui.end_row();
+                        }
+
+                        // Le pied : le total de chaque jour, toutes
+                        // personnes confondues.
+                        Self::grid_cell(
+                            ui,
+                            name_w,
+                            egui::RichText::new(tr("planning_total"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        let mut grand = 0_u16;
+                        for (c, _) in week.iter().enumerate() {
+                            let day: Vec<planning::Shift> = parsed
+                                .iter()
+                                .filter(|(_, cc, _, _)| *cc == c)
+                                .map(|(_, _, sh, _)| sh.clone())
+                                .collect();
+                            // Le même `day_total`, une fois par
+                            // personne : le pied additionne ce que les
+                            // lignes affichent, jamais un second calcul
+                            // sur les mêmes postes.
+                            let mut sum = 0_u16;
+                            let mut any = false;
+                            for who in day
+                                .iter()
+                                .map(|sh| sh.operator.clone())
+                                .collect::<std::collections::BTreeSet<_>>()
+                            {
+                                any |= day.iter().any(|sh| sh.operator == who && sh.kind.worked());
+                                if let Some(m) = planning::day_total(&day, &who) {
+                                    sum = sum.saturating_add(m);
+                                }
+                            }
+                            grand = grand.saturating_add(sum);
+                            Self::grid_cell(
+                                ui,
+                                day_w,
+                                egui::RichText::new(if any {
+                                    planning::hhmm(sum)
+                                } else {
+                                    "—".to_owned()
+                                })
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                            );
+                        }
+                        Self::grid_cell(
+                            ui,
+                            total_w,
+                            egui::RichText::new(if parsed.is_empty() {
+                                "—".to_owned()
+                            } else {
+                                planning::hhmm(grand)
+                            })
+                            .size(motif::pt(ui, 11.0))
+                            .strong(),
+                        );
+                        ui.end_row();
+                    });
+            });
+        });
+    }
+
+    /// What one cell of the planning says: the hours, or the absence
+    /// that explains why there are none.
+    fn planning_cell_text(shifts: &[&planning::Shift]) -> String {
+        if shifts.is_empty() {
+            return String::new();
+        }
+        shifts
+            .iter()
+            .map(|s| {
+                if s.kind.is_absence() {
+                    s.kind.label().to_owned()
+                } else {
+                    match s.end {
+                        Some(end) => format!("{}–{}", short_hour(s.start), short_hour(end)),
+                        // Un poste sans fin garde son heure de début et
+                        // dit qu'il ne sait pas où il s'arrête.
+                        None => format!("{}–…", short_hour(s.start)),
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
+
+    /// The tooltip of a planning cell: every shift spelled out, with
+    /// what it adds up to.
+    fn planning_cell_hover(shifts: &[&planning::Shift], date: &str) -> String {
+        let mut out = db::format_french_date(date);
+        if shifts.is_empty() {
+            out.push('\n');
+            out.push_str(tr("planning_nothing"));
+            return out;
+        }
+        for s in shifts {
+            out.push('\n');
+            out.push_str(s.kind.label());
+            if !s.kind.is_absence() {
+                out.push_str(&format!(
+                    " · {} · {}",
+                    match s.end {
+                        Some(end) => format!("{}–{}", short_hour(s.start), short_hour(end)),
+                        None => format!("{}–…", short_hour(s.start)),
+                    },
+                    planning::hhmm_or_dash(s.minutes())
+                ));
+                if s.pause > 0 {
+                    out.push_str(&trf("planning_pause", s.pause));
+                }
+            }
+        }
+        out
+    }
+
     /// The week grid: Mon..Sun as columns of coloured blocks, filling
     /// `rect`. Clicking a block opens the patient, clicking a column
     /// header details that day.
@@ -20453,19 +21581,7 @@ impl App {
                     );
                 }
                 // "Lun 24/08" — weekday short + day/month.
-                let day = db::weekday_fr(date).unwrap_or("");
-                let short: String = day
-                    .chars()
-                    .take(3)
-                    .enumerate()
-                    .map(|(k, c)| {
-                        if k == 0 {
-                            c.to_uppercase().next().unwrap_or(c)
-                        } else {
-                            c
-                        }
-                    })
-                    .collect();
+                let short = three_letters(db::weekday_fr(date).unwrap_or(""));
                 let dm = date
                     .get(8..10)
                     .and_then(|d| date.get(5..7).map(|m| format!("{d}/{m}")));

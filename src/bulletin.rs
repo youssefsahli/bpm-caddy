@@ -396,6 +396,7 @@ mod tests {
             pharmacist: "Dr Claire Leroy".to_owned(),
             am_number: "3400123".to_owned(),
             operators: Vec::new(),
+            horaires: Vec::new(),
         }
     }
 

@@ -40,6 +40,25 @@ cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
 discreet_finances = false
 text_scale = $SCALE
 theme = "$theme"
+[pharmacy]
+# L'équipe que la démo sème au planning. Sans elle, la grille range CL,
+# YS et MB en « personnes que la liste ne connaît pas » : lisible, mais
+# ce n'est pas la forme qu'une officine voit.
+operators = [
+  { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire", heures_semaine = "35h00" },
+  { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint", heures_semaine = "35h00" },
+  { initials = "MB", name = "Maya Bertrand", role = "Préparatrice", heures_semaine = "24h00" },
+]
+# Les horaires d'ouverture : sans eux, aucun creux ne se dessine, et la
+# bande de couverture du plan de journée n'aurait pas de rouge à montrer.
+horaires = [
+  { jour = "lundi", de = "09:00", a = "19:30" },
+  { jour = "mardi", de = "09:00", a = "19:30" },
+  { jour = "mercredi", de = "09:00", a = "19:30" },
+  { jour = "jeudi", de = "09:00", a = "19:30" },
+  { jour = "vendredi", de = "09:00", a = "19:30" },
+  { jour = "samedi", de = "09:00", a = "12:30" },
+]
 EOF
 export XDG_CONFIG_HOME="$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"

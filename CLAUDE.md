@@ -115,6 +115,28 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   entry — the same boundary as `timeline.rs`, and for the same reason:
   the day the team's shifts overlap, they go through this calculation
   untouched. Pure, tested, no clock),
+  `src/planning.rs` (the team's shifts: who is there, when, how many
+  hours that makes, and which slices leave the counter empty. « Poste »
+  is a person's hours, not a workstation; the **garde** is a nature of
+  shift and not another screen, and so are the **absences** — a leave is
+  a shift that carries no hours, and it is precisely what *explains* a
+  hole at the counter, so filing it elsewhere would separate the hole
+  from its reason. It does not recompute overlap: `agenda.rs` knows it
+  already, and **there are not two overlap calculations in this
+  application**. Five rules, one test each: **hours are counted in whole
+  minutes** (7 h 35 is 455 — the centimes of the caisse, for the same
+  reason), **a shift with no end is not a shift of zero hours** (`None`,
+  and the line reads « — »), **a night is counted at the day it begins**
+  (20 h → 2 h is `1200 → 1560`, six hours, whole, or whoever adds the
+  columns counts it twice), **two shifts of the same person that touch
+  are not a clash** (9 h–12 h 30 then 14 h–19 h 30 is a day cut at
+  noon), and **a pause longer than the shift is refused, not
+  subtracted** (a negative total propagates through the week unseen).
+  And a sixth that lives in the naming: `day_total` counts a
+  **presence**, never a wage — no premium, no overtime, no collective
+  agreement, and there will be none. A shift bound is read with
+  `parse_bound` and not the day's clock, which stops at 23:59: a garde
+  ends at « 26:00 ». Pure, tested, no clock),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints),
@@ -709,7 +731,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
-  agenda_filtre|agenda_month|protocols|protocol_open|template|options|about|tables|
+  agenda_filtre|agenda_month|planning|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|

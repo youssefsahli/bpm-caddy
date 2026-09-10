@@ -199,6 +199,39 @@ CREATE TABLE IF NOT EXISTS events (
     category    TEXT NOT NULL DEFAULT 'AUTRE',
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+-- Les postes de l'équipe : qui est là, et quand. Rien dans `events` ne
+-- disait qu'une personne travaille — `EventCategory::Conge` existe mais
+-- son congé est celui de personne —, et un total d'heures lu dans un
+-- `title` serait un total qu'une faute de frappe rend faux sans le dire.
+--
+-- `repeat_days = 7` est la trame de la semaine, dépliée à la lecture
+-- exactement comme `events` déplie les siennes : une ligne rangée,
+-- plusieurs jours dessinés.
+--
+-- `supersedes` est **l'exception**, et elle est la moitié du travail :
+-- « Claire est absente mardi prochain » ne doit pas effacer les mardis
+-- de Claire. Une ligne d'exception nomme l'occurrence qu'elle remplace
+-- (`supersedes` + son `day`) et vaut soit un autre horaire, soit
+-- `cancelled = 1`. La trame reste intacte ; la semaine dit la vérité.
+-- C'est l'idée de l'annulation du registre — on ne réécrit pas ce qui a
+-- été posé, on pose une ligne qui le corrige — **sans** son
+-- inaltérabilité, qui n'a pas lieu d'être ici : un planning se
+-- rectifie, un registre non.
+CREATE TABLE IF NOT EXISTS shifts (
+    id          INTEGER PRIMARY KEY,
+    operator    TEXT NOT NULL,
+    day         TEXT NOT NULL,
+    start_time  TEXT NOT NULL,
+    end_time    TEXT NOT NULL DEFAULT '',
+    pause_minutes INTEGER NOT NULL DEFAULT 0,
+    kind        TEXT NOT NULL DEFAULT 'JOURNEE',
+    repeat_days INTEGER NOT NULL DEFAULT 0,
+    repeat_until TEXT NOT NULL DEFAULT '',
+    note        TEXT NOT NULL DEFAULT '',
+    supersedes  INTEGER NOT NULL DEFAULT 0,
+    cancelled   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 CREATE TABLE IF NOT EXISTS patient_drugs (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
     drug_id     INTEGER NOT NULL REFERENCES drugs(id),
@@ -552,6 +585,25 @@ const MIGRATIONS: &[&str] = &[
     )",
     "ALTER TABLE patient_drugs ADD COLUMN posology TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patient_drugs ADD COLUMN dosage TEXT NOT NULL DEFAULT ''",
+    // Les postes de l'équipe — voir le commentaire au-dessus de la
+    // table dans `SCHEMA`. Une base d'avant 0.175.0 n'en a pas, et un
+    // `CREATE TABLE IF NOT EXISTS` ici est ce qui l'y met sans rien
+    // toucher d'autre.
+    "CREATE TABLE IF NOT EXISTS shifts (
+        id          INTEGER PRIMARY KEY,
+        operator    TEXT NOT NULL,
+        day         TEXT NOT NULL,
+        start_time  TEXT NOT NULL,
+        end_time    TEXT NOT NULL DEFAULT '',
+        pause_minutes INTEGER NOT NULL DEFAULT 0,
+        kind        TEXT NOT NULL DEFAULT 'JOURNEE',
+        repeat_days INTEGER NOT NULL DEFAULT 0,
+        repeat_until TEXT NOT NULL DEFAULT '',
+        note        TEXT NOT NULL DEFAULT '',
+        supersedes  INTEGER NOT NULL DEFAULT 0,
+        cancelled   INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
     "CREATE TABLE IF NOT EXISTS stupefiants (
         id          INTEGER PRIMARY KEY,
         drug_id     INTEGER NOT NULL DEFAULT 0,
@@ -1614,6 +1666,89 @@ pub struct Event {
     /// The stored row this occurrence comes from: a repeat shows on
     /// many days but is one row, edited and removed once.
     pub source_id: i64,
+}
+
+/// One row of `shifts`, exactly as it is stored — pattern, exception
+/// and all. Private: what the rest of the application reads is
+/// [`PlannedShift`], which is one *day*.
+struct ShiftRow {
+    id: i64,
+    operator: String,
+    day: String,
+    start_time: String,
+    end_time: String,
+    pause_minutes: i64,
+    kind: String,
+    repeat_days: i64,
+    repeat_until: String,
+    note: String,
+    supersedes: i64,
+    cancelled: bool,
+}
+
+impl ShiftRow {
+    /// This row as it falls on one day.
+    fn occurrence(&self, day: String, source_id: i64) -> PlannedShift {
+        PlannedShift {
+            id: self.id,
+            source_id,
+            day,
+            operator: self.operator.clone(),
+            start_time: self.start_time.clone(),
+            end_time: self.end_time.clone(),
+            pause_minutes: self.pause_minutes,
+            kind: self.kind.clone(),
+            repeat_days: self.repeat_days,
+            note: self.note.clone(),
+        }
+    }
+}
+
+/// A shift as one day carries it: the pattern unfolded, the exception
+/// applied.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlannedShift {
+    /// The stored row this comes from — the exception's own row when
+    /// one replaced the occurrence, so editing it edits what is drawn.
+    pub id: i64,
+    /// The row the pattern lives in. Equal to `id` unless an exception
+    /// took over that day; deleting *this* is what removes the series.
+    pub source_id: i64,
+    /// ISO `YYYY-MM-DD` — the day this occurrence falls on.
+    pub day: String,
+    /// The initials, as `[pharmacy] operators` writes them.
+    pub operator: String,
+    /// `HH:MM`.
+    pub start_time: String,
+    /// `HH:MM`, empty when nobody wrote when it ends — and **that is
+    /// not a shift of zero hours**. See `planning::Shift::minutes`.
+    pub end_time: String,
+    pub pause_minutes: i64,
+    /// The key of a `planning::ShiftKind`. Kept as written: this module
+    /// stores, it does not decide what a nature means, and a nature a
+    /// later version adds must not become unreadable here.
+    pub kind: String,
+    /// 0 for a one-off; 7 for the week's pattern.
+    pub repeat_days: i64,
+    pub note: String,
+}
+
+/// What it takes to write a shift.
+#[derive(Clone, Debug, Default)]
+pub struct NewShift {
+    pub operator: String,
+    pub day: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub pause_minutes: i64,
+    pub kind: String,
+    pub repeat_days: i64,
+    pub repeat_until: String,
+    pub note: String,
+    /// The row whose occurrence this one replaces, or 0.
+    pub supersedes: i64,
+    /// With `supersedes`, says that day simply does not happen.
+    pub cancelled: bool,
 }
 
 /// A planned interview with the patient it belongs to, for the
@@ -33436,6 +33571,176 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Every shift falling between two ISO days, repeats unfolded and
+    /// exceptions applied.
+    ///
+    /// The unfolding is the one `events_between` already does: a row
+    /// with `repeat_days = 7` is *one* row and many drawn days.
+    ///
+    /// What is new is the **exception**. A row whose `supersedes` names
+    /// another row replaces that row's occurrence on its own `day`:
+    /// another set of hours, or `cancelled = 1` and the occurrence is
+    /// simply not there. « Claire est absente mardi prochain » must not
+    /// erase Claire's Tuesdays, and this is what keeps the pattern
+    /// intact while the week tells the truth.
+    ///
+    /// An exception whose base row no longer exists is **not** read
+    /// back: on its own it says nothing, and resurrecting it as an
+    /// ordinary shift would put back a day the team deleted.
+    /// [`Db::delete_shift`] removes a row's exceptions with it, in one
+    /// transaction, so orphans do not pile up in the first place.
+    pub fn shifts_between(&self, from: &str, to: &str) -> Result<Vec<PlannedShift>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, operator, day, start_time, end_time, pause_minutes, kind,
+                        repeat_days, repeat_until, note, supersedes, cancelled
+                 FROM shifts ORDER BY day, start_time, operator, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<ShiftRow> = stmt
+            .query_map([], |r| {
+                Ok(ShiftRow {
+                    id: r.get(0)?,
+                    operator: r.get(1)?,
+                    day: r.get(2)?,
+                    start_time: r.get(3)?,
+                    end_time: r.get(4)?,
+                    pause_minutes: r.get(5)?,
+                    kind: r.get(6)?,
+                    repeat_days: r.get(7)?,
+                    repeat_until: r.get(8)?,
+                    note: r.get(9)?,
+                    supersedes: r.get(10)?,
+                    cancelled: r.get::<_, i64>(11)? != 0,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        // (la ligne remplacée, le jour) → l'exception.
+        let mut exceptions: std::collections::HashMap<(i64, String), &ShiftRow> =
+            std::collections::HashMap::new();
+        for row in rows.iter().filter(|r| r.supersedes != 0) {
+            exceptions.insert((row.supersedes, row.day.clone()), row);
+        }
+        let mut out: Vec<PlannedShift> = Vec::new();
+        for base in rows.iter().filter(|r| r.supersedes == 0 && !r.cancelled) {
+            let mut current = base.day.clone();
+            let mut guard = 0;
+            loop {
+                if current.as_str() > to || guard >= 1000 {
+                    break;
+                }
+                guard += 1;
+                let past_end = !base.repeat_until.is_empty() && current > base.repeat_until;
+                if !past_end && current.as_str() >= from {
+                    match exceptions.get(&(base.id, current.clone())) {
+                        // Annulée ce jour-là : la trame reste,
+                        // l'occurrence n'est pas là.
+                        Some(ex) if ex.cancelled => {}
+                        Some(ex) => out.push(ex.occurrence(current.clone(), base.id)),
+                        None => out.push(base.occurrence(current.clone(), base.id)),
+                    }
+                }
+                if base.repeat_days <= 0 || past_end {
+                    break;
+                }
+                current = self.date_offset(&current, base.repeat_days)?;
+            }
+        }
+        out.sort_by(|a, b| {
+            a.day
+                .cmp(&b.day)
+                .then(a.start_time.cmp(&b.start_time))
+                .then(a.operator.cmp(&b.operator))
+                .then(a.id.cmp(&b.id))
+        });
+        Ok(out)
+    }
+
+    /// Write one shift — a single day, or the pattern a `repeat_days`
+    /// of 7 unfolds into every week.
+    pub fn add_shift(&self, s: &NewShift) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO shifts (operator, day, start_time, end_time, pause_minutes,
+                                     kind, repeat_days, repeat_until, note,
+                                     supersedes, cancelled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                (
+                    &s.operator,
+                    &s.day,
+                    &s.start_time,
+                    &s.end_time,
+                    s.pause_minutes,
+                    &s.kind,
+                    s.repeat_days,
+                    &s.repeat_until,
+                    &s.note,
+                    s.supersedes,
+                    i64::from(s.cancelled),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Move or retime one shift, compare-and-set on the hours this
+    /// screen was showing.
+    ///
+    /// The base is shared between PCs: two people dragging the same
+    /// shift must not each end up with their own. `false` means the row
+    /// moved elsewhere — reload and say so in French.
+    pub fn update_shift(
+        &self,
+        id: i64,
+        start_time: &str,
+        end_time: &str,
+        pause_minutes: i64,
+        expected_start: &str,
+        expected_end: &str,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE shifts SET start_time = ?1, end_time = ?2, pause_minutes = ?3
+                 WHERE id = ?4 AND start_time = ?5 AND end_time = ?6",
+                (
+                    start_time,
+                    end_time,
+                    pause_minutes,
+                    id,
+                    expected_start,
+                    expected_end,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Remove a shift, and the exceptions that only meant something
+    /// against it — in **one** transaction, so a pattern never survives
+    /// as a handful of orphan days nobody can explain.
+    pub fn delete_shift(&self, id: i64, expected_operator: &str) -> Result<bool, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let changed = tx
+            .execute(
+                "DELETE FROM shifts WHERE id = ?1 AND operator = ?2",
+                (id, expected_operator),
+            )
+            .map_err(|e| e.to_string())?;
+        if changed == 1 {
+            tx.execute("DELETE FROM shifts WHERE supersedes = ?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// The days of one month (ISO), Monday-aligned grid included: the
     /// returned vector always starts on a Monday and ends on a Sunday.
     pub fn month_grid(&self, offset_months: i64) -> Result<Vec<String>, String> {
@@ -35681,6 +35986,13 @@ mod tests {
         db.export_rows(12).expect("export_rows");
         db.month_grid(0).expect("month_grid");
         db.week_dates(0).expect("week_dates");
+        // Les postes de l'équipe : la table est arrivée en 0.175.0,
+        // donc une base de 0.109 ne l'a que par son `CREATE TABLE IF
+        // NOT EXISTS` dans `MIGRATIONS`. Oubliez-le et tous les autres
+        // tests passent — ils tournent sur des bases que *cette*
+        // version a créées, où `SCHEMA` a mis la table de toute façon.
+        db.shifts_between("2026-09-07", "2026-09-13")
+            .expect("shifts_between");
         db.edited_table_keys().expect("edited_table_keys");
         db.class_note("IEC").expect("class_note");
         db.drugs_with_tag("probiotique").expect("drugs_with_tag");
@@ -36133,6 +36445,256 @@ mod tests {
         );
         // Et une pièce qui n'existe pas du tout est une autre erreur.
         assert!(orphan.scan_bytes(4242).is_err());
+    }
+
+    /// **Une exception ne réécrit pas la trame.**
+    ///
+    /// C'est la moitié du travail de la table `shifts`, et la seule
+    /// chose qui distingue un planning d'un tableur : « Claire est
+    /// absente mardi prochain » ne doit pas effacer les mardis de
+    /// Claire. La trame reste une ligne rangée ; une seconde ligne la
+    /// contredit un jour précis, et la semaine dit la vérité.
+    ///
+    /// L'idée est celle de l'annulation du registre — on ne réécrit pas
+    /// ce qui a été posé, on pose une ligne qui le corrige — sans son
+    /// inaltérabilité : un planning se rectifie, un registre non.
+    #[test]
+    fn an_exception_does_not_erase_the_pattern() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shifts-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("shifts.db"), "secret").unwrap();
+
+        // La trame : Claire, tous les mardis, 9 h – 19 h.
+        let trame = db
+            .add_shift(&NewShift {
+                operator: "CL".to_owned(),
+                day: "2026-09-01".to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: "19:00".to_owned(),
+                kind: "JOURNEE".to_owned(),
+                repeat_days: 7,
+                ..Default::default()
+            })
+            .unwrap();
+        let month: Vec<String> = db
+            .shifts_between("2026-09-01", "2026-09-30")
+            .unwrap()
+            .into_iter()
+            .map(|s| s.day)
+            .collect();
+        assert_eq!(
+            month,
+            [
+                "2026-09-01",
+                "2026-09-08",
+                "2026-09-15",
+                "2026-09-22",
+                "2026-09-29"
+            ]
+        );
+
+        // Le 15, elle finit plus tôt. Une ligne d'exception, et **une
+        // seule occurrence** change.
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-09-15".to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "12:30".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            supersedes: trame,
+            ..Default::default()
+        })
+        .unwrap();
+        let hours: Vec<(String, String)> = db
+            .shifts_between("2026-09-01", "2026-09-30")
+            .unwrap()
+            .into_iter()
+            .map(|s| (s.day, s.end_time))
+            .collect();
+        assert_eq!(
+            hours,
+            [
+                ("2026-09-01".to_owned(), "19:00".to_owned()),
+                ("2026-09-08".to_owned(), "19:00".to_owned()),
+                ("2026-09-15".to_owned(), "12:30".to_owned()),
+                ("2026-09-22".to_owned(), "19:00".to_owned()),
+                ("2026-09-29".to_owned(), "19:00".to_owned()),
+            ]
+        );
+
+        // Le 22, elle n'est pas là du tout. L'occurrence disparaît, les
+        // autres mardis restent — c'est ce qu'un simple effacement de
+        // la trame aurait détruit.
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-09-22".to_owned(),
+            start_time: "09:00".to_owned(),
+            kind: "CONGE".to_owned(),
+            supersedes: trame,
+            cancelled: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let days: Vec<String> = db
+            .shifts_between("2026-09-01", "2026-09-30")
+            .unwrap()
+            .into_iter()
+            .map(|s| s.day)
+            .collect();
+        assert_eq!(
+            days,
+            ["2026-09-01", "2026-09-08", "2026-09-15", "2026-09-29"]
+        );
+
+        // L'occurrence remplacée porte l'identifiant de **l'exception**
+        // — la corriger corrige ce qui est dessiné — et `source_id`
+        // nomme la trame, qui est ce qu'on supprime pour tout enlever.
+        let quinze = db
+            .shifts_between("2026-09-15", "2026-09-15")
+            .unwrap()
+            .remove(0);
+        assert_ne!(quinze.id, trame);
+        assert_eq!(quinze.source_id, trame);
+
+        // Et supprimer la trame emporte ses exceptions : sans cela,
+        // le 15 et le 22 ressusciteraient en postes autonomes, deux
+        // jours que l'équipe croyait avoir enlevés.
+        assert!(!db.delete_shift(trame, "YS").unwrap(), "compare-and-set");
+        assert!(db.delete_shift(trame, "CL").unwrap());
+        assert!(db
+            .shifts_between("2026-01-01", "2026-12-31")
+            .unwrap()
+            .is_empty());
+    }
+
+    /// **Deux PC ne déplacent pas le même poste chacun de son côté.**
+    /// Le `WHERE` porte les heures que l'écran affichait ; à `false`,
+    /// on recharge et on le dit en français. Et une trame annulée en
+    /// bloc ne rend plus rien — c'est le seul usage de `cancelled` sur
+    /// une ligne rangée.
+    #[test]
+    fn a_shift_is_rewritten_only_if_it_has_not_moved() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shifts3-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("shifts.db"), "secret").unwrap();
+
+        let id = db
+            .add_shift(&NewShift {
+                operator: "CL".to_owned(),
+                day: "2026-09-07".to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: "19:00".to_owned(),
+                pause_minutes: 90,
+                kind: "JOURNEE".to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+        // Quelqu'un d'autre l'a déjà bougé : l'écriture ne passe pas.
+        assert!(!db
+            .update_shift(id, "10:00", "19:00", 90, "08:00", "19:00")
+            .unwrap());
+        // Avec les valeurs que cet écran affichait, elle passe.
+        assert!(db
+            .update_shift(id, "10:00", "18:30", 60, "09:00", "19:00")
+            .unwrap());
+        let after = db.shifts_between("2026-09-07", "2026-09-07").unwrap();
+        assert_eq!(after[0].start_time, "10:00");
+        assert_eq!(after[0].end_time, "18:30");
+        assert_eq!(after[0].pause_minutes, 60);
+        // Et une seconde fois avec les anciennes valeurs échoue, ce qui
+        // est la moitié utile de la garantie.
+        assert!(!db
+            .update_shift(id, "11:00", "18:30", 60, "09:00", "19:00")
+            .unwrap());
+
+        // Une trame annulée en bloc ne rend plus d'occurrence.
+        let off = db
+            .add_shift(&NewShift {
+                operator: "YS".to_owned(),
+                day: "2026-09-08".to_owned(),
+                start_time: "14:00".to_owned(),
+                end_time: "19:30".to_owned(),
+                kind: "FERMETURE".to_owned(),
+                cancelled: true,
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(db
+            .shifts_between("2026-09-08", "2026-09-08")
+            .unwrap()
+            .is_empty());
+        // Et une exception orpheline — sa ligne rangée n'existe pas —
+        // ne ressuscite pas en poste autonome : seule, elle ne dit rien.
+        db.add_shift(&NewShift {
+            operator: "MD".to_owned(),
+            day: "2026-09-09".to_owned(),
+            start_time: "09:00".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            supersedes: off + 999,
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(db
+            .shifts_between("2026-09-09", "2026-09-09")
+            .unwrap()
+            .is_empty());
+    }
+
+    /// Une trame bornée s'arrête où elle le dit, et un poste d'un seul
+    /// jour ne se répète pas — deux façons de partir en boucle qu'un
+    /// dépliage écrit à la main rate.
+    #[test]
+    fn a_pattern_stops_where_it_says_it_does() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shifts2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("shifts.db"), "secret").unwrap();
+
+        db.add_shift(&NewShift {
+            operator: "YS".to_owned(),
+            day: "2026-09-02".to_owned(),
+            start_time: "14:00".to_owned(),
+            end_time: "19:30".to_owned(),
+            kind: "FERMETURE".to_owned(),
+            repeat_days: 7,
+            repeat_until: "2026-09-16".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let days: Vec<String> = db
+            .shifts_between("2026-09-01", "2026-10-31")
+            .unwrap()
+            .into_iter()
+            .map(|s| s.day)
+            .collect();
+        assert_eq!(days, ["2026-09-02", "2026-09-09", "2026-09-16"]);
+
+        // Un poste d'un seul jour : une occurrence, et rien avant ni
+        // après la fenêtre demandée.
+        db.add_shift(&NewShift {
+            operator: "AB".to_owned(),
+            day: "2026-09-03".to_owned(),
+            start_time: "20:00".to_owned(),
+            // Une garde qui déborde sur la nuit : 20 h → 2 h s'écrit
+            // « 26:00 », et elle appartient au jour qui la commence.
+            end_time: "26:00".to_owned(),
+            kind: "GARDE".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let garde = db.shifts_between("2026-09-03", "2026-09-03").unwrap();
+        assert_eq!(garde.len(), 1);
+        assert_eq!(garde[0].end_time, "26:00");
+        assert!(db
+            .shifts_between("2026-09-04", "2026-09-04")
+            .unwrap()
+            .iter()
+            .all(|s| s.operator != "AB"));
     }
 
     /// **Le registre ne se réécrit pas.**
@@ -39798,6 +40360,81 @@ mod tests {
                 db.set_remote(iid, true, false).unwrap();
             }
         }
+
+        // Le planning de l'équipe : une trame pour les trois
+        // opérateurs, une garde et une absence. Sans elle la grille
+        // s'ouvre vide et ne prouve rien — ni les totaux, ni la bande de
+        // couverture, ni ce qu'une exception fait à une trame.
+        //
+        // Les trames partent du lundi de la semaine en cours, pour que
+        // la capture montre la semaine qu'on regarde.
+        let monday: String = db
+            .conn
+            .query_row(
+                "SELECT date('now', 'localtime', 'weekday 1', '-7 days')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let plus = |n: i64| -> String {
+            db.conn
+                .query_row("SELECT date(?1, ?2)", (&monday, format!("{n} days")), |r| {
+                    r.get(0)
+                })
+                .unwrap()
+        };
+        for (who, offset, from, to, pause, kind, weekly) in [
+            // Claire ouvre du lundi au vendredi, coupure de midi.
+            ("CL", 0, "09:00", "19:00", 90, "OUVERTURE", true),
+            ("CL", 1, "09:00", "19:00", 90, "JOURNEE", true),
+            ("CL", 2, "09:00", "12:30", 0, "JOURNEE", true),
+            ("CL", 3, "09:00", "19:00", 90, "JOURNEE", true),
+            ("CL", 4, "09:00", "19:00", 90, "JOURNEE", true),
+            // Yanis ferme, et prend la garde du mercredi soir : 20 h →
+            // 2 h s'écrit « 26:00 » et compte au jour qui la commence.
+            ("YS", 0, "14:00", "19:30", 0, "FERMETURE", true),
+            ("YS", 2, "20:00", "26:00", 0, "GARDE", false),
+            ("YS", 3, "14:00", "19:30", 0, "FERMETURE", true),
+            ("YS", 4, "14:00", "19:30", 0, "FERMETURE", true),
+            // Maya à mi-temps, et **un poste dont personne n'a noté la
+            // fin** : la ligne doit afficher « — » et non « 0 h 00 ».
+            ("MB", 1, "09:00", "13:00", 0, "JOURNEE", true),
+            ("MB", 3, "09:00", "", 0, "JOURNEE", false),
+        ] {
+            db.add_shift(&NewShift {
+                operator: who.to_owned(),
+                day: plus(offset),
+                start_time: from.to_owned(),
+                end_time: to.to_owned(),
+                pause_minutes: pause,
+                kind: kind.to_owned(),
+                repeat_days: if weekly { 7 } else { 0 },
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        // Et l'exception, qui est la moitié de la fonction : Claire est
+        // en formation le jeudi de cette semaine-là. Sa trame du jeudi
+        // reste écrite ; cette semaine seulement, elle n'est pas au
+        // comptoir — et le creux de l'après-midi se voit.
+        let jeudi = db
+            .conn
+            .query_row(
+                "SELECT id FROM shifts WHERE operator = 'CL' AND repeat_days = 7
+                 ORDER BY day LIMIT 1 OFFSET 3",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap();
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: plus(3),
+            start_time: "09:00".to_owned(),
+            kind: "FORMATION".to_owned(),
+            supersedes: jeudi,
+            ..Default::default()
+        })
+        .unwrap();
 
         // Un registre des stupéfiants qui a vécu : trois produits, une
         // réception, des délivrances numérotées, un comptage qui ne

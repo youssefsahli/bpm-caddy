@@ -22,6 +22,7 @@ mod maintenance;
 mod ordonnance;
 mod ordonnancier;
 mod pdf;
+mod planning;
 mod release;
 mod revue;
 mod scans;
