@@ -17,6 +17,7 @@ mod entretien;
 mod facets;
 mod fuzzy;
 mod graph;
+mod gravidity;
 mod insulin;
 mod location;
 mod maintenance;

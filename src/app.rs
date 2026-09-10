@@ -2286,6 +2286,10 @@ struct Session {
     /// et **toutes les lignes** — celles que la table ne connaît pas
     /// comprises, sans quoi la feuille se lirait comme un feu vert.
     crush: Vec<crate::crush::Answer>,
+    /// Ce que la grossesse et l'allaitement font à l'ordonnance
+    /// ouverte. **Toutes les lignes**, y compris celles que la table ne
+    /// connaît pas : « pas de donnée » n'est pas « pas de risque ».
+    gravidity: Vec<crate::gravidity::Finding>,
     /// What the file's ordonnance asks to have measured, and how long
     /// ago it was. Computed with the findings, from the same two lists.
     surveillance: Vec<crate::surveillance::Due>,
@@ -3035,6 +3039,7 @@ impl Session {
             renal: Vec::new(),
             renal_dfg: None,
             crush: Vec::new(),
+            gravidity: Vec::new(),
             surveillance: Vec::new(),
             bio_side_tab: 0,
             vacc_due: Vec::new(),
@@ -5363,6 +5368,10 @@ impl Session {
         // « peut-on écraser ? ». Elle ne dépend d'aucun chiffre, donc
         // elle se calcule sur la seule ordonnance.
         self.crush = crate::crush::read(&terms);
+        // Et la question qu'on pose une fois par semaine, celle qui
+        // fait ouvrir treize paragraphes : ce que la grossesse et
+        // l'allaitement font à cette ordonnance.
+        self.gravidity = crate::gravidity::read(&terms);
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -8378,7 +8387,7 @@ impl App {
                         // panel on the second reading: what the
                         // ordonnance asks to have measured, rather than
                         // what the values already there say.
-                        Ok(v @ ("vaccins" | "bio" | "watch" | "rein")) => {
+                        Ok(v @ ("vaccins" | "bio" | "watch" | "rein" | "grossesse")) => {
                             let pick = session
                                 .patients
                                 .iter()
@@ -8396,6 +8405,7 @@ impl App {
                             session.bio_side_tab = match v {
                                 "watch" => 1,
                                 "rein" => 2,
+                                "grossesse" => 3,
                                 _ => 0,
                             };
                         }
@@ -12307,21 +12317,37 @@ impl App {
             } else {
                 format!("{} ({decided})", tr("renal_tab"))
             };
+            // Le compte de l'onglet « Grossesse » est celui des lignes
+            // qui demandent qu'on s'arrête — interdit, à éviter, ou
+            // inconnu. Compter les compatibles ferait un chiffre qui
+            // grandit avec l'ordonnance et ne dit rien.
+            let worrying = session
+                .gravidity
+                .iter()
+                .filter(|f| f.worst().worrying())
+                .count();
+            let gravid = if worrying == 0 {
+                tr("gravid_tab").to_owned()
+            } else {
+                format!("{} ({worrying})", tr("gravid_tab"))
+            };
             let tabs = [
                 motif::Tab::new(tr("bio_reading")),
                 motif::Tab::new(tr("watch_section")),
                 motif::Tab::new(&renal),
+                motif::Tab::new(&gravid),
             ];
             if let Some(motif::TabAction::Select(i)) =
-                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(2))
+                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(3))
             {
-                session.bio_side_tab = i.min(2);
+                session.bio_side_tab = i.min(3);
             }
         });
         match session.bio_side_tab {
             0 => Self::bio_reading_pane(ui, session, strip[1]),
             1 => Self::bio_watch_pane(ui, session, patient, strip[1], config),
-            _ => Self::bio_renal_pane(ui, session, strip[1]),
+            2 => Self::bio_renal_pane(ui, session, strip[1]),
+            _ => Self::bio_gravidity_pane(ui, session, strip[1]),
         }
         Self::bio_trend_pane(ui, session, trend);
     }
@@ -12424,6 +12450,95 @@ impl App {
                     ui.separator();
                     ui.label(
                         egui::RichText::new(tr("renal_footer"))
+                            .size(motif::pt(ui, 10.0))
+                            .color(motif::text_dim()),
+                    );
+                });
+        });
+    }
+
+    /// Ce que la grossesse et l'allaitement font à l'ordonnance.
+    ///
+    /// **Ce panneau ne remplace pas le CRAT**, et il le dit en pied :
+    /// la référence est tenue à jour molécule par molécule et elle est
+    /// en ligne, là où une table figée dans un binaire vieillit. Ce qui
+    /// est ici est un rappel de comptoir qui dit où aller.
+    fn bio_gravidity_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        use crate::gravidity::Level;
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("bio_gravidity")
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    if session.gravidity.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("gravid_nothing"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        );
+                        return;
+                    }
+                    let ink = |l: Level| match l {
+                        Level::Interdit => motif::alert(),
+                        Level::Eviter | Level::SansDonnee => motif::emphasize(motif::text()),
+                        _ => motif::text(),
+                    };
+                    for f in &session.gravidity {
+                        ui.label(
+                            egui::RichText::new(&f.treatment)
+                                .size(motif::pt(ui, 12.0))
+                                .color(ink(f.worst())),
+                        );
+                        // Les deux questions, l'une sous l'autre et
+                        // toujours dans le même ordre : lues côte à
+                        // côte elles se confondraient, et c'est la
+                        // confusion que ce module existe pour éviter.
+                        for (stage, level, note) in [
+                            (
+                                crate::gravidity::Stage::Grossesse,
+                                f.pregnancy,
+                                f.pregnancy_note,
+                            ),
+                            (
+                                crate::gravidity::Stage::Allaitement,
+                                f.breastfeeding,
+                                f.breastfeeding_note,
+                            ),
+                        ] {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} — {}",
+                                    stage.label(),
+                                    level.label()
+                                ))
+                                .size(motif::pt(ui, 11.0))
+                                .color(ink(level)),
+                            );
+                            if !note.trim().is_empty() {
+                                ui.label(
+                                    egui::RichText::new(note)
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text()),
+                                );
+                            }
+                        }
+                        if !f.term.trim().is_empty() {
+                            ui.label(
+                                egui::RichText::new(f.term)
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::alert()),
+                            );
+                        }
+                        ui.label(
+                            egui::RichText::new(f.source)
+                                .size(motif::pt(ui, 10.0))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add_space(6.0);
+                    }
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(tr("gravid_footer"))
                             .size(motif::pt(ui, 10.0))
                             .color(motif::text_dim()),
                     );

@@ -52,6 +52,36 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   table's *order*, since the first row that matches wins: it earned its
   keep the day it was written — « actiskenan » contains « skenan », and
   immediate-release Actiskenan was getting Skenan LP's answer),
+  `src/gravidity.rs` (pregnancy and breastfeeding as a level: twenty-four
+  molecules, **two levels each** — they are two questions, and codeine is
+  usable pregnant and discouraged while nursing, the AVKs the reverse.
+  **It does not replace the CRAT**, and the panel says so in its footer:
+  the French reference is kept up to date molecule by molecule and it is
+  online, where a table frozen in a binary ages. Rules, one test each:
+  **« no data » is not « no risk »** (`SansDonnee` is a level apart from
+  `Compatible`), **the term decides** (an NSAID is not « to avoid », it
+  is contraindicated from 24 weeks of amenorrhoea, even as a single
+  dose — and for aspirin it is the *dose* that decides, the same
+  molecule being a treatment *of* pregnancy at 75 mg), and **the table
+  decides nothing**: stopping a treatment in a pregnant woman is a
+  medical decision, and a badly-accompanied pregnancy is more dangerous
+  than a treatment continued),
+  `src/gravidity.rs` (pregnancy and breastfeeding as a level: twenty-four
+  molecules, **two levels each** — they are two questions, and codeine is
+  usable pregnant and discouraged while nursing, the AVKs the reverse.
+  **It does not replace the CRAT**, and the panel says so in its footer:
+  the French reference is kept up to date molecule by molecule and it is
+  online, where a table frozen in a binary ages. Rules, one test each:
+  **« no data » is not « no risk »** (`SansDonnee` is a level apart from
+  `Compatible`), **the term decides** (an NSAID is not « to avoid », it
+  is contraindicated from 24 weeks of amenorrhoea, even as a single
+  dose — and for aspirin it is the *dose* that decides, the same molecule
+  being a treatment *of* pregnancy at 75 mg), and **the table decides
+  nothing**: stopping a treatment in a pregnant woman is a medical
+  decision, and a badly-accompanied pregnancy is more dangerous than a
+  treatment continued. A test in each of the three clinical tables
+  refuses markup in what they write: `RichText` interprets none, so an
+  asterisk typed for emphasis reaches the screen as an asterisk),
   `src/revue.rs` (what a set of treatments says about itself:
   doublons, associations, cascades — same shape, same discipline),
   `src/conciliation.rs` (the file's ordonnance against the one a patient
@@ -768,7 +798,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|rein|base|codex|
+  vaccine_map|ordonnance|rein|grossesse|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|

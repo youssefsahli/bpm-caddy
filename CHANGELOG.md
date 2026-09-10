@@ -5,43 +5,40 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.180.0] - 2026-09-10
+## [0.181.0] - 2026-09-10
 
 ### Added
-- **« Peut-on écraser ? », en une feuille.** Une infirmière d'EHPAD
-  appelle avec un pilulier et huit lignes ; un aidant demande devant le
-  comptoir si le comprimé passe dans la compote. La réponse existait :
-  écrite quelque part dans le paragraphe « forme » d'une fiche, à ouvrir
-  et à traduire une par une. Le bouton « Écraser ? » du dossier imprime
-  l'ordonnance entière, ligne par ligne, avec ce qu'on peut en faire et
-  par quoi remplacer ce qu'on ne peut pas.
+- **Grossesse et allaitement, comme niveau et non comme paragraphe.**
+  Une ordonnance de treize lignes chez une femme enceinte, ce sont treize
+  paragraphes à ouvrir. L'onglet « Grossesse » de la biologie en fait
+  treize niveaux, et l'ordonnance se lit d'un coup — avec, sur l'onglet,
+  le compte de celles qui demandent qu'on s'arrête.
 
-  Cinq règles, un test chacune, et la première est la seule qui compte
-  vraiment : **le silence n'est pas une permission.** Une molécule que
-  la table ne connaît pas reçoit une réponse — « à vérifier » — et
-  jamais l'absence de ligne. Une feuille qui ne montrerait que les
-  interdits se lirait comme une autorisation pour tout le reste, et
-  c'est ainsi qu'on écrase un comprimé à libération prolongée.
+  **Ce panneau ne remplace pas le CRAT**, et il le dit en pied. La
+  référence française est tenue à jour molécule par molécule et elle est
+  en ligne ; une table figée dans un binaire vieillit, elle non. Ce qui
+  est ici est un rappel de comptoir qui cite sa source et dit où aller.
 
-  **La forme décide, pas la molécule** : Moscontin jamais, Skenan en
-  ouvrant la gélule — une table par DCI répondrait faux une fois sur
-  deux. **Ouvrir une gélule n'est pas écraser un comprimé** : trois
-  réponses et non deux, parce que le « oui mais » est le cas le plus
-  fréquent en gériatrie. **Un « non » sans solution laisse le problème
-  entier** : chaque refus dit par quoi remplacer. Et **certains « non »
-  protègent celui qui écrase**, pas le patient — un cytotoxique, un
-  tératogène : c'est la poussière qui est le danger.
-
-  La feuille rappelle aussi les trois choses qu'on oublie : un comprimé
-  écrasé se donne aussitôt, un mortier se lave entre deux traitements, et
-  « à vérifier » ne veut pas dire « oui ».
+  Cinq règles, un test chacune. **« Pas de donnée » n'est pas « pas de
+  risque »** : une molécule absente de la table reçoit « à vérifier au
+  CRAT », jamais « compatible ». **Grossesse et allaitement sont deux
+  questions** — la codéine est possible enceinte et déconseillée en
+  allaitant, les AVK l'inverse, et un test exige qu'au moins un quart de
+  la table réponde différemment des deux côtés, sinon deux colonnes
+  seraient une colonne. **Le terme change la réponse** : un AINS n'est
+  pas « à éviter », il est contre-indiqué à partir de vingt-quatre
+  semaines d'aménorrhée, même en prise unique ; et pour l'aspirine c'est
+  la dose qui décide, la même molécule étant un traitement de la
+  grossesse à faible dose. **Une contre-indication dit ce qu'on met à la
+  place.** Et **la table ne décide de rien** : l'arrêt d'un traitement
+  chez une femme enceinte est une décision médicale, et une grossesse mal
+  accompagnée est plus dangereuse qu'un traitement poursuivi.
 
 ### Fixed
-- Les six actions du dossier étaient six `&mut bool` passés à la même
-  fonction — six occasions de brancher le mauvais au mauvais endroit,
-  tous du même type, sans que le compilateur ait rien à dire. Un seul de
-  ces boutons peut être pressé par image, et c'est ce que le type dit
-  maintenant.
+- Les tables cliniques écrivaient du balisage — « **à partir de 24 SA** »
+  — que `RichText` ne sait pas interpréter : les astérisques sortaient à
+  l'écran telles quelles. Vu sur une capture, corrigé dans les trois
+  tables, et un test par table le refuse désormais.
 
 ## [0.180.0] - 2026-09-10
 

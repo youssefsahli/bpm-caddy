@@ -319,6 +319,9 @@ bio_trend_span = "Du {} ({}) au {} ({})"
 # L'autre panneau lit les chiffres qui sont là ; celui-ci nomme ceux qui
 # n'y sont pas.
 watch_section = "À surveiller"
+gravid_tab = "Grossesse"
+gravid_nothing = "Aucun traitement au dossier."
+gravid_footer = "Le CRAT (lecrat.fr) est la référence : il est tenu à jour molécule par molécule. Ce panneau en est un rappel de comptoir et ne le remplace pas. L'arrêt ou le maintien d'un traitement chez une femme enceinte est une décision médicale — une grossesse mal accompagnée est plus dangereuse qu'un traitement poursuivi."
 renal_tab = "Rein"
 renal_dfg = "DFG le plus récent : {} mL/min"
 renal_no_dfg = "Aucun DFG au dossier — rien ne peut être conclu."

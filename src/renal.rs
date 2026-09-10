@@ -534,6 +534,29 @@ mod tests {
         }
     }
 
+    /// **Ce que la table écrit est dessiné tel quel.** Le panneau la
+    /// peint avec `RichText`, qui n'interprète aucun balisage : une
+    /// astérisque écrite pour insister sort à l'écran comme une
+    /// astérisque. La table du CRAT en portait, et cela s'est vu sur
+    /// une capture ; celle-ci n'en porte pas, et ce test est ce qui
+    /// l'empêche d'en prendre.
+    #[test]
+    fn the_table_writes_no_markup() {
+        for a in TABLE {
+            for text in [a.label, a.source] {
+                assert!(!text.contains("**"), "{} : balisage", a.label);
+            }
+            for s in a.steps {
+                assert!(
+                    !s.conduct.contains("**") && !s.conduct.contains('`'),
+                    "{} : « {} » porte du balisage",
+                    a.label,
+                    s.conduct
+                );
+            }
+        }
+    }
+
     /// **Sans DFG, pas de verdict.**
     ///
     /// La ligne existe — elle dit que le traitement dépend du rein et

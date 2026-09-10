@@ -293,7 +293,7 @@ pub const TABLE: &[Rule] = &[
         needs: &["xarelto", "rivaroxaban"],
         label: "Rivaroxaban",
         verdict: Verdict::Yes,
-        why: "Le comprimé s'écrase et se prend dans un peu d'eau ou de compote — **avec un aliment**, parce que l'absorption des dosages à 15 et 20 mg en dépend.",
+        why: "Le comprimé s'écrase et se prend dans un peu d'eau ou de compote, et toujours AVEC UN ALIMENT : l'absorption des dosages à 15 et 20 mg en dépend.",
         instead: "",
         source: "RCP rivaroxaban",
     },
@@ -389,6 +389,24 @@ mod tests {
             dci: "",
             class: "",
             tags: "",
+        }
+    }
+
+    /// **Ce que la table écrit est dessiné tel quel.** Le panneau la
+    /// peint avec `RichText`, qui n'interprète aucun balisage : une
+    /// astérisque écrite pour insister sort à l'écran comme une
+    /// astérisque, et « **à partir de 24 SA** » se lit avec ses quatre
+    /// étoiles. Trouvé sur une capture, corrigé ici pour de bon.
+    #[test]
+    fn the_table_writes_no_markup() {
+        for r in TABLE {
+            for text in [r.why, r.instead, r.label, r.source] {
+                assert!(
+                    !text.contains("**") && !text.contains("`"),
+                    "{} : « {text} » porte du balisage",
+                    r.label
+                );
+            }
         }
     }
 
