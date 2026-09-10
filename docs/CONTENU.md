@@ -588,6 +588,28 @@ Deux règles valent partout :
   sans chiffre. Une ligne sans seuil n'est pas une règle, et la fiche
   dit déjà « prudence » dans sa prose.
 
+## Ce qu'on peut écraser
+
+- **Où** : `src/crush.rs`, `TABLE` : les mots qui désignent la
+  **présentation**, un libellé, un verdict, la raison, le remplaçant et
+  la source.
+- **La question qu'il pose** : celle du téléphone de l'EHPAD. Elle est
+  dans la prose de dizaines de fiches et se cherche fiche par fiche.
+- **La règle qui décide de tout** : *le silence n'est pas une
+  permission*. Une molécule absente de la table reçoit « à vérifier »,
+  jamais rien. Une feuille qui ne montre que les interdits se lit comme
+  une autorisation pour tout le reste.
+- **Trois verdicts et non deux** : oui, non, et « sous condition » — la
+  gélule s'ouvre, les microgranules ne se croquent pas. C'est le cas le
+  plus fréquent en gériatrie.
+- **Ajouter une présentation** : une entrée `Rule`, et **au bon rang**.
+  La table est lue dans l'ordre, la première qui accroche gagne, donc
+  une entrée précise va *avant* une entrée large — un test le vérifie,
+  et il a servi le jour où il a été écrit (« actiskenan » contient
+  « skenan »). Un « non » doit dire par quoi remplacer, et une raison
+  fait plus de trente caractères : une consigne sans raison ne se
+  respecte pas longtemps.
+
 ## La conciliation médicamenteuse
 
 - **Où** : `src/conciliation.rs`. C'est le seul module « logique » qui ne

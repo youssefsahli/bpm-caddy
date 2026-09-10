@@ -2282,6 +2282,10 @@ struct Session {
     /// image : chaque ligne est un `format!`.
     renal: Vec<crate::renal::Finding>,
     renal_dfg: Option<f64>,
+    /// Ce qu'on peut écraser de l'ordonnance ouverte, ligne par ligne
+    /// et **toutes les lignes** — celles que la table ne connaît pas
+    /// comprises, sans quoi la feuille se lirait comme un feu vert.
+    crush: Vec<crate::crush::Answer>,
     /// What the file's ordonnance asks to have measured, and how long
     /// ago it was. Computed with the findings, from the same two lists.
     surveillance: Vec<crate::surveillance::Due>,
@@ -3030,6 +3034,7 @@ impl Session {
             bio_findings: Vec::new(),
             renal: Vec::new(),
             renal_dfg: None,
+            crush: Vec::new(),
             surveillance: Vec::new(),
             bio_side_tab: 0,
             vacc_due: Vec::new(),
@@ -5354,6 +5359,10 @@ impl Session {
             .map(|r| r.value);
         self.renal = crate::renal::read(&terms, dfg);
         self.renal_dfg = dfg;
+        // Et la question qu'on pose au téléphone, celle de l'EHPAD :
+        // « peut-on écraser ? ». Elle ne dépend d'aucun chiffre, donc
+        // elle se calcule sur la seule ordonnance.
+        self.crush = crate::crush::read(&terms);
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -6871,6 +6880,19 @@ fn planned_shift(s: &db::PlannedShift) -> Option<planning::Shift> {
 /// thing that makes each panel carry **its own** series rather than be
 /// matched by its position in a list.
 type StatsPanel<'a> = (&'a str, f32, &'a [(String, f64)], &'a dyn Fn(f64) -> String);
+
+/// Ce qu'un des boutons du dossier vient de demander. Un seul peut
+/// l'être par image, ce qui est exactement ce qu'un `Option` dit et que
+/// six drapeaux ne disaient pas.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum PatientAction {
+    Edit,
+    Delete,
+    Bilan,
+    Plan,
+    Labels,
+    Crush,
+}
 
 /// The days the agenda is showing, whichever mode it is in.
 fn scope_days(session: &Session) -> Vec<String> {
@@ -14953,43 +14975,69 @@ impl App {
     }
 
     /// « Modifier » and « Supprimer… », with the two-step confirmation.
-    fn patient_actions(
-        ui: &mut egui::Ui,
-        session: &Session,
-        start_edit: &mut bool,
-        delete_click: &mut bool,
-        bilan: &mut bool,
-        plan: &mut bool,
-        labels: &mut bool,
-    ) {
+    ///
+    /// **Une action rendue plutôt que six drapeaux passés.** Six
+    /// `&mut bool` étaient six occasions de brancher le mauvais au
+    /// mauvais appel, et le compilateur n'aurait rien dit : ce sont
+    /// tous des `bool`. Un seul de ces boutons peut être pressé par
+    /// image, et le type le dit maintenant.
+    fn patient_actions(ui: &mut egui::Ui, session: &Session) -> Option<PatientAction> {
+        let mut hit = None;
         let del_label = if session.confirm_delete {
             tr("patient_delete_confirm")
         } else {
             tr("patient_delete")
         };
         if motif::button(ui, del_label).clicked() {
-            *delete_click = true;
+            hit = Some(PatientAction::Delete);
         }
         if session.edit_patient.is_none() && motif::button(ui, tr("patient_edit")).clicked() {
-            *start_edit = true;
+            hit = Some(PatientAction::Edit);
         }
         if motif::button(ui, tr("bilan_print"))
             .on_hover_text(tr("bilan_print_tooltip"))
             .clicked()
         {
-            *bilan = true;
+            hit = Some(PatientAction::Bilan);
         }
         if motif::button(ui, tr("plan_print"))
             .on_hover_text(tr("plan_print_tooltip"))
             .clicked()
         {
-            *plan = true;
+            hit = Some(PatientAction::Plan);
         }
         if motif::button(ui, tr("labels_print"))
             .on_hover_text(tr("labels_print_tooltip"))
             .clicked()
         {
-            *labels = true;
+            hit = Some(PatientAction::Labels);
+        }
+        // La feuille de l'EHPAD. Elle est ici, avec les autres
+        // impressions du dossier, parce que c'est la même question :
+        // qu'est-ce qui part avec le patient.
+        if motif::button(ui, tr("crush_print"))
+            .on_hover_text(tr("crush_print_tooltip"))
+            .clicked()
+        {
+            hit = Some(PatientAction::Crush);
+        }
+        hit
+    }
+
+    /// La feuille « peut-on écraser ? » du dossier ouvert.
+    fn print_crush(session: &mut Session, patient: &Patient, config: &Config) {
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        if let Err(e) = crate::pdf::open_crush(
+            &session.crush,
+            patient,
+            &today,
+            &config.pharmacy,
+            &config.doc_template_path("ecraser"),
+        ) {
+            session.error = Some(e);
         }
     }
 
@@ -15321,17 +15369,18 @@ impl App {
     /// at 645 — just over the line — so the four buttons were laid out
     /// right-to-left straight across « Jean Dupont ». A long name or a
     /// wider dock reopened it every time.
-    /// Ce que les quatre boutons du dossier prennent sur la rangée du
-    /// nom — pour savoir s'ils y tiennent, et pour laisser au nom
-    /// exactement ce qu'ils ne prennent pas.
-    /// Les quatre actions du dossier, écrites une fois : leur largeur
+    /// Ce que les boutons du dossier prennent sur la rangée du nom —
+    /// pour savoir s'ils y tiennent, et pour laisser au nom exactement
+    /// ce qu'ils ne prennent pas.
+    /// Les actions du dossier, écrites une fois : leur largeur
     /// les met à droite du nom, et leur nombre de rangées décide de la
     /// hauteur de la bande quand elles passent dessous. Deux listes
     /// auraient divergé, et c'est la hauteur qui aurait perdu.
-    fn patient_action_labels(confirm: bool) -> [&'static str; 5] {
+    fn patient_action_labels(confirm: bool) -> [&'static str; 6] {
         [
             tr("plan_print"),
             tr("labels_print"),
+            tr("crush_print"),
             tr("bilan_print"),
             tr("patient_edit"),
             if confirm {
@@ -16162,13 +16211,12 @@ impl App {
         config: &Config,
         operator: &str,
     ) {
-        let mut start_edit = false;
+        // Une seule action peut être demandée par image, et c'est ce
+        // que le type dit : six drapeaux étaient six occasions de
+        // brancher le mauvais au mauvais endroit, tous du même type.
+        let mut act: Option<PatientAction> = None;
         let mut save_edit = false;
         let mut cancel_edit = false;
-        let mut delete_click = false;
-        let mut print_bilan = false;
-        let mut print_plan = false;
-        let mut print_labels = false;
         let mut back = false;
         let cramped = !Self::patient_header_fits(ui, session, patient);
         // Une correction en cours déplie le bandeau : on ne replie pas le
@@ -16268,15 +16316,7 @@ impl App {
             // drop underneath rather than printing over it.
             if !cramped {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    Self::patient_actions(
-                        ui,
-                        session,
-                        &mut start_edit,
-                        &mut delete_click,
-                        &mut print_bilan,
-                        &mut print_plan,
-                        &mut print_labels,
-                    );
+                    act = Self::patient_actions(ui, session).or(act);
                 });
             }
         });
@@ -16284,20 +16324,14 @@ impl App {
             // Replié, la bande est cette rangée-là et rien d'autre : sa
             // hauteur est comptée pour une rangée, et tout ce qui suit
             // sortirait par le bas plutôt que de tenir.
-            if print_bilan {
-                Self::print_bilan(session, patient, config, operator);
-            }
-            if print_plan {
-                Self::print_plan(session, patient, config, operator);
-            }
-            if print_labels {
-                Self::print_labels(session, patient, config);
-            }
-            if start_edit {
-                Self::patient_edit_started(session, patient);
-            }
-            if delete_click {
-                Self::patient_delete_clicked(session, patient);
+            match act {
+                Some(PatientAction::Bilan) => Self::print_bilan(session, patient, config, operator),
+                Some(PatientAction::Plan) => Self::print_plan(session, patient, config, operator),
+                Some(PatientAction::Crush) => Self::print_crush(session, patient, config),
+                Some(PatientAction::Labels) => Self::print_labels(session, patient, config),
+                Some(PatientAction::Edit) => Self::patient_edit_started(session, patient),
+                Some(PatientAction::Delete) => Self::patient_delete_clicked(session, patient),
+                None => {}
             }
             return;
         }
@@ -17212,31 +17246,20 @@ impl App {
             // passe à la ligne, et la bande compte cette ligne.
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                Self::patient_actions(
-                    ui,
-                    session,
-                    &mut start_edit,
-                    &mut delete_click,
-                    &mut print_bilan,
-                    &mut print_plan,
-                    &mut print_labels,
-                );
+                act = Self::patient_actions(ui, session).or(act);
             });
         }
         // Et les deux impressions se lisent **après** eux, puisque
         // c'est là qu'ils sont maintenant demandés : consommées plus
         // haut, un clic sur « Bilan… » se perdait au lieu d'imprimer.
-        if print_bilan {
-            Self::print_bilan(session, patient, config, operator);
-        }
-        if print_plan {
-            Self::print_plan(session, patient, config, operator);
-        }
-        if print_labels {
-            Self::print_labels(session, patient, config);
-        }
-        if start_edit {
-            Self::patient_edit_started(session, patient);
+        match act {
+            Some(PatientAction::Bilan) => Self::print_bilan(session, patient, config, operator),
+            Some(PatientAction::Plan) => Self::print_plan(session, patient, config, operator),
+            Some(PatientAction::Crush) => Self::print_crush(session, patient, config),
+            Some(PatientAction::Labels) => Self::print_labels(session, patient, config),
+            Some(PatientAction::Edit) => Self::patient_edit_started(session, patient),
+            Some(PatientAction::Delete) => Self::patient_delete_clicked(session, patient),
+            None => {}
         }
         if cancel_edit {
             session.edit_patient = None;
@@ -17294,9 +17317,6 @@ impl App {
                     }
                 }
             }
-        }
-        if delete_click {
-            Self::patient_delete_clicked(session, patient);
         }
     }
 

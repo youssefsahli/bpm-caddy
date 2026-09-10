@@ -5,6 +5,82 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.180.0] - 2026-09-10
+
+### Added
+- **« Peut-on écraser ? », en une feuille.** Une infirmière d'EHPAD
+  appelle avec un pilulier et huit lignes ; un aidant demande devant le
+  comptoir si le comprimé passe dans la compote. La réponse existait :
+  écrite quelque part dans le paragraphe « forme » d'une fiche, à ouvrir
+  et à traduire une par une. Le bouton « Écraser ? » du dossier imprime
+  l'ordonnance entière, ligne par ligne, avec ce qu'on peut en faire et
+  par quoi remplacer ce qu'on ne peut pas.
+
+  Cinq règles, un test chacune, et la première est la seule qui compte
+  vraiment : **le silence n'est pas une permission.** Une molécule que
+  la table ne connaît pas reçoit une réponse — « à vérifier » — et
+  jamais l'absence de ligne. Une feuille qui ne montrerait que les
+  interdits se lirait comme une autorisation pour tout le reste, et
+  c'est ainsi qu'on écrase un comprimé à libération prolongée.
+
+  **La forme décide, pas la molécule** : Moscontin jamais, Skenan en
+  ouvrant la gélule — une table par DCI répondrait faux une fois sur
+  deux. **Ouvrir une gélule n'est pas écraser un comprimé** : trois
+  réponses et non deux, parce que le « oui mais » est le cas le plus
+  fréquent en gériatrie. **Un « non » sans solution laisse le problème
+  entier** : chaque refus dit par quoi remplacer. Et **certains « non »
+  protègent celui qui écrase**, pas le patient — un cytotoxique, un
+  tératogène : c'est la poussière qui est le danger.
+
+  La feuille rappelle aussi les trois choses qu'on oublie : un comprimé
+  écrasé se donne aussitôt, un mortier se lave entre deux traitements, et
+  « à vérifier » ne veut pas dire « oui ».
+
+### Fixed
+- Les six actions du dossier étaient six `&mut bool` passés à la même
+  fonction — six occasions de brancher le mauvais au mauvais endroit,
+  tous du même type, sans que le compilateur ait rien à dire. Un seul de
+  ces boutons peut être pressé par image, et c'est ce que le type dit
+  maintenant.
+
+## [0.180.0] - 2026-09-10
+
+### Added
+- **« Peut-on écraser ? », en une feuille.** Une infirmière d'EHPAD
+  appelle avec un pilulier et huit lignes ; un aidant demande devant le
+  comptoir si le comprimé passe dans la compote. La réponse existait :
+  écrite quelque part dans le paragraphe « forme » d'une fiche, à ouvrir
+  et à traduire une par une. Le bouton « Écraser ? » du dossier imprime
+  l'ordonnance entière, ligne par ligne, avec ce qu'on peut en faire et
+  par quoi remplacer ce qu'on ne peut pas.
+
+  Cinq règles, un test chacune, et la première est la seule qui compte
+  vraiment : **le silence n'est pas une permission.** Une molécule que
+  la table ne connaît pas reçoit une réponse — « à vérifier » — et
+  jamais l'absence de ligne. Une feuille qui ne montrerait que les
+  interdits se lirait comme une autorisation pour tout le reste, et
+  c'est ainsi qu'on écrase un comprimé à libération prolongée.
+
+  **La forme décide, pas la molécule** : Moscontin jamais, Skenan en
+  ouvrant la gélule — une table par DCI répondrait faux une fois sur
+  deux. **Ouvrir une gélule n'est pas écraser un comprimé** : trois
+  réponses et non deux, parce que le « oui mais » est le cas le plus
+  fréquent en gériatrie. **Un « non » sans solution laisse le problème
+  entier** : chaque refus dit par quoi remplacer. Et **certains « non »
+  protègent celui qui écrase**, pas le patient — un cytotoxique, un
+  tératogène : c'est la poussière qui est le danger.
+
+  La feuille rappelle aussi les trois choses qu'on oublie : un comprimé
+  écrasé se donne aussitôt, un mortier se lave entre deux traitements, et
+  « à vérifier » ne veut pas dire « oui ».
+
+### Fixed
+- Les six actions du dossier étaient six `&mut bool` passés à la même
+  fonction — six occasions de brancher le mauvais au mauvais endroit,
+  tous du même type, sans que le compilateur ait rien à dire. Un seul de
+  ces boutons peut être pressé par image, et c'est ce que le type dit
+  maintenant.
+
 ## [0.179.0] - 2026-09-10
 
 ### Added

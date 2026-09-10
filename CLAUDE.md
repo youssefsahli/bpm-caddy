@@ -35,6 +35,23 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   from an interpolation**, and **the conduct is the RCP's, the decision
   is the prescriber's** — written on the panel, not only in the code.
   Pure, tested, no clock),
+  `src/crush.rs` (« peut-on écraser ? » — the question asked every day,
+  whose answer sits in the prose of dozens of cards. A table keyed on
+  the **presentation** and a printable sheet for the EHPAD or the nurse.
+  Five rules, one test each, and the first is the only one that really
+  matters: **silence is not permission** — a drug the table does not
+  know gets an answer, « à vérifier », never an absent line. A sheet
+  showing only the refusals reads as a green light for everything else,
+  and that is how a modified-release tablet gets crushed. **The
+  presentation decides, not the molecule** (Moscontin never, Skenan by
+  opening the capsule — a table by DCI would be wrong half the time),
+  **opening a capsule is not crushing a tablet** (three answers, not
+  two), **a « no » with no alternative leaves the problem whole**, and
+  **some « no »s protect whoever crushes**, not the patient — a
+  cytotoxic, a teratogen: the dust is the danger. A test holds the
+  table's *order*, since the first row that matches wins: it earned its
+  keep the day it was written — « actiskenan » contains « skenan », and
+  immediate-release Actiskenan was getting Skenan LP's answer),
   `src/revue.rs` (what a set of treatments says about itself:
   doublons, associations, cascades — same shape, same discipline),
   `src/conciliation.rs` (the file's ordonnance against the one a patient

@@ -3540,6 +3540,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_CAISSES_TEMPLATE,
     },
     Doc {
+        key: "ecraser",
+        label: "tpl_target_ecraser",
+        markers: MARKERS_ECRASER,
+        default: DEFAULT_ECRASER_TEMPLATE,
+    },
+    Doc {
         key: "planning",
         label: "tpl_target_planning",
         markers: MARKERS_PLANNING,
@@ -4042,6 +4048,48 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // personne n'a noté la fin — les trois cas que la feuille doit
         // savoir écrire, et jamais une grille pleine d'horaires
         // identiques qui ne prouverait rien.
+        // La feuille de l'EHPAD : les quatre réponses, parce que ce
+        // sont les quatre que la feuille doit savoir écrire — et « à
+        // vérifier » est celle qu'on oublie.
+        "ecraser" => crush_values(
+            &[
+                crate::crush::Answer {
+                    treatment: "Moscontin 30 mg".to_owned(),
+                    label: "Moscontin",
+                    verdict: crate::crush::Verdict::No,
+                    why: "Comprimé à libération prolongée : écrasé, il délivre en une fois la dose de douze heures.",
+                    instead: "Skenan LP, dont la gélule s'ouvre, à dose recalculée par le prescripteur.",
+                    source: "RCP Moscontin",
+                },
+                crate::crush::Answer {
+                    treatment: "Inexium 20 mg".to_owned(),
+                    label: "IPP",
+                    verdict: crate::crush::Verdict::Conditional,
+                    why: "La gélule s'ouvre et les microgranules se versent dans une compote ; ils ne se croquent pas.",
+                    instead: "",
+                    source: "RCP ésoméprazole",
+                },
+                crate::crush::Answer {
+                    treatment: "Doliprane 1 g".to_owned(),
+                    label: "Paracétamol",
+                    verdict: crate::crush::Verdict::Yes,
+                    why: "Le comprimé s'écrase ; la forme effervescente se dissout.",
+                    instead: "",
+                    source: "RCP paracétamol",
+                },
+                crate::crush::Answer {
+                    treatment: "Zoltruc 40 mg LP".to_owned(),
+                    label: "",
+                    verdict: crate::crush::Verdict::Unknown,
+                    why: "La table ne connaît pas cette présentation. Lire le RCP avant d'écraser.",
+                    instead: "",
+                    source: "",
+                },
+            ],
+            &patient.full_name(),
+            "24/08/2026",
+            &pharmacy.name,
+        ),
         "planning" => planning_values(
             &["2026-09-07".to_owned(), "2026-09-13".to_owned()],
             &[
@@ -4606,6 +4654,39 @@ pub fn open_caisse_history(
     )
 }
 
+const MARKERS_ECRASER: &[&str] = &["{{PHARMACY_NAME}}", "{{PATIENT}}", "{{TODAY}}", "{{ROWS}}"];
+
+/// La feuille qu'on donne à l'EHPAD ou à l'infirmière : ordonnance en
+/// entier, une ligne par traitement, ce qu'on peut en faire.
+///
+/// **Toutes les lignes, y compris celles que la table ne connaît pas.**
+/// Une feuille qui ne montrerait que les interdits se lirait comme une
+/// autorisation pour tout le reste, et c'est ainsi qu'on écrase un
+/// comprimé à libération prolongée.
+const DEFAULT_ECRASER_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.4cm)
+#set text(size: 9.5pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Écraser les comprimés — que peut-on faire ?]]
+#v(1mm)
+#align(center)[#text(11pt, weight: "bold")[{{PATIENT}}]]
+#align(center)[#text(9pt)[{{PHARMACY_NAME}} — {{TODAY}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, 1fr), inset: 5pt, stroke: 0.4pt,
+  align: (left, left, left),
+  [*Traitement*], [*Réponse*], [*Pourquoi, et par quoi remplacer*],
+{{ROWS}})
+
+#v(4mm)
+#block(width: 100%, stroke: 0.4pt, inset: 6pt)[
+  #text(weight: "bold")[Trois choses avant d'écraser quoi que ce soit]   Un comprimé écrasé se donne *aussitôt* : broyé à l'avance, il s'oxyde et se perd.   Un mortier se lave entre deux traitements, sans quoi la poussière du précédent part avec le suivant.   Et « à vérifier » ne veut pas dire « oui » : cette ligne-là demande d'ouvrir le résumé des caractéristiques.
+]
+
+#v(3mm)
+#text(8pt, style: "italic")[Cette feuille reprend les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Elle ne remplace pas l'avis du prescripteur : un traitement qu'on ne peut pas écraser se change, il ne se force pas.]
+"##;
+
 const MARKERS_PLANNING: &[&str] = &[
     "{{PHARMACY_NAME}}",
     "{{PERIOD}}",
@@ -4694,6 +4775,55 @@ pub struct HoursRow {
     /// « 8 h 30 », ou « — » quand personne n'a noté la fin.
     pub total: String,
     pub kind: String,
+}
+
+fn crush_values(
+    rows: &[crate::crush::Answer],
+    patient: &str,
+    today: &str,
+    pharmacy: &str,
+) -> Vec<(&'static str, String)> {
+    let mut body = String::new();
+    for r in rows {
+        // Le verdict en gras, et la raison avec le remplaçant à la
+        // suite : sur une feuille lue debout, une colonne « pourquoi »
+        // vide est une consigne qu'on ne suivra pas.
+        let mut why = r.why.to_owned();
+        if !r.instead.trim().is_empty() {
+            why.push_str(" — À la place : ");
+            why.push_str(r.instead);
+        }
+        body.push_str(&format!(
+            "  [#{}], [*#{}*], [#{}],
+",
+            typst_str(&r.treatment),
+            typst_str(r.verdict.label()),
+            typst_str(&why),
+        ));
+    }
+    vec![
+        ("{{PHARMACY_NAME}}", format!("#{}", typst_str(pharmacy))),
+        ("{{PATIENT}}", format!("#{}", typst_str(patient))),
+        ("{{TODAY}}", format!("#{}", typst_str(today))),
+        ("{{ROWS}}", body),
+    ]
+}
+
+/// La feuille « peut-on écraser ? » pour un dossier.
+pub fn open_crush(
+    rows: &[crate::crush::Answer],
+    patient: &Patient,
+    today: &str,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("ecraser", template_path),
+            &crush_values(rows, &patient.full_name(), today, &pharmacy.name),
+        ),
+        &format!("ecraser_{}", patient.id),
+    )
 }
 
 fn planning_values(
