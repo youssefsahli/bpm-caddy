@@ -2277,6 +2277,11 @@ struct Session {
     /// the file's own rows, so both are answered when those rows change
     /// rather than on every frame that paints them.
     bio_findings: Vec<crate::biology::Finding>,
+    /// Ce que la fonction rénale fait à l'ordonnance ouverte, et le
+    /// chiffre qui l'a dit. Calculé quand le dossier change, jamais par
+    /// image : chaque ligne est un `format!`.
+    renal: Vec<crate::renal::Finding>,
+    renal_dfg: Option<f64>,
     /// What the file's ordonnance asks to have measured, and how long
     /// ago it was. Computed with the findings, from the same two lists.
     surveillance: Vec<crate::surveillance::Due>,
@@ -3023,6 +3028,8 @@ impl Session {
             bio_edit_base: (0.0, String::new()),
             bio_focus: None,
             bio_findings: Vec::new(),
+            renal: Vec::new(),
+            renal_dfg: None,
             surveillance: Vec::new(),
             bio_side_tab: 0,
             vacc_due: Vec::new(),
@@ -5334,6 +5341,19 @@ impl Session {
         // but which of them has not been asked for in too long.
         let terms = ordonnance_terms(&self.patient_treats);
         self.surveillance = crate::surveillance::due(&terms, &readings, &self.today);
+        // Et la troisième question, celle qu'on pose vraiment au
+        // comptoir : ce dossier porte un DFG à 28, **que devient chaque
+        // ligne de son ordonnance ?** La clairance la plus récente, et
+        // non la plus basse jamais vue : c'est l'état du rein
+        // aujourd'hui qui décide, et une valeur d'il y a trois ans
+        // n'est pas celle-là.
+        let dfg = readings
+            .iter()
+            .filter(|r| r.code.eq_ignore_ascii_case("DFG") && !r.date.trim().is_empty())
+            .max_by(|a, b| a.date.cmp(b.date))
+            .map(|r| r.value);
+        self.renal = crate::renal::read(&terms, dfg);
+        self.renal_dfg = dfg;
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -8336,7 +8356,7 @@ impl App {
                         // panel on the second reading: what the
                         // ordonnance asks to have measured, rather than
                         // what the values already there say.
-                        Ok(v @ ("vaccins" | "bio" | "watch")) => {
+                        Ok(v @ ("vaccins" | "bio" | "watch" | "rein")) => {
                             let pick = session
                                 .patients
                                 .iter()
@@ -8351,7 +8371,11 @@ impl App {
                             } else {
                                 PatientTab::Bio
                             };
-                            session.bio_side_tab = usize::from(v == "watch");
+                            session.bio_side_tab = match v {
+                                "watch" => 1,
+                                "rein" => 2,
+                                _ => 0,
+                            };
                         }
                         Ok("drug_card") => {
                             if let Ok(list) = session.db.drugs() {
@@ -12241,26 +12265,41 @@ impl App {
                 egui::Rect::from_min_max(egui::pos2(side.right() - trend_w, side.top()), side.max),
             )
         };
-        // Two readings of the same file share one pane behind a strip:
-        // what the values say about the treatments, and what the
-        // treatments ask to have measured. A fourth panel would have
-        // left each of them three lines.
+        // **Trois lectures du même dossier** derrière une bande
+        // d'onglets, et non trois panneaux : à trois, chacun aurait eu
+        // trois lignes. Ce que les valeurs disent des traitements, ce
+        // que les traitements demandent qu'on mesure, et — la question
+        // qu'on pose vraiment — ce que la clairance d'aujourd'hui fait
+        // à chaque ligne de l'ordonnance.
         let strip = motif::split_rows(reading, &[motif::tab_strip_height(ui), 0.0], 2.0);
         motif::inside(ui, strip[0], |ui| {
+            // L'onglet du rein porte son compte : c'est le seul des
+            // trois dont le nombre décide qu'on l'ouvre.
+            // Le compte est celui des lignes qui **concluent** : sans
+            // clairance au dossier, l'onglet ne promet pas des
+            // conduites qu'il n'a pas. Ce qu'il a dans ce cas-là, c'est
+            // une question, et elle se lit en l'ouvrant.
+            let decided = session.renal.iter().filter(|f| f.decided()).count();
+            let renal = if decided == 0 {
+                tr("renal_tab").to_owned()
+            } else {
+                format!("{} ({decided})", tr("renal_tab"))
+            };
             let tabs = [
                 motif::Tab::new(tr("bio_reading")),
                 motif::Tab::new(tr("watch_section")),
+                motif::Tab::new(&renal),
             ];
             if let Some(motif::TabAction::Select(i)) =
-                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(1))
+                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(2))
             {
-                session.bio_side_tab = i.min(1);
+                session.bio_side_tab = i.min(2);
             }
         });
-        if session.bio_side_tab == 0 {
-            Self::bio_reading_pane(ui, session, strip[1]);
-        } else {
-            Self::bio_watch_pane(ui, session, patient, strip[1], config);
+        match session.bio_side_tab {
+            0 => Self::bio_reading_pane(ui, session, strip[1]),
+            1 => Self::bio_watch_pane(ui, session, patient, strip[1], config),
+            _ => Self::bio_renal_pane(ui, session, strip[1]),
         }
         Self::bio_trend_pane(ui, session, trend);
     }
@@ -12272,6 +12311,104 @@ impl App {
     /// ceux qui n'y sont pas. Une règle de biologie ne peut rien dire
     /// d'un examen qu'on n'a pas fait, et c'est le trou que personne ne
     /// voit — un INR qui alerte est un INR qu'on a demandé.
+    /// Ce que la clairance d'aujourd'hui fait à chaque ligne de
+    /// l'ordonnance.
+    ///
+    /// Les deux autres panneaux lisent des chiffres et des dates ;
+    /// celui-ci met les deux moitiés l'une en face de l'autre. Le
+    /// pharmacien lisait le « rein » de la fiche d'un côté et le DFG du
+    /// laboratoire de l'autre, et rapprochait les deux de tête, ligne
+    /// par ligne, sur une ordonnance qui en compte huit.
+    ///
+    /// **Sans DFG au dossier, le panneau ne conclut pas** : il nomme ce
+    /// qui dépend du rein et dit que le chiffre manque. C'est
+    /// `renal::read` qui le garantit — il n'y a pas de place, dans le
+    /// type qu'il rend, pour écrire un verdict sans clairance.
+    fn bio_renal_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        use crate::renal::Level;
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("bio_renal")
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    // Le chiffre qui décide, en tête : une liste de
+                    // conduites sans la clairance qui les a produites
+                    // demande d'aller la chercher ailleurs pour la
+                    // croire.
+                    let pending = crate::renal::undecided(&session.renal);
+                    ui.label(
+                        egui::RichText::new(match session.renal_dfg {
+                            Some(v) => trf("renal_dfg", format!("{v:.0}")),
+                            // Sans chiffre, la ligne dit **combien** de
+                            // traitements attendent ce chiffre : « aucun
+                            // DFG » tout seul est une remarque, « aucun
+                            // DFG, et quatre lignes en dépendent » est
+                            // une prise de sang à demander.
+                            None if pending > 0 => trf("renal_no_dfg_n", pending),
+                            None => tr("renal_no_dfg").to_owned(),
+                        })
+                        .size(motif::pt(ui, 11.5))
+                        .color(if session.renal_dfg.is_some() {
+                            motif::text()
+                        } else {
+                            motif::alert()
+                        }),
+                    );
+                    ui.add_space(4.0);
+                    if session.renal.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("renal_nothing"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        );
+                        return;
+                    }
+                    for f in &session.renal {
+                        let ink = match f.level {
+                            Some(Level::Contraindicated) => motif::alert(),
+                            Some(Level::Reduce) => motif::emphasize(motif::text()),
+                            Some(Level::Watch) => motif::text(),
+                            // Sans verdict, l'encre éteinte : la ligne
+                            // dit qu'elle ne sait pas, et elle ne doit
+                            // pas se lire comme les autres.
+                            None => motif::text_dim(),
+                        };
+                        let head = match (f.level, f.below) {
+                            (Some(l), Some(b)) => {
+                                format!("{} — {} sous {b} mL/min", f.treatment, l.label())
+                            }
+                            _ => format!("{} — {}", f.treatment, tr("renal_unknown")),
+                        };
+                        ui.label(
+                            egui::RichText::new(head)
+                                .size(motif::pt(ui, 12.0))
+                                .color(ink),
+                        );
+                        ui.label(
+                            egui::RichText::new(f.conduct)
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text()),
+                        );
+                        ui.label(
+                            egui::RichText::new(f.source)
+                                .size(motif::pt(ui, 10.0))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add_space(6.0);
+                    }
+                    // **Le module propose, le prescripteur décide** —
+                    // écrit sur le panneau et pas seulement dans le
+                    // code, parce que c'est au comptoir qu'on lit.
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(tr("renal_footer"))
+                            .size(motif::pt(ui, 10.0))
+                            .color(motif::text_dim()),
+                    );
+                });
+        });
+    }
+
     fn bio_watch_pane(
         ui: &mut egui::Ui,
         session: &mut Session,

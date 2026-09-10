@@ -553,6 +553,41 @@ Deux règles valent partout :
   Les rythmes sont ceux des RCP et des recommandations usuelles ; c'est
   un aide-mémoire de comptoir, et l'application le dit.
 
+## Ce que la fonction rénale fait à une ordonnance
+
+- **Où** : `src/renal.rs`, `TABLE` : les mots qui désignent la molécule
+  ou la classe, un libellé, des **paliers** (un DFG, un niveau, une
+  conduite) et une source.
+- **La question qu'il pose** : la troisième de la série. `biology.rs`
+  répond à « ce chiffre, sous ce traitement, veut dire ceci » ;
+  `surveillance.rs` à « ce chiffre n'a pas été demandé depuis trop
+  longtemps » ; celui-ci à celle qu'on pose vraiment au comptoir —
+  **ce dossier porte un DFG à 28, que devient chaque ligne de son
+  ordonnance ?** Les deux moitiés existaient depuis longtemps, et
+  personne ne les mettait l'une en face de l'autre : le pharmacien
+  lisait le « rein » de la fiche d'un côté, le chiffre du laboratoire de
+  l'autre, et rapprochait de tête, ligne par ligne, sur une ordonnance
+  qui en compte huit.
+- **Quatre règles, un test chacune** : *sans DFG, pas de verdict* (le
+  module nomme ce qui dépend du rein et dit que le chiffre manque, et le
+  type est ce qui l'empêche de conclure — `level` vaut `None`) ; *le
+  palier atteint est le plus bas des paliers franchis* (lue à 28, une
+  molécule qui se réduit sous 60 et se contre-indique sous 30 est
+  contre-indiquée) ; *un seuil vient du RCP, jamais d'une
+  interpolation* ; *la conduite est celle du RCP, la décision est celle
+  du prescripteur* — et le panneau l'écrit en pied.
+- **Ajouter une molécule** : une entrée `Adaptation`. Deux tests la
+  tiennent : les paliers vont du plus haut au plus bas et ne se
+  répètent pas, la source est obligatoire, une conduite ne porte jamais
+  de dose en milligrammes — elle dépend aussi de l'indication, du poids
+  et de l'âge, et un chiffre écrit là se lirait comme une prescription.
+  Et **deux entrées ne peuvent pas réclamer le même mot** : si deux se
+  recouvrent, c'est un choix à faire dans la table, pas à laisser à
+  l'ordre de lecture.
+- **Ce qui ne s'y met pas** : une molécule dont le RCP dit « prudence »
+  sans chiffre. Une ligne sans seuil n'est pas une règle, et la fiche
+  dit déjà « prudence » dans sa prose.
+
 ## La conciliation médicamenteuse
 
 - **Où** : `src/conciliation.rs`. C'est le seul module « logique » qui ne

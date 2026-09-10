@@ -5,6 +5,42 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.179.0] - 2026-09-10
+
+### Added
+- **L'adaptation rénale, comme règle et non comme paragraphe.** La
+  biologie savait dire « ce chiffre, sous ce traitement, veut dire
+  ceci » ; la surveillance, « ce chiffre n'a pas été demandé depuis trop
+  longtemps ». Il manquait celle qu'on pose vraiment au comptoir :
+  **ce dossier porte un DFG à 28, que devient chaque ligne de son
+  ordonnance ?** Le pharmacien lisait le « rein » de la fiche d'un côté
+  et le chiffre du laboratoire de l'autre, et rapprochait les deux de
+  tête, ligne par ligne, sur une ordonnance qui en compte huit.
+
+  Un onglet « Rein » dans la biologie du dossier lit l'ordonnance contre
+  la clairance **la plus récente** — la plus récente et non la plus
+  basse jamais vue : c'est l'état du rein aujourd'hui qui décide.
+  Vingt-quatre molécules ou classes, chacune avec ses paliers et sa
+  source : metformine, les quatre AOD, les AINS, la nitrofurantoïne, la
+  colchicine, le méthotrexate, les anti-aldostérone, l'allopurinol, les
+  bisphosphonates, les gabapentinoïdes, le baclofène, la digoxine,
+  l'aciclovir, les fibrates, la rosuvastatine, le cotrimoxazole, la
+  morphine, le tramadol, l'aténolol et le sotalol, l'amoxicilline, le
+  lithium.
+
+  Quatre règles, un test chacune. **Sans DFG, pas de verdict** : le
+  panneau nomme ce qui dépend du rein et dit que le chiffre manque —
+  avec **combien** de traitements l'attendent, parce que « aucun DFG »
+  tout seul est une remarque là où « aucun DFG, et quatre lignes en
+  dépendent » est une prise de sang à demander. **Le palier atteint est
+  le plus bas des paliers franchis** : lue à 28, une molécule qui se
+  réduit sous 60 et se contre-indique sous 30 est contre-indiquée, et
+  non « à dose réduite ». **Un seuil vient du RCP, jamais d'une
+  interpolation** — le module ne calcule pas une dose à partir d'une
+  clairance. Et **la conduite est celle du RCP, la décision est celle du
+  prescripteur**, écrit en pied du panneau et pas seulement dans le
+  code.
+
 ## [0.178.0] - 2026-09-10
 
 ### Added

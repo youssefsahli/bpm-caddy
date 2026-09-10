@@ -40089,6 +40089,15 @@ mod tests {
                     ("Tahor", "20 mg le soir"),
                     ("Coversyl", "5 mg le matin"),
                     ("Lasilix", "40 mg le matin"),
+                    // La metformine est là pour l'onglet « Rein » : à
+                    // DFG 52, elle est le seul de ces cinq traitements
+                    // qui demande quelque chose, et sans elle le
+                    // panneau s'ouvre sur « rien à adapter » — ce qui
+                    // ne prouve pas qu'il sait lire. Elle est aussi
+                    // clinique : un hypertendu diabétique sous IEC et
+                    // diurétique est exactement l'ordonnance dont la
+                    // fonction rénale décide.
+                    ("Glucophage", "1000 mg matin et soir"),
                 ] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();

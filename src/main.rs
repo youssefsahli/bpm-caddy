@@ -24,6 +24,7 @@ mod ordonnancier;
 mod pdf;
 mod planning;
 mod release;
+mod renal;
 mod revue;
 mod scans;
 mod script;

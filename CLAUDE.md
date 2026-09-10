@@ -17,7 +17,25 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/entretien.rs` (what each thematic covers, printed on the fiche),
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
-  tested), `src/revue.rs` (what a set of treatments says about itself:
+  tested),
+  `src/renal.rs` (what renal function does to an ordonnance: a table of
+  molecules, each with **steps** — a DFG, a level, what the RCP says —
+  and a source. `biology.rs` answers « this figure, under this
+  treatment, means this » and `surveillance.rs` « this figure has not
+  been asked for in too long »; this one answers the question actually
+  asked at the counter — **this file has a DFG of 28, what becomes of
+  each line of its ordonnance?** Both halves existed and nothing put
+  them face to face. Four rules, one test each: **no DFG, no verdict**
+  (the module names what depends on the kidney and says the figure is
+  missing — `level` is an `Option`, and that is what stops it
+  concluding), **the step that speaks is the lowest one crossed** (read
+  at 28, a drug that halves under 60 and is contraindicated under 30 is
+  contraindicated — the first step in the list would say « reduce the
+  dose » of a drug to stop), **a threshold comes from the RCP, never
+  from an interpolation**, and **the conduct is the RCP's, the decision
+  is the prescriber's** — written on the panel, not only in the code.
+  Pure, tested, no clock),
+  `src/revue.rs` (what a set of treatments says about itself:
   doublons, associations, cascades — same shape, same discipline),
   `src/conciliation.rs` (the file's ordonnance against the one a patient
   brings back from hospital: reads a pasted list, matches each line to a
@@ -733,7 +751,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|base|codex|
+  vaccine_map|ordonnance|rein|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|ordonnancier|vigilance|destruction|scans|

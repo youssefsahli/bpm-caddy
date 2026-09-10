@@ -319,6 +319,13 @@ bio_trend_span = "Du {} ({}) au {} ({})"
 # L'autre panneau lit les chiffres qui sont là ; celui-ci nomme ceux qui
 # n'y sont pas.
 watch_section = "À surveiller"
+renal_tab = "Rein"
+renal_dfg = "DFG le plus récent : {} mL/min"
+renal_no_dfg = "Aucun DFG au dossier — rien ne peut être conclu."
+renal_no_dfg_n = "Aucun DFG au dossier, et {} traitement(s) en dépendent."
+renal_nothing = "Aucun traitement de cette ordonnance ne demande d'adaptation à la fonction rénale."
+renal_unknown = "dépend du rein, chiffre manquant"
+renal_footer = "Les seuils sont ceux des RCP et des recommandations citées. L'application les rapproche du dossier ; l'adaptation reste la décision du prescripteur."
 watch_empty = "Aucun des traitements du dossier ne demande de surveillance biologique programmée."
 watch_overdue = "À REFAIRE"
 watch_never = "NON RENSEIGNÉ"
