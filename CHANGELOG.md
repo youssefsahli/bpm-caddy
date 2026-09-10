@@ -5,6 +5,35 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.176.0] - 2026-09-10
+
+### Added
+- **Deux feuilles pour le planning.** *Planning de l'équipe* : la
+  semaine affichée, une ligne par personne, à punaiser en
+  arrière-boutique. *Relevé d'heures* : le mois d'une personne, jour par
+  jour, avec le total, l'écart au contrat quand il est écrit, et deux
+  cases de signature. Chacune a son modèle éditable dans Options ›
+  Modèles, comme tout ce qui s'imprime ici.
+
+  Le relevé porte en pied qu'il compte des **présences saisies à la main
+  et non un pointage** — il n'enregistre pas les heures d'arrivée et de
+  départ réelles, et ne porte ni majoration, ni heure supplémentaire, ni
+  décompte de convention collective. C'est la phrase la plus importante
+  de la feuille : sans elle, un papier imprimé par un logiciel se lit
+  comme une mesure, et ce n'en est pas une.
+- **La semaine et le mois disent qui tient le comptoir.** Sous chaque
+  jour de la semaine, les initiales des présents et le total d'heures —
+  en rouge s'il reste un creux pendant l'ouverture. Le mois porte les
+  heures du jour en second chiffre quand la case est assez haute, et le
+  numéro du jour passe en rouge quand il reste un creux, ce qui, lui, ne
+  coûte pas un pixel et se voit à toutes les tailles.
+
+  Et la règle qui va avec : **un jour dont personne n'a rien saisi n'est
+  pas un creux.** Le rouge dit « quelqu'un est prévu, et il manque quand
+  même du monde », jamais « rien n'est écrit ». Une officine qui déclare
+  ses horaires avant d'avoir saisi son premier planning ne voit pas son
+  mois entier en rouge.
+
 ## [0.175.0] - 2026-09-10
 
 ### Added

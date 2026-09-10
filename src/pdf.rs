@@ -3540,6 +3540,18 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_CAISSES_TEMPLATE,
     },
     Doc {
+        key: "planning",
+        label: "tpl_target_planning",
+        markers: MARKERS_PLANNING,
+        default: DEFAULT_PLANNING_TEMPLATE,
+    },
+    Doc {
+        key: "heures",
+        label: "tpl_target_heures",
+        markers: MARKERS_HEURES,
+        default: DEFAULT_HEURES_TEMPLATE,
+    },
+    Doc {
         key: "etiquettes",
         label: "tpl_target_etiquettes",
         markers: MARKERS_ETIQUETTES,
@@ -4025,6 +4037,112 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 true,
             )
         }
+        // Le planning : une semaine où une personne fait une garde,
+        // une autre une absence, et une troisième un poste dont
+        // personne n'a noté la fin — les trois cas que la feuille doit
+        // savoir écrire, et jamais une grille pleine d'horaires
+        // identiques qui ne prouverait rien.
+        "planning" => planning_values(
+            &["2026-09-07".to_owned(), "2026-09-13".to_owned()],
+            &[
+                "Lun 07".to_owned(),
+                "Mar 08".to_owned(),
+                "Mer 09".to_owned(),
+                "Jeu 10".to_owned(),
+                "Ven 11".to_owned(),
+                "Sam 12".to_owned(),
+                "Dim 13".to_owned(),
+            ],
+            &[
+                (
+                    "CL".to_owned(),
+                    vec![
+                        "9 h–19 h".to_owned(),
+                        "9 h–19 h".to_owned(),
+                        "9 h–12 h 30".to_owned(),
+                        "Formation".to_owned(),
+                        "9 h–19 h".to_owned(),
+                        String::new(),
+                        String::new(),
+                    ],
+                    "31 h 30 / 35 h 00".to_owned(),
+                ),
+                (
+                    "YS".to_owned(),
+                    vec![
+                        "14 h–19 h 30".to_owned(),
+                        String::new(),
+                        "20 h–26 h".to_owned(),
+                        "14 h–19 h 30".to_owned(),
+                        "14 h–19 h 30".to_owned(),
+                        "9 h–12 h 30".to_owned(),
+                        String::new(),
+                    ],
+                    "26 h 00 / 35 h 00".to_owned(),
+                ),
+                (
+                    "MB".to_owned(),
+                    vec![
+                        String::new(),
+                        "9 h–13 h".to_owned(),
+                        String::new(),
+                        "9 h–…".to_owned(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    ],
+                    "4 h 00 +1".to_owned(),
+                ),
+            ],
+            "61 h 30",
+            &pharmacy.name,
+        ),
+        // Le relevé : un mois qui porte une absence, une garde de nuit
+        // et un jour sans fin écrite.
+        "heures" => hours_values(
+            "Claire Leroy (CL)",
+            "septembre 2026",
+            &[
+                HoursRow {
+                    day: "lundi 7".to_owned(),
+                    hours: "9 h–19 h".to_owned(),
+                    pause: "1 h 30".to_owned(),
+                    total: "8 h 30".to_owned(),
+                    kind: "Ouverture".to_owned(),
+                },
+                HoursRow {
+                    day: "mardi 8".to_owned(),
+                    hours: "9 h–19 h".to_owned(),
+                    pause: "1 h 30".to_owned(),
+                    total: "8 h 30".to_owned(),
+                    kind: "Journée".to_owned(),
+                },
+                HoursRow {
+                    day: "mercredi 9".to_owned(),
+                    hours: "20 h–2 h".to_owned(),
+                    pause: String::new(),
+                    total: "6 h 00".to_owned(),
+                    kind: "Garde".to_owned(),
+                },
+                HoursRow {
+                    day: "jeudi 10".to_owned(),
+                    hours: "—".to_owned(),
+                    pause: String::new(),
+                    total: "—".to_owned(),
+                    kind: "Formation".to_owned(),
+                },
+                HoursRow {
+                    day: "vendredi 11".to_owned(),
+                    hours: "9 h–…".to_owned(),
+                    pause: String::new(),
+                    total: "—".to_owned(),
+                    kind: "Journée".to_owned(),
+                },
+            ],
+            "23 h 00",
+            Some("35h00"),
+            &pharmacy.name,
+        ),
         "etiquettes" => label_sheet_values(
             &LabelSheet {
                 patient: &patient,
@@ -4485,6 +4603,208 @@ pub fn open_caisse_history(
             &caisse_history_values(rows, period, summary, &pharmacy.name, want_expected),
         ),
         "historique_caisse",
+    )
+}
+
+const MARKERS_PLANNING: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PERIOD}}",
+    "{{HEADS}}",
+    "{{ROWS}}",
+    "{{TOTAL}}",
+];
+
+/// La semaine affichée, une ligne par personne : la feuille qu'on
+/// punaise en arrière-boutique.
+const DEFAULT_PLANNING_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.2cm)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Planning de l'équipe]]
+#v(1mm)
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{PERIOD}}]]
+#v(4mm)
+
+#table(columns: (auto, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, auto), inset: 4pt, stroke: 0.4pt,
+  align: (left, left, left, left, left, left, left, left, right),
+  {{HEADS}}
+{{ROWS}})
+
+#v(3mm)
+#text(9pt)[Total de la semaine : *{{TOTAL}}*]
+
+#v(3mm)
+#text(8pt, style: "italic")[Un poste sans heure de fin est écrit « — » : ce n'est pas un poste de zéro heure. Une garde qui franchit minuit est comptée en entier au jour qui la commence.]
+"##;
+
+const MARKERS_HEURES: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{WHO}}",
+    "{{PERIOD}}",
+    "{{ROWS}}",
+    "{{TOTAL}}",
+    "{{CONTRACT}}",
+];
+
+/// Le mois d'une personne, jour par jour : la feuille qu'on donne au
+/// comptable.
+///
+/// **Elle porte en pied qu'elle compte des présences saisies à la main
+/// et non un pointage.** C'est la phrase la plus importante du modèle :
+/// sans elle, une feuille imprimée par un logiciel se lit comme une
+/// mesure, et ce n'en est pas une.
+const DEFAULT_HEURES_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.4cm)
+#set text(size: 9pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[Relevé d'heures]]
+#v(1mm)
+#align(center)[#text(11pt, weight: "bold")[{{WHO}}]]
+#align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{PERIOD}}]]
+#v(4mm)
+
+#table(columns: (auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.4pt,
+  align: (left, left, right, right, left),
+  [*Jour*], [*Horaire*], [*Pause*], [*Heures*], [*Nature*],
+{{ROWS}})
+
+#v(4mm)
+#block(width: 100%, stroke: 0.4pt, inset: 6pt)[
+  #text(weight: "bold")[Total du mois : {{TOTAL}}]   {{CONTRACT}}
+]
+
+#v(6mm)
+#grid(columns: (1fr, 1fr), gutter: 8mm,
+  [Signature du salarié \ #v(12mm)],
+  [Signature de l'employeur \ #v(12mm)],
+)
+
+#v(3mm)
+#text(8pt, style: "italic")[Ce relevé compte des présences saisies à la main dans le planning de l'officine. Ce n'est pas un pointage : il n'enregistre pas les heures d'arrivée et de départ réelles. Il ne porte ni majoration, ni heure supplémentaire, ni décompte de convention collective.]
+"##;
+
+/// Une ligne du relevé d'heures : un jour, ce qu'il portait.
+pub struct HoursRow {
+    /// Déjà en français.
+    pub day: String,
+    /// « 9 h–19 h », ou « — ».
+    pub hours: String,
+    /// « 1 h 30 », ou vide.
+    pub pause: String,
+    /// « 8 h 30 », ou « — » quand personne n'a noté la fin.
+    pub total: String,
+    pub kind: String,
+}
+
+fn planning_values(
+    week: &[String],
+    heads: &[String],
+    rows: &[(String, Vec<String>, String)],
+    total: &str,
+    pharmacy: &str,
+) -> Vec<(&'static str, String)> {
+    let period = match (week.first(), week.last()) {
+        (Some(a), Some(b)) => format!("semaine du {a} au {b}"),
+        _ => String::new(),
+    };
+    // Les valeurs sont posées en littéraux Typst (`#"…"`), comme
+    // partout ici : une initiale contenant du balisage ne peut ni
+    // casser la compilation ni restyler la feuille.
+    let mut head = String::from("[*Personne*], ");
+    for h in heads {
+        head.push_str(&format!("[*#{}*], ", typst_str(h)));
+    }
+    head.push_str("[*Total*],");
+    let mut body = String::new();
+    for (who, days, total) in rows {
+        body.push_str(&format!("  [*#{}*], ", typst_str(who)));
+        for d in days {
+            // Une case vide reste une case : la table doit garder ses
+            // colonnes, sans quoi la ligne suivante glisse d'un jour.
+            body.push_str(&format!("[#{}], ", typst_str(d)));
+        }
+        body.push_str(&format!("[#{}],\n", typst_str(total)));
+    }
+    vec![
+        ("{{PHARMACY_NAME}}", format!("#{}", typst_str(pharmacy))),
+        ("{{PERIOD}}", format!("#{}", typst_str(&period))),
+        ("{{HEADS}}", head),
+        ("{{ROWS}}", body),
+        ("{{TOTAL}}", format!("#{}", typst_str(total))),
+    ]
+}
+
+fn hours_values(
+    who: &str,
+    period: &str,
+    rows: &[HoursRow],
+    total: &str,
+    contract: Option<&str>,
+    pharmacy: &str,
+) -> Vec<(&'static str, String)> {
+    let mut body = String::new();
+    for r in rows {
+        body.push_str(&format!(
+            "  [#{}], [#{}], [#{}], [#{}], [#{}],\n",
+            typst_str(&r.day),
+            typst_str(&r.hours),
+            typst_str(&r.pause),
+            typst_str(&r.total),
+            typst_str(&r.kind),
+        ));
+    }
+    vec![
+        ("{{PHARMACY_NAME}}", format!("#{}", typst_str(pharmacy))),
+        ("{{WHO}}", format!("#{}", typst_str(who))),
+        ("{{PERIOD}}", format!("#{}", typst_str(period))),
+        ("{{ROWS}}", body),
+        ("{{TOTAL}}", format!("#{}", typst_str(total))),
+        // **Sans contrat écrit, pas d'écart** — et la ligne dit
+        // pourquoi elle est vide plutôt que de rester muette.
+        (
+            "{{CONTRACT}}",
+            contract.map_or_else(
+                || "Aucun horaire contractuel n'est déclaré pour cette personne.".to_owned(),
+                |c| format!("Horaire contractuel : #{}", typst_str(c)),
+            ),
+        ),
+    ]
+}
+
+/// La semaine affichée, à punaiser en arrière-boutique.
+pub fn open_planning(
+    week: &[String],
+    heads: &[String],
+    rows: &[(String, Vec<String>, String)],
+    total: &str,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("planning", template_path),
+            &planning_values(week, heads, rows, total, &pharmacy.name),
+        ),
+        "planning",
+    )
+}
+
+/// Le mois d'une personne, pour le comptable.
+pub fn open_hours(
+    who: &str,
+    period: &str,
+    rows: &[HoursRow],
+    total: &str,
+    contract: Option<&str>,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("heures", template_path),
+            &hours_values(who, period, rows, total, contract, &pharmacy.name),
+        ),
+        "heures",
     )
 }
 

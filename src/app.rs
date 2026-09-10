@@ -2485,6 +2485,11 @@ struct Session {
     /// The shift the planning has selected, if any — what « Modifier »
     /// and « Supprimer » act on.
     shift_pick: Option<i64>,
+    /// A print asked for in the planning's row and carried out by the
+    /// grid, which is the only place holding what goes on the page.
+    /// Cleared as soon as it is done.
+    planning_print: bool,
+    planning_print_hours: bool,
     /// The team's shifts for the week on screen, patterns unfolded and
     /// exceptions applied.
     shifts: Vec<db::PlannedShift>,
@@ -3088,6 +3093,8 @@ impl Session {
             agenda_band_h: 0.0,
             shift_form: ShiftForm::default(),
             shift_pick: None,
+            planning_print: false,
+            planning_print_hours: false,
             shifts: Vec::new(),
             shifts_week: None,
             drug_tech_open: true,
@@ -4844,12 +4851,23 @@ impl Session {
         // jour, et ce jour n'est pas toujours dans la semaine que la
         // grille montre. Deux clés séparées se seraient écrasées l'une
         // l'autre à chaque changement de mode.
-        let (Some(first), Some(last)) = (
+        let (Some(mut first), Some(mut last)) = (
             self.agenda_week.first().cloned(),
             self.agenda_week.last().cloned(),
         ) else {
             return;
         };
+        // La grille du mois porte elle aussi les heures de chaque jour :
+        // la plage l'englobe quand c'est elle qui est à l'écran.
+        if self.agenda_month {
+            if let (Some(a), Some(b)) = (
+                self.agenda_month_days.first(),
+                self.agenda_month_days.last(),
+            ) {
+                first = first.min(a.clone());
+                last = last.max(b.clone());
+            }
+        }
         let day = self.agenda_day.clone();
         let from = if day.is_empty() || day >= first {
             first
@@ -6663,6 +6681,34 @@ enum AgendaMode {
     /// Framed on the week, and it takes the ‹ › already in place rather
     /// than a second set of arrows for the same movement.
     Planning,
+}
+
+/// The days the agenda is showing, whichever mode it is in.
+fn scope_days(session: &Session) -> Vec<String> {
+    match session.agenda_mode {
+        AgendaMode::Day => vec![session.agenda_day.clone()],
+        AgendaMode::Week | AgendaMode::Planning => session.agenda_week.clone(),
+        AgendaMode::Month => session.agenda_month_days.clone(),
+    }
+}
+
+/// What the team's planning makes of one day: who is in, for how long,
+/// and whether the counter is left uncovered.
+///
+/// `minutes` is `None` when nobody is written down for that day — **un
+/// jour sans trame ne vaut pas zéro heure, il ne vaut rien** — and also
+/// when someone's shift has no end, because a partial sum read as a
+/// whole day is worse than no figure.
+#[derive(Default, Clone)]
+struct PlanningDigest {
+    /// The initials of who is at the counter, in the order the team is
+    /// declared, joined by a thin separator.
+    who: String,
+    minutes: Option<u16>,
+    /// The officine is open and nobody is written down. Only ever true
+    /// when opening hours are declared: **sans horaires écrits, il n'y
+    /// a pas de creux.**
+    uncovered: bool,
 }
 
 /// What the filter and the clashes make of one day of the agenda.
@@ -18855,6 +18901,91 @@ impl App {
         counts
     }
 
+    /// Every day of the shown period, digested once for the frame.
+    ///
+    /// One pass over the loaded shifts, then a little work per day.
+    /// The week and the month read this map rather than sweeping the
+    /// list per cell — forty-two cells is forty-two sweeps, sixty times
+    /// a second.
+    fn planning_digests(
+        session: &Session,
+        config: &Config,
+        days: &[String],
+    ) -> std::collections::HashMap<String, PlanningDigest> {
+        let mut by_day: std::collections::HashMap<&str, Vec<planning::Shift>> =
+            std::collections::HashMap::new();
+        for s in &session.shifts {
+            if let Some(sh) = Self::planned_shift(s) {
+                by_day.entry(s.day.as_str()).or_default().push(sh);
+            }
+        }
+        let order: Vec<&str> = config
+            .pharmacy
+            .operators
+            .iter()
+            .map(|o| o.initials.trim())
+            .collect();
+        let mut out = std::collections::HashMap::new();
+        for day in days {
+            // **Un jour dont personne n'a rien saisi n'est pas un
+            // creux.** Le rouge dit « quelqu'un est prévu, et il
+            // manque quand même du monde » — jamais « rien n'est
+            // écrit ». Sans cette borne, une officine qui déclare ses
+            // horaires avant d'avoir saisi son premier planning verrait
+            // son mois entier en rouge : la même erreur que d'annoncer
+            // un écart de caisse sans recette attendue, sous un autre
+            // habit.
+            let Some(shifts) = by_day.get(day.as_str()) else {
+                continue;
+            };
+            // L'ordre est celui de l'équipe déclarée, puis les autres :
+            // « CL YS » et « YS CL » sont la même journée, et une
+            // en-tête qui change d'ordre d'un jour à l'autre se relit à
+            // chaque fois.
+            let mut here: Vec<&str> = shifts
+                .iter()
+                .filter(|s| s.kind.at_counter())
+                .map(|s| s.operator.as_str())
+                .collect();
+            here.sort_by_key(|w| (order.iter().position(|o| o == w).unwrap_or(usize::MAX), *w));
+            here.dedup();
+            let mut minutes = 0_u16;
+            let mut known = false;
+            let mut partial = false;
+            for who in shifts
+                .iter()
+                .map(|s| s.operator.clone())
+                .collect::<std::collections::BTreeSet<_>>()
+            {
+                match planning::day_total(shifts, &who) {
+                    Some(m) => {
+                        minutes = minutes.saturating_add(m);
+                        known = true;
+                    }
+                    None => partial |= shifts.iter().any(|s| s.operator == who && s.kind.worked()),
+                }
+            }
+            let opening = planning::opening_slots(
+                config
+                    .pharmacy
+                    .horaires
+                    .iter()
+                    .map(|h| (h.jour.as_str(), h.de.as_str(), h.a.as_str())),
+                db::weekday_fr(day).unwrap_or(""),
+            );
+            out.insert(
+                day.clone(),
+                PlanningDigest {
+                    who: here.join(" "),
+                    // Un total partiel n'est pas le total du jour.
+                    minutes: (known && !partial).then_some(minutes),
+                    uncovered: !planning::gaps(shifts, &opening).is_empty(),
+                },
+            );
+        }
+        out
+    }
+
     /// Does this rendez-vous pass the agenda's filters — the place it
     /// is held in, and the kind of act it is?
     ///
@@ -19355,6 +19486,7 @@ impl App {
         session: &mut Session,
         events: &[db::Event],
         counts: &std::collections::HashMap<String, AgendaDayCount>,
+        digests: &std::collections::HashMap<String, PlanningDigest>,
         pick_day: &mut Option<String>,
         _open_id: &mut Option<i64>,
     ) {
@@ -19432,15 +19564,21 @@ impl App {
                     egui::Stroke::new(1.5_f32, motif::accent()),
                 );
             }
+            // **Le creux se voit à toutes les tailles.** Les heures du
+            // jour sont de la garniture et disparaissent sur une case
+            // courte ; le fait qu'il manque quelqu'un pendant
+            // l'ouverture n'en est pas, et il ne coûte pas un pixel :
+            // c'est le numéro du jour qui passe à l'encre d'alerte.
+            let uncovered = digests.get(date).is_some_and(|d| d.uncovered);
             ui.painter().text(
                 egui::pos2(cell.left() + 6.0, cell.top() + 10.0),
                 egui::Align2::LEFT_CENTER,
                 date.get(8..10).unwrap_or("").trim_start_matches('0'),
                 egui::FontId::proportional(motif::pt(ui, 12.0)),
-                if in_month {
-                    motif::text()
-                } else {
-                    motif::text_faint()
+                match (uncovered, in_month) {
+                    (true, true) => motif::alert(),
+                    (_, true) => motif::text(),
+                    _ => motif::text_faint(),
                 },
             );
             // One chip per act, then the other entries, clipped to the
@@ -19482,6 +19620,27 @@ impl App {
                 chip(motif::bg_dark(), ui.painter());
             }
             let count = counts.get(date).copied().unwrap_or_default();
+            // Les heures du jour, en second chiffre sous le numéro —
+            // et seulement quand la case est assez haute pour le
+            // porter : sur un mois serré, les pastilles d'actes sont
+            // le sujet.
+            if !compact {
+                if let Some(d) = digests.get(date) {
+                    if let Some(m) = d.minutes {
+                        ui.painter().text(
+                            egui::pos2(cell.right() - 6.0, cell.top() + 10.0),
+                            egui::Align2::RIGHT_CENTER,
+                            planning::hhmm(m),
+                            egui::FontId::proportional(motif::pt(ui, 9.5)),
+                            if d.uncovered {
+                                motif::alert()
+                            } else {
+                                motif::text_dim()
+                            },
+                        );
+                    }
+                }
+            }
             // Un jour qui porte un conflit prend un point rouge dans le
             // coin de sa case, pour qu'on sache où aller sans ouvrir
             // les trente.
@@ -19511,6 +19670,18 @@ impl App {
             if count.clashes > 0 {
                 hover.push('\n');
                 hover.push_str(tr("agenda_clash_tooltip"));
+            }
+            if let Some(d) = digests.get(date) {
+                if !d.who.is_empty() {
+                    hover.push_str(&trn(
+                        "planning_day_team",
+                        &[&d.who, &planning::hhmm_or_dash(d.minutes)],
+                    ));
+                }
+                if d.uncovered {
+                    hover.push('\n');
+                    hover.push_str(tr("planning_day_uncovered"));
+                }
             }
             if resp.on_hover_text(hover).clicked() {
                 *pick_day = Some(date.clone());
@@ -20001,17 +20172,14 @@ impl App {
         // period on screen. « 12 rendez-vous · 3 masqués · 1
         // chevauchement » is what stops a filtered day from being read
         // as an empty one — and an empty day is a day one books into.
+        let digests = Self::planning_digests(session, config, &scope_days(session));
         let counts = Self::agenda_counts(
             &session.appointments,
             &grid_events,
             session.agenda_places,
             &session.agenda_filter,
         );
-        let scope: Vec<String> = match session.agenda_mode {
-            AgendaMode::Day => vec![session.agenda_day.clone()],
-            AgendaMode::Week | AgendaMode::Planning => session.agenda_week.clone(),
-            AgendaMode::Month => session.agenda_month_days.clone(),
-        };
+        let scope = scope_days(session);
         let tally = scope.iter().filter_map(|d| counts.get(d)).fold(
             AgendaDayCount::default(),
             |mut acc, c| {
@@ -20411,6 +20579,7 @@ impl App {
                                     session,
                                     &grid_events,
                                     &counts,
+                                    &digests,
                                     &mut pick_day,
                                     &mut open_id,
                                 );
@@ -20423,6 +20592,7 @@ impl App {
                         session,
                         &grid_events,
                         &counts,
+                        &digests,
                         rect,
                         &mut pick_day,
                         &mut open_id,
@@ -20940,6 +21110,18 @@ impl App {
                         if motif::button(ui, tr("planning_add")).clicked() {
                             write = true;
                         }
+                        if motif::button(ui, tr("planning_print"))
+                            .on_hover_text(tr("planning_print_tooltip"))
+                            .clicked()
+                        {
+                            session.planning_print = true;
+                        }
+                        if motif::button(ui, tr("planning_hours"))
+                            .on_hover_text(tr("planning_hours_tooltip"))
+                            .clicked()
+                        {
+                            session.planning_print_hours = true;
+                        }
                         if let Some(id) = session.shift_pick {
                             // Corriger un poste, c'est retaper ses heures : le
                             // glissé du §4 viendra, l'erreur de frappe est de
@@ -21169,6 +21351,13 @@ impl App {
             });
             return;
         }
+        // Ce que la feuille imprimera : rempli pendant que la grille
+        // dessine, parce que c'est le seul endroit qui l'a. Imprimer
+        // depuis une seconde construction des mêmes lignes, c'est
+        // s'assurer qu'un jour l'écran et le papier ne diront plus la
+        // même chose.
+        let mut printable: Vec<(String, Vec<String>, String)> = Vec::new();
+        let mut grand_total = 0_u16;
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
@@ -21400,10 +21589,25 @@ impl App {
                             Self::grid_cell(
                                 ui,
                                 total_w,
-                                egui::RichText::new(total)
+                                egui::RichText::new(&total)
                                     .size(motif::pt(ui, 11.0))
                                     .color(motif::text()),
                             );
+                            printable.push((
+                                who.to_owned(),
+                                (0..week.len())
+                                    .map(|c| {
+                                        Self::planning_cell_text(
+                                            &parsed
+                                                .iter()
+                                                .filter(|(rr, cc, _, _)| *rr == r && *cc == c)
+                                                .map(|(_, _, sh, _)| sh)
+                                                .collect::<Vec<_>>(),
+                                        )
+                                    })
+                                    .collect(),
+                                total.clone(),
+                            ));
                             ui.end_row();
                         }
 
@@ -21452,6 +21656,7 @@ impl App {
                                 .color(motif::text_dim()),
                             );
                         }
+                        grand_total = grand;
                         Self::grid_cell(
                             ui,
                             total_w,
@@ -21467,6 +21672,148 @@ impl App {
                     });
             });
         });
+        if std::mem::take(&mut session.planning_print) {
+            let heads: Vec<String> = week
+                .iter()
+                .map(|d| {
+                    format!(
+                        "{} {}",
+                        db::weekday_fr(d).map(three_letters).unwrap_or_default(),
+                        d.get(8..10).unwrap_or("")
+                    )
+                })
+                .collect();
+            if let Err(e) = crate::pdf::open_planning(
+                &week,
+                &heads,
+                &printable,
+                &planning::hhmm(grand_total),
+                &config.pharmacy,
+                &config.doc_template_path("planning"),
+            ) {
+                session.error = Some(e);
+            }
+        }
+        if std::mem::take(&mut session.planning_print_hours) {
+            Self::print_hours_sheet(session, config);
+        }
+    }
+
+    /// The month of one person, day by day — the sheet the accountant
+    /// gets.
+    ///
+    /// Le mois est celui de la semaine affichée, et la personne celle
+    /// que le formulaire a choisie : deux choses déjà sous les yeux, et
+    /// aucun écran de plus pour les redemander.
+    fn print_hours_sheet(session: &mut Session, config: &Config) {
+        let who = session.shift_form.operator.trim().to_owned();
+        if who.is_empty() {
+            session.error = Some(tr("planning_hours_needs_a_person").to_owned());
+            return;
+        }
+        let Some(anchor) = session.agenda_week.first().cloned() else {
+            return;
+        };
+        let (Some(year), Some(month)) = (
+            anchor.get(0..4).and_then(|y| y.parse::<i64>().ok()),
+            anchor.get(5..7).and_then(|m| m.parse::<i64>().ok()),
+        ) else {
+            return;
+        };
+        // Le calendrier est écrit **une fois** : `date::end_of_month`
+        // le sait déjà, règle du siècle comprise, et une seconde
+        // arithmétique des mois ici finirait par ne plus dire la même
+        // chose que celle du registre.
+        let Some(last) = crate::date::end_of_month(year, month) else {
+            return;
+        };
+        let (from, to) = (
+            format!("{year}-{month:02}-01"),
+            format!("{year}-{month:02}-{last:02}"),
+        );
+        let shifts = match session.db.shifts_between(&from, &to) {
+            Ok(s) => s,
+            Err(e) => {
+                session.error = Some(e);
+                return;
+            }
+        };
+        let mut rows: Vec<crate::pdf::HoursRow> = Vec::new();
+        let mut total = 0_u16;
+        let mut unknown = 0_usize;
+        for day in 1..=last {
+            let date = format!("{year}-{month:02}-{day:02}");
+            let mine: Vec<planning::Shift> = shifts
+                .iter()
+                .filter(|s| s.day == date && s.operator.trim() == who)
+                .filter_map(Self::planned_shift)
+                .collect();
+            for sh in &mine {
+                // **Un jour sans poste n'a pas de ligne.** Il ne vaut
+                // pas zéro heure : il ne vaut rien, et une ligne à
+                // « 0 h 00 » en trente exemplaires ferait un relevé qui
+                // ment sur ce qu'il sait.
+                let hours = if sh.kind.is_absence() {
+                    "—".to_owned()
+                } else {
+                    match sh.end {
+                        Some(end) => format!("{}–{}", short_hour(sh.start), short_hour(end)),
+                        None => format!("{}–…", short_hour(sh.start)),
+                    }
+                };
+                match sh.minutes() {
+                    Some(m) => total = total.saturating_add(m),
+                    None if sh.kind.worked() => unknown += 1,
+                    None => {}
+                }
+                rows.push(crate::pdf::HoursRow {
+                    day: format!("{} {day}", db::weekday_fr(&date).unwrap_or("")),
+                    hours,
+                    pause: if sh.pause > 0 {
+                        planning::hhmm(sh.pause)
+                    } else {
+                        String::new()
+                    },
+                    total: planning::hhmm_or_dash(sh.minutes()),
+                    kind: sh.kind.label().to_owned(),
+                });
+            }
+        }
+        let period = trn(
+            "planning_hours_period",
+            &[&db::month_name_fr(&format!("{year}-{month:02}")), &year],
+        );
+        // Le nombre de postes sans durée est dit, jamais tu : un total
+        // seul se lirait comme le mois entier.
+        let total = if unknown > 0 {
+            format!("{} (+{unknown} sans fin écrite)", planning::hhmm(total))
+        } else {
+            planning::hhmm(total)
+        };
+        let contract = config
+            .pharmacy
+            .operators
+            .iter()
+            .find(|o| o.initials.trim() == who)
+            .map(|o| o.heures_semaine.trim())
+            .filter(|c| !c.is_empty());
+        let label = config
+            .pharmacy
+            .operators
+            .iter()
+            .find(|o| o.initials.trim() == who)
+            .map_or_else(|| who.clone(), crate::config::Operator::label);
+        if let Err(e) = crate::pdf::open_hours(
+            &label,
+            &period,
+            &rows,
+            &total,
+            contract,
+            &config.pharmacy,
+            &config.doc_template_path("heures"),
+        ) {
+            session.error = Some(e);
+        }
     }
 
     /// What one cell of the planning says: the hours, or the absence
@@ -21525,11 +21872,13 @@ impl App {
     /// The week grid: Mon..Sun as columns of coloured blocks, filling
     /// `rect`. Clicking a block opens the patient, clicking a column
     /// header details that day.
+    #[allow(clippy::too_many_arguments)]
     fn agenda_week_grid(
         ui: &mut egui::Ui,
         session: &mut Session,
         grid_events: &[db::Event],
         counts: &std::collections::HashMap<String, AgendaDayCount>,
+        digests: &std::collections::HashMap<String, PlanningDigest>,
         rect: egui::Rect,
         pick_day: &mut Option<String>,
         open_id: &mut Option<i64>,
@@ -21596,6 +21945,43 @@ impl App {
                         motif::text()
                     },
                 );
+                // Qui est là, et pour combien d'heures : l'en-tête du
+                // jour le dit, sans quoi il faut ouvrir le planning
+                // pour répondre à « qui tient le comptoir jeudi ? ».
+                //
+                // **Et c'est de la garniture** : sur une colonne courte
+                // elle disparaît plutôt que de manger une rangée de
+                // rendez-vous, qui sont le sujet. La ligne prise est
+                // ajoutée à ce que le reste de la colonne décale, jamais
+                // peinte par-dessus.
+                let digest = digests.get(date).map(|d| match d.minutes {
+                    Some(m) if !d.who.is_empty() => {
+                        (format!("{} · {}", d.who, planning::hhmm(m)), d.uncovered)
+                    }
+                    Some(m) => (planning::hhmm(m), d.uncovered),
+                    None => (d.who.clone(), d.uncovered),
+                });
+                let digest = digest.filter(|(line, _)| !line.is_empty());
+                let digest_h = if digest.is_some() && col.height() >= 150.0 {
+                    13.0
+                } else {
+                    0.0
+                };
+                if digest_h > 0.0 {
+                    if let Some((line, red)) = &digest {
+                        ui.painter().text(
+                            egui::pos2(col.center().x, col.top() + 26.0),
+                            egui::Align2::CENTER_CENTER,
+                            elide(ui, line, col.width() - 8.0, 10.0),
+                            egui::FontId::proportional(motif::pt(ui, 10.0)),
+                            if *red {
+                                motif::alert()
+                            } else {
+                                motif::text_dim()
+                            },
+                        );
+                    }
+                }
                 let count = counts.get(date).copied().unwrap_or_default();
                 // Une pastille rouge dans l'en-tête du jour qui porte un
                 // chevauchement : on sait où aller sans ouvrir les sept.
@@ -21620,8 +22006,8 @@ impl App {
                         .count()
                         + grid_events.iter().filter(|e| e.day == *date).count();
                     let bar = egui::Rect::from_min_max(
-                        egui::pos2(col.left() + 3.0, col.top() + 21.0),
-                        egui::pos2(col.right() - 3.0, col.top() + 24.0),
+                        egui::pos2(col.left() + 3.0, col.top() + 21.0 + digest_h),
+                        egui::pos2(col.right() - 3.0, col.top() + 24.0 + digest_h),
                     );
                     ui.painter()
                         .rect_filled(bar, 0.0, motif::bg_dark().gamma_multiply(0.35));
@@ -21637,10 +22023,13 @@ impl App {
                     .iter()
                     .filter(|r| r.date == *date)
                     .collect();
-                let max_blocks = ((col.height() - 32.0) / 24.0) as usize;
+                let max_blocks = ((col.height() - 32.0 - digest_h) / 24.0).max(0.0) as usize;
                 for (bi, rdv) in day_rdvs.iter().take(max_blocks).enumerate() {
                     let block = egui::Rect::from_min_size(
-                        egui::pos2(col.left() + 3.0, col.top() + 30.0 + bi as f32 * 24.0),
+                        egui::pos2(
+                            col.left() + 3.0,
+                            col.top() + 30.0 + digest_h + bi as f32 * 24.0,
+                        ),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
                     // La colonne du jour garde ses entrées dans l'ordre,
@@ -21705,7 +22094,7 @@ impl App {
                     let block = egui::Rect::from_min_size(
                         egui::pos2(
                             col.left() + 3.0,
-                            col.top() + 30.0 + (used + ei) as f32 * 24.0,
+                            col.top() + 30.0 + digest_h + (used + ei) as f32 * 24.0,
                         ),
                         egui::vec2(col.width() - 6.0, 21.0),
                     );
@@ -21729,9 +22118,26 @@ impl App {
                 }
                 // Clicking the column header details that day below.
                 let head = egui::Rect::from_min_size(col.min, egui::vec2(col.width(), 24.0));
+                // La ligne d'équipe est élidée dans une colonne de
+                // semaine : le survol la rend entière, sinon
+                // « CL YS · 14 h… » est un chiffre qu'on ne peut plus
+                // lire nulle part.
+                let mut head_hover = tr("agenda_pick_day").to_owned();
+                if let Some(d) = digests.get(date) {
+                    if !d.who.is_empty() {
+                        head_hover.push_str(&trn(
+                            "planning_day_team",
+                            &[&d.who, &planning::hhmm_or_dash(d.minutes)],
+                        ));
+                    }
+                    if d.uncovered {
+                        head_hover.push('\n');
+                        head_hover.push_str(tr("planning_day_uncovered"));
+                    }
+                }
                 if ui
                     .interact(head, ui.id().with(("wkday", i)), egui::Sense::click())
-                    .on_hover_text(tr("agenda_pick_day"))
+                    .on_hover_text(head_hover)
                     .clicked()
                 {
                     *pick_day = Some(date.clone());
