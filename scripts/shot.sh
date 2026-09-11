@@ -52,11 +52,16 @@ operators = [
 # Les horaires d'ouverture : sans eux, aucun creux ne se dessine, et la
 # bande de couverture du plan de journée n'aurait pas de rouge à montrer.
 horaires = [
-  { jour = "lundi", de = "09:00", a = "19:30" },
-  { jour = "mardi", de = "09:00", a = "19:30" },
-  { jour = "mercredi", de = "09:00", a = "19:30" },
-  { jour = "jeudi", de = "09:00", a = "19:30" },
-  { jour = "vendredi", de = "09:00", a = "19:30" },
+  { jour = "lundi", de = "09:00", a = "12:30" },
+  { jour = "lundi", de = "14:00", a = "19:30" },
+  { jour = "mardi", de = "09:00", a = "12:30" },
+  { jour = "mardi", de = "14:00", a = "19:30" },
+  { jour = "mercredi", de = "09:00", a = "12:30" },
+  { jour = "mercredi", de = "14:00", a = "19:30" },
+  { jour = "jeudi", de = "09:00", a = "12:30" },
+  { jour = "jeudi", de = "14:00", a = "19:30" },
+  { jour = "vendredi", de = "09:00", a = "12:30" },
+  { jour = "vendredi", de = "14:00", a = "19:30" },
   { jour = "samedi", de = "09:00", a = "12:30" },
 ]
 EOF

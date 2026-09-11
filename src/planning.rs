@@ -546,6 +546,15 @@ pub fn week_totals(days: &[(String, Vec<Shift>)]) -> Vec<WeekTotal> {
 /// Compte des têtes, pas des manques : la bande se dessine même sans
 /// horaires d'ouverture déclarés. Ce qui a besoin des horaires, c'est
 /// le rouge — voir [`gaps`].
+///
+/// **Une pause n'a pas d'heure**, et c'est la limite à connaître ici :
+/// [`Shift::pause`] est une durée, pas un créneau, si bien qu'un poste
+/// de 9 h à 19 h avec quatre-vingt-dix minutes de coupure compte au
+/// comptoir *toute* la journée. Une officine dont tout le monde déjeune
+/// de midi et demi à deux s'annoncerait donc tenue. La façon d'écrire
+/// une journée coupée est **deux postes** — 9 h – 12 h 30 puis 14 h –
+/// 19 h 30 —, que la grille sait montrer dans une case et que la
+/// fenêtre de trame sait poser : eux disent où est le trou.
 pub fn coverage(shifts: &[Shift], from: u16, to: u16, step: u16) -> Vec<u8> {
     if step == 0 || to <= from {
         return Vec::new();

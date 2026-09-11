@@ -1323,18 +1323,39 @@ fn frame_from_patterns(rows: &[db::NewShift]) -> FrameLoad {
             } else {
                 String::new()
             },
+            ..Default::default()
         };
         for page in targets {
             let Some(slot) = weeks[page].get_mut(usize::try_from(weekday - 1).unwrap_or(7)) else {
                 return FrameLoad::Illisible(rows.len());
             };
-            if slot.written() {
-                // Deux postes le même jour : la grille n'a qu'une rangée
-                // par jour, et en perdre un serait retirer des heures
-                // que personne n'a demandé de retirer.
-                return FrameLoad::Illisible(rows.len());
+            match (slot.written(), slot.split()) {
+                (false, _) => *slot = day.clone(),
+                // **Deux postes le même jour sont une journée coupée**,
+                // et la grille sait la montrer : le plus tôt tient la
+                // première moitié, quel que soit l'ordre où la base rend
+                // les deux lignes.
+                (true, false) if slot.kind == day.kind => {
+                    let (early, late) =
+                        if planning::parse_bound(&db::parse_hour(&day.from).unwrap_or_default())
+                            < planning::parse_bound(&db::parse_hour(&slot.from).unwrap_or_default())
+                        {
+                            (day.clone(), slot.clone())
+                        } else {
+                            (slot.clone(), day.clone())
+                        };
+                    *slot = FrameDay {
+                        from2: late.from,
+                        to2: late.to,
+                        ..early
+                    };
+                }
+                // Deux natures différentes le même jour, ou un
+                // troisième poste : la grille ne les porte pas, et
+                // **on ne perd pas ce qu'on ne sait pas montrer** — la
+                // nature de la seconde moitié serait tombée en silence.
+                _ => return FrameLoad::Illisible(rows.len()),
             }
-            *slot = day.clone();
         }
     }
     FrameLoad::Trame(pages[0], Box::new(weeks))
@@ -1345,16 +1366,53 @@ fn frame_from_patterns(rows: &[db::NewShift]) -> FrameLoad {
 ///
 /// `None` dès que l'heure de début ne se lit pas : il n'y a pas de
 /// poste, donc pas de durée, et surtout pas zéro.
-fn shift_of_frame_day(day: &FrameDay) -> Option<planning::Shift> {
-    let from = db::parse_hour(&day.from)?;
-    Some(planning::Shift {
-        id: 0,
-        operator: String::new(),
-        start: planning::parse_bound(&from)?,
-        end: planning::parse_bound(&App::shift_end(&day.from, &day.to)),
-        pause: day.pause.trim().parse().unwrap_or(0),
-        kind: day.kind.unwrap_or(planning::ShiftKind::Journee),
-    })
+fn shifts_of_frame_day(day: &FrameDay) -> Vec<planning::Shift> {
+    day.halves()
+        .into_iter()
+        .filter_map(|(from, to, pause)| {
+            let start = planning::parse_bound(&db::parse_hour(&from)?)?;
+            Some(planning::Shift {
+                id: 0,
+                operator: String::new(),
+                start,
+                end: planning::parse_bound(&App::shift_end(&from, &to)),
+                pause: pause.trim().parse().unwrap_or(0),
+                kind: day.kind.unwrap_or(planning::ShiftKind::Journee),
+            })
+        })
+        .collect()
+}
+
+/// Ce qu'une flèche fait dans une semaine de sept jours : rester dedans,
+/// ou la faire tourner et retomber de l'autre côté.
+///
+/// Pure, parce que c'est la **règle** et non le dessin : « sept pas à
+/// droite font une semaine, et rien ne se saute » se vérifie sans écran,
+/// et c'est elle qui garantit qu'on ne saute ni le dimanche ni le lundi
+/// en passant d'une semaine à la suivante.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum ArrowMove {
+    /// Rester dans la semaine affichée, sur cette case-ci.
+    To(usize),
+    /// Reculer d'une semaine, et prendre son dernier jour.
+    PrevWeek,
+    /// Avancer d'une semaine, et prendre son premier jour.
+    NextWeek,
+}
+
+/// `at` est le rang du jour choisi dans la semaine affichée, ou `None`
+/// quand il n'y est pas — la case choisie est restée sur une autre
+/// semaine. La flèche ramène alors à un bord plutôt que de ne rien
+/// faire : une touche qui ne fait rien laisse croire qu'elle n'existe
+/// pas.
+fn arrow_move(at: Option<usize>, last: usize, dx: i64) -> ArrowMove {
+    match (at, dx) {
+        (None, d) if d < 0 => ArrowMove::PrevWeek,
+        (None, _) => ArrowMove::NextWeek,
+        (Some(0), d) if d < 0 => ArrowMove::PrevWeek,
+        (Some(i), d) if i >= last && d > 0 => ArrowMove::NextWeek,
+        (Some(i), d) => ArrowMove::To(i.saturating_add_signed(isize::try_from(d).unwrap_or(0))),
+    }
 }
 
 /// L'en-tête d'une colonne de jour, dans la forme la plus riche qui
@@ -7456,6 +7514,18 @@ struct FrameDay {
     from: String,
     to: String,
     pause: String,
+    /// La seconde moitié d'une journée coupée : « 14 h – 19 h 30 » après
+    /// « 9 h – 12 h 30 ».
+    ///
+    /// **Deux postes, et non une pause.** Une pause n'a pas d'heure —
+    /// c'est une durée —, si bien que la bande de couverture compte la
+    /// personne au comptoir pendant sa coupure et n'y voit aucun creux :
+    /// une officine où tout le monde déjeune de midi et demi à deux
+    /// s'annonçait tenue. Deux postes disent *où* est le trou, et c'est
+    /// la forme que la grille de la semaine sait déjà montrer — « 9 h–
+    /// 12 h 30 · 14 h–19 h 30 » dans une case.
+    from2: String,
+    to2: String,
 }
 
 impl FrameDay {
@@ -7464,6 +7534,23 @@ impl FrameDay {
     /// obligatoire d'un poste, ici comme dans la rangée de saisie.
     fn written(&self) -> bool {
         db::parse_hour(&self.from).is_some()
+    }
+
+    /// La journée est-elle coupée — un second poste l'après-midi ?
+    fn split(&self) -> bool {
+        db::parse_hour(&self.from2).is_some()
+    }
+
+    /// Les deux moitiés, dans l'ordre où elles se lisent : la seconde
+    /// n'existe que si son heure de début se lit, et elle ne porte
+    /// jamais de pause — une coupure entre deux postes *est* le trou
+    /// entre eux.
+    fn halves(&self) -> Vec<(String, String, String)> {
+        let mut out = vec![(self.from.clone(), self.to.clone(), self.pause.clone())];
+        if self.split() {
+            out.push((self.from2.clone(), self.to2.clone(), String::new()));
+        }
+        out
     }
 }
 
@@ -21605,11 +21692,11 @@ impl App {
                 let week = session.agenda_week.clone();
                 let day = session.shift_form.day.clone();
                 let at = week.iter().position(|d| *d == day);
-                match (at, dx) {
-                    // Au bord, la semaine tourne et la case retombe de
-                    // l'autre côté : sept pas à droite font une semaine,
-                    // et rien ne se saute.
-                    (Some(0), -1) | (None, -1) => {
+                // Au bord, la semaine tourne et la case retombe de
+                // l'autre côté : la règle est dans `arrow_move`, qui est
+                // pure et tenue par un test.
+                match arrow_move(at, week.len().saturating_sub(1), dx) {
+                    ArrowMove::PrevWeek => {
                         session.agenda_offset -= 1;
                         session.agenda_week = session
                             .db
@@ -21617,7 +21704,7 @@ impl App {
                             .unwrap_or_default();
                         session.shift_form.day = session.agenda_week.last().cloned().unwrap_or(day);
                     }
-                    (Some(6), 1) | (None, 1) => {
+                    ArrowMove::NextWeek => {
                         session.agenda_offset += 1;
                         session.agenda_week = session
                             .db
@@ -21626,13 +21713,11 @@ impl App {
                         session.shift_form.day =
                             session.agenda_week.first().cloned().unwrap_or(day);
                     }
-                    (Some(i), _) => {
-                        let next = usize::try_from(i64::try_from(i).unwrap_or(0) + dx).unwrap_or(0);
-                        if let Some(d) = week.get(next) {
+                    ArrowMove::To(i) => {
+                        if let Some(d) = week.get(i) {
                             session.shift_form.day = d.clone();
                         }
                     }
-                    (None, _) => {}
                 }
                 session.load_shifts(false);
             }
@@ -23445,7 +23530,16 @@ impl App {
         });
         if let Some(day) = clicked {
             session.shift_form.day = day.clone();
-            session.shift_pick = None;
+            // **Cliquer une case du mois, c'est la choisir** — comme
+            // dans la semaine. Sans cela « Modifier » et « Supprimer »
+            // disparaissaient au moment même où l'on venait de désigner
+            // le jour sur lequel on voulait agir.
+            let picked = Self::picked_shift(session);
+            session.shift_pick = picked.as_ref().map(|s| s.id);
+            if let Some(s) = picked {
+                session.shift_form.kind = planning::ShiftKind::parse(&s.kind);
+                session.shift_form.cadence = planning::Cadence::parse(&s.cadence);
+            }
             *pick_day = Some(day);
         }
     }
@@ -24403,10 +24497,23 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                             if config.pharmacy.operators.is_empty() {
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut session.frame.operator)
-                                        .desired_width(chars_wide(ui, 6.0)),
-                                );
+                                // **Le champ libre se relit quand on en
+                                // sort**, jamais à chaque frappe : « C »
+                                // puis « CL » sont deux personnes qui
+                                // n'existent pas, et relire sur chacune
+                                // viderait la grille lettre après
+                                // lettre. Le menu, lui, ne rend que des
+                                // noms entiers.
+                                if ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut session.frame.operator)
+                                            .desired_width(chars_wide(ui, 6.0)),
+                                    )
+                                    .lost_focus()
+                                    && session.frame.loaded_for != session.frame.operator.trim()
+                                {
+                                    reload = true;
+                                }
                             } else {
                                 egui::ComboBox::from_id_salt("frame_who")
                                     .selected_text(session.frame.operator.clone())
@@ -24422,8 +24529,13 @@ impl App {
                             }
                             // Changer de personne, c'est ouvrir *sa*
                             // trame : la grille suit le menu plutôt que
-                            // de garder celle d'à côté.
-                            if session.frame.loaded_for != session.frame.operator.trim() {
+                            // de garder celle d'à côté. Le menu ne rend
+                            // que des noms entiers, donc la comparaison
+                            // suffit ; le champ libre, lui, attend
+                            // qu'on en sorte.
+                            if !config.pharmacy.operators.is_empty()
+                                && session.frame.loaded_for != session.frame.operator.trim()
+                            {
                                 reload = true;
                             }
                             let rhythm = session.frame.cadence;
@@ -24617,33 +24729,55 @@ impl App {
                                         egui::TextEdit::singleline(&mut day.pause).hint_text("45"),
                                     )
                                     .on_hover_text(tr("planning_pause_tooltip"));
+                                    // **La seconde moitié d'une journée
+                                    // coupée** — deux postes, pas une
+                                    // longue pause : une pause n'a pas
+                                    // d'heure, donc la couverture ne
+                                    // sait pas où est le trou.
+                                    ui.add_sized(
+                                        [hour_w, 24.0],
+                                        egui::TextEdit::singleline(&mut day.from2)
+                                            .hint_text(tr("frame_afternoon_from")),
+                                    )
+                                    .on_hover_text(tr("frame_split_tooltip"));
+                                    ui.add_sized(
+                                        [hour_w, 24.0],
+                                        egui::TextEdit::singleline(&mut day.to2)
+                                            .hint_text(tr("frame_afternoon_to")),
+                                    )
+                                    .on_hover_text(tr("frame_split_tooltip"));
                                     // **La durée s'écrit pendant qu'on
                                     // tape.** Un tableau d'heures qui ne
                                     // dit pas ce qu'il fait est un
                                     // tableau qu'on vérifie à la
                                     // calculette.
-                                    let shift = shift_of_frame_day(day);
-                                    match shift.as_ref().and_then(planning::Shift::minutes) {
-                                        Some(m) => total = total.saturating_add(m),
-                                        None if day.written()
-                                            && day
-                                                .kind
-                                                .unwrap_or(planning::ShiftKind::Journee)
-                                                .worked() =>
-                                        {
-                                            unknown += 1;
+                                    // La durée du jour, **les deux
+                                    // moitiés comprises** : une journée
+                                    // coupée ne vaut pas sa seule
+                                    // matinée.
+                                    let mut day_minutes = 0_u16;
+                                    let mut day_unknown = false;
+                                    for shift in shifts_of_frame_day(day) {
+                                        match shift.minutes() {
+                                            Some(m) => day_minutes = day_minutes.saturating_add(m),
+                                            None if shift.kind.worked() => day_unknown = true,
+                                            None => {}
                                         }
-                                        None => {}
+                                    }
+                                    if day.written() {
+                                        if day_unknown {
+                                            unknown += 1;
+                                        } else {
+                                            total = total.saturating_add(day_minutes);
+                                        }
                                     }
                                     Self::grid_cell(
                                         ui,
                                         chars_wide(ui, 9.0),
-                                        egui::RichText::new(if day.written() {
-                                            planning::hhmm_or_dash(
-                                                shift.as_ref().and_then(planning::Shift::minutes),
-                                            )
-                                        } else {
-                                            String::new()
+                                        egui::RichText::new(match (day.written(), day_unknown) {
+                                            (false, _) => String::new(),
+                                            (true, true) => "—".to_owned(),
+                                            (true, false) => planning::hhmm(day_minutes),
                                         })
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
@@ -24848,31 +24982,38 @@ impl App {
                 } else {
                     cadence
                 };
-                let (Some(start), Some(on)) = (
-                    db::parse_hour(&day.from),
-                    planning::in_week_of(&form.from, weekday),
-                ) else {
+                let Some(on) = planning::in_week_of(&form.from, weekday) else {
                     continue;
                 };
-                out.push(db::NewShift {
-                    operator: who.clone(),
-                    day: on,
-                    start_time: start,
-                    // « 20 h » → « 2 h » est une garde et non une faute
-                    // de frappe : la même lecture que la rangée de
-                    // saisie, par la même fonction.
-                    end_time: Self::shift_end(&day.from, &day.to),
-                    pause_minutes: day.pause.trim().parse().unwrap_or(0),
-                    kind: day
-                        .kind
-                        .unwrap_or(planning::ShiftKind::Journee)
-                        .as_str()
-                        .to_owned(),
-                    repeat_days: cadence.pas(),
-                    repeat_until: form.until.clone(),
-                    cadence: cadence.as_str().to_owned(),
-                    ..Default::default()
-                });
+                // **Une journée coupée est deux postes**, et non un
+                // poste à longue pause : une pause n'a pas d'heure, donc
+                // la couverture ne sait pas où est le trou. Les deux
+                // moitiés portent la même nature et le même rythme —
+                // c'est une journée, coupée.
+                for (from, to, pause) in day.halves() {
+                    let Some(start) = db::parse_hour(&from) else {
+                        continue;
+                    };
+                    out.push(db::NewShift {
+                        operator: who.clone(),
+                        day: on.clone(),
+                        start_time: start,
+                        // « 20 h » → « 2 h » est une garde et non une
+                        // faute de frappe : la même lecture que la
+                        // rangée de saisie, par la même fonction.
+                        end_time: Self::shift_end(&from, &to),
+                        pause_minutes: pause.trim().parse().unwrap_or(0),
+                        kind: day
+                            .kind
+                            .unwrap_or(planning::ShiftKind::Journee)
+                            .as_str()
+                            .to_owned(),
+                        repeat_days: cadence.pas(),
+                        repeat_until: form.until.clone(),
+                        cadence: cadence.as_str().to_owned(),
+                        ..Default::default()
+                    });
+                }
             }
         }
         out
@@ -43905,6 +44046,7 @@ mod tests {
             from: from.to_owned(),
             to: to.to_owned(),
             pause: "45".to_owned(),
+            ..Default::default()
         };
         let mut form = FrameForm {
             operator: " CL ".to_owned(),
@@ -43966,6 +44108,7 @@ mod tests {
             from: "20".to_owned(),
             to: "2".to_owned(),
             pause: String::new(),
+            ..Default::default()
         };
         let rows = App::frame_shifts(&form);
         assert_eq!(rows.len(), 1);
@@ -43975,6 +44118,55 @@ mod tests {
             ("20:00", "26:00")
         );
         assert_eq!(rows[0].kind, "GARDE");
+    }
+
+    /// **Sept pas à droite font une semaine, et rien ne se saute.**
+    ///
+    /// La règle du clavier dans le planning, isolée de tout écran : au
+    /// bord, la semaine tourne et la case retombe de l'autre côté. Un
+    /// pas qui resterait sur place ferait une touche morte ; un pas qui
+    /// tournerait la semaine *sans* retomber au bon jour sauterait le
+    /// dimanche ou le lundi, ce qui ne se voit qu'en comptant.
+    #[test]
+    fn seven_steps_to_the_right_make_a_week() {
+        use super::{arrow_move, ArrowMove};
+        // À l'intérieur, la flèche avance d'une case.
+        assert_eq!(arrow_move(Some(3), 6, 1), ArrowMove::To(4));
+        assert_eq!(arrow_move(Some(3), 6, -1), ArrowMove::To(2));
+        // Aux bords, elle tourne la semaine.
+        assert_eq!(arrow_move(Some(0), 6, -1), ArrowMove::PrevWeek);
+        assert_eq!(arrow_move(Some(6), 6, 1), ArrowMove::NextWeek);
+        // Mais seulement dans le sens qui sort : le dimanche recule
+        // encore, le lundi avance encore.
+        assert_eq!(arrow_move(Some(6), 6, -1), ArrowMove::To(5));
+        assert_eq!(arrow_move(Some(0), 6, 1), ArrowMove::To(1));
+        // **Une case restée sur une autre semaine ne fige pas la
+        // touche** : elle ramène à un bord, parce qu'une touche qui ne
+        // fait rien laisse croire qu'elle n'existe pas.
+        assert_eq!(arrow_move(None, 6, 1), ArrowMove::NextWeek);
+        assert_eq!(arrow_move(None, 6, -1), ArrowMove::PrevWeek);
+
+        // Et la propriété qui porte la règle : partant du lundi, sept
+        // pas à droite touchent chaque jour une fois et tombent sur le
+        // lundi suivant.
+        let mut at = 0_usize;
+        let mut weeks = 0_i32;
+        let mut walk = Vec::new();
+        for _ in 0..7 {
+            match arrow_move(Some(at), 6, 1) {
+                ArrowMove::To(i) => at = i,
+                ArrowMove::NextWeek => {
+                    weeks += 1;
+                    at = 0;
+                }
+                ArrowMove::PrevWeek => panic!("la flèche droite ne recule pas"),
+            }
+            walk.push((weeks, at));
+        }
+        assert_eq!(
+            walk,
+            [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (1, 0)]
+        );
     }
 
     /// **La trame se relit**, et ce qu'elle ne sait pas montrer, elle
@@ -44088,14 +44280,62 @@ mod tests {
         after.sort();
         assert_eq!(after, before, "relire puis reposer ne change rien");
 
+        // **Deux postes le même jour sont une journée coupée**, et la
+        // grille les porte : le plus tôt tient la première moitié, quel
+        // que soit l'ordre où la base rend les deux lignes.
+        for swapped in [false, true] {
+            let mut twice = [
+                row("2026-09-07", "HEBDO", "09:00", "12:30"),
+                row("2026-09-07", "HEBDO", "14:00", "19:30"),
+            ];
+            if swapped {
+                twice.swap(0, 1);
+            }
+            let FrameLoad::Trame(_, weeks) = frame_from_patterns(&twice) else {
+                panic!("une journée coupée doit se relire (permuté : {swapped})");
+            };
+            assert_eq!(weeks[0][0].from, "09:00");
+            assert_eq!(weeks[0][0].to, "12:30");
+            assert_eq!(weeks[0][0].from2, "14:00");
+            assert_eq!(weeks[0][0].to2, "19:30");
+            // Et elle se repose telle quelle : deux lignes, dans
+            // l'ordre des heures.
+            let form = super::FrameForm {
+                operator: "CL".to_owned(),
+                cadence: crate::planning::Cadence::Hebdomadaire,
+                from: "2026-09-07".to_owned(),
+                weeks: *weeks,
+                ..Default::default()
+            };
+            let back = App::frame_shifts(&form);
+            assert_eq!(back.len(), 2, "deux postes, pas un poste à longue pause");
+            assert_eq!(back[0].start_time, "09:00");
+            assert_eq!(back[0].end_time, "12:30");
+            assert_eq!(back[1].start_time, "14:00");
+            assert_eq!(back[1].end_time, "19:30");
+            // La seconde moitié ne porte pas de pause : la coupure
+            // entre deux postes *est* le trou entre eux.
+            assert_eq!(back[1].pause_minutes, 0);
+        }
+
         // **Ce que deux semaines de sept jours ne portent pas n'est pas
-        // approximé.** Deux postes le même jour : en perdre un serait
-        // retirer des heures que personne n'a demandé de retirer.
-        let twice = [
+        // approximé.** Deux natures différentes le même jour : la grille
+        // n'en montre qu'une, et la seconde tomberait en silence.
+        let two_kinds = [
             row("2026-09-07", "HEBDO", "09:00", "12:30"),
-            row("2026-09-07", "HEBDO", "14:00", "19:30"),
+            db::NewShift {
+                kind: "FERMETURE".to_owned(),
+                ..row("2026-09-07", "HEBDO", "14:00", "19:30")
+            },
         ];
-        assert_eq!(frame_from_patterns(&twice), FrameLoad::Illisible(2));
+        assert_eq!(frame_from_patterns(&two_kinds), FrameLoad::Illisible(2));
+        // Trois postes le même jour : il n'y a que deux moitiés.
+        let thrice = [
+            row("2026-09-07", "HEBDO", "09:00", "12:00"),
+            row("2026-09-07", "HEBDO", "13:00", "16:00"),
+            row("2026-09-07", "HEBDO", "17:00", "19:30"),
+        ];
+        assert_eq!(frame_from_patterns(&thrice), FrameLoad::Illisible(3));
         // Trois rythmes : deux onglets n'y suffisent pas.
         let three = [
             row("2026-09-07", "HEBDO", "09:00", "12:30"),
@@ -44179,6 +44419,20 @@ mod tests {
             App::planning_cell_text(&[&journee, &conge]),
             "9 h–19 h 30 · Congé"
         );
+
+        // **L'écriture serrée dit la même chose en deux fois moins de
+        // caractères** — c'est la case du mois, qui porte le numéro du
+        // jour en plus des heures. Même construction, deux orthographes
+        // de l'heure : ce test est ce qui garantit qu'elles ne se
+        // mettent pas à dire deux choses.
+        assert_eq!(App::planning_cell_text_tight(&[&journee]), "9–19h30");
+        assert_eq!(App::planning_cell_text_tight(&[&ouvert]), "9–…");
+        assert_eq!(App::planning_cell_text_tight(&[&conge]), "Congé");
+        // Une garde qui franchit minuit garde sa fin au-delà de 24 h :
+        // l'écriture serrée ne la ramène pas dans la journée.
+        let garde = shift(20 * 60, Some(26 * 60), ShiftKind::Garde, 0);
+        assert_eq!(App::planning_cell_text_tight(&[&garde]), "20–26");
+        assert_eq!(App::planning_cell_text(&[&garde]), "20 h–26 h");
 
         // Le survol déplie : la date, chaque poste, sa durée, et la
         // coupure quand il y en a une.

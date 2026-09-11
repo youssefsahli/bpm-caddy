@@ -41779,12 +41779,22 @@ mod tests {
                 .unwrap()
         };
         for (who, offset, from, to, pause, kind, cadence) in [
-            // Claire ouvre du lundi au vendredi, coupure de midi.
-            ("CL", 0, "09:00", "19:00", 90, "OUVERTURE", "HEBDO"),
-            ("CL", 1, "09:00", "19:00", 90, "JOURNEE", "HEBDO"),
+            // Claire ouvre du lundi au vendredi, et sa journée est
+            // **coupée** : deux postes et non un poste à longue pause.
+            // Une pause n'a pas d'heure — la bande de couverture
+            // compterait quelqu'un au comptoir pendant sa coupure et
+            // n'y verrait aucun creux. Deux postes disent où est le
+            // trou, et c'est aussi la forme que la fenêtre de trame
+            // sait montrer. Le mercredi, elle ne fait que le matin.
+            ("CL", 0, "09:00", "12:30", 0, "OUVERTURE", "HEBDO"),
+            ("CL", 0, "14:00", "19:00", 0, "OUVERTURE", "HEBDO"),
+            ("CL", 1, "09:00", "12:30", 0, "JOURNEE", "HEBDO"),
+            ("CL", 1, "14:00", "19:00", 0, "JOURNEE", "HEBDO"),
             ("CL", 2, "09:00", "12:30", 0, "JOURNEE", "HEBDO"),
-            ("CL", 3, "09:00", "19:00", 90, "JOURNEE", "HEBDO"),
-            ("CL", 4, "09:00", "19:00", 90, "JOURNEE", "HEBDO"),
+            ("CL", 3, "09:00", "12:30", 0, "JOURNEE", "HEBDO"),
+            ("CL", 3, "14:00", "19:00", 0, "JOURNEE", "HEBDO"),
+            ("CL", 4, "09:00", "12:30", 0, "JOURNEE", "HEBDO"),
+            ("CL", 4, "14:00", "19:00", 0, "JOURNEE", "HEBDO"),
             // Yanis ferme, et prend la garde du mercredi soir : 20 h →
             // 2 h s'écrit « 26:00 » et compte au jour qui la commence.
             ("YS", 0, "14:00", "19:30", 0, "FERMETURE", "HEBDO"),
@@ -41829,12 +41839,20 @@ mod tests {
         // en formation le jeudi de cette semaine-là. Sa trame du jeudi
         // reste écrite ; cette semaine seulement, elle n'est pas au
         // comptoir — et le creux de l'après-midi se voit.
+        //
+        // La ligne se cherche **par son jour**, jamais par son rang :
+        // un `OFFSET 3` désignait le jeudi tant que Claire avait un
+        // poste par jour, et le matin du mardi le jour où sa journée
+        // s'est coupée en deux. L'exception se retrouvait alors à
+        // nommer une occurrence qui n'existe pas, c'est-à-dire à ne
+        // rien contredire du tout — et la démo perdait sa formation
+        // sans que rien ne le dise.
         let jeudi = db
             .conn
             .query_row(
                 "SELECT id FROM shifts WHERE operator = 'CL' AND repeat_days = 7
-                 ORDER BY day LIMIT 1 OFFSET 3",
-                [],
+                   AND day = ?1 ORDER BY start_time LIMIT 1",
+                [&plus(3)],
                 |r| r.get::<_, i64>(0),
             )
             .unwrap();

@@ -912,6 +912,14 @@ add clicking and typing; it is not the price of entry.
   the hours alone, so it spells them tight (« 9–12h30 ») through the
   same cell builder with a different hour writer — one construction, two
   spellings.
+  A trame day carries **two half-days**: 9 h–12 h 30 then 14 h–19 h 30 is
+  the ordinary French shape, and it is written as *two shifts* rather
+  than one shift with a long pause — **a pause has no hour**, so
+  `coverage` counts the person at the counter through their break and
+  `gaps` sees none. Two shifts say where the hole is. The reader folds a
+  second row of the same day (and the same nature) into the second half;
+  two *different* natures on one day, or a third shift, stay
+  « illisible » rather than lose one in silence.
   In `planning` the arrow keys walk the **grid** — days left/right,
   people up/down, rolling the week over at the edges — rather than
   stepping the week, which stays on the ‹ › buttons; the keys stand down

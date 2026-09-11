@@ -5,6 +5,63 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.187.0] - 2026-09-12
+
+### Added
+- **La journée coupée, écrite comme deux postes.** C'est la forme la
+  plus ordinaire d'une officine française — 9 h – 12 h 30 puis 14 h –
+  19 h 30 — et la fenêtre de trame ne savait pas la dire : elle n'avait
+  qu'une rangée d'heures par jour, si bien qu'une journée coupée se
+  lisait « illisible », ou s'écrivait comme un seul poste à longue
+  pause.
+
+  Or **une pause n'a pas d'heure.** C'est une durée, et la bande de
+  couverture compte donc la personne au comptoir pendant sa coupure :
+  une officine où tout le monde déjeune de midi et demi à deux
+  s'annonçait tenue, et le creux ne se voyait nulle part. Deux postes
+  disent *où* est le trou. La grille de la semaine sait d'ailleurs déjà
+  les montrer — « 9 h–12 h 30 · 14 h–19 h » dans une case.
+
+  La trame porte donc deux demi-journées par jour, la durée additionne
+  les deux, et la relecture reconnaît une journée coupée : le poste le
+  plus tôt tient la première moitié, quel que soit l'ordre où la base
+  rend les deux lignes. Ce qu'elle refuse toujours, et pour la même
+  raison qu'avant : **deux natures différentes le même jour** — la
+  grille n'en montre qu'une, et la seconde tomberait en silence — et un
+  troisième poste, puisqu'il n'y a que deux moitiés.
+
+- **La règle du clavier est sortie du dessin.** « Sept pas à droite font
+  une semaine, et rien ne se saute » est désormais une fonction pure
+  avec son test : au bord, la semaine tourne et la case retombe de
+  l'autre côté ; une case restée sur une autre semaine ramène à un bord
+  plutôt que de figer la touche, parce qu'une touche qui ne fait rien
+  laisse croire qu'elle n'existe pas.
+
+- La démo ouvre **à midi fermé** — deux plages par jour, ce que le
+  commentaire de `[pharmacy] horaires` appelle depuis toujours « le cas
+  ordinaire » et que rien n'exerçait —, et Claire y travaille en journée
+  coupée. Sa formation du jeudi ne remplace donc plus que sa matinée,
+  ce qui est exactement ce qu'une exception doit savoir faire.
+
+### Fixed
+- **Cliquer une case du mois effaçait la sélection** : « Modifier » et
+  « Supprimer » disparaissaient au moment même où l'on venait de
+  désigner le jour sur lequel on voulait agir. La case se choisit, comme
+  dans la semaine.
+- Sans équipe déclarée, le sélecteur de personne de la trame est un champ
+  libre, et il se relisait à **chaque frappe** : « C » puis « CL » sont
+  deux personnes qui n'existent pas, et la grille se vidait lettre après
+  lettre. Il attend maintenant qu'on sorte du champ.
+- L'écriture serrée des cases du mois — « 9–12h30 » — gagne son test.
+  Elle partage sa construction avec l'écriture longue, et c'est ce test
+  qui garantit que les deux ne se mettent pas à dire deux choses.
+- **La formation de la démo ne contredisait plus rien.** Sa ligne se
+  cherchait par son rang (`OFFSET 3`), qui désignait le jeudi tant que
+  Claire avait un poste par jour et le mardi matin dès que sa journée
+  s'est coupée en deux : l'exception nommait une occurrence inexistante,
+  donc n'effaçait rien, et la démo perdait sa formation sans que rien ne
+  le dise. Elle se cherche par son jour.
+
 ## [0.186.0] - 2026-09-12
 
 ### Added
