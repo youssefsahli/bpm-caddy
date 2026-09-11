@@ -84,6 +84,10 @@ shot agenda docs/screenshot_agenda.png
 # prochaines occurrences par leur date. C'est l'écran où ce qui se passe
 # ne se lit sur aucune autre capture.
 shot trame docs/screenshot_planning.png
+# Le même planning lu par personne et par mois : la colonne des numéros
+# de semaine, et le samedi qui s'allume aux numéros pairs. C'est la seule
+# image où un rythme d'alternance se voit *comme* un rythme.
+shot planning_mois docs/screenshot_planning_mois.png
 shot vaccins docs/screenshot_vaccins.png
 shot bio docs/screenshot_bio.png
 shot watch docs/screenshot_watch.png

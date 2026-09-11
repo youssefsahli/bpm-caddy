@@ -903,10 +903,30 @@ add clicking and typing; it is not the price of entry.
   `caisses` is its other page, the month: the demo seeds twenty-four
   evenings, one of them recounted and two with no expected takings,
   because those are the two cases the view has to know how to write.
-  `trame` opens the week-pattern dialog **on a half-filled
-  alternation** — the only state where the two tabs, the parity
-  sentence and the next-occurrence line say anything; empty, the window
-  shows none of what it exists for.
+  `planning_mois` is the planning read the other way: **one person's
+  month** instead of the team's week, with the ISO week number and that
+  week's total down a frozen first column — which is what makes « un
+  samedi sur deux » legible, a column that lights up on even numbers and
+  goes dark on odd ones. No single week can show that. A month cell
+  carries the day number *and* the hours in the width a week cell gives
+  the hours alone, so it spells them tight (« 9–12h30 ») through the
+  same cell builder with a different hour writer — one construction, two
+  spellings.
+  In `planning` the arrow keys walk the **grid** — days left/right,
+  people up/down, rolling the week over at the edges — rather than
+  stepping the week, which stays on the ‹ › buttons; the keys stand down
+  for a focused field and for the open trame window.
+  `trame` opens the week-pattern dialog **on what the base already
+  holds** — Claire's canonical pattern, weekdays every week plus one
+  Saturday in two, which is the only state where the two tabs, the
+  parity sentence and the next-occurrence line say anything; empty, the
+  window shows none of what it exists for. The dialog reads a person's
+  stored patterns back (`frame_from_patterns`, pure and tested): **a
+  weekly day is a day of both weeks**, in both directions — read onto
+  both tabs, and written back once as `HEBDO` when the two tabs agree,
+  so opening it and validating without a change rewrites nothing. What
+  two weeks of seven days cannot hold is **said, not approximated**, and
+  « Remplacer » stays unticked.
   `finances` is the recettes view, which has **no door**: it is in no
   dock, in no tab strip until it has been opened, and not even in the
   list the jump box offers on an empty query — it is reached by typing

@@ -22,6 +22,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Planning de l'équipe — la trame d'une personne : le rythme, les semaines paires et impaires côte à côte, les prochaines occurrences par leur date](docs/screenshot_planning.png)
 
+![Le mois d'une personne — le numéro de semaine en tête de ligne, et le samedi qui s'allume une semaine sur deux](docs/screenshot_planning_mois.png)
+
 ![Carnet de vaccination — doses reçues, ce qu'il reste à faire, destinations de voyage](docs/screenshot_vaccins.png)
 
 ![Biologie du patient — résultats, lecture contre les intervalles usuels, ce que ça change pour les traitements](docs/screenshot_bio.png)

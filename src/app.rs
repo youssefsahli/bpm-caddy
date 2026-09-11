@@ -1201,6 +1201,145 @@ const WEEKDAYS_FR: [&str; 7] = [
     "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche",
 ];
 
+/// L'heure telle qu'on la **retape**, depuis ce que la base range.
+///
+/// « 26:00 » est ce qu'une garde vaut en base, et ce que personne
+/// n'écrit : l'horloge du jour ne le relit même pas. On rend donc
+/// « 02:00 », l'heure du lendemain — et [`App::shift_end`] la repousse
+/// au-delà de minuit toute seule, puisqu'une fin avant le début est le
+/// lendemain. L'aller et le retour se répondent, ce qu'un test vérifie.
+fn typed_hour(stored: &str) -> String {
+    let Some(m) = planning::parse_bound(stored) else {
+        return String::new();
+    };
+    planning::format_bound(if m >= 24 * 60 { m - 24 * 60 } else { m })
+}
+
+/// Ce que les trames déjà posées pour une personne donnent à l'écran —
+/// ou pourquoi elles ne s'y mettent pas.
+///
+/// La fenêtre montre **deux semaines de sept jours**, ce qui couvre ce
+/// qu'une officine écrit et non tout ce que la base sait ranger. Quand
+/// les lignes n'y entrent pas, on le dit : approximer serait montrer un
+/// horaire pour un autre, et « Remplacer » écraserait alors ce que
+/// l'écran n'avait pas su afficher.
+#[derive(Debug, PartialEq)]
+enum FrameLoad {
+    /// Aucune trame : la grille reste vide et « Remplacer » ne se coche
+    /// pas — il n'y a rien à remplacer.
+    Vide,
+    /// Le rythme et les deux semaines, prêtes à être montrées.
+    Trame(planning::Cadence, Box<[[FrameDay; 7]; 2]>),
+    /// Des lignes que deux semaines de sept jours ne portent pas : deux
+    /// postes le même jour, ou plus de deux rythmes.
+    Illisible(usize),
+}
+
+/// Relire les lignes rangées d'une personne comme une trame.
+///
+/// Trois règles, une par test :
+///
+/// * **une alternance se relit comme une alternance** — deux rythmes qui
+///   sont les deux moitiés d'une parité reviennent sur les deux onglets,
+///   celui des paires en tête, quel que soit l'ordre où la base les rend ;
+/// * **une ligne d'avant les rythmes se relit** : `cadence` vide, sept
+///   jours de `repeat_days` sont une trame hebdomadaire, et rien d'autre
+///   ne se devine ;
+/// * **ce qui n'entre pas n'est pas approximé.** Deux postes le même
+///   jour, trois rythmes, une date illisible : l'écran le dit, laisse la
+///   grille vide et ne propose pas de remplacer ce qu'il ne montre pas.
+fn frame_from_patterns(rows: &[db::NewShift]) -> FrameLoad {
+    if rows.is_empty() {
+        return FrameLoad::Vide;
+    }
+    let mut read: Vec<(planning::Cadence, i64, &db::NewShift)> = Vec::new();
+    for row in rows {
+        let cadence = planning::Cadence::parse(&row.cadence)
+            .or_else(|| (row.repeat_days == 7).then_some(planning::Cadence::Hebdomadaire));
+        let (Some(cadence), Some(weekday)) = (cadence, crate::date::weekday(&row.day)) else {
+            return FrameLoad::Illisible(rows.len());
+        };
+        read.push((cadence, weekday, row));
+    }
+    // Un rythme qui exige une fin n'est pas une trame : c'est ainsi
+    // qu'on pose une plage, et une plage n'est pas un horaire de
+    // travail. La base ne devrait pas en rendre ici — mais si elle en
+    // rend, on ne l'approxime pas.
+    if read.iter().any(|(c, _, _)| c.needs_an_end()) {
+        return FrameLoad::Illisible(rows.len());
+    }
+    let mut kinds: Vec<planning::Cadence> = read.iter().map(|(c, _, _)| *c).collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    // **Une journée hebdomadaire est celle des deux semaines.** C'est ce
+    // qui rend l'écran capable de montrer la trame que les officines
+    // écrivent réellement : lundi à vendredi toutes les semaines, plus
+    // le samedi une fois sur deux. Sans cela, ce mélange de rythmes —
+    // le plus ordinaire qui soit — se lisait « illisible ».
+    let mut parities: Vec<planning::Cadence> = Vec::new();
+    let mut weekly = false;
+    let mut lone: Option<planning::Cadence> = None;
+    for c in kinds {
+        if c.other_half().is_some() {
+            parities.push(c);
+        } else if c == planning::Cadence::Hebdomadaire {
+            weekly = true;
+        } else if lone.is_some_and(|l| l != c) {
+            return FrameLoad::Illisible(rows.len());
+        } else {
+            lone = Some(c);
+        }
+    }
+    let pages: Vec<planning::Cadence> = match (parities.is_empty(), weekly, lone) {
+        // Une alternance, avec ou sans journées hebdomadaires dedans :
+        // les deux onglets, celui des paires en tête.
+        (false, _, None) => vec![planning::Cadence::Paires, planning::Cadence::Impaires],
+        // Une seule semaine, hebdomadaire ou d'un autre pas.
+        (true, true, None) => vec![planning::Cadence::Hebdomadaire],
+        (true, false, Some(c)) => vec![c],
+        // Un pas qui n'est ni l'un ni l'autre mêlé au reste : deux
+        // semaines de sept jours ne le portent pas.
+        _ => return FrameLoad::Illisible(rows.len()),
+    };
+    let alternating = pages.len() == 2;
+    let mut weeks: [[FrameDay; 7]; 2] = Default::default();
+    for (cadence, weekday, row) in read {
+        // Une hebdomadaire dans une alternance remplit les deux pages ;
+        // tout le reste va sur la sienne.
+        let targets: Vec<usize> = if alternating && cadence == planning::Cadence::Hebdomadaire {
+            vec![0, 1]
+        } else {
+            match pages.iter().position(|p| *p == cadence) {
+                Some(p) => vec![p],
+                None => return FrameLoad::Illisible(rows.len()),
+            }
+        };
+        let day = FrameDay {
+            kind: planning::ShiftKind::parse(&row.kind),
+            from: typed_hour(&row.start_time),
+            to: typed_hour(&row.end_time),
+            pause: if row.pause_minutes > 0 {
+                row.pause_minutes.to_string()
+            } else {
+                String::new()
+            },
+        };
+        for page in targets {
+            let Some(slot) = weeks[page].get_mut(usize::try_from(weekday - 1).unwrap_or(7)) else {
+                return FrameLoad::Illisible(rows.len());
+            };
+            if slot.written() {
+                // Deux postes le même jour : la grille n'a qu'une rangée
+                // par jour, et en perdre un serait retirer des heures
+                // que personne n'a demandé de retirer.
+                return FrameLoad::Illisible(rows.len());
+            }
+            *slot = day.clone();
+        }
+    }
+    FrameLoad::Trame(pages[0], Box::new(weeks))
+}
+
 /// Une journée de la trame lue comme un poste — pour en dire la durée
 /// pendant qu'on la tape, et par la **même** fonction que le reste.
 ///
@@ -1216,6 +1355,48 @@ fn shift_of_frame_day(day: &FrameDay) -> Option<planning::Shift> {
         pause: day.pause.trim().parse().unwrap_or(0),
         kind: day.kind.unwrap_or(planning::ShiftKind::Journee),
     })
+}
+
+/// L'en-tête d'une colonne de jour, dans la forme la plus riche qui
+/// tienne : « Lun 07/09 », puis « Lun 07 », puis « 07 ».
+///
+/// Elle était peinte sans borne, et **un `Painter` peint où on lui dit,
+/// rien ne le clipe** : à `text_scale = 1,6` les sept en-têtes de la
+/// semaine se touchaient et se lisaient « Lun 07/09Mar 08/09Mer 09/09 ».
+///
+/// On raccourcit plutôt que d'élider, et c'est la même règle que les
+/// doors de l'explorateur : « Lun 07/0… » a perdu le mois *et* se lit
+/// cassé, là où « Lun 07 » ne dit pas le mois et se lit entier — or le
+/// mois, dans une semaine, est déjà écrit au-dessus de la grille.
+fn day_head(ui: &egui::Ui, date: &str, width: f32, size: f32) -> String {
+    let short = three_letters(db::weekday_fr(date).unwrap_or(""));
+    let day = date.get(8..10).unwrap_or("").to_owned();
+    let month = date.get(5..7).unwrap_or("");
+    let font = egui::FontId::proportional(motif::pt(ui, size));
+    [
+        format!("{short} {day}/{month}"),
+        format!("{short} {day}"),
+        day.clone(),
+    ]
+    .into_iter()
+    .find(|form| {
+        ui.fonts(|f| {
+            f.layout_no_wrap(form.clone(), font.clone(), motif::text())
+                .size()
+                .x
+        }) <= width
+    })
+    .unwrap_or(day)
+}
+
+/// 540 → « 9 », 575 → « 9h35 » : l'heure la plus courte qui se lise
+/// encore. Le mois du planning est le seul endroit qui l'emploie, et la
+/// raison est écrite sur [`App::planning_cell_text_tight`].
+fn tight_hour(minutes: u16) -> String {
+    match minutes % 60 {
+        0 => (minutes / 60).to_string(),
+        m => format!("{}h{m:02}", minutes / 60),
+    }
 }
 
 /// 540 → « 9 h », 575 → « 9 h 35 ».
@@ -2697,6 +2878,14 @@ struct Session {
     /// The form under the planning grid: whom, which day, from when to
     /// when, and whether it repeats every week.
     shift_form: ShiftForm,
+    /// Le planning montre-t-il le **mois** d'une personne plutôt que la
+    /// semaine de l'équipe ?
+    ///
+    /// « Quand est-ce que je travaille le mois prochain ? » est la
+    /// première question qu'on pose à un horaire, et la grille de la
+    /// semaine y répondait en quatre clics sur la flèche — une semaine
+    /// à la fois, sans jamais montrer le rythme.
+    planning_month: bool,
     /// La trame en cours d'écriture : le rythme d'une personne, posé
     /// en une fois. Fermée, elle garde ce qu'on y avait tapé — on la
     /// rouvre pour corriger un mardi, pas pour tout retaper.
@@ -3369,6 +3558,7 @@ impl Session {
             agenda_band_h: 0.0,
             shift_form: ShiftForm::default(),
             shift_pick: None,
+            planning_month: false,
             frame: FrameForm::default(),
             planning_print: false,
             planning_undo: Vec::new(),
@@ -5400,7 +5590,7 @@ impl Session {
         };
         // La grille du mois porte elle aussi les heures de chaque jour :
         // la plage l'englobe quand c'est elle qui est à l'écran.
-        if self.agenda_month {
+        if self.agenda_month || self.planning_month {
             if let (Some(a), Some(b)) = (
                 self.agenda_month_days.first(),
                 self.agenda_month_days.last(),
@@ -7260,7 +7450,7 @@ struct ShiftForm {
 /// heure de début n'est pas une journée de zéro heure**, c'est un jour
 /// où la personne n'est pas là. C'est la règle de la rangée de saisie,
 /// et il n'y en a pas une deuxième ici.
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq, Debug)]
 struct FrameDay {
     kind: Option<planning::ShiftKind>,
     from: String,
@@ -7313,6 +7503,21 @@ struct FrameForm {
     page: usize,
     /// `[page][jour - 1]`, lundi en tête.
     weeks: [[FrameDay; 7]; 2],
+    /// Pour qui la grille a été remplie, la dernière fois qu'on l'a
+    /// lue en base. Change quand on change de personne dans le menu,
+    /// et c'est ce changement-là qui déclenche la relecture.
+    loaded_for: String,
+    /// Ce que la relecture a trouvé, en une phrase — ou rien.
+    notice: Option<String>,
+    /// Les lignes rangées que « Remplacer » retirera : **exactement
+    /// celles que la grille montre**, et rien d'autre.
+    ///
+    /// Elles sont retenues à la lecture plutôt que redemandées à
+    /// l'écriture. Redemander, c'est retirer ce qu'on n'a pas montré :
+    /// une ligne posée entre-temps depuis un autre poste, ou — et c'est
+    /// le cas qui mord — une que la fenêtre n'a pas su afficher et pour
+    /// laquelle elle a précisément dit qu'elle ne toucherait à rien.
+    replacing: Vec<i64>,
     /// Retirer d'abord les trames déjà posées pour cette personne.
     ///
     /// **Décoché par défaut, et c'est délibéré** : une case qui efface
@@ -7332,6 +7537,9 @@ impl Default for FrameForm {
             until: String::new(),
             from_text: String::new(),
             until_text: String::new(),
+            loaded_for: String::new(),
+            notice: None,
+            replacing: Vec::new(),
             page: 0,
             weeks: Default::default(),
             replace: false,
@@ -7489,6 +7697,11 @@ enum PatientAction {
 fn scope_days(session: &Session) -> Vec<String> {
     match session.agenda_mode {
         AgendaMode::Day => vec![session.agenda_day.clone()],
+        // Le planning au mois porte sur le mois : le total du titre, les
+        // creux et les postes chargés suivent tous cette liste-là, et
+        // une seule d'entre elles qui ne la suivrait pas ferait un
+        // chiffre qui ne parle pas de ce qu'on regarde.
+        AgendaMode::Planning if session.planning_month => session.agenda_month_days.clone(),
         AgendaMode::Week | AgendaMode::Planning => session.agenda_week.clone(),
         AgendaMode::Month => session.agenda_month_days.clone(),
     }
@@ -8547,8 +8760,30 @@ impl App {
                                 session.shift_form.cadence = planning::Cadence::parse(&occ.cadence);
                             }
                         }
-                        // La trame, **ouverte sur une alternance à
-                        // moitié remplie** : c'est le seul état où les
+                        // Le planning au mois, **sur la personne dont
+                        // la trame porte une alternance** : c'est le
+                        // seul état où la colonne des numéros de semaine
+                        // sert à quelque chose — un samedi qui s'allume
+                        // aux numéros pairs et s'éteint aux impairs.
+                        Ok("planning_mois") => {
+                            session.refresh_dashboard();
+                            session.agenda_mode = AgendaMode::Planning;
+                            session.planning_month = true;
+                            session.agenda_month_days =
+                                session.db.month_grid(0).unwrap_or_default();
+                            session.shift_form.operator = config
+                                .pharmacy
+                                .operators
+                                .first()
+                                .map(|o| o.initials.trim().to_owned())
+                                .unwrap_or_else(|| "CL".to_owned());
+                            session.load_shifts(true);
+                            session.view = MainView::Agenda;
+                        }
+                        // La trame, **ouverte sur ce que la base porte
+                        // déjà** : la trame canonique de Claire — du
+                        // lundi au vendredi toutes les semaines, plus un
+                        // samedi sur deux —, qui est le seul état où les
                         // deux onglets, la phrase de parité et la ligne
                         // des prochaines occurrences disent quelque
                         // chose. Vide, la fenêtre ne montre rien de ce
@@ -8558,42 +8793,21 @@ impl App {
                             session.agenda_mode = AgendaMode::Planning;
                             session.load_shifts(true);
                             session.view = MainView::Agenda;
-                            session.frame.open = true;
-                            session.frame.cadence = planning::Cadence::Paires;
-                            session.frame.operator = config
+                            session.shift_form.operator = config
                                 .pharmacy
                                 .operators
                                 .first()
                                 .map(|o| o.initials.trim().to_owned())
                                 .unwrap_or_else(|| "CL".to_owned());
+                            session.frame.operator = session.shift_form.operator.clone();
                             session.frame.from = session
                                 .agenda_week
                                 .first()
                                 .cloned()
                                 .unwrap_or_else(|| session.today.clone());
                             session.frame.from_text = db::format_french_date(&session.frame.from);
-                            for i in 0..5 {
-                                session.frame.weeks[0][i] = FrameDay {
-                                    kind: None,
-                                    from: "9h".to_owned(),
-                                    to: if i == 2 {
-                                        "12h30".to_owned()
-                                    } else {
-                                        "19h30".to_owned()
-                                    },
-                                    pause: if i == 2 {
-                                        String::new()
-                                    } else {
-                                        "45".to_owned()
-                                    },
-                                };
-                            }
-                            session.frame.weeks[1][5] = FrameDay {
-                                kind: None,
-                                from: "9h".to_owned(),
-                                to: "12h30".to_owned(),
-                                pause: String::new(),
-                            };
+                            Self::frame_load(&mut session);
+                            session.frame.open = true;
                         }
                         Ok("agenda_month") => {
                             session.refresh_dashboard();
@@ -21362,8 +21576,125 @@ impl App {
         {
             Self::planning_undo(session);
         }
+        // **Le planning se parcourt au clavier.** Dans ce mode les
+        // flèches déplacent la *case* choisie — de jour en jour, de
+        // personne en personne — plutôt que la semaine : le pas de
+        // semaine reste sur les ‹ › et sur « Aujourd'hui », qui sont à
+        // deux centimètres, là où arriver sur une case demandait la
+        // souris. Passer le bord du lundi ou du dimanche fait tourner la
+        // semaine et retombe de l'autre côté, si bien qu'on ne perd rien
+        // en chemin.
+        //
+        // Fenêtre de trame ouverte, les flèches ne vont nulle part :
+        // elles déplaceraient une case **derrière** la fenêtre qu'on est
+        // en train de remplir, et on ne le verrait qu'en la fermant.
+        if session.agenda_mode == AgendaMode::Planning
+            && !session.planning_month
+            && !session.frame.open
+            && !ctx.wants_keyboard_input()
+        {
+            let dx = ctx.input(|i| {
+                i.key_pressed(egui::Key::ArrowRight) as i64
+                    - i.key_pressed(egui::Key::ArrowLeft) as i64
+            });
+            let dy = ctx.input(|i| {
+                i.key_pressed(egui::Key::ArrowDown) as i64
+                    - i.key_pressed(egui::Key::ArrowUp) as i64
+            });
+            if dx != 0 {
+                let week = session.agenda_week.clone();
+                let day = session.shift_form.day.clone();
+                let at = week.iter().position(|d| *d == day);
+                match (at, dx) {
+                    // Au bord, la semaine tourne et la case retombe de
+                    // l'autre côté : sept pas à droite font une semaine,
+                    // et rien ne se saute.
+                    (Some(0), -1) | (None, -1) => {
+                        session.agenda_offset -= 1;
+                        session.agenda_week = session
+                            .db
+                            .week_dates(session.agenda_offset)
+                            .unwrap_or_default();
+                        session.shift_form.day = session.agenda_week.last().cloned().unwrap_or(day);
+                    }
+                    (Some(6), 1) | (None, 1) => {
+                        session.agenda_offset += 1;
+                        session.agenda_week = session
+                            .db
+                            .week_dates(session.agenda_offset)
+                            .unwrap_or_default();
+                        session.shift_form.day =
+                            session.agenda_week.first().cloned().unwrap_or(day);
+                    }
+                    (Some(i), _) => {
+                        let next = usize::try_from(i64::try_from(i).unwrap_or(0) + dx).unwrap_or(0);
+                        if let Some(d) = week.get(next) {
+                            session.shift_form.day = d.clone();
+                        }
+                    }
+                    (None, _) => {}
+                }
+                session.load_shifts(false);
+            }
+            if dy != 0 {
+                // L'ordre est celui de l'équipe déclarée, le même que
+                // celui des lignes de la grille : la flèche descend d'une
+                // ligne à l'écran et non d'un rang dans une autre liste.
+                let people: Vec<String> = config
+                    .pharmacy
+                    .operators
+                    .iter()
+                    .map(|o| o.initials.trim().to_owned())
+                    .filter(|i| !i.is_empty())
+                    .collect();
+                if !people.is_empty() {
+                    let here = people
+                        .iter()
+                        .position(|p| *p == session.shift_form.operator.trim())
+                        .unwrap_or(0);
+                    let n = i64::try_from(people.len()).unwrap_or(1);
+                    let next = (i64::try_from(here).unwrap_or(0) + dy).rem_euclid(n);
+                    if let Some(p) = people.get(usize::try_from(next).unwrap_or(0)) {
+                        session.shift_form.operator = p.clone();
+                    }
+                }
+            }
+            if dx != 0 || dy != 0 {
+                // La case choisie porte sa sélection : « Modifier » et
+                // « Supprimer » agissent sur ce qu'on vient d'atteindre,
+                // pas sur ce qu'on avait cliqué avant.
+                let picked = Self::picked_shift(session);
+                session.shift_pick = picked.as_ref().map(|s| s.id);
+                if let Some(s) = picked {
+                    session.shift_form.kind = planning::ShiftKind::parse(&s.kind);
+                    session.shift_form.cadence = planning::Cadence::parse(&s.cadence);
+                }
+            }
+        }
+        // Au planning-mois, les flèches déplacent le mois : la grille
+        // en montre un, et faire glisser une semaine qu'on ne regarde
+        // pas ne change rien à l'écran — une touche qui ne fait rien là
+        // où on l'attend est pire qu'une touche qui n'existe pas.
+        if session.agenda_mode == AgendaMode::Planning
+            && session.planning_month
+            && !session.frame.open
+            && !ctx.wants_keyboard_input()
+        {
+            let step = ctx.input(|i| {
+                i.key_pressed(egui::Key::ArrowRight) as i64
+                    - i.key_pressed(egui::Key::ArrowLeft) as i64
+            });
+            if step != 0 {
+                session.agenda_month_offset += step;
+                session.agenda_month_days = session
+                    .db
+                    .month_grid(session.agenda_month_offset)
+                    .unwrap_or_default();
+                session.load_shifts(true);
+            }
+        }
         // Left and right arrows move the week or the month shown.
-        if !ctx.wants_keyboard_input() {
+        if !ctx.wants_keyboard_input() && session.agenda_mode != AgendaMode::Planning {
             let step = ctx.input(|i| {
                 i.key_pressed(egui::Key::ArrowRight) as i64
                     - i.key_pressed(egui::Key::ArrowLeft) as i64
@@ -21791,6 +22122,28 @@ impl App {
             AgendaMode::Month => tr("agenda_mode_month"),
             AgendaMode::Planning => tr("agenda_mode_planning"),
         };
+        // Au mois, le titre dit **quel** mois : la grille ne porte que
+        // des numéros de jour et de semaine, et un tableau dont on ne
+        // sait pas de quel mois il parle ne se lit pas.
+        let planning_month_title =
+            (session.agenda_mode == AgendaMode::Planning && session.planning_month).then(|| {
+                let month = session
+                    .db
+                    .month_of(session.agenda_month_offset)
+                    .unwrap_or_default();
+                // **Et de qui.** La grille du mois ne montre qu'une
+                // personne ; un titre qui porterait le total de l'équipe
+                // au-dessus des heures d'une seule ferait deux chiffres
+                // qui se contredisent — le total du mois est en pied de
+                // la grille, là où il parle de ce qu'on lit.
+                format!(
+                    "{} — {} — {}",
+                    tr("agenda_mode_planning"),
+                    db::month_name_fr(&month),
+                    session.shift_form.operator.trim()
+                )
+            });
+        let cal_title = planning_month_title.as_deref().unwrap_or(cal_title);
         // **Le fait qu'un filtre est posé se dit au-dessus du
         // calendrier, pas seulement dans la bande.** La bande est
         // plafonnée à un tiers du volet et défile au-delà : à
@@ -21810,7 +22163,10 @@ impl App {
         // la grille est la dernière rangée d'une région défilante : sur
         // un écran de comptoir c'est exactement ce qu'on ne voit pas.
         // Le titre du panneau, lui, est toujours là.
-        let cal_title = if session.agenda_mode == AgendaMode::Planning {
+        // Au mois, le total appartient à la grille et non au titre : elle
+        // ne montre qu'une personne, et deux chiffres qui parlent de
+        // deux choses au-dessus l'un de l'autre ne se lisent pas.
+        let cal_title = if session.agenda_mode == AgendaMode::Planning && !session.planning_month {
             let known: Vec<u16> = scope
                 .iter()
                 .filter_map(|d| digests.get(d).and_then(|g| g.minutes))
@@ -21887,7 +22243,7 @@ impl App {
                     );
                 }
                 AgendaMode::Planning => {
-                    Self::agenda_planning_grid(ui, session, config, rect, &mut pick_day);
+                    Self::agenda_planning_grid(ui, session, config, &digests, rect, &mut pick_day);
                 }
             }
         });
@@ -21996,6 +22352,16 @@ impl App {
                     .month_grid(session.agenda_month_offset)
                     .unwrap_or_default();
             }
+            // Au mois, la flèche déplace le mois : c'est ce qu'on
+            // regarde. Elle déplace la semaine partout ailleurs.
+            AgendaMode::Planning if session.planning_month => {
+                session.agenda_month_offset += delta;
+                session.agenda_month_days = session
+                    .db
+                    .month_grid(session.agenda_month_offset)
+                    .unwrap_or_default();
+                session.load_shifts(true);
+            }
             AgendaMode::Week | AgendaMode::Planning => {
                 session.agenda_offset += delta;
                 session.agenda_week = session
@@ -22020,6 +22386,11 @@ impl App {
                 AgendaMode::Month => {
                     session.agenda_month_offset = 0;
                     session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
+                }
+                AgendaMode::Planning if session.planning_month => {
+                    session.agenda_month_offset = 0;
+                    session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
+                    session.load_shifts(true);
                 }
                 AgendaMode::Week | AgendaMode::Planning => {
                     session.agenda_offset = 0;
@@ -22415,6 +22786,22 @@ impl App {
                         if motif::button(ui, tr("planning_add")).clicked() {
                             write = true;
                         }
+                        // Le mois de la personne choisie, plutôt que la
+                        // semaine de l'équipe : c'est la même grille de
+                        // postes, lue dans l'autre sens.
+                        if motif::toggle(ui, tr("planning_month_toggle"), session.planning_month)
+                            .on_hover_text(tr("planning_month_toggle_tooltip"))
+                            .clicked()
+                        {
+                            session.planning_month = !session.planning_month;
+                            if session.planning_month && session.agenda_month_days.is_empty() {
+                                session.agenda_month_days = session
+                                    .db
+                                    .month_grid(session.agenda_month_offset)
+                                    .unwrap_or_default();
+                            }
+                            session.load_shifts(true);
+                        }
                         // La semaine entière d'un coup, plutôt que sept
                         // fois cette rangée-ci.
                         if motif::button(ui, tr("frame_open"))
@@ -22423,17 +22810,26 @@ impl App {
                         {
                             open_frame = true;
                         }
-                        if motif::button(ui, tr("planning_print"))
-                            .on_hover_text(tr("planning_print_tooltip"))
-                            .clicked()
-                        {
-                            session.planning_print = true;
-                        }
-                        if motif::button(ui, tr("planning_copy"))
-                            .on_hover_text(tr("planning_copy_tooltip"))
-                            .clicked()
-                        {
-                            copy_week = true;
+                        // **Deux gestes de semaine.** Imprimer la
+                        // semaine affichée et la recopier sur la
+                        // suivante n'ont pas de sens sur un mois, et un
+                        // bouton qui ne ferait rien — ou pire, qui
+                        // agirait sur une semaine qu'on ne regarde
+                        // pas — est un bouton qu'on presse une fois et
+                        // qu'on n'ose plus presser.
+                        if !session.planning_month {
+                            if motif::button(ui, tr("planning_print"))
+                                .on_hover_text(tr("planning_print_tooltip"))
+                                .clicked()
+                            {
+                                session.planning_print = true;
+                            }
+                            if motif::button(ui, tr("planning_copy"))
+                                .on_hover_text(tr("planning_copy_tooltip"))
+                                .clicked()
+                            {
+                                copy_week = true;
+                            }
                         }
                         // Le retour arrière se nomme : « Annuler » seul
                         // ne dit pas ce qu'on va défaire, et un geste
@@ -22625,6 +23021,11 @@ impl App {
                 // semaine — deux affirmations contraires à l'écran.
                 session.frame.from_text = db::format_french_date(&session.frame.from);
             }
+            // Ouvrir, c'est ouvrir **sa** trame : ce qui est en base est
+            // relu à chaque fois, plutôt que de retrouver ce qu'on avait
+            // tapé la fois d'avant et qui ne dit plus rien de l'état
+            // actuel.
+            Self::frame_load(session);
         }
         if copy_week {
             Self::planning_copy_week(session);
@@ -22783,6 +23184,272 @@ impl App {
         planning::Cadence::UneSurQuatre,
     ];
 
+    /// Le mois d'une personne, jour par jour — la question qu'une grille
+    /// de semaine ne répond pas.
+    ///
+    /// « Quand est-ce que je travaille le mois prochain ? » est la
+    /// première question qu'on pose à un horaire, et la semaine y
+    /// répondait en quatre clics sur la flèche, une semaine à la fois.
+    ///
+    /// La première colonne porte le **numéro de semaine ISO**, et ce
+    /// n'est pas un ornement : c'est lui qui rend le rythme lisible. Un
+    /// samedi sur deux se voit comme une colonne qui s'allume aux
+    /// numéros pairs — ce qu'aucune semaine regardée seule ne peut
+    /// montrer, et ce qui permet de vérifier d'un coup d'œil qu'une
+    /// trame de parité tombe bien où on croyait.
+    fn planning_month_grid(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        digests: &std::collections::HashMap<String, PlanningDigest>,
+        rect: egui::Rect,
+        pick_day: &mut Option<String>,
+    ) {
+        let who = session.shift_form.operator.trim().to_owned();
+        let days = session.agenda_month_days.clone();
+        if days.is_empty() || who.is_empty() {
+            motif::inside(ui, rect, |ui| {
+                ui.add_space(8.0);
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("planning_month_needs_a_person"))
+                            .size(motif::pt(ui, 12.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            });
+            return;
+        }
+        let month = session
+            .db
+            .month_of(session.agenda_month_offset)
+            .unwrap_or_default();
+        // Les postes de la personne, convertis **une fois** : la
+        // conversion lit une nature et deux heures, et la refaire par
+        // case serait trente fois par image.
+        let mine: Vec<(String, planning::Shift)> = session
+            .shifts
+            .iter()
+            .filter(|s| s.operator.trim() == who)
+            .filter_map(|s| Some((s.day.clone(), planned_shift(s)?)))
+            .collect();
+        let today = session.today.clone();
+        let chosen = session.shift_form.day.clone();
+        let mut clicked: Option<String> = None;
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::both()
+                .id_salt("planning_month")
+                .show(ui, |ui| {
+                    // **Le total de la semaine est dans la colonne de
+                    // gauche, avec son numéro.** Mis à droite, il était
+                    // la huitième colonne d'une grille qui en a déjà
+                    // sept de treize caractères : le volet le poussait
+                    // hors du champ, et un total qu'il faut aller
+                    // chercher en faisant défiler n'est pas un total.
+                    let week_w = chars_wide(ui, 13.0);
+                    let day_w = chars_wide(ui, 12.0);
+                    // **Les rangées remplissent le volet.** Six rangées
+                    // de la hauteur d'une ligne laissaient les deux
+                    // tiers du panneau vides sous elles, et un mois est
+                    // un tableau qu'on lit de loin : il a la place
+                    // d'être lu. Plafonné à deux fois et demie la ligne,
+                    // sans quoi ce ne serait plus un tableau mais des
+                    // bandes.
+                    let text_h = ui.text_style_height(&body_style(ui));
+                    let rows_n = (days.len().div_ceil(7) + 2) as f32;
+                    let line = ((ui.available_height() - rows_n * ui.spacing().item_spacing.y)
+                        / rows_n)
+                        .clamp(text_h, text_h * 2.5);
+                    // **La colonne de gauche est gelée au bord**, comme
+                    // celle des noms dans la semaine et celle des
+                    // molécules dans les tables de conversion : à
+                    // 1024x700 en texte 1,6 la grille défile sur trois
+                    // jours, et « 9–12h30 » lu sans savoir de quelle
+                    // semaine ne dit rien.
+                    let body = egui::TextStyle::Body.resolve(ui.style());
+                    let clip_left = ui.clip_rect().left();
+                    let frozen = |ui: &mut egui::Ui, text: &str, strong: bool| {
+                        let cell = ui
+                            .allocate_exact_size(egui::vec2(week_w, line), egui::Sense::hover())
+                            .0;
+                        let x = frozen_left(clip_left, cell.left(), 4.0);
+                        let (band, at) = frozen_cell(x, week_w, 4.0, cell);
+                        ui.painter().rect_filled(band, 0.0, motif::bg());
+                        ui.painter().text(
+                            at + egui::vec2(0.0, cell.height() / 2.0),
+                            egui::Align2::LEFT_CENTER,
+                            text,
+                            body.clone(),
+                            if strong {
+                                motif::text()
+                            } else {
+                                motif::text_dim()
+                            },
+                        );
+                    };
+                    egui::Grid::new("planning_month_grid")
+                        .striped(true)
+                        .show(ui, |ui| {
+                            frozen(ui, tr("planning_week_short"), false);
+                            for head in WEEKDAYS_FR {
+                                Self::grid_cell(
+                                    ui,
+                                    day_w,
+                                    egui::RichText::new(three_letters(head))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                            ui.end_row();
+
+                            let mut month_minutes = 0_u16;
+                            let mut month_unknown = 0_usize;
+                            for chunk in days.chunks(7) {
+                                let week = chunk.first().and_then(|d| crate::date::iso_week(d));
+                                let by_day: Vec<(String, Vec<planning::Shift>)> = chunk
+                                    .iter()
+                                    .map(|d| {
+                                        (
+                                            d.clone(),
+                                            mine.iter()
+                                                .filter(|(dd, _)| dd == d)
+                                                .map(|(_, sh)| sh.clone())
+                                                .collect(),
+                                        )
+                                    })
+                                    .collect();
+                                // Le numéro de semaine **et le total
+                                // qu'elle fait**, dans la même cellule :
+                                // c'est ce qu'on lit en parcourant un
+                                // mois, et c'est la colonne qu'aucun
+                                // défilement n'emporte.
+                                let row = planning::week_totals(&by_day)
+                                    .into_iter()
+                                    .find(|t| t.who == who);
+                                let (minutes, unknown) =
+                                    row.map_or((0, 0), |t| (t.minutes, t.unknown));
+                                month_minutes = month_minutes.saturating_add(minutes);
+                                month_unknown += unknown;
+                                frozen(
+                                    ui,
+                                    &format!(
+                                        "{}  {}",
+                                        week.map_or_else(String::new, |(_, w)| trf(
+                                            "planning_week_mark",
+                                            w
+                                        )),
+                                        match (minutes, unknown) {
+                                            (0, 0) => String::new(),
+                                            (m, 0) => planning::hhmm(m),
+                                            (m, n) => format!("{} +{n}", planning::hhmm(m)),
+                                        }
+                                    ),
+                                    false,
+                                );
+                                for (date, of_day) in &by_day {
+                                    let in_month = date.starts_with(&month);
+                                    let refs: Vec<&planning::Shift> = of_day.iter().collect();
+                                    let hours = Self::planning_cell_text_tight(&refs);
+                                    let number = date
+                                        .get(8..10)
+                                        .unwrap_or("")
+                                        .trim_start_matches('0')
+                                        .to_owned();
+                                    // Le numéro du jour dit le creux —
+                                    // c'est une propriété du comptoir et
+                                    // non de la personne —, les heures
+                                    // disent la personne.
+                                    let uncovered = digests.get(date).is_some_and(|d| d.uncovered);
+                                    let num_ink = match (in_month, uncovered) {
+                                        (false, _) => motif::text_faint(),
+                                        (true, true) => motif::alert(),
+                                        (true, false) => motif::text_dim(),
+                                    };
+                                    let ink = if !in_month {
+                                        motif::text_faint()
+                                    } else if of_day.iter().all(|sh| sh.kind.is_absence()) {
+                                        motif::text_dim()
+                                    } else {
+                                        operator_color(&who)
+                                    };
+                                    let ink = if *date == chosen {
+                                        motif::emphasize(ink)
+                                    } else {
+                                        ink
+                                    };
+                                    let cell = ui.allocate_ui_with_layout(
+                                        egui::vec2(day_w, line),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.set_width(day_w);
+                                            ui.add(egui::Label::new(
+                                                egui::RichText::new(&number)
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(num_ink),
+                                            ));
+                                            ui.add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(&hours)
+                                                        .size(motif::pt(ui, 11.0))
+                                                        .color(ink),
+                                                )
+                                                .truncate(),
+                                            );
+                                        },
+                                    );
+                                    // Aujourd'hui se repère sans lire les
+                                    // trente numéros.
+                                    if *date == today {
+                                        ui.painter().rect_stroke(
+                                            cell.response.rect,
+                                            0.0,
+                                            egui::Stroke::new(1.0_f32, motif::accent()),
+                                        );
+                                    }
+                                    let mut hover = Self::planning_cell_hover(&refs, date);
+                                    if uncovered {
+                                        hover.push('\n');
+                                        hover.push_str(tr("planning_day_uncovered"));
+                                    }
+                                    if cell
+                                        .response
+                                        .interact(egui::Sense::click())
+                                        .on_hover_text(hover)
+                                        .clicked()
+                                    {
+                                        clicked = Some(date.clone());
+                                    }
+                                }
+                                ui.end_row();
+                            }
+                            // Le pied : le mois entier, et le nombre de
+                            // postes dont la durée n'est pas connue —
+                            // un total seul se lirait comme le mois
+                            // entier.
+                            frozen(
+                                ui,
+                                &format!(
+                                    "{}  {}",
+                                    tr("planning_total"),
+                                    match (month_minutes, month_unknown) {
+                                        (0, 0) => "—".to_owned(),
+                                        (m, 0) => planning::hhmm(m),
+                                        (m, n) => format!("{} +{n}", planning::hhmm(m)),
+                                    }
+                                ),
+                                true,
+                            );
+                            ui.end_row();
+                        });
+                });
+        });
+        if let Some(day) = clicked {
+            session.shift_form.day = day.clone();
+            session.shift_pick = None;
+            *pick_day = Some(day);
+        }
+    }
+
     /// The team's week: one row per person, seven day columns, the
     /// hours each adds up to.
     ///
@@ -22800,6 +23467,7 @@ impl App {
         ui: &mut egui::Ui,
         session: &mut Session,
         config: &Config,
+        digests: &std::collections::HashMap<String, PlanningDigest>,
         rect: egui::Rect,
         pick_day: &mut Option<String>,
     ) {
@@ -22840,6 +23508,7 @@ impl App {
                 Self::date_field_width(ui),
                 btn(tr("planning_add")),
                 btn(tr("frame_open")),
+                btn(tr("planning_month_toggle")),
                 btn(tr("planning_print")),
                 btn(tr("planning_copy")),
                 btn(tr("planning_undo")),
@@ -22885,6 +23554,16 @@ impl App {
         let split = motif::split_rows(rect, &[0.0, form_h], 6.0);
         let (rect, form_rect) = (split[0], split[1]);
         Self::planning_form(ui, session, config, form_rect);
+        // **La même rangée de saisie, l'autre lecture.** Le mois montre
+        // une personne sur cinq semaines là où la semaine montre
+        // l'équipe sur sept jours ; la saisie, elle, ne change pas, et
+        // c'est ce qui permet de poser un poste sur un jour qu'on vient
+        // de repérer dans le mois.
+        if session.planning_month {
+            Self::frame_dialog(ui.ctx(), session, config);
+            Self::planning_month_grid(ui, session, digests, rect, pick_day);
+            return;
+        }
         // La trame est une fenêtre : elle se pose par-dessus la grille
         // qu'elle va remplir, ce qui est exactement ce qu'on veut voir
         // en la remplissant.
@@ -23267,17 +23946,46 @@ impl App {
                                 }
                             }
                             grand = grand.saturating_add(sum);
-                            Self::grid_cell(
-                                ui,
-                                day_w,
-                                egui::RichText::new(if any {
-                                    planning::hhmm(sum)
-                                } else {
-                                    "—".to_owned()
-                                })
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
-                            );
+                            // **Le creux se lit dans le pied**, comme il
+                            // se lit déjà sur le mois : le total du jour
+                            // passe à l'encre d'alerte quand l'officine
+                            // est ouverte et que personne n'est inscrit.
+                            // La grille disait « 14 h 00 » sans dire que
+                            // ces quatorze heures laissaient le comptoir
+                            // vide de midi à deux — et c'est la seule
+                            // question qu'on pose à un planning.
+                            //
+                            // Le calcul est celui de `planning_digests`,
+                            // passé en argument : il n'y a pas deux
+                            // calculs de creux dans cette application.
+                            let uncovered = digests.get(&week[c]).is_some_and(|d| d.uncovered);
+                            let cell =
+                                ui.allocate_ui_with_layout(
+                                    egui::vec2(day_w, ui.text_style_height(&body_style(ui))),
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.set_width(day_w);
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(if any {
+                                                    planning::hhmm(sum)
+                                                } else {
+                                                    "—".to_owned()
+                                                })
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(if uncovered {
+                                                    motif::alert()
+                                                } else {
+                                                    motif::text_dim()
+                                                }),
+                                            )
+                                            .truncate(),
+                                        )
+                                    },
+                                );
+                            if uncovered {
+                                cell.inner.on_hover_text(tr("planning_day_uncovered"));
+                            }
                         }
                         grand_total = grand;
                         Self::grid_cell(
@@ -23535,6 +24243,22 @@ impl App {
             .collect()
     }
 
+    /// Le poste de la case choisie — la personne du formulaire, son
+    /// jour —, ou rien quand la case est vide.
+    ///
+    /// C'est ce que le clavier a besoin de savoir en arrivant sur une
+    /// case : [`App::picked_occurrence`] part de `shift_pick`, qui est
+    /// justement ce qu'on cherche ici.
+    fn picked_shift(session: &Session) -> Option<db::PlannedShift> {
+        let who = session.shift_form.operator.trim().to_owned();
+        let day = session.shift_form.day.clone();
+        session
+            .shifts
+            .iter()
+            .find(|s| s.day == day && s.operator.trim() == who)
+            .cloned()
+    }
+
     /// L'occurrence que la grille a sélectionnée — **le jour autant que
     /// la ligne**.
     ///
@@ -23636,6 +24360,7 @@ impl App {
         let screen = ctx.screen_rect().size();
         let mut close = false;
         let mut apply = false;
+        let mut reload = false;
         let mut copy_week = false;
         let mut spread: Option<usize> = None;
         let mut clear = false;
@@ -23694,6 +24419,12 @@ impl App {
                                             );
                                         }
                                     });
+                            }
+                            // Changer de personne, c'est ouvrir *sa*
+                            // trame : la grille suit le menu plutôt que
+                            // de garder celle d'à côté.
+                            if session.frame.loaded_for != session.frame.operator.trim() {
+                                reload = true;
                             }
                             let rhythm = session.frame.cadence;
                             egui::ComboBox::from_id_salt("frame_cadence")
@@ -23761,6 +24492,25 @@ impl App {
                                 ))
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
+                            );
+                        }
+                        if let Some(note) = session.frame.notice.clone() {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(note)
+                                        .size(motif::pt(ui, 11.0))
+                                        // Ce qu'on ne sait pas montrer se
+                                        // dit en encre d'alerte : c'est
+                                        // le seul cas où « Poser »
+                                        // écrirait à côté de ce qui
+                                        // existe déjà.
+                                        .color(if session.frame.replace {
+                                            motif::text_dim()
+                                        } else {
+                                            motif::warn()
+                                        }),
+                                )
+                                .wrap(),
                             );
                         }
                         let pages = session.frame.pages();
@@ -23947,39 +24697,51 @@ impl App {
                         // précisément l'erreur que cette ligne existe pour
                         // éviter.
                         let shown = pages.get(page).copied().unwrap_or(session.frame.cadence);
+                        // **Trois comptes, parce qu'il y a trois sortes
+                        // de lignes.** Une journée identique sur les deux
+                        // semaines s'écrit une fois, hebdomadaire :
+                        // l'annoncer « sur l'autre semaine » était faux,
+                        // elle est sur les deux.
+                        let weekly_key = planning::Cadence::Hebdomadaire.as_str();
+                        let weekly = rows.iter().filter(|r| r.cadence == weekly_key).count();
                         let here = rows.iter().filter(|r| r.cadence == shown.as_str()).count();
-                        let elsewhere = rows.len() - here;
-                        let when = rows
+                        let elsewhere = rows.len() - weekly - here;
+                        // Les dates nommées sont celles d'une ligne de
+                        // **l'onglet ouvert** quand il en porte une — ce
+                        // sont les occurrences qui sautent une semaine,
+                        // donc les seules qui surprennent —, et sinon
+                        // celles de la première ligne écrite.
+                        let anchor = rows
                             .iter()
                             .find(|r| r.cadence == shown.as_str())
-                            .map(|r| r.day.clone())
-                            .map_or_else(String::new, |anchor| {
-                                let until = session.frame.until.clone();
-                                planning::occurrences(shown, &anchor, 4)
-                                    .iter()
-                                    // La fin annoncée borne aussi les
-                                    // dates annoncées : nommer une
-                                    // occurrence que la trame ne posera
-                                    // pas est la seule chose que cette
-                                    // ligne ne doit pas faire.
-                                    .filter(|d| until.is_empty() || **d <= until)
-                                    .map(|d| db::format_french_date(d))
-                                    .collect::<Vec<_>>()
-                                    .join(" · ")
-                            });
+                            .or_else(|| rows.first());
+                        let when = anchor.map_or_else(String::new, |r| {
+                            let cadence = planning::Cadence::parse(&r.cadence).unwrap_or(shown);
+                            let until = session.frame.until.clone();
+                            planning::occurrences(cadence, &r.day, 4)
+                                .iter()
+                                // La fin annoncée borne aussi les dates
+                                // annoncées : nommer une occurrence que
+                                // la trame ne posera pas est la seule
+                                // chose que cette ligne ne doit pas
+                                // faire.
+                                .filter(|d| until.is_empty() || **d <= until)
+                                .map(|d| db::format_french_date(d))
+                                .collect::<Vec<_>>()
+                                .join(" · ")
+                        });
                         ui.label(
-                            // **Le compte de l'onglet et celui de
-                            // l'autre moitié sont dits séparément.**
-                            // « Pose 6 postes » suivi de quatre dates
-                            // qui n'en portent que cinq est la sorte de
-                            // phrase qu'on ne relit jamais et qui a
-                            // pourtant tort.
                             egui::RichText::new(if rows.is_empty() {
                                 tr("frame_nothing_yet").to_owned()
+                            } else if weekly > 0 && weekly < rows.len() {
+                                trn(
+                                    "frame_will_write_mix",
+                                    &[&rows.len(), &weekly, &(rows.len() - weekly), &when],
+                                )
                             } else if elsewhere > 0 {
                                 trn("frame_will_write_both", &[&here, &elsewhere, &when])
                             } else {
-                                trn("frame_will_write", &[&here, &when])
+                                trn("frame_will_write", &[&rows.len(), &when])
                             })
                             .size(motif::pt(ui, 11.0))
                             .color(if rows.is_empty() {
@@ -24002,6 +24764,9 @@ impl App {
         // Les commandes sont appliquées **hors du dessin** : modifier la
         // grille pendant qu'on la parcourt est le genre de chose qui
         // marche jusqu'au jour où elle ne marche plus.
+        if reload {
+            Self::frame_load(session);
+        }
         let page = session.frame.page.min(1);
         if copy_week {
             let other = 1 - page;
@@ -24059,12 +24824,30 @@ impl App {
     fn frame_shifts(form: &FrameForm) -> Vec<db::NewShift> {
         let mut out = Vec::new();
         let who = form.operator.trim().to_owned();
-        for (page, cadence) in form.pages().into_iter().enumerate() {
+        let pages = form.pages();
+        let alternating = pages.len() == 2;
+        for (page, cadence) in pages.into_iter().enumerate() {
             let Some(week) = form.weeks.get(page) else {
                 continue;
             };
             for (index, day) in week.iter().enumerate() {
                 let weekday = i64::try_from(index).unwrap_or(0) + 1;
+                // **Une journée identique sur les deux semaines est une
+                // journée de chaque semaine.** Elle s'écrit donc une
+                // fois, hebdomadaire, plutôt que deux fois en parités —
+                // ce qui rend l'aller-retour exact : relire puis reposer
+                // une trame redonne les mêmes lignes, et « lundi à
+                // vendredi toutes les semaines plus le samedi une fois
+                // sur deux » reste six lignes et non onze.
+                let twin = alternating && form.weeks[0][index] == form.weeks[1][index];
+                if twin && page == 1 {
+                    continue;
+                }
+                let cadence = if twin {
+                    planning::Cadence::Hebdomadaire
+                } else {
+                    cadence
+                };
                 let (Some(start), Some(on)) = (
                     db::parse_hour(&day.from),
                     planning::in_week_of(&form.from, weekday),
@@ -24095,6 +24878,65 @@ impl App {
         out
     }
 
+    /// Charger dans la fenêtre la trame que cette personne a déjà.
+    ///
+    /// **Sans cela, la fenêtre ne savait qu'ajouter.** Ouverte pour
+    /// quelqu'un qui a déjà des horaires, elle montrait une grille vide,
+    /// et « Poser » écrivait une *seconde* trame par-dessus la
+    /// première : la personne travaillait deux fois, et rien à l'écran
+    /// ne le disait. Le geste ordinaire n'est pas « ajouter une trame »,
+    /// c'est « corriger le mercredi de Claire ».
+    ///
+    /// La lecture se fait sur les lignes rangées, une par appel à
+    /// [`db::Db::shift_family`] — sa première ligne *est* la ligne
+    /// rangée. L'arbitrage, lui, est dans [`frame_from_patterns`], qui
+    /// est pur et testé : cette fonction-ci ne fait que lire et poser.
+    fn frame_load(session: &mut Session) {
+        let who = session.frame.operator.trim().to_owned();
+        session.frame.loaded_for = who.clone();
+        let ids = session.db.shift_patterns(&who).unwrap_or_default();
+        let mut rows: Vec<db::NewShift> = Vec::new();
+        for id in &ids {
+            if let Some(first) = session
+                .db
+                .shift_family(*id)
+                .unwrap_or_default()
+                .into_iter()
+                .next()
+            {
+                rows.push(first);
+            }
+        }
+        session.frame.page = 0;
+        session.frame.replacing = Vec::new();
+        match frame_from_patterns(&rows) {
+            FrameLoad::Vide => {
+                session.frame.weeks = Default::default();
+                session.frame.replace = false;
+                session.frame.notice = None;
+            }
+            FrameLoad::Trame(cadence, weeks) => {
+                // Ce qui sera remplacé est ce qui vient d'être montré :
+                // la liste est retenue ici, et non redemandée au moment
+                // d'écrire.
+                session.frame.replacing = ids;
+                session.frame.cadence = cadence;
+                session.frame.weeks = *weeks;
+                // **On édite ce qui existe**, donc la case se coche.
+                // C'est le seul endroit où elle se coche toute seule, et
+                // la phrase au-dessus dit pourquoi : poser par-dessus
+                // ferait travailler la personne deux fois.
+                session.frame.replace = true;
+                session.frame.notice = Some(trf("frame_loaded", rows.len()));
+            }
+            FrameLoad::Illisible(n) => {
+                session.frame.weeks = Default::default();
+                session.frame.replace = false;
+                session.frame.notice = Some(trf("frame_too_rich", n));
+            }
+        }
+    }
+
     /// Poser la trame : retirer ce qu'il faut retirer, écrire le reste,
     /// **en un seul geste qu'un seul retour arrière défait**.
     fn frame_apply(session: &mut Session) {
@@ -24115,7 +24957,7 @@ impl App {
         // la corrigeaient.
         let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
         if form.replace {
-            for id in session.db.shift_patterns(&who).unwrap_or_default() {
+            for id in form.replacing.clone() {
                 let family = session.db.shift_family(id).unwrap_or_default();
                 match session.db.delete_shift(id, &who) {
                     Ok(true) => removed.push(family),
@@ -24146,6 +24988,28 @@ impl App {
     /// What one cell of the planning says: the hours, or the absence
     /// that explains why there are none.
     fn planning_cell_text(shifts: &[&planning::Shift]) -> String {
+        Self::planning_cell_text_in(shifts, short_hour)
+    }
+
+    /// La même case, **écrite serré** : « 9–12h30 » au lieu de
+    /// « 9 h–12 h 30 ».
+    ///
+    /// Une case du mois porte le numéro du jour *et* les heures dans la
+    /// largeur qu'une case de semaine donne aux heures seules — sept
+    /// jours et un total là où la semaine en met sept. Les espaces
+    /// autour du « h » y coûtent cinq caractères sur douze, c'est-à-dire
+    /// la colonne des totaux.
+    ///
+    /// **Une seule construction**, deux orthographes de l'heure : c'est
+    /// la même fonction qui écrit les deux, avec l'écriture de l'heure
+    /// en paramètre. Deux constructions d'une même case finiraient par
+    /// dire autre chose l'une que l'autre, et c'est celle qu'on regarde
+    /// le moins qui aurait tort.
+    fn planning_cell_text_tight(shifts: &[&planning::Shift]) -> String {
+        Self::planning_cell_text_in(shifts, tight_hour)
+    }
+
+    fn planning_cell_text_in(shifts: &[&planning::Shift], hour: fn(u16) -> String) -> String {
         if shifts.is_empty() {
             return String::new();
         }
@@ -24156,10 +25020,10 @@ impl App {
                     s.kind.label().to_owned()
                 } else {
                     match s.end {
-                        Some(end) => format!("{}–{}", short_hour(s.start), short_hour(end)),
+                        Some(end) => format!("{}–{}", hour(s.start), hour(end)),
                         // Un poste sans fin garde son heure de début et
                         // dit qu'il ne sait pas où il s'arrête.
-                        None => format!("{}–…", short_hour(s.start)),
+                        None => format!("{}–…", hour(s.start)),
                     }
                 }
             })
@@ -24256,15 +25120,11 @@ impl App {
                         egui::Stroke::new(1.0_f32, motif::bg_dark()),
                     );
                 }
-                // "Lun 24/08" — weekday short + day/month.
-                let short = three_letters(db::weekday_fr(date).unwrap_or(""));
-                let dm = date
-                    .get(8..10)
-                    .and_then(|d| date.get(5..7).map(|m| format!("{d}/{m}")));
+                // « Lun 24/08 », ou ce qui en tient dans la colonne.
                 ui.painter().text(
                     egui::pos2(col.center().x, col.top() + 12.0),
                     egui::Align2::CENTER_CENTER,
-                    format!("{short} {}", dm.unwrap_or_default()),
+                    day_head(ui, date, col.width() - 6.0, 12.0),
                     egui::FontId::proportional(motif::pt(ui, 12.0)),
                     if *date == session.today {
                         motif::accent()
@@ -43115,6 +43975,232 @@ mod tests {
             ("20:00", "26:00")
         );
         assert_eq!(rows[0].kind, "GARDE");
+    }
+
+    /// **La trame se relit**, et ce qu'elle ne sait pas montrer, elle
+    /// le dit.
+    ///
+    /// C'est la moitié qui manquait à la fenêtre : ouverte pour
+    /// quelqu'un qui a déjà des horaires, elle montrait une grille vide
+    /// et « Poser » écrivait une *seconde* trame par-dessus la première.
+    /// La personne travaillait deux fois, et rien à l'écran ne le disait.
+    #[test]
+    fn a_frame_reads_back_what_is_already_posted() {
+        use super::{frame_from_patterns, FrameLoad};
+        // Le 7 septembre 2026 est un lundi, le 12 un samedi.
+        let row = |day: &str, cadence: &str, from: &str, to: &str| db::NewShift {
+            operator: "CL".to_owned(),
+            day: day.to_owned(),
+            start_time: from.to_owned(),
+            end_time: to.to_owned(),
+            pause_minutes: 90,
+            kind: "JOURNEE".to_owned(),
+            repeat_days: crate::planning::Cadence::parse(cadence)
+                .map_or(0, crate::planning::Cadence::pas),
+            cadence: cadence.to_owned(),
+            ..Default::default()
+        };
+
+        // Rien à lire : la grille reste vide, et « Remplacer » n'a rien
+        // à quoi s'appliquer.
+        assert_eq!(frame_from_patterns(&[]), FrameLoad::Vide);
+
+        // Une trame hebdomadaire revient sur son jour, avec ses heures
+        // telles qu'on les retape.
+        let one = [row("2026-09-07", "HEBDO", "09:00", "19:00")];
+        let FrameLoad::Trame(cadence, weeks) = frame_from_patterns(&one) else {
+            panic!("une trame hebdomadaire doit se relire");
+        };
+        assert_eq!(cadence, crate::planning::Cadence::Hebdomadaire);
+        assert_eq!(weeks[0][0].from, "09:00");
+        assert_eq!(weeks[0][0].to, "19:00");
+        assert_eq!(weeks[0][0].pause, "90");
+        assert!(!weeks[0][1].written(), "les autres jours restent vides");
+
+        // **Une ligne d'avant les rythmes se relit** : sept jours de
+        // `repeat_days` sans clé sont une trame hebdomadaire.
+        let legacy = [db::NewShift {
+            cadence: String::new(),
+            repeat_days: 7,
+            ..row("2026-09-07", "HEBDO", "09:00", "19:00")
+        }];
+        assert!(matches!(
+            frame_from_patterns(&legacy),
+            FrameLoad::Trame(crate::planning::Cadence::Hebdomadaire, _)
+        ));
+
+        // **Une alternance se relit comme une alternance**, l'onglet des
+        // paires en tête — quel que soit l'ordre où la base les rend.
+        for swapped in [false, true] {
+            let mut both = [
+                row("2026-09-12", "PAIRES", "09:00", "12:30"),
+                row("2026-09-12", "IMPAIRES", "14:00", "19:30"),
+            ];
+            if swapped {
+                both.swap(0, 1);
+            }
+            let FrameLoad::Trame(cadence, weeks) = frame_from_patterns(&both) else {
+                panic!("une alternance doit se relire (permuté : {swapped})");
+            };
+            // Les heures restent avec **leur** parité, quel que soit
+            // l'ordre où la base rend les deux lignes : c'est tout ce
+            // que cette permutation vérifie.
+            assert_eq!(cadence, crate::planning::Cadence::Paires);
+            assert_eq!(weeks[0][5].from, "09:00", "samedi des paires");
+            assert_eq!(weeks[1][5].from, "14:00", "samedi des impaires");
+        }
+
+        // **La trame que les officines écrivent vraiment** : lundi à
+        // vendredi toutes les semaines, plus le samedi une fois sur
+        // deux. C'est un mélange de rythmes, et c'est le plus ordinaire
+        // qui soit — il se lisait « illisible ».
+        let mixed = [
+            row("2026-09-07", "HEBDO", "09:00", "19:00"),
+            row("2026-09-12", "PAIRES", "09:00", "12:30"),
+        ];
+        let FrameLoad::Trame(cadence, weeks) = frame_from_patterns(&mixed) else {
+            panic!("hebdomadaire et parité doivent se lire ensemble");
+        };
+        assert_eq!(cadence, crate::planning::Cadence::Paires);
+        // La journée hebdomadaire est celle des **deux** semaines.
+        assert_eq!(weeks[0][0].from, "09:00");
+        assert_eq!(weeks[1][0].from, "09:00");
+        // Le samedi n'est que sur la sienne.
+        assert!(weeks[0][5].written());
+        assert!(!weeks[1][5].written());
+
+        // **L'aller-retour est exact.** Relire une trame puis la reposer
+        // doit redonner les mêmes lignes : sans quoi ouvrir la fenêtre
+        // et valider sans rien changer réécrirait l'horaire sous une
+        // autre forme — onze lignes là où il y en avait six.
+        let form = super::FrameForm {
+            operator: "CL".to_owned(),
+            cadence,
+            from: "2026-09-07".to_owned(),
+            weeks: *weeks,
+            ..Default::default()
+        };
+        let back = App::frame_shifts(&form);
+        let shape = |r: &db::NewShift| (r.day.clone(), r.cadence.clone(), r.start_time.clone());
+        let mut before: Vec<_> = mixed.iter().map(shape).collect();
+        let mut after: Vec<_> = back.iter().map(shape).collect();
+        before.sort();
+        after.sort();
+        assert_eq!(after, before, "relire puis reposer ne change rien");
+
+        // **Ce que deux semaines de sept jours ne portent pas n'est pas
+        // approximé.** Deux postes le même jour : en perdre un serait
+        // retirer des heures que personne n'a demandé de retirer.
+        let twice = [
+            row("2026-09-07", "HEBDO", "09:00", "12:30"),
+            row("2026-09-07", "HEBDO", "14:00", "19:30"),
+        ];
+        assert_eq!(frame_from_patterns(&twice), FrameLoad::Illisible(2));
+        // Trois rythmes : deux onglets n'y suffisent pas.
+        let three = [
+            row("2026-09-07", "HEBDO", "09:00", "12:30"),
+            row("2026-09-08", "PAIRES", "09:00", "12:30"),
+            row("2026-09-09", "SUR3", "09:00", "12:30"),
+        ];
+        assert_eq!(frame_from_patterns(&three), FrameLoad::Illisible(3));
+        // Et une date qu'on ne lit pas ne se range nulle part.
+        let bad = [row("mardi prochain", "HEBDO", "09:00", "12:30")];
+        assert_eq!(frame_from_patterns(&bad), FrameLoad::Illisible(1));
+    }
+
+    /// **Une garde se tape « 20 h » → « 2 h » et se range « 26:00 »**, et
+    /// l'aller-retour se répond.
+    ///
+    /// Les deux moitiés sont là : l'écriture, qui pousse une fin
+    /// antérieure au début au lendemain plutôt que de la refuser ; et la
+    /// relecture, qui rend l'heure du lendemain plutôt que « 26:00 » —
+    /// que personne n'écrit et que l'horloge du jour ne relit même pas.
+    /// Une trame relue puis reposée doit retrouver exactement sa nuit.
+    #[test]
+    fn a_night_shift_is_typed_as_it_is_said() {
+        use super::typed_hour;
+        assert_eq!(App::shift_end("20", "2"), "26:00");
+        assert_eq!(App::shift_end("9", "19h30"), "19:30");
+        assert_eq!(
+            App::shift_end("9h30", "930"),
+            "33:30",
+            "une minute partagée"
+        );
+        // Pas de fin écrite : rien, et **cela ne vaut pas zéro heure**.
+        assert_eq!(App::shift_end("9", ""), "");
+        assert_eq!(App::shift_end("9", "n'importe quoi"), "");
+
+        assert_eq!(typed_hour("26:00"), "02:00");
+        assert_eq!(typed_hour("09:00"), "09:00");
+        assert_eq!(typed_hour("23:59"), "23:59");
+        assert_eq!(typed_hour(""), "");
+        assert_eq!(typed_hour("pas une heure"), "");
+
+        // L'aller-retour, qui est la raison d'être des deux.
+        assert_eq!(
+            App::shift_end(&typed_hour("20:00"), &typed_hour("26:00")),
+            "26:00"
+        );
+        assert_eq!(
+            App::shift_end(&typed_hour("09:00"), &typed_hour("19:30")),
+            "19:30"
+        );
+    }
+
+    /// Ce qu'une case du planning écrit : les heures, ou l'absence qui
+    /// explique qu'il n'y en ait pas.
+    ///
+    /// Une absence **munie d'un horaire** n'écrit pas ses heures : c'est
+    /// une manière d'écrire une journée entière d'absence, et « Congé
+    /// 9 h–19 h » se lirait comme dix heures de présence.
+    #[test]
+    fn a_planning_cell_says_the_hours_or_the_absence() {
+        use crate::planning::{Shift, ShiftKind};
+        let shift = |start: u16, end: Option<u16>, kind: ShiftKind, pause: u16| Shift {
+            id: 1,
+            operator: "CL".to_owned(),
+            start,
+            end,
+            pause,
+            kind,
+        };
+        assert_eq!(App::planning_cell_text(&[]), "");
+        let journee = shift(9 * 60, Some(19 * 60 + 30), ShiftKind::Journee, 45);
+        assert_eq!(App::planning_cell_text(&[&journee]), "9 h–19 h 30");
+        // Sans fin écrite, la case garde le début et dit qu'elle ne sait
+        // pas où le poste s'arrête.
+        let ouvert = shift(9 * 60, None, ShiftKind::Journee, 0);
+        assert_eq!(App::planning_cell_text(&[&ouvert]), "9 h–…");
+        // Une absence dit son nom, et pas ses heures.
+        let conge = shift(9 * 60, Some(19 * 60), ShiftKind::Conge, 0);
+        assert_eq!(App::planning_cell_text(&[&conge]), "Congé");
+        // Deux postes dans la journée se lisent l'un après l'autre.
+        assert_eq!(
+            App::planning_cell_text(&[&journee, &conge]),
+            "9 h–19 h 30 · Congé"
+        );
+
+        // Le survol déplie : la date, chaque poste, sa durée, et la
+        // coupure quand il y en a une.
+        let hover = App::planning_cell_hover(&[&journee], "2026-09-07");
+        assert!(hover.starts_with("07/09/2026"), "{hover}");
+        assert!(hover.contains("Journée"), "{hover}");
+        assert!(
+            hover.contains("9 h 45"),
+            "la durée, pause déduite : {hover}"
+        );
+        assert!(hover.contains("45"), "la coupure est dite : {hover}");
+        // Une case vide le dit plutôt que de rendre une date toute
+        // seule, qui se lirait comme une infobulle cassée.
+        let rien = App::planning_cell_hover(&[], "2026-09-07");
+        assert!(rien.contains(tr("planning_nothing")), "{rien}");
+        // Et une absence n'affiche ni durée ni pause.
+        let off = App::planning_cell_hover(&[&conge], "2026-09-07");
+        assert!(off.contains("Congé"), "{off}");
+        assert!(
+            !off.contains(" h "),
+            "une absence ne porte pas d'heures : {off}"
+        );
     }
 
     /// **Un filtre n'efface pas, et surtout pas ce qui chevauche ce

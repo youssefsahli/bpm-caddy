@@ -34179,24 +34179,37 @@ impl Db {
     /// répondait déjà autrement pour une ligne dont le rythme dit « ce
     /// jour-là » — et deux réponses à une question finissent toujours
     /// par diverger.
+    ///
+    /// Et **une absence n'est pas une trame.** « Congé du 12 au 26 »
+    /// est une ligne qui revient tous les jours jusqu'à une date : elle
+    /// répète, donc elle passait le filtre, et « Remplacer la trame »
+    /// l'aurait emportée en réécrivant les horaires de quelqu'un. On ne
+    /// supprime pas les congés d'une personne parce qu'on lui change ses
+    /// heures du mercredi.
     pub fn shift_patterns(&self, operator: &str) -> Result<Vec<i64>, String> {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, cadence, repeat_days FROM shifts
+                "SELECT id, cadence, repeat_days, kind FROM shifts
                  WHERE operator = ?1 AND supersedes = 0
                  ORDER BY id",
             )
             .map_err(|e| e.to_string())?;
-        let rows: Vec<(i64, String, i64)> = stmt
-            .query_map([operator], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        let rows: Vec<(i64, String, i64, String)> = stmt
+            .query_map([operator], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
             .map_err(|e| e.to_string())?
             .collect::<Result<_, _>>()
             .map_err(|e| e.to_string())?;
         Ok(rows
             .into_iter()
-            .filter(|(_, cadence, days)| stored_step(cadence, *days) > 0)
-            .map(|(id, _, _)| id)
+            .filter(|(_, cadence, days, kind)| {
+                stored_step(cadence, *days) > 0
+                    && crate::planning::ShiftKind::parse(kind)
+                        .is_some_and(crate::planning::ShiftKind::worked)
+            })
+            .map(|(id, _, _, _)| id)
             .collect())
     }
 
@@ -37333,6 +37346,26 @@ mod tests {
         );
         assert_eq!(db.shift_patterns("YS").unwrap().len(), 1);
         assert!(db.shift_patterns("Personne").unwrap().is_empty());
+        // **Une absence n'est pas une trame.** Un congé posé en plage
+        // revient tous les jours jusqu'à sa fin : il répète, donc il
+        // passerait le premier filtre — et « Remplacer la trame »
+        // l'emporterait en réécrivant les horaires de quelqu'un.
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-10-12".to_owned(),
+            start_time: "09:00".to_owned(),
+            kind: "CONGE".to_owned(),
+            repeat_days: 1,
+            cadence: "QUOTIDIEN".to_owned(),
+            repeat_until: "2026-10-26".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            db.shift_patterns("CL").unwrap(),
+            vec![paire],
+            "le congé en plage n'entre pas dans les trames"
+        );
     }
 
     /// **Défaire une suppression doit rendre la famille entière.**
@@ -41764,8 +41797,14 @@ mod tests {
             ("MB", 3, "09:00", "", 0, "JOURNEE", ""),
             // **Le samedi en alternance**, qui est la façon dont une
             // officine s'organise vraiment et le seul endroit où la
-            // grille montre un rythme de parité. Sans ces deux lignes,
-            // aucune capture ne porte de trame qui saute une semaine.
+            // grille montre un rythme de parité. Sans ces lignes, aucune
+            // capture ne porte de trame qui saute une semaine.
+            //
+            // Claire porte du même coup la trame canonique — du lundi au
+            // vendredi toutes les semaines, plus un samedi sur deux —,
+            // qui est un **mélange** de rythmes et le cas que la fenêtre
+            // de trame doit savoir montrer.
+            ("CL", 5, "09:00", "12:30", 0, "JOURNEE", "PAIRES"),
             ("MB", 5, "09:00", "12:30", 0, "JOURNEE", "PAIRES"),
             ("YS", 5, "09:00", "12:30", 0, "JOURNEE", "IMPAIRES"),
         ] {

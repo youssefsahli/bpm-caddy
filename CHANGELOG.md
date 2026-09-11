@@ -5,6 +5,132 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.186.0] - 2026-09-12
+
+### Added
+- **La trame se relit.** La fenêtre ne savait qu'ajouter : ouverte pour
+  quelqu'un qui a déjà des horaires, elle montrait une grille vide, et
+  « Poser » écrivait une *seconde* trame par-dessus la première. La
+  personne travaillait deux fois et rien à l'écran ne le disait. Or le
+  geste ordinaire n'est pas « ajouter une trame », c'est « corriger le
+  mercredi de Claire ».
+
+  Elle s'ouvre donc sur la trame de la personne choisie, et elle suit le
+  menu : changer de personne, c'est ouvrir la sienne. « Remplacer » se
+  coche alors tout seul — le seul endroit où cette case le fait — et la
+  phrase au-dessus dit pourquoi.
+
+- **Une journée hebdomadaire est celle des deux semaines.** C'est ce qui
+  rend l'écran capable de montrer la trame qu'une officine écrit
+  vraiment : du lundi au vendredi toutes les semaines, plus un samedi
+  sur deux. Ce mélange de rythmes — le plus ordinaire qui soit — se
+  serait lu « illisible » sans cette règle, puisque « chaque semaine »
+  n'est ni les paires ni les impaires.
+
+  Et la règle joue **dans les deux sens** : une journée identique sur les
+  deux onglets se réécrit une fois, hebdomadaire, plutôt que deux fois en
+  parités. C'est ce qui rend l'aller-retour exact — relire une trame puis
+  la reposer sans rien changer redonne les mêmes lignes, six et non onze
+  —, et c'est un test qui le tient.
+
+  Trois autres règles, une par test : une alternance se relit comme une
+  alternance, l'onglet des paires en tête et quel que soit l'ordre où la
+  base rend les deux lignes ; une ligne d'avant les rythmes se relit
+  (sept jours de `repeat_days` sans clé sont une trame hebdomadaire, et
+  rien d'autre ne se devine) ; et **ce que deux semaines de sept jours ne
+  portent pas n'est pas approximé**. Deux postes le même jour, un pas
+  qu'on ne sait pas ranger, une date illisible : l'écran le dit, laisse
+  la grille vide et **ne coche pas « Remplacer »** — approximer
+  reviendrait à écraser ce qu'on n'avait pas su montrer.
+
+- La ligne qui annonce ce que la trame va poser compte **trois sortes de
+  lignes** et non deux : « 6 postes : 5 chaque semaine et 1 en
+  alternance », suivi des dates de celles qui sautent une semaine, qui
+  sont les seules qui surprennent. Une journée hebdomadaire annoncée
+  « sur l'autre semaine » était fausse — elle est sur les deux.
+
+- Une garde fait l'aller-retour : la base range « 26:00 », que personne
+  n'écrit et que l'horloge du jour ne relit même pas ; le champ rend
+  « 02:00 », et l'écriture la repousse au-delà de minuit toute seule.
+
+- **Le creux se lit dans le pied du planning**, comme il se lit déjà sur
+  le mois : le total d'un jour passe à l'encre d'alerte quand l'officine
+  est ouverte et que personne n'est inscrit. La grille disait « 14 h 00 »
+  sans dire que ces quatorze heures laissaient le comptoir vide de midi à
+  deux, ce qui est la seule question qu'on pose à un planning. Le calcul
+  est celui qui servait déjà au mois : il n'y a pas deux calculs de creux
+  dans cette application.
+
+- Trois fonctions pures du planning gagnent leur test : la fin d'un poste
+  telle qu'on la tape, la relecture d'une heure rangée, et ce qu'une case
+  du planning écrit — les heures, ou l'absence qui explique qu'il n'y en
+  ait pas.
+
+- **Le planning se lit aussi au mois, et par personne.** « Quand est-ce
+  que je travaille le mois prochain ? » est la première question qu'on
+  pose à un horaire, et la grille de la semaine y répondait en quatre
+  clics sur la flèche — une semaine à la fois, sans jamais montrer le
+  rythme.
+
+  Un bouton « Mois » dans la rangée de saisie, et la même grille de
+  postes se lit dans l'autre sens : une personne sur cinq semaines
+  plutôt que l'équipe sur sept jours. Les flèches déplacent alors le
+  mois, puisque c'est ce qu'on regarde, et le titre dit lequel et de
+  qui — un tableau qui ne porte que des numéros de jour ne se lit pas.
+
+  La première colonne porte le **numéro de semaine ISO**, et ce n'est pas
+  un ornement : c'est lui qui rend le rythme lisible. Un samedi sur deux
+  se voit comme une colonne qui s'allume aux numéros pairs et s'éteint
+  aux impairs — ce qu'aucune semaine regardée seule ne peut montrer, et
+  ce qui permet de vérifier d'un coup d'œil qu'une trame de parité tombe
+  bien où on la croyait. Elle porte aussi le total de la semaine, et elle
+  est **gelée au bord gauche** comme celle des noms : sur un écran de
+  comptoir la grille défile sur trois jours, et « 9–12h30 » lu sans
+  savoir de quelle semaine ne dit rien.
+
+  Le numéro du jour dit le **creux** — c'est une propriété du comptoir,
+  pas de la personne — et les heures disent la personne, de sa couleur.
+  Le total du mois est en pied, et il dit combien de postes n'ont pas de
+  fin écrite : un total seul se lirait comme le mois entier.
+
+  Deux boutons disparaissent au mois : « Imprimer » et « Recopier » sont
+  des gestes de semaine, et un bouton qui agirait sur une semaine qu'on
+  ne regarde pas est un bouton qu'on presse une fois et qu'on n'ose plus
+  presser. Les rangées, elles, remplissent le volet : un mois est un
+  tableau qu'on lit de loin, et il a la place d'être lu.
+
+- **Le planning se parcourt au clavier.** Les flèches déplacent la
+  *case* choisie — de jour en jour, de personne en personne — et
+  « Modifier » et « Supprimer » suivent ce qu'on vient d'atteindre. Le
+  pas de semaine reste sur les ‹ › et sur « Aujourd'hui », qui sont à
+  deux centimètres, là où arriver sur une case demandait la souris ;
+  passer le bord du lundi ou du dimanche fait tourner la semaine et
+  retombe de l'autre côté, si bien qu'on ne perd rien en chemin. Rien de
+  cela ne prend le clavier à un champ de texte, ni à la fenêtre de
+  trame — les flèches y déplaceraient une case *derrière* elle, et on ne
+  le verrait qu'en la fermant. Au mois, elles déplacent le mois, qui est
+  ce qu'on regarde.
+
+### Fixed
+- **« Remplacer la trame » aurait emporté les congés.** Une absence posée
+  en plage — « du 12 au 26 octobre » — est une ligne qui revient tous les
+  jours jusqu'à une date : elle répète, donc elle passait pour une trame,
+  et réécrire les horaires de quelqu'un lui aurait supprimé ses vacances.
+  Une absence n'est pas une trame, et ce que « Remplacer » retire est
+  désormais **exactement ce que la fenêtre a montré** — la liste est
+  retenue à la lecture au lieu d'être redemandée à l'écriture, si bien
+  qu'une ligne que l'écran n'a pas su afficher, et pour laquelle il a dit
+  qu'il ne toucherait à rien, ne peut plus disparaître.
+- **Les sept en-têtes de la semaine se touchaient.** « Lun 07/09 » était
+  peint sans borne au centre de sa colonne, et un `Painter` peint où on
+  lui dit — rien ne le clipe : à `text_scale = 1,6` la rangée se lisait
+  « Lun 07/09Mar 08/09Mer 09/09 ». L'en-tête prend désormais la forme la
+  plus riche qui tienne — « Lun 07/09 », « Lun 07 », « 07 ». On
+  raccourcit plutôt que d'élider : « Lun 07/0… » a perdu le mois *et* se
+  lit cassé, là où « Lun 07 » ne dit pas le mois et se lit entier — or le
+  mois est déjà écrit au-dessus de la grille. Trouvé en regardant, à
+  1024x700 et à l'échelle 1,6.
+
 ## [0.185.0] - 2026-09-11
 
 ### Added
