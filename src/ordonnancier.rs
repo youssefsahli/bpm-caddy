@@ -409,6 +409,24 @@ pub enum Kind {
     /// Ce qui a été détruit : le stock à détruire descend. La ligne
     /// porte le procès-verbal, et elle ne s'écrit pas sans lui.
     Destruction,
+    /// Ce qui a **périmé au coffre**. Le stock délivrable descend, et
+    /// le troisième compte monte — voir [`Balance`].
+    ///
+    /// C'était une perte, et c'était faux : une perte est ce qui n'est
+    /// plus là, cassé, volé, écoulé. Une boîte périmée est toujours
+    /// dans le coffre, et elle y reste jusqu'au procès-verbal. Notée en
+    /// perte, elle disparaissait du registre en restant sur l'étagère —
+    /// exactement l'erreur que le compte des retours patients avait
+    /// été créé pour réparer, sur l'autre étagère.
+    Peremption,
+    /// Ce qui quitte le coffre parmi les périmés : le troisième compte
+    /// descend. Comme la destruction des retours, la ligne porte son
+    /// procès-verbal et ne s'écrit pas sans lui.
+    ///
+    /// Une nature à elle, et non la même que [`Kind::Destruction`] :
+    /// une ligne de registre dit **ce qu'elle a fait**, et deux piles
+    /// vidées par la même nature obligeraient à deviner laquelle.
+    DestructionPerimes,
     /// L'annulation d'une ligne fautive : elle **désigne** la ligne
     /// qu'elle annule et défait exactement ce que celle-ci avait fait au
     /// stock. C'est la seule correction que le registre connaisse — la
@@ -431,6 +449,8 @@ impl Kind {
             Kind::Perte => "PERTE",
             Kind::Retour => "RETOUR",
             Kind::Destruction => "DESTRUCTION",
+            Kind::Peremption => "PEREMPTION",
+            Kind::DestructionPerimes => "DESTRUCTION_PERIMES",
             Kind::Annulation => "ANNULATION",
         }
     }
@@ -446,6 +466,8 @@ impl Kind {
             "INVENTAIRE" => Kind::Inventaire,
             "RETOUR" => Kind::Retour,
             "DESTRUCTION" => Kind::Destruction,
+            "PEREMPTION" => Kind::Peremption,
+            "DESTRUCTION_PERIMES" => Kind::DestructionPerimes,
             "ANNULATION" => Kind::Annulation,
             _ => Kind::Perte,
         }
@@ -460,6 +482,8 @@ impl Kind {
             Kind::Perte => "stup_kind_perte",
             Kind::Retour => "stup_kind_retour",
             Kind::Destruction => "stup_kind_destruction",
+            Kind::Peremption => "stup_kind_peremption",
+            Kind::DestructionPerimes => "stup_kind_destruction_perimes",
             Kind::Annulation => "stup_kind_annulation",
         }
     }
@@ -474,6 +498,8 @@ impl Kind {
             Kind::Perte => 3,
             Kind::Retour => 4,
             Kind::Destruction => 6,
+            Kind::Peremption => 3,
+            Kind::DestructionPerimes => 6,
             Kind::Annulation => 5,
         }
     }
@@ -498,26 +524,61 @@ impl Kind {
         matches!(self, Kind::Sortie | Kind::Retour)
     }
 
+    /// La ligne touche-t-elle une **boîte**, et porte-t-elle donc un
+    /// numéro de lot ?
+    ///
+    /// Une réception, une délivrance, un retour et une destruction en
+    /// portent un : chacune passe par une boîte qu'on a en main. Un
+    /// inventaire compte un coffre entier — plusieurs lots à la fois —
+    /// et une annulation ne fait que défaire une ligne qui, elle,
+    /// portait le sien. Écrire un lot sur celles-là dirait qu'on sait
+    /// laquelle, et on ne le sait pas.
+    ///
+    /// C'est ce qui permettra à un rappel de l'ANSM de demander « ce
+    /// lot est-il passé chez nous, et chez qui ».
+    pub fn carries_lot(self) -> bool {
+        matches!(
+            self,
+            Kind::Entree | Kind::Sortie | Kind::Retour | Kind::Destruction
+        )
+    }
+
     /// Écrit-elle dans le stock à détruire plutôt que dans le stock
     /// délivrable ? Voir [`Balance`].
     pub fn is_destruction_side(self) -> bool {
         matches!(self, Kind::Retour | Kind::Destruction)
     }
 
-    /// Les six natures que l'on **écrit**.
+    /// Écrit-elle dans le compte des périmés ?
+    pub fn is_expiry_side(self) -> bool {
+        matches!(self, Kind::Peremption | Kind::DestructionPerimes)
+    }
+
+    /// La ligne vide un coffre sur procès-verbal, et **ne s'écrit pas
+    /// sans lui** : c'est la pièce extérieure à laquelle elle renvoie.
+    pub fn needs_record(self) -> bool {
+        matches!(self, Kind::Destruction | Kind::DestructionPerimes)
+    }
+
+    /// Les huit natures que l'on **écrit**.
     ///
     /// L'annulation n'en est pas : elle ne se choisit pas dans un
     /// formulaire, elle se demande sur la ligne à annuler. Un
     /// « annuler » posé à côté de « réception » et de « délivrance »
-    /// serait une septième façon d'écrire une ligne, alors que c'est
+    /// serait une façon de plus d'écrire une ligne, alors que c'est
     /// une façon d'en corriger une.
-    pub const ALL: [Kind; 6] = [
+    ///
+    /// L'ordre est celui du comptoir : ce qu'on écrit tous les jours
+    /// d'abord, ce qui vide le coffre à la fin.
+    pub const ALL: [Kind; 8] = [
         Kind::Entree,
         Kind::Sortie,
         Kind::Inventaire,
         Kind::Perte,
+        Kind::Peremption,
         Kind::Retour,
         Kind::Destruction,
+        Kind::DestructionPerimes,
     ];
 
     /// Une ligne de cette nature peut-elle être annulée ?
@@ -625,8 +686,17 @@ pub struct Move<'a> {
 pub struct Balance {
     /// Ce qui est délivrable.
     pub stock: f64,
-    /// Ce qui attend d'être détruit.
+    /// Ce qu'un patient a rapporté et qui attend d'être détruit.
     pub to_destroy: f64,
+    /// Ce qui a périmé **au coffre** et attend son procès-verbal.
+    ///
+    /// Un troisième compte et non une part du deuxième : les deux
+    /// piles ne suivent pas le même chemin — l'une vient du dehors et
+    /// l'officine en répond jusqu'au procès-verbal, l'autre est du
+    /// stock qu'elle a acheté et qui n'a jamais quitté le coffre. Les
+    /// additionner annoncerait « quarante à détruire » là où il y a
+    /// deux sacs scellés qui ne se comptent pas ensemble.
+    pub expired: f64,
 }
 
 /// Où en sont les deux comptes après toutes ces lignes.
@@ -669,6 +739,14 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             // coffre, du côté de ce qui ne se délivrera plus.
             Kind::Retour => b.to_destroy += sign * quantity,
             Kind::Destruction => b.to_destroy -= sign * quantity,
+            // Une péremption sort du délivrable **sans disparaître** :
+            // la boîte est encore au coffre, et elle y reste jusqu'au
+            // procès-verbal.
+            Kind::Peremption => {
+                b.stock -= sign * quantity;
+                b.expired += sign * quantity;
+            }
+            Kind::DestructionPerimes => b.expired -= sign * quantity,
             // Un inventaire **pose** le solde, il ne s'y ajoute pas :
             // il n'a donc pas de contraire, et son annulation est
             // traitée à part.
@@ -1226,8 +1304,239 @@ pub fn sequence(used: &[u32]) -> Option<Sequence> {
     })
 }
 
+/// Une case de la feuille de saisie : un produit, ce qui a été tapé en
+/// face, et de quoi juger la ligne.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Slot<'a> {
+    pub stup_id: i64,
+    /// Le texte **tel qu'il est tapé**, jamais un nombre déjà lu : une
+    /// case vide et une case illisible sont deux choses, et un
+    /// `Option<f64>` les confond.
+    pub typed: &'a str,
+    /// Le solde délivrable du produit, tel que le registre le donne.
+    pub expected: f64,
+    /// Le motif tapé sur cette ligne.
+    pub reason: &'a str,
+}
+
+/// Ce qui empêche une case de partir au registre.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Snag {
+    /// « 1O », « 1,,5 » : un nombre qu'on n'arrive pas à lire.
+    Unreadable,
+    /// Zéro là où zéro n'est pas un mouvement.
+    NotPositive,
+    /// Un comptage qui ne tombe pas sur le registre, sans motif.
+    GapWithoutReason,
+    /// Une destruction sans sa pièce — voir [`Kind::needs_record`].
+    RecordRequired,
+}
+
+impl Snag {
+    pub fn label_key(self) -> &'static str {
+        match self {
+            Snag::Unreadable => "batch_snag_unreadable",
+            Snag::NotPositive => "batch_snag_zero",
+            Snag::GapWithoutReason => "batch_snag_gap",
+            Snag::RecordRequired => "batch_snag_record",
+        }
+    }
+}
+
+/// Une ligne prête à partir au registre.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Planned {
+    pub stup_id: i64,
+    pub quantity: f64,
+    /// Le solde d'avant, qu'un inventaire range pour que son annulation
+    /// puisse le rendre — voir `add_stup_move`.
+    pub expected: f64,
+}
+
+/// Ce qu'une feuille de saisie donnerait si on l'inscrivait maintenant.
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct Plan {
+    /// Dans l'ordre de la feuille.
+    pub lines: Vec<Planned>,
+    /// Les cases qui coincent, et ce qui coince.
+    pub snags: Vec<(i64, Snag)>,
+}
+
+impl Plan {
+    /// **Rien ne part tant que tout ne peut pas partir.**
+    ///
+    /// Une feuille à moitié écrite laisse le registre avec trois lignes
+    /// sur cinq et aucune trace des deux autres — et comme rien ne s'y
+    /// efface, les rattraper demande de savoir lesquelles sont passées.
+    /// L'écriture est donc une transaction, et ce booléen est ce qui
+    /// l'autorise.
+    pub fn ready(&self) -> bool {
+        self.snags.is_empty() && !self.lines.is_empty()
+    }
+
+    /// Ce qui coince sur ce produit, pour l'écrire en face de sa case
+    /// plutôt qu'après le refus.
+    pub fn snag(&self, stup_id: i64) -> Option<Snag> {
+        self.snags
+            .iter()
+            .find(|(id, _)| *id == stup_id)
+            .map(|(_, s)| *s)
+    }
+}
+
+/// Lire une feuille de saisie groupée : quarante produits alignés, six
+/// cases remplies.
+///
+/// L'inventaire d'un coffre et la délivrance d'une ordonnance qui porte
+/// deux stupéfiants sont la même geste — plusieurs produits, une seule
+/// date, un seul opérateur — et le formulaire produit par produit les
+/// faisait tous les deux en autant d'allers-retours qu'il y a de
+/// lignes.
+///
+/// # Les règles, et pourquoi
+///
+/// **Une case vide n'est pas un zéro.** C'est la règle qui fait tenir
+/// tout le reste : une feuille de quarante produits dont on en compte
+/// six écrirait sinon trente-quatre inventaires à zéro, c'est-à-dire
+/// qu'elle viderait le coffre sur le papier. Une case qu'on n'a pas
+/// touchée n'écrit rien.
+///
+/// **Une case illisible n'est pas un zéro non plus** — « 1O » avec un O
+/// se refuse et se dit, là où le prendre pour zéro écrirait un
+/// mouvement que personne n'a voulu.
+///
+/// **Zéro n'est un chiffre que pour un inventaire** : un coffre compté
+/// vide est une information, une délivrance de zéro unité n'en est pas
+/// une.
+///
+/// **Un écart se motive case par case**, et pas une fois pour la
+/// feuille : deux produits qui manquent ne manquent pas pour la même
+/// raison, et un motif commun n'expliquerait ni l'un ni l'autre. Il en
+/// va de même de la pièce que réclame une destruction. La base les
+/// redemandera ligne à ligne de toute façon ; le dire ici, c'est le dire
+/// **avant** l'écriture, en face de la case, plutôt qu'après un refus
+/// qui ne nomme pas la ligne fautive.
+pub fn plan(kind: Kind, slots: &[Slot]) -> Plan {
+    let mut out = Plan::default();
+    for slot in slots {
+        let typed = slot.typed.trim();
+        if typed.is_empty() {
+            continue;
+        }
+        let Some((quantity, _)) = crate::codex::parse_amount(typed) else {
+            out.snags.push((slot.stup_id, Snag::Unreadable));
+            continue;
+        };
+        if quantity <= 0.0 && kind != Kind::Inventaire {
+            out.snags.push((slot.stup_id, Snag::NotPositive));
+            continue;
+        }
+        if kind == Kind::Inventaire {
+            let gap = Discrepancy {
+                expected: slot.expected,
+                counted: quantity,
+            };
+            if gap.matters() && slot.reason.trim().is_empty() {
+                out.snags.push((slot.stup_id, Snag::GapWithoutReason));
+                continue;
+            }
+        }
+        if kind.needs_record() && slot.reason.trim().is_empty() {
+            out.snags.push((slot.stup_id, Snag::RecordRequired));
+            continue;
+        }
+        out.lines.push(Planned {
+            stup_id: slot.stup_id,
+            quantity,
+            expected: slot.expected,
+        });
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+    /// **Une boîte périmée est encore dans le coffre.**
+    ///
+    /// C'était une perte, et c'était faux : une perte est ce qui n'est
+    /// plus là — cassé, volé, écoulé. Une boîte périmée y reste jusqu'au
+    /// procès-verbal, et l'officine en répond. Notée en perte, elle
+    /// disparaissait du registre en restant sur l'étagère : exactement
+    /// l'erreur que le compte des retours patients avait été créé pour
+    /// réparer, sur l'autre étagère.
+    ///
+    /// Trois comptes et non deux, donc — et ils ne s'additionnent pas :
+    /// ce qu'un patient rapporte et ce qui a périmé au coffre ne
+    /// suivent pas le même chemin, et « quarante à détruire » là où il
+    /// y a deux sacs scellés ne veut rien dire.
+    #[test]
+    fn an_expired_box_leaves_the_shelf_but_not_the_safe() {
+        let line = |seq: i64, kind: super::Kind, quantity: f64| super::Move {
+            seq,
+            day: "2026-09-01",
+            kind,
+            quantity,
+            expected: 0.0,
+            cancels: 0,
+        };
+        let b = super::balance(&[
+            line(1, super::Kind::Entree, 30.0),
+            line(2, super::Kind::Sortie, 6.0),
+            line(3, super::Kind::Peremption, 4.0),
+        ]);
+        // Le délivrable descend de quatre, et les quatre sont ailleurs
+        // — pas nulle part.
+        assert!((b.stock - 20.0).abs() < 1e-9, "délivrable {}", b.stock);
+        assert!((b.expired - 4.0).abs() < 1e-9, "périmés {}", b.expired);
+        assert!(b.to_destroy.abs() < 1e-9, "rien d'un patient");
+
+        // Le procès-verbal vide le troisième compte, et lui seul.
+        let after = super::balance(&[
+            line(1, super::Kind::Entree, 30.0),
+            line(2, super::Kind::Peremption, 4.0),
+            line(3, super::Kind::Retour, 7.0),
+            line(4, super::Kind::DestructionPerimes, 4.0),
+        ]);
+        assert!(after.expired.abs() < 1e-9, "périmés détruits");
+        assert!(
+            (after.to_destroy - 7.0).abs() < 1e-9,
+            "le sac du patient n'a pas bougé : {}",
+            after.to_destroy
+        );
+
+        // Et une annulation défait la péremption des **deux** côtés :
+        // une nature ajoutée à l'un et oubliée à l'autre est un stock
+        // qui part de travers en silence.
+        let mut cancel = line(3, super::Kind::Annulation, 0.0);
+        cancel.cancels = 2;
+        let undone = super::balance(&[
+            line(1, super::Kind::Entree, 30.0),
+            line(2, super::Kind::Peremption, 4.0),
+            cancel,
+        ]);
+        assert!((undone.stock - 30.0).abs() < 1e-9, "rendu au délivrable");
+        assert!(undone.expired.abs() < 1e-9, "retiré des périmés");
+    }
+
+    /// **Un lot n'appartient qu'aux lignes qui touchent une boîte.**
+    ///
+    /// Une réception, une délivrance, un retour et une destruction en
+    /// portent un : chacune passe par une boîte qu'on a en main. Un
+    /// inventaire compte un coffre entier — plusieurs lots à la fois —
+    /// et une annulation ne fait que défaire une ligne qui, elle,
+    /// portait le sien. En écrire un sur celles-là dirait qu'on sait
+    /// laquelle, et on ne le sait pas.
+    #[test]
+    fn a_lot_belongs_only_to_the_lines_that_touch_a_box() {
+        use super::Kind;
+        for k in [Kind::Entree, Kind::Sortie, Kind::Retour, Kind::Destruction] {
+            assert!(k.carries_lot(), "{k:?} passe par une boîte");
+        }
+        for k in [Kind::Inventaire, Kind::Perte, Kind::Annulation] {
+            assert!(!k.carries_lot(), "{k:?} ne nomme pas une boîte");
+        }
+    }
+
     /// **Un comptage se fait en boîtes et en vrac.**
     ///
     /// « Trois boîtes de quatorze, plus cinq » fait quarante-sept, et
@@ -2098,5 +2407,147 @@ mod tests {
             s.count, 4,
             "le compte est celui des lignes, pas des numéros"
         );
+    }
+
+    /// Une case du même produit, pour les cinq tests qui suivent.
+    fn slot<'a>(id: i64, typed: &'a str, expected: f64, reason: &'a str) -> Slot<'a> {
+        Slot {
+            stup_id: id,
+            typed,
+            expected,
+            reason,
+        }
+    }
+
+    /// **Une case vide n'est pas un zéro.**
+    ///
+    /// C'est la règle qui rend la feuille utilisable : on aligne les
+    /// quarante produits du coffre et on en compte six. Prise pour un
+    /// zéro, chaque case laissée tranquille écrirait un inventaire à
+    /// zéro — trente-quatre lignes qui vident le coffre sur le papier,
+    /// dans une pièce où rien ne s'efface.
+    #[test]
+    fn an_empty_box_is_not_a_zero() {
+        let p = plan(
+            Kind::Inventaire,
+            &[
+                slot(1, "", 40.0, ""),
+                slot(2, "  ", 12.0, ""),
+                slot(3, "16", 16.0, ""),
+            ],
+        );
+        assert_eq!(p.lines.len(), 1, "une seule case a été remplie");
+        assert_eq!(p.lines[0].stup_id, 3);
+        assert!(p.snags.is_empty(), "une case vide ne coince pas : {p:?}");
+        assert!(p.ready());
+    }
+
+    /// Une case illisible n'est pas un zéro non plus : elle se dit.
+    ///
+    /// « O » pour zéro, un tiret laissé devant : lus comme zéro, ils
+    /// écriraient un mouvement que personne n'a voulu. Ce qui commence
+    /// par un chiffre se lit en revanche jusqu'à son unité — « 16
+    /// gélules » vaut seize, comme dans le formulaire produit par
+    /// produit.
+    #[test]
+    fn an_unreadable_box_is_named_rather_than_read_as_zero() {
+        let p = plan(
+            Kind::Sortie,
+            &[slot(1, "O", 40.0, ""), slot(2, "5", 9.0, "")],
+        );
+        assert_eq!(
+            plan(Kind::Sortie, &[slot(9, "16 gélules", 40.0, "")]).lines[0].quantity,
+            16.0,
+            "l'unité écrite à la suite ne rend pas la case illisible"
+        );
+        assert_eq!(p.snag(1), Some(Snag::Unreadable));
+        assert_eq!(p.lines.len(), 1, "l'autre case reste lisible");
+        assert!(
+            !p.ready(),
+            "et pourtant rien ne part : une feuille part entière ou pas du tout"
+        );
+    }
+
+    /// Zéro est un comptage ; ce n'est pas une délivrance.
+    #[test]
+    fn zero_counts_a_safe_and_dispenses_nothing() {
+        let counted = plan(Kind::Inventaire, &[slot(1, "0", 0.0, "")]);
+        assert_eq!(counted.lines.len(), 1, "un coffre vide est une information");
+        assert!(counted.ready());
+        let given = plan(Kind::Sortie, &[slot(1, "0", 40.0, "")]);
+        assert_eq!(given.snag(1), Some(Snag::NotPositive));
+        assert!(given.lines.is_empty());
+    }
+
+    /// **Un écart se motive case par case.**
+    ///
+    /// Deux produits qui manquent ne manquent pas pour la même raison,
+    /// et un motif écrit une fois pour la feuille n'expliquerait ni
+    /// l'un ni l'autre.
+    #[test]
+    fn a_gap_is_explained_line_by_line() {
+        let p = plan(
+            Kind::Inventaire,
+            &[
+                // Tombe juste : aucun motif à donner.
+                slot(1, "40", 40.0, ""),
+                // Deux manquent, et personne ne dit pourquoi.
+                slot(2, "10", 12.0, ""),
+                // Deux manquent aussi, et celui-là le dit.
+                slot(3, "10", 12.0, "casse au comptoir"),
+            ],
+        );
+        assert_eq!(p.snag(1), None);
+        assert_eq!(p.snag(2), Some(Snag::GapWithoutReason));
+        assert_eq!(p.snag(3), None);
+        assert_eq!(p.lines.len(), 2);
+        assert!(!p.ready());
+    }
+
+    /// Chaque ligne emporte le solde d'avant : c'est lui que rendra son
+    /// annulation, et il n'est pas le même d'un produit à l'autre.
+    #[test]
+    fn every_line_carries_its_own_expected_balance() {
+        let p = plan(
+            Kind::Inventaire,
+            &[
+                slot(1, "40", 41.0, "une gélule cassée"),
+                slot(2, "5", 5.0, ""),
+            ],
+        );
+        assert!(p.ready());
+        assert_eq!(p.lines[0].expected, 41.0);
+        assert_eq!(p.lines[1].expected, 5.0);
+        assert_eq!(p.lines[0].quantity, 40.0);
+    }
+
+    /// Une destruction sans sa pièce se dit **en face de la case**.
+    ///
+    /// La base la refuse déjà — `add_stup_move` l'exige, et c'est là que
+    /// la règle tient. Mais un refus qui arrive après « Inscrire » ne
+    /// nomme pas la ligne fautive : sur une feuille de dix produits, il
+    /// laisse chercher lequel.
+    #[test]
+    fn a_destruction_says_which_line_lacks_its_record() {
+        let p = plan(
+            Kind::DestructionPerimes,
+            &[
+                slot(1, "4", 4.0, ""),
+                slot(2, "2", 2.0, "PV 2026-03 · Dr Martin témoin"),
+            ],
+        );
+        assert_eq!(p.snag(1), Some(Snag::RecordRequired));
+        assert_eq!(p.snag(2), None);
+        assert!(!p.ready());
+        // Et une nature qui n'en demande pas n'en réclame pas.
+        assert!(plan(Kind::Entree, &[slot(1, "28", 0.0, "")]).ready());
+    }
+
+    /// Une feuille vide n'est pas une feuille prête.
+    #[test]
+    fn an_untouched_sheet_writes_nothing() {
+        let p = plan(Kind::Inventaire, &[slot(1, "", 40.0, "")]);
+        assert!(!p.ready(), "rien à écrire n'est pas prêt à écrire");
+        assert!(p.lines.is_empty() && p.snags.is_empty());
     }
 }

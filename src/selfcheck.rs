@@ -96,18 +96,18 @@ pub const SHEETS: &[Sheet] = &[
         totals: &[
             "Moyenne des neuf mesures du matin",
             "Moyenne des neuf mesures du soir",
-            "Moyenne générale — c'est ce chiffre que le médecin lit",
+            "Moyenne générale — c'est le chiffre que le médecin lit",
         ],
     },
     Sheet {
         key: "glycemie",
         title: "Carnet de glycémie",
-        purpose: "Une semaine de glycémies capillaires aux bons moments : c'est ce que le médecin regarde pour ajuster un traitement.",
+        purpose: "Une semaine de glycémies capillaires aux bons moments : le médecin s'en sert pour ajuster un traitement.",
         protocol: &[
             "Lavez-vous les mains à l'eau tiède et au savon, puis séchez-les. Pas d'alcool : il fausse la mesure.",
             "Piquez sur le côté de la pulpe du doigt, jamais au centre, et changez de doigt à chaque fois.",
-            "Notez le chiffre tout de suite : reconstitué le soir de mémoire, il ne vaut rien.",
-            "Notez à côté ce qui sort de l'ordinaire : un repas sauté, un effort, une infection, un oubli de médicament.",
+            "Notez le chiffre tout de suite : reconstitué le soir de mémoire, il n'a aucune valeur.",
+            "Notez à côté tout événement inhabituel : un repas sauté, un effort, une infection, un oubli de médicament.",
             "Ne modifiez jamais vos doses de vous-même à partir de ces chiffres.",
         ],
         target: "Les objectifs sont individuels — ils dépendent de votre âge, de votre traitement et de vos autres maladies. Notez ici ceux que votre médecin vous a donnés :",
@@ -144,7 +144,7 @@ pub const SHEETS: &[Sheet] = &[
     Sheet {
         key: "souffle",
         title: "Débit expiratoire de pointe",
-        purpose: "Le souffle mesuré matin et soir : ce qui montre qu'un asthme se dégrade plusieurs jours avant qu'on le sente.",
+        purpose: "Le souffle mesuré matin et soir : il montre qu'un asthme se dégrade plusieurs jours avant les symptômes.",
         protocol: &[
             "Debout, l'appareil remis à zéro et tenu à l'horizontale, sans gêner le curseur avec les doigts.",
             "Inspirez à fond, serrez les lèvres autour de l'embout, puis soufflez d'un seul coup, aussi fort et aussi vite que possible.",
@@ -180,17 +180,17 @@ pub const SHEETS: &[Sheet] = &[
     Sheet {
         key: "douleur",
         title: "Suivi de la douleur",
-        purpose: "L'intensité et le nombre d'interdoses : c'est ce nombre-là qui dit qu'il faut revoir le traitement de fond, et il ne se retient pas de mémoire.",
+        purpose: "L'intensité et le nombre d'interdoses : c'est ce nombre qui indique qu'il faut revoir le traitement de fond, et il ne se retient pas de mémoire.",
         protocol: &[
             "Notez l'intensité de 0 — aucune douleur — à 10 — la pire que vous puissiez imaginer —, quatre fois par jour.",
             "Notez chaque interdose prise, et son heure : c'est le nombre par jour qui compte.",
-            "Notez ce qui déclenche la douleur et ce qui la soulage.",
+            "Notez les circonstances qui déclenchent la douleur et celles qui la soulagent.",
             "Ne modifiez pas les doses de vous-même, et n'attendez pas que la douleur soit insupportable pour prendre une interdose : plus on attend, plus il en faut.",
         ],
-        target: "Il n'y a pas de chiffre à atteindre. Ce qui compte est que la douleur vous laisse dormir, bouger, et faire ce qui vous tient à cœur.",
+        target: "Il n'y a pas de chiffre à atteindre. L'objectif est que la douleur vous laisse dormir, bouger et poursuivre vos activités.",
         columns: &["Matin", "Midi", "Soir", "Nuit", "Interdoses", "Remarque"],
         rows: 14,
-        alert: "Plus de quatre interdoses par jour plusieurs jours de suite : appelez, c'est le traitement de fond qui doit être réévalué. Une somnolence qui s'aggrave d'heure en heure, une respiration lente ou bruyante, une personne qu'on n'arrive pas à réveiller : appelez le 15.",
+        alert: "Plus de quatre interdoses par jour plusieurs jours de suite : appelez, c'est le traitement de fond qui doit être réévalué. Une somnolence qui s'aggrave d'heure en heure, une respiration lente ou bruyante, une personne impossible à réveiller : appelez le 15.",
         bring_back: "Rapportez cette feuille à chaque consultation et à chaque renouvellement de l'ordonnance.",
         totals: &[],
     },

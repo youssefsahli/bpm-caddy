@@ -161,7 +161,7 @@ pub const TABLE: &[Rule] = &[
         needs: &["actiskenan", "oramorph", "sevredol"],
         label: "Morphine à libération immédiate",
         verdict: Verdict::Conditional,
-        why: "La gélule d'Actiskenan s'ouvre ; Oramorph est déjà buvable ; le comprimé de Sevredol s'écrase. Ces trois-là sont à libération immédiate — c'est ce qui les distingue du Skenan, dont le nom leur ressemble.",
+        why: "La gélule d'Actiskenan s'ouvre ; Oramorph est déjà buvable ; le comprimé de Sevredol s'écrase. Ces trois-là sont à libération immédiate, à la différence du Skenan, dont le nom est voisin.",
         instead: "",
         source: "RCP des présentations ; liste nationale des médicaments écrasables",
     },
@@ -517,7 +517,7 @@ mod tests {
             assert_ne!(
                 r.verdict,
                 Verdict::Unknown,
-                "{} : « à vérifier » est ce qu'on répond hors de la table",
+                "{} : hors de la table, la réponse est « à vérifier »",
                 r.label
             );
             for n in r.needs {

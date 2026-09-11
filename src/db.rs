@@ -141,6 +141,29 @@ CREATE TABLE IF NOT EXISTS seed_state (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
 );
+-- Les réglages qui appartiennent à **l'officine** et non au poste.
+--
+-- `config.toml` est un fichier par PC : l'équipe déclarée sur celui du
+-- comptoir n'existait pas sur celui de l'arrière-boutique, et le nom de
+-- la pharmacie se retapait sur chacun. La base, elle, est ce que les
+-- postes partagent — c'est déjà la raison pour laquelle les notes
+-- d'équipe et les scripts vivent à côté d'elle et non à côté de la
+-- configuration.
+--
+-- La valeur est le fragment TOML de la section, tel que serde l'écrit.
+-- Trois tables — officine, opérateurs, horaires — auraient ajouté des
+-- jointures et une seconde migration pour le planning, qui désigne une
+-- personne par ses initiales ; la section se modifie d'un bloc dans un
+-- seul écran, et elle a déjà un aller-retour exact.
+--
+-- `was` de la mise à jour est comparé à `value` : deux postes qui
+-- ouvrent les Options en même temps ne s'écrasent pas en silence.
+CREATE TABLE IF NOT EXISTS settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_on TEXT NOT NULL DEFAULT '',
+    updated_by TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
     name         TEXT NOT NULL,
@@ -328,6 +351,14 @@ CREATE TABLE IF NOT EXISTS stup_moves (
     -- Une entrée porte son grossiste et sa référence de bon de livraison.
     supplier     TEXT NOT NULL DEFAULT '',
     reference    TEXT NOT NULL DEFAULT '',
+    -- Le numéro de lot de la boîte, et sa péremption. **Distincts de
+    -- `reference`**, qui est le bon de livraison du grossiste : le scan
+    -- écrivait le lot dans la référence, et les deux se sont trouvés
+    -- confondus sur toutes les lignes reçues à la douchette. Sans un
+    -- lot à lui, un rappel de l'ANSM n'a rien à interroger — c'est le
+    -- seul champ qui relie une boîte rappelée au dossier qui l'a reçue.
+    lot          TEXT NOT NULL DEFAULT '',
+    expiry       TEXT NOT NULL DEFAULT '',
     -- Ce que le registre disait avant un inventaire, pour que l'écart
     -- se relise sans refaire le calcul de l'époque.
     expected     REAL NOT NULL DEFAULT 0,
@@ -456,6 +487,14 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS seed_state (
         key    TEXT PRIMARY KEY,
         value  TEXT NOT NULL
+    )",
+    // Les réglages de l'officine — voir le commentaire au-dessus de la
+    // table dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS settings (
+        key        TEXT PRIMARY KEY,
+        value      TEXT NOT NULL,
+        updated_on TEXT NOT NULL DEFAULT '',
+        updated_by TEXT NOT NULL DEFAULT ''
     )",
     // The five columns of the very first version are listed here too:
     // they cost nothing when they already exist, and they turn a « no
@@ -1493,9 +1532,13 @@ pub struct Standing {
     pub product: Stupefiant,
     /// Ce qui est délivrable.
     pub stock: f64,
-    /// Ce qui attend d'être détruit — voir
+    /// Ce qu'un patient a rapporté et qui attend d'être détruit — voir
     /// [`crate::ordonnancier::Balance`].
     pub to_destroy: f64,
+    /// Ce qui a périmé au coffre et attend son procès-verbal. Un
+    /// **troisième compte** : les deux piles ne suivent pas le même
+    /// chemin et ne se comptent pas ensemble.
+    pub expired: f64,
     /// Le dernier inventaire, ISO ; vide si jamais compté.
     pub last_count: String,
     /// Depuis quand quelque chose attend d'être détruit, ISO ; vide si
@@ -1520,6 +1563,11 @@ pub struct StupMove {
     pub prescriber: String,
     pub supplier: String,
     pub reference: String,
+    /// Le numéro de lot de la boîte. Distinct de `reference` : celle-ci
+    /// est le bon de livraison, celui-là est ce qu'un rappel nomme.
+    pub lot: String,
+    /// La péremption, ISO ou telle que le DataMatrix la porte.
+    pub expiry: String,
     /// Ce que le registre disait avant un inventaire.
     pub expected: f64,
     pub operator: String,
@@ -2049,7 +2097,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aod, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Pas de dosage en routine, donc pas de garde-fou biologique : la marge est portée par les critères de réduction de dose, et c'est là que la délivrance vérifie. 2,5 mg deux fois par jour dès que deux critères sur trois sont réunis — âge d'au moins 80 ans, poids inférieur ou égal à 60 kg, créatininémie d'au moins 133 µmol/L. Antidote disponible en établissement (andexanet alfa) ; le concentré de complexe prothrombinique reste le recours ailleurs.",
+        toxicity: "Pas de dosage en routine, donc pas de garde-fou biologique : la marge est portée par les critères de réduction de dose, que la délivrance vérifie. 2,5 mg deux fois par jour dès que deux critères sur trois sont réunis — âge d'au moins 80 ans, poids inférieur ou égal à 60 kg, créatininémie d'au moins 133 µmol/L. Antidote disponible en établissement (andexanet alfa) ; le concentré de complexe prothrombinique reste le recours ailleurs.",
         forms: "",
     },
     StarterDetail {
@@ -2763,7 +2811,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "bêtabloquant, surveillance biologique",
-        toxicity: "Bêtabloquant cardiosélectif de l'insuffisance cardiaque : sa marge n'est pas une dose mais une titration. Chaque palier ne se franchit que si la fréquence cardiaque, la pression artérielle et l'état clinique le permettent, et une aggravation transitoire fait revenir au palier précédent plutôt qu'arrêter. L'arrêt brutal est le vrai danger : effet rebond avec tachycardie, poussée hypertensive, crise angineuse et risque d'infarctus, y compris chez un patient qui se croyait stabilisé — un traitement interrompu faute de renouvellement est une situation à rattraper le jour même. Chez le diabétique, il masque les signes adrénergiques de l'hypoglycémie et ne laisse que la sueur. La cardiosélectivité s'estompe à forte dose : l'asthme sévère reste une contre-indication.",
+        toxicity: "Bêtabloquant cardiosélectif de l'insuffisance cardiaque : sa marge n'est pas une dose mais une titration. Chaque palier ne se franchit que si la fréquence cardiaque, la pression artérielle et l'état clinique le permettent, et une aggravation transitoire fait revenir au palier précédent plutôt qu'arrêter. L'arrêt brutal est le danger principal : effet rebond avec tachycardie, poussée hypertensive, crise angineuse et risque d'infarctus, y compris chez un patient qui se croyait stabilisé — un traitement interrompu faute de renouvellement est une situation à rattraper le jour même. Chez le diabétique, il masque les signes adrénergiques de l'hypoglycémie et ne laisse que la sueur. La cardiosélectivité s'estompe à forte dose : l'asthme sévère reste une contre-indication.",
         forms: "",
     },
     StarterDetail {
@@ -2847,7 +2895,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "digitalique, marge thérapeutique étroite, surveillance biologique",
-        toxicity: "Zone thérapeutique resserrée à 0,5 à 0,9 ng/mL dans l'insuffisance cardiaque — au-delà, le bénéfice ne monte plus, la mortalité si. Les signes de surdosage apparaissent dès 1,5 à 2 ng/mL et bien plus bas en cas d'hypokaliémie, d'hypomagnésémie, d'hypercalcémie ou d'insuffisance rénale : anorexie, nausées, vision colorée en jaune-vert, confusion chez la personne âgée, bradycardie et troubles du rythme. Le prélèvement se fait au moins six heures après la prise, sinon il ne veut rien dire. Antidote : fragments Fab anti-digoxine.",
+        toxicity: "Zone thérapeutique resserrée à 0,5 à 0,9 ng/mL dans l'insuffisance cardiaque — au-delà, le bénéfice ne monte plus, la mortalité si. Les signes de surdosage apparaissent dès 1,5 à 2 ng/mL et bien plus bas en cas d'hypokaliémie, d'hypomagnésémie, d'hypercalcémie ou d'insuffisance rénale : anorexie, nausées, vision colorée en jaune-vert, confusion chez la personne âgée, bradycardie et troubles du rythme. Le prélèvement se fait au moins six heures après la prise ; plus tôt, il n'est pas interprétable. Antidote : fragments Fab anti-digoxine.",
         forms: "",
     },
     StarterDetail {
@@ -2922,7 +2970,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Le ralentissement de la vidange gastrique modifie l'absorption des médicaments oraux : prudence avec les molécules à marge étroite, en particulier la lévothyroxine, dont la TSH se recontrôle. Chez une patiente sous contraception orale, l'efficacité contraceptive n'est pas remise en cause, mais des vomissements répétés le sont — la conduite en cas de vomissement dans les heures suivant la prise doit être rappelée. Chez le diabétique traité, la dose d'insuline ou de sulfamide se réduit avant l'instauration. Aucune interaction significative avec les anticoagulants oraux, l'INR restant contrôlé à l'instauration sous antivitamine K.",
         adverse: "Troubles digestifs très fréquents et dose-dépendants — nausées, vomissements, diarrhée, constipation, douleurs abdominales, éructations, reflux — maximaux à chaque augmentation puis s'atténuant. Lithiase biliaire et cholécystite, favorisées par la rapidité de la perte de poids. Asthénie, céphalées, vertiges, alopécie. Réactions au point d'injection. Plus rarement pancréatite aiguë, gastroparésie symptomatique, déshydratation avec insuffisance rénale fonctionnelle. La perte de masse musculaire accompagne la perte de poids si l'apport protéique et l'activité physique ne suivent pas.",
         monitoring: "Poids, tour de taille et pression artérielle à chaque contact, et réévaluation formelle de l'efficacité après plusieurs mois de dose d'entretien : une perte de poids insuffisante fait arrêter, la poursuite indéfinie n'ayant pas de justification. Tolérance digestive à chaque renouvellement, la titration se prolongeant si elle est mauvaise. Créatininémie en cas de vomissements ou de diarrhées prolongés. Chez le diabétique associé, HbA1c et autosurveillance glycémique avec réduction des traitements hypoglycémiants. Apports protéiques et activité physique évalués, la perte musculaire étant la complication silencieuse de cette classe.",
-        iup: "L'injection se fait une fois par semaine, le même jour, sous la peau du ventre, de la cuisse ou du haut du bras, en changeant de point à chaque fois. La montée des doses s'étale sur cinq mois et ce calendrier n'est pas négociable : chaque palier dure quatre semaines, et vouloir aller plus vite provoque des nausées qui font arrêter. En cas d'oubli, injectez dès que possible si l'oubli date de moins de cinq jours, sinon sautez la dose — jamais deux injections pour rattraper. Mangez lentement, en petites quantités, évitez les repas gras : c'est ce qui rend les premières semaines supportables. Gardez un apport en protéines et bougez, sinon le poids perdu est en partie du muscle. Le poids repart à la hausse à l'arrêt, ce n'est pas un échec personnel mais l'effet du médicament qui s'arrête. Signalez toute douleur violente au creux de l'estomac irradiant dans le dos, et prévenez l'anesthésiste avant toute intervention.",
+        iup: "L'injection se fait une fois par semaine, le même jour, sous la peau du ventre, de la cuisse ou du haut du bras, en changeant de point à chaque fois. La montée des doses s'étale sur cinq mois et ce calendrier n'est pas négociable : chaque palier dure quatre semaines, et vouloir aller plus vite provoque des nausées qui font arrêter. En cas d'oubli, injectez dès que possible si l'oubli date de moins de cinq jours, sinon sautez la dose — jamais deux injections pour rattraper. Mangez lentement, en petites quantités, évitez les repas gras : cela rend les premières semaines supportables. Gardez un apport en protéines et bougez, sinon le poids perdu est en partie du muscle. Le poids repart à la hausse à l'arrêt, ce n'est pas un échec personnel mais l'effet du médicament qui s'arrête. Signalez toute douleur violente au creux de l'estomac irradiant dans le dos, et prévenez l'anesthésiste avant toute intervention.",
         half_life: "Environ 1 semaine, ce qui autorise l'injection hebdomadaire et impose d'interrompre le traitement au moins deux mois avant une grossesse programmée",
         elimination: "Dégradation protéolytique du peptide et bêta-oxydation de la chaîne d'acide gras ; les métabolites sont éliminés par voies urinaire et fécale, sans élimination rénale de la molécule intacte.",
         renal: "Aucune adaptation posologique en cas d'insuffisance rénale légère, modérée ou sévère. L'expérience est limitée au stade terminal, où l'utilisation n'est pas recommandée. La vigilance porte sur la déshydratation : des vomissements ou une diarrhée prolongés peuvent précipiter une insuffisance rénale aiguë chez un patient dont la fonction était normale.",
@@ -3435,7 +3483,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antibiotique urinaire",
-        toxicity: "Une dose unique, et c'est ce qui fait à la fois sa force et son unique difficulté : les conditions de prise déterminent entièrement l'efficacité. Le sachet se dilue dans un verre d'eau et se prend à distance des repas, de préférence le soir au coucher et après avoir uriné, afin que la concentration urinaire se maintienne toute la nuit — pris au milieu d'un repas ou suivi d'une miction immédiate, le traitement échoue. Il n'y a rien à reprendre le lendemain. Sa place est la cystite simple de la femme ; il n'a aucune activité suffisante dans une pyélonéphrite ou une prostatite, où le prescrire retarde un traitement adéquat. Les troubles digestifs sont fréquents et bénins.",
+        toxicity: "Une dose unique, d'où à la fois sa force et son unique difficulté : les conditions de prise déterminent entièrement l'efficacité. Le sachet se dilue dans un verre d'eau et se prend à distance des repas, de préférence le soir au coucher et après avoir uriné, afin que la concentration urinaire se maintienne toute la nuit — pris au milieu d'un repas ou suivi d'une miction immédiate, le traitement échoue. Il n'y a rien à reprendre le lendemain. Sa place est la cystite simple de la femme ; il n'a aucune activité suffisante dans une pyélonéphrite ou une prostatite, où le prescrire retarde un traitement adéquat. Les troubles digestifs sont fréquents et bénins.",
         forms: "",
     },
     StarterDetail {
@@ -3468,7 +3516,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Méthotrexate : diminution de l'excrétion rénale et majoration de la toxicité, association à surveiller. Antivitamines K : contrôle de l'INR pendant l'antibiothérapie. Valproate et autres médicaments libérant du pivalate : addition de la déplétion en carnitine lors d'expositions prolongées. Peu d'autres interactions cliniquement significatives.",
         adverse: "Nausées, diarrhée, douleurs abdominales, candidose vaginale, éruptions cutanées. Œsophagite ou ulcération œsophagienne en cas de prise sans eau ou en position allongée. Plus rarement réactions d'hypersensibilité, colite à Clostridioides difficile, et déplétion en carnitine lors de traitements répétés ou prolongés.",
         monitoring: "Réévaluation clinique à 48-72 heures : l'amélioration des signes urinaires est attendue en 48 heures environ. ECBU et antibiogramme en cas d'échec, de récidive précoce ou de doute diagnostique. Pas de bilan biologique systématique dans les cures courtes.",
-        iup: "Les comprimés s'avalent entiers, sans être croqués ni écrasés, avec un grand verre d'eau, au cours d'un repas, en restant assise ou debout et sans s'allonger immédiatement après : c'est ce qui évite l'irritation de l'œsophage. Les prises se font matin et soir, à environ 12 heures d'intervalle, pendant les cinq jours prescrits, et le traitement se termine même si les brûlures ont disparu au bout de deux jours. Il faut boire abondamment et ne pas se retenir d'uriner pendant l'épisode. L'amélioration est attendue en 48 heures ; si les signes persistent au-delà de 72 heures ou récidivent rapidement, il faut reconsulter. L'apparition d'une fièvre, de frissons ou d'une douleur du bas du dos impose une consultation rapide, car elle évoque une atteinte du rein.",
+        iup: "Les comprimés s'avalent entiers, sans être croqués ni écrasés, avec un grand verre d'eau, au cours d'un repas, en restant assise ou debout et sans s'allonger immédiatement après : cela évite l'irritation de l'œsophage. Les prises se font matin et soir, à environ 12 heures d'intervalle, pendant les cinq jours prescrits, et le traitement se termine même si les brûlures ont disparu au bout de deux jours. Il faut boire abondamment et ne pas se retenir d'uriner pendant l'épisode. L'amélioration est attendue en 48 heures ; si les signes persistent au-delà de 72 heures ou récidivent rapidement, il faut reconsulter. L'apparition d'une fièvre, de frissons ou d'une douleur du bas du dos impose une consultation rapide, car elle évoque une atteinte du rein.",
         half_life: "Environ 1 heure pour le mécillinam",
         elimination: "Hydrolyse rapide et complète du pivmécillinam en mécillinam et en acide pivalique ; le mécillinam est éliminé essentiellement par voie rénale sous forme active, avec de fortes concentrations urinaires.",
         renal: "Pas d'adaptation en cas d'atteinte légère à modérée. En cas d'insuffisance rénale sévère, l'usage est déconseillé, les concentrations urinaires devenant insuffisantes.",
@@ -3510,7 +3558,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Chélation par le fer, le calcium, le magnésium, l'aluminium, le zinc, les antiacides, les topiques gastro-intestinaux et les produits laitiers, avec une perte d'absorption importante : espacer d'au moins 2 heures. Rétinoïdes systémiques contre-indiqués. Inducteurs enzymatiques comme la rifampicine, la carbamazépine, la phénytoïne et le phénobarbital : demi-vie raccourcie et efficacité diminuée. Antivitamines K : élévation de l'INR. Pénicillines : antagonisme théorique entre un bactériostatique et un bactéricide.",
         adverse: "Nausées, douleurs épigastriques, diarrhée, candidoses. Œsophagite et ulcération œsophagienne en cas de prise sans eau ou en position allongée, effet fréquent et évitable. Photosensibilité marquée, avec coups de soleil pour une exposition minime. Coloration dentaire définitive chez l'enfant de moins de 8 ans et chez le fœtus. Plus rarement hypertension intracrânienne bénigne, toxidermies, DRESS, hépatite.",
         monitoring: "Suivi essentiellement clinique. Recherche de céphalées inhabituelles avec troubles visuels, qui doivent faire évoquer une hypertension intracrânienne et arrêter le traitement. Surveillance de la tolérance digestive et cutanée. Dans l'acné, réévaluation à trois mois avec une durée de traitement limitée pour ne pas entretenir la sélection de résistances.",
-        iup: "Le comprimé ou la gélule se prend au cours d'un repas, avec un grand verre d'eau, en position assise ou debout, et il faut éviter de s'allonger pendant l'heure qui suit : c'est ce qui empêche la brûlure de l'œsophage, complication classique de cette famille. Il faut espacer d'au moins deux heures le fer, le calcium, le magnésium, les pansements gastriques et les laitages, qui empêchent l'absorption. La protection solaire doit être stricte pendant tout le traitement, avec vêtements couvrants, chapeau et écran total, et sans cabine à UV, même par temps couvert. En prophylaxie du paludisme, la prise se poursuit quatre semaines après le retour, la protection contre les piqûres restant indispensable. En cas de traitement pour une infection sexuellement transmissible, les rapports doivent être protégés et le partenaire traité. Il faut consulter en cas de mal de gorge à la déglutition, de douleur derrière le sternum, ou de maux de tête inhabituels avec vision trouble.",
+        iup: "Le comprimé ou la gélule se prend au cours d'un repas, avec un grand verre d'eau, en position assise ou debout, et il faut éviter de s'allonger pendant l'heure qui suit : cela empêche la brûlure de l'œsophage, complication classique de cette famille. Il faut espacer d'au moins deux heures le fer, le calcium, le magnésium, les pansements gastriques et les laitages, qui empêchent l'absorption. La protection solaire doit être stricte pendant tout le traitement, avec vêtements couvrants, chapeau et écran total, et sans cabine à UV, même par temps couvert. En prophylaxie du paludisme, la prise se poursuit quatre semaines après le retour, la protection contre les piqûres restant indispensable. En cas de traitement pour une infection sexuellement transmissible, les rapports doivent être protégés et le partenaire traité. Il faut consulter en cas de mal de gorge à la déglutition, de douleur derrière le sternum, ou de maux de tête inhabituels avec vision trouble.",
         half_life: "16 à 22 heures",
         elimination: "Élimination principalement digestive, par voie biliaire et par excrétion transmuqueuse intestinale sous forme de complexes inactifs, avec une faible part urinaire.",
         renal: "Pas d'adaptation : c'est la cycline utilisable chez l'insuffisant rénal, y compris en dialyse.",
@@ -3552,7 +3600,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteur du CYP2C9 et du CYP2C19, et du CYP3A4 aux doses élevées. Antivitamines K : élévation nette de l'INR, surveillance rapprochée. Sulfamides hypoglycémiants : risque d'hypoglycémie. Phénytoïne, ciclosporine, tacrolimus : concentrations augmentées. Simvastatine et atorvastatine : risque de rhabdomyolyse. Médicaments allongeant le QT : effet additif. La rifampicine diminue l'exposition au fluconazole et peut faire échouer le traitement.",
         adverse: "Nausées, douleurs abdominales, diarrhée, céphalées, éruptions cutanées, altération du goût. Élévation des transaminases, plus rarement hépatite parfois sévère. Allongement de l'intervalle QT et torsades de pointes. Alopécie lors des traitements prolongés à forte dose. Rares toxidermies graves, en particulier chez le patient immunodéprimé.",
         monitoring: "Transaminases avant et pendant les traitements prolongés ou en cas d'hépatopathie préexistante, avec arrêt en cas d'élévation significative ou de signes cliniques. INR renforcé sous antivitamine K. Kaliémie et ECG chez les patients à risque de torsades de pointes. Dans les candidoses vaginales récidivantes, réévaluation diagnostique avec prélèvement et recherche de facteurs favorisants comme un diabète.",
-        iup: "Pour une mycose vaginale simple, une seule gélule de 150 mg suffit : elle se prend à n'importe quel moment de la journée, avec ou sans aliments, avec un verre d'eau. L'amélioration des démangeaisons demande un à trois jours et il est normal qu'une gêne persiste un peu après la prise ; il n'y a pas lieu de reprendre une seconde gélule sans avis. Le partenaire n'est traité que s'il présente lui-même des symptômes. En cas d'épisodes répétés, plus de trois ou quatre fois par an, il faut consulter pour rechercher une cause favorisante plutôt que de renouveler seule le traitement. Il est important de signaler la prise d'un anticoagulant, d'une statine ou d'un traitement pour le diabète, qui peuvent nécessiter une surveillance. Enfin, ce médicament est à éviter en cas de grossesse ou de projet de grossesse sans avis médical, un traitement local étant alors préféré, et il faut consulter devant un jaunissement de la peau, des urines foncées ou une éruption étendue.",
+        iup: "Pour une mycose vaginale simple, une seule gélule de 150 mg suffit : elle se prend à n'importe quel moment de la journée, avec ou sans aliments, avec un verre d'eau. L'amélioration des démangeaisons demande un à trois jours et il est normal qu'une gêne persiste un peu après la prise ; il n'y a pas lieu de reprendre une seconde gélule sans avis. Le partenaire n'est traité que s'il présente lui-même des symptômes. En cas d'épisodes répétés, plus de trois ou quatre fois par an, il faut consulter pour rechercher une cause favorisante plutôt que de renouveler seule le traitement. Signalez la prise d'un anticoagulant, d'une statine ou d'un traitement du diabète : ils peuvent demander une surveillance. Enfin, ce médicament est à éviter en cas de grossesse ou de projet de grossesse sans avis médical, un traitement local étant alors préféré, et il faut consulter devant un jaunissement de la peau, des urines foncées ou une éruption étendue.",
         half_life: "Environ 30 heures, ce qui autorise une prise unique ou une prise quotidienne",
         elimination: "Métabolisme hépatique faible ; plus de 80 % de la dose est éliminée dans les urines sous forme inchangée, avec de fortes concentrations urinaires.",
         renal: "Prise unique : pas d'adaptation. Traitements répétés avec une clairance inférieure à 50 mL/min : dose de charge habituelle puis moitié de la dose d'entretien.",
@@ -3561,7 +3609,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antifongique azolé, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Inhibiteur puissant du CYP2C9 et modéré du CYP3A4, ce qui en fait un déstabilisateur d'ordonnances : il fait bondir l'INR d'un antivitamine K, majore l'exposition aux statines avec risque de rhabdomyolyse, potentialise les sulfamides hypoglycémiants jusqu'à l'hypoglycémie sévère, et augmente la phénytoïne et la ciclosporine. Une dose unique de 150 mg pour une mycose vaginale n'est pas anodine chez un patient sous AVK. Il allonge l'intervalle QT, effet qui s'additionne à celui de tout autre allongeant. L'hépatotoxicité impose un contrôle des transaminases lors des traitements prolongés. À doses élevées et prolongées, il est tératogène ; la dose unique de 150 mg fait exception mais la grossesse se vérifie.",
+        toxicity: "Inhibiteur puissant du CYP2C9 et modéré du CYP3A4, ce qui en fait un déstabilisateur d'ordonnances : il fait bondir l'INR d'un antivitamine K, majore l'exposition aux statines avec risque de rhabdomyolyse, potentialise les sulfamides hypoglycémiants jusqu'à l'hypoglycémie sévère, et augmente la phénytoïne et la ciclosporine. Une dose unique de 150 mg pour une mycose vaginale suffit à déséquilibrer un patient sous AVK. Il allonge l'intervalle QT, effet qui s'additionne à celui de tout autre allongeant. L'hépatotoxicité impose un contrôle des transaminases lors des traitements prolongés. À doses élevées et prolongées, il est tératogène ; la dose unique de 150 mg fait exception mais la grossesse se vérifie.",
         forms: "",
     },
     StarterDetail {
@@ -3603,7 +3651,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiviral",
-        toxicity: "Même marge que le valaciclovir dont il est le principe actif : neurotoxicité par accumulation chez l'insuffisant rénal et le sujet âgé — confusion, hallucinations, myoclonies, parfois coma —, régressive à l'arrêt mais volontiers prise pour une aggravation neurologique ; et néphrotoxicité par cristallisation tubulaire, favorisée par la déshydratation et par l'administration intraveineuse rapide. La dose se calcule sur la clairance et l'hydratation abondante fait partie du traitement. La biodisponibilité orale de l'aciclovir est faible, ce qui impose cinq prises par jour là où le valaciclovir en demande deux ou trois : cette contrainte d'observance est ce qui les distingue en pratique.",
+        toxicity: "Même marge que le valaciclovir dont il est le principe actif : neurotoxicité par accumulation chez l'insuffisant rénal et le sujet âgé — confusion, hallucinations, myoclonies, parfois coma —, régressive à l'arrêt mais volontiers prise pour une aggravation neurologique ; et néphrotoxicité par cristallisation tubulaire, favorisée par la déshydratation et par l'administration intraveineuse rapide. La dose se calcule sur la clairance et l'hydratation abondante fait partie du traitement. La biodisponibilité orale de l'aciclovir est faible, ce qui impose cinq prises par jour là où le valaciclovir en demande deux ou trois : cette contrainte d'observance les distingue en pratique.",
         forms: "",
     },
     StarterDetail {
@@ -3666,7 +3714,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "ains, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Il n'y a pas de dosage plasmatique : la marge se lit en durée et en terrain. Cinq jours en automédication, trois jours sur une fièvre, et pas au-delà sans avis. Un surdosage donne nausées, douleurs abdominales, somnolence et acouphènes ; le vrai danger est ailleurs — l'hémorragie digestive sans douleur préalable et l'insuffisance rénale aiguë, l'une et l'autre déclenchées par une dose ordinaire chez un patient déshydraté, âgé, ou déjà sous IEC et diurétique.",
+        toxicity: "Il n'y a pas de dosage plasmatique : la marge se lit en durée et en terrain. Cinq jours en automédication, trois jours sur une fièvre, et pas au-delà sans avis. Un surdosage donne nausées, douleurs abdominales, somnolence et acouphènes ; le danger est ailleurs — l'hémorragie digestive sans douleur préalable et l'insuffisance rénale aiguë, l'une et l'autre déclenchées par une dose ordinaire chez un patient déshydraté, âgé, ou déjà sous IEC et diurétique.",
         forms: "",
     },
     StarterDetail {
@@ -4287,7 +4335,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Le valproate inhibe la glucuroconjugaison de la lamotrigine et double environ ses concentrations en allongeant sa demi-vie : la titration doit alors être deux fois plus lente et les doses de départ réduites de moitié, sous peine de syndrome de Stevens-Johnson ou de syndrome de Lyell. Les inducteurs enzymatiques (carbamazépine, phénytoïne, phénobarbital, primidone, rifampicine) réduisent de moitié environ les concentrations et imposent des doses plus élevées ; l'association à la carbamazépine majore par ailleurs les vertiges, la diplopie et l'ataxie. Les contraceptifs œstroprogestatifs abaissent nettement les concentrations de lamotrigine par induction de la glucuroconjugaison, avec risque de perte d'efficacité pendant les semaines de prise et de surdosage pendant la semaine d'arrêt : toute instauration ou tout arrêt de contraception impose un réajustement. L'atazanavir, le lopinavir et le ritonavir diminuent également les concentrations.",
         adverse: "Fréquents et le plus souvent transitoires : céphalées, éruption cutanée maculopapuleuse bénigne dans les huit premières semaines, somnolence, sensations vertigineuses, diplopie et vision floue surtout en association à la carbamazépine, ataxie, nausées, irritabilité, insomnie. Plus rarement mais graves : syndrome de Stevens-Johnson et syndrome de Lyell, dont le risque est maximal dans les huit premières semaines et majoré par une titration trop rapide, l'association au valproate et l'âge pédiatrique ; syndrome d'hypersensibilité médicamenteuse DRESS avec fièvre, adénopathies, atteinte hépatique et hyperéosinophilie ; lymphohistiocytose hémophagocytaire ; anomalies hématologiques ; aggravation paradoxale des crises ; méningite aseptique ; idées suicidaires.",
         monitoring: "Surveillance cutanée étroite pendant les huit premières semaines : tout exanthème impose un avis médical immédiat et, en cas d'atteinte muqueuse, de fièvre ou d'altération de l'état général, l'arrêt immédiat et définitif. NFS, bilan hépatique et créatininémie devant toute suspicion de DRESS ou de réaction systémique. Vérification à chaque délivrance que le plan de titration est respecté et qu'aucune interruption supérieure à cinq jours n'a eu lieu. Réévaluation des concentrations plasmatiques lors de l'ajout ou du retrait de valproate, d'un inducteur ou d'une contraception œstroprogestative, et pendant la grossesse. Repérage des idées suicidaires, décrit avec l'ensemble des antiépileptiques.",
-        iup: "Respectez très exactement le plan de montée des doses, semaine par semaine : ce n'est pas une précaution formelle, c'est ce qui protège votre peau d'une réaction grave, et augmenter plus vite parce que l'effet tarde est dangereux. L'effet préventif sur l'humeur ou sur les crises ne s'installe qu'après plusieurs semaines, le temps d'atteindre la dose d'entretien. Surveillez votre peau pendant les deux premiers mois : toute éruption, même discrète, doit être montrée le jour même, et il faut consulter en urgence si elle s'accompagne de fièvre, de bulles, de lésions dans la bouche ou les yeux, ou d'un gonflement du visage. Si vous oubliez le traitement plusieurs jours de suite, ne reprenez pas à la dose habituelle : appelez le médecin, car la montée devra être recommencée depuis le début. Prévenez systématiquement si vous commencez ou arrêtez une pilule œstroprogestative, car elle modifie fortement les concentrations et la dose devra être revue. N'arrêtez jamais brutalement, l'arrêt se fait sur au moins deux semaines, et évitez l'alcool ; prudence au volant en cas de vision double ou de vertiges.",
+        iup: "Respectez très exactement le plan de montée des doses, semaine par semaine : cette montée lente protège votre peau d'une réaction grave, et augmenter plus vite parce que l'effet tarde est dangereux. L'effet préventif sur l'humeur ou sur les crises ne s'installe qu'après plusieurs semaines, le temps d'atteindre la dose d'entretien. Surveillez votre peau pendant les deux premiers mois : toute éruption, même discrète, doit être montrée le jour même, et il faut consulter en urgence si elle s'accompagne de fièvre, de bulles, de lésions dans la bouche ou les yeux, ou d'un gonflement du visage. Si vous oubliez le traitement plusieurs jours de suite, ne reprenez pas à la dose habituelle : appelez le médecin, car la montée devra être recommencée depuis le début. Prévenez systématiquement si vous commencez ou arrêtez une pilule œstroprogestative, car elle modifie fortement les concentrations et la dose devra être revue. N'arrêtez jamais brutalement, l'arrêt se fait sur au moins deux semaines, et évitez l'alcool ; prudence au volant en cas de vision double ou de vertiges.",
         half_life: "≈ 25 à 35 heures en monothérapie ; environ 70 heures en association au valproate et 14 heures en association à un inducteur",
         elimination: "Métabolisme hépatique par glucuroconjugaison via les UDP-glucuronosyltransférases, sans passage significatif par les cytochromes ; élimination urinaire sous forme de conjugués inactifs.",
         renal: "Pas d'adaptation en insuffisance rénale légère à modérée. En insuffisance rénale sévère ou en dialyse, prudence et doses d'entretien réduites, le métabolite glucuroconjugué s'accumulant ; l'hémodialyse épure une part de la lamotrigine.",
@@ -4296,7 +4344,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, marge thérapeutique étroite, surveillance biologique",
-        toxicity: "Il n'y a pas de zone thérapeutique suivie en routine : la toxicité de cette molécule est la vitesse de titration. Le syndrome de Stevens-Johnson et le syndrome de Lyell surviennent dans les huit premières semaines, et la lenteur de la montée est ce qui les évite. Toute éruption apparue pendant cette période fait arrêter et consulter le jour même. La dose de départ se divise par deux avec le valproate et se double avec les inducteurs : une reprise après quelques jours d'arrêt recommence la titration à zéro.",
+        toxicity: "Il n'y a pas de zone thérapeutique suivie en routine : la toxicité de cette molécule est la vitesse de titration. Le syndrome de Stevens-Johnson et le syndrome de Lyell surviennent dans les huit premières semaines, et la lenteur de la montée les évite. Toute éruption apparue pendant cette période fait arrêter et consulter le jour même. La dose de départ se divise par deux avec le valproate et se double avec les inducteurs : une reprise après quelques jours d'arrêt recommence la titration à zéro.",
         forms: "",
     },
     StarterDetail {
@@ -4401,7 +4449,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "triptan",
-        toxicity: "Le triptan est un vasoconstricteur : il est contre-indiqué en cas de cardiopathie ischémique, d'antécédent d'infarctus, d'angor de Prinzmetal, d'artériopathie, d'antécédent d'accident vasculaire cérébral et d'hypertension non contrôlée, et une douleur thoracique ou une oppression survenant après la prise impose un avis avant toute reprise. La seconde limite est la fréquence : au-delà de dix jours de prise par mois, le traitement de crise entretient lui-même la céphalée, et le patient s'installe dans un cercle qui ne se voit que sur un agenda des crises — c'est ce que le comptoir peut repérer au rythme des renouvellements. Un délai d'au moins vingt-quatre heures sépare un triptan d'un dérivé de l'ergot.",
+        toxicity: "Le triptan est un vasoconstricteur : il est contre-indiqué en cas de cardiopathie ischémique, d'antécédent d'infarctus, d'angor de Prinzmetal, d'artériopathie, d'antécédent d'accident vasculaire cérébral et d'hypertension non contrôlée, et une douleur thoracique ou une oppression survenant après la prise impose un avis avant toute reprise. La seconde limite est la fréquence : au-delà de dix jours de prise par mois, le traitement de crise entretient lui-même la céphalée, et le patient s'installe dans un cercle qui ne se voit que sur un agenda des crises , que le comptoir repère au rythme des renouvellements. Un délai d'au moins vingt-quatre heures sépare un triptan d'un dérivé de l'ergot.",
         forms: "",
     },
     StarterDetail {
@@ -4623,7 +4671,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Le ralentissement de la vidange gastrique peut modifier légèrement l'absorption des médicaments oraux, notamment ceux à marge thérapeutique étroite comme les hormones thyroïdiennes et les antivitamines K, dont l'INR mérite un contrôle rapproché à l'instauration. L'association à un sulfamide hypoglycémiant ou à l'insuline expose à un risque d'hypoglycémie qui n'existe pas en monothérapie et impose de réduire la dose du sulfamide ou de l'insuline dès l'instauration : c'est l'ajustement essentiel à repérer sur l'ordonnance. L'association à une gliptine est redondante et sans intérêt. Prudence avec les médicaments pancréatotoxiques.",
         adverse: "Nausées, vomissements, diarrhée, constipation, dyspepsie et douleurs abdominales, très fréquents au début et lors des augmentations de dose, généralement transitoires et atténués par une titration lente et des repas plus légers. Perte d'appétit et perte de poids. Céphalées, fatigue, tachycardie modérée, réactions au point d'injection. Hypoglycémie en association à un sulfamide ou à l'insuline. Plus rarement pancréatite aiguë, imposant l'arrêt immédiat et définitif devant une douleur abdominale intense et persistante irradiant dans le dos, lithiase et inflammation biliaires favorisées par la perte de poids, déshydratation avec insuffisance rénale aiguë en cas de vomissements ou de diarrhée prolongés, aggravation transitoire d'une rétinopathie diabétique, réactions d'hypersensibilité.",
         monitoring: "HbA1c tous les trois mois jusqu'à l'objectif puis tous les six mois. Poids et tour de taille à chaque consultation. Créatininémie, en particulier en cas d'épisode digestif marqué, la déshydratation pouvant précipiter une insuffisance rénale aiguë. Autosurveillance glycémique renforcée à l'instauration, surtout en association à un sulfamide ou à l'insuline. Surveillance clinique des douleurs abdominales, avec dosage de la lipase en cas de suspicion de pancréatite. Suivi ophtalmologique habituel du diabétique, attentif en cas de rétinopathie connue et de baisse rapide de l'HbA1c.",
-        iup: "Une injection sous la peau par jour, à l'heure qui vous convient mais de préférence toujours la même, avant ou après le repas, cela n'a pas d'importance. La dose démarre volontairement bas et augmente par paliers d'au moins une semaine : cette montée progressive n'est pas facultative, c'est ce qui permet à l'estomac de s'habituer et d'éviter les nausées. Les stylos non entamés se conservent au réfrigérateur entre 2 et 8 degrés ; une fois entamé, le stylo se garde un mois à température ambiante ou au réfrigérateur, sans jamais être congelé, et il ne se partage jamais entre deux personnes. Changez d'aiguille à chaque injection et alternez les points de piqûre sur le ventre, la cuisse ou le bras pour éviter les boules sous la peau. Des nausées et une satiété rapide sont fréquentes les premières semaines : mangez plus lentement et en plus petite quantité, évitez les plats gras, et arrêtez-vous dès que vous n'avez plus faim ; si les vomissements ou la diarrhée durent, buvez et signalez-le, car la déshydratation peut retentir sur les reins. Si vous prenez aussi un sulfamide ou de l'insuline, gardez du sucre sur vous et signalez tout malaise, la dose de ces traitements devant souvent être diminuée.",
+        iup: "Une injection sous la peau par jour, à l'heure qui vous convient mais de préférence toujours la même, avant ou après le repas, cela n'a pas d'importance. La dose démarre volontairement bas et augmente par paliers d'au moins une semaine : cette montée progressive n'est pas facultative : elle laisse à l'estomac le temps de s'habituer et évite les nausées. Les stylos non entamés se conservent au réfrigérateur entre 2 et 8 degrés ; une fois entamé, le stylo se garde un mois à température ambiante ou au réfrigérateur, sans jamais être congelé, et il ne se partage jamais entre deux personnes. Changez d'aiguille à chaque injection et alternez les points de piqûre sur le ventre, la cuisse ou le bras pour éviter les boules sous la peau. Des nausées et une satiété rapide sont fréquentes les premières semaines : mangez plus lentement et en plus petite quantité, évitez les plats gras, et arrêtez-vous dès que vous n'avez plus faim ; si les vomissements ou la diarrhée durent, buvez et signalez-le, car la déshydratation peut retentir sur les reins. Si vous prenez aussi un sulfamide ou de l'insuline, gardez du sucre sur vous et signalez tout malaise, la dose de ces traitements devant souvent être diminuée.",
         half_life: "≈ 13 heures, compatible avec une injection quotidienne unique",
         elimination: "Dégradation métabolique endogène par les peptidases, comme les grandes protéines, sans organe d'élimination prédominant ; aucune excrétion urinaire ou fécale du peptide intact.",
         renal: "Pas d'adaptation de dose en cas d'insuffisance rénale légère, modérée ou sévère. Non recommandé au stade terminal, avec débit de filtration glomérulaire inférieur à 15 mL/min, faute de données. Attention aux épisodes digestifs, qui peuvent entraîner une déshydratation et une dégradation aiguë de la fonction rénale.",
@@ -4837,7 +4885,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         half_life: "Environ 2 à 3 heures",
         elimination: "Métabolisme hépatique rapide et étendu par le CYP3A4 en métabolites d'activité très faible, éliminés principalement par voie urinaire.",
         renal: "Aucune adaptation de dose en cas d'insuffisance rénale. En insuffisance hépatique sévère, l'exposition systémique augmente et la prudence s'impose.",
-        pregnancy: "Utilisable pendant toute la grossesse et l'allaitement : le budésonide inhalé est le corticoïde inhalé le mieux documenté et le traitement de fond doit être poursuivi, l'asthme non contrôlé étant le vrai risque.",
+        pregnancy: "Utilisable pendant toute la grossesse et l'allaitement : le budésonide inhalé est le corticoïde inhalé le mieux documenté et le traitement de fond doit être poursuivi, l'asthme non contrôlé étant le risque principal.",
         sources: "RCP Pulmicort — base de données publique des médicaments (ANSM)\nGINA — prise en charge et prévention de l'asthme\nHAS — asthme de l'enfant et de l'adulte, parcours de soins",
         status: "",
         smr: "",
@@ -4905,7 +4953,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, fluoropyrimidine, marge thérapeutique étroite, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Le déficit en dihydropyrimidine déshydrogénase est le risque qui domine tout le reste : l'uracilémie se dose avant la première cure, et un déficit complet fait une toxicité mortelle dès la première administration. Ensuite, la toxicité est cumulative et lisible — syndrome main-pied, diarrhée, mucite : arrêter au premier grade 2 et appeler est ce qui évite le grade 4. Association aux AVK : l'INR grimpe fortement et durablement.",
+        toxicity: "Le déficit en dihydropyrimidine déshydrogénase est le risque qui domine tout le reste : l'uracilémie se dose avant la première cure, et un déficit complet fait une toxicité mortelle dès la première administration. Ensuite, la toxicité est cumulative et lisible — syndrome main-pied, diarrhée, mucite : arrêter au premier grade 2 et appeler évite le grade 4. Association aux AVK : l'INR grimpe fortement et durablement.",
         forms: "",
     },
     StarterDetail {
@@ -5325,7 +5373,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine, contre-indiqué grossesse",
-        toxicity: "C'est la statine dont les plafonds de dose imposés par les interactions sont les plus nombreux et les plus stricts, parce qu'elle est fortement métabolisée par le CYP3A4 : l'amlodipine, l'amiodarone, le vérapamil et le diltiazem limitent la dose à 20 mg, et les inhibiteurs puissants — macrolides, azolés, inhibiteurs de protéase — sont contre-indiqués. Le dosage à 80 mg n'est plus recommandé du fait du risque musculaire. Ces plafonds sont vérifiables sur l'ordonnance complète et c'est là que le comptoir a un rôle réel : une association amlodipine et simvastatine 40 mg est une ordonnance à corriger. Le pamplemousse est à éviter. Rhabdomyolyse : douleurs diffuses, faiblesse, urines foncées.",
+        toxicity: "C'est la statine dont les plafonds de dose imposés par les interactions sont les plus nombreux et les plus stricts, parce qu'elle est fortement métabolisée par le CYP3A4 : l'amlodipine, l'amiodarone, le vérapamil et le diltiazem limitent la dose à 20 mg, et les inhibiteurs puissants — macrolides, azolés, inhibiteurs de protéase — sont contre-indiqués. Le dosage à 80 mg n'est plus recommandé du fait du risque musculaire. Ces plafonds se vérifient sur l'ordonnance complète, au comptoir : une association amlodipine et simvastatine 40 mg est une ordonnance à corriger. Le pamplemousse est à éviter. Rhabdomyolyse : douleurs diffuses, faiblesse, urines foncées.",
         forms: "",
     },
     StarterDetail {
@@ -5610,7 +5658,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Le tabac induit le CYP1A2 et abaisse les concentrations d'environ un tiers : un arrêt du tabac peut entraîner un surdosage avec sédation et chutes, et impose de réévaluer la dose. Les inhibiteurs puissants du CYP1A2 (fluvoxamine, ciprofloxacine) augmentent nettement l'exposition et justifient une réduction de dose. La carbamazépine, inducteur enzymatique, diminue les concentrations d'environ moitié. Sédation additive et dépression respiratoire avec l'alcool, les benzodiazépines et les opioïdes ; l'association de l'olanzapine injectable à une benzodiazépine parentérale est déconseillée du fait du risque de dépression cardiorespiratoire. Effets anticholinergiques additifs et risque d'occlusion. Prudence en association aux médicaments allongeant le QT et aux antihypertenseurs, l'olanzapine majorant l'hypotension orthostatique.",
         adverse: "Très fréquents et dominants : prise de poids souvent importante et rapide, augmentation de l'appétit, somnolence, élévation de la prolactinémie généralement modérée et transitoire, hypotension orthostatique, sécheresse buccale, constipation, œdèmes, élévation des transaminases. Fréquents : hyperglycémie, dyslipidémie avec hypertriglycéridémie, vertiges, akathisie et effets extrapyramidaux modérés, éosinophilie. Plus rarement mais graves : diabète parfois révélé par une acidocétose ou un coma hyperosmolaire, syndrome malin des neuroleptiques avec hyperthermie, rigidité, dysautonomie et élévation des CPK, convulsions, neutropénie, pancréatite, thromboembolie veineuse, allongement du QT, dyskinésies tardives sous traitement prolongé.",
         monitoring: "Bilan métabolique complet avant l'instauration puis à trois mois et au moins une fois par an : poids et indice de masse corporelle, tour de taille, pression artérielle, glycémie à jeun, bilan lipidique. Le poids doit être suivi mensuellement pendant les trois premiers mois, la prise pondérale étant précoce et prédictive. Bilan hépatique et NFS périodiques. ECG en cas de cardiopathie, d'association allongeant le QT ou de troubles électrolytiques. Recherche clinique d'effets extrapyramidaux, d'akathisie et de dyskinésies tardives, et dosage de la prolactine en cas d'aménorrhée, de galactorrhée ou de troubles sexuels. Devant toute hyperthermie avec rigidité, évoquer un syndrome malin et doser les CPK en urgence.",
-        iup: "Un comprimé par jour, à heure fixe, de préférence le soir puisque le médicament est sédatif, avec ou sans aliments ; il existe une forme orodispersible qui fond sur la langue si la prise du comprimé est difficile. L'effet sur l'agitation et le sommeil apparaît en quelques jours, mais l'effet complet sur les idées délirantes ou les hallucinations demande plusieurs semaines : le traitement se poursuit même quand tout va bien, car c'est ce qui empêche la rechute. Ce médicament ouvre l'appétit et fait souvent prendre du poids rapidement dans les premiers mois : anticipez dès maintenant sur l'alimentation et l'activité physique, et faites-vous peser régulièrement, c'est plus facile d'éviter la prise que de la reprendre ensuite. Levez-vous en deux temps, surtout au début et la nuit, car la tension peut baisser en position debout et faire tomber. N'arrêtez jamais brutalement de vous-même, la diminution se décide avec le psychiatre. Évitez l'alcool, prudence au volant tant que la somnolence persiste, et consultez le jour même en cas de fièvre avec raideur musculaire et sueurs, de soif intense avec urines abondantes et amaigrissement, de fièvre avec mal de gorge, ou de mouvements anormaux involontaires du visage ou de la langue.",
+        iup: "Un comprimé par jour, à heure fixe, de préférence le soir puisque le médicament est sédatif, avec ou sans aliments ; il existe une forme orodispersible qui fond sur la langue si la prise du comprimé est difficile. L'effet sur l'agitation et le sommeil apparaît en quelques jours, mais l'effet complet sur les idées délirantes ou les hallucinations demande plusieurs semaines : le traitement se poursuit même quand tout va bien, car cela empêche la rechute. Ce médicament ouvre l'appétit et fait souvent prendre du poids rapidement dans les premiers mois : anticipez dès maintenant sur l'alimentation et l'activité physique, et faites-vous peser régulièrement, c'est plus facile d'éviter la prise que de la reprendre ensuite. Levez-vous en deux temps, surtout au début et la nuit, car la tension peut baisser en position debout et faire tomber. N'arrêtez jamais brutalement de vous-même, la diminution se décide avec le psychiatre. Évitez l'alcool, prudence au volant tant que la somnolence persiste, et consultez le jour même en cas de fièvre avec raideur musculaire et sueurs, de soif intense avec urines abondantes et amaigrissement, de fièvre avec mal de gorge, ou de mouvements anormaux involontaires du visage ou de la langue.",
         half_life: "≈ 33 heures, plus longue chez la femme et le sujet âgé",
         elimination: "Métabolisme hépatique par glucuroconjugaison directe et oxydation par le CYP1A2, accessoirement par le CYP2D6 ; élimination majoritairement urinaire sous forme de métabolites inactifs, environ 7 % sous forme inchangée.",
         renal: "Pas d'adaptation obligatoire, l'élimination rénale du produit inchangé étant faible ; il est toutefois recommandé de débuter à 5 mg par jour en cas d'insuffisance rénale, comme en cas d'insuffisance hépatique modérée.",
@@ -6312,7 +6360,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticancéreux oral, itk multicible, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Le rythme de quatre semaines de prise suivies de deux semaines d'arrêt fait partie du traitement, et un patient qui poursuit sans interruption accumule les toxicités : c'est ce qu'il faut vérifier au renouvellement. Quatre surveillances sont chiffrées et non impressionnistes. La pression artérielle, qui monte chez la majorité des patients et se traite sans arrêter le traitement. La TSH, l'hypothyroïdie étant fréquente, souvent tardive, et prise pour la fatigue de la maladie. La fraction d'éjection ventriculaire gauche, une insuffisance cardiaque étant possible. Et la numération. Le syndrome main-pied est plus localisé et plus douloureux que celui des fluoropyrimidines ; la dépigmentation des cheveux et le teint jaune sont attendus et sans gravité.",
+        toxicity: "Le rythme de quatre semaines de prise suivies de deux semaines d'arrêt fait partie du traitement, et un patient qui poursuit sans interruption accumule les toxicités : à vérifier au renouvellement. Quatre surveillances sont chiffrées et non impressionnistes. La pression artérielle, qui monte chez la majorité des patients et se traite sans arrêter le traitement. La TSH, l'hypothyroïdie étant fréquente, souvent tardive, et prise pour la fatigue de la maladie. La fraction d'éjection ventriculaire gauche, une insuffisance cardiaque étant possible. Et la numération. Le syndrome main-pied est plus localisé et plus douloureux que celui des fluoropyrimidines ; la dépigmentation des cheveux et le teint jaune sont attendus et sans gravité.",
         forms: "",
     },
     StarterDetail {
@@ -8874,7 +8922,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "héparine, voie sous-cutanée, surveillance biologique",
-        toxicity: "Héparine non fractionnée par voie sous-cutanée, dosée en unités internationales et jamais en millilitres : la seringue est graduée en UI et une erreur de lecture est une erreur de dose. L'effet se surveille sur le TCA prélevé à mi-chemin entre deux injections, ce qui suppose de connaître l'heure exacte de la précédente — l'information manque souvent, et c'est la première cause de résultat ininterprétable. La protamine neutralise complètement, 1 mg pour 100 UI, mais l'absorption sous-cutanée étant prolongée, la neutralisation doit être fractionnée et répétée. Comme pour toute héparine, la thrombopénie de type II entre le cinquième et le vingt et unième jour est ce qui tue, pas l'hémorragie du premier jour.",
+        toxicity: "Héparine non fractionnée par voie sous-cutanée, dosée en unités internationales et jamais en millilitres : la seringue est graduée en UI et une erreur de lecture est une erreur de dose. L'effet se surveille sur le TCA prélevé à mi-chemin entre deux injections, ce qui suppose de connaître l'heure exacte de la précédente — l'information manque souvent, et c'est la première cause de résultat ininterprétable. La protamine neutralise complètement, 1 mg pour 100 UI, mais l'absorption sous-cutanée étant prolongée, la neutralisation doit être fractionnée et répétée. Comme pour toute héparine, la thrombopénie de type II entre le cinquième et le vingt et unième jour tue, pas l'hémorragie du premier jour.",
         forms: "",
     },
     StarterDetail {
@@ -9147,7 +9195,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "statine + inhibiteur de l'absorption, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Association fixe de simvastatine et d'ézétimibe : tous les plafonds de dose de la simvastatine s'y appliquent intégralement, et c'est ce que masque le nom de la spécialité. Avec l'amlodipine, l'amiodarone, le vérapamil ou le diltiazem, la fraction simvastatine ne doit pas dépasser 20 mg, et les inhibiteurs puissants du CYP3A4 — macrolides, azolés, inhibiteurs de protéase — sont contre-indiqués. Vérifier l'ordonnance complète revient donc à vérifier une statine, pas un hypolipémiant anodin. L'association à un fibrate majore le risque musculaire. Devant des douleurs musculaires diffuses avec faiblesse et urines foncées, on arrête et on dose les CPK le jour même.",
+        toxicity: "Association fixe de simvastatine et d'ézétimibe : tous les plafonds de dose de la simvastatine s'y appliquent intégralement, ce que masque le nom de la spécialité. Avec l'amlodipine, l'amiodarone, le vérapamil ou le diltiazem, la fraction simvastatine ne doit pas dépasser 20 mg, et les inhibiteurs puissants du CYP3A4 — macrolides, azolés, inhibiteurs de protéase — sont contre-indiqués. Vérifier l'ordonnance complète revient donc à vérifier une statine, pas un hypolipémiant anodin. L'association à un fibrate majore le risque musculaire. Devant des douleurs musculaires diffuses avec faiblesse et urines foncées, on arrête et on dose les CPK le jour même.",
         forms: "",
     },
     StarterDetail {
@@ -9201,7 +9249,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Produits de contraste iodés : risque d'insuffisance rénale et d'acidose lactique, imposant l'arrêt de la metformine au moment de l'examen et sa reprise au moins quarante-huit heures après, sous réserve d'une fonction rénale contrôlée. Diurétiques, inhibiteurs de l'enzyme de conversion, sartans et AINS : risque d'insuffisance rénale fonctionnelle, donc d'accumulation. Alcool : majoration du risque d'acidose lactique. Corticoïdes, bêta-2 mimétiques et diurétiques hyperglycémiants : déséquilibre du diabète. Les inhibiteurs du transporteur cationique organique peuvent augmenter l'exposition.",
         adverse: "Troubles digestifs très fréquents à l'instauration, nausées, diarrhée, douleurs abdominales, anorexie et goût métallique, généralement transitoires et atténués par la prise pendant les repas et la montée progressive des doses. Acidose lactique, exceptionnelle mais grave, quasi toujours favorisée par une insuffisance rénale aiguë, une déshydratation ou une hypoxie. Carence en vitamine B12 lors des traitements prolongés, avec anémie macrocytaire ou neuropathie. Rarement érythème et hépatite.",
         monitoring: "Débit de filtration glomérulaire avant l'instauration puis au moins une fois par an, et deux à quatre fois par an dès que la fonction rénale est altérée ou chez le sujet âgé. Hémoglobine glyquée tous les trois à six mois selon l'équilibre. Dosage de la vitamine B12 en cas de traitement prolongé, d'anémie macrocytaire ou de neuropathie. Recherche clinique de signes d'acidose lactique devant des crampes, des douleurs abdominales, une hyperventilation ou une asthénie majeure.",
-        iup: "Prendre les comprimés au milieu ou à la fin des repas, jamais à jeun : c'est ce qui limite les nausées, la diarrhée et les douleurs de ventre, très fréquentes les premiers jours et qui s'atténuent presque toujours en une à deux semaines, d'autant que la dose est augmentée lentement par paliers. Il existe une règle importante à retenir : en cas de maladie aiguë avec fièvre, vomissements, diarrhée importante, forte chaleur avec déshydratation, ou impossibilité de boire et de manger normalement, il faut suspendre la metformine, boire abondamment et contacter le médecin, car c'est dans ces situations que le rein souffre et que le médicament peut s'accumuler. Ce traitement doit aussi être arrêté avant un examen radiologique avec produit de contraste iodé ou une intervention chirurgicale, et n'est repris qu'après quarante-huit heures avec l'accord du médecin. Ce médicament ne provoque pas d'hypoglycémie lorsqu'il est pris seul, mais le risque existe s'il est associé à un sulfamide ou à l'insuline. En cas d'oubli, prendre la dose au repas suivant sans jamais doubler, et consulter en urgence devant des crampes musculaires diffuses, des douleurs abdominales inhabituelles, une respiration rapide et profonde ou une fatigue extrême.",
+        iup: "Prendre les comprimés au milieu ou à la fin des repas, jamais à jeun : cela limite les nausées, la diarrhée et les douleurs de ventre, très fréquentes les premiers jours et qui s'atténuent presque toujours en une à deux semaines, d'autant que la dose est augmentée lentement par paliers. Il existe une règle importante à retenir : en cas de maladie aiguë avec fièvre, vomissements, diarrhée importante, forte chaleur avec déshydratation, ou impossibilité de boire et de manger normalement, il faut suspendre la metformine, boire abondamment et contacter le médecin, car c'est dans ces situations que le rein souffre et que le médicament peut s'accumuler. Ce traitement doit aussi être arrêté avant un examen radiologique avec produit de contraste iodé ou une intervention chirurgicale, et n'est repris qu'après quarante-huit heures avec l'accord du médecin. Ce médicament ne provoque pas d'hypoglycémie lorsqu'il est pris seul, mais le risque existe s'il est associé à un sulfamide ou à l'insuline. En cas d'oubli, prendre la dose au repas suivant sans jamais doubler, et consulter en urgence devant des crampes musculaires diffuses, des douleurs abdominales inhabituelles, une respiration rapide et profonde ou une fatigue extrême.",
         half_life: "Environ 6 heures dans le plasma, avec une élimination plus lente à partir des érythrocytes ; la durée d'action justifie deux à trois prises quotidiennes pour les formes classiques.",
         elimination: "Aucun métabolisme hépatique : la metformine est éliminée telle quelle par voie rénale, par filtration glomérulaire et sécrétion tubulaire active. Toute baisse du débit de filtration entraîne donc une accumulation proportionnelle.",
         renal: "Débit de filtration glomérulaire supérieur à 60 mL/min : dose usuelle. Entre 45 et 59 mL/min : poursuite possible avec surveillance rapprochée et révision des facteurs de risque. Entre 30 et 44 mL/min : réduction de la dose selon le résumé des caractéristiques du produit et surveillance trimestrielle. Inférieur à 30 mL/min : contre-indiqué.",
@@ -9222,7 +9270,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Miconazole, y compris en gel buccal : association contre-indiquée en raison d'hypoglycémies sévères. Fluconazole, sulfamides antibactériens, AINS, inhibiteurs de l'enzyme de conversion, fibrates et alcool majorent l'effet hypoglycémiant. Bêtabloquants : masquage des signes d'alerte de l'hypoglycémie, en dehors des sueurs. Corticoïdes, bêta-2 mimétiques, diurétiques thiazidiques, danazol et neuroleptiques atypiques : effet hyperglycémiant. Les inducteurs enzymatiques réduisent l'efficacité.",
         adverse: "Hypoglycémies, parfois sévères et surtout prolongées ou récidivantes en raison de la durée d'action de la molécule et de la présence de métabolites actifs, principal risque du traitement chez le sujet âgé ou insuffisant rénal. Prise de poids. Troubles digestifs, nausées, douleurs épigastriques. Réactions cutanées allergiques, photosensibilité, rarement cytopénies, hépatite cholestatique, hyponatrémie et effet antabuse avec l'alcool.",
         monitoring: "Autosurveillance glycémique capillaire, indispensable à l'instauration, lors des changements de dose et devant tout malaise, avec une attention particulière aux hypoglycémies nocturnes et matinales. Hémoglobine glyquée tous les trois à six mois. Débit de filtration glomérulaire régulièrement, une dégradation exposant à des hypoglycémies graves. Bilan hépatique et hémogramme devant tout signe d'appel, et surveillance du poids.",
-        iup: "Prendre le comprimé juste avant le repas, et surtout ne jamais le prendre si le repas est sauté ou très retardé : ce médicament fait fabriquer de l'insuline que le repas soit pris ou non, c'est ce qui provoque les malaises. Reconnaître l'hypoglycémie est la priorité : sueurs, tremblements, faim brutale, palpitations, vision trouble, difficulté à se concentrer, irritabilité ou comportement inhabituel ; il faut alors avaler immédiatement trois morceaux de sucre ou un verre de jus de fruits, puis un aliment glucidique lent, et surtout avoir toujours de quoi se resucrer sur soi, dans la voiture, au travail et sur la table de nuit. Les hypoglycémies dues à ce médicament peuvent réapparaître plusieurs heures après avoir été corrigées, donc tout malaise sévère, avec perte de connaissance ou nécessité de l'aide d'un tiers, impose un appel médical même si le patient va mieux. L'alcool à jeun, un effort physique inhabituel, un repas sauté, une infection ou une insuffisance rénale qui s'installe augmentent nettement ce risque. En cas d'oubli, ne pas rattraper à distance du repas ni doubler la prise suivante, et signaler au pharmacien toute nouvelle prescription, en particulier un antifongique, un gel buccal pour la bouche ou un antibiotique de la famille des sulfamides.",
+        iup: "Prendre le comprimé juste avant le repas, et surtout ne jamais le prendre si le repas est sauté ou très retardé : ce médicament fait fabriquer de l'insuline que le repas soit pris ou non, ce qui provoque les malaises. Reconnaître l'hypoglycémie est la priorité : sueurs, tremblements, faim brutale, palpitations, vision trouble, difficulté à se concentrer, irritabilité ou comportement inhabituel ; il faut alors avaler immédiatement trois morceaux de sucre ou un verre de jus de fruits, puis un aliment glucidique lent, et surtout avoir toujours de quoi se resucrer sur soi, dans la voiture, au travail et sur la table de nuit. Les hypoglycémies dues à ce médicament peuvent réapparaître plusieurs heures après avoir été corrigées, donc tout malaise sévère, avec perte de connaissance ou nécessité de l'aide d'un tiers, impose un appel médical même si le patient va mieux. L'alcool à jeun, un effort physique inhabituel, un repas sauté, une infection ou une insuffisance rénale qui s'installe augmentent nettement ce risque. En cas d'oubli, ne pas rattraper à distance du repas ni doubler la prise suivante, et signaler au pharmacien toute nouvelle prescription, en particulier un antifongique, un gel buccal pour la bouche ou un antibiotique de la famille des sulfamides.",
         half_life: "Environ 5 à 10 heures selon les sujets, mais la durée d'action hypoglycémiante est plus longue et le glibenclamide possède des métabolites faiblement actifs qui s'accumulent en cas d'insuffisance rénale.",
         elimination: "Métabolisme hépatique important, notamment par le CYP2C9, en métabolites faiblement actifs éliminés à parts sensiblement égales par voies rénale et biliaire ; l'insuffisance rénale prolonge donc l'effet hypoglycémiant.",
         renal: "Insuffisance rénale légère : réduction de dose et surveillance renforcée. Insuffisance rénale modérée : usage déconseillé, le risque d'hypoglycémie prolongée devenant important. Insuffisance rénale sévère : contre-indiqué. Chez le sujet âgé, la fonction rénale doit être estimée avant toute instauration.",
@@ -9327,7 +9375,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Produits de contraste iodés : arrêt de l'association au moment de l'examen et reprise au moins quarante-huit heures après, sous réserve d'une fonction rénale contrôlée. Diurétiques, inhibiteurs de l'enzyme de conversion, sartans et AINS : insuffisance rénale fonctionnelle et risque d'accumulation de metformine. Alcool : acidose lactique. Association à un sulfamide ou à l'insuline : hypoglycémie, imposant de réduire la dose du sécrétagogue. Corticoïdes et bêta-2 mimétiques : déséquilibre glycémique.",
         adverse: "Troubles digestifs liés à la metformine, nausées, diarrhée, douleurs abdominales, goût métallique, surtout en début de traitement. Acidose lactique, exceptionnelle mais grave. Carence en vitamine B12 lors des traitements prolongés. Liés à la sitagliptine : pancréatite aiguë, arthralgies parfois sévères, réactions d'hypersensibilité, angiœdème, pemphigoïde bulleuse, infections des voies respiratoires supérieures et céphalées.",
         monitoring: "Débit de filtration glomérulaire avant l'instauration puis au moins une fois par an, et deux à quatre fois par an chez le sujet âgé ou en cas d'atteinte rénale. Hémoglobine glyquée tous les trois à six mois. Vitamine B12 en cas de traitement prolongé, d'anémie macrocytaire ou de neuropathie. Surveillance clinique des douleurs abdominales, des arthralgies, des lésions bulleuses et des signes évocateurs d'acidose lactique.",
-        iup: "Prendre un comprimé matin et soir au cours des repas : la prise pendant le repas est ce qui limite les nausées, la diarrhée et les douleurs de ventre dues à la metformine, très fréquentes au début et qui s'estompent généralement en une à deux semaines. La règle des jours de maladie doit être connue : en cas de fièvre, de vomissements, de diarrhée abondante, de forte chaleur avec déshydratation ou d'impossibilité de boire et manger normalement, il faut suspendre le traitement, boire abondamment et joindre le médecin, car le rein est alors en difficulté et la metformine peut s'accumuler. Le traitement doit également être arrêté avant un examen radiologique avec produit de contraste iodé ou une chirurgie, et repris seulement quarante-huit heures après avec l'accord du médecin. Ce médicament ne provoque pas d'hypoglycémie par lui-même, sauf s'il est associé à un sulfamide ou à l'insuline, auquel cas il faut garder du sucre sur soi. En cas d'oubli, prendre la dose au repas suivant sans jamais doubler, et consulter en urgence devant des crampes diffuses, une respiration rapide et profonde, une fatigue extrême, ou une douleur violente du haut du ventre irradiant dans le dos.",
+        iup: "Prendre un comprimé matin et soir au cours des repas : la prise pendant le repas limite les nausées, la diarrhée et les douleurs de ventre dues à la metformine, très fréquentes au début et qui s'estompent généralement en une à deux semaines. La règle des jours de maladie doit être connue : en cas de fièvre, de vomissements, de diarrhée abondante, de forte chaleur avec déshydratation ou d'impossibilité de boire et manger normalement, il faut suspendre le traitement, boire abondamment et joindre le médecin, car le rein est alors en difficulté et la metformine peut s'accumuler. Le traitement doit également être arrêté avant un examen radiologique avec produit de contraste iodé ou une chirurgie, et repris seulement quarante-huit heures après avec l'accord du médecin. Ce médicament ne provoque pas d'hypoglycémie par lui-même, sauf s'il est associé à un sulfamide ou à l'insuline, auquel cas il faut garder du sucre sur soi. En cas d'oubli, prendre la dose au repas suivant sans jamais doubler, et consulter en urgence devant des crampes diffuses, une respiration rapide et profonde, une fatigue extrême, ou une douleur violente du haut du ventre irradiant dans le dos.",
         half_life: "Sitagliptine environ 12 heures ; metformine environ 6 heures dans le plasma. Le schéma en deux prises quotidiennes est imposé par la metformine.",
         elimination: "Sitagliptine éliminée essentiellement par voie rénale sous forme inchangée, avec une sécrétion tubulaire active et un métabolisme négligeable. Metformine éliminée telle quelle par filtration glomérulaire et sécrétion tubulaire. L'association est donc entièrement dépendante de la fonction rénale.",
         renal: "Débit de filtration glomérulaire supérieur à 60 mL/min : dose usuelle. Entre 45 et 59 mL/min : poursuite possible sous surveillance rapprochée. Entre 30 et 44 mL/min : l'association fixe n'est généralement pas adaptée, les deux composants devant être ajustés séparément selon le résumé des caractéristiques du produit. Inférieur à 30 mL/min : contre-indiqué.",
@@ -9483,7 +9531,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline intermédiaire, surveillance biologique",
-        toxicity: "Comme toute insuline en suspension, elle doit être remise en suspension avant chaque injection par une vingtaine de retournements lents : un stylo injecté sans être homogénéisé délivre une dose fausse dans un sens ou dans l'autre, et c'est ce qui explique la plupart des déséquilibres attribués à tort au patient. Le pic d'action à quatre ou six heures fait le danger propre de cette classe : hypoglycémie nocturne quand l'injection du soir est trop précoce ou trop forte, souvent silencieuse et reconnue seulement sur des sueurs nocturnes ou une hyperglycémie de rebond au réveil. Durée d'action longue, donc hypoglycémie prolongée. Antidote glucagon.",
+        toxicity: "Comme toute insuline en suspension, elle doit être remise en suspension avant chaque injection par une vingtaine de retournements lents : un stylo injecté sans être homogénéisé délivre une dose fausse dans un sens ou dans l'autre, ce qui explique la plupart des déséquilibres attribués à tort au patient. Le pic d'action à quatre ou six heures fait le danger propre de cette classe : hypoglycémie nocturne quand l'injection du soir est trop précoce ou trop forte, souvent silencieuse et reconnue seulement sur des sueurs nocturnes ou une hyperglycémie de rebond au réveil. Durée d'action longue, donc hypoglycémie prolongée. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -9495,7 +9543,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Bêtabloquants non cardiosélectifs : masquage des signes d'alerte de l'hypoglycémie. Alcool : hypoglycémies retardées. Inhibiteurs de l'enzyme de conversion, salicylés, fibrates, inhibiteurs de la monoamine oxydase et analogues du GLP-1 : potentialisation. Corticoïdes, bêta-2 mimétiques, diurétiques thiazidiques, hormones thyroïdiennes et neuroleptiques atypiques : hyperglycémie nécessitant une augmentation des doses.",
         adverse: "Hypoglycémies, en particulier en milieu de matinée, en milieu d'après-midi et la nuit, du fait de la double cinétique. Lipodystrophies et amylose cutanée aux sites d'injection répétés. Réactions locales, œdèmes, troubles transitoires de la réfraction à l'instauration, prise de poids. Réactions d'hypersensibilité, rares.",
         monitoring: "Autosurveillance glycémique capillaire avant les deux repas concernés, en milieu de journée et au coucher, avec contrôles nocturnes en cas de suspicion d'hypoglycémie de nuit. Hémoglobine glyquée tous les trois mois. Inspection régulière des sites d'injection à la recherche de lipodystrophies. Surveillance du poids et de la fonction rénale, et évaluation de la régularité des repas, indispensable avec une insuline à proportions fixes.",
-        iup: "Cette insuline est trouble parce qu'elle contient deux fractions : elle doit être remise en suspension avant chaque injection en roulant doucement le stylo entre les paumes une dizaine de fois puis en le retournant lentement dix fois, jusqu'à obtenir un liquide uniformément blanc, sans le secouer. Une remise en suspension négligée fausse complètement la dose et explique la plupart des glycémies erratiques. L'injection se fait juste avant le repas, sous la peau du ventre ou de la cuisse, en changeant de point d'au moins un centimètre à chaque fois et en respectant une rotation sur toute la zone pour éviter les boules dures ; l'aiguille est à usage unique, et il faut compter lentement jusqu'à six avant de la retirer. Comme les proportions des deux insulines sont fixes, il est important de ne pas sauter le repas qui suit l'injection ni de le décaler fortement, et de prévoir une collation si un effort physique est prévu. Le stylo en cours se conserve à température ambiante à l'abri de la lumière pour la durée indiquée dans la notice, les réserves au réfrigérateur entre deux et huit degrés sans jamais congeler ; garder du sucre sur soi et à la table de nuit, et ne jamais arrêter l'insuline en cas de maladie mais contrôler plus souvent la glycémie et appeler le médecin.",
+        iup: "Cette insuline est trouble parce qu'elle contient deux fractions : elle doit être remise en suspension avant chaque injection en roulant doucement le stylo entre les paumes une dizaine de fois puis en le retournant lentement dix fois, jusqu'à obtenir un liquide uniformément blanc, sans le secouer. Une remise en suspension négligée fausse complètement la dose et explique la plupart des glycémies erratiques. L'injection se fait juste avant le repas, sous la peau du ventre ou de la cuisse, en changeant de point d'au moins un centimètre à chaque fois et en respectant une rotation sur toute la zone pour éviter les boules dures ; l'aiguille est à usage unique, et il faut compter lentement jusqu'à six avant de la retirer. Comme les proportions des deux insulines sont fixes, ne pas sauter le repas qui suit l'injection ni le décaler fortement, et prévoir une collation si un effort physique est prévu. Le stylo en cours se conserve à température ambiante à l'abri de la lumière pour la durée indiquée dans la notice, les réserves au réfrigérateur entre deux et huit degrés sans jamais congeler ; garder du sucre sur soi et à la table de nuit, et ne jamais arrêter l'insuline en cas de maladie mais contrôler plus souvent la glycémie et appeler le médecin.",
         half_life: "Début d'action dans les dix à vingt minutes suivant l'injection pour la fraction rapide, effet maximal dans les premières heures, et durée totale pouvant atteindre vingt-quatre heures grâce à la fraction protaminée.",
         elimination: "Dégradation par l'insulinase hépatique et rénale et par les protéases tissulaires, comme l'insuline endogène ; la cinétique globale est dominée par la vitesse de libération au site d'injection.",
         renal: "Aucune contre-indication, mais les besoins en insuline diminuent avec l'insuffisance rénale : réduction des doses et surveillance glycémique renforcée pour prévenir les hypoglycémies, notamment chez le sujet âgé et le dialysé.",
@@ -9684,7 +9732,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Le produit augmente transitoirement le pH gastrique, ce qui peut modifier l'absorption des médicaments dont la biodisponibilité en dépend, notamment certains antifongiques azolés, les inhibiteurs de tyrosine kinase et certains antirétroviraux : ces prises doivent être espacées d'au moins deux heures avant ou après. Les traitements hyperkaliémiants, inhibiteurs de l'enzyme de conversion, sartans, antialdostérone, AINS et héparines, doivent être réévalués et la kaliémie surveillée.",
         adverse: "Hypokaliémie en cas de posologie excessive ou de surveillance insuffisante, principal risque du traitement. Œdèmes et rétention hydrosodée liés à l'apport de sodium, à prendre en compte chez l'insuffisant cardiaque et l'hypertendu. Troubles digestifs modérés, constipation, nausées. Contrairement aux résines classiques, la tolérance digestive globale est meilleure et les complications occlusives n'ont pas été un signal marquant.",
         monitoring: "Kaliémie de façon rapprochée pendant la phase de correction, puis régulièrement en phase d'entretien selon le rythme fixé par le prescripteur, avec ajustement à la dose minimale efficace pour éviter l'hypokaliémie. Surveillance du poids, de la pression artérielle et des œdèmes compte tenu de la charge sodée. Réévaluation des traitements hyperkaliémiants associés, l'objectif étant souvent de permettre leur maintien. Contrôle de la fonction rénale et des bicarbonates.",
-        iup: "Verser le contenu du sachet dans un verre d'eau, remuer et boire immédiatement, puis remuer à nouveau et boire le fond du verre si de la poudre s'est déposée, car le produit ne se dissout pas et sédimente. La règle à retenir est l'espacement des prises : ce traitement modifie l'acidité de l'estomac et peut empêcher certains médicaments d'être absorbés, il faut donc respecter au moins deux heures d'écart avant ou après les autres médicaments, sauf indication contraire du médecin. Le traitement comporte deux temps, plusieurs prises par jour au début pour faire baisser le potassium, puis une seule prise quotidienne d'entretien : il est important de ne pas rester à la dose forte au-delà de ce que le médecin a prescrit. Les prises de sang de contrôle sont indispensables, car le potassium peut descendre trop bas, ce qui est également dangereux ; signaler une faiblesse musculaire, des crampes, des palpitations ou une fatigue inhabituelle. Ce médicament apporte du sodium : signaler une prise de poids rapide, un gonflement des chevilles ou un essoufflement, et poursuivre le régime pauvre en potassium expliqué par le médecin.",
+        iup: "Verser le contenu du sachet dans un verre d'eau, remuer et boire immédiatement, puis remuer à nouveau et boire le fond du verre si de la poudre s'est déposée, car le produit ne se dissout pas et sédimente. La règle à retenir est l'espacement des prises : ce traitement modifie l'acidité de l'estomac et peut empêcher certains médicaments d'être absorbés, il faut donc respecter au moins deux heures d'écart avant ou après les autres médicaments, sauf indication contraire du médecin. Le traitement comporte deux temps, plusieurs prises par jour au début pour faire baisser le potassium, puis une seule prise quotidienne d'entretien : ne pas rester à la dose forte au-delà de la durée prescrite. Les prises de sang de contrôle sont indispensables, car le potassium peut descendre trop bas, ce qui est également dangereux ; signaler une faiblesse musculaire, des crampes, des palpitations ou une fatigue inhabituelle. Ce médicament apporte du sodium : signaler une prise de poids rapide, un gonflement des chevilles ou un essoufflement, et poursuivre le régime pauvre en potassium expliqué par le médecin.",
         half_life: "Notion sans objet : le produit n'est pas absorbé et agit exclusivement dans la lumière digestive. L'effet sur la kaliémie débute dans les heures suivant la première prise et se maintient tant que le traitement est poursuivi.",
         elimination: "Élimination intégrale dans les fèces, sans absorption systémique ni métabolisme ; seuls les ions échangés, sodium et hydrogène libérés contre le potassium capté, ont un devenir métabolique.",
         renal: "Utilisable à tous les stades de l'insuffisance rénale chronique, y compris chez le dialysé selon les modalités du résumé des caractéristiques du produit, sans adaptation liée à la clairance puisqu'il n'est pas absorbé ; la surveillance de la kaliémie et de la charge sodée reste la règle.",
@@ -10251,7 +10299,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Sels de fer, calcium, magnésium, aluminium et zinc, antiacides, topiques gastro-intestinaux et produits laitiers : formation de complexes non absorbables et chute majeure de la biodisponibilité, prises à espacer d'au moins deux heures. Rétinoïdes systémiques : hypertension intracrânienne, association contre-indiquée. Antivitamines K : majoration de l'INR. Pénicillines : antagonisme théorique bactériostatique et bactéricide. Inducteurs enzymatiques (rifampicine, carbamazépine, phénytoïne) : diminution des concentrations. Méthoxyflurane : néphrotoxicité.",
         adverse: "Vertiges, sensations d'ébriété, ataxie et troubles de l'équilibre, particulièrement fréquents avec la minocycline et plus marqués chez la femme. Photosensibilité, moindre qu'avec la doxycycline mais réelle. Pigmentation bleu-gris de la peau, des cicatrices, des muqueuses, des ongles, de la sclère et des dents, parfois définitive lors des traitements prolongés. Œsophagite et ulcération œsophagienne. Troubles digestifs, candidoses. Hypertension intracrânienne bénigne avec céphalées et troubles visuels. Syndromes d'hypersensibilité : DRESS, lupus induit avec arthralgies et anticorps antinucléaires, hépatite auto-immune, vascularite. Cytopénies.",
         monitoring: "Réévaluation de l'indication à trois mois dans l'acné, la durée prolongée exposant aux pigmentations et aux réactions auto-immunes. Surveillance clinique des céphalées et des troubles visuels, qui imposent un fond d'œil et l'arrêt en cas d'hypertension intracrânienne. Recherche à l'interrogatoire d'arthralgies, d'un syndrome pseudo-grippal ou d'une éruption fébrile, évocateurs de lupus induit ou de DRESS. Bilan hépatique et hémogramme en cas de traitement prolongé ou de signe d'appel. Inspection cutanée à la recherche d'une pigmentation.",
-        iup: "Prenez le comprimé ou la gélule assis ou debout, avec un grand verre d'eau plein, au cours d'un repas, et ne vous allongez pas pendant au moins trente minutes après : les cyclines peuvent rester bloquées dans l'œsophage et y créer un ulcère très douloureux, et une prise juste avant le coucher est la circonstance classique de cet accident. Éloignez d'au moins deux heures toute prise de fer, de calcium, de magnésium, de zinc, de pansement gastrique ou d'antiacide, ainsi qu'un grand verre de lait ou un laitage : ces produits se lient à l'antibiotique et l'empêchent tout simplement d'être absorbé. Protégez-vous du soleil pendant toute la durée du traitement, avec un écran solaire élevé sur le visage et les zones découvertes, et évitez les cabines de bronzage : une exposition peut déclencher une réaction ressemblant à un gros coup de soleil sur les zones exposées. Dans l'acné, les résultats ne s'apprécient qu'après six à huit semaines et le traitement local prescrit à côté doit être poursuivi sans interruption ; la cure ne se prolonge pas au-delà de trois mois sans réévaluation. Consultez rapidement en cas de maux de tête inhabituels et persistants avec vue trouble ou bourdonnements, de vertiges gênants, d'éruption cutanée avec fièvre, de douleurs articulaires nouvelles, de jaunisse, ou d'une coloration grisâtre de la peau, des ongles ou des gencives.",
+        iup: "Prenez le comprimé ou la gélule assis ou debout, avec un grand verre d'eau plein, au cours d'un repas, et ne vous allongez pas pendant au moins trente minutes après : les cyclines peuvent rester bloquées dans l'œsophage et y créer un ulcère très douloureux, et une prise juste avant le coucher est la circonstance classique de cet accident. Éloignez d'au moins deux heures toute prise de fer, de calcium, de magnésium, de zinc, de pansement gastrique ou d'antiacide, ainsi qu'un grand verre de lait ou un laitage : ces produits se lient à l'antibiotique et l'empêchent d'être absorbé. Protégez-vous du soleil pendant toute la durée du traitement, avec un écran solaire élevé sur le visage et les zones découvertes, et évitez les cabines de bronzage : une exposition peut déclencher une réaction ressemblant à un gros coup de soleil sur les zones exposées. Dans l'acné, les résultats ne s'apprécient qu'après six à huit semaines et le traitement local prescrit à côté doit être poursuivi sans interruption ; la cure ne se prolonge pas au-delà de trois mois sans réévaluation. Consultez rapidement en cas de maux de tête inhabituels et persistants avec vue trouble ou bourdonnements, de vertiges gênants, d'éruption cutanée avec fièvre, de douleurs articulaires nouvelles, de jaunisse, ou d'une coloration grisâtre de la peau, des ongles ou des gencives.",
         half_life: "15 à 23 heures, ce qui autorise une à deux prises quotidiennes",
         elimination: "Métabolisme hépatique important, élimination majoritairement biliaire et fécale ; faible part rénale sous forme active, contrairement aux cyclines de première génération.",
         renal: "Pas d'adaptation nécessaire en cas d'insuffisance rénale modérée, l'élimination étant essentiellement hépatobiliaire. Prudence et avis du prescripteur en cas d'atteinte sévère, la minocycline restant la cycline la mieux tolérée sur ce plan.",
@@ -10365,7 +10413,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "aminoside, surveillance biologique",
-        toxicity: "Deux toxicités, dont l'une est définitive. La néphrotoxicité est tubulaire, dose-dépendante et le plus souvent réversible. L'ototoxicité ne l'est pas : l'atteinte cochléaire et vestibulaire est irréversible, elle commence par les fréquences aiguës et par des troubles de l'équilibre que le patient alité ne remarque pas, et elle peut apparaître ou s'aggraver après la fin du traitement. C'est ce qui impose des traitements courts, quelques jours et non quelques semaines. L'administration en une injection quotidienne unique, avec un pic élevé et une concentration résiduelle basse, réduit la toxicité sans réduire l'efficacité : c'est la résiduelle qui est surveillée. Contre-indiqué en cas de myasthénie, où il aggrave le bloc neuromusculaire.",
+        toxicity: "Deux toxicités, dont l'une est définitive. La néphrotoxicité est tubulaire, dose-dépendante et le plus souvent réversible. L'ototoxicité ne l'est pas : l'atteinte cochléaire et vestibulaire est irréversible, elle commence par les fréquences aiguës et par des troubles de l'équilibre que le patient alité ne remarque pas, et elle peut apparaître ou s'aggraver après la fin du traitement. Cela impose des traitements courts, quelques jours et non quelques semaines. L'administration en une injection quotidienne unique, avec un pic élevé et une concentration résiduelle basse, réduit la toxicité sans réduire l'efficacité : c'est la résiduelle qui est surveillée. Contre-indiqué en cas de myasthénie, où il aggrave le bloc neuromusculaire.",
         forms: "",
     },
     StarterDetail {
@@ -10375,7 +10423,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         dosage: "Voie intraveineuse hospitalière : une dose de charge rapportée au poids réel est habituellement administrée, suivie d'une dose d'entretien en perfusion continue sur vingt-quatre heures ou en perfusion discontinue, ajustée sur les concentrations plasmatiques et la fonction rénale selon le protocole du service. Chaque perfusion discontinue doit durer au moins une heure. Voie orale dans l'infection à Clostridioides difficile : 125 mg quatre fois par jour pendant dix jours chez l'adulte, des schémas prolongés et décroissants étant utilisés dans les récidives.",
         contraindications: "Allergie aux glycopeptides. La voie intramusculaire est proscrite. La forme orale n'a aucune place dans une infection systémique, puisqu'elle n'est pas absorbée ; inversement, la forme intraveineuse n'est pas efficace dans la colite à C. difficile.",
         ddi: "Pipéracilline-tazobactam : majoration démontrée du risque d'insuffisance rénale aiguë, association à surveiller de très près ou à éviter. Aminosides, amphotéricine B, ciclosporine, produits de contraste iodés, AINS : addition de la néphrotoxicité. Diurétiques de l'anse : majoration du risque auditif et rénal. Curares : potentialisation du bloc. Anesthésiques généraux : majoration des réactions liées à l'histaminolibération.",
-        adverse: "Syndrome de perfusion par histaminolibération, autrefois appelé syndrome de l'homme rouge : érythème du visage, du cou et du tronc, prurit, parfois hypotension, survenant lors d'une perfusion trop rapide et évitable en allongeant la durée d'administration ; il ne s'agit pas d'une allergie. Néphrotoxicité, dose- et durée-dépendante, majorée par les associations. Ototoxicité, plus rare, avec acouphènes et hypoacousie. Neutropénie et thrombopénie lors des traitements prolongés au-delà de deux semaines. Toxidermies graves, dont DRESS et pustulose exanthématique aiguë généralisée. Phlébite au point de perfusion, qui fait souvent poser une voie centrale. Par voie orale, tolérance générale bonne, avec troubles digestifs et dysgueusie.",
+        adverse: "Syndrome de perfusion par histaminolibération, autrefois appelé syndrome de l'homme rouge : érythème du visage, du cou et du tronc, prurit, parfois hypotension, survenant lors d'une perfusion trop rapide et évitable en allongeant la durée d'administration ; ce n'est pas une allergie. Néphrotoxicité, dose- et durée-dépendante, majorée par les associations. Ototoxicité, plus rare, avec acouphènes et hypoacousie. Neutropénie et thrombopénie lors des traitements prolongés au-delà de deux semaines. Toxidermies graves, dont DRESS et pustulose exanthématique aiguë généralisée. Phlébite au point de perfusion, qui fait souvent poser une voie centrale. Par voie orale, tolérance générale bonne, avec troubles digestifs et dysgueusie.",
         monitoring: "Suivi thérapeutique pharmacologique systématique par voie intraveineuse : concentration à l'équilibre en cas de perfusion continue, concentration résiduelle avant l'injection en cas d'administration discontinue, avec des cibles fixées selon l'indication et l'estimation de l'aire sous la courbe ; premier dosage précoce puis contrôles réguliers et à chaque changement de dose ou de fonction rénale. Créatininémie au moins deux à trois fois par semaine, quotidienne en réanimation ou en cas d'association néphrotoxique. Hémogramme hebdomadaire au-delà d'une semaine de traitement. Interrogatoire sur les acouphènes et l'audition. Surveillance du point de perfusion et de la tolérance cutanée.",
         iup: "Par perfusion, chaque poche doit passer lentement, sur au moins une heure, et parfois en continu sur la journée : ne demandez jamais d'accélérer le débit, car une administration trop rapide provoque une bouffée de rougeur du visage et du cou avec démangeaisons et parfois une chute de tension, qui n'est pas une allergie mais impose de ralentir. Les prises de sang régulières servent à mesurer le taux du médicament et à ajuster la dose au plus près : leur horaire, notamment celle réalisée juste avant une perfusion, ne doit pas être décalé. Signalez rapidement des bourdonnements d'oreille ou une baisse d'audition, une diminution du volume des urines, une éruption cutanée étendue surtout si elle s'accompagne de fièvre, ou une douleur et une rougeur au point de perfusion. Si le traitement est prescrit par la bouche pour une infection intestinale à Clostridium, prenez les gélules quatre fois par jour et allez impérativement au bout des dix jours, même si la diarrhée cesse dès le troisième : un arrêt anticipé est la cause principale de rechute, et ce médicament pris par la bouche reste dans l'intestin, ce qui est précisément ce que l'on recherche. Ne prenez aucun médicament pour bloquer la diarrhée pendant ce traitement, et signalez toute reprise des selles liquides dans les semaines suivant l'arrêt.",
         half_life: "4 à 6 heures chez l'adulte à fonction rénale normale, considérablement allongée en cas d'insuffisance rénale, jusqu'à plusieurs jours",
@@ -10496,7 +10544,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     },
     StarterDetail {
         name: "Pirilène",
-        indications: "Traitement de la tuberculose, en association aux autres antituberculeux pendant les deux premiers mois de la phase initiale : sa présence dans le schéma est ce qui permet de raccourcir le traitement total à six mois. Il est également utilisé dans certaines tuberculoses extrapulmonaires selon les protocoles spécialisés.",
+        indications: "Traitement de la tuberculose, en association aux autres antituberculeux pendant les deux premiers mois de la phase initiale : sa présence dans le schéma permet de raccourcir le traitement total à six mois. Il est également utilisé dans certaines tuberculoses extrapulmonaires selon les protocoles spécialisés.",
         mechanism: "Pyrazinamide, analogue du nicotinamide et prodrogue. Il est converti en acide pyrazinoïque par la pyrazinamidase du bacille tuberculeux ; l'acide s'accumule en milieu acide et déstabilise le potentiel de membrane et le métabolisme énergétique de la mycobactérie. Cette activation préférentielle en milieu acide lui confère une action unique sur les bacilles quiescents situés à l'intérieur des macrophages et des foyers caséeux, que les autres antituberculeux atteignent mal : c'est la clé du raccourcissement du traitement.",
         dosage: "Adulte : 20 à 30 mg/kg par jour en une prise quotidienne unique le matin, en association à la rifampicine, à l'isoniazide et à l'éthambutol, pendant les deux premiers mois du traitement standard puis arrêt. La posologie exacte est fixée sur le poids par le prescripteur, et l'enfant reçoit une dose rapportée au poids selon le protocole.",
         contraindications: "Allergie au pyrazinamide. Insuffisance hépatique, hépatite en cours ou antécédent d'hépatite médicamenteuse : le pyrazinamide est le plus hépatotoxique des antituberculeux de première ligne. Goutte évolutive ou hyperuricémie symptomatique. Porphyrie. Insuffisance rénale sévère, qui expose à l'accumulation et à l'hyperuricémie.",
@@ -10881,7 +10929,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Le ritonavir et le cobicistat associés sont de puissants inhibiteurs du CYP3A4 : les interactions sont innombrables et toute nouvelle prescription, y compris en automédication, doit être vérifiée. Corticoïdes, en particulier fluticasone inhalée ou nasale et injections de triamcinolone : syndrome de Cushing iatrogène et insuffisance surrénalienne. Statines : rhabdomyolyse, seules certaines statines à dose réduite sont possibles. Inhibiteurs de la pompe à protons et antiacides : moins problématiques avec le darunavir qu'avec l'atazanavir. Contraceptifs œstroprogestatifs : efficacité modifiée, contraception mécanique associée. Anticoagulants oraux directs et antiarythmiques : concentrations fortement augmentées. Millepertuis et rifampicine : échec virologique.",
         adverse: "Diarrhée, nausées, douleurs abdominales, vomissements. Éruption cutanée, souvent modérée mais parfois sévère à type de syndrome de Stevens-Johnson, de syndrome de Lyell ou de DRESS, le darunavir comportant un noyau sulfamide. Élévation des transaminases, hépatite, notamment en cas de coïnfection par une hépatite virale. Dyslipidémie avec hypertriglycéridémie et hypercholestérolémie, lipodystrophie, insulinorésistance. Céphalées, fatigue. Syndrome de restauration immunitaire dans les premières semaines.",
         monitoring: "Charge virale et compte de lymphocytes CD4 avant l'instauration puis régulièrement, avec génotype de résistance en cas d'échec. Transaminases et bilirubine avant l'instauration puis régulièrement, surtout en cas de coïnfection par une hépatite B ou C. Bilan lipidique et glycémie à jeun avant traitement puis annuellement. Surveillance cutanée attentive dans les premières semaines, toute éruption étendue ou fébrile imposant l'arrêt. Vérification systématique des interactions à chaque nouvelle ordonnance.",
-        iup: "Les comprimés se prennent tous les jours à la même heure, toujours au cours d'un repas ou juste après, jamais à jeun, car l'estomac vide fait chuter la quantité de médicament absorbée et laisse le virus reprendre le dessus. Le comprimé de ritonavir ou de cobicistat qui accompagne le traitement n'est pas un médicament en plus mais fait partie intégrante du traitement et se prend en même temps, sans jamais être oublié séparément. Une prise oubliée se rattrape dès que l'on s'en aperçoit si l'heure suivante est encore loin, mais on ne double jamais la dose : l'observance est ce qui protège de l'apparition de résistances. Ce traitement interagit avec un très grand nombre de médicaments, y compris ceux vendus sans ordonnance, les compléments alimentaires et les plantes : le millepertuis est formellement interdit et toute nouvelle ordonnance, y compris un simple spray nasal à la cortisone ou un traitement du cholestérol, doit être vérifiée par le pharmacien. Toute éruption cutanée étendue, toute fièvre associée à des boutons, toute atteinte de la bouche ou des yeux impose d'arrêter et de consulter en urgence. Enfin, il ne faut jamais interrompre le traitement de sa propre initiative, même en cas de bonne forme apparente ou de charge virale indétectable.",
+        iup: "Les comprimés se prennent tous les jours à la même heure, toujours au cours d'un repas ou juste après, jamais à jeun, car l'estomac vide fait chuter la quantité de médicament absorbée et laisse le virus reprendre le dessus. Le comprimé de ritonavir ou de cobicistat qui accompagne le traitement n'est pas un médicament en plus mais fait partie intégrante du traitement et se prend en même temps, sans jamais être oublié séparément. Une prise oubliée se rattrape dès que l'on s'en aperçoit si l'heure suivante est encore loin, mais on ne double jamais la dose : l'observance protège de l'apparition de résistances. Ce traitement interagit avec un très grand nombre de médicaments, y compris ceux vendus sans ordonnance, les compléments alimentaires et les plantes : le millepertuis est formellement interdit et toute nouvelle ordonnance, y compris un simple spray nasal à la cortisone ou un traitement du cholestérol, doit être vérifiée par le pharmacien. Toute éruption cutanée étendue, toute fièvre associée à des boutons, toute atteinte de la bouche ou des yeux impose d'arrêter et de consulter en urgence. Enfin, il ne faut jamais interrompre le traitement de sa propre initiative, même en cas de bonne forme apparente ou de charge virale indétectable.",
         half_life: "Environ 15 heures lorsqu'il est associé au ritonavir",
         elimination: "Métabolisme hépatique extensif par le CYP3A4, fortement ralenti par le ritonavir ou le cobicistat ; élimination majoritairement fécale, faible part urinaire.",
         renal: "Aucune adaptation posologique nécessaire en cas d'insuffisance rénale, l'élimination étant essentiellement hépatique et fécale ; en revanche, le cobicistat associé élève la créatininémie sans altérer la filtration réelle, ce qu'il faut savoir interpréter.",
@@ -11301,7 +11349,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Co-administré en pratique courante avec le vaccin pneumococcique conjugué, le vaccin méningococcique et le vaccin contre le rotavirus, en des sites d'injection distincts ; la fièvre est alors plus fréquente. Les traitements immunosuppresseurs diminuent la réponse. Chez l'enfant traité par anticoagulant ou atteint de trouble de l'hémostase, aiguille fine et compression prolongée.",
         adverse: "Très fréquemment douleur, rougeur et gonflement de la cuisse, fièvre, irritabilité, pleurs, perte d'appétit et somnolence dans les 48 heures. Réaction locale étendue possible après le rappel. Rarement épisode d'hypotonie-hyporéactivité, convulsion fébrile, apnées chez le grand prématuré, urticaire. Exceptionnellement réaction anaphylactique.",
         monitoring: "Quinze minutes de surveillance de l'enfant sur place, avec matériel de réanimation pédiatrique accessible. Chez le grand prématuré, la première vaccination peut justifier une surveillance respiratoire prolongée en milieu hospitalier. Surveiller la température et le comportement pendant 48 heures à domicile ; tracer chaque dose dans le carnet de santé.",
-        iup: "Votre enfant peut avoir de la fièvre, être grognon, dormir plus ou moins bien et manger moins pendant un à deux jours : c'est attendu. Donnez du paracétamol au poids si la fièvre le gêne, découvrez-le et faites-le boire souvent ; ne donnez jamais d'ibuprofène de vous-même dans ce contexte. La cuisse sera rouge et dure au point de piqûre, parfois pendant quelques jours, et vous pouvez appliquer un linge frais. Notez la date dans le carnet de santé et respectez le rendez-vous de la dose suivante, car le schéma complet est ce qui protège. Consultez sans attendre si la fièvre dépasse 40 °C ou dure plus de 48 heures, si l'enfant devient très pâle, mou et ne réagit plus, s'il pleure de façon inhabituelle et inconsolable, ou s'il convulse.",
+        iup: "Votre enfant peut avoir de la fièvre, être grognon, dormir plus ou moins bien et manger moins pendant un à deux jours : c'est attendu. Donnez du paracétamol au poids si la fièvre le gêne, découvrez-le et faites-le boire souvent ; ne donnez jamais d'ibuprofène de vous-même dans ce contexte. La cuisse sera rouge et dure au point de piqûre, parfois pendant quelques jours, et vous pouvez appliquer un linge frais. Notez la date dans le carnet de santé et respectez le rendez-vous de la dose suivante, car le schéma complet protège. Consultez sans attendre si la fièvre dépasse 40 °C ou dure plus de 48 heures, si l'enfant devient très pâle, mou et ne réagit plus, s'il pleure de façon inhabituelle et inconsolable, ou s'il convulse.",
         half_life: "Sans objet ; les anticorps apparaissent après la primovaccination et le rappel de 11 mois installe une protection durable, entretenue ensuite par les rappels du calendrier vaccinal.",
         elimination: "Sans objet : les antigènes vaccinaux sont dégradés par les voies protéolytiques après capture par les cellules présentatrices d'antigène.",
         renal: "Aucune adaptation ; la vaccination est d'autant plus importante chez l'enfant atteint d'une néphropathie chronique.",
@@ -11363,7 +11411,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         contraindications: "Hypersensibilité aux substances actives ou à un excipient, et réaction d'hypersensibilité après une dose antérieure. Report en cas de maladie fébrile aiguë sévère. La grossesse n'est pas une contre-indication formelle mais la vaccination y est différée par précaution. Vaccin non vivant : l'immunodépression n'est pas une contre-indication, elle justifie au contraire un schéma à trois doses.",
         ddi: "Co-administration possible avec les vaccins dTcaP et méningococcique de l'adolescent, en sites distincts. Les immunosuppresseurs et les corticoïdes à forte dose peuvent diminuer la réponse. Aucune interaction avec la contraception hormonale, qui n'a pas à être modifiée.",
         adverse: "Douleur, érythème et gonflement au point d'injection très fréquents, céphalées, fièvre modérée, fatigue, nausées, myalgies. Malaises vagaux et syncopes fréquents chez l'adolescent, parfois avec mouvements tonicocloniques brefs, d'où l'injection en position assise. Rarement urticaire, adénopathie, exceptionnellement anaphylaxie ; la surveillance renforcée n'a pas mis en évidence de sur-risque de maladie auto-immune.",
-        monitoring: "Quinze minutes d'observation obligatoires, l'adolescent restant assis ou allongé : c'est dans cette population que les syncopes vasovagales sont les plus fréquentes, et la chute est le vrai risque. Aucune biologie n'est nécessaire, ni test HPV, ni sérologie avant vaccination. Rappeler que le dépistage du col utérin reste dû à l'âge prévu, vaccination ou non.",
+        monitoring: "Quinze minutes d'observation obligatoires, l'adolescent restant assis ou allongé : c'est dans cette population que les syncopes vasovagales sont les plus fréquentes, et la chute est le risque principal. Aucune biologie n'est nécessaire, ni test HPV, ni sérologie avant vaccination. Rappeler que le dépistage du col utérin reste dû à l'âge prévu, vaccination ou non.",
         iup: "La piqûre se fait assis et vous restez quinze minutes ici, allongé si vous vous sentez pâle : les malaises sont fréquents à cet âge et sans gravité, mais on ne veut pas d'une chute. Le bras sera douloureux un ou deux jours et un peu de fièvre ou de fatigue est possible. Le schéma comporte plusieurs doses : notez la date de la suivante, une seule injection ne protège pas, et si vous prenez du retard on complète, on ne recommence jamais tout. Ce vaccin protège avant l'exposition au virus et ne dispense pas du préservatif ni, plus tard, du frottis de dépistage. Revenez en cas de fièvre persistante, de réaction locale très étendue, et appelez le 15 devant un gonflement du visage, une gêne respiratoire ou une urticaire généralisée.",
         half_life: "Sans objet ; les titres d'anticorps culminent un mois après la dernière dose puis se stabilisent, et le recul disponible ne montre pas de nécessité de rappel.",
         elimination: "Sans objet : les pseudo-particules protéiques sont captées puis dégradées par les cellules présentatrices d'antigène.",
@@ -11637,7 +11685,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Bêtabloquants, y compris en collyre : antagonisme et risque de bronchospasme. Inhibiteurs puissants du CYP3A4, notamment ritonavir, cobicistat, itraconazole et kétoconazole : augmentation de l'exposition aux deux composants, avec risque d'effets corticoïdes systémiques et cardiovasculaires, association à éviter ou à surveiller étroitement. Diurétiques hypokaliémiants, corticoïdes systémiques et xanthines majorent l'hypokaliémie. Ne pas associer à un autre bêta-2 agoniste de longue durée d'action.",
         adverse: "Candidose oropharyngée et dysphonie, prévenues par le rinçage de bouche ; rhinopharyngite, sinusite, céphalées. Pneumonies plus fréquentes chez le patient BPCO. Tremblements, palpitations, tachycardie, crampes, hypokaliémie, hyperglycémie. Au long cours et à forte dose, effets corticoïdes systémiques possibles : ecchymoses, ostéoporose, cataracte, glaucome, freination surrénalienne, ralentissement de la croissance chez l'adolescent. Bronchospasme paradoxal rare.",
         monitoring: "Évaluer à chaque renouvellement le contrôle de l'asthme, les symptômes nocturnes, la limitation d'activité et la consommation de traitement de secours ; un recours croissant au bronchodilatateur de secours signe une perte de contrôle et impose une réévaluation médicale, jamais une simple augmentation de dose par le patient. Vérifier la technique et le compteur de doses, examiner la bouche. Chez l'adolescent traité au long cours, surveillance de la croissance ; contrôle ophtalmologique et osseux selon la durée et la dose.",
-        iup: "Une inhalation par jour, à la même heure, tous les jours, y compris quand vous respirez très bien : c'est le traitement de fond qui empêche les crises, il n'en soulage aucune, et votre bronchodilatateur de secours doit toujours rester à portée de main. Ouvrez le capot d'un geste franc jusqu'au clic, ce qui prépare la dose, ne secouez pas l'appareil et ne refermez pas avant d'avoir inhalé, sinon la dose est perdue. Soufflez à fond en dehors de l'inhalateur, lèvres bien serrées sur l'embout, inspirez une seule fois profondément et longuement, retenez votre souffle une dizaine de secondes, puis refermez. Rincez ensuite la bouche à l'eau et crachez, sans avaler : c'est ce qui évite les mycoses et l'extinction de voix. Regardez le compteur de doses à chaque prise et revenez me voir si vous avez besoin de votre traitement de secours plus de deux fois par semaine, si vous vous réveillez la nuit à cause de votre asthme, ou en cas de fièvre avec crachats purulents.",
+        iup: "Une inhalation par jour, à la même heure, tous les jours, y compris quand vous respirez très bien : c'est le traitement de fond qui empêche les crises, il n'en soulage aucune, et votre bronchodilatateur de secours doit toujours rester à portée de main. Ouvrez le capot d'un geste franc jusqu'au clic, ce qui prépare la dose, ne secouez pas l'appareil et ne refermez pas avant d'avoir inhalé, sinon la dose est perdue. Soufflez à fond en dehors de l'inhalateur, lèvres bien serrées sur l'embout, inspirez une seule fois profondément et longuement, retenez votre souffle une dizaine de secondes, puis refermez. Rincez ensuite la bouche à l'eau et crachez, sans avaler : cela évite les mycoses et l'extinction de voix. Regardez le compteur de doses à chaque prise et revenez me voir si vous avez besoin de votre traitement de secours plus de deux fois par semaine, si vous vous réveillez la nuit à cause de votre asthme, ou en cas de fièvre avec crachats purulents.",
         half_life: "Furoate de fluticasone environ 24 heures et vilantérol environ 11 heures en pharmacocinétique plasmatique ; la durée d'action des deux composants autorise une prise unique quotidienne.",
         elimination: "Métabolisme hépatique principalement par le CYP3A4, avec un fort effet de premier passage pour la fraction déglutie ; élimination essentiellement fécale, faible part urinaire.",
         renal: "Aucune adaptation de dose, y compris en insuffisance rénale sévère, l'élimination rénale étant négligeable.",
@@ -11658,7 +11706,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs puissants du CYP3A4, notamment ritonavir, cobicistat, itraconazole et kétoconazole : augmentation de l'exposition systémique du corticoïde, avec risque de syndrome de Cushing et de freination surrénalienne, association à surveiller. L'association à une corticothérapie orale, nasale ou cutanée additionne les effets systémiques. Les bêtabloquants, même en collyre, peuvent déclencher un bronchospasme.",
         adverse: "Candidose oropharyngée, dysphonie et irritation pharyngée, prévenues par le rinçage de bouche et par l'usage d'une chambre d'inhalation. Toux immédiatement après l'inhalation. À forte dose et au long cours, effets corticoïdes systémiques possibles : ecchymoses, amincissement cutané, ralentissement de la croissance chez l'enfant, ostéoporose, cataracte, glaucome, freination de l'axe corticotrope. Bronchospasme paradoxal rare, imposant l'arrêt et un avis médical.",
         monitoring: "Évaluer à chaque renouvellement le contrôle de l'asthme, les symptômes nocturnes et la consommation de bronchodilatateur de secours, qui est le meilleur indicateur de déséquilibre. Vérifier la technique d'inhalation et l'intérêt d'une chambre d'inhalation, surtout chez l'enfant et le sujet âgé. Examiner la bouche à la recherche d'un muguet. Chez l'enfant traité au long cours, surveiller la courbe de croissance ; à forte dose prolongée, surveillance ophtalmologique et osseuse selon l'avis du prescripteur.",
-        iup: "Ce médicament s'utilise tous les jours, matin et soir si c'est ce qui est prescrit, y compris lorsque vous respirez parfaitement : c'est lui qui empêche les crises, mais il n'en soulage aucune, et votre bronchodilatateur de secours doit rester disponible en permanence. Agitez l'aérosol, soufflez à fond en dehors de l'appareil, puis déclenchez au tout début d'une inspiration lente et profonde et retenez votre souffle une dizaine de secondes ; attendez une trentaine de secondes entre deux bouffées. Si la coordination est difficile, utilisez une chambre d'inhalation, qui améliore le dépôt dans les bronches et diminue les effets sur la gorge. Rincez la bouche à l'eau et crachez après chaque prise, sans avaler, pour éviter les mycoses et l'extinction de voix. L'effet ne se voit pas en un jour mais en une à deux semaines : ne l'arrêtez jamais de vous-même, et revenez me voir si vous prenez votre traitement de secours plus de deux fois par semaine, si vous vous réveillez la nuit, ou si des plaques blanches apparaissent dans la bouche.",
+        iup: "Ce médicament s'utilise tous les jours, matin et soir si la prescription le prévoit, y compris lorsque vous respirez parfaitement : c'est lui qui empêche les crises, mais il n'en soulage aucune, et votre bronchodilatateur de secours doit rester disponible en permanence. Agitez l'aérosol, soufflez à fond en dehors de l'appareil, puis déclenchez au tout début d'une inspiration lente et profonde et retenez votre souffle une dizaine de secondes ; attendez une trentaine de secondes entre deux bouffées. Si la coordination est difficile, utilisez une chambre d'inhalation, qui améliore le dépôt dans les bronches et diminue les effets sur la gorge. Rincez la bouche à l'eau et crachez après chaque prise, sans avaler, pour éviter les mycoses et l'extinction de voix. L'effet ne se voit pas en un jour mais en une à deux semaines : ne l'arrêtez jamais de vous-même, et revenez me voir si vous prenez votre traitement de secours plus de deux fois par semaine, si vous vous réveillez la nuit, ou si des plaques blanches apparaissent dans la bouche.",
         half_life: "Dipropionate de béclométasone rapidement hydrolysé ; son métabolite actif, le 17-monopropionate, a une demi-vie plasmatique de l'ordre de quelques heures, l'effet anti-inflammatoire local persistant bien au-delà.",
         elimination: "Hydrolyse par les estérases pulmonaires et plasmatiques, métabolisme hépatique de premier passage important pour la fraction déglutie, élimination majoritairement fécale et biliaire.",
         renal: "Aucune adaptation de dose ; l'élimination rénale du principe actif est négligeable.",
@@ -11814,7 +11862,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-5r, asthme sévère",
-        toxicity: "Le schéma est ce qui se vérifie à chaque délivrance : les trois premières injections sont espacées de quatre semaines, puis le rythme passe à huit semaines — l'écart plus long n'est pas un oubli du prescripteur, et il inquiète les patients à qui on ne l'a pas expliqué. Comme pour tout biologique de l'asthme sévère, le traitement de fond inhalé se poursuit sans changement : c'est lui qui protège de la crise. La déplétion des éosinophiles étant ici quasi complète, une parasitose préexistante se traite avant l'instauration et un séjour en zone d'endémie se signale. Réactions d'hypersensibilité possibles, y compris retardées. Conservation au réfrigérateur, seringue sortie trente minutes avant l'injection.",
+        toxicity: "Le schéma se vérifie à chaque délivrance : les trois premières injections sont espacées de quatre semaines, puis le rythme passe à huit semaines — l'écart plus long n'est pas un oubli du prescripteur, et il inquiète les patients à qui on ne l'a pas expliqué. Comme pour tout biologique de l'asthme sévère, le traitement de fond inhalé se poursuit sans changement : c'est lui qui protège de la crise. La déplétion des éosinophiles étant ici quasi complète, une parasitose préexistante se traite avant l'instauration et un séjour en zone d'endémie se signale. Réactions d'hypersensibilité possibles, y compris retardées. Conservation au réfrigérateur, seringue sortie trente minutes avant l'injection.",
         forms: "",
     },
     StarterDetail {
@@ -11868,7 +11916,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Métabolisée principalement par le CYP1A2. La fluvoxamine, inhibiteur puissant, est contre-indiquée. La ciprofloxacine, l'énoxacine, l'amiodarone et le propafénone augmentent l'exposition et imposent une adaptation ou une surveillance étroite. Le tabac est un inducteur puissant du CYP1A2 et diminue nettement l'exposition : l'arrêt du tabac est recommandé et tout changement de statut tabagique doit être signalé. Les médicaments photosensibilisants, tels que cyclines, quinolones, diurétiques thiazidiques et amiodarone, majorent la photosensibilité.",
         adverse: "Photosensibilité et éruptions cutanées très fréquentes, parfois sévères, jusqu'à la réaction bulleuse en cas d'exposition solaire. Nausées, dyspepsie, reflux, diarrhée, anorexie et perte de poids fréquentes et parfois limitantes. Élévation des transaminases, plus rarement atteinte hépatique sévère. Fatigue, céphalées, sensations vertigineuses, insomnie. Angio-œdème, exceptionnellement réaction cutanée grave de type syndrome de Stevens-Johnson ou DRESS.",
         monitoring: "Transaminases, phosphatases alcalines et bilirubine avant l'instauration, puis à rythme mensuel pendant les premiers mois et régulièrement ensuite selon le protocole du spécialiste ; toute élévation impose l'avis du prescripteur avant la prise suivante. Surveillance du poids et de l'état nutritionnel à chaque consultation. Examen cutané régulier et interrogatoire sur les expositions solaires. Contrôle de la fonction respiratoire par le spécialiste pour juger de la poursuite.",
-        iup: "Les comprimés ou gélules se prennent trois fois par jour au milieu des repas, jamais à jeun : c'est ce qui limite les nausées et les brûlures d'estomac, et le traitement commence par des doses faibles augmentées progressivement, sans brûler les étapes. La photosensibilité est l'effet le plus caractéristique : votre peau peut brûler en quelques minutes au soleil, y compris derrière une vitre ou par temps couvert, alors appliquez chaque matin un écran solaire indice 50 sur le visage, le cou et les mains, portez des vêtements couvrants et un chapeau, et évitez les cabines de bronzage. Signalez-nous tout médicament ajouté, en particulier certains antibiotiques et antidépresseurs, qui peuvent interférer fortement avec ce traitement. Si vous arrêtez ou reprenez le tabac, prévenez le médecin, car cela modifie l'efficacité du traitement. Les prises de sang de contrôle du foie sont indispensables : ne les sautez pas, et consultez sans attendre en cas d'urines foncées, de selles décolorées, de jaunissement des yeux, de fatigue inhabituelle, d'éruption étendue ou de gonflement du visage.",
+        iup: "Les comprimés ou gélules se prennent trois fois par jour au milieu des repas, jamais à jeun : cela limite les nausées et les brûlures d'estomac, et le traitement commence par des doses faibles augmentées progressivement, sans brûler les étapes. La photosensibilité est l'effet le plus caractéristique : votre peau peut brûler en quelques minutes au soleil, y compris derrière une vitre ou par temps couvert, alors appliquez chaque matin un écran solaire indice 50 sur le visage, le cou et les mains, portez des vêtements couvrants et un chapeau, et évitez les cabines de bronzage. Signalez-nous tout médicament ajouté, en particulier certains antibiotiques et antidépresseurs, qui peuvent interférer fortement avec ce traitement. Si vous arrêtez ou reprenez le tabac, prévenez le médecin, car cela modifie l'efficacité du traitement. Les prises de sang de contrôle du foie sont indispensables : ne les sautez pas, et consultez sans attendre en cas d'urines foncées, de selles décolorées, de jaunissement des yeux, de fatigue inhabituelle, d'éruption étendue ou de gonflement du visage.",
         half_life: "Environ 2 à 3 heures, ce qui explique la répartition en trois prises quotidiennes.",
         elimination: "Métabolisme hépatique majoritaire par le CYP1A2, avec participation d'autres cytochromes, en un métabolite principal peu actif ; élimination essentiellement urinaire sous forme de métabolites.",
         renal: "Aucune adaptation en insuffisance rénale légère ; prudence et surveillance renforcée en insuffisance rénale modérée. Contre-indiqué en insuffisance rénale sévère ou terminale et chez le dialysé.",
@@ -11940,7 +11988,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antitussif opiacé, contre-indiqué grossesse",
-        toxicity: "La codéine n'agit qu'après transformation en morphine par le CYP2D6, et c'est là qu'est le danger : un métaboliseur ultrarapide, soit environ un Européen sur vingt, en fabrique beaucoup trop et se retrouve en surdosage morphinique à dose normale. Des décès d'enfants après amygdalectomie ont conduit à la contre-indiquer avant douze ans et chez la femme qui allaite, le nourrisson recevant la morphine par le lait. Chez l'adulte, la marge tient au respect des doses et à l'absence de tout autre dépresseur : alcool, benzodiazépine, autre opioïde. La forme sirop et la présentation en comprimés sont détournées, ce qui a motivé le passage à l'ordonnance obligatoire : une demande répétée sans prescription est une conversation à avoir, pas un refus sec.",
+        toxicity: "La codéine n'agit qu'après transformation en morphine par le CYP2D6, d'où le danger : un métaboliseur ultrarapide, soit environ un Européen sur vingt, en fabrique beaucoup trop et se retrouve en surdosage morphinique à dose normale. Des décès d'enfants après amygdalectomie ont conduit à la contre-indiquer avant douze ans et chez la femme qui allaite, le nourrisson recevant la morphine par le lait. Chez l'adulte, la marge tient au respect des doses et à l'absence de tout autre dépresseur : alcool, benzodiazépine, autre opioïde. La forme sirop et la présentation en comprimés sont détournées, ce qui a motivé le passage à l'ordonnance obligatoire : une demande répétée sans prescription est une conversation à avoir, pas un refus sec.",
         forms: "",
     },
     StarterDetail {
@@ -12032,7 +12080,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         indications: "Traitement des symptômes de la rhinite allergique saisonnière et perannuelle chez l'adulte, l'adolescent et l'enfant à partir de l'âge autorisé par le RCP. Il agit sur l'obstruction nasale, la rhinorrhée, les éternuements et le prurit nasal, et il est le traitement le plus efficace de la rhinite allergique persistante.",
         mechanism: "Corticoïde local, le furoate de fluticasone a une forte affinité pour le récepteur des glucocorticoïdes et une biodisponibilité systémique très faible après administration nasale. Il réprime la transcription des gènes pro-inflammatoires de la muqueuse et réduit l'infiltrat éosinophilique, avec un effet qui s'installe en quelques heures à quelques jours et devient maximal après plusieurs jours d'utilisation continue.",
         dosage: "Pulvérisations nasales une fois par jour, avec une dose d'attaque puis une posologie d'entretien réduite dès l'obtention du contrôle, selon l'âge et le RCP. L'utilisation doit être quotidienne et régulière pendant la période d'exposition à l'allergène, et non ponctuelle à la demande. Amorcer le flacon avant la première utilisation et après une période prolongée sans emploi.",
-        contraindications: "Hypersensibilité à la substance active ou à un excipient. Prudence en cas d'infection nasale ou sinusienne non traitée, de tuberculose, d'ulcération de la cloison, de chirurgie nasale récente ou de traumatisme nasal, où il convient de suspendre jusqu'à cicatrisation. Prudence également en cas de glaucome ou de cataracte, et en cas d'association à d'autres corticoïdes.",
+        contraindications: "Hypersensibilité à la substance active ou à un excipient. Prudence en cas d'infection nasale ou sinusienne non traitée, de tuberculose, d'ulcération de la cloison, de chirurgie nasale récente ou de traumatisme nasal : suspendre jusqu'à cicatrisation. Prudence également en cas de glaucome ou de cataracte, et en cas d'association à d'autres corticoïdes.",
         ddi: "Inhibiteurs puissants du CYP3A4, notamment ritonavir, cobicistat, itraconazole et kétoconazole : augmentation de l'exposition systémique, avec risque de syndrome de Cushing et de freination surrénalienne, association déconseillée ou à surveiller. L'association à un corticoïde inhalé, oral ou cutané additionne les effets systémiques : en tenir compte chez l'asthmatique déjà traité.",
         adverse: "Épistaxis très fréquentes, favorisées par une mauvaise technique de pulvérisation, sécheresse et irritation nasales, croûtes, ulcérations de la muqueuse. Céphalées, pharyngite. Rarement perforation de la cloison nasale en cas d'usage prolongé et de pulvérisation mal orientée. Exceptionnellement effets corticoïdes systémiques, glaucome, cataracte et ralentissement de la croissance chez l'enfant lors d'un traitement prolongé à forte dose.",
         monitoring: "Vérifier la technique de pulvérisation à chaque renouvellement, l'orientation du jet étant la cause principale des saignements. Interroger sur les épistaxis et inspecter les narines en cas de saignements répétés, avec suspension du traitement et avis médical si une ulcération est suspectée. Chez l'enfant traité au long cours, surveiller la courbe de croissance. Contrôle ophtalmologique selon la durée du traitement et l'avis médical.",
@@ -12087,7 +12135,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "vasoconstricteur nasal, contre-indiqué grossesse",
-        toxicity: "Association d'un vasoconstricteur et d'un corticoïde : elle cumule les deux marges et la durée est ce qui les tient. Au-delà de quelques jours, la naphazoline provoque une rhinite médicamenteuse — le nez se rebouche dès la fin de l'effet, le patient augmente les pulvérisations, et le cercle s'installe ; c'est la principale raison pour laquelle ces produits se délivrent sur une durée courte et non renouvelable sans avis. Le passage systémique du vasoconstricteur n'est pas nul : palpitations, poussée tensionnelle et céphalées sont possibles, et l'association à un décongestionnant oral additionne les deux. Les contre-indications sont celles de la classe — glaucome à angle fermé, obstacle prostatique, hypertension sévère, antécédent d'accident vasculaire cérébral, IMAO, grossesse, enfant. Le corticoïde associé impose en outre d'écarter une infection locale, qu'il masquerait.",
+        toxicity: "Association d'un vasoconstricteur et d'un corticoïde : elle cumule les deux marges et la durée les tient. Au-delà de quelques jours, la naphazoline provoque une rhinite médicamenteuse — le nez se rebouche dès la fin de l'effet, le patient augmente les pulvérisations, et le cercle s'installe ; c'est la principale raison pour laquelle ces produits se délivrent sur une durée courte et non renouvelable sans avis. Le passage systémique du vasoconstricteur n'est pas nul : palpitations, poussée tensionnelle et céphalées sont possibles, et l'association à un décongestionnant oral additionne les deux. Les contre-indications sont celles de la classe — glaucome à angle fermé, obstacle prostatique, hypertension sévère, antécédent d'accident vasculaire cérébral, IMAO, grossesse, enfant. Le corticoïde associé impose en outre d'écarter une infection locale, qu'il masquerait.",
         forms: "",
     },
     StarterDetail {
@@ -12549,7 +12597,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antiépileptique, vigilance conduite",
-        toxicity: "Une seule toxicité domine et elle est irréversible : un rétrécissement concentrique et définitif du champ visuel, qui atteint environ un tiers des patients traités au long cours, s'installe sans que le patient s'en aperçoive puisque la vision centrale est conservée, et ne régresse jamais à l'arrêt. C'est ce qui réserve la molécule aux épilepsies qui ont résisté à tout le reste et aux spasmes infantiles, où le bénéfice l'emporte. Elle impose un champ visuel avant l'instauration puis tous les six mois, et chez l'enfant trop jeune pour l'examen, une évaluation spécialisée adaptée. La prescription est restreinte et le suivi ophtalmologique n'est pas une formalité : c'est la condition de la poursuite du traitement.",
+        toxicity: "Une seule toxicité domine et elle est irréversible : un rétrécissement concentrique et définitif du champ visuel, qui atteint environ un tiers des patients traités au long cours, s'installe sans que le patient s'en aperçoive puisque la vision centrale est conservée, et ne régresse jamais à l'arrêt. Cela réserve la molécule aux épilepsies qui ont résisté à tout le reste et aux spasmes infantiles, où le bénéfice l'emporte. Elle impose un champ visuel avant l'instauration puis tous les six mois, et chez l'enfant trop jeune pour l'examen, une évaluation spécialisée adaptée. La prescription est restreinte et le suivi ophtalmologique n'est pas une formalité : c'est la condition de la poursuite du traitement.",
         forms: "",
     },
     StarterDetail {
@@ -12675,7 +12723,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine, crise convulsive",
-        toxicity: "La marge tient au choix de la seringue : les dosages sont préremplis par tranche d'âge et la couleur de l'étiquette est ce qui les distingue. Donner à un enfant de deux ans la seringue prévue pour un enfant de dix est un surdosage majeur chez un patient déjà en train de convulser. La dose se dépose entre la joue et la gencive, jamais avalée, et une seule dose est administrée : une seconde ne se donne que si le protocole écrit remis à la famille le prévoit. Le risque est la dépression respiratoire, majorée chez le nourrisson, l'obèse et l'enfant sous autre sédatif. Les secours s'appellent dans le même mouvement que l'administration, pas après avoir attendu de voir.",
+        toxicity: "La marge tient au choix de la seringue : les dosages sont préremplis par tranche d'âge et la couleur de l'étiquette les distingue. Donner à un enfant de deux ans la seringue prévue pour un enfant de dix est un surdosage majeur chez un patient déjà en train de convulser. La dose se dépose entre la joue et la gencive, jamais avalée, et une seule dose est administrée : une seconde ne se donne que si le protocole écrit remis à la famille le prévoit. Le risque est la dépression respiratoire, majorée chez le nourrisson, l'obèse et l'enfant sous autre sédatif. Les secours s'appellent dans le même mouvement que l'administration, pas après avoir attendu de voir.",
         forms: "",
     },
     StarterDetail {
@@ -13212,7 +13260,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Aucune interaction pharmacocinétique attendue : l'anticorps n'interagit ni avec les cytochromes ni avec les transporteurs et n'affecte pas la contraception hormonale. L'association aux triptans et aux traitements de fond classiques est possible sans adaptation. Il n'y a pas d'intérêt démontré à associer deux anticorps anti-CGRP.",
         adverse: "Réactions au point d'injection, douleur, induration, érythème et prurit, très fréquentes et majorées par le schéma trimestriel qui impose trois injections successives. Réactions d'hypersensibilité, dont éruptions et angio-œdème, pouvant être retardées. Constipation, rapportée avec la classe. Un effet sur la pression artérielle a été signalé avec les anti-CGRP et justifie une surveillance.",
         monitoring: "Agenda des crises avant et pendant le traitement, seul élément permettant de juger la réponse à trois mois et de justifier la poursuite. Surveillance des réactions locales, particulièrement avec le schéma trimestriel. Recherche de signes d'hypersensibilité même différés. Pression artérielle périodique. Réévaluation régulière de l'intérêt de la poursuite.",
-        iup: "Deux rythmes sont possibles, une injection par mois ou trois injections le même jour tous les trois mois, et le choix se fait avec le médecin selon le mode de vie. Le stylo se sort du réfrigérateur une trentaine de minutes avant pour revenir à température ambiante, ce qui rend l'injection moins douloureuse, et il ne doit jamais être congelé. Avec le schéma trimestriel, les trois injections doivent se faire sur des sites différents, ventre, cuisse ou bras, pour limiter les réactions locales. Ce traitement prévient les crises sans les soigner : le traitement de crise habituel reste nécessaire, dans le respect de ses limites de fréquence. Une éruption étendue, un gonflement du visage ou une gêne respiratoire, même quelques jours après l'injection, imposent un avis médical rapide. Le carnet des crises tenu avant et pendant les trois premiers mois est ce qui permettra de décider de continuer ou non.",
+        iup: "Deux rythmes sont possibles, une injection par mois ou trois injections le même jour tous les trois mois, et le choix se fait avec le médecin selon le mode de vie. Le stylo se sort du réfrigérateur une trentaine de minutes avant pour revenir à température ambiante, ce qui rend l'injection moins douloureuse, et il ne doit jamais être congelé. Avec le schéma trimestriel, les trois injections doivent se faire sur des sites différents, ventre, cuisse ou bras, pour limiter les réactions locales. Ce traitement prévient les crises sans les soigner : le traitement de crise habituel reste nécessaire, dans le respect de ses limites de fréquence. Une éruption étendue, un gonflement du visage ou une gêne respiratoire, même quelques jours après l'injection, imposent un avis médical rapide. Le carnet des crises tenu avant et pendant les trois premiers mois permettra de décider de continuer ou non.",
         half_life: "Environ 30 jours, autorisant un schéma mensuel ou trimestriel",
         elimination: "Dégradation protéolytique en peptides et acides aminés, à l'image des immunoglobulines endogènes ; ni métabolisme hépatique ni excrétion rénale.",
         renal: "Aucune adaptation posologique n'est nécessaire en cas d'insuffisance rénale, y compris sévère ; les données manquent chez le patient dialysé mais aucune accumulation n'est attendue.",
@@ -13254,7 +13302,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Bêtabloquants, digoxine, amiodarone et inhibiteurs calciques bradycardisants : addition du risque de bradycardie et de bloc auriculoventriculaire. Anticholinergiques : antagonisme mutuel. Curares dépolarisants type suxaméthonium : bloc neuromusculaire fortement prolongé, à signaler avant toute anesthésie. Inhibiteurs puissants du CYP2D6 (paroxétine, fluoxétine, quinidine) et du CYP3A4 (kétoconazole, ritonavir, érythromycine) : exposition augmentée, réduction de dose parfois nécessaire. AINS : majoration du risque ulcéreux.",
         adverse: "Nausées, vomissements, diarrhée, anorexie et perte de poids, surtout lors des augmentations de dose. Sensations vertigineuses, céphalées, syncopes et chutes. Bradycardie et blocs de conduction. Réactions cutanées graves, syndrome de Stevens-Johnson, syndrome de Lyell et pustulose exanthématique aiguë généralisée, rares mais ayant justifié une mise en garde spécifique. Agitation, confusion, hallucinations. Crises convulsives.",
         monitoring: "Poids à chaque consultation et surveillance de l'hydratation, les vomissements pouvant conduire à une déshydratation et à une insuffisance rénale aiguë. Fréquence cardiaque et électrocardiogramme avant l'instauration chez le patient à risque conductif, et après toute syncope. Surveillance cutanée avec arrêt immédiat devant toute éruption. Évaluation cognitive périodique et réévaluation du bénéfice, avec arrêt si celui-ci n'est plus perceptible. Bilan hépatique et rénal.",
-        iup: "Le comprimé à libération prolongée se prend une fois par jour, le matin au cours du repas, avec un grand verre d'eau, et la dose est augmentée lentement, par paliers d'au moins quatre semaines. Des nausées, des vomissements ou une diarrhée qui persistent au-delà de quelques jours, ou une perte de poids, doivent être signalés au médecin car ils traduisent souvent une montée trop rapide. Il est important de boire suffisamment, car des vomissements répétés peuvent retentir sur les reins chez la personne âgée. Toute éruption sur la peau, surtout avec des bulles, de la fièvre ou une atteinte de la bouche et des yeux, impose d'arrêter le médicament et de consulter en urgence. Un malaise, une chute ou un pouls très lent doivent faire consulter, ce traitement pouvant ralentir le cœur. Si le traitement a été interrompu plusieurs jours, il ne faut pas reprendre à la dose habituelle mais en reparler au médecin.",
+        iup: "Le comprimé à libération prolongée se prend une fois par jour, le matin au cours du repas, avec un grand verre d'eau, et la dose est augmentée lentement, par paliers d'au moins quatre semaines. Des nausées, des vomissements ou une diarrhée qui persistent au-delà de quelques jours, ou une perte de poids, doivent être signalés au médecin car ils traduisent souvent une montée trop rapide. Buvez suffisamment : des vomissements répétés retentissent sur les reins chez la personne âgée. Toute éruption sur la peau, surtout avec des bulles, de la fièvre ou une atteinte de la bouche et des yeux, impose d'arrêter le médicament et de consulter en urgence. Un malaise, une chute ou un pouls très lent doivent faire consulter, ce traitement pouvant ralentir le cœur. Si le traitement a été interrompu plusieurs jours, il ne faut pas reprendre à la dose habituelle mais en reparler au médecin.",
         half_life: "Environ 7 à 8 heures",
         elimination: "Métabolisme hépatique par les CYP2D6 et CYP3A4, avec une variabilité importante liée au polymorphisme du CYP2D6 ; élimination urinaire des métabolites et d'une part inchangée.",
         renal: "Prudence et dose maximale réduite en cas d'insuffisance rénale modérée ; contre-indiqué lorsque la clairance de la créatinine est inférieure à 9 mL/min. Les vomissements peuvent eux-mêmes précipiter une insuffisance rénale aiguë fonctionnelle.",
@@ -13506,7 +13554,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs de l'OCT2, cimétidine au premier rang, quinidine, carvédilol, propranolol et métformine : diminution de la sécrétion tubulaire de la fampridine et augmentation de son exposition, donc du risque convulsif ; l'association à la cimétidine est contre-indiquée. Interféron bêta et autres traitements de fond de la sclérose en plaques : pas d'interaction pharmacocinétique notable. Médicaments abaissant le seuil épileptogène : addition de risque.",
         adverse: "Infections urinaires, très fréquentes et parfois révélatrices d'une rétention. Insomnie, anxiété, sensations vertigineuses, céphalées, paresthésies et tremblements. Nausées, vomissements, dorsalgies. Convulsions, effet indésirable le plus redouté, favorisées par un surdosage ou par une insuffisance rénale méconnue. Aggravation d'un trouble de l'équilibre et chutes.",
         monitoring: "Estimation du débit de filtration glomérulaire avant l'instauration puis au moins une fois par an, et davantage chez le sujet âgé ou en cas d'événement intercurrent, la fonction rénale conditionnant directement le risque de convulsion. Évaluation objective de la marche, par exemple le temps mis à parcourir une distance fixée, avant le traitement et à la fin de la période d'essai. Recherche de signes d'infection urinaire à chaque consultation.",
-        iup: "Un comprimé le matin et un comprimé le soir, à douze heures d'intervalle exactement, et toujours en dehors des repas, l'estomac vide, car la nourriture modifie l'absorption. Le comprimé s'avale entier, sans le couper, le croquer ni l'écraser : la libération prolongée est ce qui protège du risque de crise d'épilepsie. Il ne faut jamais rattraper une prise oubliée en doublant la suivante, ni rapprocher deux prises parce que la marche semble moins bonne. Ce médicament est éliminé par les reins et une baisse de la fonction rénale expose à des convulsions : la prise de sang de contrôle prévue chaque année est indispensable, et tout épisode de déshydratation, de gastro-entérite ou de fièvre doit être signalé. Des brûlures en urinant, des urines troubles ou de la fièvre doivent faire consulter rapidement, les infections urinaires étant fréquentes sous ce traitement. Enfin, si aucune amélioration de la marche n'est ressentie après les premières semaines, il faut le dire au neurologue : le traitement sera arrêté plutôt que poursuivi.",
+        iup: "Un comprimé le matin et un comprimé le soir, à douze heures d'intervalle exactement, et toujours en dehors des repas, l'estomac vide, car la nourriture modifie l'absorption. Le comprimé s'avale entier, sans le couper, le croquer ni l'écraser : la libération prolongée protège du risque de crise d'épilepsie. Il ne faut jamais rattraper une prise oubliée en doublant la suivante, ni rapprocher deux prises parce que la marche semble moins bonne. Ce médicament est éliminé par les reins et une baisse de la fonction rénale expose à des convulsions : la prise de sang de contrôle prévue chaque année est indispensable, et tout épisode de déshydratation, de gastro-entérite ou de fièvre doit être signalé. Des brûlures en urinant, des urines troubles ou de la fièvre doivent faire consulter rapidement, les infections urinaires étant fréquentes sous ce traitement. Enfin, si aucune amélioration de la marche n'est ressentie après les premières semaines, il faut le dire au neurologue : le traitement sera arrêté plutôt que poursuivi.",
         half_life: "Environ 6 heures sous forme à libération prolongée, allongée en cas d'insuffisance rénale",
         elimination: "Élimination essentiellement rénale, environ quatre-vingt-dix pour cent de la dose étant retrouvés dans les urines sous forme inchangée, par filtration glomérulaire et sécrétion tubulaire active via l'OCT2 ; métabolisme hépatique mineur.",
         renal: "Contre-indiqué dès l'insuffisance rénale légère, c'est-à-dire au-dessous de 80 mL/min, l'accumulation exposant directement au risque convulsif. Aucune adaptation posologique n'est possible : la dose est fixe, le seul ajustement étant l'arrêt du traitement.",
@@ -13569,7 +13617,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inducteur du CYP3A4 : les contraceptifs œstroprogestatifs et progestatifs, y compris l'implant, voient leur efficacité diminuée pendant le traitement et pendant deux mois après son arrêt, ce qui impose une contraception non hormonale ou complémentaire. Inhibiteur du CYP2C19 : concentrations augmentées de diazépam, de phénytoïne, d'oméprazole, de propranolol et de clomipramine. Antivitamines K : contrôle rapproché de l'INR. Ciclosporine : concentrations diminuées. Alcool : association déconseillée.",
         adverse: "Céphalées très fréquentes, surtout à l'instauration, nausées, nervosité, insomnie, anxiété, palpitations. Élévation de la pression artérielle et de la fréquence cardiaque. Toxidermies graves, syndrome de Stevens-Johnson, syndrome de Lyell et DRESS, rares mais imposant l'arrêt définitif dès la première éruption. Réactions psychiatriques, idées suicidaires, symptômes psychotiques, manie chez le sujet prédisposé. Anorexie, sécheresse buccale. Dépendance psychique et usage détourné en dehors du cadre médical.",
         monitoring: "Pression artérielle et fréquence cardiaque avant l'instauration puis régulièrement, l'apparition d'une hypertension imposant une réévaluation. Test de grossesse et vérification de la contraception avant l'instauration puis à chaque renouvellement chez la femme en âge de procréer. Surveillance cutanée attentive dans les premiers mois, toute éruption imposant l'arrêt immédiat et définitif. Évaluation psychiatrique et recherche d'un mésusage à chaque consultation. Réévaluation annuelle par le centre du sommeil.",
-        iup: "Ce médicament se prend le matin, ou le matin et le midi selon la prescription, mais jamais en fin de journée sous peine de détruire le sommeil de la nuit et d'aggraver la somnolence du lendemain. Il ne remplace pas une bonne hygiène de sommeil : les horaires réguliers et les siestes courtes programmées font partie du traitement de la narcolepsie. Le point crucial chez une femme est le suivant : ce médicament est interdit pendant la grossesse car il expose à des malformations, et il diminue en même temps l'efficacité de la pilule, de l'implant et des autres contraceptions hormonales pendant le traitement et pendant deux mois après son arrêt, ce qui impose une contraception mécanique associée ou non hormonale. Toute éruption cutanée, même limitée, toute bulle, toute atteinte de la bouche ou des yeux impose d'arrêter le comprimé et de consulter en urgence, car des réactions cutanées graves sont possibles. Une nervosité, une anxiété, des idées noires ou des palpitations doivent être signalées rapidement au médecin. Enfin, le traitement ne s'arrête pas brutalement de sa propre initiative et le renouvellement suit un circuit particulier, avec une ordonnance annuelle du spécialiste, qu'il faut anticiper pour éviter toute rupture.",
+        iup: "Ce médicament se prend le matin, ou le matin et le midi selon la prescription, mais jamais en fin de journée sous peine de détruire le sommeil de la nuit et d'aggraver la somnolence du lendemain. Il ne remplace pas une bonne hygiène de sommeil : les horaires réguliers et les siestes courtes programmées font partie du traitement de la narcolepsie. Chez une femme, le point décisif : ce médicament est interdit pendant la grossesse car il expose à des malformations, et il diminue en même temps l'efficacité de la pilule, de l'implant et des autres contraceptions hormonales pendant le traitement et pendant deux mois après son arrêt, ce qui impose une contraception mécanique associée ou non hormonale. Toute éruption cutanée, même limitée, toute bulle, toute atteinte de la bouche ou des yeux impose d'arrêter le comprimé et de consulter en urgence, car des réactions cutanées graves sont possibles. Une nervosité, une anxiété, des idées noires ou des palpitations doivent être signalées rapidement au médecin. Enfin, le traitement ne s'arrête pas brutalement de sa propre initiative et le renouvellement suit un circuit particulier, avec une ordonnance annuelle du spécialiste, qu'il faut anticiper pour éviter toute rupture.",
         half_life: "Environ 10 à 12 heures",
         elimination: "Métabolisme hépatique prédominant par hydrolyse amidique, avec induction du CYP3A4 et inhibition du CYP2C19 ; élimination urinaire des métabolites, moins de dix pour cent sous forme inchangée.",
         renal: "Aucune adaptation systématique documentée en cas d'insuffisance rénale ; prudence et surveillance clinique au stade sévère, faute de données suffisantes.",
@@ -13893,7 +13941,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique sédatif, surveillance biologique, vigilance conduite",
-        toxicity: "C'est le plus hypotenseur des neuroleptiques, et c'est ce qui limite sa dose bien avant tout effet psychiatrique : hypotension orthostatique marquée dès les premières prises, avec syncopes et chutes, majorée chez le sujet âgé, déshydraté ou déjà sous antihypertenseur. La montée est donc lente et le lever prudent, expliqué au patient et à l'entourage. La sédation est profonde et recherchée dans certaines indications, notamment en soins palliatifs, mais elle s'additionne à celle de tout opioïde ou benzodiazépine associés. Effets anticholinergiques marqués — rétention urinaire, glaucome aigu, constipation, confusion — et allongement du QT. Photosensibilisation comme pour toute phénothiazine.",
+        toxicity: "C'est le plus hypotenseur des neuroleptiques, ce qui limite sa dose bien avant tout effet psychiatrique : hypotension orthostatique marquée dès les premières prises, avec syncopes et chutes, majorée chez le sujet âgé, déshydraté ou déjà sous antihypertenseur. La montée est donc lente et le lever prudent, expliqué au patient et à l'entourage. La sédation est profonde et recherchée dans certaines indications, notamment en soins palliatifs, mais elle s'additionne à celle de tout opioïde ou benzodiazépine associés. Effets anticholinergiques marqués — rétention urinaire, glaucome aigu, constipation, confusion — et allongement du QT. Photosensibilisation comme pour toute phénothiazine.",
         forms: "",
     },
     StarterDetail {
@@ -13935,7 +13983,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antipsychotique, surveillance biologique, vigilance conduite",
-        toxicity: "Abaisse le seuil épileptogène plus nettement que la plupart des antipsychotiques, ce qui impose la prudence chez l'épileptique, l'alcoolique en sevrage et le patient sous autre molécule convulsivante. La solution buvable se dose en gouttes et c'est là que se font les erreurs : la correspondance gouttes-milligrammes se vérifie à chaque délivrance, une confusion entre gouttes et millilitres multipliant la dose. Les effets extrapyramidaux sont fréquents et la sédation marquée, avec hypotension orthostatique à l'instauration. Comme toute la classe, il expose au syndrome malin des neuroleptiques, dont la fièvre inexpliquée avec rigidité et sueurs est le signal, et à la surmortalité chez le sujet âgé dément.",
+        toxicity: "Abaisse le seuil épileptogène plus nettement que la plupart des antipsychotiques, ce qui impose la prudence chez l'épileptique, l'alcoolique en sevrage et le patient sous autre molécule convulsivante. La solution buvable se dose en gouttes, source habituelle d'erreur : la correspondance gouttes-milligrammes se vérifie à chaque délivrance, une confusion entre gouttes et millilitres multipliant la dose. Les effets extrapyramidaux sont fréquents et la sédation marquée, avec hypotension orthostatique à l'instauration. Comme toute la classe, il expose au syndrome malin des neuroleptiques, dont la fièvre inexpliquée avec rigidité et sueurs est le signal, et à la surmortalité chez le sujet âgé dément.",
         forms: "",
     },
     StarterDetail {
@@ -14073,7 +14121,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inducteurs puissants du CYP3A4 : contre-indication, perte d'efficacité. Inhibiteurs puissants du CYP3A4 comme le kétoconazole, l'itraconazole, la clarithromycine ou le ritonavir : contre-indication ou réduction de dose selon la présentation, exposition fortement augmentée et prolongée. Alcool et dépresseurs centraux : sédation additive. Antihypertenseurs : hypotension majorée. Médicaments allongeant le QT : prudence.",
         adverse: "Akathisie et impatience motrice, effets les plus fréquents, parfois retardés de plusieurs semaines. Syndrome extrapyramidal avec parkinsonisme et tremblements, dyskinésies tardives lors des traitements prolongés. Insomnie, anxiété, agitation, céphalées. Prise de poids et perturbations métaboliques modérées. Hypotension orthostatique, tachycardie. Hyperprolactinémie rare, la molécule étant plutôt neutre voire abaissante sur la prolactine. Syndrome malin des neuroleptiques, rare.",
         monitoring: "Recherche systématique d'une akathisie et de signes extrapyramidaux à chaque consultation, y compris tardivement, la longue demi-vie retardant l'apparition des effets. Poids, tour de taille, glycémie à jeun et bilan lipidique avant l'instauration, à trois mois puis annuellement. Pression artérielle debout et couché. Bilan hépatique et fonction rénale à l'instauration. Surveillance prolongée après l'arrêt, les concentrations décroissant lentement.",
-        iup: "Une seule gélule par jour, à heure fixe, avec ou sans nourriture. La particularité de ce médicament est sa très longue durée d'action : il faut plusieurs semaines pour que la concentration se stabilise, donc l'amélioration s'installe lentement et il ne faut ni augmenter la dose de soi-même ni conclure trop vite à une inefficacité. Pour la même raison, un effet gênant peut apparaître tardivement, plusieurs semaines après le début ou après une augmentation, et il persiste un certain temps même après l'arrêt. L'effet indésirable le plus caractéristique est une impossibilité de rester assis en place, avec un besoin permanent de bouger les jambes : il ne s'agit pas d'anxiété mais d'un effet du traitement, et il doit être signalé car il se corrige. Le poids, la glycémie et le cholestérol seront contrôlés avant le traitement puis régulièrement, et une activité physique régulière fait partie de la prise en charge. Enfin, certains antibiotiques, antifongiques ou traitements de l'épilepsie sont incompatibles : toute nouvelle ordonnance doit être vérifiée à la pharmacie.",
+        iup: "Une seule gélule par jour, à heure fixe, avec ou sans nourriture. La particularité de ce médicament est sa très longue durée d'action : il faut plusieurs semaines pour que la concentration se stabilise, donc l'amélioration s'installe lentement et il ne faut ni augmenter la dose de soi-même ni conclure trop vite à une inefficacité. Pour la même raison, un effet gênant peut apparaître tardivement, plusieurs semaines après le début ou après une augmentation, et il persiste un certain temps même après l'arrêt. L'effet indésirable le plus caractéristique est une impossibilité de rester assis en place, avec un besoin permanent de bouger les jambes : ce n'est pas de l'anxiété mais un effet du traitement, et il doit être signalé car il se corrige. Le poids, la glycémie et le cholestérol seront contrôlés avant le traitement puis régulièrement, et une activité physique régulière fait partie de la prise en charge. Enfin, certains antibiotiques, antifongiques ou traitements de l'épilepsie sont incompatibles : toute nouvelle ordonnance doit être vérifiée à la pharmacie.",
         half_life: "Environ 2 à 4 jours pour la cariprazine, mais plusieurs semaines pour son métabolite actif didesméthylcariprazine",
         elimination: "Métabolisme hépatique par le CYP3A4 et accessoirement le CYP2D6, avec des métabolites actifs à très longue demi-vie ; élimination urinaire et fécale.",
         renal: "Aucune adaptation en cas d'insuffisance rénale légère à modérée ; contre-indiqué en cas d'insuffisance rénale sévère faute de données.",
@@ -14145,7 +14193,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "benzodiazépine",
-        toxicity: "C'est le métabolite actif commun à plusieurs benzodiazépines, administré directement : demi-vie de trente à cent heures, davantage chez le sujet âgé et l'insuffisant hépatique. L'accumulation est donc la règle et non l'exception, et l'effet indésirable typique n'est pas la somnolence du premier soir mais la confusion et la chute de la troisième semaine. Prescrire ou renouveler cette molécule chez une personne âgée revient à accepter cette accumulation. Comme pour toute la classe, l'association à l'alcool, à un opioïde ou à un autre dépresseur est ce qui tue, et l'arrêt brutal après plusieurs semaines expose au syndrome de sevrage.",
+        toxicity: "C'est le métabolite actif commun à plusieurs benzodiazépines, administré directement : demi-vie de trente à cent heures, davantage chez le sujet âgé et l'insuffisant hépatique. L'accumulation est donc la règle et non l'exception, et l'effet indésirable typique n'est pas la somnolence du premier soir mais la confusion et la chute de la troisième semaine. Prescrire ou renouveler cette molécule chez une personne âgée revient à accepter cette accumulation. Comme pour toute la classe, l'association à l'alcool, à un opioïde ou à un autre dépresseur tue, et l'arrêt brutal après plusieurs semaines expose au syndrome de sevrage.",
         forms: "",
     },
     StarterDetail {
@@ -14250,7 +14298,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "hypnotique benzodiazépinique, vigilance conduite",
-        toxicity: "Demi-vie d'environ dix heures et absence de métabolite actif : le profil le plus propre des hypnotiques benzodiazépiniques, mais dix heures couvrent encore le début de matinée, et la vigilance résiduelle au réveil reste un risque pour la conduite et pour la chute au lever du sujet âgé. La limite de quatre semaines, décroissance comprise, est ce qui tient la molécule ; au-delà, la tolérance à l'effet hypnotique s'installe et l'insomnie de rebond à l'arrêt entretient la prescription. Seul, le surdosage donne une somnolence réveillable ; avec de l'alcool ou un opioïde, il tue par dépression respiratoire.",
+        toxicity: "Demi-vie d'environ dix heures et absence de métabolite actif : le profil le plus propre des hypnotiques benzodiazépiniques, mais dix heures couvrent encore le début de matinée, et la vigilance résiduelle au réveil reste un risque pour la conduite et pour la chute au lever du sujet âgé. La limite de quatre semaines, décroissance comprise, tient la molécule ; au-delà, la tolérance à l'effet hypnotique s'installe et l'insomnie de rebond à l'arrêt entretient la prescription. Seul, le surdosage donne une somnolence réveillable ; avec de l'alcool ou un opioïde, il tue par dépression respiratoire.",
         forms: "",
     },
     StarterDetail {
@@ -14334,7 +14382,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "traitement de substitution aux opiacés, vigilance conduite",
-        toxicity: "Agoniste partiel : l'effet dépresseur respiratoire plafonne, et c'est ce qui rend la buprénorphine plus sûre qu'un agoniste complet en monothérapie. Le plafond disparaît en association, et la quasi-totalité des décès sous buprénorphine sont des associations à une benzodiazépine ou à l'alcool, souvent par voie intraveineuse détournée. Deuxième particularité : son affinité pour le récepteur est telle qu'elle déloge un agoniste complet et précipite un syndrome de sevrage brutal si la prise est trop rapprochée de la dernière héroïne ou méthadone — d'où le délai imposé avant la première prise. Pour la même raison, la naloxone y est peu efficace et impose des doses répétées et bien plus élevées qu'après une overdose de morphine.",
+        toxicity: "Agoniste partiel : l'effet dépresseur respiratoire plafonne, ce qui rend la buprénorphine plus sûre qu'un agoniste complet en monothérapie. Le plafond disparaît en association, et la quasi-totalité des décès sous buprénorphine sont des associations à une benzodiazépine ou à l'alcool, souvent par voie intraveineuse détournée. Deuxième particularité : son affinité pour le récepteur est telle qu'elle déloge un agoniste complet et précipite un syndrome de sevrage brutal si la prise est trop rapprochée de la dernière héroïne ou méthadone — d'où le délai imposé avant la première prise. Pour la même raison, la naloxone y est peu efficace et impose des doses répétées et bien plus élevées qu'après une overdose de morphine.",
         forms: "",
     },
     StarterDetail {
@@ -14397,7 +14445,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "antidote des opiacés, kit d'urgence, vigilance conduite",
-        toxicity: "Ce kit est un antidote destiné à l'entourage, et la seule chose qui compte est qu'il soit compris avant d'être nécessaire : la naloxone s'injecte dans la cuisse, à travers les vêtements si besoin, devant une personne inconsciente à la respiration lente avec des pupilles en tête d'épingle, et l'appel au 15 se fait dans le même mouvement. Le point qui doit être dit et qui l'est rarement : la durée d'action de la naloxone est plus courte que celle de la plupart des opioïdes, si bien que la personne peut se réendormir et cesser de respirer une demi-heure après avoir repris connaissance — elle ne doit jamais être laissée seule et le transport n'est pas facultatif. Le réveil s'accompagne d'un syndrome de sevrage désagréable, qui n'est pas une raison de ne pas injecter.",
+        toxicity: "Ce kit est un antidote destiné à l'entourage, et il doit être compris avant d'être nécessaire : la naloxone s'injecte dans la cuisse, à travers les vêtements si besoin, devant une personne inconsciente à la respiration lente avec des pupilles en tête d'épingle, et l'appel au 15 se fait dans le même mouvement. Le point qui doit être dit et qui l'est rarement : la durée d'action de la naloxone est plus courte que celle de la plupart des opioïdes, si bien que la personne peut se réendormir et cesser de respirer une demi-heure après avoir repris connaissance — elle ne doit jamais être laissée seule et le transport n'est pas facultatif. Le réveil s'accompagne d'un syndrome de sevrage désagréable, qui n'est pas une raison de ne pas injecter.",
         forms: "",
     },
     StarterDetail {
@@ -14628,7 +14676,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde à libération immédiate",
-        toxicity: "Forme à libération immédiate : le pic arrive en une heure, et c'est là que le surdosage se joue. Somnolence qu'on ne peut pas interrompre, myosis serré, respiration lente : appeler le 15, la naloxone est l'antidote. Les interdoses se comptent — au-delà de quatre par jour, c'est le traitement de fond qu'il faut revoir, pas les interdoses qu'il faut multiplier.",
+        toxicity: "Forme à libération immédiate : le pic arrive en une heure, fenêtre où se joue le surdosage. Somnolence qu'on ne peut pas interrompre, myosis serré, respiration lente : appeler le 15, la naloxone est l'antidote. Les interdoses se comptent — au-delà de quatre par jour, c'est le traitement de fond qu'il faut revoir, pas les interdoses qu'il faut multiplier.",
         forms: "",
     },
     StarterDetail {
@@ -14640,7 +14688,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Agonistes-antagonistes morphiniques : antagonisme et syndrome de sevrage, association contre-indiquée. Benzodiazépines, alcool et autres dépresseurs centraux : dépression respiratoire majorée. Naltrexone et nalméfène : perte de l'effet antalgique. IMAO : association déconseillée. Rifampicine : baisse des concentrations. Anticholinergiques et sétrons : constipation aggravée.",
         adverse: "Constipation constante et durable. Nausées et vomissements initiaux. Somnolence, confusion et troubles cognitifs, surtout chez le sujet âgé et lors des augmentations. Rétention urinaire, prurit, sueurs, sécheresse buccale. Myoclonies et hyperalgésie aux doses élevées. Dépression respiratoire, annoncée par une somnolence croissante. Dépendance physique avec syndrome de sevrage en cas d'arrêt brutal.",
         monitoring: "Évaluation répétée de la douleur, du nombre d'interdoses et du retentissement fonctionnel. Surveillance de la vigilance et de la fréquence respiratoire. Suivi du transit et de l'efficacité du laxatif. Fonction rénale, du fait de l'accumulation des métabolites actifs. Vérification que le patient ou l'aidant utilise correctement le dispositif de mesure, source classique d'erreur avec les formes liquides.",
-        iup: "La forme buvable a un avantage et un piège : elle permet des doses très précises, mais elle impose de mesurer exactement, avec la pipette ou le compte-gouttes fourni et jamais avec une cuillère, car une erreur de quelques gouttes n'est pas anodine. Le soulagement arrive en une vingtaine à une trentaine de minutes et dure environ quatre heures ; en cas de pic douloureux entre deux prises du traitement de fond, la dose supplémentaire prévue peut être prise en respectant au moins une heure d'écart, et chaque prise doit être notée. Ce décompte sert directement à ajuster le traitement de fond lors de la consultation suivante. La constipation est systématique et ne s'améliore pas avec le temps : le laxatif se prend dès le premier jour et tous les jours, accompagné d'une bonne hydratation. Une somnolence qui s'aggrave, une difficulté à tenir éveillé, une confusion nouvelle ou une respiration lente traduisent un surdosage : il faut suspendre la prise suivante et appeler le médecin ou le 15. Le flacon doit rester bouché et hors de portée des enfants, chez qui quelques millilitres peuvent être mortels, et l'alcool ainsi que les somnifères doivent être évités.",
+        iup: "La forme buvable a un avantage et un piège : elle permet des doses très précises, mais elle impose de mesurer exactement, avec la pipette ou le compte-gouttes fourni et jamais avec une cuillère : une erreur de quelques gouttes change la dose. Le soulagement arrive en une vingtaine à une trentaine de minutes et dure environ quatre heures ; en cas de pic douloureux entre deux prises du traitement de fond, la dose supplémentaire prévue peut être prise en respectant au moins une heure d'écart, et chaque prise doit être notée. Ce décompte sert directement à ajuster le traitement de fond lors de la consultation suivante. La constipation est systématique et ne s'améliore pas avec le temps : le laxatif se prend dès le premier jour et tous les jours, accompagné d'une bonne hydratation. Une somnolence qui s'aggrave, une difficulté à tenir éveillé, une confusion nouvelle ou une respiration lente traduisent un surdosage : il faut suspendre la prise suivante et appeler le médecin ou le 15. Le flacon doit rester bouché et hors de portée des enfants, chez qui quelques millilitres peuvent être mortels, et l'alcool ainsi que les somnifères doivent être évités.",
         half_life: "Environ 2 à 4 heures pour la morphine, davantage pour ses métabolites glucuroconjugués",
         elimination: "Glucuroconjugaison hépatique en morphine-3-glucuronide inactif et morphine-6-glucuronide actif ; élimination urinaire des conjugués, avec accumulation en cas d'insuffisance rénale.",
         renal: "Réduction des doses et espacement des prises dès l'insuffisance rénale modérée, l'accumulation du métabolite actif exposant à une somnolence et à une dépression respiratoire retardées ; la forme buvable facilite précisément cette réduction fine.",
@@ -14775,7 +14823,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "opioïde agoniste-antagoniste",
-        toxicity: "Agoniste-antagoniste : l'effet plafonne, pour la dépression respiratoire comme pour l'analgésie. Augmenter la dose au-delà du plafond n'apporte plus de soulagement et n'ajoute que des effets indésirables, ce qui la disqualifie dans une douleur qui s'aggrave. Son versant antagoniste est ce qui compte au comptoir : chez un patient sous opioïde fort, elle précipite un syndrome de sevrage aigu, et elle bloque l'analgésie d'une morphine administrée ensuite. Elle ne s'ajoute donc jamais à un morphinique en cours. Antidote naloxone, à doses habituelles.",
+        toxicity: "Agoniste-antagoniste : l'effet plafonne, pour la dépression respiratoire comme pour l'analgésie. Augmenter la dose au-delà du plafond n'apporte plus de soulagement et n'ajoute que des effets indésirables, ce qui la disqualifie dans une douleur qui s'aggrave. Son versant antagoniste compte au comptoir : chez un patient sous opioïde fort, elle précipite un syndrome de sevrage aigu, et elle bloque l'analgésie d'une morphine administrée ensuite. Elle ne s'ajoute donc jamais à un morphinique en cours. Antidote naloxone, à doses habituelles.",
         forms: "",
     },
     StarterDetail {
@@ -15258,7 +15306,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "serm, ostéoporose, contre-indiqué grossesse",
-        toxicity: "Sa marge est thromboembolique et elle se raisonne en situations, pas en doses : le risque veineux est multiplié par un facteur comparable à celui d'un traitement hormonal de la ménopause, maximal dans les premiers mois, et il contre-indique la molécule en cas d'antécédent thromboembolique. Toute immobilisation prolongée — chirurgie, plâtre, alitement, long voyage — impose de suspendre le traitement et de le reprendre à la remise en mobilité, ce qui est la consigne que le patient doit connaître avant d'en avoir besoin. Il aggrave les bouffées de chaleur au lieu de les soulager, et n'a pas l'effet protecteur du tamoxifène sur rien d'autre que la colonne : il ne réduit pas le risque de fracture de hanche.",
+        toxicity: "Sa marge est thromboembolique et elle se raisonne en situations, pas en doses : le risque veineux est multiplié par un facteur comparable à celui d'un traitement hormonal de la ménopause, maximal dans les premiers mois, et il contre-indique la molécule en cas d'antécédent thromboembolique. Toute immobilisation prolongée — chirurgie, plâtre, alitement, long voyage — impose de suspendre le traitement et de le reprendre à la remise en mobilité, ce qui est la consigne que le patient doit connaître avant d'en avoir besoin. Il aggrave les bouffées de chaleur au lieu de les soulager, et n'a l'effet protecteur du tamoxifène que sur la colonne : il ne réduit pas le risque de fracture de hanche.",
         forms: "",
     },
     StarterDetail {
@@ -15489,7 +15537,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anti-il-12, surveillance biologique",
-        toxicity: "Injection toutes les douze semaines en entretien : l'espacement est tel que rien ne rappelle l'échéance au patient, et la date est ce qui se note et se vérifie à chaque délivrance. Le profil infectieux est plus favorable que celui des anti-TNF, mais le dépistage de la tuberculose latente reste requis avant l'instauration et la vigilance demeure, avec un décalage de l'injection devant toute infection évolutive et des vaccins vivants contre-indiqués. La conservation est au réfrigérateur, sans congélation ni agitation, et la seringue se sort une demi-heure avant. Des cas de pneumopathie d'hypersensibilité et de dermatoses exfoliatives ont été rapportés et imposent un avis.",
+        toxicity: "Injection toutes les douze semaines en entretien : l'espacement est tel que rien ne rappelle l'échéance au patient, et la date se note et se vérifie à chaque délivrance. Le profil infectieux est plus favorable que celui des anti-TNF, mais le dépistage de la tuberculose latente reste requis avant l'instauration et la vigilance demeure, avec un décalage de l'injection devant toute infection évolutive et des vaccins vivants contre-indiqués. La conservation est au réfrigérateur, sans congélation ni agitation, et la seringue se sort une demi-heure avant. Des cas de pneumopathie d'hypersensibilité et de dermatoses exfoliatives ont été rapportés et imposent un avis.",
         forms: "",
     },
     StarterDetail {
@@ -16110,7 +16158,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Azathioprine, 6-mercaptopurine et thioguanine : majoration du risque de myélosuppression, imposant une surveillance hématologique rapprochée. Anticoagulants oraux : effet anticoagulant possiblement majoré. Anti-inflammatoires non stéroïdiens, ciclosporine et autres néphrotoxiques : addition du risque rénal. Méthotrexate : toxicité hématologique potentialisée. Lactulose et produits acidifiant le côlon : libération de la mésalazine potentiellement modifiée pour les formes pH-dépendantes.",
         adverse: "Céphalées, nausées, douleurs abdominales, diarrhée, flatulences, éruptions cutanées. Syndrome d'intolérance à la mésalazine, avec aggravation paradoxale de la diarrhée sanglante, des douleurs et de la fièvre, qui mime une poussée et doit faire arrêter le médicament. Néphrite interstitielle et syndrome néphrotique, complication rare mais grave justifiant la surveillance rénale. Pancréatite aiguë, hépatite, myocardite et péricardite, rares. Anomalies hématologiques : leucopénie, thrombopénie, agranulocytose, anémie aplasique. Oligospermie réversible.",
         monitoring: "Créatininémie et débit de filtration glomérulaire avant l'instauration, puis à trois, six et douze mois la première année et au moins une fois par an ensuite, la néphrotoxicité étant le risque à ne pas manquer. Hémogramme et transaminases avant le traitement puis périodiquement, plus fréquemment en cas d'association à une thiopurine. Bandelette urinaire à la recherche d'une protéinurie. Surveillance de l'évolution clinique : une aggravation sous traitement doit faire évoquer une intolérance au produit autant qu'une poussée. Chez tout patient atteint de maladie inflammatoire chronique de l'intestin, surveillance du statut vaccinal et dépistage régulier du cancer colorectal selon l'ancienneté et l'étendue de la maladie.",
-        iup: "Les comprimés s'avalent entiers avec un grand verre d'eau, sans les couper ni les écraser, car leur enrobage est ce qui permet au médicament d'être libéré exactement là où l'intestin est malade. Le traitement d'entretien doit être poursuivi même quand tout va bien et que les selles sont normales, car c'est l'arrêt qui déclenche les rechutes ; il ne s'interrompt jamais sans avis du gastro-entérologue. Une prise de sang de contrôle du rein, du foie et de la numération est prévue plusieurs fois la première année puis chaque année : c'est le rein qui est surveillé en priorité et ce contrôle ne doit pas être sauté. Il faut boire régulièrement, au moins un litre et demi d'eau par jour, en particulier lors des périodes de diarrhée où les pertes sont importantes. Une diarrhée qui s'aggrave brutalement avec du sang, de la fièvre et des douleurs peut être une poussée, mais aussi une mauvaise tolérance du médicament lui-même : il faut consulter rapidement plutôt que d'augmenter la dose. Enfin, il faut éviter l'automédication par anti-inflammatoires de type ibuprofène, qui peuvent à la fois réveiller la maladie et abîmer le rein.",
+        iup: "Les comprimés s'avalent entiers avec un grand verre d'eau, sans les couper ni les écraser, car leur enrobage permet au médicament d'être libéré exactement là où l'intestin est malade. Le traitement d'entretien doit être poursuivi même quand tout va bien et que les selles sont normales, car c'est l'arrêt qui déclenche les rechutes ; il ne s'interrompt jamais sans avis du gastro-entérologue. Une prise de sang de contrôle du rein, du foie et de la numération est prévue plusieurs fois la première année puis chaque année : c'est le rein qui est surveillé en priorité et ce contrôle ne doit pas être sauté. Il faut boire régulièrement, au moins un litre et demi d'eau par jour, en particulier lors des périodes de diarrhée où les pertes sont importantes. Une diarrhée qui s'aggrave brutalement avec du sang, de la fièvre et des douleurs peut être une poussée, mais aussi une mauvaise tolérance du médicament lui-même : il faut consulter rapidement plutôt que d'augmenter la dose. Enfin, il faut éviter l'automédication par anti-inflammatoires de type ibuprofène, qui peuvent à la fois réveiller la maladie et abîmer le rein.",
         half_life: "Environ 1 à 2 heures pour la mésalazine, environ 5 à 10 heures pour son métabolite N-acétylé",
         elimination: "Acétylation dans la paroi intestinale et dans le foie en N-acétyl-mésalazine inactive ; élimination majoritairement rénale des métabolites, avec une part fécale importante pour la fraction non absorbée.",
         renal: "Contre-indiquée en cas d'insuffisance rénale sévère et à utiliser avec prudence dès l'insuffisance rénale modérée, avec surveillance rapprochée de la créatininémie. Toute dégradation inexpliquée de la fonction rénale sous traitement doit faire évoquer une néphrite interstitielle et arrêter le médicament.",
@@ -16219,7 +16267,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         half_life: "Environ neuf à treize heures",
         elimination: "Métabolisme hépatique important, principalement par le CYP3A4 ; élimination sous forme de métabolites par voies fécale et urinaire, sans excrétion rénale de la molécule inchangée.",
         renal: "Aucune adaptation posologique n'est nécessaire en cas d'insuffisance rénale, y compris au stade terminal chez le patient hémodialysé, l'élimination étant essentiellement métabolique.",
-        pregnancy: "Utilisation déconseillée pendant la grossesse faute de données suffisantes ; il convient de rappeler que l'interaction avec les contraceptifs hormonaux expose à une grossesse non désirée pendant la chimiothérapie, d'où la nécessité d'une contraception complémentaire pendant deux mois après la dernière prise. Allaitement déconseillé.",
+        pregnancy: "Utilisation déconseillée pendant la grossesse faute de données suffisantes ; l'interaction avec les contraceptifs hormonaux expose à une grossesse non désirée pendant la chimiothérapie, d'où la nécessité d'une contraception complémentaire pendant deux mois après la dernière prise. Allaitement déconseillé.",
         sources: "RCP Emend — base de données publique des médicaments (ANSM)\nANSM — aprépitant et interaction avec les contraceptifs hormonaux\nAFSOS — prévention des nausées et vomissements chimio-induits",
         status: "",
         smr: "",
@@ -16362,7 +16410,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Pas d'interaction systémique en usage local correct. Sur de très grandes surfaces, sous occlusion ou chez le nourrisson, le passage systémique augmente et une interaction avec les inhibiteurs puissants du CYP3A4 devient théoriquement possible. Les applications d'autres topiques sur la même zone doivent être décalées.",
         adverse: "Bonne tolérance cutanée relative pour un dermocorticoïde fort, mais le risque d'atrophie, de vergetures, de télangiectasies et de retard de cicatrisation existe en cas d'usage prolongé ou sous occlusion. Sensation de brûlure ou de picotement à l'application, prurit, sécheresse. Aggravation ou masquage d'une infection cutanée. Dermatite périorale et acné cortisonique en cas d'application au visage. Effet rebond à l'arrêt brutal.",
         monitoring: "Examen régulier de la peau traitée à la recherche d'une atrophie débutante, de télangiectasies ou de vergetures. Décompte des tubes délivrés, qui reflète mieux la consommation réelle que le discours du patient. Surveillance de la croissance chez l'enfant traité de façon étendue et prolongée. Réévaluation devant une lésion qui ne s'améliore pas, afin de rechercher une surinfection ou un autre diagnostic.",
-        iup: "Une seule application par jour, en couche mince, sur les zones malades uniquement, en s'aidant de l'unité phalangette pour la quantité : la longueur de crème déposée sur la dernière phalange de l'index traite environ la surface de deux paumes de main. Ce dermocorticoïde est fort mais conçu pour être détruit rapidement une fois passé dans la peau, ce qui le rend un peu mieux toléré sur le long terme, sans pour autant autoriser un usage sans limite. Il faut poursuivre jusqu'à disparition franche des plaques, puis diminuer progressivement en espaçant les applications, et non s'arrêter net dès le premier jour d'amélioration, ce qui fait rechuter. Il ne s'applique jamais sur une lésion infectée, une mycose, un bouton de fièvre ou une plaie. Entre les poussées, l'émollient appliqué quotidiennement sur tout le corps est ce qui espace réellement les crises, et il se met de préférence à un autre moment de la journée que le corticoïde. Une peau qui devient fine, brillante ou marquée de petits vaisseaux impose d'arrêter et de consulter.",
+        iup: "Une seule application par jour, en couche mince, sur les zones malades uniquement, en s'aidant de l'unité phalangette pour la quantité : la longueur de crème déposée sur la dernière phalange de l'index traite environ la surface de deux paumes de main. Ce dermocorticoïde est fort mais conçu pour être détruit rapidement une fois passé dans la peau, ce qui le rend un peu mieux toléré sur le long terme, sans pour autant autoriser un usage sans limite. Il faut poursuivre jusqu'à disparition franche des plaques, puis diminuer progressivement en espaçant les applications, et non s'arrêter net dès le premier jour d'amélioration, ce qui fait rechuter. Il ne s'applique jamais sur une lésion infectée, une mycose, un bouton de fièvre ou une plaie. Entre les poussées, l'émollient appliqué quotidiennement sur tout le corps espace réellement les crises, et il se met de préférence à un autre moment de la journée que le corticoïde. Une peau qui devient fine, brillante ou marquée de petits vaisseaux impose d'arrêter et de consulter.",
         half_life: "Notion peu pertinente en usage topique ; la molécule est rapidement hydrolysée et inactivée après passage cutané, ce qui limite l'exposition systémique",
         elimination: "Activation dans l'épiderme puis hydrolyse rapide en hydrocortisone et métabolites inactifs, éliminés par voies urinaire et biliaire ; l'absorption percutanée est augmentée sur peau lésée, dans les plis et sous occlusion.",
         renal: "Aucune adaptation en usage local correct ; prudence en cas d'application étendue et prolongée chez l'insuffisant rénal.",
@@ -17118,7 +17166,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Peu d'interactions cliniquement significatives, le finastéride étant métabolisé par le CYP3A4 sans être un inhibiteur ni un inducteur notable. L'association aux inhibiteurs puissants du CYP3A4 augmente modérément l'exposition, sans nécessiter d'adaptation. L'interférence majeure est biologique : le dosage du PSA est abaissé d'environ la moitié, ce qui doit être connu et corrigé lors de l'interprétation.",
         adverse: "Troubles sexuels, baisse de la libido, dysfonction érectile et troubles de l'éjaculation, généralement réversibles à l'arrêt mais parfois persistants selon des signalements documentés. Diminution du volume de l'éjaculat, infertilité et altération du spermogramme. Gynécomastie et douleur mammaire, qui imposent un examen. Dépression, anxiété et idées suicidaires, faisant l'objet d'une information renforcée. Réactions d'hypersensibilité, éruptions, prurit.",
         monitoring: "Information explicite et tracée du patient sur les troubles sexuels et le risque psychologique avant l'instauration, et recherche active de ces symptômes à chaque consultation. Dosage du PSA interprété en tenant compte de la division par deux induite par le traitement, avec mention du finastéride sur toute demande de dosage. Examen mammaire devant toute masse, douleur ou écoulement. Réévaluation du bénéfice à douze mois et arrêt en l'absence de réponse.",
-        iup: "Un comprimé par jour, toujours à la même heure, avec ou sans nourriture : le résultat ne se juge pas avant six mois et le bénéfice maximal s'apprécie vers un an, l'arrêt faisant reperdre en moins d'un an ce qui a été regagné. Ce traitement peut entraîner une baisse du désir, des difficultés d'érection ou une diminution du volume de l'éjaculat, effets qui régressent le plus souvent à l'arrêt mais qui doivent être signalés au médecin sans gêne et sans attendre. Toute tristesse persistante, perte d'élan, anxiété nouvelle ou idée noire doit également être rapportée rapidement, de même que l'apparition d'une boule ou d'une douleur au niveau d'un sein. Le comprimé est pelliculé et ne doit être ni cassé ni écrasé, et il ne doit jamais être manipulé par une femme enceinte ou susceptible de l'être, car la substance traverse la peau et peut nuire au développement d'un fœtus masculin. Il ne faut pas donner son sang pendant le traitement ni dans le mois qui suit son arrêt, pour la même raison. Enfin, il est important de prévenir tout médecin qui prescrit un dosage du PSA, car ce médicament divise le résultat par deux et pourrait masquer une anomalie de la prostate.",
+        iup: "Un comprimé par jour, toujours à la même heure, avec ou sans nourriture : le résultat ne se juge pas avant six mois et le bénéfice maximal s'apprécie vers un an, l'arrêt faisant reperdre en moins d'un an ce qui a été regagné. Ce traitement peut entraîner une baisse du désir, des difficultés d'érection ou une diminution du volume de l'éjaculat, effets qui régressent le plus souvent à l'arrêt mais qui doivent être signalés au médecin sans gêne et sans attendre. Toute tristesse persistante, perte d'élan, anxiété nouvelle ou idée noire doit également être rapportée rapidement, de même que l'apparition d'une boule ou d'une douleur au niveau d'un sein. Le comprimé est pelliculé et ne doit être ni cassé ni écrasé, et il ne doit jamais être manipulé par une femme enceinte ou susceptible de l'être, car la substance traverse la peau et peut nuire au développement d'un fœtus masculin. Il ne faut pas donner son sang pendant le traitement ni dans le mois qui suit son arrêt, pour la même raison. Enfin, prévenir tout médecin qui prescrit un dosage du PSA : car ce médicament divise le résultat par deux et pourrait masquer une anomalie de la prostate.",
         half_life: "Environ 6 heures chez l'adulte jeune, allongée à 8 heures ou davantage chez le sujet âgé",
         elimination: "Métabolisme hépatique par le CYP3A4, avec élimination des métabolites à parts comparables par voies fécale et urinaire ; peu de molécule inchangée dans les urines.",
         renal: "Aucune adaptation posologique nécessaire, y compris en cas d'insuffisance rénale marquée, l'élimination étant essentiellement métabolique.",
@@ -17790,7 +17838,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Vaccins vivants atténués, notamment rougeole, oreillons, rubéole et varicelle : les immunoglobulines injectées neutralisent le vaccin, un délai de plusieurs semaines à trois mois devant être respecté après l'injection, et l'anti-D devant être répété si un vaccin a été fait dans les semaines précédentes. Les tests sérologiques réalisés après l'injection peuvent être faussement positifs du fait des anticorps passivement transmis, y compris le test de Coombs direct chez le nouveau-né.",
         adverse: "Douleur, induration et rougeur au point d'injection, effets les plus fréquents. Fièvre, frissons, malaise, céphalées, nausées. Réactions d'hypersensibilité, exceptionnellement choc anaphylactique, ce qui justifie une surveillance après l'injection. Hémolyse en cas d'administration à forte dose dans un contexte de transfusion incompatible.",
         monitoring: "Détermination du groupe sanguin et du Rhésus, recherche d'agglutinines irrégulières avant l'injection, à laquelle s'ajoute désormais dans de nombreux centres le génotypage Rhésus fœtal sur sang maternel pour ne traiter que les grossesses réellement à risque. Test de Kleihauer après l'accouchement ou après un événement à risque afin d'adapter la dose. Détermination du Rhésus du nouveau-né. Surveillance clinique d'au moins vingt minutes après l'injection. Recherche d'agglutinines irrégulières de contrôle selon le calendrier de suivi de grossesse, en tenant compte des anticorps passifs.",
-        iup: "Cette injection ne soigne rien chez la mère : elle protège les grossesses à venir en empêchant l'organisme de fabriquer des anticorps contre le sang du bébé, ce qui explique qu'elle soit proposée même quand tout va bien. Elle se fait dans le muscle, en général au sixième mois de grossesse, puis à nouveau après l'accouchement si le bébé est Rhésus positif. Le délai est capital : après un accouchement, une fausse couche, une amniocentèse, un saignement ou un choc sur le ventre, elle doit être faite dans les soixante-douze heures, et le plus tôt est le mieux ; il ne faut donc jamais attendre le prochain rendez-vous. Il est important de garder la carte ou le document remis après l'injection et de le présenter à toute équipe soignante, notamment à la maternité. Une douleur et une petite boule au point de piqûre, parfois un peu de fièvre, sont banales et passent en un ou deux jours. Enfin, il faut signaler cette injection si une vaccination contre la rougeole, les oreillons, la rubéole ou la varicelle est prévue, car un délai doit être respecté.",
+        iup: "Cette injection ne soigne rien chez la mère : elle protège les grossesses à venir en empêchant l'organisme de fabriquer des anticorps contre le sang du bébé, ce qui explique qu'elle soit proposée même quand tout va bien. Elle se fait dans le muscle, en général au sixième mois de grossesse, puis à nouveau après l'accouchement si le bébé est Rhésus positif. Le délai est capital : après un accouchement, une fausse couche, une amniocentèse, un saignement ou un choc sur le ventre, elle doit être faite dans les soixante-douze heures, et le plus tôt est le mieux ; il ne faut donc jamais attendre le prochain rendez-vous. Gardez la carte ou le document remis après l'injection et présentez-le à toute équipe soignante, notamment à la maternité. Une douleur et une petite boule au point de piqûre, parfois un peu de fièvre, sont banales et passent en un ou deux jours. Enfin, il faut signaler cette injection si une vaccination contre la rougeole, les oreillons, la rubéole ou la varicelle est prévue, car un délai doit être respecté.",
         half_life: "Environ 3 à 4 semaines pour les immunoglobulines G anti-D administrées",
         elimination: "Catabolisme protéique physiologique des immunoglobulines G par le système réticulo-endothélial, sans métabolisme hépatique ni élimination rénale de la molécule intacte.",
         renal: "Aucune adaptation posologique n'est nécessaire ; la voie d'élimination étant un catabolisme protéique, l'insuffisance rénale ne modifie pas la conduite à tenir.",
@@ -17820,7 +17868,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "alpha-bloquant",
-        toxicity: "L'effet indésirable dominant n'est pas dangereux mais il fait arrêter le traitement lorsqu'il n'a pas été annoncé : les troubles de l'éjaculation, avec éjaculation rétrograde ou absence d'éjaculat, touchent une forte proportion des patients, sont réversibles à l'arrêt et n'ont aucune conséquence sur la santé. Le dire avant est ce qui permet au patient de poursuivre. Comme tous les alpha-bloquants de la prostate, il expose au syndrome de l'iris flasque peropératoire et impose de prévenir l'ophtalmologiste avant une chirurgie de la cataracte. L'hypotension orthostatique reste possible à l'instauration. La dose se réduit en cas d'insuffisance rénale modérée.",
+        toxicity: "L'effet indésirable dominant n'est pas dangereux mais il fait arrêter le traitement lorsqu'il n'a pas été annoncé : les troubles de l'éjaculation, avec éjaculation rétrograde ou absence d'éjaculat, touchent une forte proportion des patients, sont réversibles à l'arrêt et n'ont aucune conséquence sur la santé. Le dire avant permet au patient de poursuivre. Comme tous les alpha-bloquants de la prostate, il expose au syndrome de l'iris flasque peropératoire et impose de prévenir l'ophtalmologiste avant une chirurgie de la cataracte. L'hypotension orthostatique reste possible à l'instauration. La dose se réduit en cas d'insuffisance rénale modérée.",
         forms: "",
     },
     StarterDetail {
@@ -18105,7 +18153,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs puissants du CYP3A4 comme le kétoconazole, l'itraconazole, l'érythromycine et la clarithromycine : concentrations augmentées avec majoration possible de l'allongement du QT, association à éviter. Médicaments allongeant le QT et hypokaliémiants : addition de risque rythmique. Alcool et dépresseurs centraux : sédation additive modeste, l'ébastine étant peu sédative. Jus de pamplemousse : exposition augmentée.",
         adverse: "Céphalées, sécheresse buccale, somnolence, moindre qu'avec les antihistaminiques de première génération mais non nulle. Asthénie, sensations vertigineuses, douleurs abdominales, nausées. Allongement de l'intervalle QT à forte dose ou en cas d'association à un inhibiteur enzymatique. Réactions d'hypersensibilité avec urticaire et angio-œdème, rares. Élévation des transaminases.",
         monitoring: "Évaluation de l'efficacité après quelques jours et recherche d'une cause persistante d'exposition allergénique. Vérification de l'absence d'association à un inhibiteur puissant du CYP3A4 et de facteurs de risque d'allongement du QT, notamment hypokaliémie ou cardiopathie. Surveillance de la somnolence dans les métiers exposés. Dans l'urticaire chronique, réévaluation régulière et recherche d'un facteur déclenchant.",
-        iup: "Un comprimé par jour, à heure fixe, avec ou sans repas, en le prenant régulièrement pendant toute la saison des pollens plutôt qu'au coup par coup, car l'effet est meilleur en traitement continu. Ce médicament est nettement moins endormant que les antihistaminiques anciens, mais une somnolence reste possible : il vaut mieux évaluer sa réaction avant de conduire ou d'utiliser des machines, et éviter l'alcool. Il ne faut pas dépasser la dose prescrite et il convient de signaler à la pharmacie tout traitement antibiotique ou antifongique en cours, certains d'entre eux augmentant fortement les concentrations de ce médicament avec un risque pour le rythme cardiaque. Le pamplemousse est également à éviter pour la même raison. En cas de gonflement du visage, des lèvres ou de la langue, de gêne à respirer ou de malaise, il faut appeler le 15. Enfin, si les symptômes persistent malgré un traitement régulier, il faut consulter plutôt qu'augmenter la dose soi-même, un traitement local ou une exploration allergologique pouvant être nécessaires.",
+        iup: "Un comprimé par jour, à heure fixe, avec ou sans repas, en le prenant régulièrement pendant toute la saison des pollens plutôt qu'au coup par coup, car l'effet est meilleur en traitement continu. Ce médicament est nettement moins endormant que les antihistaminiques anciens, mais une somnolence reste possible : il vaut mieux évaluer sa réaction avant de conduire ou d'utiliser des machines, et éviter l'alcool. Il ne faut pas dépasser la dose prescrite, et signaler à la pharmacie tout traitement antibiotique ou antifongique en cours, certains d'entre eux augmentant fortement les concentrations de ce médicament avec un risque pour le rythme cardiaque. Le pamplemousse est également à éviter pour la même raison. En cas de gonflement du visage, des lèvres ou de la langue, de gêne à respirer ou de malaise, il faut appeler le 15. Enfin, si les symptômes persistent malgré un traitement régulier, il faut consulter plutôt qu'augmenter la dose soi-même, un traitement local ou une exploration allergologique pouvant être nécessaires.",
         half_life: "Environ 15 à 19 heures pour la carébastine, métabolite actif",
         elimination: "Effet de premier passage important avec transformation quasi complète par le CYP3A4 en carébastine active, éliminée principalement par voie urinaire sous forme conjuguée.",
         renal: "Prudence en cas d'insuffisance rénale, avec limitation de la posologie ; l'adaptation repose sur la tolérance clinique.",
@@ -18169,7 +18217,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         adverse: "Réactions locales très fréquentes les premiers jours : prurit buccal, œdème et picotements de la langue, des lèvres et de la gorge, irritation pharyngée, œdème de la luette, qui s'atténuent spontanément en une à deux semaines. Douleurs abdominales, nausées, dyspepsie. Œdème laryngé, gêne respiratoire, exacerbation d'asthme, plus rares mais sérieux. Réaction anaphylactique et œsophagite à éosinophiles, exceptionnelles mais décrites, imposant l'arrêt et un avis spécialisé.",
         monitoring: "Confirmation du diagnostic allergologique par tests cutanés ou immunoglobulines E spécifiques avant la mise en route. Contrôle de l'asthme évalué avant chaque saison et à chaque renouvellement, un asthme non contrôlé étant une contre-indication. Surveillance médicale d'au moins trente minutes lors de la première prise, avec disponibilité immédiate d'adrénaline. Évaluation annuelle de l'efficacité sur les symptômes et sur la consommation de traitements symptomatiques, pour décider de la poursuite. Réévaluation en cas d'interruption prolongée, la reprise devant se faire sous contrôle médical.",
         iup: "Le comprimé se place sous la langue le matin, à jeun, et on le laisse fondre une à deux minutes avant d'avaler, sans rien boire ni manger pendant les cinq minutes qui suivent. La toute première prise a lieu au cabinet, avec une demi-heure de surveillance ; ensuite, il est prudent de prendre le comprimé au moment où quelqu'un est présent à la maison, au moins les premiers jours. Des démangeaisons, des picotements ou un léger gonflement de la bouche, de la langue ou de la gorge sont fréquents pendant les premières semaines et s'estompent tout seuls ; en revanche, une gêne pour respirer ou pour avaler, un gonflement important de la gorge, une urticaire généralisée ou un malaise imposent d'arrêter, d'appeler le 15 et de prévenir l'allergologue. Le traitement se commence plusieurs mois avant la saison des pollens et se poursuit sans interruption pendant toute la saison, année après année : c'est la régularité sur plusieurs saisons qui fait l'efficacité, et un traitement pris de façon irrégulière ne sert à rien. Il faut suspendre temporairement les prises après une extraction dentaire, une plaie ou un aphte important dans la bouche, et reprendre après cicatrisation en demandant conseil. Enfin, une crise d'asthme ou un asthme mal contrôlé doit faire suspendre le traitement et consulter avant de le reprendre.",
-        half_life: "Non applicable : il ne s'agit pas d'une molécule à cinétique plasmatique mais d'extraits allergéniques dont l'effet est immunologique et différé",
+        half_life: "Non applicable : ce ne sont pas des molécules à cinétique plasmatique mais des extraits allergéniques dont l'effet est immunologique et différé",
         elimination: "Les extraits protéiques sont dégradés localement par les protéases de la muqueuse buccale et digestive, puis pris en charge par les voies cataboliques protéiques habituelles.",
         renal: "Aucune adaptation nécessaire ni précaution particulière décrite chez l'insuffisant rénal, l'action étant immunologique et locale.",
         pregnancy: "L'instauration n'est pas recommandée pendant la grossesse en raison du risque de réaction systémique ; un traitement déjà bien toléré et en cours peut être poursuivi après discussion avec l'allergologue. Les données pendant l'allaitement sont limitées, sans effet attendu pour le nourrisson.",
@@ -18378,7 +18426,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Aucune interaction systémique cliniquement établie, l'exposition générale après injection intravitréenne étant très faible. L'association à une photothérapie dynamique le même jour relève de protocoles spécifiques. L'utilisation concomitante d'un autre anti-VEGF dans le même œil n'est pas recommandée. Les collyres antiseptiques et antibiotiques périopératoires sont utilisés selon le protocole du service.",
         adverse: "Effets liés au geste plus qu'à la molécule : hémorragie sous-conjonctivale très fréquente et bénigne, douleur oculaire, sensation de corps étranger, hyperhémie, corps flottants, augmentation transitoire de la pression intraoculaire. Inflammation intraoculaire, uvéite, vitrite. Endophtalmie, complication rare mais gravissime, survenant dans les jours suivant l'injection. Décollement ou déchirure rétinienne, déchirure de l'épithélium pigmentaire, cataracte traumatique. Événements thromboemboliques artériels, rares et de lien discuté.",
         monitoring: "Mesure de l'acuité visuelle et de la pression intraoculaire avant et après chaque injection, avec vérification de la perfusion de la tête du nerf optique. Tomographie par cohérence optique à chaque consultation pour guider le rythme des injections. Surveillance étroite des signes d'endophtalmie dans les jours suivant chaque injection. Contrôle de l'équilibre glycémique et tensionnel dans les indications diabétique et vasculaire, la prise en charge générale conditionnant le pronostic visuel.",
-        iup: "Ce traitement se fait par injection dans l'œil, réalisée par l'ophtalmologiste dans des conditions stériles, et il ne s'agit pas d'un traitement ponctuel : les injections sont d'abord mensuelles puis espacées selon les contrôles, et le respect des rendez-vous conditionne le maintien de la vision. Une tache rouge sur le blanc de l'œil, une sensation de grain de sable et des corps flottants sont fréquents et sans gravité dans les jours qui suivent. En revanche, une douleur oculaire qui augmente, une rougeur qui s'intensifie, une baisse de la vision ou une gêne à la lumière dans les jours suivant l'injection imposent de contacter l'ophtalmologiste ou les urgences ophtalmologiques immédiatement, car il peut s'agir d'une infection de l'œil. Il ne faut ni se frotter l'œil, ni se baigner en piscine, ni se maquiller les yeux dans les jours qui suivent le geste. La conduite est déconseillée juste après l'injection, tant que la vision reste floue. Enfin, dans le diabète et l'hypertension, l'équilibre de la glycémie et de la tension fait autant pour la vision que les injections elles-mêmes.",
+        iup: "Ce traitement se fait par injection dans l'œil, réalisée par l'ophtalmologiste dans des conditions stériles, et ce n'est pas un traitement ponctuel : les injections sont d'abord mensuelles puis espacées selon les contrôles, et le respect des rendez-vous conditionne le maintien de la vision. Une tache rouge sur le blanc de l'œil, une sensation de grain de sable et des corps flottants sont fréquents et sans gravité dans les jours qui suivent. En revanche, une douleur oculaire qui augmente, une rougeur qui s'intensifie, une baisse de la vision ou une gêne à la lumière dans les jours suivant l'injection imposent de contacter l'ophtalmologiste ou les urgences ophtalmologiques immédiatement, car il peut s'agir d'une infection de l'œil. Il ne faut ni se frotter l'œil, ni se baigner en piscine, ni se maquiller les yeux dans les jours qui suivent le geste. La conduite est déconseillée juste après l'injection, tant que la vision reste floue. Enfin, dans le diabète et l'hypertension, l'équilibre de la glycémie et de la tension fait autant pour la vision que les injections elles-mêmes.",
         half_life: "Environ 9 jours dans l'humeur vitrée, l'exposition systémique étant très faible",
         elimination: "Élimination principalement par catabolisme protéique local et systémique, sans métabolisme hépatique ni excrétion rénale de la molécule intacte.",
         renal: "Aucune adaptation posologique nécessaire, l'exposition systémique après injection intravitréenne étant négligeable, y compris en cas d'insuffisance rénale.",
@@ -18525,7 +18573,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Diurétiques thiazidiques : réduction de l'excrétion urinaire de calcium avec risque d'hypercalcémie, surveillance de la calcémie. Digitaliques : l'hypercalcémie majore la toxicité digitalique. Inducteurs enzymatiques comme la phénytoïne, le phénobarbital, la carbamazépine et la rifampicine : catabolisme accéléré de la vitamine D avec besoins augmentés. Corticoïdes : diminution de l'effet sur le calcium. Orlistat, cholestyramine et huiles minérales : absorption réduite, espacer les prises. Autres sources de vitamine D, y compris compléments alimentaires : risque de cumul.",
         adverse: "Bonne tolérance aux doses recommandées. En cas de surdosage ou de prises trop rapprochées, hypercalcémie et hypercalciurie avec nausées, vomissements, anorexie, constipation, soif intense, polyurie, asthénie, céphalées et, à un stade avancé, calcifications tissulaires et insuffisance rénale. Lithiase urinaire. Réactions cutanées rares. Chez le nourrisson, un surdosage prolongé peut retentir sur la croissance.",
         monitoring: "Calcémie et calciurie en cas de traitement prolongé à dose élevée, chez le patient sous diurétique thiazidique ou digitalique, en cas d'insuffisance rénale, de sarcoïdose ou d'antécédent lithiasique. Dosage de la 25-hydroxyvitamine D uniquement dans les situations où il modifie la prise en charge, et non en dépistage systématique. Recensement de toutes les sources de vitamine D, y compris compléments alimentaires et associations calcium-vitamine D, pour éviter les doublons. Fonction rénale chez le sujet âgé.",
-        iup: "Le schéma de prise est propre à chaque patient et figure sur l'ordonnance : il ne s'agit pas d'un produit anodin à prendre au gré des saisons, et deux ampoules rapprochées exposent à un excès de calcium. Chez le nourrisson, les gouttes se donnent chaque jour, directement dans la bouche ou sur une petite cuillère, et non diluées dans le biberon, une partie de la dose restant sinon collée aux parois. Chez l'adulte, l'ampoule se boit telle quelle ou dans un peu d'eau, de préférence au cours d'un repas contenant un peu de graisse, ce qui améliore l'absorption. Il faut vérifier qu'aucun autre produit pris par ailleurs, complément alimentaire ou association calcium-vitamine D, n'apporte déjà de la vitamine D, les doublons étant une cause fréquente de surdosage. Des nausées, une soif intense, des urines abondantes, une constipation et une grande fatigue peuvent traduire un excès de calcium et imposent une prise de sang. Enfin, en cas d'antécédent de calcul rénal, de sarcoïdose ou de traitement diurétique, la calcémie doit être contrôlée régulièrement.",
+        iup: "Le schéma de prise est propre à chaque patient et figure sur l'ordonnance : ce n'est pas un produit anodin à prendre au gré des saisons, et deux ampoules rapprochées exposent à un excès de calcium. Chez le nourrisson, les gouttes se donnent chaque jour, directement dans la bouche ou sur une petite cuillère, et non diluées dans le biberon, une partie de la dose restant sinon collée aux parois. Chez l'adulte, l'ampoule se boit telle quelle ou dans un peu d'eau, de préférence au cours d'un repas contenant un peu de graisse, ce qui améliore l'absorption. Il faut vérifier qu'aucun autre produit pris par ailleurs, complément alimentaire ou association calcium-vitamine D, n'apporte déjà de la vitamine D, les doublons étant une cause fréquente de surdosage. Des nausées, une soif intense, des urines abondantes, une constipation et une grande fatigue peuvent traduire un excès de calcium et imposent une prise de sang. Enfin, en cas d'antécédent de calcul rénal, de sarcoïdose ou de traitement diurétique, la calcémie doit être contrôlée régulièrement.",
         half_life: "Longue, la 25-hydroxyvitamine D circulante ayant une demi-vie de l'ordre de deux à trois semaines et les réserves tissulaires persistant plusieurs mois",
         elimination: "Stockage important dans le tissu adipeux et musculaire, hydroxylation hépatique puis rénale, élimination principalement biliaire et fécale des métabolites.",
         renal: "Prudence en cas d'insuffisance rénale, où l'hydroxylation rénale est altérée et le risque de calcifications majoré ; les formes hydroxylées relèvent alors du spécialiste, avec surveillance de la calcémie et de la phosphorémie.",
@@ -18546,7 +18594,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Incompatibilité physico-chimique avec de nombreux médicaments, dont le thiosulfate de sodium, le nitrite de sodium, l'acide ascorbique, le diazépam, le dobutamine, la dopamine, le fentanyl, le propofol et le thiopental, ainsi qu'avec les produits sanguins : l'administration doit se faire sur une voie veineuse distincte. La coloration rouge intense du produit interfère avec de nombreux dosages colorimétriques de laboratoire, avec les hémoglobinomètres et avec la lecture des paramètres de dialyse et d'hémofiltration.",
         adverse: "Coloration rouge foncé de la peau, des muqueuses et surtout des urines, intense et pouvant persister plusieurs jours à plusieurs semaines pour les urines, sans gravité. Réactions allergiques, urticaire, éruption, exceptionnellement anaphylaxie. Élévation transitoire de la pression artérielle. Céphalées, nausées. Interférence majeure avec les examens biologiques colorimétriques et avec les appareils d'épuration extrarénale, dont les capteurs peuvent se bloquer. Acné après plusieurs jours.",
         monitoring: "Surveillance continue en réanimation de la conscience, de la ventilation, de l'hémodynamique et des lactates, ces derniers étant le meilleur marqueur de l'intoxication cyanhydrique et de la réponse au traitement. Surveillance de la pression artérielle pendant et après la perfusion. Information immédiate du laboratoire et du service de dialyse de l'administration du produit, afin d'interpréter correctement les résultats colorimétriques et de prévenir le blocage des appareils. Surveillance de la coloration urinaire jusqu'à disparition.",
-        iup: "Il s'agit d'un antidote hospitalier administré en urgence par perfusion, principalement lors d'une intoxication par les fumées d'incendie, et non d'un médicament que le patient manipule lui-même. Le message essentiel à donner au patient ou à sa famille après le traitement est que la peau et surtout les urines prennent une couleur rouge foncé, parfois pendant plusieurs semaines pour les urines : c'est une conséquence normale du produit et non un saignement, et cela ne nécessite aucun traitement. Il est important de signaler cette administration à tout médecin ou laboratoire consulté dans les semaines qui suivent, car la coloration fausse de nombreux dosages sanguins et urinaires et peut conduire à des résultats ininterprétables. Une éruption cutanée, des démangeaisons ou une poussée d'acné peuvent survenir dans les jours suivants et doivent être signalées, de même qu'une gêne respiratoire ou un gonflement du visage qui imposeraient d'appeler le 15. Une surveillance médicale après l'épisode reste nécessaire, l'intoxication par les fumées associant souvent cyanure, monoxyde de carbone et brûlures des voies aériennes. Enfin, il est utile de rappeler aux proches que devant toute victime d'un incendie en espace clos présentant des suies, des troubles de conscience ou un malaise, il faut appeler le 15 immédiatement, l'antidote n'ayant d'intérêt que s'il est administré très tôt.",
+        iup: "Il s'agit d'un antidote hospitalier administré en urgence par perfusion, principalement lors d'une intoxication par les fumées d'incendie, et non d'un médicament que le patient manipule lui-même. Le message essentiel à donner au patient ou à sa famille après le traitement est que la peau et surtout les urines prennent une couleur rouge foncé, parfois pendant plusieurs semaines pour les urines : c'est une conséquence normale du produit et non un saignement, et cela ne nécessite aucun traitement. Signalez cette administration à tout médecin ou laboratoire consulté dans les semaines qui suivent, car la coloration fausse de nombreux dosages sanguins et urinaires et peut conduire à des résultats ininterprétables. Une éruption cutanée, des démangeaisons ou une poussée d'acné peuvent survenir dans les jours suivants et doivent être signalées, de même qu'une gêne respiratoire ou un gonflement du visage qui imposeraient d'appeler le 15. Une surveillance médicale après l'épisode reste nécessaire, l'intoxication par les fumées associant souvent cyanure, monoxyde de carbone et brûlures des voies aériennes. Enfin, il est utile de rappeler aux proches que devant toute victime d'un incendie en espace clos présentant des suies, des troubles de conscience ou un malaise, il faut appeler le 15 immédiatement, l'antidote n'ayant d'intérêt que s'il est administré très tôt.",
         half_life: "Demi-vie d'élimination d'environ 26 à 31 heures pour l'hydroxocobalamine",
         elimination: "Fixation du cyanure et formation de cyanocobalamine, éliminée principalement par voie urinaire sous forme inchangée, ce qui explique la coloration rouge prolongée des urines.",
         renal: "Aucune adaptation posologique documentée en situation d'urgence vitale ; l'élimination urinaire est ralentie chez l'insuffisant rénal, prolongeant la coloration et l'interférence analytique.",
@@ -19050,7 +19098,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Médicaments néphrotoxiques : aminosides, amphotéricine B, produits de contraste iodés, AINS, ciclosporine et tacrolimus, dont l'association majore nettement le risque d'insuffisance rénale aiguë. Diurétiques de l'anse : majoration du risque d'hypocalcémie. Thalidomide chez le patient myélomateux : risque rénal accru. Autres biphosphonates ou dénosumab : association à proscrire, l'effet antirésorptif étant additif et le risque d'ostéonécrose de la mâchoire majoré.",
         adverse: "Syndrome pseudo-grippal après les premières perfusions : fièvre, frissons, courbatures, céphalées, arthralgies, régressant en un à trois jours et bien soulagé par le paracétamol. Hypocalcémie, hypophosphatémie, hypomagnésémie. Insuffisance rénale aiguë, favorisée par une perfusion trop rapide, une déshydratation ou l'association à des néphrotoxiques. Ostéonécrose de la mâchoire, complication redoutée, favorisée par les extractions dentaires, les prothèses mal adaptées, une mauvaise hygiène buccale et le tabac. Fractures atypiques du fémur en cas d'exposition prolongée, précédées d'une douleur de cuisse ou d'aine. Uvéite, conjonctivite, épisclérite. Troubles digestifs, asthénie, anémie.",
         monitoring: "Bilan bucco-dentaire complet avec panoramique dentaire et remise en état avant le début du traitement, puis surveillance dentaire au moins annuelle pendant toute sa durée. Créatininémie et clairance calculée avant chaque perfusion, la dose devant être adaptée et la perfusion différée en cas de dégradation. Calcémie corrigée par l'albuminémie, phosphorémie et magnésémie régulièrement, ainsi que dosage de vitamine D avec correction préalable d'une carence. Évaluation de l'état d'hydratation avant chaque cure. Recherche à l'interrogatoire d'une douleur de cuisse ou d'aine persistante et de tout symptôme buccal.",
-        iup: "La perfusion dure au minimum un quart d'heure et il ne faut jamais chercher à l'accélérer : la vitesse conditionne directement la protection des reins, et il est important de bien boire avant et après la cure, un litre et demi d'eau dans la journée sauf consigne contraire. Après les toutes premières perfusions, il est fréquent de ressentir pendant un à trois jours un état grippal avec fièvre, courbatures et fatigue : le paracétamol le soulage bien et cet effet s'atténue aux cures suivantes. Le point le plus important concerne les dents : un bilan dentaire complet avec panoramique et remise en état doit être fait avant de commencer, l'hygiène buccale doit être irréprochable pendant tout le traitement, et il faut consulter le dentiste au moins une fois par an. Aucune extraction dentaire ni chirurgie de la bouche ne doit être réalisée sans prévenir l'oncologue et sans que le dentiste soit informé du traitement, car une plaie qui ne cicatrise pas dans la mâchoire est la complication à éviter absolument ; toute douleur dentaire, gencive gonflée, dent qui bouge ou os visible dans la bouche impose de consulter sans délai. Contrairement aux biphosphonates en comprimés, il n'y a ici aucune consigne de prise à jeun ni de rester debout une demi-heure, puisque le produit est administré directement dans la veine. Enfin, il faut signaler une douleur persistante de la cuisse ou de l'aine, prendre le calcium et la vitamine D prescrits, et prévenir avant tout examen avec produit de contraste ou toute prescription d'anti-inflammatoire, qui fatiguent les reins.",
+        iup: "La perfusion dure au minimum un quart d'heure et il ne faut jamais chercher à l'accélérer : la vitesse conditionne directement la protection des reins. Bien boire avant et après la cure, un litre et demi d'eau dans la journée sauf consigne contraire. Après les toutes premières perfusions, il est fréquent de ressentir pendant un à trois jours un état grippal avec fièvre, courbatures et fatigue : le paracétamol le soulage bien et cet effet s'atténue aux cures suivantes. Le point le plus important concerne les dents : un bilan dentaire complet avec panoramique et remise en état doit être fait avant de commencer, l'hygiène buccale doit être irréprochable pendant tout le traitement, et il faut consulter le dentiste au moins une fois par an. Aucune extraction dentaire ni chirurgie de la bouche ne doit être réalisée sans prévenir l'oncologue et sans que le dentiste soit informé du traitement, car une plaie qui ne cicatrise pas dans la mâchoire est la complication à éviter absolument ; toute douleur dentaire, gencive gonflée, dent qui bouge ou os visible dans la bouche impose de consulter sans délai. Contrairement aux biphosphonates en comprimés, il n'y a ici aucune consigne de prise à jeun ni de rester debout une demi-heure, puisque le produit est administré directement dans la veine. Enfin, il faut signaler une douleur persistante de la cuisse ou de l'aine, prendre le calcium et la vitamine D prescrits, et prévenir avant tout examen avec produit de contraste ou toute prescription d'anti-inflammatoire, qui fatiguent les reins.",
         half_life: "Élimination plasmatique rapide et multiphasique, mais rétention osseuse très prolongée, la libération à partir du squelette s'étalant sur des mois à des années",
         elimination: "Molécule non métabolisée, éliminée telle quelle par voie rénale, par filtration glomérulaire et sécrétion tubulaire ; la fraction fixée sur l'os est libérée très lentement lors du remodelage.",
         renal: "Adaptation obligatoire de la dose à la clairance de la créatinine, calculée avant chaque perfusion, et contre-indication en cas d'insuffisance rénale sévère. La perfusion doit être différée en cas d'aggravation de la fonction rénale et reprise seulement après retour à la valeur antérieure. Hydratation avant et après la cure et éviction des néphrotoxiques.",
@@ -19218,7 +19266,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Aucune interaction systémique. Appliquer à distance d'un dermocorticoïde plutôt qu'en même temps, pour ne pas le diluer ni l'étaler au-delà de la zone traitée.",
         adverse: "Sensation de brûlure passante sur peau très abîmée, réaction de contact rare. La paraffine rend le textile inflammable : le linge imprégné s'enflamme plus facilement, et c'est le seul risque sérieux de ce produit.",
         monitoring: "Quantité réellement utilisée : un tube qui dure six mois est un tube qui n'est pas appliqué. Sur une dermatite atopique, l'émollient se poursuit entre les poussées — c'est là qu'il travaille.",
-        iup: "S'applique sur peau encore humide au sortir du bain, dans les trois minutes : c'est l'eau du bain que le produit retient. Tous les jours, y compris quand la peau va bien, parce que c'est ce qui espace les poussées. Vêtements et draps imprégnés de corps gras s'enflamment plus vite : pas de cigarette, pas de flamme.",
+        iup: "S'applique sur peau encore humide au sortir du bain, dans les trois minutes : c'est l'eau du bain que le produit retient. Tous les jours, y compris quand la peau va bien, parce que cela espace les poussées. Vêtements et draps imprégnés de corps gras s'enflamment plus vite : pas de cigarette, pas de flamme.",
         half_life: "Sans objet : action locale, sans passage systémique.",
         elimination: "Sans objet.",
         renal: "Pas d'adaptation : aucune absorption systémique.",
@@ -19237,7 +19285,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         dosage: "5 à 10 mg le soir au coucher. Réévaluation à deux mois : sans bénéfice, le traitement s'arrête. Durée totale limitée à six mois.",
         contraindications: "Maladie de Parkinson ou syndrome extrapyramidal ; antécédent de dépression ; hypersensibilité.",
         ddi: "Alcool et dépresseurs centraux : sédation majorée. Neuroleptiques : effets extrapyramidaux additionnés.",
-        adverse: "Somnolence et prise de poids, très fréquentes et principales causes d'arrêt. Syndrome extrapyramidal et dépression, surtout chez le sujet âgé et lors des traitements prolongés — c'est ce qui limite la durée à six mois.",
+        adverse: "Somnolence et prise de poids, très fréquentes et principales causes d'arrêt. Syndrome extrapyramidal et dépression, surtout chez le sujet âgé et lors des traitements prolongés, ce qui limite la durée à six mois.",
         monitoring: "Poids à chaque renouvellement. Humeur, et apparition d'un tremblement ou d'une lenteur : ces signes imposent l'arrêt. Efficacité jugée à deux mois, durée plafonnée à six.",
         iup: "Ce médicament prévient les crises de migraine, il ne les soigne pas : il ne sert à rien pendant une crise et son effet ne se juge pas avant deux mois. La prise se fait le soir, la somnolence étant l'effet le plus constant, et elle peut gêner la conduite le lendemain matin les premières semaines. La prise de poids est fréquente et parfois importante : pesez-vous régulièrement dès le début plutôt que de la découvrir dans six mois. Trois signes doivent être signalés sans attendre, parce qu'ils ne sont pas des effets à supporter mais des raisons d'arrêter : un tremblement, une lenteur ou une raideur inhabituelles — surtout après 65 ans —, et une tristesse durable ou une perte d'élan. Ils régressent à l'arrêt s'il est fait tôt. Le traitement a une durée limitée, de l'ordre de six mois, et se réévalue : ce n'est pas un médicament que l'on renouvelle indéfiniment. Tenez un agenda des crises, c'est lui qui dira si le traitement sert. Pas d'alcool, qui majore la somnolence.",
         half_life: "18 jours environ, ce qui explique l'installation lente de l'effet comme des effets indésirables.",
@@ -19344,7 +19392,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Autres vasoconstricteurs, quelle que soit la voie — cumuler un comprimé et un spray est l'erreur la plus fréquente. IMAO, y compris le linézolide : crise hypertensive. Alcaloïdes de l'ergot de seigle. Autres sources de paracétamol : le cumul est le second piège de cette boîte.",
         adverse: "Nervosité, insomnie, palpitations, poussée hypertensive, sécheresse buccale, rétention urinaire, somnolence par l'antihistaminique. Accidents vasculaires cérébraux et cardiaques rapportés, rares mais graves et parfois chez des sujets jeunes sans antécédent.",
         monitoring: "Durée : cinq jours au maximum, et l'ANSM rappelle que le rapport bénéfice-risque de cette classe est défavorable dans un rhume, qui guérit seul en une semaine. Tension artérielle chez tout patient qui en demande régulièrement.",
-        iup: "Ce médicament ne soigne pas le rhume : il débouche le nez pendant quelques jours, et le rhume guérit tout seul en une semaine. C'est un vasoconstricteur, il resserre les vaisseaux de tout le corps et pas seulement ceux du nez, et c'est pour cela qu'il n'est pas anodin. Cinq jours au maximum, jamais plus, et jamais en même temps qu'un spray décongestionnant pour le nez : les effets s'additionnent. Il contient aussi du paracétamol : n'en prenez aucun autre à côté, ni Doliprane, ni Dafalgan, ni aucun médicament pour le rhume ou la douleur sans vérifier sa composition — c'est ainsi qu'on dépasse la dose sans le vouloir. Arrêtez et appelez le 15 devant un mal de tête brutal et violent, des troubles de la vue, une faiblesse d'un côté du corps, des difficultés à parler ou une douleur dans la poitrine : ce sont des signes rares mais graves, décrits chez des personnes jeunes et en bonne santé. Ne le prenez pas si vous avez de la tension, même traitée, une maladie du cœur, un glaucome, des difficultés à uriner, ou si vous êtes enceinte. Il peut empêcher de dormir et rendre nerveux : évitez la prise du soir. Le lavage de nez au sérum physiologique fait une bonne partie du travail sans aucun de ces risques.",
+        iup: "Ce médicament ne soigne pas le rhume : il débouche le nez pendant quelques jours, et le rhume guérit tout seul en une semaine. C'est un vasoconstricteur, il resserre les vaisseaux de tout le corps et pas seulement ceux du nez : son retentissement dépasse la sphère nasale. Cinq jours au maximum, jamais plus, et jamais en même temps qu'un spray décongestionnant pour le nez : les effets s'additionnent. Il contient aussi du paracétamol : n'en prenez aucun autre à côté, ni Doliprane, ni Dafalgan, ni aucun médicament pour le rhume ou la douleur sans vérifier sa composition — c'est ainsi qu'on dépasse la dose sans le vouloir. Arrêtez et appelez le 15 devant un mal de tête brutal et violent, des troubles de la vue, une faiblesse d'un côté du corps, des difficultés à parler ou une douleur dans la poitrine : ce sont des signes rares mais graves, décrits chez des personnes jeunes et en bonne santé. Ne le prenez pas si vous avez de la tension, même traitée, une maladie du cœur, un glaucome, des difficultés à uriner, ou si vous êtes enceinte. Il peut empêcher de dormir et rendre nerveux : évitez la prise du soir. Le lavage de nez au sérum physiologique fait une bonne partie du travail sans aucun de ces risques.",
         half_life: "2 à 3 heures pour le paracétamol ; 5 à 8 heures pour la pseudoéphédrine.",
         elimination: "Hépatique pour le paracétamol, rénale pour la pseudoéphédrine.",
         renal: "À éviter en cas d'insuffisance rénale : la pseudoéphédrine s'accumule.",
@@ -19401,13 +19449,13 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Strefen",
         indications: "Traitement de courte durée du mal de gorge de l'adulte et de l'adolescent à partir de 12 ans, en l'absence de fièvre et de signes de gravité.",
-        mechanism: "Anti-inflammatoire non stéroïdien en pastille à sucer, qui agit localement sur l'inflammation pharyngée tout en étant absorbé — l'effet n'est pas seulement local, et c'est ce que la pastille fait oublier.",
+        mechanism: "Anti-inflammatoire non stéroïdien en pastille à sucer, qui agit localement sur l'inflammation pharyngée tout en étant absorbé — l'effet n'est pas seulement local, ce que la forme pastille fait oublier.",
         dosage: "Une pastille toutes les 3 à 6 heures, sans dépasser 5 pastilles par jour et 3 jours de traitement.",
         contraindications: "Ulcère gastroduodénal évolutif ; antécédent d'asthme déclenché par un AINS ; insuffisance rénale, hépatique ou cardiaque sévère ; à partir du sixième mois de grossesse ; enfant de moins de 12 ans ; association à un autre AINS.",
         ddi: "Tout autre AINS, aspirine comprise : une pastille de flurbiprofène plus un ibuprofène est une double dose d'AINS que personne ne compte. Anticoagulants, IEC et sartans, diurétiques, lithium, méthotrexate — les mêmes que pour un AINS oral, parce que c'en est un.",
         adverse: "Irritation buccale, sécheresse, ulcérations de la muqueuse, troubles du goût. Et tous les effets d'un AINS systémique : épigastralgies, ulcère, atteinte rénale.",
         monitoring: "Trois jours au maximum. Une angine avec fièvre, difficulté à avaler ou ganglions relève d'un TROD et non d'une pastille — l'ANSM alerte sur les complications infectieuses graves masquées par les AINS dans les infections ORL.",
-        iup: "C'est un AINS, pas un bonbon : la présentation en pastille est ce qui fait oublier de compter. Trois jours au plus, et jamais avec un autre anti-inflammatoire. Une gorge qui empire, une fièvre qui monte ou une difficulté à avaler la salive impose une consultation le jour même.",
+        iup: "C'est un AINS, pas un bonbon : la présentation en pastille fait oublier de compter. Trois jours au plus, et jamais avec un autre anti-inflammatoire. Une gorge qui empire, une fièvre qui monte ou une difficulté à avaler la salive impose une consultation le jour même.",
         half_life: "3 à 6 heures.",
         elimination: "Hépatique puis rénale.",
         renal: "À éviter en cas d'insuffisance rénale.",
@@ -19425,7 +19473,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Argile naturelle à structure feuilletée : elle adsorbe les gaz, les toxines et l'eau du contenu intestinal, et forme un film qui protège la muqueuse. Elle n'est pas absorbée et n'a aucune action systémique.",
         dosage: "Un à trois sachets par jour, délayés dans un demi-verre d'eau, en dehors des repas.",
         contraindications: "Occlusion ou suspicion d'occlusion ; hypersensibilité.",
-        ddi: "Elle adsorbe aussi les médicaments : toute autre prise se fait deux heures avant ou après, sans exception — c'est la seule chose à retenir de cette fiche, et c'est celle qu'on oublie.",
+        ddi: "Elle adsorbe aussi les médicaments : toute autre prise se fait deux heures avant ou après, sans exception. C'est le point à retenir de cette fiche, et celui qu'on oublie.",
         adverse: "Constipation, ballonnement. Bonne tolérance. Les argiles ont fait l'objet d'une réévaluation sur leur teneur en plomb, qui a conduit à les déconseiller chez l'enfant et la femme enceinte.",
         monitoring: "Une diarrhée qui dure plus de trois jours, s'accompagne de fièvre ou de sang, ou survient au retour d'un voyage, ne se traite pas par une argile. Chez l'enfant, la réhydratation orale passe avant tout le reste.",
         iup: "Deux heures d'écart avec tout autre médicament, y compris la contraception et les traitements du matin. À délayer dans un demi-verre d'eau et à boire aussitôt. Déconseillé chez l'enfant et la femme enceinte depuis la réévaluation sur le plomb.",
@@ -19448,7 +19496,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         contraindications: "Hypersensibilité ; infection nasale non traitée ; prudence après une chirurgie ou un traumatisme nasal récent.",
         ddi: "Inhibiteurs puissants du CYP3A4 — ritonavir, kétoconazole : le passage général augmente et un syndrome de Cushing a été rapporté. Association déconseillée.",
         adverse: "Sécheresse et irritation nasales, épistaxis, céphalées, mauvais goût. Perforation de la cloison, rare, et liée à une technique de pulvérisation dirigée vers la cloison. Retard de croissance chez l'enfant sous traitement prolongé, à surveiller.",
-        monitoring: "Technique de pulvérisation à chaque délivrance : c'est ce qui décide de l'efficacité et des saignements. Chez l'enfant, la taille. L'effet met plusieurs jours à s'installer — le traitement est de fond, pas de crise.",
+        monitoring: "Technique de pulvérisation à chaque délivrance : cela décide de l'efficacité et des saignements. Chez l'enfant, la taille. L'effet met plusieurs jours à s'installer — le traitement est de fond, pas de crise.",
         iup: "Se moucher avant. Orienter l'embout vers l'extérieur de la narine, du côté opposé à la cloison, et ne pas renifler fort après la pulvérisation : c'est la seule façon d'éviter les saignements et de garder le produit là où il agit. L'effet demande plusieurs jours : ne pas arrêter au bout de deux.",
         half_life: "Faible biodisponibilité générale ; demi-vie plasmatique de quelques heures pour la fraction absorbée.",
         elimination: "Hépatique (CYP3A4), puis fécale.",
@@ -19533,7 +19581,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Anakinra et abatacept : association déconseillée, le risque infectieux s'additionne sans bénéfice. Vaccins vivants contre-indiqués pendant le traitement. Un vaccin inactivé reste possible et se programme plutôt avant l'instauration.",
         adverse: "Réactions au point d'injection, infections des voies aériennes supérieures, céphalées. Infections graves, bactériennes, fongiques ou opportunistes, et réactivation d'une tuberculose latente, d'où le dépistage avant l'instauration. Réactivation d'une hépatite B. Cytopénies. Atteintes démyélinisantes. Aggravation d'une insuffisance cardiaque. Syndrome lupique médicamenteux réversible à l'arrêt. Réactions d'hypersensibilité. Cancers cutanés, dont le mélanome, justifiant un examen dermatologique annuel.",
         monitoring: "Dépistage de la tuberculose et des hépatites B et C, radiographie thoracique, numération et bilan hépatique avant la première injection. Toute fièvre, toute infection en cours fait décaler l'injection. Calendrier vaccinal mis à jour avant, vaccins vivants exclus pendant. Ensuite, numération et transaminases périodiques, examen cutané annuel, évaluation devant tout signe neurologique nouveau. Spécialité et numéro de lot notés à chaque délivrance.",
-        iup: "Ce traitement diminue vos défenses immunitaires en même temps qu'il calme l'inflammation : c'est ce qui le rend efficace et c'est ce qui impose les précautions qui suivent. Le stylo sort du réfrigérateur trente minutes avant l'injection et se réchauffe tout seul, sans le passer sous l'eau chaude ni au micro-ondes : injecté froid, il fait mal, et c'est la première raison pour laquelle les gens arrêtent. Alternez cuisse et ventre, en restant à cinq centimètres du nombril, et changez de point à chaque fois. Le dispositif n'est pas le même d'une marque d'adalimumab à l'autre : si votre pharmacie vous délivre une autre spécialité, faites-vous remontrer le geste, même si vous vous injectez depuis des années. Toute fièvre, tout mal de gorge qui traîne, toute infection en cours fait décaler l'injection et appeler le médecin : une infection banale peut prendre de l'ampleur sous ce traitement. Signalez ce traitement avant tout vaccin — les vaccins vivants sont interdits pendant —, avant tout soin dentaire et avant toute chirurgie. Faites examiner votre peau une fois par an. Respectez la chaîne du froid jusqu'à la maison, un sac isotherme n'est pas un luxe, et ne congelez jamais le stylo. Notez la date de chaque injection : le rythme de toutes les deux semaines est celui qu'on perd le plus facilement de vue.",
+        iup: "Ce traitement diminue vos défenses immunitaires en même temps qu'il calme l'inflammation : cela le rend efficace et impose les précautions qui suivent. Le stylo sort du réfrigérateur trente minutes avant l'injection et se réchauffe tout seul, sans le passer sous l'eau chaude ni au micro-ondes : injecté froid, il fait mal, et c'est la première raison pour laquelle les gens arrêtent. Alternez cuisse et ventre, en restant à cinq centimètres du nombril, et changez de point à chaque fois. Le dispositif n'est pas le même d'une marque d'adalimumab à l'autre : si votre pharmacie vous délivre une autre spécialité, faites-vous remontrer le geste, même si vous vous injectez depuis des années. Toute fièvre, tout mal de gorge qui traîne, toute infection en cours fait décaler l'injection et appeler le médecin : une infection banale peut prendre de l'ampleur sous ce traitement. Signalez ce traitement avant tout vaccin — les vaccins vivants sont interdits pendant —, avant tout soin dentaire et avant toute chirurgie. Faites examiner votre peau une fois par an. Respectez la chaîne du froid jusqu'à la maison, un sac isotherme n'est pas un luxe, et ne congelez jamais le stylo. Notez la date de chaque injection : le rythme de toutes les deux semaines est celui qu'on perd le plus facilement de vue.",
         half_life: "Environ 14 jours, ce qui justifie une injection toutes les deux semaines et explique que l'effet persiste plusieurs semaines après l'arrêt",
         elimination: "Catabolisme protéique, comme toute immunoglobuline ; pas de métabolisme hépatique ni rénal.",
         renal: "Aucune adaptation de la dose quel que soit le stade d'insuffisance rénale, y compris chez le dialysé, l'élimination étant protéique et non rénale.",
@@ -19680,7 +19728,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Pas d'administration dans les vingt-quatre heures qui suivent la fin de la cure, ni dans celles qui la précèdent : le cytotoxique frappe d'autant plus fort que les précurseurs sont en division. Lithium : effet additif sur la libération des neutrophiles. L'hyperplasie médullaire peut modifier l'interprétation d'une imagerie osseuse.",
         adverse: "Douleurs osseuses, fréquentes, plus marquées et plus prolongées qu'avec le filgrastim quotidien du fait de l'exposition soutenue, et calmées par le paracétamol. Nausées, céphalées, asthénie, réactions au point d'injection. Élévation des lacticodéshydrogénases, des phosphatases alcalines et de l'uricémie. Rarement rupture splénique, syndrome de fuite capillaire, syndrome de détresse respiratoire aiguë, syndrome de Sweet, vascularite cutanée et glomérulonéphrite.",
         monitoring: "Numération formule sanguine selon le protocole, sans qu'il soit utile de la répéter quotidiennement, la dose étant unique. Une douleur de l'hypochondre gauche ou de l'épaule gauche, un essoufflement nouveau ou une prise de poids brutale avec œdèmes imposent une évaluation le jour même. Bilan hépatique, uricémie et recherche d'une protéinurie au long cours. Spécialité et numéro de lot notés à chaque délivrance.",
-        iup: "Une seule injection par cure, et c'est là toute la différence avec le filgrastim quotidien : un patient qui a connu l'un ne doit pas transposer le rythme à l'autre, et il vaut mieux le lui dire deux fois. Vingt-quatre heures au moins après la fin de la chimiothérapie, jamais avant. La seringue se sort du réfrigérateur une trentaine de minutes avant, et l'injection se fait dans le ventre ou la cuisse. Les douleurs osseuses des jours suivants sont attendues et cèdent au paracétamol. Appeler sans attendre en cas de fièvre au-dessus de trente-huit degrés, de frissons, d'essoufflement, ou de douleur du côté gauche du ventre ou de l'épaule gauche.",
+        iup: "Une seule injection par cure, contre une injection quotidienne pour le filgrastim : un patient qui a connu l'un ne doit pas transposer le rythme à l'autre, et il vaut mieux le lui dire deux fois. Vingt-quatre heures au moins après la fin de la chimiothérapie, jamais avant. La seringue se sort du réfrigérateur une trentaine de minutes avant, et l'injection se fait dans le ventre ou la cuisse. Les douleurs osseuses des jours suivants sont attendues et cèdent au paracétamol. Appeler sans attendre en cas de fièvre au-dessus de trente-huit degrés, de frissons, d'essoufflement, ou de douleur du côté gauche du ventre ou de l'épaule gauche.",
         half_life: "15 à 80 heures, très variable d'un patient à l'autre et selon le nombre de neutrophiles, l'élimination étant assurée par les cellules mêmes que le produit fait fabriquer",
         elimination: "Clairance autorégulée, médiée par les récepteurs des neutrophiles : elle s'accélère à mesure que la numération remonte. La pégylation ayant fortement réduit la filtration glomérulaire, la part rénale est faible.",
         renal: "Pas d'adaptation de la dose, y compris en insuffisance rénale sévère et chez le dialysé, l'élimination n'étant plus rénale une fois la molécule pégylée. La créatininémie et la protéinurie restent surveillées au long cours.",
@@ -19821,7 +19869,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Zaditen collyre",
         indications: "Traitement symptomatique de la conjonctivite allergique saisonnière de l'adulte et de l'enfant à partir de trois ans.",
-        mechanism: "Le kétotifène agit sur deux temps de la réaction allergique : il bloque les récepteurs H1 de la conjonctive, ce qui soulage en quelques minutes, et il stabilise la membrane des mastocytes, ce qui limite la libération d'histamine des jours suivants. C'est ce qui le distingue d'un antihistaminique pur comme d'un antidégranulant pur.",
+        mechanism: "Le kétotifène agit sur deux temps de la réaction allergique : il bloque les récepteurs H1 de la conjonctive, ce qui soulage en quelques minutes, et il stabilise la membrane des mastocytes, ce qui limite la libération d'histamine des jours suivants. Cela le distingue d'un antihistaminique pur comme d'un antidégranulant pur.",
         dosage: "Une goutte dans chaque œil matin et soir. Ne pas dépasser deux instillations par jour ni poursuivre plus de six semaines sans avis.",
         contraindications: "Hypersensibilité au kétotifène. Le flacon multidose contient du chlorure de benzalkonium, mal supporté par l'œil sec et incompatible avec le port des lentilles souples ; préférer alors les unidoses sans conservateur.",
         ddi: "Aucune interaction générale à la dose oculaire. Si plusieurs collyres sont prescrits, espacer les instillations de cinq minutes et terminer par la pommade.",
@@ -19863,7 +19911,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Vydura",
         indications: "Traitement de la crise de migraine avec ou sans aura de l'adulte, et traitement préventif de la migraine épisodique à partir de quatre crises par mois.",
-        mechanism: "Antagoniste des récepteurs du CGRP, le peptide libéré pendant la crise qui dilate les vaisseaux méningés et transmet la douleur. À la différence des triptans, il ne provoque pas de vasoconstriction : c'est ce qui le rend utilisable chez les patients à risque cardiovasculaire, chez qui les triptans sont contre-indiqués. À la différence des anticorps anti-CGRP, il se prend par la bouche et agit sur la crise elle-même.",
+        mechanism: "Antagoniste des récepteurs du CGRP, le peptide libéré pendant la crise qui dilate les vaisseaux méningés et transmet la douleur. À la différence des triptans, il ne provoque pas de vasoconstriction : cela le rend utilisable chez les patients à risque cardiovasculaire, chez qui les triptans sont contre-indiqués. À la différence des anticorps anti-CGRP, il se prend par la bouche et agit sur la crise elle-même.",
         dosage: "Crise : un lyophilisat oral de 75 mg dès le début de la crise, sans dépasser une prise par vingt-quatre heures. Prévention : un lyophilisat un jour sur deux. Ne pas dépasser dix-huit prises par mois, quelle que soit l'indication.",
         contraindications: "Hypersensibilité au rimégépant. Insuffisance hépatique sévère. Association aux inhibiteurs puissants du CYP3A4.",
         ddi: "Inhibiteurs puissants du CYP3A4 — kétoconazole, itraconazole, clarithromycine, ritonavir : association déconseillée. Inducteurs puissants — rifampicine, millepertuis, carbamazépine, phénytoïne : perte d'efficacité, à éviter. Inhibiteurs de la P-gp et de la BCRP : pas de seconde prise dans les quarante-huit heures.",
@@ -19911,7 +19959,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Additivité avec tout dépresseur central : benzodiazépines, hypnotiques, gabapentinoïdes, antihistaminiques sédatifs, neuroleptiques, alcool. Les agonistes-antagonistes (nalbuphine, buprénorphine, pentazocine) déplacent la morphine et déclenchent un sevrage. Anticholinergiques et sétrons aggravent la constipation. La rifampicine abaisse la concentration de morphine.",
         adverse: "Constipation quasi constante et durable, à prévenir d'emblée. Nausées et vomissements des premiers jours. Somnolence initiale ; une sédation qui s'aggrave est un signe de surdosage et non un effet qui s'installe. Myosis, prurit, sécheresse buccale, rétention urinaire, sueurs. Confusion chez le sujet âgé et l'insuffisant rénal.",
         monitoring: "Nombre d'interdoses par vingt-quatre heures, qui commande la dose de fond. Vigilance et fréquence respiratoire à l'instauration et à chaque augmentation. Transit à chaque contact, laxatif prescrit d'emblée. Fonction rénale chez le sujet âgé. Devant une somnolence diurne persistante, chercher un syndrome d'apnées du sommeil.",
-        iup: "Ce comprimé est celui des douleurs qui percent : il agit en vingt à trente minutes et dure environ quatre heures. Il est sécable — la barre au milieu permet de le couper en deux, ce que la plupart des autres formes de morphine ne permettent pas —, alors ne coupez que si le médecin l'a écrit. Prenez-le dès que la douleur revient plutôt qu'au dernier moment, et notez chaque prise : ce nombre est ce qui permet d'ajuster le traitement de fond. Plus de quatre par jour plusieurs jours de suite, il faut appeler. Un laxatif vous est prescrit en même temps : prenez-le tous les jours dès le premier. Nausées et somnolence des premiers jours sont habituelles et passent en une semaine ; une somnolence qui s'aggrave, une respiration lente, une personne qu'on n'arrive pas à réveiller sont des urgences — appelez le 15. Pas d'alcool, aucun somnifère ni calmant sans en parler. Boîtes sous clé et hors de portée des enfants.",
+        iup: "Ce comprimé est celui des douleurs qui percent : il agit en vingt à trente minutes et dure environ quatre heures. Il est sécable — la barre au milieu permet de le couper en deux, ce que la plupart des autres formes de morphine ne permettent pas —, alors ne coupez que si le médecin l'a écrit. Prenez-le dès que la douleur revient plutôt qu'au dernier moment, et notez chaque prise : ce nombre permet d'ajuster le traitement de fond. Plus de quatre par jour plusieurs jours de suite, il faut appeler. Un laxatif vous est prescrit en même temps : prenez-le tous les jours dès le premier. Nausées et somnolence des premiers jours sont habituelles et passent en une semaine ; une somnolence qui s'aggrave, une respiration lente, une personne qu'on n'arrive pas à réveiller sont des urgences — appelez le 15. Pas d'alcool, aucun somnifère ni calmant sans en parler. Boîtes sous clé et hors de portée des enfants.",
         half_life: "≈ 2 à 4 heures",
         elimination: "Glucuroconjugaison hépatique en morphine-3- et morphine-6-glucuronide, ce dernier analgésique. Élimination rénale des métabolites, avec accumulation dès que la clairance baisse.",
         renal: "Réduire la dose et espacer les prises dès l'insuffisance rénale, en surveillant la vigilance. En insuffisance sévère, préférer un opioïde dont les métabolites ne s'accumulent pas.",
@@ -19926,7 +19974,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Moscontin",
         indications: "Douleurs persistantes intenses ou rebelles aux antalgiques de niveau plus faible, notamment cancéreuses, sur un fond douloureux continu. Comprimé à libération prolongée sur douze heures, destiné au traitement de fond : les accès douloureux relèvent d'une forme à libération immédiate.",
-        mechanism: "Sulfate de morphine en comprimé à matrice à libération prolongée, agoniste pur des récepteurs opioïdes mu. La libération est portée par la matrice du comprimé lui-même, et non par des microgranules : c'est ce qui interdit absolument de l'écraser ou de le croquer, là où les gélules à microgranules peuvent au moins s'ouvrir. Métabolisme hépatique par glucuroconjugaison, métabolite actif éliminé par le rein.",
+        mechanism: "Sulfate de morphine en comprimé à matrice à libération prolongée, agoniste pur des récepteurs opioïdes mu. La libération est portée par la matrice du comprimé lui-même, et non par des microgranules : cela interdit absolument de l'écraser ou de le croquer, là où les gélules à microgranules peuvent au moins s'ouvrir. Métabolisme hépatique par glucuroconjugaison, métabolite actif éliminé par le rein.",
         dosage: "Chez l'adulte naïf d'opioïde fort, 30 mg toutes les douze heures ; 10 mg toutes les douze heures chez le sujet âgé, fragile ou insuffisant rénal. La morphine orale est la référence des tables d'équianalgésie : 60 mg par jour correspondent à environ 30 mg d'oxycodone orale, 20 mg de morphine parentérale, et un dispositif de fentanyl transdermique de 25 µg/h selon l'équivalence retenue en France. La titration se fait sur les interdoses de forme à libération immédiate, un dixième à un sixième de la dose quotidienne, que l'on totalise sur vingt-quatre à quarante-huit heures avant de les intégrer au fond. Pas de dose plafond.",
         contraindications: "Insuffisance respiratoire décompensée, insuffisance hépatique sévère, traumatisme crânien et hypertension intracrânienne, épilepsie non contrôlée, syndrome abdominal aigu d'étiologie inconnue, association aux agonistes-antagonistes morphiniques et aux IMAO non sélectifs, allaitement en traitement prolongé. Troubles de la déglutition : le comprimé ne peut être ni écrasé ni ouvert, et il faut alors une autre forme.",
         ddi: "Additivité avec tout dépresseur central : benzodiazépines, hypnotiques, gabapentinoïdes, antihistaminiques sédatifs, neuroleptiques, alcool. Agonistes-antagonistes morphiniques : déplacement du récepteur et sevrage. Anticholinergiques et sétrons : constipation aggravée jusqu'à l'occlusion. Rifampicine : concentration abaissée.",
@@ -19974,7 +20022,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs puissants du CYP3A4 (ritonavir, azolés, macrolides, pamplemousse) : exposition augmentée, dépression respiratoire possible. Inducteurs (rifampicine, carbamazépine, millepertuis) : efficacité diminuée. Additivité avec tout dépresseur central, benzodiazépines en tête. Agonistes-antagonistes morphiniques : sevrage. Sérotoninergiques : syndrome sérotoninergique.",
         adverse: "Somnolence, nausées, vomissements, constipation, sécheresse buccale. Vertiges, confusion. Réactions locales au site d'application : irritation, douleur, ulcération de la muqueuse gingivale. Dépression respiratoire dose-dépendante. Dépendance et mésusage.",
         monitoring: "Nombre d'accès traités par jour. Vigilance et fréquence respiratoire à chaque changement de dosage. Inspection de la muqueuse buccale, cet effet local étant propre à la forme gingivale. Recherche d'un mésusage. Transit, laxatif d'emblée.",
-        iup: "Ce comprimé traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Posez-le entre la joue et la gencive, au-dessus d'une molaire, et laissez-le se dissoudre : il pétille, c'est normal, c'est ce qui le fait passer. Ne le sucez pas, ne le croquez pas, ne l'avalez pas. Il faut compter environ quinze à vingt-cinq minutes ; s'il reste des morceaux au bout d'une demi-heure, vous pouvez les avaler avec un verre d'eau. Changez de côté d'une fois sur l'autre, pour ménager la gencive. Il agit en dix à quinze minutes. Si la crise n'est pas calmée au bout d'une demi-heure, vous pouvez prendre un second comprimé du même dosage, et pas plus pour cette crise-là. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez, c'est le traitement de fond qui doit être revu. Ne changez jamais le dosage de vous-même. Pas de jus de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Un seul comprimé peut tuer un enfant ou une personne qui ne prend pas de morphine : gardez-le sous clé, et rapportez à la pharmacie ce qui reste.",
+        iup: "Ce comprimé traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Posez-le entre la joue et la gencive, au-dessus d'une molaire, et laissez-le se dissoudre : il pétille : c'est normal, et c'est ce pétillement qui le fait passer. Ne le sucez pas, ne le croquez pas, ne l'avalez pas. Il faut compter environ quinze à vingt-cinq minutes ; s'il reste des morceaux au bout d'une demi-heure, vous pouvez les avaler avec un verre d'eau. Changez de côté d'une fois sur l'autre, pour ménager la gencive. Il agit en dix à quinze minutes. Si la crise n'est pas calmée au bout d'une demi-heure, vous pouvez prendre un second comprimé du même dosage, et pas plus pour cette crise-là. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez, c'est le traitement de fond qui doit être revu. Ne changez jamais le dosage de vous-même. Pas de jus de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Un seul comprimé peut tuer un enfant ou une personne qui ne prend pas de morphine : gardez-le sous clé, et rapportez à la pharmacie ce qui reste.",
         half_life: "≈ 3 à 12 heures (terminale)",
         elimination: "Métabolisme hépatique par le CYP3A4 en norfentanyl inactif, élimination urinaire des métabolites. Une partie de la dose est avalée et subit le premier passage hépatique, ce qui explique que les formes transmuqueuses ne soient pas interchangeables entre elles.",
         renal: "Pas d'adaptation formelle ; prudence et surveillance de la vigilance, la titration étant de toute façon individuelle.",
@@ -20016,7 +20064,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         ddi: "Inhibiteurs puissants du CYP3A4 (ritonavir, azolés, macrolides, pamplemousse) : exposition augmentée, dépression respiratoire possible. Inducteurs : efficacité diminuée. Additivité avec tout dépresseur central. Vasoconstricteurs nasaux : absorption modifiée. Agonistes-antagonistes morphiniques : sevrage. Sérotoninergiques : syndrome sérotoninergique.",
         adverse: "Somnolence, nausées, vomissements, constipation. Vertiges. Irritation nasale, épistaxis, mauvais goût, gêne pharyngée. Dépression respiratoire dose-dépendante. Dépendance et mésusage.",
         monitoring: "Nombre d'accès traités par jour, et le compteur de doses du flacon, qui dit ce qui a été réellement consommé. Vigilance et fréquence respiratoire à chaque changement de dosage. État de la muqueuse nasale. Recherche d'un mésusage. Transit, laxatif d'emblée.",
-        iup: "Ce spray traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Avant la première utilisation, amorcez le flacon comme l'explique la notice : la fenêtre du compteur doit afficher une barre verte avant la première dose. Mouchez-vous doucement, tenez-vous assis, tête droite, une pulvérisation dans une narine en respirant doucement — pas de grande inspiration. La solution se transforme en gel au contact du nez : c'est normal, c'est ce qui la fait tenir en place. Elle agit en une dizaine de minutes. Suivez exactement le schéma que le médecin a écrit pour une seconde pulvérisation. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez. Ne changez jamais le dosage de vous-même, et n'échangez jamais ce spray contre un autre fentanyl à action rapide : ils ne sont pas équivalents, même à nombre de microgrammes égal. Pas de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Le flacon contient de quoi tuer un enfant, même quand le compteur est à zéro : gardez-le dans son étui de sécurité, sous clé, et rapportez-le à la pharmacie.",
+        iup: "Ce spray traite les crises de douleur qui percent malgré votre traitement de fond, qu'il ne remplace pas. Avant la première utilisation, amorcez le flacon comme l'explique la notice : la fenêtre du compteur doit afficher une barre verte avant la première dose. Mouchez-vous doucement, tenez-vous assis, tête droite, une pulvérisation dans une narine en respirant doucement — pas de grande inspiration. La solution se transforme en gel au contact du nez : c'est normal, et c'est ce gel qui la fait tenir en place. Elle agit en une dizaine de minutes. Suivez exactement le schéma que le médecin a écrit pour une seconde pulvérisation. Attendez au moins quatre heures avant de traiter une nouvelle crise, et pas plus de quatre crises par jour : au-delà, appelez. Ne changez jamais le dosage de vous-même, et n'échangez jamais ce spray contre un autre fentanyl à action rapide : ils ne sont pas équivalents, même à nombre de microgrammes égal. Pas de pamplemousse, pas d'alcool, aucun somnifère ni calmant sans en parler. Le flacon contient de quoi tuer un enfant, même quand le compteur est à zéro : gardez-le dans son étui de sécurité, sous clé, et rapportez-le à la pharmacie.",
         half_life: "≈ 3 à 12 heures (terminale)",
         elimination: "Métabolisme hépatique par le CYP3A4 en norfentanyl inactif, élimination urinaire des métabolites. L'absorption nasale évite en grande partie le premier passage hépatique.",
         renal: "Pas d'adaptation formelle ; prudence et surveillance de la vigilance.",
@@ -20031,7 +20079,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Orobupré",
         indications: "Traitement substitutif des pharmacodépendances majeures aux opioïdes, dans le cadre d'une prise en charge médicale, sociale et psychologique, chez l'adulte et l'adolescent de plus de quinze ans.",
-        mechanism: "Buprénorphine en comprimé orodispersible : agoniste partiel des récepteurs mu et antagoniste des récepteurs kappa. L'agonisme partiel donne un effet plafond sur la dépression respiratoire, ce qui explique la marge de sécurité de la classe ; la très forte affinité pour le récepteur mu explique qu'elle déplace les autres opioïdes et précipite un sevrage si elle est prise trop tôt. La forme orodispersible se délite en quelques secondes sur la langue avant d'être absorbée par la muqueuse buccale, là où le comprimé sublingual classique demande cinq à dix minutes — c'est ce qui la distingue, et ce qui rend la prise supervisée plus courte.",
+        mechanism: "Buprénorphine en comprimé orodispersible : agoniste partiel des récepteurs mu et antagoniste des récepteurs kappa. L'agonisme partiel donne un effet plafond sur la dépression respiratoire, ce qui explique la marge de sécurité de la classe ; la très forte affinité pour le récepteur mu explique qu'elle déplace les autres opioïdes et précipite un sevrage si elle est prise trop tôt. La forme orodispersible se délite en quelques secondes sur la langue avant d'être absorbée par la muqueuse buccale, là où le comprimé sublingual classique demande cinq à dix minutes : de là sa particularité, et une prise supervisée plus courte.",
         dosage: "Induction au moins quatre heures après la dernière prise d'opioïde de courte durée d'action, ou à l'apparition des premiers signes de sevrage : 2 à 4 mg le premier jour, en une prise. Adaptation par paliers de 2 à 4 mg selon la clinique, dose d'entretien usuelle de 8 à 16 mg par jour en une prise, sans dépasser 16 mg. Délivrance fractionnée par sept jours sauf mention expresse du prescripteur, et le nom du pharmacien qui délivre est porté sur l'ordonnance.",
         contraindications: "Insuffisance respiratoire sévère, insuffisance hépatique sévère, intoxication alcoolique aiguë et delirium tremens, hypersensibilité, enfant de moins de quinze ans. Association aux IMAO non sélectifs.",
         ddi: "Benzodiazépines : c'est l'association qui tue dans cette classe, par dépression respiratoire — l'effet plafond de la buprénorphine ne protège plus quand un dépresseur s'y ajoute. Méthadone et opioïdes agonistes purs : la buprénorphine les déplace du récepteur et précipite un sevrage. Inhibiteurs du CYP3A4 (ritonavir, azolés, macrolides) : exposition augmentée ; inducteurs (rifampicine, carbamazépine, millepertuis) : efficacité diminuée et sevrage. Alcool.",
@@ -20370,7 +20418,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Spasfon", "Troubles fonctionnels intestinaux", "2 comprimés de 80 mg jusqu'à trois fois par jour, en cures courtes lors des poussées douloureuses", "Antispasmodique musculotrope sans effet atropinique : ni sécheresse buccale, ni rétention d'urine, ni contre-indication dans le glaucome, contrairement aux antispasmodiques atropiniques."),
     ("Spasfon", "Forme suppositoire, quand la voie orale est impossible", "1 suppositoire de 150 mg deux à trois fois par jour", "Pratique en cas de vomissements ou chez l'enfant, selon l'âge et la prescription."),
     ("Laroxyl", "Épisode dépressif caractérisé", "25 mg le soir, augmentation par paliers de 25 mg tous les 3 à 5 jours jusqu'à 75 à 150 mg par jour", "Délai d'action antidépresseur de 2 à 4 semaines ; prévenir le patient de la sédation initiale."),
-    ("Laroxyl", "Douleur neuropathique", "10 à 25 mg le soir, augmentation progressive par paliers de 10 à 25 mg jusqu'à 75 mg par jour selon la tolérance", "Les doses antalgiques sont très inférieures aux doses antidépressives : expliquer au patient qu'il ne s'agit pas d'une dépression."),
+    ("Laroxyl", "Douleur neuropathique", "10 à 25 mg le soir, augmentation progressive par paliers de 10 à 25 mg jusqu'à 75 mg par jour selon la tolérance", "Les doses antalgiques sont très inférieures aux doses antidépressives : expliquer au patient que l'indication n'est pas une dépression."),
     ("Laroxyl", "Prophylaxie de la migraine", "10 à 25 mg le soir, augmentation lente jusqu'à 25 à 50 mg par jour", "Hors AMM, usage établi et recommandé en France ; évaluer l'efficacité après 2 à 3 mois de traitement."),
     ("Laroxyl", "Douleur chronique diffuse, fibromyalgie", "10 à 25 mg le soir, augmentation progressive selon la réponse et la tolérance", "Hors AMM, usage établi ; bénéfice attendu autant sur le sommeil que sur la douleur."),
     ("Laroxyl", "Énurésie nocturne de l'enfant de plus de 6 ans", "10 à 25 mg le soir selon l'âge et le poids, après échec des mesures comportementales", "Traitement de deuxième intention, de durée limitée, avec réévaluation régulière et arrêt progressif."),
@@ -20402,7 +20450,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Deroxat", "Arrêt du traitement", "Décroissance par paliers de 10 mg à intervalles d'au moins une semaine", "Syndrome de sevrage fréquent et marqué avec cette molécule : sensations vertigineuses, décharges électriques, irritabilité."),
     ("Effexor", "Épisode dépressif caractérisé", "Forme LP : 75 mg par jour en une prise au cours d'un repas, augmentation possible par paliers de 75 mg jusqu'à 225 mg par jour", "Contrôler la pression artérielle, surtout au-delà de 150 mg par jour."),
     ("Effexor", "Trouble anxieux généralisé et anxiété sociale", "Forme LP : 75 mg par jour, augmentation possible jusqu'à 225 mg par jour selon la réponse", "La plupart des patients répondent à 75 mg par jour."),
-    ("Effexor", "Prévention des récidives dépressives", "Poursuite de la dose ayant permis la rémission, pendant au moins 6 mois", "Poursuivre après la guérison est la règle, pas un oubli du prescripteur : c'est ce qui divise le risque de rechute."),
+    ("Effexor", "Prévention des récidives dépressives", "Poursuite de la dose ayant permis la rémission, pendant au moins 6 mois", "Poursuivre après la guérison est la règle, pas un oubli du prescripteur : cela divise le risque de rechute."),
     ("Effexor", "Douleur neuropathique", "Forme LP, débuter à faible dose et augmenter progressivement selon la tolérance", "Hors AMM, usage établi en deuxième intention ; effet antalgique lié à la composante noradrénergique des doses plus élevées."),
     ("Effexor", "Bouffées de chaleur de la ménopause", "Doses faibles, inférieures aux doses antidépressives, en une prise quotidienne", "Hors AMM, usage établi ; option compatible avec le tamoxifène, contrairement à la paroxétine."),
     ("Effexor", "Arrêt du traitement", "Décroissance très progressive sur plusieurs semaines, par paliers", "Syndrome de sevrage marqué et demi-vie courte : l'oubli d'une seule prise peut déjà être symptomatique."),
@@ -20574,7 +20622,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Valium", "Arrêt du traitement", "Réduction très progressive, par paliers espacés d'au moins une à deux semaines", "Le diazépam sert aussi de molécule de relais pour sevrer une benzodiazépine à demi-vie courte, sur protocole médical."),
     ("Séresta", "Manifestations anxieuses sévères de l'adulte", "Habituellement 30 à 60 mg par jour en deux ou trois prises, avec les comprimés à 10 mg", "Durée limitée à 12 semaines, diminution progressive comprise."),
     ("Séresta", "Sevrage alcoolique", "Comprimés à 50 mg, schéma dégressif sur environ une semaine, dose adaptée à l'intensité des signes de sevrage", "Benzodiazépine de choix du sevrage chez l'insuffisant hépatique et le cirrhotique."),
-    ("Séresta", "Insuffisance hépatique", "Posologie usuelle prudente, sans adaptation complexe", "Élimination par glucuroconjugaison directe, sans métabolite actif : c'est ce qui distingue l'oxazépam du diazépam."),
+    ("Séresta", "Insuffisance hépatique", "Posologie usuelle prudente, sans adaptation complexe", "Élimination par glucuroconjugaison directe, sans métabolite actif : cela distingue l'oxazépam du diazépam."),
     ("Séresta", "Sujet âgé", "Débuter à 10 mg une à deux fois par jour", "Demi-vie courte et absence de métabolite actif : moins d'accumulation, mais risque de chute conservé."),
     ("Séresta", "Insomnie associée à l'anxiété", "Prise unique au coucher, à la dose minimale efficace", "Le délai d'action est plus lent que celui des hypnotiques : prendre environ une heure avant le coucher."),
     ("Séresta", "Arrêt du traitement", "Diminution par paliers d'environ un quart de la dose, espacés d'une à deux semaines", "La demi-vie courte rend le sevrage plus symptomatique : ralentir les paliers si nécessaire."),
@@ -20947,7 +20995,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Pulmicort", "Asthme du nourrisson et du jeune enfant, forme nébulisable", "Suspension pour inhalation par nébuliseur, généralement 0,5 à 1 mg deux fois par jour, adaptée par le pédiatre", "Nébulisation au masque bien appliqué, suivie du rinçage du visage et de la bouche."),
     ("Pulmicort", "Laryngite aiguë sous-glottique de l'enfant", "Dose unique de 2 mg en nébulisation", "Usage d'urgence bien établi, peu connu au comptoir : il constitue une alternative ou un complément à la corticothérapie orale dans le croup."),
     ("Pulmicort", "Bronchopneumopathie chronique obstructive avec exacerbations fréquentes", "Corticoïde inhalé en association à un bronchodilatateur de longue durée d'action, selon la prescription", "Jamais en monothérapie dans la BPCO, et sous réserve d'un phénotype exacerbateur, du fait du risque de pneumopathie."),
-    ("Pulmicort", "Prévention des effets indésirables locaux", "Rinçage soigneux de la bouche et crachat après chaque inhalation", "Prévient la candidose oropharyngée et la dysphonie. Rappeler qu'il ne s'agit pas d'un traitement de la crise : il n'a aucun effet immédiat sur la gêne respiratoire."),
+    ("Pulmicort", "Prévention des effets indésirables locaux", "Rinçage soigneux de la bouche et crachat après chaque inhalation", "Prévient la candidose oropharyngée et la dysphonie. Rappeler que ce n'est pas un traitement de la crise : il n'a aucun effet immédiat sur la gêne respiratoire."),
     ("Tanganil", "Traitement symptomatique des vertiges", "3 à 4 comprimés à 500 mg par jour, répartis en 2 à 3 prises, pendant quelques jours à quelques semaines", "La dose peut être portée plus haut en début de traitement dans les formes intenses, sur prescription."),
     ("Tanganil", "Crise vertigineuse aiguë", "Forme injectable en milieu médicalisé, relayée par la voie orale dès que possible", "Le traitement symptomatique ne dispense jamais de la recherche de la cause du vertige."),
     ("Tanganil", "Vertiges d'origine périphérique, maladie de Menière, névrite vestibulaire", "Posologie orale usuelle, en cure courte, en complément de la prise en charge spécifique", "Dans le vertige positionnel paroxystique bénin, ce sont les manœuvres libératoires qui traitent, pas le médicament."),
@@ -21088,7 +21136,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Vimpat", "Surveillance cardiaque", "ECG avant l'instauration chez les patients à risque de trouble de conduction", "Allongement de l'intervalle PR dose-dépendant : prudence en cas de bloc auriculoventriculaire, de cardiopathie ou d'association aux autres médicaments allongeant le PR."),
     ("Vimpat", "Effets indésirables les plus fréquents", "Répartition en deux prises régulières, avec ou sans aliments", "Vertiges, diplopie, céphalées, ataxie, dose-dépendants et souvent transitoires. Ne jamais arrêter brutalement : décroissance sur au moins 1 semaine."),
     ("Mianserine", "Épisode dépressif majeur", "30 mg par jour le soir en début de traitement, augmentés progressivement jusqu'à 60 à 90 mg par jour", "Dose quotidienne prise de préférence en une fois au coucher. Délai d'action de 2 à 4 semaines sur l'humeur."),
-    ("Mianserine", "Dépression avec anxiété et insomnie au premier plan", "Prise unique le soir, dose adaptée à la sédation obtenue", "Effet sédatif dès les premiers jours, avant l'effet antidépresseur : c'est ce qui fait choisir cette molécule dans ce profil."),
+    ("Mianserine", "Dépression avec anxiété et insomnie au premier plan", "Prise unique le soir, dose adaptée à la sédation obtenue", "Effet sédatif dès les premiers jours, avant l'effet antidépresseur : cela fait choisir cette molécule dans ce profil."),
     ("Mianserine", "Sujet âgé", "Débuter à 10 à 30 mg par jour et augmenter lentement", "Peu d'effets anticholinergiques et faible toxicité cardiaque comparée aux tricycliques, ce qui explique son usage à cet âge. Attention aux chutes liées à la somnolence et à l'hypotension."),
     ("Mianserine", "Surveillance hématologique", "Numération formule sanguine en urgence devant tout signe infectieux", "Risque d'agranulocytose, surtout au cours des 3 premiers mois : fièvre, angine, aphtes ou stomatite imposent l'arrêt et un contrôle immédiat."),
     ("Mianserine", "Interactions et précautions", "Pas d'association aux inhibiteurs de la monoamine oxydase", "Potentialisation de l'alcool et des dépresseurs du système nerveux central. Prise de poids par augmentation de l'appétit. Prudence au volant en début de traitement."),
@@ -21169,7 +21217,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Zomig", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Au-delà, le traitement de crise entretient lui-même les céphalées : c'est la céphalée par abus médicamenteux, et elle impose un traitement de fond."),
     ("Maxalt", "Crise de migraine avec ou sans aura chez l'adulte", "10 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 2 heures, sans dépasser 20 mg par jour", "Le lyophilisat oral fond sur la langue sans eau : utile en cas de nausées, mais il n'agit pas plus vite que le comprimé."),
     ("Maxalt", "Patient traité par propranolol", "5 mg par prise, sans dépasser 10 mg par jour, et au moins 2 heures entre la prise de propranolol et celle du rizatriptan", "Le propranolol double les concentrations de rizatriptan : c'est l'interaction à repérer à la délivrance, le patient migraineux étant souvent sous bêtabloquant de fond."),
-    ("Maxalt", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Tenir un agenda des crises : c'est ce qui permet de décider d'un traitement de fond."),
+    ("Maxalt", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Tenir un agenda des crises : cela permet de décider d'un traitement de fond."),
     ("Relpax", "Crise de migraine avec ou sans aura chez l'adulte", "40 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 2 heures, sans dépasser 80 mg par jour", "Si 40 mg ont été insuffisants sur une crise, le prescripteur peut passer à 80 mg d'emblée sur les crises suivantes."),
     ("Relpax", "Usage répété", "Au maximum 2 jours de prise par semaine en moyenne sur le mois", "Céphalée par abus médicamenteux au-delà : réévaluation et traitement de fond."),
     ("Naramig", "Crise de migraine avec ou sans aura chez l'adulte", "2,5 mg dès le début de la céphalée, renouvelable une fois après un intervalle d'au moins 4 heures, sans dépasser 5 mg par jour", "Le délai de renouvellement est de 4 heures ici, contre 2 pour les autres triptans : demi-vie longue, action plus lente mais récidives moins fréquentes."),
@@ -21259,7 +21307,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Acuitel", "Associations à surveiller", "Sans modification de la posologie", "Anti-inflammatoires non stéroïdiens, sels de régime enrichis en potassium et diurétiques épargneurs de potassium : le trio qui fait monter la kaliémie."),
     // --- Bêtabloquants : jamais d'arrêt brutal ---
     ("Kredex", "Insuffisance cardiaque chronique stable", "3,125 mg deux fois par jour pendant 2 semaines, puis doublement toutes les 2 semaines selon la tolérance, jusqu'à 25 mg deux fois par jour", "À prendre au cours des repas : cela ralentit l'absorption et limite nettement l'hypotension orthostatique des premiers paliers."),
-    ("Kredex", "Fatigue des premières semaines", "Sans modification de la posologie sans avis", "Une aggravation transitoire de la fatigue et de l'essoufflement est attendue à l'instauration : elle ne signifie pas que le traitement ne convient pas, et c'est ce qui fait abandonner si on ne l'annonce pas."),
+    ("Kredex", "Fatigue des premières semaines", "Sans modification de la posologie sans avis", "Une aggravation transitoire de la fatigue et de l'essoufflement est attendue à l'instauration : elle ne signifie pas que le traitement ne convient pas, mais elle fait abandonner si on ne l'annonce pas."),
     ("Temerit", "Hypertension artérielle de l'adulte", "5 mg par jour en une prise, à heure fixe", "Bêtabloquant cardiosélectif avec effet vasodilatateur : mieux toléré sur le plan des extrémités froides, mais la prudence chez l'asthmatique reste la règle."),
     ("Temerit", "Insuffisance cardiaque du sujet âgé", "1,25 mg par jour à l'instauration, puis augmentation par paliers de 1 à 2 semaines", "Titration lente indispensable après 70 ans ; contrôler pouls et tension à chaque palier."),
     ("Lopressor", "Hypertension artérielle et angor de l'adulte", "100 à 200 mg par jour, en une prise pour la forme à libération prolongée ou en deux prises pour la forme classique", "Ne pas croquer ni écraser la forme à libération prolongée : la dose entière passerait d'un coup."),
@@ -21375,7 +21423,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Séropram", "Épisode dépressif et troubles anxieux", "20 mg par jour en une prise, sans dépasser 20 mg après 65 ans", "Dose plafonnée pour l'allongement du QT : c'est l'ISRS où la dose maximale compte le plus."),
     ("Floxyfral", "Trouble obsessionnel compulsif et épisode dépressif", "50 à 100 mg le soir, augmentés progressivement", "Inhibiteur puissant du CYP1A2 : théophylline, tizanidine et caféine voient leurs concentrations grimper."),
     ("Tofranil", "Dépression, énurésie de l'enfant", "25 mg par jour, augmentés progressivement selon la tolérance", "Effets anticholinergiques marqués et surdosage dangereux : ne pas délivrer de grande quantité à un patient à risque suicidaire."),
-    ("Quitaxon", "Dépression avec anxiété ou insomnie", "25 à 100 mg par jour, principalement le soir", "Sédatif : la prise du soir est ce qui le rend supportable, et ce qui fait tolérer la titration."),
+    ("Quitaxon", "Dépression avec anxiété ou insomnie", "25 à 100 mg par jour, principalement le soir", "Sédatif : la prise du soir le rend supportable et fait tolérer la titration."),
     // --- Toux : cinq jours, pas davantage ---
     ("Toplexil", "Toux sèche de l'adulte", "1 cuillère-mesure 2 à 3 fois par jour, de préférence le soir", "Antihistaminique sédatif : somnolence, contre-indiqué avant 2 ans et chez l'insuffisant respiratoire."),
     ("Néo-Codion", "Toux sèche de l'adulte", "1 comprimé jusqu'à 4 fois par jour, sans dépasser 5 jours", "Interdit avant 12 ans. Constipation et somnolence ; une toux grasse ne se bloque pas."),
@@ -21390,7 +21438,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Skyrizi", "Psoriasis en plaques", "150 mg aux semaines 0 et 4, puis toutes les 12 semaines", "Une injection par trimestre : la date de la suivante se note au moment de faire celle du jour."),
     ("Tremfya", "Psoriasis en plaques", "100 mg aux semaines 0 et 4, puis toutes les 8 semaines", "Réfrigérateur, jamais le congélateur ; un stylo congelé se jette."),
     ("Kesimpta", "Sclérose en plaques rémittente", "20 mg par voie sous-cutanée aux semaines 0, 1 et 2, puis une injection par mois à partir de la semaine 4", "Pas d'injection à la semaine 3 : c'est le schéma, pas un oubli."),
-    ("Aimovig", "Traitement de fond de la migraine", "70 mg par voie sous-cutanée une fois par mois, portés à 140 mg selon la réponse", "L'efficacité s'évalue sur trois mois, en comptant les jours de migraine dans un agenda : sans agenda, l'évaluation ne veut rien dire."),
+    ("Aimovig", "Traitement de fond de la migraine", "70 mg par voie sous-cutanée une fois par mois, portés à 140 mg selon la réponse", "L'efficacité s'évalue sur trois mois, en comptant les jours de migraine dans un agenda : sans agenda, l'évaluation n'a pas de base."),
     ("Emgality", "Traitement de fond de la migraine", "Dose de charge de 240 mg, puis 120 mg une fois par mois", "Constipation fréquente : l'anticiper évite qu'elle fasse arrêter le traitement."),
     ("Ajovy", "Traitement de fond de la migraine", "225 mg une fois par mois, ou 675 mg tous les trois mois", "Deux rythmes possibles pour la même molécule : vérifier lequel l'ordonnance retient avant de délivrer."),
     ("Praluent", "Hypercholestérolémie non contrôlée par une statine", "75 mg toutes les deux semaines, portés à 150 mg si nécessaire, ou 300 mg toutes les quatre semaines", "Ne remplace pas la statine : elle se poursuit, sauf intolérance documentée."),
@@ -21401,7 +21449,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Fragmine", "Traitement curatif d'une maladie thromboembolique veineuse", "100 UI par kilo deux fois par jour, ou 200 UI par kilo en une injection", "Ne jamais purger la seringue préremplie : la bulle fait partie de la dose."),
     // --- Antiparasitaires : la dose unique, et la seconde quinze jours après ---
     ("Vermox", "Oxyurose", "100 mg en une prise unique, à renouveler 15 à 21 jours plus tard", "Traiter toute la famille le même jour, laver le linge de lit et couper les ongles courts : sans cela, la réinfestation est la règle."),
-    ("Fluvermal", "Oxyurose", "100 mg en une prise unique, renouvelée après 15 à 21 jours", "La seconde prise est ce qui casse le cycle : elle se note tout de suite dans le téléphone."),
+    ("Fluvermal", "Oxyurose", "100 mg en une prise unique, renouvelée après 15 à 21 jours", "La seconde prise casse le cycle : elle se note tout de suite dans le téléphone."),
     ("Zentel", "Ascaridiose, oxyurose, ankylostomose", "400 mg en une prise unique chez l'adulte et l'enfant de plus de deux ans", "En cas d'oxyurose, renouveler la prise après 15 jours et traiter l'entourage."),
     ("Combantrin", "Oxyurose et ascaridiose", "10 à 12 mg par kilo en une prise unique", "Convient à partir de six mois, ce qui en fait l'antiparasitaire du tout-petit."),
     ("Stromectol", "Gale", "200 µg par kilo en une prise unique, à jeun, renouvelée 8 à 15 jours plus tard", "À prendre à distance des repas, deux heures avant ou après. Traiter l'entourage le même jour et décontaminer le linge : la seconde prise couvre les œufs éclos depuis."),
@@ -21418,7 +21466,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Comtan", "Maladie de Parkinson, fluctuations motrices", "200 mg avec chaque prise de lévodopa, sans dépasser dix prises par jour", "Il ne se prend jamais seul : une prise d'entacapone accompagne une prise de lévodopa. Urines orangées sans gravité."),
     ("Ongentys", "Maladie de Parkinson, fluctuations motrices", "50 mg une fois par jour au coucher", "À prendre une heure avant ou une heure après la lévodopa, jamais en même temps."),
     ("Nocertone", "Traitement de fond de la migraine", "1 à 3 comprimés par jour, principalement le soir", "Somnolence et prise de poids fréquentes ; l'efficacité se juge après deux à trois mois."),
-    ("Sanmigran", "Traitement de fond de la migraine", "1 comprimé le soir, augmenté progressivement selon la tolérance", "Somnolence et appétit augmenté : la titration lente est ce qui le rend supportable."),
+    ("Sanmigran", "Traitement de fond de la migraine", "1 comprimé le soir, augmenté progressivement selon la tolérance", "Somnolence et appétit augmenté : la titration lente le rend supportable."),
     ("Nordaz", "Anxiété", "7,5 mg le soir, adaptés à la réponse", "Demi-vie longue : accumulation chez la personne âgée, et durée limitée à douze semaines, arrêt compris."),
     ("Veratran", "Anxiété", "5 à 10 mg par jour en une à deux prises", "Demi-vie courte : moins d'accumulation, mais un sevrage plus marqué si l'arrêt est brutal."),
     // --- Douleur ---
@@ -21521,7 +21569,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Ritaline", "Trouble déficit de l'attention avec hyperactivité", "Titration progressive, en une à deux prises le matin et à midi", "Prescription initiale annuelle hospitalière, ordonnance sécurisée, délivrance limitée à 28 jours et chevauchement interdit. Jamais le soir. Taille, poids et tension notés à chaque consultation."),
     ("Strattera", "TDAH, alternative non psychostimulante", "0,5 mg par kilo et par jour pendant une semaine, puis 1,2 mg par kilo", "L'effet met quatre à six semaines : arrêter à deux semaines, c'est conclure trop tôt. Signaler toute idée noire apparue en début de traitement."),
     ("Ixel", "Épisode dépressif caractérisé", "50 mg deux fois par jour, au cours des repas", "Dysurie chez l'homme, surtout en cas d'adénome prostatique. Arrêt toujours progressif."),
-    ("Stablon", "Épisode dépressif caractérisé", "12,5 mg trois fois par jour, avant les repas", "Ordonnance sécurisée et délivrance limitée à 28 jours : le mésusage à forte dose est ce qui a fait changer ses règles de prescription."),
+    ("Stablon", "Épisode dépressif caractérisé", "12,5 mg trois fois par jour, avant les repas", "Ordonnance sécurisée et délivrance limitée à 28 jours : le mésusage à forte dose a fait changer ses règles de prescription."),
     ("Moclamine", "Épisode dépressif caractérisé", "300 à 600 mg par jour, en deux prises à la fin des repas", "IMAO-A réversible : pas de régime sans tyramine strict, mais aucune association aux sérotoninergiques, aux triptans ni au tramadol sans avis."),
     ("Dépamide", "Trouble bipolaire, traitement de l'humeur", "Selon la prescription, en deux à trois prises au cours des repas", "Dérivé du valproate : chez la femme en âge de procréer, contraception efficace, accord de soins annuel et pictogramme sur la boîte. Aucune délivrance sans ces conditions."),
     // --- Addictologie ---
@@ -21560,7 +21608,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Diprosone", "Dermatoses inflammatoires corticosensibles rebelles", "Une application par jour sur les lésions, en cure courte, puis espacement avant l'arrêt", "Dermocorticoïde d'activité forte : jamais sur le visage, les plis ou le siège du nourrisson sans avis, et jamais sous pansement occlusif de sa propre initiative."),
     ("Betneval", "Dermatoses inflammatoires corticosensibles", "Une application par jour sur les lésions, jusqu'à amélioration puis espacement", "La quantité se compte en unités phalangettes ; l'arrêt se fait en espaçant, un arrêt net fait rebondir la poussée."),
     ("Efficort", "Eczéma et dermatite atopique de l'adulte et de l'enfant", "Une application par jour, en cure courte", "Corticoïde d'activité forte à faible passage systémique : cela ne dispense ni de limiter la surface, ni d'espacer avant d'arrêter."),
-    ("Flixovate", "Dermatite atopique et eczéma", "Une application par jour ; en entretien, deux applications par semaine sur les zones habituellement atteintes", "Le schéma d'entretien deux jours par semaine sur peau redevenue saine est ce qui espace les poussées : il se dit, sinon il n'est pas fait."),
+    ("Flixovate", "Dermatite atopique et eczéma", "Une application par jour ; en entretien, deux applications par semaine sur les zones habituellement atteintes", "Le schéma d'entretien deux jours par semaine sur peau redevenue saine espace les poussées : il se dit, sinon il n'est pas fait."),
     ("Hyzaar", "Hypertension artérielle non contrôlée par une monothérapie", "Un comprimé par jour, le matin", "Association fixe : le diurétique impose de contrôler kaliémie, natrémie et créatinine dans les deux semaines qui suivent l'instauration, puis régulièrement."),
     ("CoAprovel", "Hypertension artérielle non contrôlée par une monothérapie", "Un comprimé par jour", "Ionogramme et créatinine à l'instauration puis au moins une fois par an ; par forte chaleur ou en cas de gastro-entérite, le traitement se réévalue plutôt que de se poursuivre à l'identique."),
     ("Modurétic", "Hypertension artérielle et œdèmes", "Un comprimé par jour le matin", "Deux diurétiques dans un comprimé, dont un épargneur de potassium : la kaliémie peut monter comme descendre, et les sels de régime, les IEC et les sartans s'y ajoutent."),
@@ -21571,7 +21619,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Eucreas", "Diabète de type 2, en association fixe", "Un comprimé deux fois par jour, au cours des repas", "Transaminases avant l'instauration puis dans la première année pour la vildagliptine ; mêmes règles d'arrêt que la metformine seule."),
     ("Adancor", "Angor stable, en complément", "10 mg deux fois par jour, portés à 20 mg deux fois par jour selon la tolérance", "Ulcérations buccales, anales ou cutanées parfois tardives : elles ne cicatrisent pas tant que le traitement continue et imposent d'en reparler au prescripteur."),
     ("Ikorel", "Angor stable, en complément des autres antiangineux", "10 mg deux fois par jour, augmentés progressivement", "Céphalées fréquentes les premiers jours, qui s'estompent : commencer à demi-dose les aide à passer. Association aux dérivés nitrés et aux inhibiteurs de PDE5 contre-indiquée."),
-    ("Un-Alfa", "Hypocalcémie de l'insuffisance rénale et hypoparathyroïdie", "0,25 à 1 µg par jour, ajustés sur la calcémie", "Dérivé actif : il n'a pas besoin du rein pour agir, et c'est ce qui le rend efficace et rapidement hypercalcémiant. Calcémie contrôlée après chaque changement de dose."),
+    ("Un-Alfa", "Hypocalcémie de l'insuffisance rénale et hypoparathyroïdie", "0,25 à 1 µg par jour, ajustés sur la calcémie", "Dérivé actif : il n'a pas besoin du rein pour agir : d'où son efficacité, et une hypercalcémie rapide. Calcémie contrôlée après chaque changement de dose."),
     ("Rocaltrol", "Hypocalcémie de l'insuffisance rénale chronique", "0,25 µg par jour ou un jour sur deux, ajustés sur la calcémie", "Soif, nausées, constipation et confusion signent l'hypercalcémie ; à distance de deux heures des chélateurs du phosphore."),
     ("Kayexalate", "Hyperkaliémie", "Une à plusieurs mesures par jour selon la kaliémie, délayées dans de l'eau", "Jamais dans un jus de fruit — c'est là que se trouve le potassium. À distance de deux heures des autres médicaments, et constipation à surveiller."),
     ("Resikali", "Hyperkaliémie chez le patient à qui le sodium est déconseillé", "Selon la kaliémie, délayé dans de l'eau", "Apporte du calcium au lieu du sodium : calcémie à surveiller en traitement prolongé, et mêmes précautions de prise que les autres résines."),
@@ -21582,7 +21630,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Mercilon", "Contraception estroprogestative", "Un comprimé par jour à heure fixe, selon le schéma de la plaquette", "Jambe gonflée et douloureuse, essoufflement brutal, douleur thoracique, maux de tête inhabituels ou trouble de la vision : arrêt et avis en urgence."),
     ("Jasmine", "Contraception estroprogestative", "Un comprimé par jour à heure fixe, 21 jours puis 7 jours d'arrêt", "La drospirénone est apparentée à la spironolactone : kaliémie à surveiller en cas d'insuffisance rénale ou d'association aux IEC, aux sartans et aux AINS au long cours."),
     // --- Le fond de rayon : ce qu'on délivre tous les jours ---
-    ("Flixotide", "Asthme, traitement de fond", "Une à deux inhalations matin et soir, selon le palier", "Se rincer la bouche après chaque prise, sans avaler : c'est ce qui évite la candidose et la voix enrouée. Un corticoïde inhalé ne se prend pas à la demande, il se prend même quand tout va bien."),
+    ("Flixotide", "Asthme, traitement de fond", "Une à deux inhalations matin et soir, selon le palier", "Se rincer la bouche après chaque prise, sans avaler : cela évite la candidose et la voix enrouée. Un corticoïde inhalé ne se prend pas à la demande, il se prend même quand tout va bien."),
     ("Movicol", "Constipation chronique", "Un à trois sachets par jour, dissous dans un grand verre d'eau", "L'effet demande un à deux jours : ce n'est pas un laxatif de secours. Le volume d'eau fait partie du traitement."),
     ("Microlax", "Constipation occasionnelle, traitement de secours", "Un unidose par voie rectale, effet en cinq à vingt minutes", "Traitement ponctuel : au-delà de quelques jours d'affilée, la cause se cherche plutôt que le recours se répète."),
     ("Eductyl", "Constipation terminale", "Un suppositoire, effet en cinq à trente minutes", "Le dégagement gazeux est le mécanisme, pas un défaut. Usage ponctuel."),
@@ -21722,7 +21770,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Foster", "Asthme insuffisamment contrôlé par un corticoïde inhalé seul", "Une à deux inhalations matin et soir, ou schéma d'entretien et de secours selon la prescription", "Se rincer la bouche et cracher après chaque prise. Le formotérol agit vite, ce qui permet le schéma unique entretien-secours — mais seulement s'il a été prescrit ainsi."),
     ("Hydrocortisone", "Insuffisance surrénale", "15 à 25 mg par jour en deux à trois prises, la plus forte le matin au réveil", "C'est un traitement vital : il ne se saute jamais. La dose se double ou se triple en cas de fièvre, de vomissement ou de stress, et une carte d'insuffisant surrénalien accompagne le patient partout."),
     ("Entocort", "Maladie de Crohn iléo-cæcale, poussée légère à modérée", "9 mg le matin pendant 8 semaines, puis décroissance sur 2 à 4 semaines", "Le budésonide agit surtout localement et expose moins aux effets généraux qu'un corticoïde classique, mais il freine quand même la surrénale : l'arrêt reste progressif. Pas de jus de pamplemousse."),
-    ("Cortiment", "Rectocolite hémorragique, poussée légère à modérée", "9 mg une fois par jour le matin, pendant 8 semaines au maximum", "Les comprimés s'avalent entiers : la libération colique est ce qui fait le médicament, les croquer l'annule. Pas de jus de pamplemousse."),
+    ("Cortiment", "Rectocolite hémorragique, poussée légère à modérée", "9 mg une fois par jour le matin, pendant 8 semaines au maximum", "Les comprimés s'avalent entiers : la libération colique fait le médicament, les croquer l'annule. Pas de jus de pamplemousse."),
     ("Rocéphine", "Infections bactériennes documentées ou probabilistes", "1 à 2 g par jour en une injection intraveineuse ou intramusculaire, jusqu'à 4 g dans les méningites", "La forme IM se reconstitue avec de la lidocaïne, qui ne doit jamais être injectée par voie intraveineuse. Incompatible avec toute solution calcique sur la même ligne."),
     ("Diprosalic", "Dermatoses très squameuses et hyperkératosiques", "Une application par jour sur la lésion, quelques semaines au plus", "L'acide salicylique décape et le corticoïde traite : sur une grande surface, sur le visage ou chez l'enfant, l'un et l'autre passent. Ne pas occlure, et diminuer progressivement plutôt qu'arrêter d'un coup."),
     ("Rhinofluimucil", "Rhinite et rhinosinusite avec sécrétions épaisses", "Une pulvérisation dans chaque narine 3 à 4 fois par jour, 5 jours au maximum", "Le vasoconstricteur qu'il contient limite la durée à cinq jours : au-delà c'est la rhinite médicamenteuse, un nez bouché entretenu par son traitement. Contre-indiqué avant 15 ans et en cas d'hypertension mal contrôlée."),
@@ -21833,9 +21881,9 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Aturgyl", "Congestion nasale de la rhinite aiguë", "Une pulvérisation dans chaque narine 2 à 3 fois par jour, 5 jours au maximum", "Cinq jours et pas un de plus : au-delà, c'est la rhinite médicamenteuse. Un patient qui rachète le même spray tous les mois y est déjà, et le sevrage se fait narine par narine."),
     ("Ponstyl", "Dysménorrhée", "250 mg trois fois par jour au cours des repas, débuté dès le premier jour des règles ou la veille", "Commencé tôt il agit mieux qu'attendu : pris quand la douleur est installée, il en fait moins. La diarrhée est l'effet propre aux fénamates et fait souvent changer d'AINS."),
     ("Ponstyl", "Douleur dentaire, ORL ou post-traumatique de courte durée", "250 mg trois fois par jour au cours des repas, quelques jours au plus", "Un seul AINS à la fois, aspirine comprise. Sous anticoagulant, sous IEC ou sartan avec un diurétique, ce n'est pas la bonne ligne."),
-    ("Strefen", "Mal de gorge de l'adulte sans fièvre", "Une pastille toutes les 3 à 6 heures, 5 pastilles par jour et 3 jours au maximum", "C'est un AINS, pas un bonbon : la pastille est ce qui fait oublier de compter, et un ibuprofène à côté fait une double dose. Fièvre, ganglions ou difficulté à avaler la salive : consultation le jour même."),
+    ("Strefen", "Mal de gorge de l'adulte sans fièvre", "Une pastille toutes les 3 à 6 heures, 5 pastilles par jour et 3 jours au maximum", "C'est un AINS, pas un bonbon : la pastille fait oublier de compter, et un ibuprofène à côté fait une double dose. Fièvre, ganglions ou difficulté à avaler la salive : consultation le jour même."),
     ("Bedelix", "Douleurs et ballonnements du côlon irritable", "Un à trois sachets par jour délayés dans un demi-verre d'eau, en dehors des repas", "Deux heures d'écart avec tout autre médicament, contraception comprise : l'argile adsorbe aussi les traitements. Déconseillé chez l'enfant et la femme enceinte."),
-    ("Flixonase", "Rhinite allergique de l'adulte", "Deux pulvérisations dans chaque narine une fois par jour le matin, puis une seule dès le contrôle des symptômes", "Embout orienté vers l'extérieur de la narine et pas vers la cloison, sans renifler après : c'est ce qui évite les saignements. L'effet met plusieurs jours — ne pas arrêter au bout de deux."),
+    ("Flixonase", "Rhinite allergique de l'adulte", "Deux pulvérisations dans chaque narine une fois par jour le matin, puis une seule dès le contrôle des symptômes", "Embout orienté vers l'extérieur de la narine et pas vers la cloison, sans renifler après : cela évite les saignements. L'effet met plusieurs jours — ne pas arrêter au bout de deux."),
     ("Flixonase", "Rhinite allergique de l'enfant à partir de 4 ans", "Une pulvérisation dans chaque narine une fois par jour", "Surveiller la taille en cas de traitement prolongé. La technique se montre à l'enfant et au parent, et se revérifie au renouvellement."),
     ("Drill", "Mal de gorge et irritation buccale", "Une pastille à sucer toutes les 2 heures, 8 pastilles par jour et 5 jours au maximum", "Ne pas manger ni boire tant que la gorge est anesthésiée : la fausse route est le risque. Interdit avant 6 ans pour cette raison."),
     ("Tantum", "Inflammation douloureuse de la bouche et de la gorge", "15 mL en bain de bouche ou gargarisme toutes les 1 h 30 à 3 heures, ou une à deux pulvérisations, 7 jours au maximum", "À garder trente secondes puis recracher : la solution ne s'avale pas. Une lésion buccale qui ne guérit pas en une à deux semaines relève d'un examen, pas d'un troisième flacon."),
@@ -21869,17 +21917,17 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Vydura", "Traitement préventif de la migraine épisodique", "Un lyophilisat de 75 mg un jour sur deux", "Dix-huit prises par mois au maximum, toutes indications confondues. Réévaluer la prévention après trois mois."),
     ("Vydura", "Prévention de la céphalée par abus médicamenteux", "Tenir un agenda des crises et des prises", "Au-delà de dix jours de traitement de crise par mois, le médicament entretient le mal de tête qu'il soulage."),
     ("Nilemdo", "Hypercholestérolémie en complément d'une statine", "180 mg une fois par jour, avec ou sans aliments", "Pas de titration. Avec la simvastatine, ne pas dépasser 40 mg par jour ; avec la pravastatine non plus."),
-    ("Nilemdo", "Intolérance avérée aux statines", "180 mg une fois par jour, seul ou avec l'ézétimibe", "La molécule n'est activée que dans le foie et pas dans le muscle : c'est ce qui fonde sa place ici."),
+    ("Nilemdo", "Intolérance avérée aux statines", "180 mg une fois par jour, seul ou avec l'ézétimibe", "La molécule n'est activée que dans le foie et pas dans le muscle : cela fonde sa place ici."),
     ("Nilemdo", "Surveillance propre à la classe", "Uricémie avant le traitement, puis à la moindre douleur articulaire", "L'hyperuricémie et la crise de goutte sont l'effet caractéristique, souvent dans les premières semaines."),
-    ("Fémara", "Cancer du sein hormonodépendant de la femme ménopausée", "2,5 mg une fois par jour, à heure fixe, avec ou sans aliments", "Une seule dose pour tout le monde : il n'y a rien à titrer, et c'est ce qui rend l'observance sur plusieurs années la seule variable qui compte."),
+    ("Fémara", "Cancer du sein hormonodépendant de la femme ménopausée", "2,5 mg une fois par jour, à heure fixe, avec ou sans aliments", "Une seule dose pour tout le monde : il n'y a rien à titrer, ce qui rend l'observance sur plusieurs années la seule variable qui compte."),
     ("Fémara", "Durée du traitement adjuvant", "Plusieurs années, la durée étant fixée par l'oncologue", "Les arthralgies et la raideur matinale sont la première cause d'arrêt prématuré : les annoncer et les traiter vaut mieux que de les découvrir sur un patient qui a déjà abandonné."),
     ("Fémara", "Mesures associées", "Calcium, vitamine D et ostéodensitométrie de référence", "La suppression estrogénique est quasi totale et la perte osseuse rapide : l'os se surveille dès le début et pas au premier tassement."),
     ("Arimidex", "Cancer du sein hormonodépendant de la femme ménopausée", "1 mg une fois par jour, à heure fixe, avec ou sans aliments", "Dose unique, aucune titration. Réservé à la femme ménopausée : sans suppression ovarienne, il est inefficace chez une femme qui ne l'est pas."),
     ("Arimidex", "Suivi osseux et articulaire", "Ostéodensitométrie de référence, calcium et vitamine D, réévaluation régulière", "Près d'une patiente sur deux souffre d'arthralgies : c'est la première cause d'abandon d'un traitement qui dure des années."),
-    ("Aromasine", "Cancer du sein hormonodépendant de la femme ménopausée", "25 mg une fois par jour, après un repas", "Après le repas, la biodisponibilité en dépend — c'est ce qui le distingue des deux autres anti-aromatases, qui se prennent indifféremment."),
+    ("Aromasine", "Cancer du sein hormonodépendant de la femme ménopausée", "25 mg une fois par jour, après un repas", "Après le repas, la biodisponibilité en dépend, ce qui le distingue des deux autres anti-aromatases, qui se prennent indifféremment."),
     ("Aromasine", "Relais après intolérance à un anti-aromatase non stéroïdien", "25 mg par jour, en relais du létrozole ou de l'anastrozole", "Sa structure stéroïdienne lui donne un profil un peu différent : un échec de tolérance sur l'un ne condamne pas forcément la classe entière."),
     ("Tecfidera", "Sclérose en plaques récurrente-rémittente", "120 mg deux fois par jour pendant 7 jours, puis 240 mg deux fois par jour", "La semaine à demi-dose sert la tolérance digestive, pas l'efficacité. Gélules avalées entières, au cours d'un repas, ce qui limite nettement bouffées de chaleur et troubles digestifs."),
-    ("Tecfidera", "Surveillance obligatoire", "Numération avec compte des lymphocytes avant, puis tous les 3 mois", "Une lymphopénie profonde et prolongée est ce qui expose à la LEMP : le chiffre décide de la poursuite, et c'est un contrôle qui ne se saute pas."),
+    ("Tecfidera", "Surveillance obligatoire", "Numération avec compte des lymphocytes avant, puis tous les 3 mois", "Une lymphopénie profonde et prolongée expose à la LEMP : le chiffre décide de la poursuite, et c'est un contrôle qui ne se saute pas."),
     ("Aubagio", "Sclérose en plaques récurrente-rémittente", "14 mg une fois par jour, avec ou sans aliments", "Transaminases avant, puis tous les mois pendant six mois. Tératogène et persistant jusqu'à deux ans après l'arrêt : la contraception fait partie du traitement, chez l'homme comme chez la femme."),
     ("Copaxone", "Sclérose en plaques récurrente-rémittente", "40 mg trois fois par semaine à au moins 48 heures d'intervalle, ou 20 mg par jour selon la présentation", "Les deux schémas ne sont pas interchangeables. Sortir la seringue du réfrigérateur trente minutes avant et alterner rigoureusement les sites : la lipoatrophie, elle, est définitive."),
     ("Copaxone", "Réaction immédiate post-injection", "Aucune conduite médicamenteuse : la réaction cède seule en quelques minutes", "Oppression thoracique, bouffée de chaleur, palpitations et angoisse dans les minutes suivant une injection, chez environ un patient sur six : bénin, possible à tout moment même après des années, et terrifiant si personne ne l'a annoncé."),
@@ -21910,7 +21958,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Aclasta", "Avant la première perfusion", "Bilan dentaire préalable et hydratation le jour même", "Le syndrome pseudo-grippal des trois jours suivant la première perfusion est fréquent, banal, et ne se reproduit presque jamais aux perfusions suivantes : le paracétamol suffit. Tout soin dentaire invasif se fait avant, pas après."),
     ("Zometa", "Hypercalcémie maligne et prévention des complications osseuses des cancers", "4 mg en perfusion intraveineuse d'au moins quinze minutes, toutes les trois à quatre semaines", "La dose et l'espacement s'adaptent à la clairance de la créatinine, qui se contrôle avant chaque perfusion : c'est la surveillance qui commande le traitement."),
     ("Zometa", "Prévention de l'ostéonécrose de la mâchoire", "Bilan et remise en état dentaires avant la première perfusion", "Le risque d'ostéonécrose est nettement plus élevé qu'aux doses de l'ostéoporose. Tout geste dentaire invasif se programme avant l'instauration, et une douleur dentaire ou une gencive qui ne cicatrise pas se signale sans attendre."),
-    ("Rhophylac", "Prévention de l'allo-immunisation Rhésus au cours de la grossesse", "Une injection intramusculaire ou intraveineuse de 200 microgrammes vers la 28e semaine d'aménorrhée chez la femme Rhésus négatif", "Ne concerne que la femme Rhésus négatif dont le fœtus est ou peut être Rhésus positif. L'injection ne traite rien chez la mère : elle protège la grossesse suivante, et c'est ce qui la fait oublier."),
+    ("Rhophylac", "Prévention de l'allo-immunisation Rhésus au cours de la grossesse", "Une injection intramusculaire ou intraveineuse de 200 microgrammes vers la 28e semaine d'aménorrhée chez la femme Rhésus négatif", "Ne concerne que la femme Rhésus négatif dont le fœtus est ou peut être Rhésus positif. L'injection ne traite rien chez la mère : elle protège la grossesse suivante, ce qui la fait oublier."),
     ("Rhophylac", "Prévention après l'accouchement", "Une injection dans les 72 heures suivant la naissance si le nouveau-né est Rhésus positif", "Les 72 heures sont un délai à ne pas dépasser. La même conduite vaut après une fausse couche, une interruption de grossesse, une amniocentèse ou un traumatisme abdominal."),
     ("Mifégyne", "Interruption volontaire de grossesse par voie médicamenteuse", "600 mg en une prise unique par voie orale, suivis d'une prostaglandine 36 à 48 heures plus tard", "Le protocole comporte deux médicaments et deux temps : la mifépristone seule n'interrompt pas la grossesse dans la majorité des cas. La prise de la prostaglandine au bon délai fait tout le résultat, et la date se note avec la patiente."),
     ("Mifégyne", "À vérifier avant la prise", "Groupe sanguin et Rhésus connus avant la prise", "Une femme Rhésus négatif reçoit une injection d'immunoglobuline anti-D. Un saignement abondant — plus de deux garnitures par heure pendant deux heures — ou une fièvre au-delà de vingt-quatre heures impose un appel immédiat. L'absence de saignement dans les jours qui suivent est également une raison de reconsulter."),
@@ -21921,7 +21969,7 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Gonal-f", "Stimulation ovarienne en assistance médicale à la procréation", "Dose quotidienne sous-cutanée fixée par le centre, en règle entre 75 et 225 unités, ajustée sur le suivi échographique et hormonal", "La dose change en cours de cycle sur décision du centre : le stylo se règle à chaque injection et la dose de la veille ne se reconduit pas d'office. Injection à heure fixe, sites alternés, stylo entamé conservé selon la notice."),
     ("Gonal-f", "Stimulation chez l'homme en cas d'hypogonadisme hypogonadotrope", "Injections sous-cutanées trois fois par semaine, en association à la gonadotrophine chorionique", "Le traitement se compte en mois avant tout résultat sur le spermogramme : l'annoncer évite l'abandon à six semaines."),
     ("Xyrem", "Narcolepsie avec cataplexie de l'adulte", "4,5 g par nuit répartis en deux prises, augmentés par paliers de 1,5 g par semaine jusqu'à 9 g au maximum", "Les deux prises se font au lit : la première au coucher, la seconde deux heures et demie à quatre heures plus tard, réveil programmé. Le produit endort en quelques minutes et une chute est vite arrivée."),
-    ("Xyrem", "Précautions de délivrance et de conservation", "Solution buvable à diluer dans l'eau, préparée au moment du coucher", "Stupéfiant : ordonnance sécurisée, délivrance pour vingt-huit jours au maximum, inscription au registre. Aucun alcool ni dépresseur du système nerveux central le soir de la prise — l'association est ce qui provoque les dépressions respiratoires."),
+    ("Xyrem", "Précautions de délivrance et de conservation", "Solution buvable à diluer dans l'eau, préparée au moment du coucher", "Stupéfiant : ordonnance sécurisée, délivrance pour vingt-huit jours au maximum, inscription au registre. Aucun alcool ni dépresseur du système nerveux central le soir de la prise — l'association provoque les dépressions respiratoires."),
     // GENERATED-POSOLOGIES-END
     ("Sevredol", "Accès douloureux paroxystique chez le patient déjà sous morphine", "Un dixième à un sixième de la dose quotidienne totale de morphine, renouvelable au bout d'une heure", "Comprimé sécable : c'est la seule forme de morphine qui donne un demi-palier de titration. Ne couper que si l'ordonnance le dit — un comprimé de 20 mg pris entier là où il en fallait la moitié fait le double."),
     ("Sevredol", "Titration d'un adulte naïf d'opioïde fort", "10 mg toutes les quatre heures, 5 mg — un demi-comprimé — chez le sujet âgé, fragile ou insuffisant rénal", "On totalise les prises de vingt-quatre à quarante-huit heures avant de convertir en forme à libération prolongée. Laxatif prescrit d'emblée."),
@@ -22236,7 +22284,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
                 &[q(
                     "S'agit-il d'une migraine déjà diagnostiquée ?",
                     &[act(
-                        "Traiter tôt et à dose pleine : AINS ou paracétamol dès les premiers signes, triptan si prescrit et si l'AINS ne suffit pas. Compter les crises — au-delà de quatre par mois, un traitement de fond se discute, et le calendrier des crises est ce qui l'obtiendra.",
+                        "Traiter tôt et à dose pleine : AINS ou paracétamol dès les premiers signes, triptan si prescrit et si l'AINS ne suffit pas. Compter les crises — au-delà de quatre par mois, un traitement de fond se discute, et le calendrier des crises l'obtiendra.",
                     )],
                     &[act(
                         "Paracétamol ou ibuprofène à dose adaptée, cinq jours au plus. Consulter si la céphalée est inhabituelle pour ce patient, si elle réveille la nuit, si elle s'aggrave à l'effort, à la toux ou en position couchée, ou si elle débute après 50 ans sans antécédent.",
@@ -22286,7 +22334,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
                 &[q(
                     "Y a-t-il, dans les semaines qui suivent, de la fièvre, des douleurs articulaires, une paralysie faciale ou une fatigue inhabituelle ?",
                     &[act(
-                        "Consultation en signalant la piqûre et sa date : ces signes tardifs justifient un avis même sans érythème migrant, et l'anamnèse est ce qui met le médecin sur la piste.",
+                        "Consultation en signalant la piqûre et sa date : ces signes tardifs justifient un avis même sans érythème migrant, et l'anamnèse met le médecin sur la piste.",
                     )],
                     &[act(
                         "Surveiller le point de piqûre pendant un mois. Ni antibiotique préventif ni sérologie sur une simple piqûre. Pour la prochaine sortie : vêtements couvrants, répulsif, inspection au retour — une tique retirée dans les 24 heures transmet rarement.",
@@ -22812,7 +22860,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
                 &[q(
                     "Les pleurs surviennent-ils en fin de journée, plus de trois heures par jour, chez un enfant de moins de quatre mois par ailleurs bien portant ?",
                     &[act(
-                        "Coliques du nourrisson : elles cèdent vers trois à quatre mois. Portage, chaleur, mouvement, et surtout soutien des parents — l'épuisement est le vrai risque, et le syndrome du bébé secoué naît là. Le dire explicitement.",
+                        "Coliques du nourrisson : elles cèdent vers trois à quatre mois. Portage, chaleur, mouvement, et surtout soutien des parents — l'épuisement est le risque principal, et le syndrome du bébé secoué naît là. Le dire explicitement.",
                     )],
                     &[act(
                         "Tableau non caractérisé : consultation. Un nourrisson qui pleure sans raison évidente se regarde par un médecin, et l'énumération des causes possibles n'est pas un travail de comptoir.",
@@ -22888,7 +22936,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
                     "Ne pas laisser repartir sans avis : appeler le prescripteur ou orienter aux urgences selon le chiffre. Un résultat critique arrive souvent à l'officine avant d'être vu par le médecin, et c'est précisément là qu'il se rattrape.",
                 )],
                 &[act(
-                    "Noter les valeurs sur la fiche : c'est ce qui permet à l'application de les lire contre les traitements, et de voir la fois suivante ce qui n'a pas été redemandé depuis trop longtemps. Expliquer ce que dit le chiffre sans se substituer au prescripteur.",
+                    "Noter les valeurs sur la fiche : cela permet à l'application de les lire contre les traitements, et de voir la fois suivante ce qui n'a pas été redemandé depuis trop longtemps. Expliquer ce que dit le chiffre sans se substituer au prescripteur.",
                 )],
             )],
             &[q(
@@ -22897,7 +22945,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
                     "Noter les valeurs et les dates, et vérifier l'onglet « À surveiller » : le bilan qu'on tient dans la main est souvent l'occasion de voir celui qui manque.",
                 )],
                 &[act(
-                    "Le patient ne demande rien et le bilan n'a pas de rapport avec son ordonnance : ne pas insister. Proposer simplement de le noter au dossier, et l'expliquer — c'est ce qui rendra le suivant lisible.",
+                    "Le patient ne demande rien et le bilan n'a pas de rapport avec son ordonnance : ne pas insister. Proposer simplement de le noter au dossier, et l'expliquer, ce qui rendra le suivant lisible.",
                 )],
             )],
         )],
@@ -23031,7 +23079,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         steps: &[q(
             "Le patient a-t-il une maladie cardiovasculaire avérée, une insuffisance cardiaque ou une atteinte rénale ?",
             &[act(
-                "Dans ces trois situations le choix ne se fait plus sur la seule HbA1c : une gliflozine ou un analogue du GLP-1 est indiqué pour le bénéfice cardiovasculaire ou rénal lui-même, avec la metformine ou même avant elle. Si l'ordonnance n'en porte pas, c'est ce qu'il faut signaler.",
+                "Dans ces trois situations le choix ne se fait plus sur la seule HbA1c : une gliflozine ou un analogue du GLP-1 est indiqué pour le bénéfice cardiovasculaire ou rénal lui-même, avec la metformine ou même avant elle. Si l'ordonnance n'en porte pas, ce qu'il faut signaler.",
             )],
             &[q(
                 "La metformine est-elle sur l'ordonnance, ou clairement contre-indiquée ?",
@@ -23095,12 +23143,12 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Asthme — le palier, et ce qui se vérifie avant de le monter",
+        title: "Asthme — le palier, et les vérifications avant de le monter",
         subject: "Asthme de l'adulte — GINA/HAS, traitement de fond",
         steps: &[q(
             "Le patient utilise-t-il un bronchodilatateur de courte durée seul, sans corticoïde inhalé ?",
             &[act(
-                "C'est ce qu'il ne faut plus faire : le salbutamol seul soulage et ne traite pas, et son usage isolé est associé à un excès d'exacerbations. Tout asthmatique reçoit un corticoïde inhalé, même en asthme intermittent. À signaler.",
+                "À ne plus faire : le salbutamol seul soulage et ne traite pas, et son usage isolé est associé à un excès d'exacerbations. Tout asthmatique reçoit un corticoïde inhalé, même en asthme intermittent. À signaler.",
             )],
             &[q(
                 "Combien de flacons de bronchodilatateur de courte durée en un an ?",
@@ -23120,7 +23168,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Insuffisance rénale chronique — ce que le stade change",
+        title: "Insuffisance rénale chronique — adaptations selon le stade",
         subject: "IRC de l'adulte — HAS, adaptation et surveillance",
         steps: &[q(
             "Le DFG est-il connu et daté de moins d'un an ?",
@@ -23259,7 +23307,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
     },
     StarterProtocol {
         title: "Alerte de retrait ou de rappel de lot",
-        subject: "ANSM, DGS-Urgent, DP-Rappels — ce qu'on fait du stock et ce qu'on fait des patients",
+        subject: "ANSM, DGS-Urgent, DP-Rappels — conduite sur le stock et sur les patients",
         steps: &[q(
             "L'alerte demande-t-elle de rappeler les patients déjà servis ?",
             &[q(
@@ -23331,7 +23379,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
                             "L'arrêt devient prioritaire — chute, fracture, confusion, accident de la route — mais la décroissance sera plus lente, pas plus rapide : des paliers plus petits, un dixième à un quart de la dose, toutes les deux à quatre semaines, sur plusieurs mois s'il le faut. Ne jamais remplacer par un autre sédatif, antihistaminique compris. Proposer au prescripteur de retirer d'abord ce qui s'ajoute — un seul sédatif à la fois.",
                         )],
                         &[act(
-                            "Proposer au prescripteur un plan écrit, remis au patient : réduire d'un dixième à un quart de la dose, tenir le palier une à quatre semaines, et ne descendre au palier suivant que si le précédent est tenu ; en tout, de quelques semaines à plusieurs mois selon l'ancienneté du traitement, en ralentissant vers la fin. La forme fait le palier — un comprimé quadrisécable, l'oxazépam en 10 mg, le diazépam en gouttes : c'est ce qui rend le quart de dose réalisable. Prévenir du rebond des premiers jours de chaque palier — insomnie, anxiété, irritabilité —, qui cède en une à deux semaines et n'est pas la rechute qu'il paraît. Fixer un rendez-vous à chaque palier et tracer l'entretien.",
+                            "Proposer au prescripteur un plan écrit, remis au patient : réduire d'un dixième à un quart de la dose, tenir le palier une à quatre semaines, et ne descendre au palier suivant que si le précédent est tenu ; en tout, de quelques semaines à plusieurs mois selon l'ancienneté du traitement, en ralentissant vers la fin. La forme fait le palier — un comprimé quadrisécable, l'oxazépam en 10 mg, le diazépam en gouttes : cela rend le quart de dose réalisable. Prévenir du rebond des premiers jours de chaque palier — insomnie, anxiété, irritabilité —, qui cède en une à deux semaines et n'est pas la rechute qu'il paraît. Fixer un rendez-vous à chaque palier et tracer l'entretien.",
                         )],
                     )],
                     &[act(
@@ -23407,7 +23455,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "100 g",
         method: "Pulvériser finement l'acide salicylique au mortier. L'incorporer à une petite quantité de vaseline ramollie jusqu'à obtenir une pâte homogène, puis diluer par triturations successives avec le reste de la vaseline. Aucun grain ne doit rester perceptible entre deux doigts.",
         conservation: "Pot opaque à large ouverture, à l'abri de la lumière et de la chaleur. Préparation non stérile : la durée d'utilisation ne dépasse pas trois mois, et la date de fabrication figure sur l'étiquette.",
-        caution: "Le salicylisme est le vrai risque : appliquée sur une grande surface, sous occlusion, ou sur une peau lésée, la molécule passe. Proscrite chez le nourrisson et l'enfant en dehors d'une surface très limitée, et jamais sur une muqueuse. Association déconseillée aux autres kératolytiques sur la même zone.",
+        caution: "Le salicylisme est le risque principal : appliquée sur une grande surface, sous occlusion, ou sur une peau lésée, la molécule passe. Proscrite chez le nourrisson et l'enfant en dehors d'une surface très limitée, et jamais sur une muqueuse. Association déconseillée aux autres kératolytiques sur la même zone.",
         tags: "dermatologie, kératolytique, acide salicylique, psoriasis",
         sources: "Formulaire National, Pharmacopée française\nANSM — Bonnes pratiques de préparation",
     },
@@ -23503,7 +23551,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "100 g",
         method: "Dissoudre le saccharose dans l'eau purifiée chauffée, sans dépasser l'ébullition prolongée qui caraméliserait le sucre. Filtrer à chaud, compléter au poids avec de l'eau purifiée.",
         conservation: "Flacon plein et bien bouché, à l'abri de la lumière. Un sirop entamé se contamine : le préparer en petite quantité.",
-        caution: "Sa concentration en sucre est ce qui le conserve : dilué, il fermente. Contre-indiqué chez le patient diabétique et à éviter chez l'enfant traité au long cours, où un véhicule sans sucre est préférable.",
+        caution: "Sa concentration en sucre le conserve : dilué, il fermente. Contre-indiqué chez le patient diabétique et à éviter chez l'enfant traité au long cours, où un véhicule sans sucre est préférable.",
         tags: "sirop, véhicule, saccharose, buvable",
         sources: "Pharmacopée française, monographie « Sirop simple »",
     },
@@ -23911,7 +23959,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "1000 mL",
         method: "Dissoudre le bicarbonate dans l'eau purifiée sous agitation jusqu'à limpidité, puis répartir en flacons propres. Une cuillère à café rase dans un verre d'eau donne un titre voisin, quand la préparation ne peut pas être faite.",
         conservation: "Vingt-quatre heures à température ambiante, sept jours au réfrigérateur : solution aqueuse sans conservateur.",
-        caution: "Sans antiseptique et sans alcool : c'est ce qui permet de le répéter six à huit fois par jour sans abîmer la muqueuse. Un bain de bouche alcoolisé sur une mucite brûle et fait abandonner le soin. Ne pas avaler chez l'insuffisant cardiaque ou rénal, à cause du sodium.",
+        caution: "Sans antiseptique et sans alcool : cela permet de le répéter six à huit fois par jour sans abîmer la muqueuse. Un bain de bouche alcoolisé sur une mucite brûle et fait abandonner le soin. Ne pas avaler chez l'insuffisant cardiaque ou rénal, à cause du sodium.",
         tags: "soin de bouche, mucite, bicarbonate, oncologie, soins palliatifs",
         sources: "AFSOS — soins de bouche en oncologie\nPharmacopée française",
     },
@@ -23923,7 +23971,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "200 mL",
         method: "Diluer la suspension d'amphotéricine B dans la solution bicarbonatée en agitant doucement, sans faire mousser. Répartir en flacon opaque et étiqueter « à agiter avant emploi ».",
         conservation: "Sept jours au réfrigérateur, à l'abri de la lumière. La suspension décante : agiter avant chaque emploi.",
-        caution: "Elle agit au contact : le bain de bouche se garde en bouche une à deux minutes avant d'être recraché ou avalé selon la prescription, et rien à boire dans la demi-heure qui suit. Le soin de bouche bicarbonaté se fait *avant*, jamais après — la bouche propre est ce qui permet au produit d'agir.",
+        caution: "Elle agit au contact : le bain de bouche se garde en bouche une à deux minutes avant d'être recraché ou avalé selon la prescription, et rien à boire dans la demi-heure qui suit. Le soin de bouche bicarbonaté se fait *avant*, jamais après — la bouche propre permet au produit d'agir.",
         tags: "candidose, bain de bouche, amphotéricine B, oncologie, formule type",
         sources: "AFSOS — soins de bouche en oncologie\nANSM — Bonnes pratiques de préparation",
     },
@@ -24115,7 +24163,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "50 g",
         method: "Dissoudre l'érythromycine base dans l'alcool, à froid et à l'abri de la lumière. Incorporer la solution au gel par fractions, en évitant d'emprisonner de l'air. Le gel doit rester limpide.",
         conservation: "Tube ou pot opaque, un mois au réfrigérateur : l'érythromycine en milieu hydroalcoolique se dégrade, et un gel qui a jauni n'est plus dosé à ce que dit l'étiquette.",
-        caution: "Jamais en monothérapie prolongée — l'association au peroxyde de benzoyle est ce qui retarde la résistance, et c'est la raison d'être de la règle. Éviter le contour des yeux et les muqueuses. Irritation et sécheresse attendues les premiers jours ; une rougeur qui s'étend est une intolérance et non une adaptation.",
+        caution: "Jamais en monothérapie prolongée — l'association au peroxyde de benzoyle retarde la résistance, et c'est la raison d'être de la règle. Éviter le contour des yeux et les muqueuses. Irritation et sécheresse attendues les premiers jours ; une rougeur qui s'étend est une intolérance et non une adaptation.",
         tags: "dermatologie, acné, érythromycine, antibiorésistance",
         sources: "ANSM — Bonnes pratiques de préparation\nHAS — prise en charge de l'acné",
     },
@@ -24199,7 +24247,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "100 mL",
         method: "Dissoudre le bleu de méthylène dans l'eau purifiée en agitant ; la dissolution est lente. Filtrer si un dépôt subsiste. Flacon en verre — le colorant se fixe sur certains plastiques.",
         conservation: "Flacon bien bouché, à l'abri de la lumière, un mois.",
-        caution: "Colore tout ce qu'il touche, durablement : la peau, le linge, la paillasse. Prévenir que les urines et les selles peuvent bleuir. Chez le nouveau-né et le déficitaire en G6PD, l'usage étendu expose à une hémolyse et à une méthémoglobinémie : la voie cutanée large n'est pas anodine. Association aux sérotoninergiques déconseillée par voie générale, la question ne se pose pas ici mais elle se pose si la prescription dérive vers un usage buvable.",
+        caution: "Colore tout ce qu'il touche, durablement : la peau, le linge, la paillasse. Prévenir que les urines et les selles peuvent bleuir. Chez le nouveau-né et le déficitaire en G6PD, l'usage étendu expose à une hémolyse et à une méthémoglobinémie : la voie cutanée large expose au même titre que la voie générale. Association aux sérotoninergiques déconseillée par voie générale, la question ne se pose pas ici mais elle se pose si la prescription dérive vers un usage buvable.",
         tags: "dermatologie, colorant, bleu de méthylène, asséchant",
         sources: "Formulaire National, Pharmacopée française",
     },
@@ -24307,7 +24355,7 @@ pub const STARTER_PREPARATIONS: &[StarterPreparation] = &[
         yield_amount: "60 gélules",
         method: "Le dosage est faible : la dilution géométrique est obligatoire. Triturer l'acide folique avec un poids égal de diluant, puis doubler à chaque étape jusqu'à la masse totale. Homogénéiser au tamis. Répartir au gélulier, contrôler par pesée d'un échantillon de gélules.",
         conservation: "Pilulier opaque bien fermé, à l'abri de la lumière et de l'humidité, trois mois. L'acide folique est photosensible.",
-        caution: "Le contrôle de masse est ce qui tient le dosage : sur une répartition à 0,4 mg par gélule, une hétérogénéité de mélange ne se voit pas et ne se rattrape pas. Chez l'adulte, ne jamais supplémenter en folates une anémie macrocytaire sans avoir éliminé une carence en vitamine B12 : les folates corrigent l'hémogramme et laissent l'atteinte neurologique progresser. Lactose à remplacer chez l'intolérant.",
+        caution: "Le contrôle de masse tient le dosage : sur une répartition à 0,4 mg par gélule, une hétérogénéité de mélange ne se voit pas et ne se rattrape pas. Chez l'adulte, ne jamais supplémenter en folates une anémie macrocytaire sans avoir éliminé une carence en vitamine B12 : les folates corrigent l'hémogramme et laissent l'atteinte neurologique progresser. Lactose à remplacer chez l'intolérant.",
         tags: "supplémentation, acide folique, gélules, formule type",
         sources: "Formulaire National, Pharmacopée française\nANSM — Bonnes pratiques de préparation",
     },
@@ -24465,7 +24513,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
         application: "Face absorbante sur la plaie, avec deux à trois centimètres de débord. Sur une plaie cavitaire, mèche ou compresse dessous. Le modèle non adhésif se tient par une bande ou un filet, pas par du sparadrap sur la plaie.",
         renewal: "Tous les deux à quatre jours selon l'exsudat, jusqu'à sept jours en prévention d'escarre. Changer dès que la tache d'exsudat approche le bord.",
         lpp: "Ligne « pansement hydrocellulaire » du titre I, remboursée sur prescription précisant nature, taille et rythme. La version siliconée et la version à bordure ont leurs propres lignes : ce sont des présentations différentes, pas des variantes commerciales.",
-        caution: "Sur une plaie sèche, il ne fait rien : il absorbe, il n'humidifie pas. La version siliconée est ce qu'on prend chez la personne âgée et sur la peau abîmée par les adhésifs successifs — le décollement, répété tous les deux jours, finit par faire la plaie.",
+        caution: "Sur une plaie sèche, il ne fait rien : il absorbe, il n'humidifie pas. La version siliconée se choisit chez la personne âgée et sur la peau abîmée par les adhésifs successifs — le décollement, répété tous les deux jours, finit par faire la plaie.",
         tags: "pansement, plaie, escarre, hydrocellulaire, mousse",
         sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
     },
@@ -24513,7 +24561,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
         application: "Une seule épaisseur sur la plaie, en débordant légèrement, recouverte de compresses et d'une fixation. Découpable, contrairement à l'hydrofibre.",
         renewal: "Tous les deux à quatre jours pour l'interface, tous les jours à deux jours pour le tulle gras, qui sèche plus vite et finit par coller — ce qui est précisément ce qu'on voulait éviter.",
         lpp: "Lignes « pansement interface » et « tulle » du titre I, distinctes ; le lipidocolloïde a la sienne. L'écart de prix est réel et l'indication ne se vaut pas.",
-        caution: "L'interface siliconée est ce qu'on choisit quand le retrait fait mal ou saigne à chaque fois : sur un enfant, une brûlure ou une peau fine, elle change le vécu du pansement. Vérifier l'absence de baume du Pérou dans les tulles anciens, allergisant.",
+        caution: "L'interface siliconée se choisit quand le retrait fait mal ou saigne à chaque fois : sur un enfant, une brûlure ou une peau fine, elle change le vécu du pansement. Vérifier l'absence de baume du Pérou dans les tulles anciens, allergisant.",
         tags: "pansement, plaie, épidermisation, interface, tulle",
         sources: "HAS — bon usage des pansements pour le traitement des plaies\nLPP — titre I, chapitre 3",
     },
@@ -24532,7 +24580,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
     StarterDispositif {
         name: "Pansement au charbon actif",
         family: "Pansement",
-        indication: "Plaie malodorante : ulcère surinfecté, plaie tumorale, escarre nécrosée. L'odeur est ce qui isole le patient de sa famille, et c'est une indication à part entière.",
+        indication: "Plaie malodorante : ulcère surinfecté, plaie tumorale, escarre nécrosée. L'odeur isole le patient de sa famille, et c'est une indication à part entière.",
         sizes: "Compresses de 10 x 10 cm à 15 x 20 cm, avec ou sans argent associé.",
         application: "Sur la plaie ou en pansement secondaire selon le modèle, recouvert d'un absorbant. Ne pas le découper : le charbon se répand dans la plaie.",
         renewal: "Tous les jours à tous les trois jours, dès que l'odeur revient — c'est elle qui donne le rythme, pas le calendrier.",
@@ -24692,7 +24740,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
     StarterDispositif {
         name: "Étui pénien et poche de jambe",
         family: "Sondage urinaire",
-        indication: "Incontinence urinaire de l'homme sans rétention : recueil externe, sans effraction et sans le risque infectieux d'une sonde à demeure. C'est ce qu'on propose avant d'envisager une sonde.",
+        indication: "Incontinence urinaire de l'homme sans rétention : recueil externe, sans effraction et sans le risque infectieux d'une sonde à demeure. À proposer avant d'envisager une sonde.",
         sizes: "Étuis de diamètres 21 à 40 mm, autoadhésifs ou avec bande, en silicone ou latex ; poches de jambe de 350 à 750 mL, poches de nuit de 1,5 à 2 L.",
         application: "Mesurer le diamètre au gabarit fourni, raser ou couper les poils à la base, poser sur peau sèche sans dérouler complètement — laisser deux centimètres de jeu au bout. Fixer la poche de jambe par deux sangles, poche toujours plus bas que la vessie.",
         renewal: "Étui : un par jour, changé au moment de la toilette. Poche de jambe : tous les sept jours si elle est vidangeable. Poche de nuit : selon le modèle.",
@@ -24754,7 +24802,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
     StarterDispositif {
         name: "Aiguilles pour stylo à insuline",
         family: "Injection",
-        indication: "Injection d'insuline ou d'analogue du GLP-1 au stylo. La longueur d'aiguille est ce qui décide si le produit va dans le tissu sous-cutané ou dans le muscle.",
+        indication: "Injection d'insuline ou d'analogue du GLP-1 au stylo. La longueur d'aiguille décide si le produit va dans le tissu sous-cutané ou dans le muscle.",
         sizes: "4, 5, 6 et 8 mm, diamètres 31 à 34 G. Le 4 mm convient à tout le monde, quel que soit le poids.",
         application: "Aiguille neuve à chaque injection, purge de deux unités pointe en l'air avant chaque geste, injection perpendiculaire à la peau sans pli avec une 4 mm, dix secondes de comptage avant de retirer.",
         renewal: "Une aiguille par injection : quatre par jour pour un schéma basal-bolus, soit 120 par mois.",
@@ -24863,7 +24911,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
     StarterDispositif {
         name: "Tire-lait (location)",
         family: "Location",
-        indication: "Difficultés de mise au sein, prématurité, séparation mère-enfant, entretien de la lactation, engorgement. La location électrique double pompage est ce qui maintient une lactation ; le manuel dépanne.",
+        indication: "Difficultés de mise au sein, prématurité, séparation mère-enfant, entretien de la lactation, engorgement. La location électrique double pompage maintient une lactation ; le manuel dépanne.",
         sizes: "Tire-lait électrique de location, avec set de recueil personnel : téterelles de 21 à 30 mm de diamètre, tubulures, biberons.",
         application: "Choisir la taille de téterelle sur le diamètre du mamelon — trop petite, elle blesse ; trop grande, elle n'exprime rien. Double pompage huit à dix fois par 24 heures pour installer une lactation, y compris la nuit.",
         renewal: "Location à la semaine ou au mois sur prescription ; le set de recueil est personnel, vendu à part, et ne se prête jamais.",
@@ -24940,7 +24988,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
         application: "Posée face absorbante vers le haut, bien tendue, sans pli — un pli sous un sacrum est une escarre en préparation. Sur un lit médicalisé, glisser les rabats sous le matelas plutôt que de les border par-dessus le drap.",
         renewal: "Jetable : à chaque souillure. Lavable : lavage à 60 ou 90 °C après chaque souillure, remplacée quand le film imperméable se craquelle.",
         lpp: "Les protections de literie ne sont pas prises en charge par la LPP ; certaines complémentaires et certaines aides à l'autonomie y participent. Ne pas les confondre avec les changes complets, qui relèvent d'un forfait dans certains cadres.",
-        caution: "Une alèse jetable laissée sous un patient au lieu d'un change complet macère la peau : le film plastique ne respire pas, et c'est là que l'escarre se forme. Elle ne se superpose pas non plus à une protection portée — deux couches imperméables l'une sur l'autre garantissent la macération.",
+        caution: "Une alèse jetable laissée sous un patient au lieu d'un change complet macère la peau : le film plastique ne respire pas, et l'escarre se forme là. Elle ne se superpose pas non plus à une protection portée — deux couches imperméables l'une sur l'autre garantissent la macération.",
         tags: "incontinence, alèse, literie, escarre, macération",
         sources: "HAS — prévention des escarres\nLPP — titre I, chapitre 1",
     },
@@ -25108,7 +25156,7 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
         application: "Tension : trois mesures le matin et trois le soir, trois jours de suite, assis depuis cinq minutes, bras posé à hauteur du cœur, sans parler. C'est la règle des trois. Le brassard se choisit sur le tour de bras : trop petit, il surestime de dix à quinze millimètres.",
         renewal: "Le tensiomètre se fait vérifier tous les deux ans environ ; le thermomètre se remplace quand il diverge nettement d'un autre appareil.",
         lpp: "Ni le thermomètre ni le tensiomètre d'automesure ne sont pris en charge par la LPP. Certaines complémentaires y participent, et l'appareil reste moins cher qu'une consultation évitée.",
-        caution: "La mesure au poignet n'est fiable que si le poignet est à hauteur du cœur, ce qui n'arrive presque jamais spontanément : préférer le bras. Le thermomètre frontal est le moins fiable chez le nourrisson, où la voie rectale reste la référence. Un chiffre isolé ne veut rien dire — c'est la série qui compte, et le carnet qui la porte.",
+        caution: "La mesure au poignet n'est fiable que si le poignet est à hauteur du cœur, ce qui n'arrive presque jamais spontanément : préférer le bras. Le thermomètre frontal est le moins fiable chez le nourrisson, où la voie rectale reste la référence. Un chiffre isolé ne s'interprète pas : c'est la série qui compte, et le carnet qui la porte.",
         tags: "automesure, tension, thermomètre, hypertension, brassard",
         sources: "HAS — mesure de la pression artérielle et automesure\nSociété française d'hypertension artérielle — règle des trois",
     },
@@ -25295,7 +25343,7 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
     ),
     (
         "antipsychotique",
-        "Prendre dès que l'oubli est constaté ; ne jamais doubler. Signaler un oubli répété : c'est ce qui précède la rechute.",
+        "Prendre dès que l'oubli est constaté ; ne jamais doubler. Signaler un oubli répété : cela précède la rechute.",
         "Fièvre avec rigidité, sueurs et confusion : urgence. Mouvements anormaux du visage ou de la langue, malaise au lever, constipation opiniâtre, fièvre avec mal de gorge.",
     ),
     (
@@ -25879,7 +25927,7 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
     ),
     (
         "sevrage alcoolique",
-        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche : la régularité est ce qui soutient l'abstinence.",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est proche : la régularité soutient l'abstinence.",
         "Reprise de la consommation, tremblements, sueurs, angoisse ou insomnie majeures, idées noires.",
     ),
     (
@@ -25970,7 +26018,7 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
     (
         "antipaludéen de synthèse",
         "Prendre l'oubli au cours du repas suivant ; l'effet de fond se construit sur des mois, un oubli isolé ne le compromet pas.",
-        "Baisse de la vision, gêne à la lumière ou halos colorés : l'atteinte rétinienne est ce que la surveillance ophtalmologique cherche. Éruption cutanée étendue, faiblesse musculaire, malaise.",
+        "Baisse de la vision, gêne à la lumière ou halos colorés : la surveillance ophtalmologique cherche l'atteinte rétinienne. Éruption cutanée étendue, faiblesse musculaire, malaise.",
     ),
     (
         "antithyroïdien de synthèse",
@@ -26209,7 +26257,7 @@ pub const STARTER_CONDUITE: &[(&str, &str, &str)] = &[
     ),
     (
         "antirétroviraux INTI",
-        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est dans moins de douze heures : la régularité est ce qui empêche les résistances. Un oubli répété se dit, il ne se cache pas.",
+        "Prendre l'oubli dès qu'on y pense, sauf si la prise suivante est dans moins de douze heures : la régularité empêche les résistances. Un oubli répété se dit, il ne se cache pas.",
         "Fièvre avec éruption cutanée, essoufflement, douleur abdominale intense, urines foncées, fatigue et douleurs musculaires inexpliquées.",
     ),
     (
@@ -29042,6 +29090,12 @@ const STUP_MIGRATIONS: &[&str] = &[
     "ALTER TABLE stupefiants ADD COLUMN note TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE stupefiants ADD COLUMN per_box REAL NOT NULL DEFAULT 0",
     "ALTER TABLE stup_moves ADD COLUMN cancels INTEGER NOT NULL DEFAULT 0",
+    // Le lot et la péremption : voir le commentaire au-dessus de la
+    // table dans `SCHEMA`. Les lignes déjà écrites gardent leur lot dans
+    // `reference` s'il y a été mis — on ne réécrit pas un registre,
+    // même pour ranger ses colonnes.
+    "ALTER TABLE stup_moves ADD COLUMN lot TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE stup_moves ADD COLUMN expiry TEXT NOT NULL DEFAULT ''",
     // Deux lignes ne peuvent pas porter le même numéro d'ordonnancier.
     //
     // `add_stup_move` l'attribue dans la transaction qui écrit, donc
@@ -29291,7 +29345,7 @@ impl Db {
                     .prepare(
                         "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
                                 patient_id, prescriber, supplier, reference, expected,
-                                operator, remark
+                                operator, remark, lot, expiry
                          FROM stup_moves",
                     )
                     .map_err(|e| e.to_string())?;
@@ -29313,6 +29367,8 @@ impl Db {
                             operator: r.get(12)?,
                             remark: r.get(13)?,
                             cancels: 0,
+                            lot: r.get(14)?,
+                            expiry: r.get(15)?,
                         })
                     })
                     .map_err(|e| e.to_string())?;
@@ -31094,6 +31150,119 @@ impl Db {
         Ok(())
     }
 
+    /// Ce que les **autres postes** ont écrit, en un nombre.
+    ///
+    /// `PRAGMA data_version` d'SQLite change dès qu'une autre connexion
+    /// a validé une transaction sur le fichier, et **ne change pas** pour
+    /// ce que cette connexion-ci écrit. C'est exactement le signal
+    /// cherché : « quelqu'un d'autre a touché la base ».
+    ///
+    /// Pourquoi ce pragma plutôt qu'un compteur de révision maintenu à
+    /// la main : un compteur se pose dans chaque transaction d'écriture,
+    /// et la première qu'on oublie est une modification qu'aucun poste
+    /// ne voit jamais — un manque silencieux, qui est la pire espèce.
+    /// Le pragma, lui, ne peut pas être oublié : il voit tout ce qui est
+    /// validé, y compris ce qu'une version future écrira.
+    ///
+    /// Les trois fichiers sont lus ensemble parce qu'ils vivent
+    /// séparément : la base, les pièces et le registre ont chacun leur
+    /// connexion, donc chacun sa version.
+    ///
+    /// C'est un **témoin d'égalité**, pas une horloge : le nombre n'a
+    /// pas d'ordre utile et peut repartir, seule sa différence compte.
+    pub fn data_version(&self) -> (i64, i64, i64) {
+        let read = |c: &Connection| {
+            c.query_row("PRAGMA data_version", [], |r| r.get::<_, i64>(0))
+                .unwrap_or(0)
+        };
+        (read(&self.conn), read(&self.scans), read(&self.stups))
+    }
+
+    /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
+    pub fn setting(&self, key: &str) -> Option<String> {
+        self.conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get::<_, String>(0)
+            })
+            .ok()
+    }
+
+    /// Écrire un réglage, **contre la valeur qu'on avait sous les yeux**.
+    ///
+    /// `false` quand un autre poste l'a changé entre-temps : l'appelant
+    /// recharge et montre ce qui a été écrit, plutôt que d'écraser un
+    /// texte qu'il n'a jamais vu. La même règle que toute ligne
+    /// partagée — et elle compte davantage ici, puisque ce réglage vaut
+    /// pour tous les postes à la fois.
+    ///
+    /// `was` à `None` veut dire « il n'y avait rien » : c'est le premier
+    /// enregistrement, et il échoue si un autre poste a pris les
+    /// devants.
+    pub fn set_setting(
+        &self,
+        key: &str,
+        value: &str,
+        was: Option<&str>,
+        day: &str,
+        who: &str,
+    ) -> Result<bool, String> {
+        let n = match was {
+            Some(old) => self
+                .conn
+                .execute(
+                    "UPDATE settings SET value = ?2, updated_on = ?3, updated_by = ?4
+                     WHERE key = ?1 AND value = ?5",
+                    (key, value, day, who, old),
+                )
+                .map_err(|e| e.to_string())?,
+            None => self
+                .conn
+                .execute(
+                    "INSERT INTO settings (key, value, updated_on, updated_by)
+                     VALUES (?1, ?2, ?3, ?4)
+                     ON CONFLICT(key) DO NOTHING",
+                    (key, value, day, who),
+                )
+                .map_err(|e| e.to_string())?,
+        };
+        Ok(n > 0)
+    }
+
+    /// La clé sous laquelle l'officine range son identité et son équipe.
+    pub const OFFICINE: &'static str = "pharmacy";
+
+    /// L'officine telle que la base la porte : nom, adresse, pharmacien
+    /// signataire, numéro AM, équipe et horaires.
+    ///
+    /// `None` quand la base n'en sait rien encore — une base d'avant
+    /// cette version, ou une base neuve. L'appelant y verse alors ce que
+    /// `config.toml` portait, ce qui est le chemin de reprise : personne
+    /// ne retape ce qu'il avait déjà écrit.
+    pub fn officine(&self) -> Option<crate::config::PharmacyConfig> {
+        let raw = self.setting(Self::OFFICINE)?;
+        toml::from_str(&raw).ok()
+    }
+
+    /// Ranger l'officine dans la base, contre ce qu'on avait lu.
+    ///
+    /// Le fragment TOML est celui de serde : l'aller-retour est exact,
+    /// et c'est lui qui est comparé — deux postes qui enregistrent la
+    /// même chose ne se refusent pas l'un l'autre pour un espace.
+    pub fn set_officine(
+        &self,
+        new: &crate::config::PharmacyConfig,
+        was: Option<&crate::config::PharmacyConfig>,
+        day: &str,
+        who: &str,
+    ) -> Result<bool, String> {
+        let text = toml::to_string(new).map_err(|e| e.to_string())?;
+        let before = was
+            .map(toml::to_string)
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        self.set_setting(Self::OFFICINE, &text, before.as_deref(), day, who)
+    }
+
     /// The « toxicité » section used to carry the same sentence on
     /// thirteen cards — « marge thérapeutique étroite… voir les
     /// sections Interactions et Surveillance » — which is a field
@@ -32846,6 +33015,8 @@ impl Db {
                         prescriber: String::new(),
                         supplier: String::new(),
                         reference: String::new(),
+                        lot: String::new(),
+                        expiry: String::new(),
                         expected: 0.0,
                         operator: String::new(),
                         remark: String::new(),
@@ -32932,7 +33103,7 @@ impl Db {
         let sql = format!(
             "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
                     patient_id, prescriber, supplier, reference, expected,
-                    operator, remark, cancels
+                    operator, remark, cancels, lot, expiry
              FROM stup_moves {tail}"
         );
         let mut stmt = self.stups.prepare(&sql).map_err(|e| e.to_string())?;
@@ -32954,6 +33125,8 @@ impl Db {
                     operator: r.get(12)?,
                     remark: r.get(13)?,
                     cancels: r.get(14)?,
+                    lot: r.get(15)?,
+                    expiry: r.get(16)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -32968,6 +33141,52 @@ impl Db {
     /// numéro et l'un des deux écrirait un doublon. Le numéro n'est posé
     /// que sur une sortie ; il n'est jamais réattribué.
     pub fn add_stup_move(&self, m: &StupMove) -> Result<i64, String> {
+        let tx = self
+            .stups
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let id = Self::insert_stup_move(&tx, m)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(id)
+    }
+
+    /// Écrire **plusieurs** lignes, ou aucune.
+    ///
+    /// L'inventaire d'un coffre et la délivrance d'une ordonnance qui
+    /// porte deux stupéfiants sont plusieurs lignes d'un seul geste, et
+    /// une feuille à moitié écrite est le pire état où laisser un
+    /// registre : trois lignes sur cinq sont passées, rien ne dit
+    /// lesquelles, et rien ne s'y efface. Les mêmes règles qu'une ligne
+    /// seule — ce sont littéralement les mêmes, une seule fonction les
+    /// porte —, dans une seule transaction : la première qui refuse fait
+    /// tout retomber.
+    ///
+    /// Les numéros d'ordonnancier restent attribués un par un, et se
+    /// suivent : la deuxième délivrance lit la première dans la
+    /// transaction, avant qu'elle soit validée.
+    pub fn add_stup_moves(&self, moves: &[StupMove]) -> Result<Vec<i64>, String> {
+        if moves.is_empty() {
+            return Ok(Vec::new());
+        }
+        let tx = self
+            .stups
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut ids = Vec::with_capacity(moves.len());
+        for m in moves {
+            ids.push(Self::insert_stup_move(&tx, m)?);
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(ids)
+    }
+
+    /// Les règles du registre et l'insertion, **écrites une fois**.
+    ///
+    /// Elles valent pour une ligne seule comme pour une feuille de cinq,
+    /// et un jeu de règles recopié pour le second chemin serait un jeu
+    /// de règles qui diverge. La transaction est celle de l'appelant :
+    /// c'est lui qui décide de ce qui retombe ensemble.
+    fn insert_stup_move(tx: &rusqlite::Transaction, m: &StupMove) -> Result<i64, String> {
         let day = m.happened_on.trim();
         if day.is_empty() {
             return Err(crate::strings::tr("stup_err_no_day").to_owned());
@@ -32984,10 +33203,6 @@ impl Db {
         if m.quantity < 0.0 || (m.quantity == 0.0 && !zero_is_allowed) {
             return Err(crate::strings::tr("stup_err_quantity").to_owned());
         }
-        let tx = self
-            .stups
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
         // Une annulation désigne la ligne qu'elle annule, et cette ligne
         // doit exister, appartenir au même produit, pouvoir être annulée
         // et ne pas l'être déjà. Vérifié **dans la transaction** : deux
@@ -33016,17 +33231,18 @@ impl Db {
                 return Err(crate::strings::tr("stup_err_no_gap_reason").to_owned());
             }
         }
-        // **Une destruction sans procès-verbal ne prouve rien.** Le
-        // stock à détruire est le seul compte du registre qui ne se
-        // vide par aucune contrepartie extérieure : aucun patient ne le
-        // réclame, aucun grossiste ne le reprend, et la ligne qui
-        // l'annule est écrite par celui-là même qui la produit. Ce qui
+        // **Une destruction sans procès-verbal ne prouve rien.** Les
+        // deux comptes à détruire — ce qu'un patient a rapporté, ce qui
+        // a périmé au coffre — sont les seuls du registre qui ne se
+        // vident par aucune contrepartie extérieure : aucun patient ne
+        // les réclame, aucun grossiste ne les reprend, et la ligne qui
+        // les annule est écrite par celui-là même qui la produit. Ce qui
         // la rend vérifiable est ce qu'elle cite — le procès-verbal, le
         // confrère présent, le collecteur. La même place et la même
         // raison que le motif de l'annulation et celui de l'écart
         // d'inventaire : à l'écriture, et pas dans le formulaire qui l'a
         // proposée.
-        if kind == crate::ordonnancier::Kind::Destruction && m.remark.trim().is_empty() {
+        if kind.needs_record() && m.remark.trim().is_empty() {
             return Err(crate::strings::tr("stup_err_no_pv").to_owned());
         }
         if kind == crate::ordonnancier::Kind::Annulation {
@@ -33088,8 +33304,8 @@ impl Db {
             "INSERT INTO stup_moves
                  (stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
                   patient_id, prescriber, supplier, reference, expected,
-                  operator, remark, cancels)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                  operator, remark, cancels, lot, expiry)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             rusqlite::params![
                 m.stup_id,
                 kind.as_key(),
@@ -33143,12 +33359,23 @@ impl Db {
                 } else {
                     0
                 },
+                // Le lot et la péremption **n'appartiennent qu'aux
+                // natures qui touchent une boîte** : une réception, une
+                // délivrance, un retour ou une destruction en portent
+                // un ; un inventaire compte un coffre entier et une
+                // annulation ne fait que défaire. Comme le prescripteur
+                // et le grossiste, le champ se refuse ici — à
+                // l'écriture — et pas seulement dans le formulaire.
+                if kind.carries_lot() { m.lot.trim() } else { "" },
+                if kind.carries_lot() {
+                    m.expiry.trim()
+                } else {
+                    ""
+                },
             ],
         )
         .map_err(|e| e.to_string())?;
-        let id = tx.last_insert_rowid();
-        tx.commit().map_err(|e| e.to_string())?;
-        Ok(id)
+        Ok(tx.last_insert_rowid())
     }
 
     /// Annuler une ligne du registre — la seule correction qu'il y ait.
@@ -33193,6 +33420,10 @@ impl Db {
             prescriber: String::new(),
             supplier: String::new(),
             reference: String::new(),
+            // Une annulation ne porte pas de lot : elle défait une
+            // ligne qui, elle, portait le sien.
+            lot: String::new(),
+            expiry: String::new(),
             expected: 0.0,
             operator: operator.to_owned(),
             remark: reason.to_owned(),
@@ -33279,6 +33510,7 @@ impl Db {
                 Standing {
                     stock: last_balance.stock,
                     to_destroy: last_balance.to_destroy,
+                    expired: last_balance.expired,
                     last_count: last,
                     waiting_since: crate::ordonnancier::waiting_since(&moves).unwrap_or_default(),
                     product: p,
@@ -36035,6 +36267,15 @@ mod tests {
         db.edited_table_keys().expect("edited_table_keys");
         db.class_note("IEC").expect("class_note");
         db.drugs_with_tag("probiotique").expect("drugs_with_tag");
+        // Les réglages de l'officine : même cas que les postes et que la
+        // caisse, la table est arrivée après cette photographie du
+        // schéma. Une base d'avant n'en porte pas, et c'est exactement
+        // ce que `adopt_officine` lit pour savoir qu'il faut y verser ce
+        // que `config.toml` disait.
+        assert!(
+            db.officine().is_none(),
+            "une base d'avant cette version ne porte pas d'officine"
+        );
 
         // And a write on each of the columns this version added.
         assert!(db
@@ -36829,6 +37070,79 @@ mod tests {
             .all(|s| s.operator != "AB"));
     }
 
+    /// **Le lot ne s'écrit que sur les lignes qui touchent une boîte**,
+    /// et il se refuse **à l'écriture** et pas seulement au formulaire.
+    ///
+    /// C'est la même discipline que le prescripteur et le grossiste :
+    /// une ligne fausse dans un registre inaltérable ne se corrige que
+    /// par une annulation, alors ce qui n'a pas de sens n'y entre pas.
+    ///
+    /// Et le lot est **distinct de la référence**, qui est le bon de
+    /// livraison : le scan les confondait, et un rappel de l'ANSM
+    /// n'avait alors rien de fiable à interroger.
+    #[test]
+    fn a_lot_is_written_only_where_it_means_something() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-lot-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("lot.db"), "secret").unwrap();
+        let sid = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)
+            .unwrap();
+
+        let write = |kind: crate::ordonnancier::Kind, day: &str, remark: &str| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: kind.as_key().to_owned(),
+                happened_on: day.to_owned(),
+                quantity: 14.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: "OCP".to_owned(),
+                reference: "BL-99120".to_owned(),
+                lot: "L4821B".to_owned(),
+                expiry: "2027-04-30".to_owned(),
+                expected: 0.0,
+                operator: "CL".to_owned(),
+                remark: remark.to_owned(),
+                cancels: 0,
+            })
+            .unwrap()
+        };
+        write(crate::ordonnancier::Kind::Entree, "2026-09-01", "");
+        // Un inventaire compte un coffre entier : plusieurs lots à la
+        // fois, donc aucun. Il tombe juste ici — quatorze reçues,
+        // quatorze comptées — mais le motif est celui qu'un écart
+        // demanderait, et le registre le réclame avant d'inscrire.
+        write(
+            crate::ordonnancier::Kind::Inventaire,
+            "2026-09-02",
+            "Comptage du coffre, tout est là.",
+        );
+
+        let lines = db.stup_moves(sid).unwrap();
+        let entree = lines
+            .iter()
+            .find(|m| m.kind == crate::ordonnancier::Kind::Entree.as_key())
+            .unwrap();
+        assert_eq!(entree.lot, "L4821B");
+        assert_eq!(entree.expiry, "2027-04-30");
+        // **Et le lot n'a pas mangé la référence** : les deux sont là,
+        // chacun dans sa colonne.
+        assert_eq!(entree.reference, "BL-99120");
+
+        let inv = lines
+            .iter()
+            .find(|m| m.kind == crate::ordonnancier::Kind::Inventaire.as_key())
+            .unwrap();
+        assert_eq!(inv.lot, "", "un inventaire ne nomme pas une boîte");
+        assert_eq!(inv.expiry, "");
+    }
+
     /// **Le registre ne se réécrit pas.**
     ///
     /// R. 5132-36 demande un registre inaltérable : une ligne écrite ne
@@ -36923,6 +37237,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: remark.to_owned(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
         };
         // Un comptage qui tombe juste n'a rien à expliquer.
@@ -36978,6 +37294,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: "dénaturation devant confrère".to_owned(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
         };
         use crate::ordonnancier::Kind;
@@ -37028,6 +37346,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: "   ".to_owned(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .is_err());
 
@@ -37128,6 +37448,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: String::new(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .unwrap()
         };
@@ -37200,6 +37522,8 @@ mod tests {
             operator: "YS".to_owned(),
             remark: "une gélule manquante".to_owned(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         })
         .unwrap();
         let summary = db.stup_summary().unwrap();
@@ -37234,6 +37558,8 @@ mod tests {
             operator: String::new(),
             remark: String::new(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         };
         assert!(db.add_stup_move(&bad("ENTREE", 5.0, "  ")).is_err());
         assert!(db
@@ -37283,6 +37609,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: String::new(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .unwrap()
         };
@@ -37361,6 +37689,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: "pas le bon produit".to_owned(),
                 cancels: elsewhere,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .is_err());
 
@@ -37389,6 +37719,279 @@ mod tests {
             all.iter().any(|m| m.stup_id == other),
             "le journal mêle les produits"
         );
+    }
+
+    /// **Un poste voit ce qu'un autre a écrit, et ne se voit pas
+    /// lui-même.**
+    ///
+    /// C'est toute la propriété sur laquelle repose la synchronisation
+    /// automatique, et elle vient d'SQLite et non de code écrit ici :
+    /// `PRAGMA data_version` bouge quand une *autre* connexion valide,
+    /// et reste immobile pour ce que cette connexion écrit. Un témoin
+    /// qui bougerait aussi pour nos propres écritures ferait recharger
+    /// la vue à chaque frappe ; un témoin qui ne bougerait pas pour
+    /// celles des autres ne servirait à rien.
+    ///
+    /// Le test l'écrit plutôt que de le supposer : c'est une garantie
+    /// d'une bibliothèque extérieure, donc une garantie à vérifier.
+    #[test]
+    fn a_post_sees_the_writes_of_the_others_and_not_its_own() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-temoin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("shared.db");
+
+        let post_a = Db::open(&path, "secret").unwrap();
+        let post_b = Db::open(&path, "secret").unwrap();
+        let seen = post_b.data_version();
+
+        // Ce que *ce* poste écrit ne le réveille pas : sans cela, la vue
+        // se rechargerait à chaque ligne qu'on inscrit soi-même.
+        post_b.add_patient("Bernard", "Paul", "1970-01-01").unwrap();
+        assert_eq!(
+            post_b.data_version(),
+            seen,
+            "un poste ne doit pas se voir lui-même"
+        );
+
+        // Ce qu'un autre poste écrit le réveille.
+        post_a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let after = post_b.data_version();
+        assert_ne!(after, seen, "un poste doit voir l'écriture d'un autre");
+
+        // Et sans nouvelle écriture, il se tait : un témoin qui bouge
+        // tout seul ferait recharger la vue en boucle.
+        assert_eq!(post_b.data_version(), after, "rien de neuf, rien à dire");
+
+        // Le registre a son propre fichier, donc sa propre version — et
+        // c'est pour cela que les trois sont lues ensemble : une
+        // délivrance inscrite ailleurs ne touche pas la base principale.
+        let sid = post_a
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)
+            .unwrap();
+        post_a
+            .add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: "ENTREE".to_owned(),
+                happened_on: "2026-09-11".to_owned(),
+                quantity: 14.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "CL".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
+            })
+            .unwrap();
+        let (_, _, stups_after) = post_b.data_version();
+        assert_ne!(
+            stups_after, after.2,
+            "le registre vit dans son fichier : sa version est la sienne"
+        );
+    }
+
+    /// **L'officine appartient à l'officine, pas au poste.**
+    ///
+    /// `config.toml` est un fichier par PC : l'équipe déclarée au
+    /// comptoir n'existait pas en arrière-boutique, et le nom de la
+    /// pharmacie se retapait sur chaque poste. Trois règles, et la
+    /// première est celle de la reprise — personne ne retape ce qu'il
+    /// avait déjà écrit.
+    #[test]
+    fn the_officine_is_shared_by_the_base_and_not_by_the_post() {
+        use crate::config::{Operator, PharmacyConfig};
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-offi-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("offi.db"), "secret").unwrap();
+
+        // Une base neuve n'en porte pas : c'est ce qui dit au poste d'y
+        // verser ce que son fichier disait.
+        assert!(db.officine().is_none());
+
+        let mut mine = PharmacyConfig {
+            name: "Pharmacie du Centre".to_owned(),
+            address: "12 rue des Lilas".to_owned(),
+            pharmacist: "Dr Claire Leroy".to_owned(),
+            operators: vec![Operator {
+                initials: "CL".to_owned(),
+                name: "Claire Leroy".to_owned(),
+                role: "Pharmacien titulaire".to_owned(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(db
+            .set_officine(&mine, None, "2026-09-11", "CL")
+            .expect("premier enregistrement"));
+
+        // Le second poste la lit au lieu de la redemander — **avec son
+        // équipe** : c'est la ligne du roadmap, et c'est l'aller-retour
+        // TOML qui la porte.
+        let seen = db.officine().expect("le second poste la lit");
+        assert_eq!(seen.name, "Pharmacie du Centre");
+        assert_eq!(seen.operators.len(), 1);
+        assert_eq!(seen.operators[0].initials, "CL");
+        assert_eq!(seen, mine, "l'aller-retour est exact");
+
+        // **Deux postes ne s'écrasent pas.** Le second a sous les yeux
+        // ce que la base portait ; le premier ajoute quelqu'un ; le
+        // second enregistre alors contre une valeur périmée et se voit
+        // refuser, au lieu d'effacer la personne qu'on vient d'ajouter.
+        let mut theirs = mine.clone();
+        theirs.operators.push(Operator {
+            initials: "PM".to_owned(),
+            name: "Paul Martin".to_owned(),
+            role: "Préparateur".to_owned(),
+            ..Default::default()
+        });
+        assert!(db
+            .set_officine(&theirs, Some(&mine), "2026-09-11", "CL")
+            .unwrap());
+
+        mine.phone = "01 23 45 67 89".to_owned();
+        assert!(
+            !db.set_officine(&mine, Some(&seen), "2026-09-11", "PM")
+                .unwrap(),
+            "enregistrer contre une valeur périmée est refusé"
+        );
+        // Et ce que la base porte est bien ce que le premier a écrit :
+        // Paul Martin est toujours là, le téléphone n'a pas été posé.
+        let now = db.officine().unwrap();
+        assert_eq!(now.operators.len(), 2);
+        assert!(now.phone.is_empty());
+
+        // Le refus n'est pas une impasse : on relit, on réapplique, on
+        // enregistre contre ce qu'on vient de lire.
+        let mut merged = now.clone();
+        merged.phone = "01 23 45 67 89".to_owned();
+        assert!(db
+            .set_officine(&merged, Some(&now), "2026-09-11", "PM")
+            .unwrap());
+        let after = db.officine().unwrap();
+        assert_eq!(after.operators.len(), 2);
+        assert_eq!(after.phone, "01 23 45 67 89");
+    }
+
+    /// **Une feuille part entière, ou elle ne part pas.**
+    ///
+    /// L'inventaire d'un coffre est plusieurs lignes d'un seul geste, et
+    /// une feuille à moitié écrite est le pire état où laisser un
+    /// registre : trois produits sur cinq sont passés, rien ne dit
+    /// lesquels, et rien ne s'y efface. La ligne qui refuse fait donc
+    /// tout retomber — et ce sont **les mêmes règles** qu'une ligne
+    /// seule, parce que c'est la même fonction qui les porte.
+    ///
+    /// Et les numéros d'ordonnancier se suivent à l'intérieur de la
+    /// feuille : la deuxième délivrance lit la première avant que la
+    /// transaction soit validée. Deux ordonnances écrites d'un geste ne
+    /// peuvent pas porter le même numéro.
+    #[test]
+    fn a_sheet_of_lines_is_written_whole_or_not_at_all() {
+        // Un nom de dossier à lui : les tests tournent en parallèle
+        // dans le même processus, donc deux qui partagent un nom
+        // s'effacent la base l'un de l'autre — « disk I/O error », au
+        // hasard de l'ordonnancement.
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-feuille-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("stup.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let a = db
+            .add_stupefiant(0, "Actiskenan 10 mg", "gélule", 0.0)
+            .unwrap();
+        let b = db
+            .add_stupefiant(0, "Durogesic 25 µg/h", "dispositif", 0.0)
+            .unwrap();
+        let line = |stup: i64, kind: &str, qty: f64, remark: &str| StupMove {
+            id: 0,
+            stup_id: stup,
+            kind: kind.to_owned(),
+            happened_on: "2026-02-10".to_owned(),
+            quantity: qty,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: pid,
+            prescriber: "Dr Martin".to_owned(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: remark.to_owned(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        };
+        // De quoi délivrer.
+        db.add_stup_moves(&[line(a, "ENTREE", 28.0, ""), line(b, "ENTREE", 10.0, "")])
+            .unwrap();
+
+        // Seize Actiskenan et cinq Durogesic, d'un geste : deux lignes,
+        // deux numéros qui se suivent.
+        let ids = db
+            .add_stup_moves(&[line(a, "SORTIE", 16.0, ""), line(b, "SORTIE", 5.0, "")])
+            .unwrap();
+        assert_eq!(ids.len(), 2);
+        let numbers: Vec<i64> = db
+            .stup_dispensings(2026)
+            .unwrap()
+            .iter()
+            .map(|m| m.ordo_no)
+            .collect();
+        assert_eq!(
+            numbers,
+            vec![1, 2],
+            "deux délivrances d'un geste ne portent pas le même numéro"
+        );
+
+        // Et maintenant une feuille dont la deuxième ligne est refusée :
+        // un écart d'inventaire sans motif. La première est valable, et
+        // elle ne doit pas rester écrite.
+        let before = db.stup_summary().unwrap();
+        let refused = db.add_stup_moves(&[
+            line(a, "INVENTAIRE", 12.0, "une gélule cassée"),
+            line(b, "INVENTAIRE", 3.0, ""),
+        ]);
+        assert!(refused.is_err(), "l'écart sans motif est refusé");
+        let after = db.stup_summary().unwrap();
+        assert_eq!(
+            before, after,
+            "la ligne valable de la feuille refusée n'est pas restée écrite"
+        );
+        // Rien n'a été inscrit non plus : le registre du premier produit
+        // porte toujours ses deux lignes et pas une troisième.
+        assert_eq!(db.stup_moves(a).unwrap().len(), 2);
+
+        // Motif donné, la même feuille passe entière.
+        db.add_stup_moves(&[
+            line(a, "INVENTAIRE", 12.0, "une gélule cassée"),
+            line(b, "INVENTAIRE", 3.0, "un dispositif décollé"),
+        ])
+        .unwrap();
+        let summary = db.stup_summary().unwrap();
+        let stock = |id: i64| {
+            summary
+                .iter()
+                .find(|s| s.product.id == id)
+                .map(|s| s.stock)
+                .unwrap()
+        };
+        assert!((stock(a) - 12.0).abs() < 1e-9, "{}", stock(a));
+        assert!((stock(b) - 3.0).abs() < 1e-9, "{}", stock(b));
+
+        // Une feuille vide n'est pas une erreur : c'est une feuille que
+        // personne n'a remplie.
+        assert_eq!(db.add_stup_moves(&[]).unwrap().len(), 0);
     }
 
     /// Le registre vit dans son propre fichier, et un registre écrit par
@@ -37625,6 +38228,8 @@ mod tests {
                 operator: "YS".to_owned(),
                 remark: String::new(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .unwrap();
 
@@ -39036,7 +39641,7 @@ mod tests {
 
     #[test]
     fn posologies_seed_once_and_stay_the_team_s() {
-        let dir = std::env::temp_dir().join(format!("bpm-caddy-poso-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-poso-seed-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let _swept = Swept(dir.clone());
         let path = dir.join("poso.db");
@@ -39824,6 +40429,8 @@ mod tests {
                 operator: "CL".to_owned(),
                 remark: String::new(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             });
         }
 
@@ -40617,6 +41224,8 @@ mod tests {
                 operator: "CL".to_owned(),
                 remark: String::new(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .unwrap();
         };
@@ -40683,6 +41292,8 @@ mod tests {
             operator: "CL".to_owned(),
             remark: "une gélule non retrouvée — signalée".to_owned(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         })
         .unwrap();
         write(skenan, "SORTIE", 14.0, day(4, 18), pid, 0.0);
@@ -40714,6 +41325,8 @@ mod tests {
             operator: "YS".to_owned(),
             remark: "blister écrasé à la réception".to_owned(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         })
         .unwrap();
 
@@ -40740,6 +41353,8 @@ mod tests {
             operator: "CL".to_owned(),
             remark: "rapporté par la famille après le décès".to_owned(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         })
         .unwrap();
 
@@ -40773,6 +41388,8 @@ mod tests {
             operator: "YS".to_owned(),
             remark: "traitement arrêté, comprimés rendus au comptoir".to_owned(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         })
         .unwrap();
         db.add_stup_move(&StupMove {
@@ -40791,6 +41408,8 @@ mod tests {
             operator: "YS".to_owned(),
             remark: "dénaturés au plâtre devant Mme Roche, pharmacienne".to_owned(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         })
         .unwrap();
 
@@ -40814,6 +41433,8 @@ mod tests {
                 operator: "CL".to_owned(),
                 remark: String::new(),
                 cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
             })
             .unwrap();
         db.cancel_stup_move(

@@ -5,6 +5,140 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.183.0] - 2026-09-11
+
+### Added
+- **L'officine est rangée dans la base, et non dans le fichier du
+  poste.** `config.toml` est un fichier par PC : l'équipe déclarée sur
+  celui du comptoir n'existait pas sur celui de l'arrière-boutique, et le
+  nom de la pharmacie, l'adresse, le pharmacien signataire, le numéro AM
+  et les horaires se retapaient sur chacun. C'est la raison qui avait
+  déjà mis les notes d'équipe et les scripts à côté de la base plutôt
+  qu'à côté de la configuration : la base est ce que les postes
+  partagent.
+
+  **Rien n'est perdu à la reprise** : le premier lancement de cette
+  version sur une base qui n'en porte pas encore y verse ce que ce poste
+  avait dans son fichier, et les postes suivants le lisent au lieu de le
+  redemander. `[pharmacy]` reste dans `config.toml`, comme graine, et le
+  fichier le dit maintenant en toutes lettres.
+
+  L'enregistrement se fait **contre ce que l'écran avait sous les yeux** :
+  deux postes qui ouvrent les Options en même temps ne s'écrasent plus,
+  le second se voit refuser, et l'écran lui montre ce que le premier a
+  écrit plutôt que d'effacer la personne qu'il venait d'ajouter.
+- **La synchronisation automatique entre postes.** La base est partagée,
+  et chaque écriture se faisait déjà contre les valeurs affichées : vingt
+  messages « modifié depuis un autre poste » existent pour cela. Mais ils
+  arrivaient tous **au moment d'écrire**. Entre-temps l'écran montrait ce
+  que la base portait à son ouverture, et rien ne disait qu'il avait
+  vieilli — on lisait une liste de rendez-vous d'il y a une heure, on
+  rappelait un patient que l'autre poste avait déjà rappelé, et on ne
+  l'apprenait qu'en enregistrant. Si on enregistrait.
+
+  Le témoin est `PRAGMA data_version`, qui bouge quand une *autre*
+  connexion valide et reste immobile pour ce que celle-ci écrit.
+  Pourquoi lui plutôt qu'un compteur de révision tenu à la main : un
+  compteur se pose dans chaque transaction d'écriture, et la première
+  qu'on oublie est une modification qu'aucun poste ne voit jamais — un
+  manque silencieux, la pire espèce. Le pragma ne peut pas être oublié,
+  y compris par une version future.
+
+  Cela **remplace** la relecture aveugle toutes les soixante secondes :
+  une requête par minute sur le partage de l'officine pour presque
+  toujours relire ce qu'on avait déjà, et malgré tout une minute de
+  retard. Maintenant : trois pragmas toutes les deux secondes, et une
+  relecture seulement quand quelqu'un d'autre a écrit. Elle couvre en
+  plus ce que l'ancienne laissait dehors — le registre, le codex, les
+  dispositifs, le fil du dossier, les pièces.
+
+  **Elle ne touche jamais à ce qui est en train d'être tapé** : les
+  listes et les résumés sont des lectures et se rechargent, les tampons
+  de saisie appartiennent à la personne qui a les doigts dessus. Un test
+  le tient, vérifié en l'enfreignant. Et la barre d'état le dit quelques
+  secondes, parce qu'une liste qui change sous les yeux de quelqu'un sans
+  rien dire lui fait croire qu'il a mal lu.
+
+- **La saisie groupée du registre : une feuille, plusieurs produits.**
+  Le formulaire du registre écrit une ligne sur un produit, ce qui est
+  la bonne forme pour la délivrance qui arrive au comptoir. Deux gestes
+  n'y entraient pas : l'inventaire du coffre — quarante produits, une
+  date, un opérateur — et l'ordonnance qui porte deux stupéfiants, seize
+  Actiskenan et cinq Durogesic. Faits produit par produit, ce sont
+  autant d'allers-retours qu'il y a de lignes, à rechoisir chaque fois
+  le produit, la nature et la date.
+
+  Un onglet, tous les produits suivis dans l'ordre alphabétique — celui
+  de la base, qui est déjà celui de l'étagère —, une case en face de
+  chacun. Ce qui est commun se saisit une fois en haut : la nature, le
+  jour, le dossier et le prescripteur d'une délivrance, le grossiste et
+  le bon de livraison d'une réception. Ce qui appartient à un produit
+  est sur sa ligne : la quantité, et le motif — qui se donne case par
+  case, parce que deux produits qui manquent ne manquent pas pour la
+  même raison.
+
+  **Une case vide n'est pas un zéro**, et c'est la règle qui fait tenir
+  tout le reste : une feuille de quarante produits dont on en compte six
+  écrirait sinon trente-quatre inventaires à zéro, c'est-à-dire qu'elle
+  viderait le coffre sur le papier. Une case illisible non plus — « 1O »
+  avec un O se refuse et se dit. Chaque embarras s'écrit **en face de sa
+  case** et non après le refus : sur une feuille de dix produits, un
+  refus qui ne nomme pas la ligne fautive laisse chercher laquelle.
+
+  **Et la feuille part entière ou ne part pas.** L'écriture est une
+  transaction : une seule ligne refusée et rien n'est inscrit. Une
+  feuille à moitié écrite est le pire état où laisser un registre —
+  trois lignes sur cinq sont passées, rien ne dit lesquelles, et rien ne
+  s'y efface. Les numéros d'ordonnancier se suivent à l'intérieur de la
+  feuille : deux délivrances d'un même geste ne peuvent pas porter le
+  même.
+
+  Le **lot** n'y est pas, délibérément : un lot est le numéro d'une
+  boîte et pas d'une feuille, et une seule case par produit ne saurait
+  pas en porter deux. Une réception qu'il faut tracer au lot se fait
+  ligne à ligne, où le champ existe.
+
+### Changed
+- **Les textes de l'interface, relus.** Les tournures en « ce que / ce
+  qui / ce qu'il », les questions rhétoriques et les chutes de phrase en
+  aphorisme sont remplacées par le terme professionnel : « Ce que cela
+  donne » devient « Récapitulatif », « Ce qu'on vise » « Objectifs »,
+  « Le plus loin du compte » « Écarts les plus importants ». Cent
+  dix-huit chaînes dans `strings.fr.toml`, plus la liste de points de
+  l'entretien imprimée sur chaque fiche, neuf libellés de tables de
+  conversion, les titres imprimés et le mode d'emploi.
+- **Et la prose clinique, au même titre.** Cent soixante-dix passages
+  des monographies, des tables, de la biologie, de la surveillance et de
+  la revue d'ordonnance : les clivées « X est ce qui Y » et « c'est ce
+  qui Y » redeviennent « X Y », les formules d'appareil — « il est
+  important de », « il convient de », « il ne s'agit pas de » —
+  disparaissent au profit de l'impératif ou de la négation directe, et
+  les clichés (« n'est pas anodin », « le vrai danger », « ne veut rien
+  dire ») cèdent la place au terme clinique : « n'est pas interprétable »,
+  « le risque principal ».
+
+  **Deux constructions ont été gardées, délibérément.** « Ce n'est pas A,
+  c'est B » reste partout où la distinction *est* le contenu clinique —
+  « ce n'est pas de l'anxiété, c'est un effet du traitement » (akathisie),
+  « ce n'est pas une infection, c'est la réaction attendue » (fièvre
+  post-vaccinale), « ce n'est pas un bon résultat, c'est un risque
+  d'hypoglycémie » (HbA1c basse chez le sujet âgé) : douze phrases où
+  supprimer la tournure supprimerait ce qu'il y a à dire. Et « rien
+  d'autre » reste là où il est une consigne et non une emphase — « c'est
+  le 15 et rien d'autre ».
+
+  Au passage, une double négation qui disait le contraire de son
+  intention : le raloxifène « n'a pas l'effet protecteur du tamoxifène
+  sur rien d'autre que la colonne » se lit maintenant « n'a l'effet
+  protecteur du tamoxifène que sur la colonne ».
+
+### Fixed
+- **Trois tests partageaient un dossier temporaire avec un autre.** Ils
+  tournent en parallèle dans le même processus : deux qui portent le
+  même nom s'effacent la base l'un de l'autre, et le perdant échoue sur
+  « disk I/O error » au hasard de l'ordonnancement. Trouvé en l'ayant
+  provoqué — un test ajouté ici tombait sur le nom d'un test existant.
+
 ## [0.182.0] - 2026-09-10
 
 ### Added

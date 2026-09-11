@@ -92,6 +92,20 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # ordonnance_template_path = "templates/ordonnance_layout.typ"
 
 [pharmacy]
+# ATTENTION — cette section est une **graine**, pas le réglage.
+#
+# L'identité de l'officine, l'équipe et les horaires sont rangés dans la
+# base, où tous les postes les partagent : `config.toml` est un fichier
+# par PC, et l'équipe déclarée sur celui du comptoir n'existait pas sur
+# celui de l'arrière-boutique. C'est la raison qui avait déjà mis les
+# notes d'équipe et les scripts à côté de la base.
+#
+# Ce qui est écrit ici est versé dans la base au premier lancement d'un
+# poste sur une base qui n'en porte pas encore — c'est le chemin de
+# reprise, personne ne retape ce qu'il avait déjà. Ensuite la base
+# répond, et ces lignes ne sont plus lues. Pour modifier : Options ›
+# Officine, ce qui écrit dans la base pour tout le monde.
+#
 # Identité de l'officine, pour l'en-tête du courrier au médecin.
 # name = "Pharmacie du Centre"
 # address = "1 place de la Mairie, 34000 Montpellier"
@@ -735,7 +749,14 @@ impl Default for RulesConfig {
 
 /// The pharmacy's identity, used on the CR letter to the médecin
 /// traitant.
-#[derive(Deserialize, Serialize, Default, Clone)]
+///
+/// **Rangée dans la base et non dans `config.toml`** : voir la table
+/// `settings` de `db.rs` et `app::adopt_officine`. `config.toml` la
+/// porte encore, mais seulement comme graine — ce qu'un poste y avait
+/// écrit est versé dans la base au premier lancement, et c'est la base
+/// qui répond ensuite. `PartialEq` est ce qui rend possible l'écriture
+/// contre la valeur qu'on avait sous les yeux.
+#[derive(Deserialize, Serialize, Default, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct PharmacyConfig {
     pub name: String,

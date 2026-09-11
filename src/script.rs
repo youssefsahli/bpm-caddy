@@ -311,7 +311,7 @@ pub const EXAMPLES: &[(&str, &str)] = &[
          for qui in par.keys() { print(`${qui} : ${par[qui]}`); }\n",
     ),
     (
-        "Ce qui est sorti du registre",
+        "Délivrances par produit",
         "// Les délivrances de stupéfiants, produit par produit.\n\
          let par = #{};\n\
          for l in registre() {\n    \

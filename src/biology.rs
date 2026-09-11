@@ -502,7 +502,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(0.9),
         critical_low: None,
         critical_high: Some(2.0),
-        note: "Prélèvement au moins six heures après la prise, sinon le chiffre ne veut rien dire. La marge est étroite et l'hypokaliémie majore la toxicité à concentration constante.",
+        note: "Prélèvement au moins six heures après la prise ; plus tôt, le chiffre n'est pas interprétable. La marge est étroite et l'hypokaliémie majore la toxicité à concentration constante.",
     },
     Analyte {
         code: "LITH",
@@ -682,7 +682,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(4.0),
         critical_low: Some(0.5),
         critical_high: None,
-        note: "La lymphopénie est ce que surveillent les traitements de fond de la sclérose en plaques et plusieurs immunosuppresseurs : sous 0,5 G/L le risque infectieux, dont la LEMP, n'est plus théorique.",
+        note: "Les traitements de fond de la sclérose en plaques et plusieurs immunosuppresseurs imposent d'en suivre le chiffre : sous 0,5 G/L le risque infectieux, dont la LEMP, n'est plus théorique.",
     },
     Analyte {
         code: "ANTIXA",
@@ -692,7 +692,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: None,
         critical_high: Some(1.5),
-        note: "La seule mesure de l'effet d'une héparine de bas poids moléculaire. Elle ne se fait pas en routine : elle sert quand le rein est mauvais, le poids extrême, ou qu'un saignement pose la question de l'accumulation. Le prélèvement se fait quatre heures après l'injection, et le résultat ne veut rien dire à un autre moment.",
+        note: "La seule mesure de l'effet d'une héparine de bas poids moléculaire. Elle ne se fait pas en routine : elle sert quand le rein est mauvais, le poids extrême, ou qu'un saignement pose la question de l'accumulation. Le prélèvement se fait quatre heures après l'injection, et le résultat n'est pas interprétable à un autre moment.",
     },
     Analyte {
         code: "UREE",
@@ -702,7 +702,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(7.5),
         critical_low: None,
         critical_high: Some(20.0),
-        note: "Elle monte avant la créatinine quand le rein manque d'eau : une urée haute avec une créatinine encore normale est le premier signe d'une déshydratation, et c'est là qu'on agit. Elle monte aussi sous corticoïde, après un saignement digestif et avec un régime très riche en protéines, sans que le rein soit en cause.",
+        note: "Elle monte avant la créatinine quand le rein manque d'eau : une urée haute avec une créatinine encore normale est le premier signe d'une déshydratation, et le moment d'agir. Elle monte aussi sous corticoïde, après un saignement digestif et avec un régime très riche en protéines, sans que le rein soit en cause.",
     },
     Analyte {
         code: "TP",
@@ -762,7 +762,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: None,
         critical_high: Some(4.0),
-        note: "C'est le test de l'héparine non fractionnée, et de rien d'autre : sous HBPM il ne veut rien dire, et c'est l'activité anti-Xa qui répond. La zone curative usuelle est un rapport de 1,5 à 2,5, à lire avec l'heure du prélèvement.",
+        note: "C'est le test de l'héparine non fractionnée, et de rien d'autre : sous HBPM il n'est pas interprétable, et c'est l'activité anti-Xa qui répond. La zone curative usuelle est un rapport de 1,5 à 2,5, à lire avec l'heure du prélèvement.",
     },
     Analyte {
         code: "RETIC",
@@ -1287,7 +1287,7 @@ const RULES: &[Rule] = &[
         threshold: 110.0,
         needs: &["carbamazépine", "phénytoïne", "corticoïde", "AVK"],
         severity: Severity::Info,
-        text: "GGT isolément élevée sous inducteur enzymatique : c'est attendu et ce n'est pas une hépatite. Ce qui compte, c'est ce que l'induction fait au reste de l'ordonnance — AVK, contraception, immunosuppresseur.",
+        text: "GGT isolément élevée sous inducteur enzymatique : c'est attendu et ce n'est pas une hépatite. Ce qui compte est l'effet de l'induction sur le reste de l'ordonnance — AVK, contraception, immunosuppresseur.",
     },
     Rule {
         code: "HDL",
@@ -1407,7 +1407,7 @@ const RULES: &[Rule] = &[
         threshold: 1.5,
         needs: &["HBPM", "énoxaparine", "tinzaparine", "daltéparine", "héparine"],
         severity: Severity::Alert,
-        text: "Activité anti-Xa au-dessus de la zone attendue au pic : accumulation. Chercher l'insuffisance rénale, qui en est la cause habituelle, et ne pas renouveler la dose sans avis. Vérifier aussi que le prélèvement a bien été fait quatre heures après l'injection, sans quoi il ne veut rien dire.",
+        text: "Activité anti-Xa au-dessus de la zone attendue au pic : accumulation. Chercher l'insuffisance rénale, qui en est la cause habituelle, et ne pas renouveler la dose sans avis. Vérifier aussi que le prélèvement a bien été fait quatre heures après l'injection, sans quoi il n'est pas interprétable.",
     },
     Rule {
         code: "HB",

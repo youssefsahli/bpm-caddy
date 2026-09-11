@@ -252,7 +252,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["héparine", "HBPM", "énoxaparine", "tinzaparine", "daltéparine", "fondaparinux"],
         code: "PLQ",
         every_months: 1,
-        why: "La thrombopénie induite par l'héparine survient entre le cinquième et le vingt et unième jour : la numération plaquettaire est ce qui la trouve, et elle se surveille pendant tout le traitement.",
+        why: "La thrombopénie induite par l'héparine survient entre le cinquième et le vingt et unième jour : la numération plaquettaire la trouve, et elle se surveille pendant tout le traitement.",
     },
     Watch {
         // The unfractionated one only: under a low-molecular-weight
@@ -260,7 +260,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["héparine sodique", "héparine non fractionnée", "calciparine"],
         code: "TCA",
         every_months: 1,
-        why: "Sous héparine non fractionnée, c'est le TCA qui règle la dose : rapport de 1,5 à 2,5 fois le témoin, contrôlé 4 à 6 h après le début ou tout changement, puis chaque jour. Sous HBPM il ne veut rien dire.",
+        why: "Sous héparine non fractionnée, c'est le TCA qui règle la dose : rapport de 1,5 à 2,5 fois le témoin, contrôlé 4 à 6 h après le début ou tout changement, puis chaque jour. Sous HBPM il n'est pas interprétable.",
     },
     Watch {
         needs: &["HBPM", "énoxaparine", "tinzaparine", "daltéparine"],
@@ -555,7 +555,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["vildagliptine", "Galvus", "Eucreas"],
         code: "ALAT",
         every_months: 3,
-        why: "La vildagliptine est la seule gliptine à imposer un contrôle des transaminases, trimestriel la première année : c'est ce qui la distingue des autres et c'est ce que personne ne demande.",
+        why: "La vildagliptine est la seule gliptine à imposer un contrôle des transaminases, trimestriel la première année : cela la distingue des autres, et personne ne le demande.",
     },
     Watch {
         needs: &["tériflunomide", "Aubagio", "léflunomide"],
@@ -567,7 +567,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["diméthyl fumarate", "Tecfidera", "fingolimod", "Gilenya"],
         code: "LYMPHO",
         every_months: 3,
-        why: "Une lymphopénie profonde et prolongée est ce qui expose à la leucoencéphalopathie multifocale progressive : le chiffre décide de la poursuite du traitement, et c'est le seul moyen de voir venir la complication.",
+        why: "Une lymphopénie profonde et prolongée expose à la leucoencéphalopathie multifocale progressive : le chiffre décide de la poursuite du traitement, et c'est le seul moyen de voir venir la complication.",
     },
     Watch {
         needs: &["finérénone", "Kerendia"],
@@ -585,7 +585,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["sunitinib", "Sutent"],
         code: "TSH",
         every_months: 6,
-        why: "L'hypothyroïdie sous sunitinib est fréquente, souvent tardive, et elle se confond avec la fatigue de la maladie : la doser est ce qui permet de la traiter au lieu de l'attribuer au cancer.",
+        why: "L'hypothyroïdie sous sunitinib est fréquente, souvent tardive, et elle se confond avec la fatigue de la maladie : la doser permet de la traiter au lieu de l'attribuer au cancer.",
     },
     Watch {
         needs: &["terbinafine", "Lamisil"],
@@ -603,7 +603,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["sotalol", "Sotalex"],
         code: "K",
         every_months: 6,
-        why: "Le sotalol allonge le QT et l'hypokaliémie est ce qui transforme cet allongement en torsade de pointes : la kaliémie compte ici autant que l'électrocardiogramme, en particulier sous diurétique.",
+        why: "Le sotalol allonge le QT et l'hypokaliémie transforme cet allongement en torsade de pointes : la kaliémie compte ici autant que l'électrocardiogramme, en particulier sous diurétique.",
     },
     Watch {
         needs: &["pazopanib", "Votrient"],
@@ -633,7 +633,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["interféron bêta", "Rebif", "Avonex", "Betaferon", "Plegridy"],
         code: "ALAT",
         every_months: 6,
-        why: "Cytolyse hépatique parfois sévère sous interféron bêta, sans aucun signe d'appel : le dosage est ce qui la trouve, et le patient l'oublie entre deux consultations de neurologie.",
+        why: "Cytolyse hépatique parfois sévère sous interféron bêta, sans aucun signe d'appel : le dosage la trouve, et le patient l'oublie entre deux consultations de neurologie.",
     },
 ];
 

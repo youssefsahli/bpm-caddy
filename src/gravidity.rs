@@ -566,7 +566,7 @@ mod tests {
             assert_ne!(
                 a.pregnancy,
                 Level::SansDonnee,
-                "{} : « sans donnée » est ce qu'on répond hors de la table",
+                "{} : hors de la table, la réponse est « sans donnée »",
                 a.label
             );
             for n in a.needs {

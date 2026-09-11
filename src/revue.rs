@@ -789,7 +789,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Miconazole + AVK",
-        detail: "Le miconazole inhibe puissamment le CYP2C9 et fait grimper l'INR jusqu'à l'hémorragie, et cela vaut aussi pour le gel buccal et pour l'ovule gynécologique, dont le passage systémique suffit — c'est ce qui rend l'association traîtresse, personne ne considérant un gel pour la bouche comme un médicament général. L'association est contre-indiquée. Si un traitement local a déjà été commencé, l'INR se contrôle sans attendre.",
+        detail: "Le miconazole inhibe puissamment le CYP2C9 et fait grimper l'INR jusqu'à l'hémorragie, et cela vaut aussi pour le gel buccal et pour l'ovule gynécologique, dont le passage systémique suffit, ce qui rend l'association traîtresse, personne ne considérant un gel pour la bouche comme un médicament général. L'association est contre-indiquée. Si un traitement local a déjà été commencé, l'INR se contrôle sans attendre.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -905,7 +905,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Drospirénone + hyperkaliémiant",
-        detail: "La drospirénone est un dérivé de la spironolactone et retient le potassium comme elle : personne ne lit une pilule comme un traitement hyperkaliémiant, et c'est ce qui la rend dangereuse en association. Contrôler la kaliémie le premier mois, et davantage sur un rein qui n'est pas neuf.",
+        detail: "La drospirénone est un dérivé de la spironolactone et retient le potassium comme elle : personne ne lit une pilule comme un traitement hyperkaliémiant, ce qui la rend dangereuse en association. Contrôler la kaliémie le premier mois, et davantage sur un rein qui n'est pas neuf.",
     },
     Rule {
         kind: Kind::Combination(&[

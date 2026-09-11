@@ -85,7 +85,7 @@ const DEFAULT_TEMPLATE: &str = r#"
 #v(1.5mm)
 {{CHECKLIST}}
 
-#note-box("Ce que le patient dit", 2.2cm)
+#note-box("Propos du patient", 2.2cm)
 #note-box("Points d'attention / interactions", 2cm)
 #note-box("Conclusion et plan d'action", 2.2cm)
 
@@ -1133,23 +1133,23 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Trouver ou créer un patient",
-        "L'application s'ouvre sur la recherche. Tapez ce que vous avez : « jndp » trouve Jean Dupont, les accents et la casse n'ont pas d'importance. Aucun résultat ? Le même champ devient le formulaire de création. Entrée ouvre le résultat choisi, Échap referme.",
+        "L'application s'ouvre sur la recherche. Tapez les premières lettres : « jndp » trouve Jean Dupont, les accents et la casse n'ont pas d'importance. Sans résultat, le même champ devient le formulaire de création. Entrée ouvre le résultat choisi, Échap referme.",
     ),
     (
         "Le dossier patient",
-        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et ce que le dossier voit tout seul : les interactions repérées entre ces traitements, et la revue d'ordonnance. En dessous, six onglets : les entretiens, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie et les pièces numérisées.",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, six onglets : les entretiens, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie et les pièces numérisées.",
     ),
     (
         "Créer et suivre un entretien",
-        "Ctrl+N ouvre le choix rapide : un chiffre par acte, le thème si vous en voulez un. La ligne créée se lit de gauche à droite — le code de l'acte et son rang dans la séquence, le thème, le jour où il a été fait (modifiable) et les initiales de qui l'a fait, l'état, puis « » » pour avancer d'un état. Un acte avance jusqu'à « Facturé » ; « « » revient en arrière si vous avez cliqué trop vite.",
+        "Ctrl+N ouvre le choix rapide : un chiffre par acte, le thème si vous en voulez un. La ligne créée se lit de gauche à droite — le code de l'acte et son rang dans la séquence, le thème, le jour où il a été fait (modifiable) et les initiales de qui l'a fait, l'état, puis « » » pour avancer d'un état. Un acte avance jusqu'à « Facturé » ; « « » revient à l'état précédent.",
     ),
     (
-        "Ce que l'acte imprime",
+        "Documents imprimés par l'acte",
         "Sur chaque ligne : « PDF » sort la fiche d'entretien à remplir, « CR » le courrier au médecin traitant avec les traitements connus, « Adhésion » le bulletin officiel de l'Assurance Maladie pré-rempli — les cases, la date et les signatures restent à faire devant le patient. Un TROD positif ouvre en plus l'ordonnance protocolisée.",
     ),
     (
         "Le bilan et le plan de prise",
-        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication avec ce que le dossier sait : traitements, interactions, revue d'ordonnance, biologie, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
+        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication à partir du dossier : traitements, interactions, revue d'ordonnance, biologie, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
     ),
     (
         "La biologie",
@@ -1157,11 +1157,11 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le carnet de vaccination",
-        "Les doses reçues, avec le lot et le site. À côté, « À faire » compare le carnet au calendrier vaccinal et dit ce qui manque ; « Compléter le carnet… » inscrit d'un coup les doses dues, sans date, à corriger ligne par ligne. « Voyage » coche les vaccins recommandés pour les destinations notées au dossier.",
+        "Les doses reçues, avec le lot et le site. À côté, « À faire » compare le carnet au calendrier vaccinal et signale les doses manquantes ; « Compléter le carnet… » inscrit d'un coup les doses dues, sans date, à corriger ligne par ligne. « Voyage » coche les vaccins recommandés pour les destinations notées au dossier.",
     ),
     (
         "Le référentiel médicaments (F3)",
-        "Plus de huit cents fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et ce que l'équipe écrit n'est jamais réécrit par une mise à jour.",
+        "Plus de huit cents fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et les textes de l'équipe ne sont jamais réécrits par une mise à jour.",
     ),
     (
         "Les tables, le codex, les protocoles",
@@ -1169,7 +1169,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Chercher partout : « Aller à… » et « Dans le texte… »",
-        "Ctrl+K ouvre une boîte au-dessus de tout : tapez trois lettres et elle rend les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches, où se trouve souvent la réponse. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », et chaque fiche qui le dit revient avec la phrase qui le porte, mot surligné, la posologie et sa remarque comprises. Une fiche patient ouverte ? Un bouton limite la recherche à ses seuls traitements.",
+        "Ctrl+K ouvre une boîte au-dessus de tout : tapez trois lettres et elle rend les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches, où se trouve souvent la réponse. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », et chaque fiche qui le dit revient avec la phrase qui le porte, mot surligné, la posologie et sa remarque comprises. Lorsqu'une fiche patient est ouverte, un bouton limite la recherche à ses seuls traitements.",
     ),
     (
         "L'agenda et le carnet de transmissions",
@@ -1177,15 +1177,15 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le tableau de bord",
-        "Ce qui a été facturé, ce qui attend, le taux horaire, la charge des 28 jours. « À revoir » est la liste d'appel : les dossiers dont la biologie ou l'ordonnance a quelque chose à dire. « Récapitulatif de facturation… » imprime les actes à facturer ; « Exporter CSV » écrit tout dans un fichier que le tableur ouvre sans rien demander.",
+        "Le chiffre d'affaires facturé et en attente, le taux horaire, la charge des 28 prochains jours. « À revoir » est la liste d'appel : les dossiers dont la biologie ou l'ordonnance appelle un rappel. « Récapitulatif de facturation… » imprime les actes à facturer ; « Exporter CSV » écrit l'ensemble dans un fichier directement lisible par un tableur.",
     ),
     (
         "Régler l'application",
-        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées — vides par défaut, l'application n'ajoute aucun avertissement de son propre chef —, les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des quatre documents à modèle — fiche d'entretien, courrier, carnet, ordonnance — modifiables avec aperçu.",
+        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées — vides par défaut, l'application n'ajoute aucun avertissement de son propre chef —, les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des documents imprimables — fiche d'entretien, courrier, carnet, ordonnance, registre… — modifiables avec aperçu.",
     ),
     (
         "Raccourcis",
-        "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme ce qui est ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08 de l'année utile.",
+        "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme l'élément ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08, l'année étant déduite du champ.",
     ),
     (
         "En cas de doute",
@@ -1383,9 +1383,9 @@ fn selfcheck_values(
         ));
     }
 
-    // --- Ce qu'on vise --------------------------------------------
+    // --- L'objectif ------------------------------------------------
     src.push_str(&format!(
-        "#v(3mm)\n#block(width: 100%, inset: 6pt, stroke: 0.6pt)[#text(10pt)[*Ce qu'on vise.* #{} #box(width: 5cm, stroke: (bottom: 0.5pt))]]\n",
+        "#v(3mm)\n#block(width: 100%, inset: 6pt, stroke: 0.6pt)[#text(10pt)[*Objectif.* #{} #box(width: 5cm, stroke: (bottom: 0.5pt))]]\n",
         typst_str(sheet.target)
     ));
 
@@ -1783,7 +1783,11 @@ fn stup_register_values(
         // se lit, et la note du bas le redit en toutes lettres.
         let (into, out) = match kind {
             Kind::Entree | Kind::Retour => (qty.clone(), String::new()),
-            Kind::Sortie | Kind::Perte | Kind::Destruction => (String::new(), qty.clone()),
+            Kind::Sortie
+            | Kind::Perte
+            | Kind::Destruction
+            | Kind::Peremption
+            | Kind::DestructionPerimes => (String::new(), qty.clone()),
             Kind::Inventaire => (format!("= {qty}"), String::new()),
             Kind::Annulation => (String::new(), String::new()),
         };
@@ -1791,8 +1795,19 @@ fn stup_register_values(
         // La colonne du coffre ne s'écrit que si quelque chose y est
         // passé : un registre sans aucun retour — l'immense majorité —
         // ne porte pas une colonne de zéros.
+        // **Deux coffres, deux colonnes.** Les additionner annoncerait
+        // un sac là où il y en a deux, qui ne se détruisent pas
+        // ensemble et ne relèvent pas du même procès-verbal. Chacune ne
+        // s'écrit que si quelque chose y est passé : un registre sans
+        // aucun retour ni aucun périmé — l'immense majorité — ne porte
+        // pas deux colonnes de zéros.
         let waiting = if after.to_destroy.abs() > 1e-6 || kind.is_destruction_side() {
             crate::codex::format_quantity(after.to_destroy)
+        } else {
+            String::new()
+        };
+        let expired = if after.expired.abs() > 1e-6 || kind.is_expiry_side() {
+            crate::codex::format_quantity(after.expired)
         } else {
             String::new()
         };
@@ -1806,10 +1821,19 @@ fn stup_register_values(
         } else {
             String::new()
         };
+        // Le lot est **nommé** sur le papier comme à l'écran : « L4821B »
+        // seul entre un bon de livraison et une remarque ne se
+        // distingue pas d'une référence de commande.
+        let lot = if m.lot.trim().is_empty() {
+            String::new()
+        } else {
+            format!("lot {}", m.lot.trim())
+        };
         let side = [
             m.prescriber.as_str(),
             m.supplier.as_str(),
             m.reference.as_str(),
+            lot.as_str(),
             m.remark.as_str(),
             m.operator.as_str(),
         ]
@@ -1818,7 +1842,7 @@ fn stup_register_values(
         .collect::<Vec<_>>()
         .join(" · ");
         body.push_str(&format!(
-            "{}, {}, {}, {}, {}, {}, {}, {}, [#{}],\n",
+            "{}, {}, {}, {}, {}, {}, {}, {}, {}, [#{}],\n",
             cell(&crate::db::format_french_date(&m.happened_on)),
             cell(&no),
             cell(crate::strings::tr(kind.label_key())),
@@ -1826,6 +1850,7 @@ fn stup_register_values(
             cell(&out),
             cell(&crate::codex::format_quantity(after.stock)),
             cell(&waiting),
+            cell(&expired),
             cell(&file),
             typst_str(&if struck {
                 format!("annulée · {side}")
@@ -1835,7 +1860,7 @@ fn stup_register_values(
         ));
     }
     if body.is_empty() {
-        body.push_str("[], [], [], [], [], [], [], [], [],\n");
+        body.push_str("[], [], [], [], [], [], [], [], [], [],\n");
     }
     vec![
         ("{{PRODUCT}}", format!("#{}", typst_str(label))),
@@ -1874,8 +1899,8 @@ const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
 #align(center)[#text(9pt)[{{PHARMACY_NAME}} — édité le {{DATE}}]]
 #v(4mm)
 
-#table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,
-  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*À détruire*], [*Dossier*], [*Mention*],
+#table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.5pt,
+  [*Date*], [*N°*], [*Nature*], [*Entrée*], [*Sortie*], [*Solde*], [*À détruire*], [*Périmés*], [*Dossier*], [*Mention*],
 {{ROWS}})
 
 #v(4mm)
@@ -2641,7 +2666,7 @@ fn dispositif_sections(dispo: &crate::db::Dispositif) -> Vec<(&'static str, &str
         ("Pose", dispo.application.as_str()),
         ("Renouvellement", dispo.renewal.as_str()),
         ("Prise en charge (LPP)", dispo.lpp.as_str()),
-        ("Ce qui va de travers", dispo.caution.as_str()),
+        ("Incidents fréquents", dispo.caution.as_str()),
     ]
     .into_iter()
     .filter(|(_, body)| !body.trim().is_empty())
@@ -3432,6 +3457,8 @@ fn sample_stup_move() -> crate::db::StupMove {
         prescriber: "Dr Martin".to_owned(),
         supplier: String::new(),
         reference: String::new(),
+        lot: "L4821B".to_owned(),
+        expiry: "2027-04-30".to_owned(),
         expected: 0.0,
         operator: "CL".to_owned(),
         remark: String::new(),
@@ -3924,6 +3951,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &[crate::ordonnancier::Balance {
                 stock: 24.0,
                 to_destroy: 0.0,
+                expired: 0.0,
             }],
             &std::collections::HashSet::new(),
             &pharmacy,
@@ -5950,6 +5978,8 @@ mod tests {
             operator: "YS".to_owned(),
             remark: String::new(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         };
         let rows = [line(1, 1, 7, 14.0, 55), line(2, 2, 7, 14.0, 61)];
         let mut labels = std::collections::HashMap::new();
@@ -6053,6 +6083,8 @@ mod tests {
             operator: "YS".to_owned(),
             remark: String::new(),
             cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
         };
         let rows = vec![
             line(1, "ENTREE", 30.0, "2026-01-05", 0.0),
@@ -6678,7 +6710,7 @@ mod tests {
                 );
             }
             assert!(source.contains("À signaler sans attendre"));
-            assert!(source.contains("Ce qu'on vise"));
+            assert!(source.contains("Objectif."));
             for label in sheet.totals {
                 let head: String = label.chars().take(20).collect();
                 assert!(

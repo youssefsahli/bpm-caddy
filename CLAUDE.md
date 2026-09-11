@@ -266,7 +266,23 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   reception, right the day they are written and wrong the day a
   marketing authorisation holder repackages. The officine says it once,
   looking at the box — the same rule as a barcode, for the same reason.
-  Pure, tested, no clock: the day is passed in),
+  And `plan`, which reads a **sheet** rather than a line: the safe count
+  is forty products, one date, one operator, and an ordonnance carrying
+  two stupéfiants is two lines of one gesture. Five rules, one test each,
+  and the first carries the rest: **an empty box is not a zero** — forty
+  products of which six are counted would otherwise write thirty-four
+  inventories at zero, emptying the safe on paper. An unreadable box is
+  not a zero either (« 1O » with an O is refused and said so); zero is a
+  figure only for an inventory; a gap and a procès-verbal are motivated
+  **box by box**, because two products that are short are not short for
+  the same reason. Each snag is named against its own box rather than
+  after the refusal — on a sheet of ten, a refusal that does not name
+  the offending line leaves you hunting for it. The writing itself is
+  `Db::add_stup_moves`, one transaction: **the sheet goes whole or not
+  at all**, since a half-written sheet is the worst state to leave a
+  register in — three lines of five went through, nothing says which,
+  and nothing there erases. Pure, tested, no clock: the day is passed
+  in),
   `src/date.rs` (the calendar, written **once**: it was written three
   times — `ordonnancier` by the julienne formula, `location` by the
   civil one, plus a separate ISO reader in `surveillance`. None was
@@ -789,6 +805,41 @@ add clicking and typing; it is not the price of entry.
   returning `bool`; `false` → reload + French notice). UI caches must
   be reloadable, and the team-notes file merges (`merge_team_notes`) —
   never blind last-writer-wins on shared data.
+- **And the screen learns of another post's write without being asked.**
+  The compare-and-set notices all fire *at the moment of writing*; until
+  then a view showed whatever the base held when it opened, with nothing
+  saying it had aged. `Session::sync_if_others_wrote` reads
+  `PRAGMA data_version` every two seconds — it moves when *another*
+  connection commits and stays put for what this one writes, which is
+  exactly the question — and calls `resync` when it moves. Chosen over a
+  hand-maintained revision counter because a counter has to be bumped in
+  every write transaction, and the first one forgotten is a change no
+  post ever sees; the pragma cannot be forgotten, including by a future
+  version. It replaced a blind 60-second re-read. **`resync` reloads
+  readings and never a typing buffer** — the lists and summaries, never
+  the register form, the batch sheet, a cancellation reason or an open
+  drug form; a resync that replaced what someone has their fingers on
+  would be worse than the stale screen it fixes. Suspended while a
+  maintenance pass runs: it has its own connection, so the witness sees
+  it as another post.
+- **What belongs to the officine goes in the base; what belongs to the
+  post stays in `config.toml`.** That file is one per PC — the team
+  declared at the counter did not exist in the back office, and the
+  pharmacy's name was retyped on every machine. `[pharmacy]` (identity,
+  signing pharmacist, AM number, team, opening hours) now lives in the
+  `settings` table as its TOML fragment, read by `app::adopt_officine`
+  at unlock and written by Options › Officine against the value the
+  screen displayed. A base that has none yet is seeded from that post's
+  file, so nobody retypes what they already wrote, and `config.toml`
+  says it is only a seed. One key/value table rather than three tables
+  because the section is edited as a unit in one dialog, is small, and
+  already has an exact serde round-trip; three would have added joins
+  and a second migration for `planning`, which keys on initials.
+- **Each test gets its own temp directory.** They run in parallel in one
+  process, so two tests sharing a `format!("bpm-caddy-x-{}", pid)` name
+  delete each other's database and the loser fails on « disk I/O
+  error », at the mercy of the scheduling. Three pairs had drifted into
+  collision.
 
 ## Env hooks (demo / e2e / screenshots)
 
@@ -801,7 +852,7 @@ add clicking and typing; it is not the price of entry.
   vaccine_map|ordonnance|rein|grossesse|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
-  stup_catalogue|ordonnancier|vigilance|destruction|scans|
+  stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
   finances|stats|companion|script|carnets|caisse|caisses|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options

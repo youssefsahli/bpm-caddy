@@ -21,6 +21,40 @@ enum State {
     Unlocked(Box<Session>),
 }
 
+/// L'officine vient de la base, et la base l'apprend du premier poste
+/// qui l'ouvre.
+///
+/// `config.toml` est un fichier **par PC**. L'identité de l'officine et
+/// son équipe, elles, valent pour l'officine : l'équipe déclarée sur le
+/// poste du comptoir n'existait pas sur celui de l'arrière-boutique, et
+/// le nom de la pharmacie se retapait sur chacun. C'est la raison qui
+/// avait déjà fait mettre les notes d'équipe et les scripts à côté de la
+/// base plutôt qu'à côté de la configuration — la base est ce que les
+/// postes partagent.
+///
+/// **Rien n'est perdu à la reprise** : une base qui n'en porte pas
+/// encore reçoit ce que ce poste avait dans son fichier. Le premier
+/// lancement de la nouvelle version verse donc ce qui était déjà écrit,
+/// et les postes suivants le lisent au lieu de le redemander.
+fn adopt_officine(config: &mut Config, session: &mut Session) {
+    match session.db.officine() {
+        Some(shared) => {
+            config.pharmacy = shared.clone();
+            session.officine_seen = Some(shared);
+        }
+        None => {
+            let day = session.today.clone();
+            if session
+                .db
+                .set_officine(&config.pharmacy, None, &day, "")
+                .unwrap_or(false)
+            {
+                session.officine_seen = Some(config.pharmacy.clone());
+            }
+        }
+    }
+}
+
 /// Run [`daily_backup`] on a background thread with its own connection:
 /// `VACUUM INTO` rewrites the whole encrypted file, and doing that
 /// synchronously over a network share would freeze the UI at unlock.
@@ -1751,6 +1785,19 @@ enum RegistreTab {
     /// se fait pour le coffre entier, en une fois, devant témoin — et
     /// c'est la seule chose du registre que rien ne vienne réclamer.
     Destruction,
+    /// La feuille de saisie : tous les produits suivis alignés, une case
+    /// en face de chacun.
+    ///
+    /// L'onglet du stock écrit **une** ligne, sur **un** produit, et
+    /// c'est la bonne forme pour la délivrance qui arrive au comptoir.
+    /// Ce n'en est pas une pour les deux gestes qui portent sur
+    /// plusieurs produits à la fois : l'inventaire du coffre — quarante
+    /// produits, une date, un opérateur — et l'ordonnance qui en porte
+    /// deux, seize Actiskenan et cinq Durogesic. Les faire produit par
+    /// produit, c'est autant d'allers-retours qu'il y a de lignes, dans
+    /// une pièce où une erreur ne se corrige que par une contre-passation
+    /// motivée.
+    Saisie,
     Pieces,
 }
 
@@ -1774,6 +1821,69 @@ struct StupEdits {
     unit: String,
     /// Ce que contient une boîte, en toutes lettres tant qu'on le tape.
     per_box: String,
+}
+
+/// La feuille de saisie groupée, en cours de frappe.
+///
+/// Ce qui est **commun à toute la feuille** — la nature, le jour, le
+/// prescripteur — est ici une fois ; ce qui appartient à un produit est
+/// dans les deux tables, par identifiant. Elles sont creuses par
+/// construction : quarante produits alignés dont on en compte six font
+/// six entrées et non quarante chaînes vides, et c'est exactement la
+/// règle que `ordonnancier::plan` applique — une case vide n'est pas un
+/// zéro.
+#[derive(Clone, Debug)]
+struct Batch {
+    kind: crate::ordonnancier::Kind,
+    /// Vide : aujourd'hui, comme dans le formulaire ligne à ligne.
+    day: String,
+    prescriber: String,
+    /// Ce qui est tapé en face de chaque produit, par identifiant.
+    typed: std::collections::HashMap<i64, String>,
+    /// Le motif de l'écart, par identifiant : deux produits qui manquent
+    /// ne manquent pas pour la même raison.
+    reasons: std::collections::HashMap<i64, String>,
+    /// Ce qui filtre la liste — un nom, une famille.
+    query: String,
+    /// Montrer tous les produits, ou seulement ceux dont une case est
+    /// remplie. C'est la relecture avant d'inscrire : quarante lignes
+    /// dont six comptent se relisent à six lignes.
+    show_all: bool,
+}
+
+impl Default for Batch {
+    /// **La feuille s'ouvre sur l'inventaire.** Écrit à la main plutôt
+    /// que dérivé sur `Kind` : « la nature par défaut » est une question
+    /// d'écran et pas de registre, et le module n'a pas à trancher pour
+    /// une vue. C'est l'inventaire ici parce que c'est le geste qui
+    /// porte sur tout le coffre — une délivrance, elle, porte sur un
+    /// produit et se fait très bien ligne à ligne.
+    fn default() -> Self {
+        Self {
+            kind: crate::ordonnancier::Kind::Inventaire,
+            day: String::new(),
+            prescriber: String::new(),
+            typed: std::collections::HashMap::new(),
+            reasons: std::collections::HashMap::new(),
+            query: String::new(),
+            show_all: true,
+        }
+    }
+}
+
+/// Les quatre colonnes de la feuille de saisie groupée. Voir
+/// [`App::batch_columns`].
+struct BatchCols {
+    /// Le libellé du produit : il prend ce que les trois autres
+    /// laissent, sans descendre sous son plancher.
+    name: f32,
+    /// Le solde du registre, ou l'embarras qui retient la case — jamais
+    /// les deux, et la colonne se mesure sur le plus large.
+    state: f32,
+    qty: f32,
+    reason: f32,
+    /// La gouttière entre deux colonnes, celle que la grille pose.
+    gap: f32,
 }
 
 /// Les colonnes du carnet de vaccination : combien, et larges de
@@ -2741,6 +2851,12 @@ struct Session {
     stup_new_prescriber: String,
     stup_new_supplier: String,
     stup_new_reference: String,
+    /// Le numéro de lot de la boîte, et sa péremption. **Distincts de
+    /// la référence**, qui est le bon de livraison : le scan écrivait
+    /// le lot dans la référence, et les deux se sont trouvés confondus
+    /// sur toutes les lignes reçues à la douchette.
+    stup_new_lot: String,
+    stup_new_expiry: String,
     stup_new_remark: String,
     /// La fiche ou le courrier en attente de ce qu'on veut y mettre.
     export_box: Option<ExportBox>,
@@ -2838,6 +2954,32 @@ struct Session {
     /// (`[stock] count_days`). La loi en demande un par an ; une
     /// officine sérieuse en fait un par mois sur ce qui bouge.
     stup_count_days: i64,
+    /// La feuille de saisie groupée, en cours de frappe.
+    batch: Batch,
+    /// L'officine **telle que la base la portait** au dernier chargement.
+    ///
+    /// C'est la valeur contre laquelle l'enregistrement se fait : sans
+    /// elle, deux postes qui ouvrent les Options en même temps
+    /// s'écraseraient, et le second effacerait l'équipe que le premier
+    /// vient d'ajouter. `None` veut dire « la base n'en portait pas » —
+    /// une base d'avant cette version, ou une base neuve.
+    officine_seen: Option<crate::config::PharmacyConfig>,
+    /// Un autre poste a enregistré l'officine avant nous, et ce qui est
+    /// à l'écran vient d'être remplacé par ce qu'il a écrit.
+    officine_stale: bool,
+    /// Ce que les trois fichiers portaient au dernier regard — voir
+    /// [`db::Db::data_version`]. Quand le témoin bouge, un autre poste a
+    /// écrit, et les listes de cet écran datent.
+    sync_seen: (i64, i64, i64),
+    /// Quand regarder de nouveau. Le témoin coûte trois pragmas, ce qui
+    /// n'est rien — mais rien fois soixante par seconde reste une
+    /// requête par image, et la règle de la maison est qu'aucune
+    /// n'entre dans la boucle de dessin.
+    sync_next: Instant,
+    /// Depuis quand la bande « un autre poste a écrit » est affichée.
+    /// Elle s'efface toute seule : c'est une information, pas une
+    /// erreur, et rien n'est demandé au comptoir.
+    sync_notice: Option<Instant>,
     /// Le codex: the preparations, what is open, and the quantity the
     /// counter actually has to make.
     show_codex: bool,
@@ -3220,8 +3362,16 @@ impl Session {
             stup_new_prescriber: String::new(),
             stup_new_supplier: String::new(),
             stup_new_reference: String::new(),
+            stup_new_lot: String::new(),
+            stup_new_expiry: String::new(),
             stup_new_remark: String::new(),
             export_box: None,
+            batch: Batch::default(),
+            officine_seen: None,
+            officine_stale: false,
+            sync_seen: (0, 0, 0),
+            sync_next: Instant::now(),
+            sync_notice: None,
             stup_list: StupList::default(),
             stup_lab: String::new(),
             stup_query: String::new(),
@@ -3987,6 +4137,115 @@ impl Session {
         // invisible, colonne vide, et rien pour dire pourquoi.
         if self.class_family >= crate::classes::FAMILIES.len() && self.class_orphans.is_empty() {
             self.class_family = 0;
+        }
+    }
+
+    /// Regarder si un autre poste a écrit, et recharger si oui.
+    ///
+    /// # Le manque que cela comble
+    ///
+    /// La base est partagée, et chaque écriture partagée se fait déjà
+    /// contre les valeurs affichées : vingt messages « modifié depuis un
+    /// autre poste » existent pour cela. Mais ils arrivent tous **au
+    /// moment d'écrire**. Entre-temps l'écran montre ce que la base
+    /// portait à son ouverture, et rien ne dit qu'il a vieilli : on lit
+    /// une liste de rendez-vous d'il y a une heure, on rappelle un
+    /// patient que l'autre poste a déjà rappelé, et on ne l'apprend
+    /// qu'en enregistrant — si on enregistre.
+    ///
+    /// # Les trois règles
+    ///
+    /// **On ne se voit pas soi-même.** Le témoin est
+    /// `PRAGMA data_version`, qui ne bouge pas pour ce que cette
+    /// connexion écrit : sans cela, la vue se rechargerait à chaque
+    /// ligne inscrite ici.
+    ///
+    /// **On ne regarde pas par image.** Trois pragmas ne coûtent rien,
+    /// et rien fois soixante par seconde est une requête par image —
+    /// ce que ce fichier s'interdit partout ailleurs. Toutes les deux
+    /// secondes suffit à ce qu'une liste ne mente jamais longtemps.
+    ///
+    /// **On ne touche jamais à ce qui est en train d'être tapé.** C'est
+    /// la règle qui décide de ce que cette fonction recharge : les
+    /// listes et les résumés, qui sont des lectures, et rien d'autre.
+    /// Les tampons de saisie — le formulaire du registre, la feuille de
+    /// saisie groupée, le motif d'annulation, les champs d'un dossier en
+    /// cours de correction — appartiennent à la personne qui a les
+    /// doigts dessus, et une synchronisation qui les remplacerait serait
+    /// pire que l'écran périmé qu'elle corrige.
+    fn sync_if_others_wrote(&mut self) {
+        if Instant::now() < self.sync_next {
+            return;
+        }
+        self.sync_next = Instant::now() + Self::SYNC_EVERY;
+        let now = self.db.data_version();
+        if now == self.sync_seen {
+            return;
+        }
+        // Le tout premier regard ne recharge rien : il ne fait
+        // qu'enregistrer l'état de départ.
+        let first = self.sync_seen == (0, 0, 0);
+        self.sync_seen = now;
+        if first {
+            return;
+        }
+        self.resync();
+        self.sync_notice = Some(Instant::now());
+    }
+
+    /// Toutes les deux secondes. Assez rare pour ne rien coûter, assez
+    /// fréquent pour qu'une liste ne mente pas le temps d'un entretien.
+    const SYNC_EVERY: Duration = Duration::from_secs(2);
+
+    /// Combien de temps la bande « un autre poste a écrit » reste.
+    const SYNC_NOTICE_FOR: Duration = Duration::from_secs(6);
+
+    /// Relire ce qui est une **lecture** : les listes, les résumés, le
+    /// dossier ouvert. Jamais un tampon de saisie.
+    ///
+    /// Ce que cette liste laisse dehors est aussi important que ce
+    /// qu'elle contient — voir [`Self::sync_if_others_wrote`].
+    fn resync(&mut self) {
+        if let Ok(list) = self.db.patients() {
+            self.set_patients(list);
+            // L'en-tête du dossier ouvert suit — et se **ferme** si
+            // l'autre poste a supprimé le dossier, plutôt que de rester
+            // sur une identité qui n'existe plus.
+            self.resync_viewing();
+        }
+        if let Ok(counts) = self.db.pending_counts() {
+            self.pending = counts;
+        }
+        // Le référentiel, **sauf si sa fiche est ouverte en
+        // correction** : recharger la liste sous un formulaire ouvert
+        // remplacerait ce qui est en train d'être écrit. C'est la garde
+        // que le rafraîchissement d'avant portait déjà, et la règle que
+        // toute cette fonction suit.
+        if self.drug_form.is_none() {
+            if let Ok(list) = self.db.drugs() {
+                self.set_drugs(list);
+            }
+        }
+        self.refresh_dashboard();
+        // Le registre, le codex, les dispositifs : trois lectures que
+        // le rafraîchissement d'avant ne couvrait pas. Un solde de
+        // stupéfiant lu ici pendant qu'un autre poste délivre est
+        // exactement le genre de chiffre qu'il ne faut pas garder à
+        // l'écran.
+        self.reload_stup();
+        self.reload_codex();
+        self.reload_dispositifs();
+        if self.view == MainView::Transmissions {
+            self.load_transmissions();
+        }
+        // Le dossier ouvert : ses onglets sont des lectures, et ce sont
+        // eux qu'on a sous les yeux quand quelqu'un d'autre écrit
+        // dessus.
+        if let Some(open) = self.viewing.as_ref().map(|p| p.id) {
+            self.reload_treatments(open);
+            self.reload_interviews(open);
+            self.refresh_fil();
+            self.refresh_scans(crate::scans::Subject::Patient, open);
         }
     }
 
@@ -7635,8 +7894,6 @@ pub struct App {
     /// swap the text under the cursor).
     doc_focused: bool,
     doc_check: Instant,
-    /// Multi-PC: periodic re-read of what the current view displays.
-    last_refresh: Instant,
     /// The (scale, density) pair currently applied to the egui style.
     applied_look: Option<(i32, motif::Density, String)>,
     /// Master-password change dialog, when open.
@@ -7835,7 +8092,9 @@ impl App {
                 adopted_db = Some(found);
             }
         }
-        let config = config;
+        // `config` reste modifiable au-delà d'ici : l'officine se lit
+        // dans la base dès qu'une session s'ouvre, et remplace alors ce
+        // que le fichier de ce poste en disait — voir `adopt_officine`.
         let doc_text = std::fs::read_to_string(config.team_doc_path())
             .unwrap_or_else(|_| tr("team_doc_template").to_owned());
         // The shape the post was last left in wins over the start-up
@@ -7871,6 +8130,7 @@ impl App {
                     s
                 }) {
                 Ok(mut session) => {
+                    adopt_officine(&mut config, &mut session);
                     spawn_daily_backup(
                         config.db_path(),
                         pw.clone(),
@@ -8093,6 +8353,29 @@ impl App {
                         // et des destructions de l'autre.
                         Ok("destruction") => {
                             session.open_registres(RegistreTab::Destruction);
+                        }
+                        // La feuille de saisie groupée, **avec des cases
+                        // déjà remplies** : vide, elle ne montre ni les
+                        // écarts, ni les embarras, ni le compte des
+                        // lignes prêtes — c'est-à-dire rien de ce que
+                        // l'écran existe pour dessiner. La démonstration
+                        // compte donc le premier produit juste et le
+                        // deuxième de travers.
+                        Ok("saisie") => {
+                            session.open_registres(RegistreTab::Saisie);
+                            let sample: Vec<(i64, f64)> = session
+                                .stup_summary
+                                .iter()
+                                .take(2)
+                                .map(|s| (s.product.id, s.stock))
+                                .collect();
+                            for (n, (id, stock)) in sample.into_iter().enumerate() {
+                                let counted = if n == 0 { stock } else { stock - 2.0 };
+                                session
+                                    .batch
+                                    .typed
+                                    .insert(id, crate::codex::format_quantity(counted.max(0.0)));
+                            }
                         }
                         // L'explorateur, sur l'axe demandé : « explorer »
                         // pour la demi-vie, « explorer_organ » pour un
@@ -8628,7 +8911,6 @@ impl App {
             doc_error: None,
             doc_focused: false,
             doc_check: Instant::now(),
-            last_refresh: Instant::now(),
             applied_look: None,
             pw_change: None,
             tpl_editor,
@@ -8706,6 +8988,12 @@ impl App {
     fn finish_maintenance(&mut self, outcome: &crate::maintenance::Outcome) {
         use crate::maintenance::Job;
         if let State::Unlocked(session) = &mut self.state {
+            // La passe vient d'écrire depuis sa propre connexion : le
+            // témoin a bougé, et sans cela le prochain regard annoncerait
+            // « actualisé depuis un autre poste » pour ce que ce poste
+            // vient de faire lui-même. On reprend le repère ici, où les
+            // listes sont de toute façon relues.
+            session.sync_seen = session.db.data_version();
             // A reset has emptied every table under the open views, so
             // everything cached is dropped and read again. The other
             // three only ever add, but they add to the same lists.
@@ -10203,6 +10491,7 @@ impl App {
                     s
                 }) {
                 Ok(mut session) => {
+                    adopt_officine(&mut self.config, &mut session);
                     spawn_daily_backup(
                         self.config.db_path(),
                         pw.clone(),
@@ -24226,8 +24515,11 @@ impl App {
     fn registres_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         let body = motif::visible_rect(ui);
         let strip = motif::split_rows(body, &[motif::tab_strip_height(ui), 0.0], 4.0);
-        const TABS: [RegistreTab; 5] = [
+        const TABS: [RegistreTab; 6] = [
             RegistreTab::Stupefiants,
+            // Juste après le stock : c'est le même registre, écrit d'un
+            // autre geste, et non un écran de plus au bout de la rangée.
+            RegistreTab::Saisie,
             RegistreTab::Ordonnancier,
             RegistreTab::Vigilance,
             RegistreTab::Destruction,
@@ -24240,6 +24532,7 @@ impl App {
         motif::inside(ui, strip[0], |ui| {
             let tabs = [
                 motif::Tab::new(tr("registre_tab_stup")),
+                motif::Tab::new(tr("registre_tab_saisie")),
                 motif::Tab::new(tr("registre_tab_ordo")),
                 motif::Tab::new(tr("registre_tab_vigilance")),
                 motif::Tab::new(tr("registre_tab_destruction")),
@@ -24264,6 +24557,9 @@ impl App {
         match session.registre_tab {
             RegistreTab::Stupefiants => {
                 Self::stup_body(ui, session, config, operator, strip[1]);
+            }
+            RegistreTab::Saisie => {
+                Self::batch_body(ui, session, operator, strip[1]);
             }
             RegistreTab::Ordonnancier => {
                 Self::ordonnancier_body(ui, session, config, operator, strip[1]);
@@ -25925,12 +26221,24 @@ impl App {
                                                 false,
                                                 trf("stup_scan_known", s.code.clone()),
                                             ));
-                                            // Une réception scannée apporte son
-                                            // lot et sa péremption : ils sont
-                                            // sur la boîte, et les retaper est
-                                            // une occasion de se tromper.
+                                            // Une boîte scannée apporte son lot
+                                            // et sa péremption : ils sont
+                                            // dessus, et les retaper est une
+                                            // occasion de se tromper.
+                                            //
+                                            // **Dans le champ du lot, et non
+                                            // dans celui de la référence** :
+                                            // celle-ci est le bon de livraison
+                                            // du grossiste. Les deux se sont
+                                            // trouvés confondus sur toutes les
+                                            // lignes reçues à la douchette, et
+                                            // un rappel de lot n'avait alors
+                                            // rien de fiable à interroger.
                                             if !s.lot.is_empty() && s.lot_certain {
-                                                session.stup_new_reference = s.lot.clone();
+                                                session.stup_new_lot = s.lot.clone();
+                                            }
+                                            if !s.expiry.is_empty() {
+                                                session.stup_new_expiry = s.expiry.clone();
                                             }
                                         }
                                         // L'application ne propose jamais un
@@ -26279,6 +26587,7 @@ impl App {
                 product,
                 stock,
                 to_destroy,
+                expired,
                 last_count: last,
                 waiting_since,
             }) = &open
@@ -26417,6 +26726,18 @@ impl App {
             } else {
                 String::new()
             };
+            // Et le troisième compte, sur sa propre ligne : ce qui a
+            // périmé au coffre n'est pas ce qu'un patient a rapporté,
+            // et les additionner annoncerait un sac là où il y en a
+            // deux, qui ne se détruisent pas ensemble.
+            let expired_txt = if expired.abs() > 1e-6 {
+                trn(
+                    "stup_expired_line",
+                    &[&crate::codex::format_quantity(*expired), &product.unit],
+                )
+            } else {
+                String::new()
+            };
             let info_rows = Self::wrapped_rows(
                 ui,
                 w,
@@ -26424,6 +26745,7 @@ impl App {
                     stock_txt.as_str(),
                     counted_txt.as_str(),
                     destroy_txt.as_str(),
+                    expired_txt.as_str(),
                     rule_txt.as_str(),
                     pace_txt.as_str(),
                     gaps_txt.as_str(),
@@ -26607,6 +26929,16 @@ impl App {
                                         )
                                     },
                                 );
+                            }
+                            if !expired_txt.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(expired_txt.as_str())
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::chart::series_color(
+                                            crate::ordonnancier::Kind::Peremption.series(),
+                                        )),
+                                )
+                                .on_hover_text(tr("stup_expired_tooltip"));
                             }
                             // La durée maximale de prescription est le nombre sur
                             // lequel on refuse une ordonnance : elle se lit sur la
@@ -26881,6 +27213,686 @@ impl App {
         }
     }
 
+    /// La feuille de saisie : tous les produits suivis, une case en face
+    /// de chacun, et une seule écriture.
+    ///
+    /// # Pourquoi un écran et pas un bouton de plus
+    ///
+    /// Le formulaire de l'onglet du stock écrit **une** ligne sur **un**
+    /// produit, et c'est la bonne forme pour la délivrance qui arrive au
+    /// comptoir. Deux gestes ne rentrent pas dedans : l'inventaire du
+    /// coffre — quarante produits, une date, un opérateur — et
+    /// l'ordonnance qui porte deux stupéfiants, seize Actiskenan et cinq
+    /// Durogesic. Faits produit par produit, ce sont autant
+    /// d'allers-retours qu'il y a de lignes, à choisir chaque fois le
+    /// produit, la nature et la date, dans une pièce où une erreur ne se
+    /// corrige que par une contre-passation motivée.
+    ///
+    /// # Ce que la feuille tient, et ce qu'elle laisse à l'autre écran
+    ///
+    /// Ce qui est **commun** est saisi une fois en haut : la nature, le
+    /// jour, le dossier et le prescripteur d'une délivrance, le
+    /// grossiste et le bon de livraison d'une réception. Ce qui
+    /// appartient à un produit est sur sa ligne : la quantité, et le
+    /// motif — qui se donne case par case, parce que deux produits qui
+    /// manquent ne manquent pas pour la même raison.
+    ///
+    /// Le **lot** n'y est pas, et c'est délibéré : un lot est le numéro
+    /// d'une boîte, pas d'une feuille, et une seule case par produit ne
+    /// saurait pas en porter deux. Une réception qu'il faut tracer au
+    /// lot se fait ligne à ligne, où le champ existe.
+    ///
+    /// # Les règles
+    ///
+    /// Elles sont dans `ordonnancier::plan`, pas ici — une case vide
+    /// n'est pas un zéro, une case illisible non plus, zéro n'est un
+    /// chiffre que pour un inventaire, un écart et un procès-verbal se
+    /// motivent en face de la case. Cet écran ne fait que les afficher.
+    ///
+    /// Et l'écriture est une transaction : `add_stup_moves` passe la
+    /// feuille entière ou aucune de ses lignes. Une feuille à moitié
+    /// inscrite est le pire état où laisser un registre — trois lignes
+    /// sur cinq sont passées, rien ne dit lesquelles, et rien ne s'y
+    /// efface.
+    fn batch_body(ui: &mut egui::Ui, session: &mut Session, operator: &str, body: egui::Rect) {
+        use crate::ordonnancier::Kind;
+        if body.height() < 40.0 || body.width() < 60.0 {
+            return;
+        }
+        // La feuille est **déplacée** hors de la session le temps du
+        // dessin, et rendue à la fin. Pas copiée : un `TextEdit`
+        // d'egui tient son contenu dans le `String` qu'on lui prête, et
+        // quarante lignes recopiées soixante fois par seconde sont
+        // quarante allocations par image. Aucun retour anticipé ne
+        // sépare les deux moitiés de ce déplacement, sinon la frappe de
+        // l'image serait perdue.
+        let mut batch = std::mem::take(&mut session.batch);
+        // Ce que la feuille donnerait si on l'inscrivait maintenant.
+        // Calculé **avant** le dessin, sur ce qui a été tapé jusqu'ici :
+        // c'est ce qui permet d'écrire l'embarras en face de sa case
+        // plutôt qu'après le refus. Le `Plan` ne retient rien de la
+        // feuille — il est en propre —, donc l'emprunt s'arrête ici et
+        // le dessin peut réécrire les cases.
+        let plan = {
+            let slots: Vec<crate::ordonnancier::Slot> = session
+                .stup_summary
+                .iter()
+                .map(|s| crate::ordonnancier::Slot {
+                    stup_id: s.product.id,
+                    typed: batch.typed.get(&s.product.id).map_or("", String::as_str),
+                    expected: s.stock,
+                    reason: batch.reasons.get(&s.product.id).map_or("", String::as_str),
+                })
+                .collect();
+            crate::ordonnancier::plan(batch.kind, &slots)
+        };
+        let kind = batch.kind;
+
+        // --- Ce que la bande du haut demande, mesuré avant d'être carvé
+        //
+        // **Deux bandes enveloppantes, mesurées séparément.** Elles
+        // l'étaient ensemble, dans un seul `wrapped_rows_of` sur toutes
+        // les largeurs : à 1400 px les huit natures passaient déjà à
+        // deux rangées et la mesure en annonçait deux pour l'ensemble,
+        // si bien que la rangée du jour, du filtre et du bouton
+        // « Tous les produits » était sous le plafond — c'est-à-dire
+        // hors de vue, la bande étant plafonnée. C'est la divergence
+        // habituelle entre ce qu'on mesure et ce qu'on dessine, et ici
+        // elle coûtait la moitié des contrôles. Deux `horizontal_wrapped`
+        // se mesurent en deux fois.
+        let row = Self::row_height(ui);
+        let line = ui.text_style_height(&egui::TextStyle::Body);
+        let day_w = Self::field_width(ui, [tr("stup_day_hint")].into_iter());
+        let text_w = chars_wide(ui, 22.0);
+        let kind_rows = Self::wrapped_rows_of(
+            ui,
+            body.width(),
+            Kind::ALL
+                .iter()
+                .map(|k| Self::button_width(ui, tr(k.label_key()))),
+        );
+        let mut field_widths: Vec<f32> = vec![day_w];
+        if kind.is_dispensing() {
+            field_widths.push(text_w);
+        }
+        if kind == Kind::Entree {
+            field_widths.push(text_w);
+            field_widths.push(text_w);
+        }
+        field_widths.push(text_w);
+        field_widths.push(Self::button_width(ui, tr("batch_all_products")));
+        let field_rows = Self::wrapped_rows_of(ui, body.width(), field_widths.into_iter());
+        // Le sous-titre enveloppe : mesuré comme il est dessiné, sans
+        // quoi une phrase de deux lignes en réserve une et prend la
+        // seconde à ce qui est dessous.
+        let sub_h = ui.fonts(|f| {
+            f.layout(
+                tr("batch_subtitle").to_owned(),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                motif::text(),
+                body.width(),
+            )
+            .size()
+            .y
+        });
+        // Le dossier d'une délivrance prend ses propres lignes : la
+        // phrase qui nomme le dossier, et le champ qui le cherche quand
+        // il n'y en a pas d'ouvert.
+        let file_h = if kind.carries_file() { line + row } else { 0.0 };
+        // Ce que l'écriture a répondu — « 5 lignes inscrites », ou le
+        // refus et sa raison. Mesuré comme il est dessiné : il
+        // enveloppe, et une ligne réservée à une phrase de trois se
+        // peint sur la feuille. Il **manquait** : `add_stup_moves`
+        // répondait dans le vide et « Inscrire la feuille » n'avait
+        // l'air de rien faire, ce qui, sur un registre, est la pire
+        // chose qu'un bouton puisse avoir l'air de faire.
+        let note_h = session.stup_note.as_ref().map_or(0.0, |(_, msg)| {
+            ui.fonts(|f| {
+                f.layout(
+                    msg.clone(),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
+                    motif::text(),
+                    body.width(),
+                )
+                .size()
+                .y
+            })
+        });
+        let gutters = ui.spacing().item_spacing.y * 5.0 + 12.0;
+        let controls = (kind_rows + field_rows) * row + file_h + note_h;
+        // Plafonnée en part du volet, comme toute bande dont la hauteur
+        // dépend de son contenu : la feuille — ce pour quoi on ouvre
+        // l'onglet — garde sa place, et la bande défile dans la sienne.
+        let cap = (body.height() * 0.42).max(row + 12.0);
+        // **Quand la part ne tient pas tout, la garniture part la
+        // première.** Le sous-titre énonce la règle en une phrase qu'on
+        // lit une fois ; à 1024x700 en texte 1,6 il enveloppe sur deux
+        // lignes et les prend aux natures, dont la dernière — « Destruction
+        // (périmés) » — se peignait alors coupée en travers du panneau
+        // d'en dessous. Une porte coupée en deux se lit « cassé », pas
+        // « il y en a d'autres ».
+        let show_sub = sub_h + controls + gutters <= cap;
+        let want = if show_sub { sub_h } else { 0.0 } + controls + gutters;
+        // **Et le plafond tombe sur une rangée entière.** Le reste de la
+        // bande défile, mais toujours entre deux choses entières — la
+        // même règle que la bande du registre, à côté.
+        let head_h = if want <= cap {
+            want
+        } else {
+            // La réponse de l'écriture garde sa place même ici : c'est
+            // ce qu'on vient de faire au registre, et le reste de la
+            // bande défile devant elle.
+            let room = (cap - gutters - note_h).max(row);
+            whole_rows(
+                room,
+                row,
+                ui.spacing().item_spacing.y,
+                kind_rows + field_rows,
+            ) + note_h
+                + gutters
+        };
+        let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
+
+        let mut write = false;
+        let mut clear = false;
+        motif::inside(ui, rows[0], |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("batch_head")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // **La réponse de l'écriture, en tête.** Elle était
+                    // en queue de bande, donc sous le pli dès que la
+                    // bande est plafonnée : « 5 lignes inscrites » se
+                    // lisait en défilant, après avoir pressé le bouton
+                    // qui écrit dans une pièce inaltérable. Ce qu'on
+                    // vient de faire au registre est la première chose
+                    // à lire.
+                    if let Some((is_error, msg)) = &session.stup_note {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(msg.as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(if *is_error {
+                                        motif::alert()
+                                    } else {
+                                        motif::accent()
+                                    }),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    if show_sub {
+                        ui.label(
+                            egui::RichText::new(tr("batch_subtitle"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        for k in Kind::ALL {
+                            if motif::toggle(ui, tr(k.label_key()), batch.kind == k).clicked() {
+                                batch.kind = k;
+                                // Une nature ne garde que ses propres
+                                // champs, comme dans le formulaire ligne
+                                // à ligne : le grossiste d'une réception
+                                // qui survit au changement de nature
+                                // repart au registre sur une délivrance,
+                                // et une ligne fausse dans un registre
+                                // inaltérable ne se corrige que par une
+                                // contre-passation.
+                                if k != Kind::Sortie {
+                                    batch.prescriber.clear();
+                                }
+                            }
+                        }
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_sized(
+                            [day_w, Self::button_height(ui)],
+                            egui::TextEdit::singleline(&mut batch.day)
+                                .hint_text(tr("stup_day_hint")),
+                        );
+                        if kind.is_dispensing() {
+                            ui.add_sized(
+                                [text_w, Self::button_height(ui)],
+                                egui::TextEdit::singleline(&mut batch.prescriber)
+                                    .hint_text(tr("stup_prescriber_hint")),
+                            );
+                        }
+                        if kind == Kind::Entree {
+                            // Le grossiste et le bon de livraison valent
+                            // pour toute la feuille : une commande
+                            // arrive sous un seul bon, et le retaper par
+                            // produit est ce que cet écran existe pour
+                            // éviter.
+                            ui.add_sized(
+                                [text_w, Self::button_height(ui)],
+                                egui::TextEdit::singleline(&mut session.stup_new_supplier)
+                                    .hint_text(tr("stup_supplier_hint")),
+                            );
+                            ui.add_sized(
+                                [text_w, Self::button_height(ui)],
+                                egui::TextEdit::singleline(&mut session.stup_new_reference)
+                                    .hint_text(tr("stup_reference_hint")),
+                            );
+                        }
+                        ui.add_sized(
+                            [text_w, Self::button_height(ui)],
+                            egui::TextEdit::singleline(&mut batch.query)
+                                .hint_text(tr("batch_filter_hint")),
+                        );
+                        if motif::toggle(ui, tr("batch_all_products"), batch.show_all)
+                            .on_hover_text(tr("batch_all_products_tooltip"))
+                            .clicked()
+                        {
+                            batch.show_all = !batch.show_all;
+                        }
+                    });
+                    // Le dossier, par la même rangée que le formulaire
+                    // ligne à ligne — la règle et le moyen de désigner
+                    // un dossier sont écrits une fois pour les deux
+                    // écrans.
+                    if kind.carries_file() {
+                        Self::stup_file_row(ui, session, text_w, kind.is_dispensing());
+                    }
+                });
+        });
+
+        // Ce que la feuille pèse, à côté du bouton qui l'inscrit : le
+        // compte des cases qui coincent — c'est lui qui décide, une
+        // seule case refusée retenant toute la feuille —, sinon celui
+        // des lignes prêtes. Composé ici parce que la rangée du bas se
+        // **mesure** avec, et que la mesure et le dessin doivent porter
+        // sur la même phrase.
+        let (status, status_ink) = if !plan.snags.is_empty() {
+            (trf("batch_snags", plan.snags.len()), motif::alert())
+        } else if plan.lines.is_empty() {
+            (tr("batch_ready_none").to_owned(), motif::text_dim())
+        } else {
+            (trf("batch_ready", plan.lines.len()), motif::accent())
+        };
+        motif::panel(ui, rows[1], Some(tr("batch_title")), |ui| {
+            let inner = ui.available_rect_before_wrap();
+            // Le bouton d'écriture a **sa propre rangée**, prise sur le
+            // bas avant que la table soit dessinée : sous une zone qui
+            // grandit, une hauteur réservée dans le flux est toujours de
+            // quelques pixels trop courte.
+            //
+            // **Et elle est mesurée, phrase comprise.** Une rangée haute
+            // d'un bouton portait deux boutons et un compte : à 1024x700
+            // en texte 1,6 le compte n'entrait plus et se lisait
+            // « 1 case(s) à » — la seule chose que cette rangée existe
+            // pour dire, coupée en son milieu.
+            let btn_h = Self::wrapped_rows_of(
+                ui,
+                inner.width(),
+                [
+                    Self::button_width(ui, tr("batch_write")),
+                    Self::button_width(ui, tr("batch_clear")),
+                    Self::widest(ui, 11.0, [status.as_str()].into_iter()),
+                ]
+                .into_iter(),
+            ) * Self::row_height(ui)
+                + 6.0;
+            let split = motif::split_rows(inner, &[0.0, btn_h], 4.0);
+            motif::inside(ui, split[0], |ui| {
+                if session.stup_summary.is_empty() {
+                    ui.label(
+                        egui::RichText::new(tr("batch_empty"))
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::text_dim()),
+                    );
+                    return;
+                }
+                // Les largeurs sont calculées **une fois**, et le dessin
+                // les reçoit : deux mesures d'une même chose divergent
+                // toujours.
+                let BatchCols {
+                    name: name_w,
+                    state: state_w,
+                    qty: qty_w,
+                    reason: reason_w,
+                    gap,
+                } = Self::batch_columns(ui, ui.available_width());
+                let reason_hint = match kind {
+                    Kind::Perte => tr("stup_loss_hint"),
+                    Kind::Destruction | Kind::DestructionPerimes => tr("stup_destroy_reason_hint"),
+                    Kind::Retour => tr("stup_return_reason_hint"),
+                    Kind::Inventaire => tr("batch_reason_hint"),
+                    _ => tr("stup_remark_hint"),
+                };
+                // Une table de fiches demande une grille : dessinée
+                // rangée par rangée, chaque colonne commencerait où la
+                // précédente a fini et rien ne s'alignerait d'une ligne
+                // à l'autre. Et `ScrollArea::both`, parce qu'une rangée
+                // qui finit par un champ doit pouvoir défiler jusqu'à
+                // lui.
+                egui::ScrollArea::both()
+                    .id_salt("batch_sheet")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.visuals_mut().faint_bg_color = motif::bg_dark();
+                        let dim_pt = motif::pt(ui, 10.5);
+                        let mut shown = 0_usize;
+                        egui::Grid::new("batch_grid")
+                            .num_columns(4)
+                            .spacing([gap, 6.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                let dim = |t: &str| {
+                                    egui::RichText::new(t).size(dim_pt).color(motif::text_dim())
+                                };
+                                Self::grid_cell(ui, name_w, dim(tr("stup_col_product")));
+                                Self::grid_cell(ui, state_w, dim(tr("batch_col_stock")));
+                                Self::grid_cell(ui, qty_w, dim(tr("batch_col_qty")));
+                                Self::grid_cell(ui, reason_w, dim(tr("batch_col_reason")));
+                                ui.end_row();
+                                for s in &session.stup_summary {
+                                    let id = s.product.id;
+                                    let filled =
+                                        batch.typed.get(&id).is_some_and(|t| !t.trim().is_empty());
+                                    // Le filtre écarte, la case remplie
+                                    // retient : une ligne qu'on vient de
+                                    // taper ne disparaît pas parce qu'on
+                                    // a tapé autre chose dans le filtre.
+                                    let matches = batch.query.trim().is_empty()
+                                        || fuzzy::contains_loose(&s.product.label, &batch.query)
+                                        || fuzzy::contains_loose(&s.product.family, &batch.query);
+                                    if !filled && (!matches || !batch.show_all) {
+                                        continue;
+                                    }
+                                    shown += 1;
+                                    let mut name = egui::RichText::new(s.product.label.as_str())
+                                        .size(motif::pt(ui, 11.5));
+                                    if s.product.archived {
+                                        name = name.color(motif::text_dim());
+                                    }
+                                    Self::grid_cell(ui, name_w, name);
+                                    // Une seule colonne pour deux
+                                    // choses, et jamais les deux à la
+                                    // fois : ce que le registre dit du
+                                    // produit, ou ce qui empêche la case
+                                    // de partir. Quand il y a un
+                                    // embarras, c'est lui qu'on vient
+                                    // lire.
+                                    let state = match plan.snag(id) {
+                                        Some(snag) => egui::RichText::new(tr(snag.label_key()))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::alert()),
+                                        None => {
+                                            let gap_txt = batch
+                                                .typed
+                                                .get(&id)
+                                                .and_then(|t| crate::codex::parse_amount(t))
+                                                .map(|(v, _)| crate::ordonnancier::Discrepancy {
+                                                    expected: s.stock,
+                                                    counted: v,
+                                                })
+                                                .filter(|d| kind == Kind::Inventaire && d.matters())
+                                                .map(|d| {
+                                                    trf(
+                                                        "batch_gap",
+                                                        crate::codex::format_quantity(d.gap()),
+                                                    )
+                                                });
+                                            match gap_txt {
+                                                Some(t) => egui::RichText::new(t)
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(motif::accent()),
+                                                // Le solde, sans la
+                                                // phrase : la colonne
+                                                // porte déjà « Au
+                                                // registre » en tête, et
+                                                // le répéter par ligne
+                                                // faisait élider l'unité
+                                                // — « 21 comprimé
+                                                // sublingua… » — sur la
+                                                // seule colonne où
+                                                // l'unité compte.
+                                                None => egui::RichText::new(trn(
+                                                    "batch_stock",
+                                                    &[
+                                                        &crate::codex::format_quantity(s.stock),
+                                                        &s.product.unit,
+                                                    ],
+                                                ))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                            }
+                                        }
+                                    };
+                                    Self::grid_cell(ui, state_w, state);
+                                    ui.add_sized(
+                                        [qty_w, Self::button_height(ui)],
+                                        egui::TextEdit::singleline(
+                                            batch.typed.entry(id).or_default(),
+                                        )
+                                        .hint_text(tr("batch_qty_hint")),
+                                    );
+                                    // **Le motif n'apparaît que sur une
+                                    // ligne qui écrira quelque chose.**
+                                    // Quarante champs « obligatoire si
+                                    // écart » alignés sous une feuille
+                                    // vide annoncent quarante lignes à
+                                    // motiver là où il n'y en a aucune,
+                                    // et c'est le contraire de ce que
+                                    // cette colonne dit : une case vide
+                                    // n'écrit rien.
+                                    if filled {
+                                        ui.add_sized(
+                                            [reason_w, Self::button_height(ui)],
+                                            egui::TextEdit::singleline(
+                                                batch.reasons.entry(id).or_default(),
+                                            )
+                                            .hint_text(reason_hint),
+                                        );
+                                    } else {
+                                        Self::grid_cell(ui, reason_w, egui::RichText::new(""));
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                        // Rien à l'écran, et deux raisons possibles :
+                        // le filtre ne rend rien, ou la relecture est
+                        // demandée sur une feuille que personne n'a
+                        // encore remplie. Dire « Aucun produit de ce
+                        // nom » dans le second cas ferait chercher une
+                        // faute de frappe là où il n'y a qu'une feuille
+                        // vierge.
+                        if shown == 0 {
+                            let why = if batch.show_all {
+                                tr("batch_no_match")
+                            } else {
+                                tr("batch_ready_none")
+                            };
+                            ui.label(
+                                egui::RichText::new(why)
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                    });
+            });
+            motif::inside(ui, split[1], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, tr("batch_write"))
+                        .on_hover_text(tr("batch_write_tooltip"))
+                        .clicked()
+                    {
+                        write = true;
+                    }
+                    if motif::button(ui, tr("batch_clear"))
+                        .on_hover_text(tr("batch_clear_tooltip"))
+                        .clicked()
+                    {
+                        clear = true;
+                    }
+                    // La phrase que la rangée a été mesurée pour tenir.
+                    ui.label(
+                        egui::RichText::new(status.as_str())
+                            .size(motif::pt(ui, 11.0))
+                            .color(status_ink),
+                    );
+                });
+            });
+        });
+
+        if clear {
+            batch.typed.clear();
+            batch.reasons.clear();
+            session.stup_note = None;
+        }
+        if write {
+            Self::batch_write(session, &batch, &plan, operator);
+            if session.stup_note.as_ref().is_some_and(|(err, _)| !err) {
+                batch.typed.clear();
+                batch.reasons.clear();
+            }
+        }
+        session.batch = batch;
+    }
+
+    /// Les quatre colonnes de la feuille de saisie, mesurées une fois.
+    ///
+    /// Sortie du dessin pour être **vérifiable** : c'est de
+    /// l'arithmétique de largeurs, et l'arithmétique de largeurs est ce
+    /// qui se trompe en silence — une colonne trop étroite n'a l'air de
+    /// rien, elle élide.
+    ///
+    /// Deux règles, et un test les tient à trois échelles de texte.
+    /// **Le nom ne descend jamais sous seize caractères** : « Produit »
+    /// fait sept lettres, et une colonne large de son en-tête réduisait
+    /// « Méthadone AP-HP gélule 40 mg » à « Métha… », ce qui ne désigne
+    /// plus rien sur une étagère où trois dosages se suivent. **Et le
+    /// motif se resserre plutôt que de sortir de la table** : dernier de
+    /// la rangée, il était le premier à passer sous la barre
+    /// horizontale, et c'est précisément le champ qu'une case en écart
+    /// demande d'atteindre — la ligne annonce « Écart à motiver » en
+    /// rouge et le champ pour le faire n'était pas à l'écran.
+    ///
+    /// Quand même ces planchers ne tiennent pas, la table déborde et
+    /// défile : une table de fiches se lit de côté, elle ne se replie
+    /// pas en note de bas de page.
+    fn batch_columns(ui: &egui::Ui, avail: f32) -> BatchCols {
+        let gap = 8.0;
+        let qty = Self::field_width(ui, [tr("batch_col_qty")].into_iter()).max(chars_wide(ui, 9.0));
+        // La colonne d'état porte le solde **ou** l'embarras, jamais les
+        // deux : elle se mesure donc sur le plus large des deux.
+        let state = Self::widest(
+            ui,
+            11.0,
+            [
+                tr("batch_col_stock"),
+                tr("batch_snag_gap"),
+                tr("batch_snag_record"),
+                tr("batch_snag_unreadable"),
+            ]
+            .into_iter(),
+        );
+        let name_floor =
+            Self::widest(ui, 11.5, [tr("stup_col_product")].into_iter()).max(chars_wide(ui, 16.0));
+        let fixed = state + qty + gap * 3.0;
+        let left_over = (avail - fixed - name_floor).max(0.0);
+        let reason = chars_wide(ui, 20.0).min(left_over.max(chars_wide(ui, 8.0)));
+        let name = (avail - fixed - reason).max(name_floor);
+        BatchCols {
+            name,
+            state,
+            qty,
+            reason,
+            gap,
+        }
+    }
+
+    /// Inscrire la feuille — ou ne rien inscrire du tout.
+    ///
+    /// Séparée du dessin parce qu'elle n'en est pas : elle lit un plan
+    /// déjà arrêté, compose ses lignes et les passe à `add_stup_moves`,
+    /// qui les écrit dans une seule transaction. Les règles du registre
+    /// sont tenues là-bas, à l'écriture, et pas ici — une règle qui ne
+    /// tient que dans une vue ne tient pas.
+    fn batch_write(
+        session: &mut Session,
+        batch: &Batch,
+        plan: &crate::ordonnancier::Plan,
+        operator: &str,
+    ) {
+        if !plan.ready() {
+            // Rien à dire de plus : les cases qui coincent portent déjà
+            // leur raison, en face d'elles.
+            return;
+        }
+        let day = if batch.day.trim().is_empty() {
+            session.today.clone()
+        } else {
+            match db::parse_french_date(&batch.day, session.year_now(), db::YearHint::Past) {
+                Ok(iso) => iso,
+                Err(e) => {
+                    session.stup_note = Some((true, e));
+                    return;
+                }
+            }
+        };
+        let kind = batch.kind;
+        // La même règle que la ligne à ligne : une délivrance sans
+        // dossier ne permet pas de remonter au patient, et c'est la
+        // seule chose qu'un registre doive permettre.
+        let file = session
+            .stup_file_pick
+            .or_else(|| session.viewing.as_ref().map(|p| p.id));
+        if kind.is_dispensing() && file.is_none() {
+            session.stup_note = Some((true, tr("stup_no_file").to_owned()));
+            return;
+        }
+        let moves: Vec<db::StupMove> = plan
+            .lines
+            .iter()
+            .map(|l| db::StupMove {
+                id: 0,
+                stup_id: l.stup_id,
+                kind: kind.as_key().to_owned(),
+                happened_on: day.clone(),
+                quantity: l.quantity,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: file.unwrap_or(0),
+                prescriber: batch.prescriber.clone(),
+                supplier: session.stup_new_supplier.clone(),
+                reference: session.stup_new_reference.clone(),
+                // Le solde d'avant, celui de cette ligne : c'est lui
+                // qu'une annulation d'inventaire rendra, et il n'est pas
+                // le même d'un produit à l'autre.
+                expected: l.expected,
+                operator: operator.to_owned(),
+                remark: batch
+                    .reasons
+                    .get(&l.stup_id)
+                    .map(|r| r.trim().to_owned())
+                    .unwrap_or_default(),
+                cancels: 0,
+                // Le lot est le numéro d'une boîte et non d'une feuille :
+                // une réception qu'il faut tracer au lot se fait ligne à
+                // ligne, où le champ existe.
+                lot: String::new(),
+                expiry: String::new(),
+            })
+            .collect();
+        match session.db.add_stup_moves(&moves) {
+            Ok(ids) => {
+                session.stup_new_supplier.clear();
+                session.stup_new_reference.clear();
+                // Le dossier désigné vaut pour la feuille qu'on vient
+                // d'écrire et pas pour la suivante : le garder ferait
+                // délivrer au patient d'avant sans que rien ne le dise.
+                session.stup_file_pick = None;
+                session.stup_file_query.clear();
+                session.reload_stup();
+                session.stup_note = Some((false, trf("batch_written", ids.len())));
+            }
+            Err(e) => session.stup_note = Some((true, e)),
+        }
+    }
+
     /// Le dossier de la ligne, et **le moyen de le désigner sans
     /// quitter l'écran**.
     ///
@@ -27142,6 +28154,7 @@ impl App {
                 product,
                 stock,
                 to_destroy,
+                expired,
                 ..
             }) = open
             else {
@@ -27196,6 +28209,10 @@ impl App {
                                     // procès-verbal qui n'existe pas.
                                     if !matches!(k, Kind::Entree | Kind::Destruction) {
                                         session.stup_new_reference.clear();
+                                        session.stup_new_lot.clear();
+                                        session.stup_new_expiry.clear();
+                                        session.stup_new_lot.clear();
+                                        session.stup_new_expiry.clear();
                                     }
                                     // Un inventaire propose le solde du
                                     // registre : le comptage confirme ou
@@ -27425,6 +28442,21 @@ impl App {
                                             .hint_text(tr("stup_reference_hint")),
                                     )
                                     .has_focus();
+                                // **Le lot est un champ à lui.** Il
+                                // était écrit dans la référence, qui
+                                // est le bon de livraison : deux choses
+                                // dans une case, et un rappel de lot
+                                // n'avait rien de fiable à interroger.
+                                // La douchette le remplit ; on peut
+                                // aussi le lire sur la boîte.
+                                focus_here |= ui
+                                    .add_sized(
+                                        [w, Self::button_height(ui)],
+                                        egui::TextEdit::singleline(&mut session.stup_new_lot)
+                                            .hint_text(tr("stup_lot_hint")),
+                                    )
+                                    .on_hover_text(tr("stup_lot_tooltip"))
+                                    .has_focus();
                                 // **On ne reçoit pas des unités, on
                                 // reçoit des boîtes.** Le grossiste
                                 // livre trois boîtes d'Actiskenan, qui
@@ -27456,28 +28488,31 @@ impl App {
                                         .color(motif::text_dim()),
                                 );
                             }
-                            Kind::Destruction => {
-                                // Ce que le coffre porte, en face de ce
-                                // qu'on s'apprête à en sortir : c'est
-                                // le seul compte du registre dont
-                                // personne d'autre ne tient la
-                                // contrepartie.
+                            // Les deux destructions vident chacune son
+                            // coffre, et le formulaire dit lequel : ce
+                            // sont les deux comptes du registre dont
+                            // personne d'autre ne tient la contrepartie.
+                            Kind::Destruction | Kind::DestructionPerimes => {
+                                let waiting = if kind == Kind::Destruction {
+                                    *to_destroy
+                                } else {
+                                    *expired
+                                };
                                 ui.label(
                                     egui::RichText::new(trn(
-                                        "stup_to_destroy_line",
-                                        &[
-                                            &crate::codex::format_quantity(*to_destroy),
-                                            &product.unit,
-                                        ],
+                                        if kind == Kind::Destruction {
+                                            "stup_to_destroy_line"
+                                        } else {
+                                            "stup_expired_line"
+                                        },
+                                        &[&crate::codex::format_quantity(waiting), &product.unit],
                                     ))
                                     .size(motif::pt(ui, 11.0))
-                                    .color(
-                                        if *to_destroy > 0.0 {
-                                            motif::text()
-                                        } else {
-                                            motif::text_dim()
-                                        },
-                                    ),
+                                    .color(if waiting > 0.0 {
+                                        motif::text()
+                                    } else {
+                                        motif::text_dim()
+                                    }),
                                 );
                                 focus_here |= ui
                                     .add_sized(
@@ -27486,6 +28521,25 @@ impl App {
                                             .hint_text(tr("stup_pv_hint")),
                                     )
                                     .on_hover_text(tr("stup_pv_tooltip"))
+                                    .has_focus();
+                            }
+                            // Une péremption sort du délivrable et va
+                            // au troisième coffre : la boîte est encore
+                            // là, et elle y reste jusqu'au
+                            // procès-verbal.
+                            Kind::Peremption => {
+                                ui.label(
+                                    egui::RichText::new(tr("stup_peremption_help"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                                focus_here |= ui
+                                    .add_sized(
+                                        [w, Self::button_height(ui)],
+                                        egui::TextEdit::singleline(&mut session.stup_new_lot)
+                                            .hint_text(tr("stup_lot_hint")),
+                                    )
+                                    .on_hover_text(tr("stup_lot_tooltip"))
                                     .has_focus();
                             }
                             Kind::Inventaire => {
@@ -27657,6 +28711,8 @@ impl App {
             prescriber: session.stup_new_prescriber.clone(),
             supplier: session.stup_new_supplier.clone(),
             reference: session.stup_new_reference.clone(),
+            lot: session.stup_new_lot.clone(),
+            expiry: session.stup_new_expiry.clone(),
             expected: *stock,
             operator: operator.to_owned(),
             remark: session.stup_new_remark.clone(),
@@ -27670,6 +28726,8 @@ impl App {
                 session.stup_new_day.clear();
                 session.stup_new_remark.clear();
                 session.stup_new_reference.clear();
+                session.stup_new_lot.clear();
+                session.stup_new_expiry.clear();
                 // Le prescripteur et le grossiste aussi : ils ne
                 // survivaient pas à l'écriture par choix, mais par
                 // oubli, et la ligne d'après les emportait.
@@ -28145,7 +29203,14 @@ impl App {
                 amount(ui, qty);
                 Self::grid_cell(ui, qty_w, egui::RichText::new(""));
             }
-            Kind::Sortie | Kind::Perte | Kind::Destruction => {
+            // Une péremption sort du délivrable, une destruction de
+            // périmés sort du troisième compte : les deux sortent, et
+            // c'est la colonne de solde qui dit d'où.
+            Kind::Sortie
+            | Kind::Perte
+            | Kind::Destruction
+            | Kind::Peremption
+            | Kind::DestructionPerimes => {
                 Self::grid_cell(ui, qty_w, egui::RichText::new(""));
                 amount(ui, qty);
             }
@@ -28262,10 +29327,21 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                     }
+                    // Le lot **nommé**, et non posé nu entre le bon de
+                    // livraison et la remarque : « L4821B » tout seul
+                    // au milieu d'une ligne ne se distingue pas d'une
+                    // référence de commande, et c'est précisément la
+                    // confusion qu'on vient de défaire.
+                    let lot = if m.lot.trim().is_empty() {
+                        String::new()
+                    } else {
+                        trf("stup_lot_line", m.lot.trim())
+                    };
                     let side = [
                         m.prescriber.as_str(),
                         m.supplier.as_str(),
                         m.reference.as_str(),
+                        lot.as_str(),
                         m.remark.as_str(),
                         m.operator.as_str(),
                     ]
@@ -37191,59 +38267,29 @@ impl eframe::App for App {
             ctx.request_repaint_after(Duration::from_secs(30));
         }
 
-        // Multi-PC: other posts write the same database. Re-read what the
-        // current view shows every minute (silently — a transient network
-        // hiccup on a background refresh is not worth an error banner).
-        if let State::Unlocked(session) = &mut self.state {
-            if self.last_refresh.elapsed() > Duration::from_secs(60) {
-                self.last_refresh = Instant::now();
-                if let Ok(list) = session.db.patients() {
-                    session.set_patients(list);
-                    // Keep the open patient's header in sync too: another
-                    // post may have corrected the identity — or deleted
-                    // the patient, in which case the view closes.
-                    session.resync_viewing();
-                }
-                if let Ok(counts) = session.db.pending_counts() {
-                    session.pending = counts;
-                }
-                if let Some(pid) = session.viewing.as_ref().map(|p| p.id) {
-                    if let Ok(list) = session.db.interviews_for(pid) {
-                        session.viewing_interviews = list;
-                    }
-                }
-                // The search view's home panels read the same rows.
-                if matches!(session.view, MainView::Dashboard | MainView::Search) {
-                    if let Ok(s) = session.db.interview_summaries(session.cycle_months) {
-                        session.summaries = s;
-                    }
-                    if let Ok(a) = session.db.upcoming_appointments() {
-                        session.appointments = a;
-                    }
-                    if let Ok(t) = session.db.today_iso() {
-                        session.today = t;
-                    }
-                }
-                if session.view == MainView::Drugs && session.drug_form.is_none() {
-                    if let Ok(list) = session.db.drugs() {
-                        session.set_drugs(list);
-                    }
-                }
-                if session.view == MainView::Transmissions {
-                    session.load_transmissions();
-                }
-                if session.view == MainView::Agenda {
-                    if let Ok(a) = session.db.upcoming_appointments() {
-                        session.appointments = a;
-                    }
-                    if let Ok(t) = session.db.today_iso() {
-                        session.today = t;
-                    }
-                    if let Ok(t) = session.db.tomorrow_iso() {
-                        session.tomorrow = t;
-                    }
-                }
-            }
+        // Multi-PC : les autres postes écrivent dans la même base.
+        //
+        // **Quand ils écrivent, et non toutes les minutes.** Ce bloc
+        // relisait une liste de lectures toutes les soixante secondes,
+        // que quelque chose ait changé ou non : une requête par minute
+        // sur un partage réseau pour, presque toujours, relire ce qu'on
+        // avait déjà — et malgré tout une minute de retard sur ce que le
+        // comptoir d'à côté venait d'inscrire.
+        //
+        // Le témoin d'SQLite dit gratuitement s'il y a lieu de relire —
+        // voir `Session::sync_if_others_wrote`. Toutes les deux
+        // secondes, trois pragmas ; et une relecture seulement quand un
+        // autre poste a validé quelque chose.
+        //
+        // **Sauf pendant une passe de maintenance.** Elle tourne sur son
+        // propre fil et sa propre connexion, donc le témoin la voit
+        // exactement comme un autre poste : une passe d'une minute
+        // ferait trente relectures complètes sous la barre de
+        // progression. Ce n'est pas un autre poste, c'est nous — et ce
+        // qu'elle écrit est relu d'un coup à la fin, par
+        // `finish_maintenance`.
+        if let (State::Unlocked(session), None) = (&mut self.state, &self.maint_job) {
+            session.sync_if_others_wrote();
         }
 
         // Multi-PC: pick up teammates' edits to the shared notes while our
@@ -37552,6 +38598,11 @@ impl eframe::App for App {
                 .filter(|s| s.state == InterviewState::ReportSent)
                 .count();
             let operator = self.operator.trim().to_owned();
+            // Un autre poste vient d'écrire et les listes ont été
+            // relues : la bande le dit quelques secondes, puis s'efface.
+            let synced = session
+                .sync_notice
+                .is_some_and(|at| at.elapsed() < Session::SYNC_NOTICE_FOR);
             let db_file = self
                 .config
                 .db_path()
@@ -37626,6 +38677,20 @@ impl eframe::App for App {
                                 egui::RichText::new(trf("status_operator", &operator))
                                     .size(motif::pt(ui, 11.0))
                                     .color(operator_color(&operator)),
+                            );
+                        }
+                        // **Une relecture n'est pas silencieuse.** Les
+                        // listes viennent de changer sous les yeux de
+                        // quelqu'un ; ne rien dire, c'est lui laisser
+                        // croire qu'il a mal lu. Dans la barre d'état et
+                        // non en travers de l'écran : c'est une nouvelle
+                        // ordinaire, rien n'est demandé, et la bande
+                        // s'efface d'elle-même.
+                        if synced {
+                            ui.label(
+                                egui::RichText::new(tr("sync_refreshed"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::accent()),
                             );
                         }
                     });
@@ -38109,6 +39174,16 @@ impl eframe::App for App {
                             let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
                             if page == OptionsPage::Pharmacy {
                                 motif::section(ui, tr("opts_pharmacy"));
+                                // Cette page ne se range pas où les
+                                // autres se rangent, et il vaut mieux le
+                                // dire : ce qu'on y écrit part dans la
+                                // base et vaut pour tous les postes.
+                                ui.label(
+                                    egui::RichText::new(tr("opts_officine_shared"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                                ui.add_space(4.0);
                                 egui::Grid::new("opts_pharmacy")
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
@@ -39505,6 +40580,48 @@ impl eframe::App for App {
                 session.cycle_months = self.config.rules.cycle_months.max(1);
                 session.loc_notice_days = self.config.locations.notice_days;
                 session.scripts_dir = self.config.scripts_dir();
+                // **L'officine part à la base, pas au fichier.** Le nom,
+                // l'adresse, le pharmacien signataire, le numéro AM,
+                // l'équipe et les horaires valent pour l'officine et non
+                // pour le poste : les ranger dans `config.toml` obligeait
+                // à déclarer l'équipe une fois par PC, et une personne
+                // ajoutée au comptoir n'existait pas en arrière-boutique.
+                //
+                // Contre ce que cet écran avait sous les yeux : un autre
+                // poste qui aurait enregistré entre-temps n'est pas
+                // écrasé en silence.
+                let day = session.today.clone();
+                let who = self
+                    .config
+                    .pharmacy
+                    .operators
+                    .first()
+                    .map_or_else(String::new, |o| o.initials.clone());
+                match session.db.set_officine(
+                    &self.config.pharmacy,
+                    session.officine_seen.as_ref(),
+                    &day,
+                    &who,
+                ) {
+                    Ok(true) => session.officine_seen = Some(self.config.pharmacy.clone()),
+                    Ok(false) => {
+                        // Un autre poste a écrit avant nous : on montre
+                        // ce qu'il a écrit plutôt que de l'effacer — et
+                        // **dans le formulaire aussi**, sinon l'écran
+                        // continuerait d'afficher un texte que la base
+                        // ne porte pas.
+                        if let Some(theirs) = session.db.officine() {
+                            self.config.pharmacy = theirs.clone();
+                            if let Some(editor) = &mut self.options {
+                                editor.cfg.pharmacy = theirs.clone();
+                                editor.message = Some((true, tr("opts_officine_stale").to_owned()));
+                            }
+                            session.officine_seen = Some(theirs);
+                        }
+                        session.officine_stale = true;
+                    }
+                    Err(_) => {}
+                }
                 session.refresh_dashboard();
             }
         }
@@ -39613,6 +40730,65 @@ mod tests {
         assert_eq!(Session::month_bounds("pas-un-mois"), None);
         assert_eq!(Session::month_bounds("2026-13"), None);
         assert_eq!(Session::month_step("", 1), "");
+    }
+
+    /// **La feuille de saisie garde ses deux colonnes utiles à toutes
+    /// les échelles de texte.**
+    ///
+    /// Deux défauts trouvés en regardant une capture à 1024x700 en texte
+    /// 1,6, et qu'aucune assertion ne tenait : le nom du produit réduit
+    /// à « Métha… », qui ne désigne plus rien sur une étagère où trois
+    /// dosages se suivent ; et le champ du motif poussé hors de la
+    /// table, c'est-à-dire précisément le champ qu'une ligne annonçant
+    /// « Écart à motiver » en rouge demande d'atteindre.
+    ///
+    /// Le test tourne un vrai contexte egui, parce que ces largeurs sont
+    /// des mesures de texte dans la fonte qui dessinera — et à trois
+    /// échelles, parce que c'est l'échelle qui les faisait fondre.
+    #[test]
+    fn the_batch_sheet_keeps_its_name_and_its_reason_at_every_scale() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for avail in [1200.0_f32, 560.0, 380.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new(None);
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let cols = App::batch_columns(ui, avail);
+                        let floor16 = super::chars_wide(ui, 16.0);
+                        let floor8 = super::chars_wide(ui, 8.0);
+                        *seen.borrow_mut() = Some((cols, floor16, floor8));
+                    });
+                });
+                let Some((cols, floor16, floor8)) = seen.into_inner() else {
+                    panic!("échelle {scale} : rien mesuré");
+                };
+                // Le nom garde de quoi désigner un produit.
+                assert!(
+                    cols.name >= floor16 - 0.5,
+                    "échelle {scale}, {avail} px : le nom tombe à {} pour un plancher de {floor16}",
+                    cols.name
+                );
+                // Et le motif ne disparaît jamais : c'est le champ
+                // qu'une case en écart demande d'atteindre.
+                assert!(
+                    cols.reason >= floor8 - 0.5,
+                    "échelle {scale}, {avail} px : le motif tombe à {}",
+                    cols.reason
+                );
+                // Au large, les quatre colonnes tiennent dans la table
+                // sans la faire déborder : c'est le cas courant, et
+                // c'est celui où la barre horizontale ne doit pas
+                // apparaître.
+                let total = cols.name + cols.state + cols.qty + cols.reason + cols.gap * 3.0;
+                if avail >= 1200.0 {
+                    assert!(
+                        total <= avail + 0.5,
+                        "échelle {scale} : {total} px pour {avail} disponibles"
+                    );
+                }
+            }
+        }
     }
 
     /// **Une invite qui ne tient pas dans son champ est remplacée.**
@@ -42021,6 +43197,89 @@ mod tests {
         (super::Session::new(db, 12, 30).unwrap(), swept)
     }
 
+    /// **Ce qu'un autre poste écrit arrive à l'écran sans qu'on demande
+    /// rien — et ce qu'on est en train de taper ne bouge pas.**
+    ///
+    /// Les deux moitiés comptent autant l'une que l'autre. La base est
+    /// partagée, et jusqu'ici l'écran ne l'apprenait qu'en essayant
+    /// d'écrire : vingt messages « modifié depuis un autre poste »
+    /// existent pour ce moment-là. Entre-temps on lisait une liste
+    /// vieille d'une minute sans que rien ne le dise.
+    ///
+    /// Mais une relecture qui remplacerait un formulaire en cours de
+    /// frappe serait pire que la liste périmée qu'elle corrige : la
+    /// seconde moitié du test est la garde, pas un détail.
+    #[test]
+    fn what_another_post_writes_arrives_and_what_is_being_typed_stays() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-sync2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("shared.db");
+        // Deux postes sur la même base, chacun sa connexion — c'est la
+        // situation réelle de l'officine, et la seule où le témoin veut
+        // dire quelque chose.
+        let other = crate::db::Db::open(&path, "secret").unwrap();
+        let mine = crate::db::Db::open(&path, "secret").unwrap();
+        mine.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let mut s = super::Session::new(mine, 12, 30).unwrap();
+        // Le premier regard n'est qu'une prise de repère.
+        s.sync_if_others_wrote();
+        let before = s.patients.len();
+        assert!(s.sync_notice.is_none(), "rien à annoncer au premier regard");
+
+        // Ce que ce poste écrit lui-même ne déclenche rien : sans cela,
+        // la vue se rechargerait sous les doigts à chaque ligne.
+        s.db.add_patient("Bernard", "Paul", "1970-01-01").unwrap();
+        s.sync_next = std::time::Instant::now();
+        s.sync_if_others_wrote();
+        assert!(
+            s.sync_notice.is_none(),
+            "un poste ne se synchronise pas sur lui-même"
+        );
+
+        // L'autre poste crée un dossier. **Et on tape en même temps** :
+        // un libellé dans le formulaire du registre, une case de la
+        // feuille de saisie groupée, un motif d'annulation.
+        other
+            .add_patient("Lefèvre", "Hélène", "1982-05-20")
+            .unwrap();
+        s.stup_new_qty = "16".to_owned();
+        s.stup_cancel_reason = "erreur de saisie".to_owned();
+        s.batch.typed.insert(1, "12".to_owned());
+        s.batch.day = "1109".to_owned();
+        s.drug_query = "elix".to_owned();
+
+        s.sync_next = std::time::Instant::now();
+        s.sync_if_others_wrote();
+
+        // La liste a suivi, et la bande le dit.
+        assert_eq!(
+            s.patients.len(),
+            before + 2,
+            "le dossier de l'autre poste et le nôtre sont là"
+        );
+        assert!(
+            s.patients.iter().any(|p| p.last_name == "Lefèvre"),
+            "ce que l'autre poste a écrit est arrivé tout seul"
+        );
+        assert!(
+            s.sync_notice.is_some(),
+            "une relecture n'est pas silencieuse"
+        );
+
+        // Et rien de ce qui était en train d'être tapé n'a bougé.
+        assert_eq!(s.stup_new_qty, "16", "la quantité en cours de frappe");
+        assert_eq!(s.stup_cancel_reason, "erreur de saisie", "le motif");
+        assert_eq!(
+            s.batch.typed.get(&1).map(String::as_str),
+            Some("12"),
+            "la case de la feuille de saisie"
+        );
+        assert_eq!(s.batch.day, "1109", "la date de la feuille");
+        assert_eq!(s.drug_query, "elix", "la recherche en cours");
+    }
+
     /// The drug search is asked for twice a frame; it must answer from
     /// the memo, and the memo must let go the moment the base moves.
     #[test]
@@ -42745,7 +44004,7 @@ mod tests {
     #[test]
     fn the_rental_call_list_raises_the_overdue_first() {
         use crate::db::Location;
-        let dir = std::env::temp_dir().join(format!("bpm-caddy-watch-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-loc-watch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let _swept = crate::db::Swept(dir.clone());
         let path = dir.join("watch.db");
