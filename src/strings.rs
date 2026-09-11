@@ -265,6 +265,32 @@ mod tests {
             );
         }
 
+        // **Et le français que les modules portent eux-mêmes.** Le
+        // libellé d'une nature de poste et celui d'un rythme sont
+        // écrits avec leur type, comme son vocabulaire — c'est une
+        // exception assumée à « les chaînes vivent dans le fichier »,
+        // et elle ne doit pas coûter la vérification que le fichier,
+        // lui, subit. Une phrase d'explication de rythme tient trois
+        // lignes : c'est exactement l'endroit où une flèche ou une
+        // espace fine se glisse sans qu'on la voie.
+        for text in crate::planning::Cadence::ALL
+            .into_iter()
+            .flat_map(|c| [c.label(), c.hint()])
+            .chain(
+                crate::planning::ShiftKind::ALL
+                    .into_iter()
+                    .map(crate::planning::ShiftKind::label),
+            )
+        {
+            for c in text.chars() {
+                assert!(
+                    fonts.has_glyph(&body, c),
+                    "« {c} » (U+{:04X}) est écrit dans « {text} » et n'a pas de glyphe",
+                    c as u32
+                );
+            }
+        }
+
         // Only ever set in a key chip, which is monospace.
         for c in ['\u{2190}', '\u{2192}', '\u{2191}', '\u{2193}'] {
             assert!(

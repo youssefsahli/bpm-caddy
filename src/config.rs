@@ -117,17 +117,13 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # L'équipe. Les initiales servent à signer les notes et le carnet ; le
 # nom et la qualité sont ce qui s'imprime au bas des documents, à la
 # place de `pharmacist`, quand l'acte porte ces initiales.
-# `heures_semaine` est le contrat, pour le planning — « 35h00 », « 24h ».
-# Sans contrat écrit, aucun écart au contrat n'est affiché : pas un écart
-# de moins trente-cinq heures tous les lundis matin.
-# `couleur` nomme une couleur de la rampe de l'application (jamais un
-# hexadécimal : il aurait tort sur sept des huit peaux). Vide, c'est la
-# place dans cette liste qui décide — insérer quelqu'un au milieu
-# recolore donc ceux d'après, et l'écrire une fois y coupe court.
+# La couleur d'une personne au planning ne se déclare pas : elle se
+# déduit de ses initiales, elle est donc la même sur tous les postes et
+# elle ne bouge pas quand on insère quelqu'un au milieu de la liste.
 # operators = [
-#   { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire", heures_semaine = "35h00" },
-#   { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint", heures_semaine = "35h00" },
-#   { initials = "MB", name = "Maya Bertrand", role = "Préparatrice", heures_semaine = "24h00" },
+#   { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
+#   { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint" },
+#   { initials = "MB", name = "Maya Bertrand", role = "Préparatrice" },
 # ]
 # Les heures d'ouverture. Deux lignes pour un jour à midi fermé, ce qui
 # est le cas ordinaire. **Livré vide, et sans horaires écrits le planning
@@ -810,21 +806,6 @@ pub struct Operator {
     pub name: String,
     /// "Pharmacien titulaire", "Préparatrice"…
     pub role: String,
-    /// Le contrat, « 35h00 » ou « 24h ». **Vide par défaut, et sans
-    /// contrat écrit il n'y a pas d'écart** — pas un écart de moins
-    /// trente-cinq heures tous les lundis matin.
-    #[serde(default)]
-    pub heures_semaine: String,
-    /// La couleur de cette personne au planning, par le **nom d'un
-    /// membre de la rampe** de `motif` et jamais par un hexadécimal :
-    /// une couleur écrite en dur est une couleur qui aura tort sur sept
-    /// des huit peaux.
-    ///
-    /// Vide, c'est la place dans la liste qui décide. Le troc est dit
-    /// ici parce qu'il se paie plus tard : insérer quelqu'un au milieu
-    /// recolore tous ceux d'après, et l'écrire une fois y coupe court.
-    #[serde(default)]
-    pub couleur: String,
 }
 
 impl Operator {
@@ -1667,15 +1648,11 @@ mod tests {
                 initials: "CL".to_owned(),
                 name: "Claire Leroy".to_owned(),
                 role: "Pharmacien titulaire".to_owned(),
-                heures_semaine: "35h00".to_owned(),
-                couleur: String::new(),
             },
             Operator {
                 initials: "YS".to_owned(),
                 name: "Yanis Saïd".to_owned(),
                 role: String::new(),
-                heures_semaine: String::new(),
-                couleur: String::new(),
             },
         ];
         cfg.disclaimers.ordonnance_footer = "Reconsulter si aggravation.".to_owned();

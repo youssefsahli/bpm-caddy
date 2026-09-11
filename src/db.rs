@@ -242,6 +242,11 @@ CREATE TABLE IF NOT EXISTS events (
     time        TEXT NOT NULL DEFAULT '',
     end_time    TEXT NOT NULL DEFAULT '',
     repeat_days INTEGER NOT NULL DEFAULT 0,
+    -- Le rythme, comme sur `shifts` et par le même type : il n'y a pas
+    -- deux vocabulaires du « à quelle fréquence » dans cette
+    -- application. Vide, la ligne se déplie sur `repeat_days` seul,
+    -- ce que font toutes celles d'avant 0.185.0.
+    cadence     TEXT NOT NULL DEFAULT '',
     repeat_until TEXT NOT NULL DEFAULT '',
     title       TEXT NOT NULL,
     category    TEXT NOT NULL DEFAULT 'AUTRE',
@@ -255,6 +260,17 @@ CREATE TABLE IF NOT EXISTS events (
 -- `repeat_days = 7` est la trame de la semaine, dépliée à la lecture
 -- exactement comme `events` déplie les siennes : une ligne rangée,
 -- plusieurs jours dessinés.
+--
+-- `cadence` est le **rythme**, et il ne se déduit pas de `repeat_days` :
+-- « les semaines paires » et « une semaine sur deux » avancent l'une de
+-- sept jours en se filtrant sur le calendrier, l'autre de quatorze en
+-- ne s'y référant pas. Les deux tombent sur les mêmes jours pendant des
+-- années, puis divergent pour toujours au premier passage d'une année
+-- ISO de 53 semaines. Rangé à part, donc, et non calculé — voir
+-- `planning::Cadence`. Vide, c'est une ligne écrite avant que ce
+-- rythme n'existe : elle se déplie sur `repeat_days` comme elle l'a
+-- toujours fait, et **c'est pour cela que la colonne ne vaut pas
+-- « UNIQUE » par défaut**.
 --
 -- `supersedes` est **l'exception**, et elle est la moitié du travail :
 -- « Claire est absente mardi prochain » ne doit pas effacer les mardis
@@ -275,6 +291,7 @@ CREATE TABLE IF NOT EXISTS shifts (
     kind        TEXT NOT NULL DEFAULT 'JOURNEE',
     repeat_days INTEGER NOT NULL DEFAULT 0,
     repeat_until TEXT NOT NULL DEFAULT '',
+    cadence     TEXT NOT NULL DEFAULT '',
     note        TEXT NOT NULL DEFAULT '',
     supersedes  INTEGER NOT NULL DEFAULT 0,
     cancelled   INTEGER NOT NULL DEFAULT 0,
@@ -622,6 +639,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE interviews ADD COLUMN scheduled_time TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE events ADD COLUMN time TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE events ADD COLUMN repeat_days INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE events ADD COLUMN cadence TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE events ADD COLUMN repeat_until TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE events ADD COLUMN end_time TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE interviews ADD COLUMN remote INTEGER NOT NULL DEFAULT 0",
@@ -677,6 +695,10 @@ const MIGRATIONS: &[&str] = &[
         cancelled   INTEGER NOT NULL DEFAULT 0,
         created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )",
+    // Le rythme, ajouté en 0.180.0. Vide sur les lignes d'avant, et
+    // c'est exactement ce qu'il faut : elles se déplient sur
+    // `repeat_days`, comme elles l'ont toujours fait.
+    "ALTER TABLE shifts ADD COLUMN cadence TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS stupefiants (
         id          INTEGER PRIMARY KEY,
         drug_id     INTEGER NOT NULL DEFAULT 0,
@@ -1743,8 +1765,11 @@ pub struct Event {
     pub end_time: String,
     pub title: String,
     pub category: EventCategory,
-    /// 0 for a one-off; 7 for "every week", 14 for "every fortnight".
+    /// 0 for a one-off; the rhythm's step otherwise.
     pub repeat_days: i64,
+    /// The key of a `planning::Cadence`, or empty on a row written
+    /// before rhythms reached the agenda.
+    pub cadence: String,
     /// The stored row this occurrence comes from: a repeat shows on
     /// many days but is one row, edited and removed once.
     pub source_id: i64,
@@ -1763,6 +1788,9 @@ struct ShiftRow {
     kind: String,
     repeat_days: i64,
     repeat_until: String,
+    /// La clé d'une `planning::Cadence`, ou vide sur une ligne écrite
+    /// avant qu'elles n'existent — voir le commentaire de la table.
+    cadence: String,
     note: String,
     supersedes: i64,
     cancelled: bool,
@@ -1781,6 +1809,7 @@ impl ShiftRow {
             pause_minutes: self.pause_minutes,
             kind: self.kind.clone(),
             repeat_days: self.repeat_days,
+            cadence: self.cadence.clone(),
             note: self.note.clone(),
         }
     }
@@ -1812,6 +1841,9 @@ pub struct PlannedShift {
     pub kind: String,
     /// 0 for a one-off; 7 for the week's pattern.
     pub repeat_days: i64,
+    /// The key of a `planning::Cadence` — empty on a row written before
+    /// rhythms existed, whose pattern is `repeat_days` alone.
+    pub cadence: String,
     pub note: String,
 }
 
@@ -1826,6 +1858,10 @@ pub struct NewShift {
     pub kind: String,
     pub repeat_days: i64,
     pub repeat_until: String,
+    /// The key of a `planning::Cadence`. Empty means "step by
+    /// `repeat_days` and keep every step", which is what every row
+    /// written before 0.180.0 does.
+    pub cadence: String,
     pub note: String,
     /// The row whose occurrence this one replaces, or 0.
     pub supersedes: i64,
@@ -33815,14 +33851,19 @@ impl Db {
         end_time: &str,
         title: &str,
         category: EventCategory,
-        repeat_days: i64,
+        cadence: &str,
         repeat_until: &str,
     ) -> Result<i64, String> {
         let end = if end_time > time { end_time } else { "" };
+        // Le pas rangé vient du rythme, comme sur un poste : une
+        // colonne et une clé qui se contrediraient, c'est la colonne qui
+        // décide du `WHERE` et la clé du dépliage — deux lectures d'une
+        // même ligne.
+        let repeat_days = stored_step(cadence, 0);
         self.conn
             .execute(
-                "INSERT INTO events (day, time, end_time, title, category, repeat_days, repeat_until)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO events (day, time, end_time, title, category, repeat_days, cadence, repeat_until)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 (
                     day,
                     time,
@@ -33830,6 +33871,7 @@ impl Db {
                     title,
                     category.as_str(),
                     repeat_days.max(0),
+                    cadence,
                     repeat_until,
                 ),
             )
@@ -33842,7 +33884,14 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, day, title, category, time, repeat_days, repeat_until, end_time
+                // Le `WHERE` trie sur `repeat_days` et non sur le
+                // rythme, et il a le droit : **c'est l'écriture qui
+                // tient l'accord**, `add_event_span` posant toujours le
+                // pas du rythme dans la colonne. Une ligne qui les
+                // contredirait ne peut venir que d'une base éditée à la
+                // main ; le dépliage, lui, ne croit qu'au rythme.
+                "SELECT id, day, title, category, time, repeat_days, repeat_until, end_time,
+                        cadence
                  FROM events
                  WHERE (repeat_days = 0 AND day >= ?1 AND day <= ?2)
                     OR (repeat_days > 0 AND day <= ?2
@@ -33861,15 +33910,21 @@ impl Db {
                     r.get::<_, i64>(5)?,
                     r.get::<_, String>(6)?,
                     r.get::<_, String>(7)?,
+                    r.get::<_, String>(8)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         let mut out = Vec::new();
         for row in rows {
-            let (id, day, title, category, time, repeat_days, repeat_until, end_time) =
+            let (id, day, title, category, time, repeat_days, repeat_until, end_time, cadence) =
                 row.map_err(|e| e.to_string())?;
             let category = EventCategory::parse(&category).unwrap_or(EventCategory::Autre);
-            if repeat_days <= 0 {
+            // Le même pas et le même filtre que les postes, par les
+            // mêmes fonctions : « les semaines paires » veut dire la
+            // même chose des deux côtés de l'agenda.
+            let rhythm = crate::planning::Cadence::parse(&cadence);
+            let step = stored_step(&cadence, repeat_days);
+            if step <= 0 {
                 out.push(Event {
                     id,
                     day,
@@ -33878,6 +33933,7 @@ impl Db {
                     title,
                     category,
                     repeat_days: 0,
+                    cadence,
                     source_id: id,
                 });
                 continue;
@@ -33888,7 +33944,9 @@ impl Db {
             let mut guard = 0;
             while current.as_str() <= to && guard < 1000 {
                 guard += 1;
-                if current.as_str() >= from && (repeat_until.is_empty() || current <= repeat_until)
+                if current.as_str() >= from
+                    && (repeat_until.is_empty() || current <= repeat_until)
+                    && rhythm.is_none_or(|c| c.accepte(&current))
                 {
                     out.push(Event {
                         id,
@@ -33897,14 +33955,22 @@ impl Db {
                         end_time: end_time.clone(),
                         title: title.clone(),
                         category,
-                        repeat_days,
+                        repeat_days: step,
+                        cadence: cadence.clone(),
                         source_id: id,
                     });
                 }
                 if !repeat_until.is_empty() && current > repeat_until {
                     break;
                 }
-                current = self.date_offset(&current, repeat_days)?;
+                // `crate::date`, le calendrier de la maison, plutôt
+                // qu'un aller-retour en SQL par occurrence — et une
+                // parité avance de sept jours là où l'ancienne
+                // répétition avançait de quatorze.
+                match crate::date::add_days(&current, step) {
+                    Some(next) => current = next,
+                    None => break,
+                }
             }
         }
         out.sort_by(|a, b| {
@@ -33953,7 +34019,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, operator, day, start_time, end_time, pause_minutes, kind,
-                        repeat_days, repeat_until, note, supersedes, cancelled
+                        repeat_days, repeat_until, note, supersedes, cancelled, cadence
                  FROM shifts ORDER BY day, start_time, operator, id",
             )
             .map_err(|e| e.to_string())?;
@@ -33972,6 +34038,7 @@ impl Db {
                     note: r.get(9)?,
                     supersedes: r.get(10)?,
                     cancelled: r.get::<_, i64>(11)? != 0,
+                    cadence: r.get(12)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -33985,6 +34052,15 @@ impl Db {
         }
         let mut out: Vec<PlannedShift> = Vec::new();
         for base in rows.iter().filter(|r| r.supersedes == 0 && !r.cancelled) {
+            // Le rythme, quand la ligne en porte un. Vide — toutes les
+            // lignes d'avant 0.180.0 — on avance de `repeat_days` et on
+            // garde chaque pas, ce qui est ce que la base a toujours
+            // fait. **Le pas vient du rythme et non de la colonne** dès
+            // qu'il y en a un : « semaines paires » avance de sept jours
+            // et en écarte une sur deux, là où quatorze jours donneraient
+            // le bon résultat cinq ans puis le mauvais pour toujours.
+            let cadence = crate::planning::Cadence::parse(&base.cadence);
+            let step = stored_step(&base.cadence, base.repeat_days);
             let mut current = base.day.clone();
             let mut guard = 0;
             loop {
@@ -33993,7 +34069,8 @@ impl Db {
                 }
                 guard += 1;
                 let past_end = !base.repeat_until.is_empty() && current > base.repeat_until;
-                if !past_end && current.as_str() >= from {
+                let on_rhythm = cadence.is_none_or(|c| c.accepte(&current));
+                if !past_end && on_rhythm && current.as_str() >= from {
                     match exceptions.get(&(base.id, current.clone())) {
                         // Annulée ce jour-là : la trame reste,
                         // l'occurrence n'est pas là.
@@ -34002,10 +34079,19 @@ impl Db {
                         None => out.push(base.occurrence(current.clone(), base.id)),
                     }
                 }
-                if base.repeat_days <= 0 || past_end {
+                if step <= 0 || past_end {
                     break;
                 }
-                current = self.date_offset(&current, base.repeat_days)?;
+                // `crate::date`, et non `date_offset` : c'est le
+                // calendrier de la maison, écrit une fois, et une
+                // parité avance de sept jours là où l'ancienne trame
+                // avançait de quatorze — deux fois plus de pas, qui
+                // seraient deux fois plus d'allers-retours en SQL pour
+                // une addition de jours.
+                match crate::date::add_days(&current, step) {
+                    Some(next) => current = next,
+                    None => break,
+                }
             }
         }
         out.sort_by(|a, b| {
@@ -34025,8 +34111,8 @@ impl Db {
             .execute(
                 "INSERT INTO shifts (operator, day, start_time, end_time, pause_minutes,
                                      kind, repeat_days, repeat_until, note,
-                                     supersedes, cancelled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                                     supersedes, cancelled, cadence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 (
                     &s.operator,
                     &s.day,
@@ -34039,6 +34125,7 @@ impl Db {
                     &s.note,
                     s.supersedes,
                     i64::from(s.cancelled),
+                    &s.cadence,
                 ),
             )
             .map_err(|e| e.to_string())?;
@@ -34078,6 +34165,41 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// The pattern rows of one person — the stored lines that unfold
+    /// into many days, and nothing else.
+    ///
+    /// What « Remplacer la trame existante » removes, and only that: a
+    /// one-off shift is not a pattern, and wiping somebody's leave
+    /// because they were given new hours would be the opposite of what
+    /// was asked. Exceptions are left out too — they go with their base
+    /// row, in [`Db::delete_shift`]'s own transaction.
+    ///
+    /// « Est-ce une trame ? » se demande par [`stored_step`], la **même**
+    /// fonction que le dépliage : un `WHERE repeat_days > 0` écrit ici
+    /// répondait déjà autrement pour une ligne dont le rythme dit « ce
+    /// jour-là » — et deux réponses à une question finissent toujours
+    /// par diverger.
+    pub fn shift_patterns(&self, operator: &str) -> Result<Vec<i64>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, cadence, repeat_days FROM shifts
+                 WHERE operator = ?1 AND supersedes = 0
+                 ORDER BY id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows: Vec<(i64, String, i64)> = stmt
+            .query_map([operator], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows
+            .into_iter()
+            .filter(|(_, cadence, days)| stored_step(cadence, *days) > 0)
+            .map(|(id, _, _)| id)
+            .collect())
+    }
+
     /// One stored row and the exceptions that only mean something
     /// against it, in a shape that can be written back.
     ///
@@ -34092,7 +34214,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT operator, day, start_time, end_time, pause_minutes, kind,
-                        repeat_days, repeat_until, note, supersedes, cancelled
+                        repeat_days, repeat_until, note, supersedes, cancelled, cadence
                  FROM shifts WHERE id = ?1 OR supersedes = ?1
                  ORDER BY CASE WHEN id = ?1 THEN 0 ELSE 1 END, day, id",
             )
@@ -34111,6 +34233,7 @@ impl Db {
                     note: r.get(8)?,
                     supersedes: r.get(9)?,
                     cancelled: r.get::<_, i64>(10)? != 0,
+                    cadence: r.get(11)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -35053,6 +35176,21 @@ pub fn add_days(iso: &str, days: i64) -> Option<String> {
     Some(format!("{y:04}-{m:02}-{d:02}"))
 }
 
+/// De combien de jours une ligne rangée avance d'une occurrence à la
+/// suivante — **zéro quand elle ne revient pas**.
+///
+/// Le rythme décide dès qu'il y en a un écrit ; `repeat_days` décide
+/// sinon, ce qui est le cas de toutes les lignes d'avant 0.180.0.
+///
+/// Écrite **une fois**, et c'est tout l'intérêt : le dépliage et
+/// « quelles sont les trames de cette personne ? » posent la même
+/// question, et une seconde façon de la poser finit par y répondre
+/// autrement — ici, en effaçant une trame qu'on n'aurait pas touchée,
+/// ou en n'effaçant pas celle qu'on remplaçait.
+fn stored_step(cadence: &str, repeat_days: i64) -> i64 {
+    crate::planning::Cadence::parse(cadence).map_or(repeat_days, crate::planning::Cadence::pas)
+}
+
 /// French weekday name for an ISO date ("2026-08-24" → "lundi").
 /// Sakamoto's algorithm — no calendar crate needed.
 pub fn weekday_fr(iso: &str) -> Option<&'static str> {
@@ -35343,7 +35481,7 @@ mod tests {
         let db = Db::open(&dir.join("live.db"), "secret").unwrap();
         let day = db.today_iso().unwrap();
         let add = |time: &str, end: &str, title: &str| {
-            db.add_event_span(&day, time, end, title, EventCategory::Formation, 0, "")
+            db.add_event_span(&day, time, end, title, EventCategory::Formation, "", "")
                 .unwrap()
         };
         add("09:00", "10:30", "plage");
@@ -35365,6 +35503,80 @@ mod tests {
                 ("sans heure".to_owned(), String::new()),
                 ("à l'envers".to_owned(), String::new()),
             ]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Une entrée d'agenda revient au même rythme qu'un poste**, par
+    /// la même énumération et le même dépliage.
+    ///
+    /// L'agenda en avait un autre — « toutes les 2 semaines », un nombre
+    /// de jours —, et deux vocabulaires du « à quelle fréquence » dans
+    /// le même écran finissent par ne plus dire la même chose. Celui-ci
+    /// ne savait d'ailleurs pas dire « les semaines paires », qui est ce
+    /// qu'une officine écrit.
+    ///
+    /// Et la moitié qui n'est nulle part ailleurs : **une entrée sans
+    /// rythme écrit se déplie comme avant**, sur `repeat_days`. C'est
+    /// tout ce que les bases d'avant 0.185.0 contiennent.
+    #[test]
+    fn an_agenda_entry_comes_back_on_the_same_rhythm_as_a_shift() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-evrhythm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("live.db"), "secret").unwrap();
+
+        // Le mercredi 16 septembre 2026 est en semaine 38, paire.
+        db.add_event_span(
+            "2026-09-16",
+            "14:00",
+            "15:00",
+            "Réunion qualité",
+            EventCategory::Autre,
+            crate::planning::Cadence::Paires.as_str(),
+            "",
+        )
+        .unwrap();
+        let days: Vec<String> = db
+            .events_between("2026-09-01", "2026-10-31")
+            .unwrap()
+            .into_iter()
+            .map(|e| e.day)
+            .collect();
+        assert_eq!(
+            days,
+            ["2026-09-16", "2026-09-30", "2026-10-14", "2026-10-28"]
+        );
+        // Le rythme voyage avec l'occurrence : c'est lui que la ligne
+        // affiche, et « · tous les 7 j » serait un calcul là où
+        // « Semaines paires » est ce qu'on a choisi.
+        let first = db
+            .events_between("2026-09-16", "2026-09-16")
+            .unwrap()
+            .remove(0);
+        assert_eq!(first.cadence, "PAIRES");
+        assert_eq!(first.repeat_days, 7);
+
+        // **Sans rythme écrit, rien ne change** : une ligne d'avant
+        // 0.185.0 avance de `repeat_days` et garde chaque pas.
+        db.conn
+            .execute(
+                "INSERT INTO events (day, time, title, category, repeat_days)
+                 VALUES ('2026-09-16', '09:00', 'Livraison', 'LIVRAISON', 7)",
+                [],
+            )
+            .unwrap();
+        let livraisons: Vec<String> = db
+            .events_between("2026-09-16", "2026-10-07")
+            .unwrap()
+            .into_iter()
+            .filter(|e| e.title == "Livraison")
+            .map(|e| e.day)
+            .collect();
+        assert_eq!(
+            livraisons,
+            ["2026-09-16", "2026-09-23", "2026-09-30", "2026-10-07"]
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -36976,6 +37188,153 @@ mod tests {
             .is_empty());
     }
 
+    /// **Une trame de semaines paires se déplie sur le calendrier, et
+    /// une exception la contredit toujours d'un jour.**
+    ///
+    /// Les deux moitiés du rythme sont là : la base avance de sept
+    /// jours et en écarte une sur deux — à quatorze elle donnerait le
+    /// même mois et se tromperait en janvier —, et l'exception
+    /// s'applique à l'occurrence qu'elle nomme, exactement comme sur
+    /// une trame hebdomadaire. Un rythme qui ferait perdre les
+    /// exceptions ne serait pas un rythme, ce serait une seconde façon
+    /// de poser des postes.
+    ///
+    /// Et la moitié qui n'est écrite nulle part ailleurs : **une ligne
+    /// sans rythme écrit se déplie comme avant**. C'est tout ce que les
+    /// bases d'avant 0.180.0 contiennent.
+    #[test]
+    fn an_even_week_pattern_unfolds_on_the_calendar() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shifts5-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("shifts.db"), "secret").unwrap();
+
+        // Le mercredi 16 septembre 2026 est en semaine 38, paire.
+        let paire = db
+            .add_shift(&NewShift {
+                operator: "CL".to_owned(),
+                day: "2026-09-16".to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: "19:00".to_owned(),
+                kind: "JOURNEE".to_owned(),
+                repeat_days: 7,
+                cadence: "PAIRES".to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+        let days = |from: &str, to: &str| -> Vec<String> {
+            db.shifts_between(from, to)
+                .unwrap()
+                .into_iter()
+                .map(|s| s.day)
+                .collect()
+        };
+        assert_eq!(
+            days("2026-09-01", "2026-10-31"),
+            ["2026-09-16", "2026-09-30", "2026-10-14", "2026-10-28"]
+        );
+        // Le passage de l'an est le seul endroit où sept-jours-filtrés
+        // et quatorze-jours se séparent — et c'est le calendrier qui a
+        // raison : la semaine 1 de 2027 est impaire.
+        assert_eq!(
+            days("2026-12-20", "2027-01-31"),
+            ["2026-12-23", "2027-01-13", "2027-01-27"]
+        );
+
+        // Une exception contredit un jour sans toucher au rythme.
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-09-30".to_owned(),
+            start_time: "09:00".to_owned(),
+            kind: "CONGE".to_owned(),
+            supersedes: paire,
+            cancelled: true,
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            days("2026-09-01", "2026-10-31"),
+            ["2026-09-16", "2026-10-14", "2026-10-28"]
+        );
+
+        // **Une exception se supprime seule, et revient seule.** C'est
+        // « Rétablir ce jour » puis le retour arrière : sa famille est
+        // une ligne dont le `supersedes` nomme une trame qui, elle, n'a
+        // pas bougé — la réinsérer telle quelle suffit, et rien n'est à
+        // renuméroter.
+        let ex = db
+            .conn
+            .query_row(
+                "SELECT id FROM shifts WHERE supersedes = ?1",
+                [paire],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap();
+        let family = db.shift_family(ex).unwrap();
+        assert_eq!(family.len(), 1);
+        assert_eq!(family[0].supersedes, paire, "elle nomme encore sa trame");
+        assert!(db.delete_shift(ex, "CL").unwrap());
+        // Le jour que la trame portait est revenu.
+        assert!(days("2026-09-30", "2026-09-30").contains(&"2026-09-30".to_owned()));
+        db.add_shift(&family[0]).unwrap();
+        assert!(days("2026-09-30", "2026-09-30").is_empty());
+
+        // **Sans rythme écrit, rien ne change.** Une ligne d'avant
+        // 0.180.0 avance de `repeat_days` et garde chaque pas.
+        db.add_shift(&NewShift {
+            operator: "YS".to_owned(),
+            day: "2026-09-16".to_owned(),
+            start_time: "14:00".to_owned(),
+            end_time: "19:00".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            repeat_days: 7,
+            ..Default::default()
+        })
+        .unwrap();
+        let ys: Vec<String> = db
+            .shifts_between("2026-09-16", "2026-10-07")
+            .unwrap()
+            .into_iter()
+            .filter(|s| s.operator == "YS")
+            .map(|s| s.day)
+            .collect();
+        assert_eq!(ys, ["2026-09-16", "2026-09-23", "2026-09-30", "2026-10-07"]);
+        // Et « ce jour-là » ne revient pas, quoi que porte
+        // `repeat_days` : le rythme écrit l'emporte sur la colonne.
+        db.add_shift(&NewShift {
+            operator: "MB".to_owned(),
+            day: "2026-09-16".to_owned(),
+            start_time: "09:00".to_owned(),
+            kind: "FORMATION".to_owned(),
+            repeat_days: 7,
+            cadence: "UNIQUE".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(
+            db.shifts_between("2026-09-16", "2026-12-31")
+                .unwrap()
+                .iter()
+                .filter(|s| s.operator == "MB")
+                .count(),
+            1
+        );
+
+        // **« Remplacer la trame » ne retire que des trames.** Un poste
+        // ponctuel n'en est pas une, une exception non plus — elle part
+        // avec sa ligne rangée, dans la transaction de `delete_shift` —
+        // et effacer le congé de quelqu'un parce qu'on lui réécrit ses
+        // horaires serait le contraire de ce qu'on a demandé.
+        assert_eq!(db.shift_patterns("CL").unwrap(), vec![paire]);
+        assert!(
+            db.shift_patterns("MB").unwrap().is_empty(),
+            "« ce jour-là » n'est pas une trame, quoi que porte repeat_days"
+        );
+        assert_eq!(db.shift_patterns("YS").unwrap().len(), 1);
+        assert!(db.shift_patterns("Personne").unwrap().is_empty());
+    }
+
     /// **Défaire une suppression doit rendre la famille entière.**
     ///
     /// Le plan disait « rien ne référence un poste, donc le changement
@@ -38083,7 +38442,6 @@ mod tests {
                 initials: "CL".to_owned(),
                 name: "Claire Leroy".to_owned(),
                 role: "Pharmacien titulaire".to_owned(),
-                ..Default::default()
             }],
             ..Default::default()
         };
@@ -38109,7 +38467,6 @@ mod tests {
             initials: "PM".to_owned(),
             name: "Paul Martin".to_owned(),
             role: "Préparateur".to_owned(),
-            ..Default::default()
         });
         assert!(db
             .set_officine(&theirs, Some(&mine), "2026-09-11", "CL")
@@ -41117,7 +41474,7 @@ mod tests {
                     "16:00",
                     "Formation AOD",
                     EventCategory::Formation,
-                    0,
+                    "",
                     "",
                 )
                 .unwrap();
@@ -41130,7 +41487,7 @@ mod tests {
                     "",
                     "Livraison grossiste",
                     EventCategory::Livraison,
-                    7,
+                    crate::planning::Cadence::Hebdomadaire.as_str(),
                     "",
                 )
                 .unwrap();
@@ -41388,23 +41745,29 @@ mod tests {
                 })
                 .unwrap()
         };
-        for (who, offset, from, to, pause, kind, weekly) in [
+        for (who, offset, from, to, pause, kind, cadence) in [
             // Claire ouvre du lundi au vendredi, coupure de midi.
-            ("CL", 0, "09:00", "19:00", 90, "OUVERTURE", true),
-            ("CL", 1, "09:00", "19:00", 90, "JOURNEE", true),
-            ("CL", 2, "09:00", "12:30", 0, "JOURNEE", true),
-            ("CL", 3, "09:00", "19:00", 90, "JOURNEE", true),
-            ("CL", 4, "09:00", "19:00", 90, "JOURNEE", true),
+            ("CL", 0, "09:00", "19:00", 90, "OUVERTURE", "HEBDO"),
+            ("CL", 1, "09:00", "19:00", 90, "JOURNEE", "HEBDO"),
+            ("CL", 2, "09:00", "12:30", 0, "JOURNEE", "HEBDO"),
+            ("CL", 3, "09:00", "19:00", 90, "JOURNEE", "HEBDO"),
+            ("CL", 4, "09:00", "19:00", 90, "JOURNEE", "HEBDO"),
             // Yanis ferme, et prend la garde du mercredi soir : 20 h →
             // 2 h s'écrit « 26:00 » et compte au jour qui la commence.
-            ("YS", 0, "14:00", "19:30", 0, "FERMETURE", true),
-            ("YS", 2, "20:00", "26:00", 0, "GARDE", false),
-            ("YS", 3, "14:00", "19:30", 0, "FERMETURE", true),
-            ("YS", 4, "14:00", "19:30", 0, "FERMETURE", true),
+            ("YS", 0, "14:00", "19:30", 0, "FERMETURE", "HEBDO"),
+            ("YS", 2, "20:00", "26:00", 0, "GARDE", ""),
+            ("YS", 3, "14:00", "19:30", 0, "FERMETURE", "HEBDO"),
+            ("YS", 4, "14:00", "19:30", 0, "FERMETURE", "HEBDO"),
             // Maya à mi-temps, et **un poste dont personne n'a noté la
             // fin** : la ligne doit afficher « — » et non « 0 h 00 ».
-            ("MB", 1, "09:00", "13:00", 0, "JOURNEE", true),
-            ("MB", 3, "09:00", "", 0, "JOURNEE", false),
+            ("MB", 1, "09:00", "13:00", 0, "JOURNEE", "HEBDO"),
+            ("MB", 3, "09:00", "", 0, "JOURNEE", ""),
+            // **Le samedi en alternance**, qui est la façon dont une
+            // officine s'organise vraiment et le seul endroit où la
+            // grille montre un rythme de parité. Sans ces deux lignes,
+            // aucune capture ne porte de trame qui saute une semaine.
+            ("MB", 5, "09:00", "12:30", 0, "JOURNEE", "PAIRES"),
+            ("YS", 5, "09:00", "12:30", 0, "JOURNEE", "IMPAIRES"),
         ] {
             db.add_shift(&NewShift {
                 operator: who.to_owned(),
@@ -41413,7 +41776,12 @@ mod tests {
                 end_time: to.to_owned(),
                 pause_minutes: pause,
                 kind: kind.to_owned(),
-                repeat_days: if weekly { 7 } else { 0 },
+                // Le pas vient du rythme, jamais d'un nombre écrit à
+                // côté : c'est la règle de `planning::Cadence`, et la
+                // démo la suit comme le reste.
+                repeat_days: crate::planning::Cadence::parse(cadence)
+                    .map_or(0, crate::planning::Cadence::pas),
+                cadence: cadence.to_owned(),
                 ..Default::default()
             })
             .unwrap();
@@ -41824,7 +42192,7 @@ mod tests {
                 "17:00",
                 "Formation vaccination",
                 EventCategory::Formation,
-                0,
+                "",
                 "",
             )
             .unwrap();

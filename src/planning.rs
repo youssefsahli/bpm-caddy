@@ -15,7 +15,7 @@
 //! deux calculs de chevauchement dans cette application** : celui des
 //! rendez-vous et celui des postes sont le même.
 //!
-//! Cinq règles le tiennent, une par test, et ce sont elles le contenu :
+//! Six règles le tiennent, une par test, et ce sont elles le contenu :
 //!
 //! * **Les heures se comptent en minutes entières**, jamais en heures
 //!   décimales. Sept heures trente-cinq est `455`, jamais `7.583333` :
@@ -42,19 +42,277 @@
 //! * **Une pause plus longue que le poste est refusée, pas
 //!   soustraite.** Une durée négative dessinée est un bloc à l'envers,
 //!   et un total négatif se propage dans la semaine sans se voir.
+//! * **« Les semaines paires » n'est pas « une semaine sur deux ».**
+//!   [`Cadence`] porte les deux et refuse de les confondre : l'une se
+//!   lit sur le calendrier, l'autre se compte depuis le jour où on l'a
+//!   posée. Elles coïncident presque toujours, et divergent pour
+//!   toujours au premier passage d'une année ISO de 53 semaines — le
+//!   31 décembre 2026 est en semaine 53, le 4 janvier 2027 en semaine
+//!   1, deux impaires de suite. Une officine qui travaille « les
+//!   semaines paires » et à qui on aurait écrit quatorze jours se
+//!   retrouverait à contretemps un lundi de janvier, sans que rien ne
+//!   le dise.
 //!
 //! Et une sixième, qui n'est pas dans le code mais dans le nom des
 //! choses : [`day_total`] compte une **présence**, pas une paie. Le
 //! module ne connaît ni majoration, ni heure supplémentaire, ni
-//! convention collective, et il n'en connaîtra pas. Ce qu'on déduit
-//! d'un total d'heures est du droit du travail, il change, et une
-//! application de pharmacie qui imprimerait « dont 2 h majorées » se
-//! tromperait un jour sans que personne le voie. La même retenue que
-//! `vigilance.rs` : une question, jamais un verdict.
+//! convention collective, ni horaire contractuel, et il n'en connaîtra
+//! pas. Ce qu'on déduit d'un total d'heures est du droit du travail, il
+//! change, et une application de pharmacie qui imprimerait « dont 2 h
+//! majorées » — ou « −3 h 15 sur le contrat » — se tromperait un jour
+//! sans que personne le voie. La même retenue que `vigilance.rs` : une
+//! question, jamais un verdict.
 //!
 //! Pur, testé, sans horloge : le jour est passé.
 
 use crate::agenda::{overlaps, Slot};
+
+/// À quel rythme une trame revient.
+///
+/// Une officine ne travaille pas « tous les mercredis » et rien
+/// d'autre : on est là **les semaines paires**, une semaine sur trois
+/// au dépôt, un samedi sur deux. Écrire cela à la main, c'est poser
+/// vingt-six lignes par an et par personne, et se tromper d'une.
+///
+/// Les huit rythmes se rangent en deux familles, et **elles ne se
+/// confondent pas** :
+///
+/// * celles qui se lisent sur le **calendrier** — [`Cadence::Paires`],
+///   [`Cadence::Impaires`] : le numéro de semaine ISO décide, et le
+///   jour où la trame a été posée n'y change rien ;
+/// * celles qui se comptent **depuis le jour posé** —
+///   [`Cadence::UneSurDeux`] et ses sœurs : quinze jours après ce
+///   mercredi-là, quoi que dise le calendrier. [`Cadence::Quotidien`]
+///   en fait partie, et c'est par lui qu'une plage s'écrit : « congé du
+///   12 au 26 » est une ligne rangée bornée par sa date de fin, et non
+///   quinze lignes.
+///
+/// La différence a l'air d'un détail et n'en est pas un. Une année ISO
+/// compte 52 ou 53 semaines ; au premier passage d'une année de 53, une
+/// trame écrite tous les quatorze jours cesse pour toujours de tomber
+/// sur les semaines paires. C'est la raison d'être de cette énumération
+/// plutôt que d'un simple nombre de jours dans la base.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Cadence {
+    /// Ce jour-là, et pas un autre.
+    Unique,
+    /// Tous les jours, jusqu'à une date écrite.
+    ///
+    /// C'est ainsi qu'une absence se pose : « congé du 12 au 26
+    /// octobre » est **une** ligne rangée et non quinze. Et c'est le
+    /// seul rythme qui exige une fin — sans elle, ce n'est pas une
+    /// absence, c'est quelqu'un d'absent pour toujours.
+    Quotidien,
+    /// Toutes les semaines.
+    Hebdomadaire,
+    /// Les semaines dont le numéro ISO est pair.
+    Paires,
+    /// Les semaines dont le numéro ISO est impair.
+    Impaires,
+    /// Une semaine sur deux, à compter du jour posé.
+    UneSurDeux,
+    /// Une semaine sur trois, à compter du jour posé.
+    UneSurTrois,
+    /// Une semaine sur quatre, à compter du jour posé.
+    UneSurQuatre,
+}
+
+impl Cadence {
+    pub const ALL: [Cadence; 8] = [
+        Self::Unique,
+        Self::Quotidien,
+        Self::Hebdomadaire,
+        Self::Paires,
+        Self::Impaires,
+        Self::UneSurDeux,
+        Self::UneSurTrois,
+        Self::UneSurQuatre,
+    ];
+
+    /// La clé écrite en base — elle part au disque et se relit dans dix
+    /// ans, comme celle de [`ShiftKind`].
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Unique => "UNIQUE",
+            Self::Quotidien => "QUOTIDIEN",
+            Self::Hebdomadaire => "HEBDO",
+            Self::Paires => "PAIRES",
+            Self::Impaires => "IMPAIRES",
+            Self::UneSurDeux => "SUR2",
+            Self::UneSurTrois => "SUR3",
+            Self::UneSurQuatre => "SUR4",
+        }
+    }
+
+    /// Relire une clé — et **`None` sur ce qu'on ne connaît pas**, y
+    /// compris sur la chaîne vide.
+    ///
+    /// La chaîne vide est le cas ordinaire et non un défaut : c'est ce
+    /// que portent les lignes écrites avant que ce type n'existe, et
+    /// leur rythme est dans `repeat_days`. Rendre `Unique` par défaut
+    /// effacerait une trame hebdomadaire de l'an dernier ; rendre
+    /// `None` laisse la base lire ce qu'elle a toujours lu.
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.as_str() == s)
+    }
+
+    /// Le libellé du menu. Écrit ici, avec le type, comme celui de
+    /// [`ShiftKind`] : c'est le vocabulaire du module.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unique => "Ce jour-là",
+            Self::Quotidien => "Tous les jours",
+            Self::Hebdomadaire => "Chaque semaine",
+            Self::Paires => "Semaines paires",
+            Self::Impaires => "Semaines impaires",
+            Self::UneSurDeux => "Une semaine sur deux",
+            Self::UneSurTrois => "Une semaine sur trois",
+            Self::UneSurQuatre => "Une semaine sur quatre",
+        }
+    }
+
+    /// Ce que le rythme veut dire, en une phrase — ce qui se lit au
+    /// survol, et qui dit surtout **d'où il compte**.
+    pub fn hint(self) -> &'static str {
+        match self {
+            Self::Unique => "Un seul jour. Rien ne revient.",
+            Self::Quotidien => {
+                "Tous les jours jusqu'à la date de fin, qui devient obligatoire. \
+                 C'est ainsi qu'on pose un congé : une ligne, et non quinze."
+            }
+            Self::Hebdomadaire => "Une ligne rangée, dépliée à la lecture — pas cinquante-deux.",
+            Self::Paires => {
+                "Les semaines dont le numéro ISO est pair. C'est le calendrier qui décide, \
+                 et non un cycle de quinze jours : une année de 53 semaines retourne la parité."
+            }
+            Self::Impaires => {
+                "Les semaines dont le numéro ISO est impair. C'est le calendrier qui décide, \
+                 et non un cycle de quinze jours : une année de 53 semaines retourne la parité."
+            }
+            Self::UneSurDeux => {
+                "Quinze jours après le jour posé, puis de quinze en quinze. \
+                 Ce n'est pas « les semaines paires » : le calendrier n'y entre pas."
+            }
+            Self::UneSurTrois => "Trois semaines après le jour posé, puis de trois en trois.",
+            Self::UneSurQuatre => "Quatre semaines après le jour posé, puis de quatre en quatre.",
+        }
+    }
+
+    /// De combien de jours on avance d'une occurrence à la suivante.
+    ///
+    /// Les deux rythmes de parité avancent de **sept** jours et non de
+    /// quatorze : c'est [`Cadence::accepte`] qui écarte une semaine sur
+    /// deux, et c'est exactement ce qui les distingue de
+    /// [`Cadence::UneSurDeux`]. Les écrire à quatorze jours donnerait le
+    /// bon résultat pendant cinq ans, puis le mauvais pour toujours.
+    pub fn pas(self) -> i64 {
+        match self {
+            Self::Unique => 0,
+            Self::Quotidien => 1,
+            Self::Hebdomadaire | Self::Paires | Self::Impaires => 7,
+            Self::UneSurDeux => 14,
+            Self::UneSurTrois => 21,
+            Self::UneSurQuatre => 28,
+        }
+    }
+
+    /// Ce jour-là tombe-t-il sous ce rythme ?
+    ///
+    /// Vrai partout sauf pour les deux parités, qui lisent le numéro de
+    /// semaine ISO. Une date illisible n'est acceptée par aucune des
+    /// deux : on ne fait pas tomber une occurrence sur un jour dont on
+    /// ne sait pas dans quelle semaine il est.
+    pub fn accepte(self, day: &str) -> bool {
+        let parity = match self {
+            Self::Paires => 0,
+            Self::Impaires => 1,
+            _ => return true,
+        };
+        crate::date::iso_week(day).is_some_and(|(_, w)| w % 2 == parity)
+    }
+
+    /// Le rythme exige-t-il une date de fin ?
+    ///
+    /// Un seul : le quotidien. Les autres tournent indéfiniment sans
+    /// que ce soit une faute — un horaire de travail n'a pas de date
+    /// d'expiration —, là où « tous les jours, sans fin » n'est pas un
+    /// congé mais quelqu'un d'absent pour toujours, et un an de lignes
+    /// dépliées à chaque lecture.
+    pub fn needs_an_end(self) -> bool {
+        self == Self::Quotidien
+    }
+
+    /// L'autre moitié d'une alternance : paires ↔ impaires, et rien
+    /// pour les autres.
+    ///
+    /// C'est aussi la façon de demander « ce rythme se lit-il sur le
+    /// calendrier ? » — il n'y a pas de seconde fonction pour cela :
+    /// deux manières de poser une question finissent par y répondre
+    /// différemment.
+    pub fn other_half(self) -> Option<Self> {
+        match self {
+            Self::Paires => Some(Self::Impaires),
+            Self::Impaires => Some(Self::Paires),
+            _ => None,
+        }
+    }
+}
+
+/// Les `count` premiers jours où une trame posée le `anchor` tombe.
+///
+/// **Le jour posé n'est pas toujours le premier.** Régler « semaines
+/// paires » un mercredi de semaine impaire ne pose rien ce mercredi-là :
+/// la première occurrence est huit jours plus tard, et c'est précisément
+/// ce que l'écran doit montrer avant qu'on valide. Une liste qui
+/// commencerait par le jour choisi mentirait sur la moitié des cas.
+///
+/// Rien du tout quand la date ne se lit pas, et **jamais une boucle
+/// sans fin** : la recherche s'arrête après un nombre d'essais borné,
+/// ce qui suffit très largement — une parité écarte au plus une semaine
+/// sur deux.
+pub fn occurrences(cadence: Cadence, anchor: &str, count: usize) -> Vec<String> {
+    let mut out = Vec::with_capacity(count);
+    if crate::date::to_days(anchor).is_none() {
+        return out;
+    }
+    let mut day = anchor.to_owned();
+    let pas = cadence.pas();
+    for _ in 0..(count.saturating_mul(4) + 8) {
+        if out.len() == count {
+            break;
+        }
+        if cadence.accepte(&day) {
+            out.push(day.clone());
+        }
+        if pas == 0 {
+            break;
+        }
+        match crate::date::add_days(&day, pas) {
+            Some(next) => day = next,
+            None => break,
+        }
+    }
+    out
+}
+
+/// Le `weekday` (lundi = 1 … dimanche = 7) **de la semaine où tombe
+/// `from`** — en arrière comme en avant.
+///
+/// C'est par là qu'une trame se pose, et le sens compte. « Le premier
+/// mercredi à partir d'ici » aurait l'air d'être la même chose et ne
+/// l'est pas : réglée depuis un mercredi, la trame poserait son mercredi
+/// le jour même et son **lundi la semaine suivante**. Les sept journées
+/// d'une semaine qu'on remplit d'un coup ne seraient plus une semaine —
+/// et pour « une semaine sur deux », qui compte depuis le jour posé, les
+/// deux moitiés partiraient à contretemps l'une de l'autre, pour
+/// toujours.
+///
+/// La semaine est donc celle que `from` **nomme**, quel que soit le jour
+/// de cette semaine-là qu'on lui donne.
+pub fn in_week_of(from: &str, weekday: i64) -> Option<String> {
+    let current = crate::date::weekday(from)?;
+    crate::date::add_days(from, weekday - current)
+}
 
 /// Ce qu'un poste est. La nature décide de deux choses et de rien
 /// d'autre : si le poste porte des heures, et s'il met quelqu'un
@@ -391,34 +649,6 @@ pub fn format_bound(minutes: u16) -> String {
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
-/// Une durée écrite à la main : « 35h00 », « 35 h », « 7h35 », « 455 ».
-///
-/// Le contrat d'une personne se tape dans `config.toml`, à la main,
-/// par quelqu'un qui écrit ce qui lui vient. Un analyseur qui n'accepte
-/// qu'une forme est un analyseur qui rend `None` sur la seule forme
-/// qu'on ait envie d'écrire.
-///
-/// Un nombre nu est un **nombre de minutes** et non d'heures : c'est
-/// l'unité de tout le module, et « 35 » voulant dire trente-cinq heures
-/// ferait de « 455 » sept cent cinquante-huit heures.
-pub fn parse_duration(text: &str) -> Option<u16> {
-    let t = text.trim().to_lowercase().replace(',', ".");
-    if t.is_empty() {
-        return None;
-    }
-    // « 35h00 », « 35 h », « 7 h 35 ».
-    if let Some((h, m)) = t.split_once('h') {
-        let hours: u16 = h.trim().parse().ok()?;
-        let m = m.trim();
-        let mins: u16 = if m.is_empty() { 0 } else { m.parse().ok()? };
-        if mins > 59 {
-            return None;
-        }
-        return hours.checked_mul(60)?.checked_add(mins);
-    }
-    t.parse().ok()
-}
-
 /// Les plages d'ouverture d'un jour, lues sur ce que l'officine a
 /// écrit — et **rien du tout quand elle n'a rien écrit**.
 ///
@@ -670,25 +900,6 @@ mod tests {
         assert_eq!(garde.minutes(), Some(6 * 60));
     }
 
-    /// Le contrat se tape à la main dans `config.toml` : l'analyseur
-    /// accepte ce qu'on a envie d'écrire, et **rien** quand la case est
-    /// vide — sans contrat écrit, pas d'écart au contrat.
-    #[test]
-    fn a_contract_is_read_in_the_shapes_people_write_it() {
-        assert_eq!(parse_duration("35h00"), Some(35 * 60));
-        assert_eq!(parse_duration("35 h"), Some(35 * 60));
-        assert_eq!(parse_duration(" 7 h 35 "), Some(455));
-        assert_eq!(parse_duration("35H30"), Some(35 * 60 + 30));
-        // Un nombre nu est un nombre de **minutes**, l'unité du module.
-        assert_eq!(parse_duration("455"), Some(455));
-        // Rien écrit, rien à en tirer : surtout pas zéro, qui se
-        // lirait « contrat de zéro heure ».
-        assert_eq!(parse_duration(""), None);
-        assert_eq!(parse_duration("   "), None);
-        assert_eq!(parse_duration("plein temps"), None);
-        assert_eq!(parse_duration("7h75"), None);
-    }
-
     /// Les plages d'ouverture se lisent sur ce que l'officine a écrit,
     /// et une plage à l'envers est laissée de côté plutôt que
     /// redressée : « de 19 h à 9 h » corrigée en silence annoncerait
@@ -742,6 +953,166 @@ mod tests {
         // ligne à zéro heure.
         assert!(week_totals(&[]).is_empty());
         assert!(week_totals(&[("2026-09-07".to_owned(), Vec::new())]).is_empty());
+    }
+
+    /// **« Les semaines paires » n'est pas « une semaine sur deux ».**
+    /// La règle du module, et la raison pour laquelle la base range un
+    /// rythme et non un nombre de jours.
+    ///
+    /// Les deux marchent du même pas tant que l'année ISO compte 52
+    /// semaines. 2026 en compte 53 : le 30 décembre 2026 est en semaine
+    /// 53, le 6 janvier 2027 en semaine 1 — deux impaires de suite. La
+    /// parité saute donc une semaine à cet endroit-là, et le cycle de
+    /// quatorze jours, lui, continue tout droit et se retrouve à
+    /// contretemps **pour toujours**.
+    #[test]
+    fn even_weeks_are_not_a_fortnight() {
+        // Un mercredi de semaine paire : le 16 septembre 2026, semaine
+        // 38.
+        let depart = "2026-09-16";
+        assert_eq!(crate::date::iso_week(depart), Some((2026, 38)));
+        let paires = occurrences(Cadence::Paires, depart, 10);
+        let quinzaine = occurrences(Cadence::UneSurDeux, depart, 10);
+        // Tant qu'on reste dans l'année, les deux disent la même chose,
+        // et c'est ce qui rend la confusion si facile à faire.
+        assert_eq!(paires[..8], quinzaine[..8]);
+        assert_eq!(paires[7], "2026-12-23");
+        // Puis 2026 finit sur une semaine 53, et elles se séparent —
+        // à la neuvième occurrence, six mois plus tard, quand plus
+        // personne ne relit la trame qu'il a posée.
+        assert_eq!(paires[8], "2027-01-13");
+        assert_eq!(quinzaine[8], "2027-01-06");
+        // Et pour toujours : la parité est sur le calendrier, le cycle
+        // sur le jour posé.
+        let loin = occurrences(Cadence::Paires, depart, 20);
+        let cycle = occurrences(Cadence::UneSurDeux, depart, 20);
+        assert_ne!(loin[19], cycle[19]);
+        for d in &loin {
+            assert_eq!(crate::date::iso_week(d).map(|(_, w)| w % 2), Some(0), "{d}");
+        }
+    }
+
+    /// **Le jour posé n'est pas toujours la première occurrence.**
+    /// Régler « semaines paires » pendant une semaine impaire ne pose
+    /// rien cette semaine-là, et l'écran doit le dire avant qu'on
+    /// valide plutôt que de laisser croire que cela commence ce jour-ci.
+    #[test]
+    fn a_rhythm_may_not_start_on_the_day_it_is_set() {
+        // Le 9 septembre 2026 est en semaine 37, impaire.
+        let impaire = "2026-09-09";
+        assert_eq!(crate::date::iso_week(impaire), Some((2026, 37)));
+        assert_eq!(
+            occurrences(Cadence::Paires, impaire, 2),
+            ["2026-09-16", "2026-09-30"]
+        );
+        // Le même jour sous « impaires » commence bien ce jour-là.
+        assert_eq!(
+            occurrences(Cadence::Impaires, impaire, 2),
+            ["2026-09-09", "2026-09-23"]
+        );
+        // « Ce jour-là » ne rend qu'un jour, quoi qu'on lui demande.
+        assert_eq!(occurrences(Cadence::Unique, impaire, 5), [impaire]);
+        // Et une date qu'on ne lit pas ne rend rien — surtout pas une
+        // boucle.
+        assert!(occurrences(Cadence::Hebdomadaire, "la semaine prochaine", 5).is_empty());
+        assert!(occurrences(Cadence::Paires, "", 5).is_empty());
+    }
+
+    /// Les deux parités avancent de **sept** jours et se filtrent ;
+    /// c'est ce qui les sépare d'un cycle de quatorze, et rien d'autre
+    /// dans le module n'en décide.
+    #[test]
+    fn every_rhythm_survives_a_trip_through_the_base() {
+        for c in Cadence::ALL {
+            assert_eq!(Cadence::parse(c.as_str()), Some(c));
+            assert!(!c.label().is_empty());
+            assert!(!c.hint().is_empty());
+            assert!(c.pas() >= 0);
+            // Un rythme qui revient avance ; celui qui ne revient pas
+            // n'avance pas.
+            assert_eq!(c.pas() == 0, c == Cadence::Unique);
+        }
+        assert_eq!(Cadence::Paires.pas(), 7);
+        assert_eq!(Cadence::Impaires.pas(), 7);
+        assert_eq!(Cadence::UneSurDeux.pas(), 14);
+        assert_eq!(Cadence::Quotidien.pas(), 1);
+        // **Un seul rythme exige une fin**, et c'est celui qui, sans
+        // elle, poserait un congé perpétuel.
+        assert!(Cadence::Quotidien.needs_an_end());
+        assert!(Cadence::ALL
+            .into_iter()
+            .filter(|c| c.needs_an_end())
+            .eq([Cadence::Quotidien]));
+        // **La chaîne vide n'est pas « ce jour-là ».** C'est ce que
+        // portent les lignes écrites avant ce type, dont le rythme est
+        // dans `repeat_days` : leur donner `Unique` effacerait les
+        // trames de l'an dernier.
+        assert_eq!(Cadence::parse(""), None);
+        assert_eq!(Cadence::parse("TOUS_LES_MARDIS"), None);
+        // L'alternance a deux moitiés, et elles seules.
+        assert_eq!(Cadence::Paires.other_half(), Some(Cadence::Impaires));
+        assert_eq!(Cadence::Impaires.other_half(), Some(Cadence::Paires));
+        assert_eq!(Cadence::Hebdomadaire.other_half(), None);
+        // Seules les parités trient ; les autres acceptent tout, y
+        // compris ce qu'elles ne savent pas lire, parce que ce n'est
+        // pas leur question.
+        assert!(Cadence::Hebdomadaire.accepte("n'importe quoi"));
+        assert!(!Cadence::Paires.accepte("n'importe quoi"));
+    }
+
+    /// **Un congé se pose comme une plage, et la plage est une ligne.**
+    /// « Du 12 au 26 octobre » est quinze jours dépliés depuis un seul
+    /// enregistrement — et sans date de fin, ce n'est pas un congé mais
+    /// quelqu'un d'absent pour toujours.
+    #[test]
+    fn a_daily_rhythm_is_how_a_date_range_is_written() {
+        let jours = occurrences(Cadence::Quotidien, "2026-10-12", 15);
+        assert_eq!(jours.len(), 15);
+        assert_eq!(jours.first().map(String::as_str), Some("2026-10-12"));
+        assert_eq!(jours.last().map(String::as_str), Some("2026-10-26"));
+        // Aucun jour sauté : c'est ce que « plage » veut dire, et un
+        // rythme qui filtrerait ici laisserait des trous dans un congé.
+        for pair in jours.windows(2) {
+            assert_eq!(
+                crate::date::days_between(&pair[0], &pair[1]),
+                Some(1),
+                "{} puis {}",
+                pair[0],
+                pair[1]
+            );
+        }
+    }
+
+    /// **Une trame se pose sur la semaine que sa date nomme**, en
+    /// arrière comme en avant.
+    ///
+    /// C'est la règle que « le premier mercredi à partir d'ici » rate,
+    /// et elle ne se voit que sur une trame réglée en milieu de
+    /// semaine : le mercredi tomberait le jour même et le lundi huit
+    /// jours plus tard, si bien que les sept journées saisies d'un coup
+    /// ne formeraient plus une semaine.
+    #[test]
+    fn a_frame_lands_on_the_week_its_date_names() {
+        // Le 7 septembre 2026 est un lundi, le 9 un mercredi.
+        assert_eq!(in_week_of("2026-09-07", 1).as_deref(), Some("2026-09-07"));
+        assert_eq!(in_week_of("2026-09-07", 3).as_deref(), Some("2026-09-09"));
+        assert_eq!(in_week_of("2026-09-07", 7).as_deref(), Some("2026-09-13"));
+        // Depuis le mercredi, le lundi est celui de **cette**
+        // semaine-là — deux jours en arrière, et non cinq en avant.
+        assert_eq!(in_week_of("2026-09-09", 1).as_deref(), Some("2026-09-07"));
+        assert_eq!(in_week_of("2026-09-09", 7).as_deref(), Some("2026-09-13"));
+        // Quel que soit le jour de départ, les sept rendus forment une
+        // semaine : sept jours consécutifs, lundi en tête.
+        for start in ["2026-09-07", "2026-09-09", "2026-09-13"] {
+            let week: Vec<String> = (1..=7).filter_map(|d| in_week_of(start, d)).collect();
+            assert_eq!(week.len(), 7);
+            assert_eq!(week[0], "2026-09-07", "depuis {start}");
+            assert_eq!(week[6], "2026-09-13", "depuis {start}");
+        }
+        // Et le passage de mois se fait par le calendrier, pas par une
+        // soustraction sur le numéro du jour.
+        assert_eq!(in_week_of("2026-10-01", 1).as_deref(), Some("2026-09-28"));
+        assert_eq!(in_week_of("pas une date", 1), None);
     }
 
     /// Toute nature écrite en base se relit, et le libellé n'est jamais

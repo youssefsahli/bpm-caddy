@@ -98,6 +98,41 @@ pub fn end_of_month(y: i64, m: i64) -> Option<i64> {
     parse_iso(&from_days(days_from_civil(ny, nm, 1) - 1)).map(|(_, _, d)| d)
 }
 
+/// Le jour de la semaine, **lundi = 1 … dimanche = 7** — la numérotation
+/// ISO, qui est celle dont le planning a besoin : une trame se pose sur
+/// « le mercredi », et une semaine commence le lundi.
+pub fn weekday(iso: &str) -> Option<i64> {
+    // Le rang 0 de `to_days` est un jeudi. `+3` ramène ce jeudi sur
+    // un lundi, le reste euclidien fait le tour, et `+1` donne le
+    // lundi à 1 plutôt qu'à 0.
+    Some((to_days(iso)? + 3).rem_euclid(7) + 1)
+}
+
+/// Le numéro de semaine ISO 8601, et **l'année à laquelle il
+/// appartient**, qui n'est pas toujours celle de la date.
+///
+/// Les deux vont ensemble et ne se séparent pas : le 1er janvier 2027
+/// est un vendredi, il est donc dans la semaine 53 de **2026**, et un
+/// numéro rendu sans son année se lirait « semaine 53 de 2027 », qui
+/// n'existe pas.
+///
+/// La règle ISO tient en une phrase : une semaine appartient à l'année
+/// de son **jeudi**. C'est ce que le calcul fait, littéralement — on
+/// remonte au jeudi de la semaine, on lit son année, on compte les
+/// semaines depuis le premier janvier de cette année-là.
+///
+/// Le planning s'en sert pour les semaines paires et impaires, et c'est
+/// la seule chose qui empêche de les confondre avec un cycle de quinze
+/// jours : **une année ISO compte 52 ou 53 semaines**, et une année de
+/// 53 retourne la parité pour toutes les suivantes.
+pub fn iso_week(iso: &str) -> Option<(i64, i64)> {
+    let z = to_days(iso)?;
+    let thursday = z + (4 - weekday(iso)?);
+    let (year, _, _) = parse_iso(&from_days(thursday))?;
+    let jan1 = to_days(&format!("{year:04}-01-01"))?;
+    Some((year, (thursday - jan1) / 7 + 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +204,102 @@ mod tests {
             assert_eq!(to_days(bad), None, "« {bad} » ne doit pas se lire");
             assert_eq!(days_between(bad, "2026-01-01"), None);
             assert_eq!(days_between("2026-01-01", bad), None);
+            assert_eq!(weekday(bad), None);
+            assert_eq!(iso_week(bad), None);
         }
+    }
+
+    /// Lundi vaut 1 et dimanche 7, et c'est la seule numérotation qui
+    /// sorte d'ici : une trame posée « le mercredi » se cherche par ce
+    /// nombre-là.
+    #[test]
+    fn the_week_begins_on_monday() {
+        // Le 7 septembre 2026 est un lundi.
+        assert_eq!(weekday("2026-09-07"), Some(1));
+        assert_eq!(weekday("2026-09-13"), Some(7));
+        // Et le tour se boucle sans trou, sur deux mois pris au hasard.
+        let mut day = "2026-01-01".to_owned();
+        for _ in 0..60 {
+            let next = add_days(&day, 1).expect("le lendemain existe");
+            let (a, b) = (
+                weekday(&day).expect("un jour a un rang"),
+                weekday(&next).expect("le lendemain aussi"),
+            );
+            assert_eq!(b, a % 7 + 1, "{day} → {next}");
+            day = next;
+        }
+    }
+
+    /// **Une semaine appartient à l'année de son jeudi**, et c'est toute
+    /// la règle ISO. Les deux bords de l'an sont les seuls endroits où
+    /// elle se voit, et ce sont exactement ceux où une parité se
+    /// trompe : le 1er janvier 2027 est dans la semaine 53 de 2026.
+    #[test]
+    fn a_week_belongs_to_the_year_of_its_thursday() {
+        // 2026 commence un jeudi : le 1er janvier est donc dans sa
+        // propre semaine 1.
+        assert_eq!(iso_week("2026-01-01"), Some((2026, 1)));
+        // Fin décembre 2026, la semaine 53 court sur janvier 2027.
+        assert_eq!(iso_week("2026-12-31"), Some((2026, 53)));
+        assert_eq!(iso_week("2027-01-01"), Some((2026, 53)));
+        assert_eq!(iso_week("2027-01-03"), Some((2026, 53)));
+        assert_eq!(iso_week("2027-01-04"), Some((2027, 1)));
+        // Et dans l'autre sens : le 1er janvier 2021 est un vendredi,
+        // donc dans la semaine 53 de 2020.
+        assert_eq!(iso_week("2021-01-01"), Some((2020, 53)));
+        assert_eq!(iso_week("2020-01-01"), Some((2020, 1)));
+    }
+
+    /// La propriété qui tient tout le reste : sur deux siècles, le
+    /// numéro est entre 1 et 53, il ne bouge pas d'un jour à l'autre à
+    /// l'intérieur d'une semaine, et le 4 janvier est toujours en
+    /// semaine 1 — la définition même de la norme.
+    #[test]
+    fn every_week_of_two_centuries_is_numbered_once() {
+        for y in 1900..=2100 {
+            assert_eq!(
+                iso_week(&format!("{y}-01-04")).map(|(_, w)| w),
+                Some(1),
+                "le 4 janvier {y} est en semaine 1, par définition"
+            );
+        }
+        let first = to_days("1900-01-01").expect("le premier jour");
+        let last = to_days("2100-12-31").expect("le dernier");
+        let mut weeks = std::collections::HashSet::new();
+        for z in first..=last {
+            let iso = from_days(z);
+            let (year, week) = iso_week(&iso).expect("chaque jour a sa semaine");
+            assert!((1..=53).contains(&week), "{iso} : semaine {week}");
+            // Le lundi de la semaine porte le même numéro que son
+            // dimanche : sans quoi une parité changerait en cours de
+            // semaine.
+            let wd = weekday(&iso).expect("un rang");
+            let monday = from_days(z - (wd - 1));
+            assert_eq!(iso_week(&monday), Some((year, week)), "{iso}");
+            weeks.insert((year, week));
+        }
+        // Une semaine ISO fait sept jours, et rien n'en invente une.
+        assert_eq!(
+            weeks.len(),
+            usize::try_from((last - first) / 7 + 1).unwrap()
+        );
+    }
+
+    /// **La parité ISO n'est pas un cycle de quinze jours**, et une
+    /// année de 53 semaines est la raison. C'est la règle sur laquelle
+    /// repose « les semaines paires » du planning : deux semaines
+    /// impaires se suivent au passage de 2026 à 2027, et une trame
+    /// posée tous les quatorze jours se retrouverait à contretemps pour
+    /// toujours.
+    #[test]
+    fn a_year_of_fifty_three_weeks_flips_the_parity() {
+        let (_, before) = iso_week("2026-12-28").expect("un lundi de décembre");
+        let (_, after) = iso_week("2027-01-04").expect("le lundi suivant l'an");
+        assert_eq!((before, after), (53, 1));
+        assert_eq!(
+            before % 2,
+            after % 2,
+            "deux semaines impaires de suite : quatorze jours s'y trompent"
+        );
     }
 }

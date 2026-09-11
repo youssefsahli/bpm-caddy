@@ -45,9 +45,9 @@ theme = "$theme"
 # YS et MB en « personnes que la liste ne connaît pas » : lisible, mais
 # ce n'est pas la forme qu'une officine voit.
 operators = [
-  { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire", heures_semaine = "35h00" },
-  { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint", heures_semaine = "35h00" },
-  { initials = "MB", name = "Maya Bertrand", role = "Préparatrice", heures_semaine = "24h00" },
+  { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
+  { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint" },
+  { initials = "MB", name = "Maya Bertrand", role = "Préparatrice" },
 ]
 # Les horaires d'ouverture : sans eux, aucun creux ne se dessine, et la
 # bande de couverture du plan de journée n'aurait pas de rouge à montrer.

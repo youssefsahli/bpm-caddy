@@ -192,7 +192,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   hole at the counter, so filing it elsewhere would separate the hole
   from its reason. It does not recompute overlap: `agenda.rs` knows it
   already, and **there are not two overlap calculations in this
-  application**. Five rules, one test each: **hours are counted in whole
+  application**. Six rules, one test each: **hours are counted in whole
   minutes** (7 h 35 is 455 — the centimes of the caisse, for the same
   reason), **a shift with no end is not a shift of zero hours** (`None`,
   and the line reads « — »), **a night is counted at the day it begins**
@@ -201,11 +201,33 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   are not a clash** (9 h–12 h 30 then 14 h–19 h 30 is a day cut at
   noon), and **a pause longer than the shift is refused, not
   subtracted** (a negative total propagates through the week unseen).
-  And a sixth that lives in the naming: `day_total` counts a
+  A sixth carries the `Cadence` type: **« les semaines paires » is not
+  « une semaine sur deux »** — one is read off the calendar, the other
+  counted from the day it was set. They agree for years, then diverge
+  *forever* at the first ISO year of 53 weeks (31 Dec 2026 is week 53,
+  4 Jan 2027 is week 1: two odd weeks running). That is why the base
+  stores a rhythm rather than a number of days, and why both parities
+  step **seven** days and drop every other one. The daily rhythm is how
+  a date range is written — « congé du 12 au 26 » is one stored row, not
+  fifteen — and it is the only one that *requires* an end: without one
+  it is not a leave, it is somebody absent forever. `Cadence` is the
+  **only** vocabulary for « how often » here: the agenda's own entries
+  (`events`) carry the same key and unfold through the same
+  `db::stored_step` and `Cadence::accepte`. They had a second one — a
+  number of days behind « Toutes les 2 semaines » — in the same screen,
+  and it could not say « les semaines paires » at all. And a seventh that
+  lives in the naming: `day_total` counts a
   **presence**, never a wage — no premium, no overtime, no collective
-  agreement, and there will be none. A shift bound is read with
+  agreement, no contractual week, and there will be none; that is why
+  `heures_semaine` and the « Relevé d'heures » sheet were removed in
+  0.185.0 rather than kept. A shift bound is read with
   `parse_bound` and not the day's clock, which stops at 23:59: a garde
-  ends at « 26:00 ». Pure, tested, no clock),
+  ends at « 26:00 ». Pure, tested, no clock. The **exception** — one
+  occurrence of a pattern contradicted without erasing it — lives in the
+  base (`supersedes`, `cancelled`) and is written from the planning
+  row's « Ce jour seulement »; it had been complete from the schema to
+  the undo since 0.175.0 and **unreachable from the screen** until
+  0.185.0, which no test could show because each half worked),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
   no egui, so the view only scales and paints),
@@ -287,7 +309,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   register in — three lines of five went through, nothing says which,
   and nothing there erases. Pure, tested, no clock: the day is passed
   in),
-  `src/date.rs` (the calendar, written **once**: it was written three
+  `src/date.rs` (the calendar, written **once** — day arithmetic, the
+  end of a month, the ISO weekday and the ISO week number, whose rule
+  is one sentence: **a week belongs to the year of its Thursday**. It
+  was written three
   times — `ordonnancier` by the julienne formula, `location` by the
   civil one, plus a separate ISO reader in `surveillance`. None was
   wrong, and that is exactly what this codebase refuses elsewhere. The
@@ -856,6 +881,7 @@ add clicking and typing; it is not the price of entry.
   vaccine_map|ordonnance|rein|grossesse|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
+  trame|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
@@ -877,6 +903,10 @@ add clicking and typing; it is not the price of entry.
   `caisses` is its other page, the month: the demo seeds twenty-four
   evenings, one of them recounted and two with no expected takings,
   because those are the two cases the view has to know how to write.
+  `trame` opens the week-pattern dialog **on a half-filled
+  alternation** — the only state where the two tabs, the parity
+  sentence and the next-occurrence line say anything; empty, the window
+  shows none of what it exists for.
   `finances` is the recettes view, which has **no door**: it is in no
   dock, in no tab strip until it has been opened, and not even in the
   list the jump box offers on an empty query — it is reached by typing

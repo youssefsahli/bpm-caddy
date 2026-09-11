@@ -17,6 +17,24 @@ mkdir -p "$tmp/config/bpm-caddy"
 cat > "$tmp/config/bpm-caddy/config.toml" <<'EOF'
 [ui]
 discreet_finances = false
+[pharmacy]
+# L'équipe que la démo sème au planning. Sans elle, la grille range CL,
+# YS et MB parmi « les personnes que la liste ne connaît pas » : lisible,
+# mais ce n'est pas la forme qu'une officine voit, et le sélecteur de la
+# trame devient un champ libre au lieu d'un menu.
+operators = [
+  { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
+  { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint" },
+  { initials = "MB", name = "Maya Bertrand", role = "Préparatrice" },
+]
+horaires = [
+  { jour = "lundi", de = "09:00", a = "19:30" },
+  { jour = "mardi", de = "09:00", a = "19:30" },
+  { jour = "mercredi", de = "09:00", a = "19:30" },
+  { jour = "jeudi", de = "09:00", a = "19:30" },
+  { jour = "vendredi", de = "09:00", a = "19:30" },
+  { jour = "samedi", de = "09:00", a = "12:30" },
+]
 EOF
 export XDG_CONFIG_HOME="$tmp/config"
 
@@ -61,6 +79,11 @@ shot dashboard docs/screenshot_dashboard.png
 shot patient docs/screenshot_patient.png
 shot drug_card docs/screenshot_drugs.png
 shot agenda docs/screenshot_agenda.png
+# Le planning de l'équipe, la trame ouverte : les deux onglets d'une
+# alternance, la phrase qui dit la parité de la semaine de départ, et les
+# prochaines occurrences par leur date. C'est l'écran où ce qui se passe
+# ne se lit sur aucune autre capture.
+shot trame docs/screenshot_planning.png
 shot vaccins docs/screenshot_vaccins.png
 shot bio docs/screenshot_bio.png
 shot watch docs/screenshot_watch.png

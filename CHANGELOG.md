@@ -5,6 +5,184 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.185.0] - 2026-09-11
+
+### Added
+- **Le planning sait enfin dire « les semaines paires ».** Il ne savait
+  dire que deux choses : ce jour-là, ou toutes les semaines. Or une
+  officine ne travaille pas comme cela — on est là les semaines paires,
+  un samedi sur deux, une semaine sur trois au dépôt. Écrire cela à la
+  main, c'était poser vingt-six lignes par an et par personne, et se
+  tromper d'une.
+
+  Huit rythmes, rangés en deux familles que `src/planning.rs` **refuse
+  de confondre** : celles qui se lisent sur le calendrier — les semaines
+  paires, les impaires — et celles qui se comptent depuis le jour posé —
+  une semaine sur deux, sur trois, sur quatre. La différence a l'air
+  d'un détail et n'en est pas un : **une année ISO compte 52 ou 53
+  semaines**, et au premier passage d'une année de 53, une trame écrite
+  tous les quatorze jours cesse *pour toujours* de tomber sur les
+  semaines paires. Le 31 décembre 2026 est en semaine 53, le 4 janvier
+  2027 en semaine 1 : deux impaires de suite. C'est pour cette raison
+  que la base range un rythme et non un nombre de jours, que les deux
+  parités avancent de sept jours en s'en tenant une sur deux, et qu'un
+  test tient la divergence date par date.
+
+  `src/date.rs` gagne le jour de la semaine et le numéro de semaine ISO,
+  avec sa règle en une phrase — **une semaine appartient à l'année de
+  son jeudi** —, tenue sur chaque jour de deux siècles. C'est le
+  calendrier de la maison, et il n'y en a toujours qu'un.
+
+- **« Trame de la semaine » : sept journées et un rythme, en une
+  fois.** L'écran qui manquait. Poser « 9 h – 19 h 30 du lundi au
+  vendredi, les semaines paires » demandait cinq fois la rangée de
+  saisie, puis cinq de plus pour l'autre semaine — dix gestes dont aucun
+  ne montrait ce que les autres avaient écrit.
+
+  Une grille de sept jours, et **deux onglets quand c'est une
+  alternance** : la semaine paire et l'impaire côte à côte, avec un
+  bouton pour recopier l'une sur l'autre. Trois choses lui donnent sa
+  forme, et ce sont trois réponses à « de quoi doute-t-on en remplissant
+  ce tableau ? » — le total de la semaine s'écrit au fur et à mesure,
+  par jour et en bas ; la semaine de départ **dit son numéro et sa
+  parité** (« la semaine du 07/09/2026 est la semaine 37 : impaire »),
+  qui est la seule phrase qui lève le doute sur l'onglet qu'on remplit ;
+  et les prochaines occurrences sont nommées **par leur date**. Régler
+  « semaines paires » une semaine impaire ne pose rien cette semaine-là,
+  et sans cette ligne on le découvre le mercredi suivant.
+
+  Deux commandes font gagner les six autres rangées — « Lundi à
+  vendredi », « Lundi à samedi » recopient la première journée écrite —
+  et « Remplacer » retire d'abord les trames déjà posées pour la
+  personne, parce qu'en poser une par-dessus une autre fait quelqu'un
+  qui travaille deux fois et que rien à l'écran ne le dirait. Le tout
+  est **un seul geste**, qu'un seul `Ctrl+Z` défait : les postes écrits
+  s'enlèvent et les trames retirées reviennent, avec leurs exceptions.
+
+  Quatre règles tenues par un test sans écran : une journée sans heure
+  de début n'écrit rien, chaque journée se pose sur **son** jour de la
+  semaine que la date nomme — en arrière comme en avant, sans quoi une
+  trame réglée un mercredi poserait son lundi huit jours plus tard et
+  les sept journées ne formeraient plus une semaine —, une alternance
+  écrit deux trames indépendantes, et le pas rangé est celui du rythme,
+  ce qui garde « Recopier » exact.
+
+- **Un congé se pose comme une plage.** « Tous les jours » est le
+  huitième rythme, et le seul qui **exige** une date de fin : « du 12 au
+  26 octobre » devient une ligne rangée au lieu de quinze, et sans fin
+  écrite ce n'est pas un congé mais quelqu'un d'absent pour toujours —
+  la ligne est refusée et le dit. Le champ « jusqu'au » n'apparaît que
+  lorsqu'un rythme le rend possible : sur un poste d'un seul jour il
+  n'aurait rien à borner.
+
+  Et il ne s'applique qu'à ce qui revient : changer de rythme pour « ce
+  jour-là » fait disparaître le champ mais pas ce qu'on y avait tapé, et
+  appliqué quand même il aurait écrit en base un poste que l'écran
+  n'aurait jamais montré.
+- **« Ce jour seulement » — l'exception, enfin écrite depuis l'écran.**
+  La base la connaissait depuis le premier jour : une ligne qui remplace
+  *une* occurrence d'une trame sans y toucher, `supersedes` et
+  `cancelled`, la famille lue avant suppression, le retour arrière qui
+  renumérote les liens. Le changelog de 0.175.0 disait déjà « Claire est
+  absente mardi prochain ne doit pas effacer les mardis de Claire ».
+
+  **Rien à l'écran n'en écrivait jamais une.** « Supprimer » emportait la
+  trame entière, et il n'y avait pas d'autre issue. Le mécanisme était
+  complet de la base au retour arrière, et inaccessible — ce qui ne se
+  voit dans aucun test, puisque chaque moitié marchait.
+
+  Une bascule, qui n'apparaît que sur l'occurrence d'une trame : les
+  deux boutons portent alors sur ce jour-là et le disent (« Modifier ce
+  jour », « Retirer ce jour »). Et sur une case qui *est* une exception,
+  le bouton ne supprime pas, il **rétablit** — le jour que la trame
+  portait revient, et la trame n'est pas touchée. Le nommer
+  « Supprimer » y ferait croire qu'on efface la série ; c'est d'ailleurs
+  ce qu'il faisait, puisqu'il visait la ligne rangée et non la case
+  sélectionnée.
+- Le rythme d'un poste se lit **au survol de sa case** : « 9 h – 19 h 30 »
+  ne disait pas si c'était ce jour-là ou toutes les semaines paires, et
+  c'est pourtant la première chose à savoir avant de supprimer, puisque
+  supprimer emporte la série. Une case qui contredit sa trame le dit
+  aussi : elle ressemble en tout à une case ordinaire, et c'est la seule
+  dont « Supprimer » ne fait pas ce qu'on croit.
+- **Les entrées de l'agenda reviennent au même rythme que les postes.**
+  Elles en avaient un autre — « Une fois », « Chaque semaine »,
+  « Toutes les 2 semaines », « Toutes les 4 semaines », un nombre de
+  jours —, si bien qu'il y avait deux vocabulaires du « à quelle
+  fréquence » dans le même écran, et que le plus visible des deux ne
+  savait pas dire « les semaines paires ». C'est la même énumération, le
+  même dépliage et le même calendrier des deux côtés maintenant ; la
+  ligne d'une entrée qui revient porte **le nom de son rythme** plutôt
+  que « · tous les 7 j », qui était un calcul là où « Chaque semaine »
+  est ce qu'on avait choisi. Le quotidien n'y est pas offert : il exige
+  une date de fin, la rangée de saisie d'une entrée n'en demande pas, et
+  une réunion qui revient tous les jours pour toujours est mille
+  occurrences dépliées à chaque lecture.
+- La démo sème **un samedi en alternance** — Maya les semaines paires,
+  Yanis les impaires —, qui est la façon dont une officine s'organise
+  vraiment et le seul endroit où une capture montre une trame qui saute
+  une semaine. Et le planning s'ouvre **avec une case déjà choisie**,
+  comme la caisse s'ouvre sur un tiroir déjà compté : « Modifier »,
+  « Supprimer » et la bascule n'existent que sur une sélection, et sans
+  elle aucune capture ne les montrait.
+
+### Removed
+- **`[pharmacy] operators couleur`.** Le champ promettait « la couleur
+  de cette personne au planning » et **rien ne l'a jamais lu** : une
+  ligne de configuration qu'on pouvait remplir sans effet, livrée en
+  même temps que l'écran qu'elle devait colorer. La
+  promesse, elle, est tenue : le nom d'une personne est désormais peint
+  de sa couleur dans la grille, déduite de ses initiales comme au
+  journal des notes. C'est mieux qu'un champ : la même sur tous les
+  postes, et elle ne bouge pas quand on insère quelqu'un au milieu de
+  l'équipe — ce que le commentaire du champ donnait précisément comme
+  son défaut.
+- **L'horaire contractuel et le relevé d'heures.** `heures_semaine` sur
+  chaque opérateur, l'écart « 34 h 15 / 35 h 00 » dans la grille, et la
+  feuille « Relevé d'heures » avec ses deux cases de signature.
+
+  Le module l'écrivait depuis le premier jour et ne s'y tenait pas
+  jusqu'au bout : `day_total` compte une **présence**, pas une paie. Ce
+  qu'on déduit d'un total d'heures — l'écart au contrat comme la
+  majoration — est du droit du travail, il change, et une application de
+  pharmacie qui l'imprime se trompera un jour sans que personne le voie.
+  Un relevé mensuel destiné à la comptabilité était exactement le papier
+  par lequel cela arrive. Le planning de l'équipe, lui, reste : c'est un
+  horaire à punaiser, pas une pièce comptable.
+
+### Fixed
+- Les champs d'heure d'une cellule de `Grid` annonçaient leur largeur
+  par `desired_width`, **qui ne l'annonce pas** : la colonne se rabattait
+  sur ce que le texte déjà tapé demandait, et « 19h30 » rendait « 19h ».
+  `add_sized`, comme le veut la règle des cellules de grille.
+- La fenêtre de la trame mesurait plus haut que l'écran à 1024x700 et à
+  `text_scale = 1,6` — et centrée, elle débordait des deux côtés : son
+  titre coupé en haut, « Poser la trame » coupé en bas. Le corps défile,
+  les boutons prennent leur propre rangée, et la largeur voulue suit
+  l'échelle du texte plutôt que de rester à un nombre de pixels qui
+  porte sept colonnes à l'échelle 1 et cinq à 1,6.
+- **Défaire la suppression d'une exception ne réinsérait rien.** Le
+  retour arrière cherchait, en tête de la famille, la ligne rangée qu'il
+  devait renuméroter ; une exception supprimée seule est une famille
+  d'une ligne, dont le `supersedes` nomme une trame qui, elle, n'a jamais
+  bougé. Faute de trouver le rangé, il passait son chemin : le geste
+  avait l'air défait et ne l'était pas — le pire des deux. Trouvé en
+  suivant le chemin à la main, et tenu par un test qui supprime une
+  exception seule et la remet.
+- **La rangée de saisie se mesurait comme si tout y était un bouton**,
+  ce qui oubliait trois choses : un menu déroulant est plus large que le
+  texte qu'il affiche, la date du jour s'y écrit sans être un libellé, et
+  un champ se mesure sur son gabarit. La bande sortait une rangée trop
+  courte et « Supprimer » tombait hors du volet — sur l'écran même où il
+  vient d'apparaître. Le modèle suit la rangée pièce par pièce.
+- **La rangée de saisie du planning mangeait la grille.** « La saisie
+  gagne » réglait l'arbitrage tant qu'elle tenait en deux rangées : on
+  lui laissait tout sauf une ligne. À `text_scale = 1,6` sur un écran de
+  comptoir elle en fait quatre, et il ne restait à la grille que sa
+  ligne d'en-têtes — rien de ce pour quoi l'écran existe. Les deux
+  défilent, chacune dans sa région : le partage se fait donc à la
+  moitié, sur une **rangée entière**, et les deux moitiés défilent.
+
 ## [0.184.0] - 2026-09-11
 
 ### Added
