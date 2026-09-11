@@ -101,6 +101,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
+  `src/content.rs` (the 772 printed phrases the officine may rewrite —
+  see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
+  convention below. Pure, tested, no database: the table is read once and
+  passed in),
   `src/selfcheck.rs` (the sheets a patient takes home: automesure
   tensionnelle, glycémie, poids, débit de pointe, INR, douleur. **What
   is missing from a photocopied grid is not the grid, it is the
@@ -853,6 +857,7 @@ add clicking and typing; it is not the price of entry.
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
+  textes|carnets_edit|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
   finances|stats|companion|script|carnets|caisse|caisses|peaux`
   — land on a specific view (screenshots, e2e). `about` is the Options
@@ -974,6 +979,43 @@ A new prose field on a drug card is not searchable until it is in
 `MONO_FIELDS` (`src/app.rs`) with a label key: « Dans le texte… » reads
 that table and nothing else, so a field left out of it is a field nobody
 will ever find by its words.
+
+**Every printed phrase can be rewritten by the officine.** The cards,
+preparations, dispositifs, protocols and reference-table *cells* were
+always editable; 772 phrases were not, and they were exactly the ones
+that **go out on paper** in the officine's name — the patient's carnets,
+the entretien checklist, the « peut-on écraser ? » sheet, the
+surveillance plan, the biology readings, the revue, grossesse, rein, the
+TROD advice, the traveller. `src/content.rs` holds the mechanism,
+**generalised from `table_cells`** rather than written beside it, and
+`content_overrides` (in the base, so shared across posts) holds only
+real differences. The full account is in `docs/CONTENU.md` under
+« Réécrire les phrases imprimées »; the parts that bite:
+  - A module exposes `phrases()` and `resolve()` and stays **static and
+    pure** — its tests keep covering what ships, and resolution is a thin
+    layer at drawing or printing time.
+  - **An address comes from what identifies a rule**, never from its rank
+    nor its prose: a revue point's title, a presentation's label, an
+    analyte's code, a molecule plus its DFG threshold. Prose-derived
+    addresses vanish when the prose is corrected — the rewrite does not
+    go stale, it goes *unreachable* — and rank-derived ones stale twenty
+    rewrites for one inserted rule. Each module has the test proving its
+    identity unique; two rules sharing an address make the second inherit
+    the first's rewrite, which on the crush sheet is a modified-release
+    tablet crushed.
+  - An override remembers the phrase it replaced and applies only while
+    that phrase is unchanged; otherwise it is **shown for review**, never
+    laid over a different sentence. Writing the shipped wording back
+    deletes the row, so a restored phrase follows updates again.
+  - Adding an editable document is `phrases()` + `resolve()` + one line
+    in `content::documents()` + a label key + **the paired test in both
+    directions**. A phrase missing from `phrases()` cannot be corrected;
+    one missing from `resolve()` prints as shipped while you believe you
+    fixed it, which is worse.
+  - A phrase **composed at read time** needs its own path: the bilan's
+    interval reading ends with the analyte's note, so rewriting that note
+    changed the tooltip and left the printed bilan saying the old
+    sentence.
 
 The codex works the same way: `src/db.rs` ships `STARTER_PREPARATIONS`
 into the `preparations` table once, and everything after that is the

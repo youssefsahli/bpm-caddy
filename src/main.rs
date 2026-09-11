@@ -10,6 +10,7 @@ mod codebar;
 mod codex;
 mod conciliation;
 mod config;
+mod content;
 mod crush;
 mod date;
 mod db;

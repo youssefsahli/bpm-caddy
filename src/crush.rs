@@ -90,6 +90,76 @@ pub struct Answer {
     pub source: &'static str,
 }
 
+/// Le document sous lequel les phrases de la feuille sont adressées.
+pub const DOC: &str = "ecraser";
+
+/// Toutes les phrases de la feuille, avec leur adresse.
+///
+/// Le repère est le **libellé de la présentation** — « Skenan LP »,
+/// « Moscontin » — et non le rang : il désigne la boîte, il ne bouge
+/// pas, et une présentation ajoutée au tableau ne périme donc aucune
+/// réécriture. Un test tient leur unicité.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    let mut out = Vec::with_capacity(TABLE.len() * 2);
+    for rule in TABLE {
+        let id = crate::content::slug(rule.label);
+        out.push((
+            crate::content::key(DOC, &id, "pourquoi"),
+            "pourquoi",
+            rule.why,
+        ));
+        // Le remplacement n'existe que pour un refus : une ligne vide
+        // n'est pas une phrase, et l'éditeur n'a pas à proposer un champ
+        // pour ce que la règle ne dit pas.
+        if !rule.instead.is_empty() {
+            out.push((
+                crate::content::key(DOC, &id, "alternative"),
+                "alternative",
+                rule.instead,
+            ));
+        }
+    }
+    out
+}
+
+/// Appliquer les réécritures de l'officine aux réponses rendues.
+pub fn resolve(answers: Vec<Answer>, over: &crate::content::Overrides) -> Vec<Resolved> {
+    answers
+        .into_iter()
+        .map(|a| {
+            let id = crate::content::slug(a.label);
+            Resolved {
+                treatment: a.treatment,
+                label: a.label,
+                verdict: a.verdict,
+                why: over
+                    .get(&crate::content::key(DOC, &id, "pourquoi"), a.why)
+                    .to_owned(),
+                instead: over
+                    .get(&crate::content::key(DOC, &id, "alternative"), a.instead)
+                    .to_owned(),
+                source: a.source,
+            }
+        })
+        .collect()
+}
+
+/// Une réponse telle qu'elle sera montrée et imprimée.
+///
+/// La source n'est pas réécrite : c'est une référence — un RCP, une
+/// recommandation —, pas une tournure. La réécrire serait changer ce sur
+/// quoi la réponse s'appuie, ce qui n'est pas ce que l'officine demande
+/// quand elle trouve une phrase mal tournée.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Resolved {
+    pub treatment: String,
+    pub label: &'static str,
+    pub verdict: Verdict,
+    pub why: String,
+    pub instead: String,
+    pub source: &'static str,
+}
+
 /// Ce qu'on peut faire de chaque ligne de cette ordonnance.
 ///
 /// **Toute ligne reçoit une réponse**, y compris « à vérifier » : une
@@ -382,6 +452,66 @@ pub const TABLE: &[Rule] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Le libellé d'une présentation est son adresse, donc il est
+    /// unique.**
+    ///
+    /// C'est ce qui permet de réécrire la phrase d'une présentation sans
+    /// que l'ajout d'une autre au tableau périme quoi que ce soit. Deux
+    /// présentations au même libellé casseraient la propriété en
+    /// silence : la seconde recevrait la réécriture de la première — et
+    /// sur cette feuille-là, une réponse posée sur la mauvaise ligne est
+    /// un comprimé à libération prolongée écrasé.
+    #[test]
+    fn a_presentation_label_is_an_address_and_no_two_share_one() {
+        let mut ids: Vec<String> = TABLE
+            .iter()
+            .map(|r| crate::content::slug(r.label))
+            .collect();
+        assert!(ids.len() >= 25, "{} présentations", ids.len());
+        ids.sort();
+        let n = ids.len();
+        ids.dedup();
+        assert_eq!(n, ids.len(), "deux présentations partagent une adresse");
+        for rule in TABLE {
+            assert!(
+                !crate::content::slug(rule.label).is_empty(),
+                "« {} » ne donne pas d'adresse",
+                rule.label
+            );
+        }
+    }
+
+    /// Toute phrase de la feuille s'édite, et toute réécriture arrive.
+    #[test]
+    fn every_crush_phrase_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        // Un « pourquoi » par règle, et une alternative quand il y en a
+        // une : une ligne vide n'est pas une phrase à proposer.
+        let with_instead = TABLE.iter().filter(|r| !r.instead.is_empty()).count();
+        assert_eq!(listed.len(), TABLE.len() + with_instead);
+
+        let treatments = [crate::revue::Treatment {
+            name: "Skenan LP 30 mg",
+            dci: "morphine",
+            class: "opioïde",
+            tags: "",
+        }];
+        let answers = read(&treatments);
+        assert!(!answers.is_empty());
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        let mine = resolve(answers.clone(), &over);
+        assert!(mine[0].why.starts_with("réécrit:"), "{}", mine[0].why);
+        // Et sans réécriture, la réponse est celle qui est livrée.
+        let plain = resolve(answers.clone(), &crate::content::Overrides::default());
+        assert_eq!(plain[0].why, answers[0].why);
+        assert_eq!(plain[0].instead, answers[0].instead);
+    }
 
     fn treat(name: &str) -> crate::revue::Treatment<'_> {
         crate::revue::Treatment {

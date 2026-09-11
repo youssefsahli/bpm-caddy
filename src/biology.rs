@@ -263,6 +263,107 @@ pub fn level_word(level: Level) -> &'static str {
 
 /// The analytes an officine actually reads, with the usual adult
 /// intervals. A laboratory's own interval always wins over these.
+/// Le document sous lequel les phrases de la biologie sont adressées.
+pub const DOC: &str = "biologie";
+
+/// Chaque règle avec son adresse, **calculée une seule fois**.
+///
+/// `phrases` et la résolution la parcourent toutes les deux : deux
+/// calculs d'une même adresse finiraient par différer, et une
+/// réécriture rangée à une adresse que la lecture ne compose pas est une
+/// réécriture perdue sans que rien ne le dise.
+///
+/// Le repère est le **code de l'analyte** et le rang de la règle parmi
+/// celles de cet analyte. Le rang seul se décalerait dès qu'on insère
+/// n'importe où ; par analyte, il ne bouge que si l'on insère une règle
+/// pour ce même analyte — et trois règles partagent déjà leur seuil,
+/// leur sens et leur premier traitement, donc l'identité ne suffit pas
+/// à les séparer.
+fn addressed() -> Vec<(String, &'static Rule)> {
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    RULES
+        .iter()
+        .map(|r| {
+            let n = seen.entry(r.code).or_insert(0);
+            let key = crate::content::key_n(DOC, &crate::content::slug(r.code), "lecture", *n);
+            *n += 1;
+            (key, r)
+        })
+        .collect()
+}
+
+/// Toutes les phrases de la biologie, avec leur adresse : ce que chaque
+/// analyte veut dire au comptoir, et ce que chaque lecture conclut.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    let mut out: Vec<(String, &'static str, &'static str)> = CATALOGUE
+        .iter()
+        .filter(|a| !a.note.trim().is_empty())
+        .map(|a| {
+            (
+                crate::content::key(DOC, &crate::content::slug(a.code), "note"),
+                "note",
+                a.note,
+            )
+        })
+        .collect();
+    out.extend(
+        addressed()
+            .into_iter()
+            .map(|(key, r)| (key, "lecture", r.text)),
+    );
+    out
+}
+
+/// Appliquer les réécritures de l'officine à ce que la biologie a lu.
+///
+/// L'appariement se fait sur le texte **livré** : une règle dont la
+/// phrase a été réécrite se retrouve quand même, puisque c'est le
+/// tableau qu'on interroge et non la sortie.
+pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Finding> {
+    let table = addressed();
+    findings
+        .into_iter()
+        .map(|f| {
+            if let Some((k, _)) = table
+                .iter()
+                .find(|(_, r)| r.code == f.code && r.text == f.text)
+            {
+                return Finding {
+                    text: over.get(k, &f.text).to_owned(),
+                    ..f
+                };
+            }
+            // **La lecture d'intervalle n'est pas une règle** : elle est
+            // composée — « Kaliémie 5,4 mmol/L — élevé (3,5 – 5). » —
+            // et se termine par la note de l'analyte, qui est, elle,
+            // réécrivable. Sans ce chemin, réécrire une note changeait
+            // l'infobulle et laissait le bilan dire l'ancienne phrase :
+            // le pire des deux, puisque rien ne l'aurait signalé.
+            let Some(a) = CATALOGUE.iter().find(|a| a.code == f.code) else {
+                return f;
+            };
+            let note = note(a, over);
+            if note == a.note || !f.text.ends_with(a.note) {
+                return f;
+            }
+            let head = &f.text[..f.text.len() - a.note.len()];
+            Finding {
+                text: format!("{head}{note}"),
+                ..f
+            }
+        })
+        .collect()
+}
+
+/// Ce qu'un analyte veut dire au comptoir, avec les mots de l'officine.
+pub fn note(analyte: &Analyte, over: &crate::content::Overrides) -> String {
+    over.get(
+        &crate::content::key(DOC, &crate::content::slug(analyte.code), "note"),
+        analyte.note,
+    )
+    .to_owned()
+}
+
 pub const CATALOGUE: &[Analyte] = &[
     Analyte {
         code: "DFG",
@@ -1724,6 +1825,93 @@ const RULES: &[Rule] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Une adresse par phrase, et la même des deux côtés.**
+    ///
+    /// Trois règles partagent leur analyte, leur seuil, leur sens et
+    /// leur premier traitement : l'identité seule ne les sépare pas, et
+    /// c'est pourquoi l'adresse porte un rang **par analyte** plutôt que
+    /// dans le tableau entier — un rang global se décalerait dès qu'on
+    /// insère n'importe où.
+    ///
+    /// Et surtout : `phrases` et la résolution parcourent la **même**
+    /// fonction. Deux calculs d'une adresse finiraient par différer, et
+    /// une réécriture rangée à une adresse que la lecture ne compose pas
+    /// serait perdue sans que rien ne le dise.
+    #[test]
+    fn every_biology_phrase_has_one_address_and_both_sides_compose_it_alike() {
+        let table = addressed();
+        assert_eq!(table.len(), RULES.len());
+        let mut keys: Vec<&str> = table.iter().map(|(k, _)| k.as_str()).collect();
+        keys.sort_unstable();
+        let n = keys.len();
+        keys.dedup();
+        assert_eq!(n, keys.len(), "deux lectures à la même adresse");
+
+        // Les notes d'analyte s'y ajoutent, sans collision.
+        let listed = phrases();
+        let with_note = CATALOGUE
+            .iter()
+            .filter(|a| !a.note.trim().is_empty())
+            .count();
+        assert_eq!(listed.len(), RULES.len() + with_note);
+        let mut all: Vec<&str> = listed.iter().map(|(k, _, _)| k.as_str()).collect();
+        all.sort_unstable();
+        let n = all.len();
+        all.dedup();
+        assert_eq!(n, all.len(), "une note et une lecture à la même adresse");
+    }
+
+    /// Toute lecture s'édite, et toute réécriture arrive sur le bilan.
+    #[test]
+    fn every_biology_reading_is_editable_and_every_rewrite_arrives() {
+        // Une kaliémie haute sous IEC : une lecture que le tableau a.
+        let readings = [Reading {
+            code: "K",
+            value: 5.4,
+            date: "2026-09-11",
+        }];
+        let treatments = ["ramipril".to_owned()];
+        let found = read(&readings, &treatments);
+        assert!(!found.is_empty(), "la kaliémie haute sous IEC doit parler");
+
+        let over = crate::content::Overrides::from_rows(
+            phrases()
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        for f in resolve(found.clone(), &over) {
+            // Une lecture de règle est remplacée entière ; la lecture
+            // d'intervalle est composée et ne voit remplacer que sa
+            // queue, qui est la note de l'analyte. Les deux portent donc
+            // la réécriture, à des places différentes.
+            assert!(
+                f.text.contains("réécrit:"),
+                "cette lecture n'a pas suivi la réécriture : {}",
+                f.text
+            );
+        }
+        // Et la lecture d'intervalle garde sa tête — la valeur et
+        // l'intervalle sont des chiffres, pas une tournure.
+        let composed = resolve(found.clone(), &over)
+            .into_iter()
+            .find(|f| f.text.starts_with("Kaliémie"))
+            .expect("la lecture d'intervalle");
+        assert!(composed.text.contains("5,4"), "{}", composed.text);
+        assert!(composed.text.ends_with("réécrit:biologie.k.note"));
+        // Sans réécriture, la lecture est celle qui est livrée.
+        let plain = resolve(found.clone(), &crate::content::Overrides::default());
+        assert_eq!(plain, found);
+
+        // Et la note d'un analyte suit le même chemin.
+        let k = CATALOGUE
+            .iter()
+            .find(|a| a.code == "K")
+            .expect("la kaliémie");
+        assert!(note(k, &over).starts_with("réécrit:"));
+        assert_eq!(note(k, &crate::content::Overrides::default()), k.note);
+    }
 
     #[test]
     fn a_value_lands_where_it_should() {

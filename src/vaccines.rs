@@ -43,6 +43,36 @@ pub struct Reco {
     pub detail: &'static str,
 }
 
+/// Le document sous lequel les phrases du voyageur sont adressées.
+pub const DOC: &str = "voyage";
+
+/// Toutes les phrases du panneau voyageur, avec leur adresse.
+///
+/// Le repère est le **code du vaccin** : il désigne la dose, il est
+/// écrit au carnet, et il ne bouge pas.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    RECOS
+        .iter()
+        .filter(|r| !r.detail.trim().is_empty())
+        .map(|r| {
+            (
+                crate::content::key(DOC, &crate::content::slug(r.code), "detail"),
+                "detail",
+                r.detail,
+            )
+        })
+        .collect()
+}
+
+/// Ce qu'une recommandation dit, avec les mots de l'officine.
+pub fn detail(reco: &Reco, over: &crate::content::Overrides) -> String {
+    over.get(
+        &crate::content::key(DOC, &crate::content::slug(reco.code), "detail"),
+        reco.detail,
+    )
+    .to_owned()
+}
+
 /// Every flag, in the order the travel panel lists them.
 pub const RECOS: &[Reco] = &[
     Reco {

@@ -40,6 +40,61 @@ pub struct Protocol {
     pub temps_de_prise: &'static [&'static str],
 }
 
+/// Le document sous lequel les conseils imprimés sont adressés.
+pub const DOC: &str = "ordonnance";
+
+/// Les deux protocoles, avec le nom sous lequel ils sont adressés.
+///
+/// L'indication est ce qui les distingue et ne bouge pas — elle est le
+/// titre imprimé en tête de l'ordonnance.
+fn protocols() -> [(&'static str, &'static Protocol); 2] {
+    [("angine", &ANGINE), ("cystite", &CYSTITE)]
+}
+
+/// Toutes les phrases imprimées sur l'ordonnance, avec leur adresse.
+///
+/// Les conseils et les temps de prise : ce sont les lignes qui partent
+/// chez le patient. Les posologies n'en sont pas — ce sont des doses, et
+/// elles s'accordent déjà avec les tables de référence, qu'un test tient
+/// (`every_molecule_appears_in_its_reference_table`).
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    let mut out = Vec::new();
+    for (id, p) in protocols() {
+        for (n, c) in p.conseils.iter().enumerate() {
+            out.push((crate::content::key_n(DOC, id, "conseil", n), "conseil", *c));
+        }
+        for (n, t) in p.temps_de_prise.iter().enumerate() {
+            out.push((crate::content::key_n(DOC, id, "temps", n), "temps", *t));
+        }
+    }
+    out
+}
+
+/// Les conseils d'un protocole, avec les mots de l'officine.
+pub fn resolve_conseils(
+    protocol: &Protocol,
+    over: &crate::content::Overrides,
+) -> (Vec<String>, Vec<String>) {
+    let id = protocols()
+        .into_iter()
+        .find(|(_, p)| p.indication == protocol.indication)
+        .map_or("", |(id, _)| id);
+    let many = |field: &str, shipped: &'static [&'static str]| -> Vec<String> {
+        shipped
+            .iter()
+            .enumerate()
+            .map(|(n, s)| {
+                over.get(&crate::content::key_n(DOC, id, field, n), s)
+                    .to_owned()
+            })
+            .collect()
+    };
+    (
+        many("conseil", protocol.conseils),
+        many("temps", protocol.temps_de_prise),
+    )
+}
+
 /// Angine à streptocoque du groupe A, TROD positif.
 const ANGINE: Protocol = Protocol {
     indication: "Angine à streptocoque du groupe A — TROD positif",
@@ -216,13 +271,19 @@ impl Choice {
     }
 
     /// The advice paragraphs the toggles switch on.
-    pub fn advice(&self, protocol: &Protocol) -> Vec<&'static str> {
+    ///
+    /// Avec les mots de l'officine : ces lignes partent chez le patient,
+    /// sous une ordonnance signée par elle. Le point unique où elles
+    /// atteignent la page — il n'y en a pas d'autre, donc une réécriture
+    /// ne peut pas manquer le papier.
+    pub fn advice(&self, protocol: &Protocol, over: &crate::content::Overrides) -> Vec<String> {
+        let (conseils, temps) = resolve_conseils(protocol, over);
         let mut out = Vec::new();
         if self.conseils {
-            out.extend_from_slice(protocol.conseils);
+            out.extend(conseils);
         }
         if self.temps_de_prise {
-            out.extend_from_slice(protocol.temps_de_prise);
+            out.extend(temps);
         }
         out
     }
@@ -305,7 +366,7 @@ mod tests {
         // Blank lines in the free text do not become empty prescriptions.
         assert_eq!(lines[2].name, "Paracétamol 1 g si douleur");
 
-        let advice = choice.advice(protocol);
+        let advice = choice.advice(protocol, &crate::content::Overrides::default());
         assert_eq!(advice, protocol.conseils.to_vec());
         // Both toggles: the hygiène advice comes before the timing.
         let both = Choice {
@@ -314,10 +375,13 @@ mod tests {
             ..choice.clone()
         };
         assert_eq!(
-            both.advice(protocol).len(),
+            both.advice(protocol, &crate::content::Overrides::default())
+                .len(),
             protocol.conseils.len() + protocol.temps_de_prise.len()
         );
-        assert!(Choice::default().advice(protocol).is_empty());
+        assert!(Choice::default()
+            .advice(protocol, &crate::content::Overrides::default())
+            .is_empty());
     }
 
     #[test]

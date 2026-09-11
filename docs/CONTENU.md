@@ -10,6 +10,10 @@ Deux règles valent partout :
 1. **Ce que l'équipe écrit dans l'application n'est jamais réécrit par
    une mise à jour.** Chaque contenu livré est semé une fois, et une
    fiche modifiée, vidée ou supprimée reste comme l'équipe l'a laissée.
+   Cela vaut aussi pour ce que l'équipe ne fait que **réécrire** : les
+   phrases des règles — voir « Réécrire les phrases imprimées » plus
+   bas — ne sont pas semées mais surchargées, et la surcharge survit aux
+   versions suivantes de la même façon.
 2. **Chaque contenu a son test.** Un test qui vérifie sa forme (rien de
    vide, les colonnes alignées, les sources présentes) et, pour les
    règles, qu'elles peuvent effectivement se déclencher sur la base
@@ -741,3 +745,61 @@ vienne un jour « compléter » ce qui est vide à dessein.
 - Le jour où la base publique des médicaments arrivera, elle viendra
   **sous** ces fiches et ne changera pas cette règle : un GTIN ne porte
   aucun nom, et rapprocher un scan d'un libellé resterait facile et faux.
+
+## Réécrire les phrases imprimées
+
+Les fiches, les préparations, les dispositifs, les protocoles et les
+*cellules* des tables de conversion s'éditent depuis toujours. Sept cent
+soixante-douze phrases y échappaient, et ce sont précisément celles qui
+**partent sur du papier** au nom de l'officine : les carnets du patient,
+les points de la fiche d'entretien, la feuille « peut-on écraser ? », le
+plan de surveillance, les interprétations de biologie, la revue
+d'ordonnance, la grossesse, le rein, les conseils d'une ordonnance TROD,
+le voyageur. Une tournure qui ne convenait pas était une tournure à
+subir.
+
+- Le mécanisme est `src/content.rs` — **généralisé depuis `table_cells`**
+  et non écrit à côté : il n'y a pas deux façons de surcharger un texte
+  ici. La table est `content_overrides` (clé, valeur, texte livré vu,
+  date, opérateur), dans la base, donc partagée par tous les postes.
+- **Chaque module expose deux fonctions et rien d'autre** : `phrases()`,
+  qui liste ses phrases avec leur adresse dans l'ordre où elles
+  s'impriment, et `resolve()`, qui applique les réécritures à ce qu'il
+  rend. Le module reste **statique et pur** ; ses tests portent sur ce
+  qui est livré, et la résolution est une couche mince au moment de
+  dessiner ou d'imprimer.
+- **Une adresse vient de ce qui identifie une règle**, jamais de son
+  rang ni de sa prose. Le titre d'un point de revue, le libellé d'une
+  présentation, le code d'un analyte, la molécule et le seuil de DFG
+  d'un palier. Une adresse tirée du texte s'évanouirait le jour où on
+  corrige ce texte — la surcharge ne deviendrait pas périmée, elle
+  deviendrait **introuvable** —, et une adresse tirée du rang périmerait
+  vingt réécritures pour une règle insérée. Chaque module a le test qui
+  prouve son identité unique : deux règles à la même adresse feraient
+  hériter la seconde de la réécriture de la première, ce qui sur la
+  feuille d'écrasement est un comprimé à libération prolongée écrasé.
+- **Une surcharge se souvient du texte qu'elle remplaçait** et ne
+  s'applique que tant qu'il n'a pas changé. C'est ce qui rend l'adressage
+  par rang tenable là où il n'y a pas d'autre repère (les consignes d'un
+  carnet, les points d'une thématique) : après un réordonnancement, la
+  réécriture est **montrée à relire** au lieu d'être posée sur une autre
+  phrase.
+- **Réécrire le texte livré supprime la ligne.** La table ne porte que
+  de vraies différences, et une phrase rétablie recommence à suivre les
+  corrections des versions suivantes.
+- **Ajouter un document éditable** : `phrases()` + `resolve()` dans le
+  module, une ligne dans `content::documents()`, une clé d'intitulé dans
+  `strings.fr.toml`, et le test apparié qui vérifie les deux sens —
+  toute phrase imprimée est listée, toute réécriture atteint le papier.
+  Sans les deux sens : une phrase absente de `phrases()` ne peut pas
+  être corrigée, une phrase absente de `resolve()` part telle qu'elle
+  est livrée alors qu'on la croit corrigée, ce qui est pire.
+- **Deux portes, un seul éditeur** : « Réécrire » dans la vue qui montre
+  le document, et l'écran « Textes imprimés » qui parcourt le registre.
+  Les deux appellent le `phrases()` du module ; deux listes des mêmes
+  phrases finiraient par différer.
+- Le piège trouvé en le construisant : la lecture d'intervalle du bilan
+  n'est pas une règle, elle est **composée** et se termine par la note de
+  l'analyte. Sans un chemin pour elle, réécrire cette note changeait
+  l'infobulle et laissait le bilan imprimer l'ancienne phrase. Toute
+  phrase composée à la lecture demande le même soin.

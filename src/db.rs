@@ -211,6 +211,31 @@ CREATE TABLE IF NOT EXISTS table_cells (
     updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
     PRIMARY KEY (table_key, row, col)
 );
+-- Les phrases livrées que l'officine a réécrites — voir `content.rs`.
+--
+-- Même mécanisme que `table_cells` au-dessus, généralisé : les fiches,
+-- les préparations, les dispositifs, les protocoles et les cellules des
+-- tables s'éditaient déjà, mais sept cent soixante-douze phrases qui
+-- **partent sur du papier** — les carnets du patient, la liste de points
+-- de la fiche d'entretien, la feuille « peut-on écraser ? », le plan de
+-- surveillance — ne s'éditaient pas.
+--
+-- `shipped_seen` est le texte livré tel qu'il était au moment de la
+-- réécriture, et c'est lui qui rend l'adressage par rang tenable : une
+-- consigne se désigne par son numéro, faute de mieux, et le jour où la
+-- liste est réordonnée la surcharge ne vise plus la même phrase. Elle
+-- est alors montrée à relire au lieu d'être posée sur autre chose.
+--
+-- Une ligne n'existe que pour une vraie différence : réécrire le texte
+-- livré la supprime, et la phrase recommence à suivre les versions
+-- suivantes.
+CREATE TABLE IF NOT EXISTS content_overrides (
+    key          TEXT PRIMARY KEY,
+    value        TEXT NOT NULL,
+    shipped_seen TEXT NOT NULL,
+    updated_on   TEXT NOT NULL DEFAULT '',
+    updated_by   TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY,
     day         TEXT NOT NULL,
@@ -495,6 +520,15 @@ const MIGRATIONS: &[&str] = &[
         value      TEXT NOT NULL,
         updated_on TEXT NOT NULL DEFAULT '',
         updated_by TEXT NOT NULL DEFAULT ''
+    )",
+    // Les phrases imprimées que l'officine a réécrites — voir le
+    // commentaire au-dessus de la table dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS content_overrides (
+        key          TEXT PRIMARY KEY,
+        value        TEXT NOT NULL,
+        shipped_seen TEXT NOT NULL,
+        updated_on   TEXT NOT NULL DEFAULT '',
+        updated_by   TEXT NOT NULL DEFAULT ''
     )",
     // The five columns of the very first version are listed here too:
     // they cost nothing when they already exist, and they turn a « no
@@ -33664,6 +33698,99 @@ impl Db {
         Ok(true)
     }
 
+    /// Toutes les phrases que l'officine a réécrites, lues **une fois**.
+    ///
+    /// Elles sont résolues à chaque impression et à chaque dessin de
+    /// carnet : une requête par phrase serait sept cent soixante-douze
+    /// requêtes par page. La table tient dans une poignée de kilo-octets
+    /// — elle ne porte que les différences.
+    pub fn content_overrides(&self) -> Result<crate::content::Overrides, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key, value, shipped_seen FROM content_overrides")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let list: Vec<(String, String, String)> =
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        Ok(crate::content::Overrides::from_rows(list))
+    }
+
+    /// Réécrire une phrase imprimée, **contre ce que l'écran affichait**.
+    ///
+    /// `shipped` est le texte livré d'aujourd'hui, `expected` ce que
+    /// l'écran montrait — la réécriture de l'officine s'il y en avait
+    /// une, le texte livré sinon. `false` quand un autre poste est passé
+    /// entre-temps : la même règle que toute ligne partagée, et elle
+    /// compte ici puisque la phrase part sur le papier de tout le monde.
+    ///
+    /// **Réécrire le texte livré supprime la ligne** plutôt que d'en
+    /// ranger une identique : la table ne porte que de vraies
+    /// différences, et la phrase recommence à suivre les corrections des
+    /// versions suivantes. Sans cela, une officine qui annule sa
+    /// modification en retapant l'original resterait figée dessus.
+    pub fn set_content(
+        &self,
+        key: &str,
+        value: &str,
+        shipped: &str,
+        expected: &str,
+        day: &str,
+        who: &str,
+    ) -> Result<bool, String> {
+        let current: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM content_overrides WHERE key = ?1",
+                [key],
+                |r| r.get(0),
+            )
+            .ok();
+        let seen = current.as_deref().unwrap_or(shipped);
+        if seen != expected {
+            return Ok(false);
+        }
+        if value.trim() == shipped.trim() {
+            self.conn
+                .execute("DELETE FROM content_overrides WHERE key = ?1", [key])
+                .map_err(|e| e.to_string())?;
+            return Ok(true);
+        }
+        self.conn
+            .execute(
+                "INSERT INTO content_overrides (key, value, shipped_seen, updated_on, updated_by)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(key) DO UPDATE SET
+                     value = excluded.value,
+                     shipped_seen = excluded.shipped_seen,
+                     updated_on = excluded.updated_on,
+                     updated_by = excluded.updated_by",
+                (key, value, shipped, day, who),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
+    /// Rendre une phrase — ou tout un document — à son texte livré.
+    /// Rend le nombre de phrases rétablies.
+    pub fn reset_content(&self, prefix: &str) -> Result<usize, String> {
+        let n = self
+            .conn
+            .execute(
+                "DELETE FROM content_overrides WHERE key = ?1 OR key LIKE ?1 || '.%'",
+                [prefix],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n)
+    }
+
     /// Drop every edit of one table, returning it to the shipped text.
     /// Returns how many cells were reset.
     pub fn reset_table(&self, table_key: &str) -> Result<usize, String> {
@@ -37796,6 +37923,136 @@ mod tests {
             stups_after, after.2,
             "le registre vit dans son fichier : sa version est la sienne"
         );
+    }
+
+    /// **Une phrase imprimée se réécrit, et la table ne porte que de
+    /// vraies différences.**
+    ///
+    /// Les fiches, les préparations et les cellules des tables
+    /// s'éditaient déjà ; les phrases qui partent sur du papier — les
+    /// carnets du patient, la liste de points de l'entretien — ne
+    /// s'éditaient pas. Trois règles, et la troisième est celle qui
+    /// évite de figer l'officine sur une phrase qu'elle a rétablie.
+    #[test]
+    fn a_printed_sentence_can_be_rewritten_and_put_back() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-textes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("textes.db"), "secret").unwrap();
+        let key = "carnet.tension.alerte";
+        let shipped = "Appelez le 15 sans attendre la consultation.";
+
+        // Rien de réécrit : c'est le texte livré qui s'imprime.
+        let o = db.content_overrides().unwrap();
+        assert!(o.is_empty());
+        assert_eq!(o.get(key, shipped), shipped);
+
+        // L'officine réécrit — contre ce que l'écran affichait, qui
+        // était le texte livré.
+        assert!(db
+            .set_content(key, "Appelez le 15.", shipped, shipped, "2026-09-11", "CL")
+            .unwrap());
+        let o = db.content_overrides().unwrap();
+        assert_eq!(o.get(key, shipped), "Appelez le 15.");
+        assert_eq!(o.state(key, shipped), crate::content::State::Rewritten);
+
+        // Un autre poste est passé entre-temps : refusé plutôt
+        // qu'écrasé. La phrase part sur le papier de tout le monde.
+        assert!(
+            !db.set_content(key, "Autre chose.", shipped, shipped, "2026-09-11", "PM")
+                .unwrap(),
+            "écrire contre une valeur périmée est refusé"
+        );
+        assert_eq!(
+            db.content_overrides().unwrap().get(key, shipped),
+            "Appelez le 15.",
+            "et rien n'a bougé"
+        );
+
+        // **Réécrire le texte livré supprime la ligne.** La phrase
+        // recommence alors à suivre les versions suivantes, au lieu de
+        // rester figée sur une copie de ce qu'elle disait ce jour-là.
+        assert!(db
+            .set_content(key, shipped, shipped, "Appelez le 15.", "2026-09-11", "CL")
+            .unwrap());
+        let o = db.content_overrides().unwrap();
+        assert!(o.is_empty(), "la table ne porte que de vraies différences");
+        assert_eq!(o.state(key, shipped), crate::content::State::Shipped);
+
+        // Et le rétablissement d'un document entier, par son préfixe :
+        // la clé elle-même et tout ce qui descend d'elle.
+        for n in 0..3 {
+            let k = crate::content::key_n("carnet", "glycemie", "consigne", n);
+            assert!(db
+                .set_content(
+                    &k,
+                    &format!("à moi {n}"),
+                    "livré",
+                    "livré",
+                    "2026-09-11",
+                    "CL"
+                )
+                .unwrap());
+        }
+        assert_eq!(db.content_overrides().unwrap().len(), 3);
+        assert_eq!(db.reset_content("carnet.glycemie").unwrap(), 3);
+        assert!(db.content_overrides().unwrap().is_empty());
+    }
+
+    /// **Une phrase réécrite au comptoir atteint le papier.**
+    ///
+    /// Le chemin entier, et non ses morceaux : l'écriture dans la base,
+    /// la relecture, la résolution de la feuille, et le Typst compilé.
+    /// Chaque maillon a son test ; celui-ci vérifie qu'ils sont
+    /// attachés. Une phrase que l'officine croit avoir corrigée et qui
+    /// part quand même telle qu'elle est livrée serait le pire résultat
+    /// possible — pire que pas d'édition du tout, parce que rien ne le
+    /// dirait.
+    #[test]
+    fn a_sentence_rewritten_at_the_counter_reaches_the_printed_sheet() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-papier-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("papier.db"), "secret").unwrap();
+
+        let sheet = crate::selfcheck::by_key("tension").expect("la feuille de tension");
+        let phrases = crate::selfcheck::phrases(sheet);
+        // La ligne d'alerte : celle qui dit au patient quand appeler le
+        // 15. S'il y a une phrase dont la formulation appartient à
+        // l'officine, c'est elle.
+        let (key, _, shipped) = phrases
+            .iter()
+            .find(|(_, field, _)| *field == "alerte")
+            .expect("une feuille a une ligne d'alerte");
+        let mine = "Appelez le 15 immédiatement, sans attendre la consultation.";
+        assert!(db
+            .set_content(key, mine, shipped, shipped, "2026-09-11", "CL")
+            .unwrap());
+
+        // Relue, résolue, imprimée.
+        let over = db.content_overrides().unwrap();
+        let resolved = crate::selfcheck::resolve(sheet, &over);
+        assert_eq!(resolved.alert, mine, "la feuille résolue porte nos mots");
+        assert_ne!(resolved.title, mine, "et rien d'autre n'a bougé");
+        assert_eq!(resolved.title, sheet.title);
+
+        let pdf = crate::pdf::selfcheck_source_for_test(&resolved);
+        assert!(
+            pdf.contains("Appelez le 15 immédiatement"),
+            "la réécriture n'atteint pas le papier"
+        );
+        assert!(
+            !pdf.contains(&shipped[..40]),
+            "et le texte livré n'y est plus"
+        );
+
+        // Rétablie, la feuille repart avec le texte livré : c'est ce qui
+        // permet de revenir en arrière sans retaper.
+        assert_eq!(db.reset_content(key).unwrap(), 1);
+        let over = db.content_overrides().unwrap();
+        assert_eq!(crate::selfcheck::resolve(sheet, &over).alert, sheet.alert);
     }
 
     /// **L'officine appartient à l'officine, pas au poste.**

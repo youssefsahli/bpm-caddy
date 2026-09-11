@@ -215,6 +215,125 @@ pub fn cells(sheet: &Sheet) -> usize {
     sheet.rows * sheet.columns.len()
 }
 
+/// Le document sous lequel les phrases des carnets sont adressées.
+pub const DOC: &str = "carnet";
+
+/// Une feuille telle qu'elle sera **imprimée** : les phrases livrées,
+/// remplacées par celles que l'officine a réécrites.
+///
+/// Possédée et non empruntée : le module reste une donnée statique et
+/// pure — ses tests portent sur ce qui est livré —, et la résolution est
+/// une couche mince au moment de dessiner ou d'imprimer. C'est la même
+/// frontière que `timeline` et `agenda` tiennent avec la vue.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Resolved {
+    pub key: &'static str,
+    pub title: String,
+    pub purpose: String,
+    pub protocol: Vec<String>,
+    pub target: String,
+    pub columns: Vec<String>,
+    pub rows: usize,
+    pub alert: String,
+    pub bring_back: String,
+    pub totals: Vec<String>,
+}
+
+/// Toutes les phrases d'une feuille, avec leur adresse.
+///
+/// Écrite **une fois** et parcourue aussi bien par la résolution que par
+/// l'écran qui les édite : deux listes des mêmes phrases finiraient par
+/// différer, et une phrase oubliée de l'une serait une phrase que
+/// personne ne peut réécrire ou que l'impression ne va pas chercher.
+pub fn phrases(sheet: &Sheet) -> Vec<(String, &'static str, &'static str)> {
+    // **Dans l'ordre où elles s'impriment.** L'écran qui les réécrit est
+    // celui qui les montre, et relire une feuille dont les consignes
+    // viennent après la ligne d'alerte, c'est relire autre chose que ce
+    // qu'on donnera au patient.
+    let mut out = vec![
+        (
+            crate::content::key(DOC, sheet.key, "titre"),
+            "titre",
+            sheet.title,
+        ),
+        (
+            crate::content::key(DOC, sheet.key, "objet"),
+            "objet",
+            sheet.purpose,
+        ),
+    ];
+    for (n, step) in sheet.protocol.iter().enumerate() {
+        out.push((
+            crate::content::key_n(DOC, sheet.key, "consigne", n),
+            "consigne",
+            step,
+        ));
+    }
+    out.push((
+        crate::content::key(DOC, sheet.key, "cible"),
+        "cible",
+        sheet.target,
+    ));
+    for (n, col) in sheet.columns.iter().enumerate() {
+        out.push((
+            crate::content::key_n(DOC, sheet.key, "colonne", n),
+            "colonne",
+            col,
+        ));
+    }
+    for (n, total) in sheet.totals.iter().enumerate() {
+        out.push((
+            crate::content::key_n(DOC, sheet.key, "total", n),
+            "total",
+            total,
+        ));
+    }
+    out.push((
+        crate::content::key(DOC, sheet.key, "alerte"),
+        "alerte",
+        sheet.alert,
+    ));
+    out.push((
+        crate::content::key(DOC, sheet.key, "retour"),
+        "retour",
+        sheet.bring_back,
+    ));
+    out
+}
+
+/// Appliquer les réécritures de l'officine à une feuille.
+pub fn resolve(sheet: &Sheet, over: &crate::content::Overrides) -> Resolved {
+    let one = |field: &str, shipped: &'static str| {
+        over.get(&crate::content::key(DOC, sheet.key, field), shipped)
+            .to_owned()
+    };
+    let many = |field: &str, shipped: &'static [&'static str]| {
+        shipped
+            .iter()
+            .enumerate()
+            .map(|(n, s)| {
+                over.get(&crate::content::key_n(DOC, sheet.key, field, n), s)
+                    .to_owned()
+            })
+            .collect()
+    };
+    Resolved {
+        key: sheet.key,
+        title: one("titre", sheet.title),
+        purpose: one("objet", sheet.purpose),
+        protocol: many("consigne", sheet.protocol),
+        target: one("cible", sheet.target),
+        columns: many("colonne", sheet.columns),
+        // Le nombre de lignes n'est pas une phrase : il décide de la
+        // hauteur des cases sur une page qui ne défile pas, et se règle
+        // là où la grille se règle, pas dans un éditeur de texte.
+        rows: sheet.rows,
+        alert: one("alerte", sheet.alert),
+        bring_back: one("retour", sheet.bring_back),
+        totals: many("total", sheet.totals),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,5 +483,76 @@ mod tests {
             18,
             "les dix-huit mesures de la règle des 3"
         );
+    }
+
+    /// **Toute phrase qui s'imprime peut être réécrite, et toute
+    /// réécriture atteint le papier.**
+    ///
+    /// Les deux sens comptent. Une phrase que `phrases` oublie est une
+    /// phrase que l'écran d'édition ne propose pas : invisible, et donc
+    /// impossible à corriger. Une phrase que `resolve` oublie est une
+    /// phrase que l'officine croit avoir réécrite et qui part quand même
+    /// telle qu'elle est livrée — pire, parce que rien ne le dit.
+    ///
+    /// Le test les confronte plutôt que de les relire : il réécrit
+    /// *chaque* phrase annoncée et vérifie que la feuille résolue n'en
+    /// porte plus une seule d'origine.
+    #[test]
+    fn every_printed_phrase_is_listed_for_editing_and_every_rewrite_reaches_the_paper() {
+        for s in SHEETS {
+            let listed = phrases(s);
+            // Une adresse par phrase, et pas deux phrases à la même.
+            let mut keys: Vec<&str> = listed.iter().map(|(k, _, _)| k.as_str()).collect();
+            keys.sort_unstable();
+            let n = keys.len();
+            keys.dedup();
+            assert_eq!(n, keys.len(), "{} : deux phrases à la même adresse", s.key);
+
+            // Tout ce qui s'imprime est annoncé : le compte est celui des
+            // champs de prose, listes comprises.
+            let expected = 5 + s.protocol.len() + s.columns.len() + s.totals.len();
+            assert_eq!(
+                listed.len(),
+                expected,
+                "{} : {} phrases annoncées pour {expected} imprimées",
+                s.key,
+                listed.len()
+            );
+
+            // Chaque phrase réécrite, et la feuille relue : plus rien
+            // d'origine ne doit y rester.
+            let over = crate::content::Overrides::from_rows(
+                listed
+                    .iter()
+                    .map(|(k, _, shipped)| {
+                        (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned())
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            let r = resolve(s, &over);
+            let mut seen = vec![r.title, r.purpose, r.target, r.alert, r.bring_back];
+            seen.extend(r.protocol);
+            seen.extend(r.columns);
+            seen.extend(r.totals);
+            assert_eq!(seen.len(), expected, "{} : la feuille résolue", s.key);
+            for text in &seen {
+                assert!(
+                    text.starts_with("réécrit:"),
+                    "{} : « {text} » n'a pas suivi la réécriture",
+                    s.key
+                );
+            }
+
+            // Et sans réécriture, la feuille résolue est la feuille
+            // livrée — mot pour mot.
+            let none = crate::content::Overrides::default();
+            let r = resolve(s, &none);
+            assert_eq!(r.title, s.title);
+            assert_eq!(r.alert, s.alert);
+            assert_eq!(r.protocol, s.protocol.to_vec());
+            assert_eq!(r.columns, s.columns.to_vec());
+            assert_eq!(r.totals, s.totals.to_vec());
+            assert_eq!(r.rows, s.rows);
+        }
     }
 }

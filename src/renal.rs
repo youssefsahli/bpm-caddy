@@ -104,13 +104,6 @@ pub struct Finding {
     pub source: &'static str,
 }
 
-impl Finding {
-    /// La ligne porte un verdict.
-    pub fn decided(&self) -> bool {
-        self.level.is_some()
-    }
-}
-
 /// Ce que le rein fait à cette ordonnance, à ce DFG.
 ///
 /// `dfg` est en mL/min. `None` — aucune clairance au dossier — n'est
@@ -172,12 +165,6 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
     out
 }
 
-/// Combien de lignes de cette ordonnance ne peuvent pas être jugées
-/// faute de chiffre.
-pub fn undecided(findings: &[Finding]) -> usize {
-    findings.iter().filter(|f| !f.decided()).count()
-}
-
 /// Ce que le rein change, molécule par molécule.
 ///
 /// **Rien ici n'est inventé** : chaque seuil est celui du résumé des
@@ -188,6 +175,99 @@ pub fn undecided(findings: &[Finding]) -> usize {
 /// et la fiche dit déjà « prudence » dans sa prose.
 ///
 /// Les paliers sont écrits du plus haut au plus bas, pour la lecture.
+/// Le document sous lequel les conduites du panneau sont adressées.
+pub const DOC: &str = "rein";
+
+/// Chaque conduite avec son adresse, **calculée une seule fois** et
+/// parcourue par les deux côtés.
+///
+/// Le repère est le libellé de la molécule et le seuil du palier : un
+/// palier se désigne par le DFG sous lequel il s'applique, qui est un
+/// chiffre de RCP et ne bouge pas. Le rang, lui, se décalerait dès qu'on
+/// insère un palier au-dessus.
+fn addressed() -> Vec<(String, &'static str)> {
+    TABLE
+        .iter()
+        .flat_map(|a| {
+            let id = crate::content::slug(a.label);
+            a.steps.iter().map(move |s| {
+                (
+                    crate::content::key(DOC, &id, &format!("dfg{}", s.below)),
+                    s.conduct,
+                )
+            })
+        })
+        .collect()
+}
+
+/// Toutes les conduites du panneau, avec leur adresse.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    addressed()
+        .into_iter()
+        .map(|(key, conduct)| (key, "conduite", conduct))
+        .collect()
+}
+
+/// Appliquer les réécritures de l'officine à ce que le rein impose.
+pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Resolved> {
+    findings
+        .into_iter()
+        .map(|f| {
+            let id = crate::content::slug(f.label);
+            // Le palier retenu est retrouvé par sa conduite **livrée** :
+            // une conduite déjà réécrite se retrouve donc quand même,
+            // puisque c'est le tableau qu'on interroge.
+            let key = TABLE
+                .iter()
+                .find(|a| a.label == f.label)
+                .and_then(|a| a.steps.iter().find(|s| s.conduct == f.conduct))
+                .map(|s| crate::content::key(DOC, &id, &format!("dfg{}", s.below)));
+            Resolved {
+                conduct: match &key {
+                    Some(k) => over.get(k, f.conduct).to_owned(),
+                    None => f.conduct.to_owned(),
+                },
+                treatment: f.treatment,
+                label: f.label,
+                level: f.level,
+                below: f.below,
+                source: f.source,
+            }
+        })
+        .collect()
+}
+
+/// Ce que le rein impose, avec les mots de l'officine.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Resolved {
+    pub treatment: String,
+    pub label: &'static str,
+    pub level: Option<Level>,
+    /// Le seuil du palier retenu, comme sur `Finding` : la vue en fait
+    /// l'en-tête d'une ligne — « sous 30 mL/min ».
+    pub below: Option<u16>,
+    pub conduct: String,
+    pub source: &'static str,
+}
+
+impl Resolved {
+    /// La ligne porte un verdict. Même question que sur `Finding`, et
+    /// même réponse : sans DFG, pas de verdict.
+    pub fn decided(&self) -> bool {
+        self.level.is_some()
+    }
+}
+
+/// Combien de lignes dépendent du rein sans qu'un chiffre permette de
+/// conclure.
+///
+/// Sur ce qui est **résolu** : c'est ce que la vue tient, et deux
+/// fonctions qui compteraient la même chose sur deux types finiraient
+/// par ne plus compter pareil.
+pub fn undecided(findings: &[Resolved]) -> usize {
+    findings.iter().filter(|f| !f.decided()).count()
+}
+
 pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["metformine", "biguanide", "glucophage", "stagid"],
@@ -525,6 +605,53 @@ pub const TABLE: &[Adaptation] = &[
 mod tests {
     use super::*;
 
+    /// **Un palier s'adresse par sa molécule et son seuil.**
+    ///
+    /// Le seuil est un chiffre de RCP : il ne bouge pas. Le rang, lui,
+    /// se décalerait dès qu'on insère un palier au-dessus — et sur ce
+    /// panneau, une conduite posée sur le mauvais palier est « réduire
+    /// la dose » là où le RCP dit « contre-indiqué ».
+    #[test]
+    fn a_step_is_addressed_by_its_molecule_and_its_threshold() {
+        let mut ids: Vec<String> = addressed().into_iter().map(|(k, _)| k).collect();
+        assert!(ids.len() >= 30, "{} paliers", ids.len());
+        ids.sort();
+        let n = ids.len();
+        ids.dedup();
+        assert_eq!(n, ids.len(), "deux paliers partagent une adresse");
+    }
+
+    /// Toute conduite s'édite, et toute réécriture arrive.
+    #[test]
+    fn every_renal_conduct_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        assert_eq!(listed.len(), addressed().len());
+
+        let treatments = [crate::revue::Treatment {
+            name: "Metformine",
+            dci: "metformine",
+            class: "biguanide",
+            tags: "",
+        }];
+        let found = read(&treatments, Some(28.0));
+        assert!(!found.is_empty());
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        for f in resolve(found.clone(), &over) {
+            assert!(f.conduct.starts_with("réécrit:"), "{}", f.conduct);
+        }
+        // Sans réécriture, la conduite est celle du RCP — et le niveau
+        // ne bouge jamais : c'est un seuil, pas une tournure.
+        let plain = resolve(found.clone(), &crate::content::Overrides::default());
+        assert_eq!(plain[0].conduct, found[0].conduct);
+        assert_eq!(plain[0].level, found[0].level);
+        assert_eq!(plain[0].below, found[0].below);
+    }
+
     fn treat(name: &str) -> crate::revue::Treatment<'_> {
         crate::revue::Treatment {
             name,
@@ -570,8 +697,9 @@ mod tests {
         assert_eq!(found.len(), 1, "seule la metformine dépend du rein");
         assert_eq!(found[0].level, None);
         assert_eq!(found[0].below, None);
-        assert!(!found[0].decided());
-        assert_eq!(undecided(&found), 1);
+        let seen = resolve(found.clone(), &crate::content::Overrides::default());
+        assert!(!seen[0].decided());
+        assert_eq!(undecided(&seen), 1);
         // Et la phrase dit le manque plutôt que la conduite.
         assert!(found[0].conduct.contains("aucun DFG"));
     }

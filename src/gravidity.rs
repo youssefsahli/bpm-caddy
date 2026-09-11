@@ -184,6 +184,95 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
 /// comptoir, elles citent leur source, et elles disent où aller quand
 /// elles ne savent pas. Les molécules retenues sont celles dont la
 /// question se pose vraiment devant un comptoir français.
+/// Le document sous lequel les phrases du panneau sont adressées.
+pub const DOC: &str = "grossesse";
+
+/// Toutes les phrases du panneau, avec leur adresse.
+///
+/// Le repère est le **libellé de la molécule** : il la désigne, il ne
+/// bouge pas, et une molécule ajoutée au tableau ne périme donc aucune
+/// réécriture. La source n'en est pas une — c'est une référence, pas une
+/// tournure.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    let mut out = Vec::new();
+    for a in TABLE {
+        let id = crate::content::slug(a.label);
+        out.push((
+            crate::content::key(DOC, &id, "grossesse"),
+            "grossesse",
+            a.pregnancy_note,
+        ));
+        out.push((
+            crate::content::key(DOC, &id, "allaitement"),
+            "allaitement",
+            a.breastfeeding_note,
+        ));
+        // Le terme n'existe que pour les molécules dont le niveau en
+        // dépend : une ligne vide n'est pas une phrase à proposer.
+        if !a.term.is_empty() {
+            out.push((crate::content::key(DOC, &id, "terme"), "terme", a.term));
+        }
+    }
+    out
+}
+
+/// Appliquer les réécritures de l'officine à ce que la table répond.
+pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Resolved> {
+    findings
+        .into_iter()
+        .map(|f| {
+            let id = crate::content::slug(f.label);
+            Resolved {
+                treatment: f.treatment,
+                label: f.label,
+                pregnancy: f.pregnancy,
+                term: over
+                    .get(&crate::content::key(DOC, &id, "terme"), f.term)
+                    .to_owned(),
+                pregnancy_note: over
+                    .get(
+                        &crate::content::key(DOC, &id, "grossesse"),
+                        f.pregnancy_note,
+                    )
+                    .to_owned(),
+                breastfeeding: f.breastfeeding,
+                breastfeeding_note: over
+                    .get(
+                        &crate::content::key(DOC, &id, "allaitement"),
+                        f.breastfeeding_note,
+                    )
+                    .to_owned(),
+                source: f.source,
+            }
+        })
+        .collect()
+}
+
+/// Ce que la table répond, avec les mots de l'officine.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Resolved {
+    pub treatment: String,
+    pub label: &'static str,
+    pub pregnancy: Level,
+    pub term: String,
+    pub pregnancy_note: String,
+    pub breastfeeding: Level,
+    pub breastfeeding_note: String,
+    pub source: &'static str,
+}
+
+impl Resolved {
+    /// Le pire des deux niveaux : ce qui décide de l'ordre de lecture.
+    ///
+    /// `min` et non `max` : la table est déclarée du pire au meilleur —
+    /// `Interdit` d'abord — donc le plus grave est le plus petit. Écrit
+    /// à l'envers ici, une contre-indication de grossesse passait pour
+    /// une prudence d'allaitement, et le test l'a dit.
+    pub fn worst(&self) -> Level {
+        self.pregnancy.min(self.breastfeeding)
+    }
+}
+
 pub const TABLE: &[Advice] = &[
     // --- Ce qui ne se discute pas -------------------------------------
     Advice {
@@ -444,6 +533,60 @@ pub const TABLE: &[Advice] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Le libellé d'une molécule est son adresse, donc il est unique.**
+    ///
+    /// Deux molécules au même libellé feraient hériter la seconde de la
+    /// réécriture de la première — sur un panneau qui dit ce qu'une
+    /// femme enceinte peut prendre.
+    #[test]
+    fn a_molecule_label_is_an_address_and_no_two_share_one() {
+        let mut ids: Vec<String> = TABLE
+            .iter()
+            .map(|a| crate::content::slug(a.label))
+            .collect();
+        assert!(ids.len() >= 20, "{} molécules", ids.len());
+        ids.sort();
+        let n = ids.len();
+        ids.dedup();
+        assert_eq!(n, ids.len(), "deux molécules partagent une adresse");
+    }
+
+    /// Toute phrase du panneau s'édite, et toute réécriture arrive.
+    #[test]
+    fn every_gravidity_phrase_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        let with_term = TABLE.iter().filter(|a| !a.term.is_empty()).count();
+        assert_eq!(listed.len(), TABLE.len() * 2 + with_term);
+
+        let treatments = [crate::revue::Treatment {
+            name: "Codéine",
+            dci: "codéine",
+            class: "opioïde",
+            tags: "",
+        }];
+        let found = read(&treatments);
+        assert!(!found.is_empty());
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        for f in resolve(found.clone(), &over) {
+            assert!(
+                f.pregnancy_note.starts_with("réécrit:"),
+                "{}",
+                f.pregnancy_note
+            );
+            assert!(f.breastfeeding_note.starts_with("réécrit:"));
+        }
+        // Sans réécriture, les deux notes sont celles qui sont livrées.
+        let plain = resolve(found.clone(), &crate::content::Overrides::default());
+        assert_eq!(plain[0].pregnancy_note, found[0].pregnancy_note);
+        assert_eq!(plain[0].breastfeeding_note, found[0].breastfeeding_note);
+        assert_eq!(plain[0].worst(), found[0].worst(), "le niveau ne bouge pas");
+    }
 
     fn treat(name: &str) -> crate::revue::Treatment<'_> {
         crate::revue::Treatment {

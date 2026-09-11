@@ -22,6 +22,67 @@ pub fn checklist(theme: &str) -> &'static [&'static str] {
         .unwrap_or(COMMON)
 }
 
+/// Le document sous lequel les points de l'entretien sont adressés.
+pub const DOC: &str = "entretien";
+
+/// Le repère d'une thématique : son nom, replié. Le thème est ce qui ne
+/// bouge pas — il est écrit sur chaque acte de la base — là où le rang
+/// d'un point dans sa liste, lui, se décale dès qu'on en insère un.
+fn item(theme: &str) -> String {
+    crate::content::slug(theme)
+}
+
+/// Toutes les phrases de l'entretien, avec leur adresse.
+///
+/// Les douze thématiques **et** le fond commun : ce dernier s'imprime
+/// dès qu'un acte porte un thème que l'officine a écrit elle-même, donc
+/// il part sur du papier comme les autres et se réécrit comme les
+/// autres.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    let mut out = Vec::new();
+    let mut push = |theme: &str, points: &'static [&'static str]| {
+        let id = item(theme);
+        for (n, point) in points.iter().enumerate() {
+            out.push((crate::content::key_n(DOC, &id, "point", n), "point", *point));
+        }
+    };
+    push(COMMON_THEME, COMMON);
+    for (theme, points) in CHECKLISTS {
+        push(theme, points);
+    }
+    out
+}
+
+/// La liste de points d'une thématique, avec les mots de l'officine.
+///
+/// Sur la liste rendue et non sur le tableau : le module reste statique
+/// et pur, et ses tests portent sur ce qui est livré. Même frontière que
+/// les carnets et la revue.
+pub fn resolve(theme: &str, over: &crate::content::Overrides) -> Vec<String> {
+    let points = checklist(theme);
+    // Le fond commun est adressé sous son propre nom : une thématique
+    // que l'officine a inventée retombe dessus, et ses points ne sont
+    // pas ceux d'un thème livré.
+    let id = if std::ptr::eq(points, COMMON) {
+        item(COMMON_THEME)
+    } else {
+        item(theme)
+    };
+    points
+        .iter()
+        .enumerate()
+        .map(|(n, p)| {
+            over.get(&crate::content::key_n(DOC, &id, "point", n), p)
+                .to_owned()
+        })
+        .collect()
+}
+
+/// Le nom sous lequel le fond commun est adressé. Ce n'est pas une
+/// thématique de la base : c'est ce qui s'imprime quand le thème n'en
+/// est pas une.
+const COMMON_THEME: &str = "Fond commun";
+
 /// What every entretien covers, whatever its theme.
 ///
 /// A `static`, not a `const`: a const is inlined at each use site, and
@@ -214,6 +275,52 @@ mod tests {
             for point in points {
                 assert!(point.len() > 15, "{theme} : « {point} » trop court");
             }
+        }
+    }
+
+    /// **Chaque point de l'entretien s'édite, et chaque réécriture
+    /// arrive sur la fiche.**
+    ///
+    /// La liste part sur le papier de chaque entretien : c'est le
+    /// document que le pharmacien a sous les yeux face au patient.
+    #[test]
+    fn every_checklist_point_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        let expected: usize = COMMON.len() + CHECKLISTS.iter().map(|(_, p)| p.len()).sum::<usize>();
+        assert_eq!(listed.len(), expected, "un point, une adresse");
+
+        // Une adresse par point, fond commun compris.
+        let mut keys: Vec<&str> = listed.iter().map(|(k, _, _)| k.as_str()).collect();
+        keys.sort_unstable();
+        let n = keys.len();
+        keys.dedup();
+        assert_eq!(n, keys.len(), "deux points à la même adresse");
+
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        for theme in crate::db::THEMES {
+            let mine = resolve(theme, &over);
+            assert_eq!(mine.len(), checklist(theme).len(), "{theme}");
+            for point in &mine {
+                assert!(point.starts_with("réécrit:"), "{theme} : {point}");
+            }
+            // Sans réécriture, la liste est celle qui est livrée.
+            let plain = resolve(theme, &crate::content::Overrides::default());
+            assert_eq!(plain, checklist(theme).to_vec(), "{theme}");
+        }
+
+        // **Le fond commun aussi.** Il s'imprime dès qu'un acte porte un
+        // thème que l'officine a écrit elle-même, donc il part sur du
+        // papier — et il se réécrit sous son propre nom, sans emprunter
+        // l'adresse d'une thématique livrée.
+        let invented = resolve("Entretien du mardi", &over);
+        assert_eq!(invented.len(), COMMON.len());
+        for point in &invented {
+            assert!(point.starts_with("réécrit:"), "fond commun : {point}");
         }
     }
 

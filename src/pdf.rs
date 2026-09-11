@@ -1332,7 +1332,7 @@ fn plan_values(data: &PlanData, pharmacy: &PharmacyConfig) -> Vec<(&'static str,
 /// aussi bien, et une feuille au nom de quelqu'un d'autre ne se donne
 /// pas du tout.
 pub fn open_selfcheck(
-    sheet: &crate::selfcheck::Sheet,
+    sheet: &crate::selfcheck::Resolved,
     patient: Option<&str>,
     pharmacy: &PharmacyConfig,
     today_french: &str,
@@ -1348,7 +1348,7 @@ pub fn open_selfcheck(
 }
 
 fn selfcheck_values(
-    sheet: &crate::selfcheck::Sheet,
+    sheet: &crate::selfcheck::Resolved,
     patient: Option<&str>,
     pharmacy: &PharmacyConfig,
     today_french: &str,
@@ -1356,7 +1356,7 @@ fn selfcheck_values(
     let mut src = String::new();
     src.push_str(&format!(
         "#align(center)[#text(17pt, weight: \"bold\")[#{}]]\n#v(1mm)\n",
-        typst_str(sheet.title)
+        typst_str(&sheet.title)
     ));
     // Le nom, ou la ligne où l'écrire. Jamais un nom vide entre deux
     // tirets : une feuille se donne aussi bien vierge.
@@ -1386,7 +1386,7 @@ fn selfcheck_values(
     // --- L'objectif ------------------------------------------------
     src.push_str(&format!(
         "#v(3mm)\n#block(width: 100%, inset: 6pt, stroke: 0.6pt)[#text(10pt)[*Objectif.* #{} #box(width: 5cm, stroke: (bottom: 0.5pt))]]\n",
-        typst_str(sheet.target)
+        typst_str(&sheet.target)
     ));
 
     // --- La grille -------------------------------------------------
@@ -1401,7 +1401,7 @@ fn selfcheck_values(
         .collect::<Vec<_>>()
         .join(", ");
     let mut head = String::from("[*Date*], ");
-    for c in sheet.columns {
+    for c in &sheet.columns {
         head.push_str(&format!("[*#{}*], ", typst_str(c)));
     }
     // Une case vide s'écrit `[]` et non rien : deux virgules qui se
@@ -1425,7 +1425,7 @@ fn selfcheck_values(
     // pas du tout.
     if !sheet.totals.is_empty() {
         src.push_str("#v(3mm)\n");
-        for label in sheet.totals {
+        for label in &sheet.totals {
             src.push_str(&format!(
                 "#text(10pt)[#{} : #box(width: 3.5cm, stroke: (bottom: 0.5pt))]\\\n",
                 typst_str(label)
@@ -1436,11 +1436,11 @@ fn selfcheck_values(
     // --- Ce qui ne s'attend pas ------------------------------------
     src.push_str(&format!(
         "#v(4mm)\n#block(width: 100%, inset: 6pt, stroke: 0.8pt)[#text(10pt, weight: \"bold\")[À signaler sans attendre]\\\n#text(10pt)[#{}]]\n",
-        typst_str(sheet.alert)
+        typst_str(&sheet.alert)
     ));
     src.push_str(&format!(
         "#v(3mm)\n#text(10pt)[#{}]\n",
-        typst_str(sheet.bring_back)
+        typst_str(&sheet.bring_back)
     ));
     src.push_str(&format!(
         "#v(3mm)\n#text(9.5pt)[Votre pharmacie : #{} — #{}]\n",
@@ -1448,6 +1448,19 @@ fn selfcheck_values(
         typst_str(&pharmacy.phone)
     ));
     vec![("{{BODY}}", src)]
+}
+
+/// La source Typst d'une feuille de suivi, pour le test qui vérifie
+/// qu'une réécriture de l'officine atteint bien le papier.
+///
+/// Le chemin réel passe par un fichier ouvert dans le lecteur PDF ; ce
+/// qu'il faut pouvoir relire est ce qui part à la compilation.
+#[cfg(test)]
+pub fn selfcheck_source_for_test(sheet: &crate::selfcheck::Resolved) -> String {
+    fill(
+        DEFAULT_SUIVI_TEMPLATE,
+        &selfcheck_values(sheet, None, &sample_pharmacy(), "11/09/2026"),
+    )
 }
 
 const MARKERS_SUIVI: &[&str] = &["{{BODY}}"];
@@ -2987,7 +3000,7 @@ fn ordonnance_lines_markup(lines: &[crate::ordonnance::Line]) -> String {
 }
 
 /// Render the advice paragraphs, if any toggle is on.
-fn ordonnance_advice_markup(advice: &[&str]) -> String {
+fn ordonnance_advice_markup(advice: &[String]) -> String {
     if advice.is_empty() {
         return String::new();
     }
@@ -3014,7 +3027,7 @@ fn fill_ordonnance_template(
     indication: &str,
     today: &str,
     lines: &[crate::ordonnance::Line],
-    advice: &[&str],
+    advice: &[String],
     signature: &str,
     mentions: (&str, &str),
 ) -> String {
@@ -3085,7 +3098,7 @@ pub fn open_ordonnance(
     indication: &str,
     today: &str,
     lines: &[crate::ordonnance::Line],
-    advice: &[&str],
+    advice: &[String],
     template_path: &std::path::Path,
     signature: &str,
     mentions: (&str, &str),
@@ -3977,8 +3990,14 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        // L'aperçu montre le **modèle**, donc la feuille livrée : ce
+        // qu'on règle ici est la mise en page, et une réécriture de
+        // l'officine ferait douter de ce qu'on regarde.
         "suivi" => selfcheck_values(
-            &crate::selfcheck::SHEETS[0],
+            &crate::selfcheck::resolve(
+                &crate::selfcheck::SHEETS[0],
+                &crate::content::Overrides::default(),
+            ),
             Some(&patient.full_name()),
             &pharmacy,
             "24/08/2026",
@@ -4167,36 +4186,36 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // vérifier » est celle qu'on oublie.
         "ecraser" => crush_values(
             &[
-                crate::crush::Answer {
+                crate::crush::Resolved {
                     treatment: "Moscontin 30 mg".to_owned(),
                     label: "Moscontin",
                     verdict: crate::crush::Verdict::No,
-                    why: "Comprimé à libération prolongée : écrasé, il délivre en une fois la dose de douze heures.",
-                    instead: "Skenan LP, dont la gélule s'ouvre, à dose recalculée par le prescripteur.",
+                    why: "Comprimé à libération prolongée : écrasé, il délivre en une fois la dose de douze heures.".to_owned(),
+                    instead: "Skenan LP, dont la gélule s'ouvre, à dose recalculée par le prescripteur.".to_owned(),
                     source: "RCP Moscontin",
                 },
-                crate::crush::Answer {
+                crate::crush::Resolved {
                     treatment: "Inexium 20 mg".to_owned(),
                     label: "IPP",
                     verdict: crate::crush::Verdict::Conditional,
-                    why: "La gélule s'ouvre et les microgranules se versent dans une compote ; ils ne se croquent pas.",
-                    instead: "",
+                    why: "La gélule s'ouvre et les microgranules se versent dans une compote ; ils ne se croquent pas.".to_owned(),
+                    instead: "".to_owned(),
                     source: "RCP ésoméprazole",
                 },
-                crate::crush::Answer {
+                crate::crush::Resolved {
                     treatment: "Doliprane 1 g".to_owned(),
                     label: "Paracétamol",
                     verdict: crate::crush::Verdict::Yes,
-                    why: "Le comprimé s'écrase ; la forme effervescente se dissout.",
-                    instead: "",
+                    why: "Le comprimé s'écrase ; la forme effervescente se dissout.".to_owned(),
+                    instead: "".to_owned(),
                     source: "RCP paracétamol",
                 },
-                crate::crush::Answer {
+                crate::crush::Resolved {
                     treatment: "Zoltruc 40 mg LP".to_owned(),
                     label: "",
                     verdict: crate::crush::Verdict::Unknown,
-                    why: "La table ne connaît pas cette présentation. Lire le RCP avant d'écraser.",
-                    instead: "",
+                    why: "La table ne connaît pas cette présentation. Lire le RCP avant d'écraser.".to_owned(),
+                    instead: "".to_owned(),
                     source: "",
                 },
             ],
@@ -4892,7 +4911,7 @@ pub struct HoursRow {
 }
 
 fn crush_values(
-    rows: &[crate::crush::Answer],
+    rows: &[crate::crush::Resolved],
     patient: &str,
     today: &str,
     pharmacy: &str,
@@ -4905,7 +4924,7 @@ fn crush_values(
         let mut why = r.why.to_owned();
         if !r.instead.trim().is_empty() {
             why.push_str(" — À la place : ");
-            why.push_str(r.instead);
+            why.push_str(&r.instead);
         }
         body.push_str(&format!(
             "  [#{}], [*#{}*], [#{}],
@@ -4925,7 +4944,7 @@ fn crush_values(
 
 /// La feuille « peut-on écraser ? » pour un dossier.
 pub fn open_crush(
-    rows: &[crate::crush::Answer],
+    rows: &[crate::crush::Resolved],
     patient: &Patient,
     today: &str,
     pharmacy: &PharmacyConfig,
@@ -6552,7 +6571,10 @@ mod tests {
                 caution: String::new(),
             },
         ];
-        let advice = ["Boire fréquemment.", "Aller au bout du traitement."];
+        let advice = [
+            "Boire fréquemment.".to_owned(),
+            "Aller au bout du traitement.".to_owned(),
+        ];
         let source = fill_ordonnance_template(
             DEFAULT_ORDONNANCE_TEMPLATE,
             &sample_patient(),
@@ -6687,7 +6709,11 @@ mod tests {
     /// se donne aussi bien, et c'est le cas courant au comptoir.
     #[test]
     fn every_self_monitoring_sheet_carries_its_protocol_to_paper() {
-        for sheet in crate::selfcheck::SHEETS {
+        for shipped in crate::selfcheck::SHEETS {
+            // Le test porte sur ce qui est livré : la résolution sans
+            // réécriture rend la feuille mot pour mot — `selfcheck` le
+            // tient de son côté.
+            let sheet = &crate::selfcheck::resolve(shipped, &crate::content::Overrides::default());
             let source = fill(
                 DEFAULT_SUIVI_TEMPLATE,
                 &selfcheck_values(
@@ -6697,8 +6723,8 @@ mod tests {
                     "09/09/2026",
                 ),
             );
-            assert!(source.contains(sheet.title), "{} : sans titre", sheet.key);
-            for step in sheet.protocol {
+            assert!(source.contains(&sheet.title), "{} : sans titre", sheet.key);
+            for step in &sheet.protocol {
                 // La ponctuation française passe par `typst_str` ; on
                 // vérifie le début de la consigne, qui suffit à dire
                 // qu'elle est là.
@@ -6711,7 +6737,7 @@ mod tests {
             }
             assert!(source.contains("À signaler sans attendre"));
             assert!(source.contains("Objectif."));
-            for label in sheet.totals {
+            for label in &sheet.totals {
                 let head: String = label.chars().take(20).collect();
                 assert!(
                     source.contains(&head),
@@ -6739,14 +6765,13 @@ mod tests {
         // Sans dossier ouvert, la feuille porte une ligne à remplir et
         // non un nom vide entre deux tirets : c'est le cas courant, on
         // en donne une au comptoir sans ouvrir de dossier.
+        let shipped0 = crate::selfcheck::resolve(
+            &crate::selfcheck::SHEETS[0],
+            &crate::content::Overrides::default(),
+        );
         let blank = fill(
             DEFAULT_SUIVI_TEMPLATE,
-            &selfcheck_values(
-                &crate::selfcheck::SHEETS[0],
-                None,
-                &sample_pharmacy(),
-                "09/09/2026",
-            ),
+            &selfcheck_values(&shipped0, None, &sample_pharmacy(), "09/09/2026"),
         );
         assert!(blank.contains("Nom :"), "{blank}");
         let world = PdfWorld::new(blank);
@@ -6754,12 +6779,7 @@ mod tests {
         // Un nom d'espaces est un nom absent, pas un nom.
         let spaces = fill(
             DEFAULT_SUIVI_TEMPLATE,
-            &selfcheck_values(
-                &crate::selfcheck::SHEETS[0],
-                Some("   "),
-                &sample_pharmacy(),
-                "09/09/2026",
-            ),
+            &selfcheck_values(&shipped0, Some("   "), &sample_pharmacy(), "09/09/2026"),
         );
         assert!(spaces.contains("Nom :"));
     }

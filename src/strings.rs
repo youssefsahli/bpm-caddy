@@ -140,6 +140,9 @@ mod tests {
             include_str!("timeline.rs"),
             include_str!("script.rs"),
             include_str!("selfcheck.rs"),
+            // Le registre des textes imprimés y nomme ses
+            // documents : une source de clés comme les autres.
+            include_str!("content.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

@@ -74,7 +74,7 @@ views=(
     search dashboard patient drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning tables tables_search calc carnet
     vaccins bio watch rein grossesse revue locations conciliation vaccine_map ordonnance
-    protocols protocol_open codex codex_open dispositifs dispositif_open graph stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans fil registres explorer explorer_organ classes classes_outside export finances stats companion script carnets caisse caisses
+    protocols protocol_open codex codex_open dispositifs dispositif_open graph stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans fil registres explorer explorer_organ classes classes_outside export finances stats companion script carnets carnets_edit textes caisse caisses
     template options about base peaux keys act_picker vitale
     goto goto_jump mono_search mono_patient
 )

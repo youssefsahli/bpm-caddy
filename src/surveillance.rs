@@ -76,6 +76,82 @@ pub struct Due {
     pub why: &'static str,
 }
 
+/// Le document sous lequel les phrases du plan sont adressées.
+pub const DOC: &str = "surveillance";
+
+/// Le repère d'une surveillance : l'analyte et le premier traitement
+/// qu'elle nomme.
+///
+/// Ni le rang — qui se décale dès qu'on insère une règle — ni la prose,
+/// qui disparaîtrait le jour où on la corrige. Le couple est unique, et
+/// un test le tient.
+fn item(needs_first: &str, code: &str) -> String {
+    format!(
+        "{}-{}",
+        crate::content::slug(needs_first),
+        crate::content::slug(code)
+    )
+}
+
+/// Toutes les phrases du plan de surveillance, avec leur adresse.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    WATCHES
+        .iter()
+        .filter_map(|w| {
+            let first = w.needs.first()?;
+            Some((
+                crate::content::key(DOC, &item(first, w.code), "pourquoi"),
+                "pourquoi",
+                w.why,
+            ))
+        })
+        .collect()
+}
+
+/// Appliquer les réécritures de l'officine à ce que le plan demande.
+///
+/// La raison retenue est celle de la règle la plus serrée, et c'est elle
+/// qu'on retrouve : la recherche porte sur le texte livré, donc une
+/// règle réécrite reste appariée à la sienne.
+pub fn resolve(due: Vec<Due>, over: &crate::content::Overrides) -> Vec<ResolvedDue> {
+    due.into_iter()
+        .map(|d| {
+            let key = WATCHES
+                .iter()
+                .find(|w| w.code == d.code && w.why == d.why)
+                .and_then(|w| w.needs.first().map(|f| item(f, w.code)))
+                .map(|id| crate::content::key(DOC, &id, "pourquoi"));
+            let why = match &key {
+                Some(k) => over.get(k, d.why).to_owned(),
+                None => d.why.to_owned(),
+            };
+            ResolvedDue {
+                code: d.code,
+                label: d.label,
+                level: d.level,
+                last: d.last,
+                months: d.months,
+                every_months: d.every_months,
+                drugs: d.drugs,
+                why,
+            }
+        })
+        .collect()
+}
+
+/// Une surveillance telle qu'elle sera montrée et imprimée.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct ResolvedDue {
+    pub code: &'static str,
+    pub label: &'static str,
+    pub level: Level,
+    pub last: Option<String>,
+    pub months: Option<u32>,
+    pub every_months: u32,
+    pub drugs: Vec<String>,
+    pub why: String,
+}
+
 /// Combien de mois séparent deux dates ISO, ou rien si l'une des deux ne
 /// se lit pas.
 ///
@@ -640,6 +716,62 @@ pub const WATCHES: &[Watch] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Le couple analyte + premier traitement est l'adresse d'une
+    /// surveillance, donc il est unique.**
+    ///
+    /// Ni le rang — qui se décale dès qu'on insère une règle — ni la
+    /// prose, qui disparaîtrait le jour où on la corrige, emportant la
+    /// réécriture sans que rien ne le dise.
+    #[test]
+    fn a_watch_is_addressed_by_its_analyte_and_its_first_drug() {
+        let mut ids: Vec<String> = WATCHES
+            .iter()
+            .filter_map(|w| w.needs.first().map(|f| item(f, w.code)))
+            .collect();
+        assert_eq!(ids.len(), WATCHES.len(), "une règle sans traitement nommé");
+        assert!(ids.len() >= 40, "{} surveillances", ids.len());
+        ids.sort();
+        let n = ids.len();
+        ids.dedup();
+        assert_eq!(n, ids.len(), "deux surveillances partagent une adresse");
+    }
+
+    /// Toute raison du plan s'édite, et toute réécriture arrive.
+    ///
+    /// La raison retenue est celle de la règle la plus serrée : c'est
+    /// elle qu'il faut retrouver, et la retrouver par le texte **livré**
+    /// est ce qui le permet même une fois réécrite.
+    #[test]
+    fn every_watch_reason_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        assert_eq!(listed.len(), WATCHES.len());
+
+        let treatments = [crate::revue::Treatment {
+            name: "Lévothyrox",
+            dci: "lévothyroxine",
+            class: "hormone thyroïdienne",
+            tags: "",
+        }];
+        let due = due(&treatments, &[], "2026-09-11");
+        assert!(!due.is_empty(), "le lévothyrox demande une surveillance");
+
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        let mine = resolve(due.clone(), &over);
+        for d in &mine {
+            assert!(d.why.starts_with("réécrit:"), "{} : {}", d.code, d.why);
+        }
+        // Sans réécriture, le plan est celui qui est livré.
+        let plain = resolve(due.clone(), &crate::content::Overrides::default());
+        for (a, b) in plain.iter().zip(due.iter()) {
+            assert_eq!(a.why, b.why);
+        }
+    }
     use crate::biology::Reading;
     use crate::revue::Treatment;
 

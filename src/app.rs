@@ -1823,6 +1823,24 @@ struct StupEdits {
     per_box: String,
 }
 
+/// Une réécriture de phrases imprimées, en cours de frappe.
+///
+/// Le préfixe désigne ce qu'on modifie — « carnet.tension » — et sert
+/// aussi à tout rétablir d'un geste. Les tampons vivent ici et non dans
+/// la vue, parce qu'un `TextEdit` d'egui ne garde pas son contenu : il
+/// le tient dans le `String` qu'on lui prête, et un `String` refabriqué
+/// à chaque image efface la lettre qu'on vient de taper.
+#[derive(Clone, Debug)]
+struct TextEdit {
+    /// « carnet.tension » : le document dont on réécrit les phrases.
+    subject: String,
+    /// Adresse → ce qui est tapé.
+    typed: std::collections::HashMap<String, String>,
+    /// Adresse → ce que l'écran affichait en entrant dans l'édition.
+    /// C'est la valeur contre laquelle l'écriture se fait.
+    seen: std::collections::HashMap<String, String>,
+}
+
 /// La feuille de saisie groupée, en cours de frappe.
 ///
 /// Ce qui est **commun à toute la feuille** — la nature, le jour, le
@@ -1954,7 +1972,7 @@ struct BandNeeds<'a> {
     typing: bool,
     interactions: bool,
     /// Ce que la revue d'ordonnance dit, en pastilles qui enveloppent.
-    review: &'a [crate::revue::Point],
+    review: &'a [crate::revue::Resolved],
     /// Une règle de quota bloque la création d'un acte.
     blocked: bool,
     /// Moins de traitements que le BPM n'en demande : la bande le dit.
@@ -2310,7 +2328,10 @@ struct Session {
     patient_interactions: Vec<(String, String)>,
     /// What the ordonnance says about itself: doublons, associations
     /// that add up, cascades.
-    patient_review: Vec<crate::revue::Point>,
+    /// La revue du dossier ouvert, **déjà résolue** : les mots de
+    /// l'officine quand elle en a réécrit. Résolue là où le cache est
+    /// rempli et non au dessin — l'écran et le bilan lisent le même.
+    patient_review: Vec<crate::revue::Resolved>,
     /// The viewed patient's dated notes, newest first.
     patient_notes: Vec<Note>,
     /// Le fil du dossier : tout ce que la base sait de ce patient, dans
@@ -2403,19 +2424,26 @@ struct Session {
     /// Ce que la fonction rénale fait à l'ordonnance ouverte, et le
     /// chiffre qui l'a dit. Calculé quand le dossier change, jamais par
     /// image : chaque ligne est un `format!`.
-    renal: Vec<crate::renal::Finding>,
+    /// Ce que le rein impose au dossier ouvert, **déjà résolu**.
+    renal: Vec<crate::renal::Resolved>,
     renal_dfg: Option<f64>,
     /// Ce qu'on peut écraser de l'ordonnance ouverte, ligne par ligne
     /// et **toutes les lignes** — celles que la table ne connaît pas
     /// comprises, sans quoi la feuille se lirait comme un feu vert.
-    crush: Vec<crate::crush::Answer>,
+    /// La feuille « peut-on écraser ? » du dossier ouvert, **déjà
+    /// résolue** : les mots de l'officine. Résolue là où le cache est
+    /// rempli, jamais au dessin.
+    crush: Vec<crate::crush::Resolved>,
     /// Ce que la grossesse et l'allaitement font à l'ordonnance
     /// ouverte. **Toutes les lignes**, y compris celles que la table ne
     /// connaît pas : « pas de donnée » n'est pas « pas de risque ».
-    gravidity: Vec<crate::gravidity::Finding>,
+    /// Ce que la grossesse et l'allaitement changent, **déjà résolu**.
+    gravidity: Vec<crate::gravidity::Resolved>,
     /// What the file's ordonnance asks to have measured, and how long
     /// ago it was. Computed with the findings, from the same two lists.
-    surveillance: Vec<crate::surveillance::Due>,
+    /// Le plan de surveillance du dossier ouvert, **déjà résolu** :
+    /// les mots de l'officine, posés là où le cache est rempli.
+    surveillance: Vec<crate::surveillance::ResolvedDue>,
     /// Which of the two readings the side panel is showing: what the
     /// values say, or what has not been asked for.
     bio_side_tab: usize,
@@ -2438,6 +2466,13 @@ struct Session {
     /// feuille. Voir [`crate::selfcheck`].
     show_carnets: bool,
     carnet_open: Option<&'static crate::selfcheck::Sheet>,
+    /// L'écran des textes imprimés : tout ce qui part sur du papier,
+    /// au même endroit. L'autre moitié de l'édition — chaque vue
+    /// réécrit déjà les siennes en place, et celui-ci est ce qui rend
+    /// les autres atteignables quand on ne sait plus où elles sont.
+    show_textes: bool,
+    /// Le document ouvert, par son sujet — « carnet.tension ».
+    textes_open: Option<String>,
     /// Les scripts enregistrés à côté de la base, leur texte en cours
     /// d'édition, et ce que la dernière exécution a rendu. Voir
     /// [`crate::script`].
@@ -2956,6 +2991,19 @@ struct Session {
     stup_count_days: i64,
     /// La feuille de saisie groupée, en cours de frappe.
     batch: Batch,
+    /// Les phrases imprimées que l'officine a réécrites — voir
+    /// `content.rs`. Lues au déverrouillage et à chaque relecture, jamais
+    /// par image : une carte de carnet en résout une trentaine, et une
+    /// requête par phrase serait une requête par phrase par image.
+    content: crate::content::Overrides,
+    /// Une réécriture en cours : le document dont on modifie les
+    /// phrases, et par adresse ce qui est tapé avec ce que l'écran
+    /// affichait en entrant.
+    ///
+    /// Le second sert à écrire **contre ce qu'on avait sous les yeux** :
+    /// une phrase imprimée part sur le papier de tous les postes, donc
+    /// deux qui la réécrivent en même temps ne s'écrasent pas.
+    text_edit: Option<TextEdit>,
     /// L'officine **telle que la base la portait** au dernier chargement.
     ///
     /// C'est la valeur contre laquelle l'enregistrement se fait : sans
@@ -3205,6 +3253,8 @@ impl Session {
             stats: Stats::default(),
             show_carnets: false,
             carnet_open: None,
+            show_textes: false,
+            textes_open: None,
             scripts: Vec::new(),
             script_open: None,
             script_text: String::new(),
@@ -3367,6 +3417,8 @@ impl Session {
             stup_new_remark: String::new(),
             export_box: None,
             batch: Batch::default(),
+            content: crate::content::Overrides::default(),
+            text_edit: None,
             officine_seen: None,
             officine_stale: false,
             sync_seen: (0, 0, 0),
@@ -4215,6 +4267,11 @@ impl Session {
         }
         if let Ok(counts) = self.db.pending_counts() {
             self.pending = counts;
+        }
+        // Les phrases que l'officine a réécrites : une correction faite
+        // au comptoir doit atteindre l'imprimante de l'autre poste.
+        if let Ok(over) = self.db.content_overrides() {
+            self.content = over;
         }
         // Le référentiel, **sauf si sa fiche est ouverte en
         // correction** : recharger la liste sous un formulaire ouvert
@@ -5542,7 +5599,10 @@ impl Session {
     fn reload_treatments(&mut self, patient_id: i64) {
         self.patient_treats = self.db.drugs_for_patient(patient_id).unwrap_or_default();
         self.patient_interactions = interactions_between(&self.patient_treats);
-        self.patient_review = crate::revue::review(&ordonnance_terms(&self.patient_treats));
+        self.patient_review = crate::revue::resolve(
+            crate::revue::review(&ordonnance_terms(&self.patient_treats)),
+            &self.content,
+        );
         // The posology this file records for each of them — not the
         // molecule's posologies, which live on the fiche, but the line
         // that is on this patient's ordonnance.
@@ -5689,11 +5749,16 @@ impl Session {
             })
             .filter(|t| !t.trim().is_empty())
             .collect();
-        self.bio_findings = crate::biology::read(&readings, &treatments);
+        // Les mots de l'officine : ces lectures partent sur le bilan.
+        self.bio_findings =
+            crate::biology::resolve(crate::biology::read(&readings, &treatments), &self.content);
         // The other half of the same question: not what the values say,
         // but which of them has not been asked for in too long.
         let terms = ordonnance_terms(&self.patient_treats);
-        self.surveillance = crate::surveillance::due(&terms, &readings, &self.today);
+        self.surveillance = crate::surveillance::resolve(
+            crate::surveillance::due(&terms, &readings, &self.today),
+            &self.content,
+        );
         // Et la troisième question, celle qu'on pose vraiment au
         // comptoir : ce dossier porte un DFG à 28, **que devient chaque
         // ligne de son ordonnance ?** La clairance la plus récente, et
@@ -5705,16 +5770,16 @@ impl Session {
             .filter(|r| r.code.eq_ignore_ascii_case("DFG") && !r.date.trim().is_empty())
             .max_by(|a, b| a.date.cmp(b.date))
             .map(|r| r.value);
-        self.renal = crate::renal::read(&terms, dfg);
+        self.renal = crate::renal::resolve(crate::renal::read(&terms, dfg), &self.content);
         self.renal_dfg = dfg;
         // Et la question qu'on pose au téléphone, celle de l'EHPAD :
         // « peut-on écraser ? ». Elle ne dépend d'aucun chiffre, donc
         // elle se calcule sur la seule ordonnance.
-        self.crush = crate::crush::read(&terms);
+        self.crush = crate::crush::resolve(crate::crush::read(&terms), &self.content);
         // Et la question qu'on pose une fois par semaine, celle qui
         // fait ouvrir treize paragraphes : ce que la grossesse et
         // l'allaitement font à cette ordonnance.
-        self.gravidity = crate::gravidity::read(&terms);
+        self.gravidity = crate::gravidity::resolve(crate::gravidity::read(&terms), &self.content);
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -8415,6 +8480,40 @@ impl App {
                                         .max_by_key(|s| s.columns.len())
                                 });
                             session.view = MainView::Drugs;
+                        }
+                        // La même vue, **ouverte sur la réécriture** :
+                        // c'est l'autre moitié de l'écran, et une
+                        // capture de la feuille en lecture n'en montre
+                        // rien — ni les champs, ni les états d'une
+                        // phrase, ni la rangée qui enregistre.
+                        // L'écran central des textes imprimés, **ouvert
+                        // sur un document** : la liste seule ne montre
+                        // ni les champs, ni l'état d'une phrase, ni la
+                        // rangée qui enregistre.
+                        Ok("textes") => {
+                            session.show_textes = true;
+                            session.view = MainView::Drugs;
+                            if let Some(d) = crate::content::documents().first() {
+                                session.textes_open = Some(d.subject.clone());
+                                session.text_edit = Some(Self::text_edit_for(
+                                    &d.subject,
+                                    &d.phrases,
+                                    &session.content,
+                                ));
+                            }
+                        }
+                        Ok("carnets_edit") => {
+                            session.show_carnets = true;
+                            session.view = MainView::Drugs;
+                            let sheet = crate::selfcheck::by_key("tension")
+                                .unwrap_or(&crate::selfcheck::SHEETS[0]);
+                            session.carnet_open = Some(sheet);
+                            let subject = format!("{}.{}", crate::selfcheck::DOC, sheet.key);
+                            session.text_edit = Some(Self::text_edit_for(
+                                &subject,
+                                &crate::selfcheck::phrases(sheet),
+                                &session.content,
+                            ));
                         }
                         Ok("script") => {
                             session.refresh_scripts();
@@ -11586,7 +11685,7 @@ impl App {
                     .db
                     .today_french()
                     .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
-                let advice = choice.advice(protocol);
+                let advice = choice.advice(protocol, &session.content);
                 // Signed by whoever did the TROD — the initials on
                 // the act — and by whoever is at the counter when the
                 // act predates the team list.
@@ -12807,7 +12906,7 @@ impl App {
                                 .color(ink),
                         );
                         ui.label(
-                            egui::RichText::new(f.conduct)
+                            egui::RichText::new(f.conduct.as_str())
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text()),
                         );
@@ -12871,12 +12970,12 @@ impl App {
                             (
                                 crate::gravidity::Stage::Grossesse,
                                 f.pregnancy,
-                                f.pregnancy_note,
+                                f.pregnancy_note.as_str(),
                             ),
                             (
                                 crate::gravidity::Stage::Allaitement,
                                 f.breastfeeding,
-                                f.breastfeeding_note,
+                                f.breastfeeding_note.as_str(),
                             ),
                         ] {
                             ui.label(
@@ -12898,7 +12997,7 @@ impl App {
                         }
                         if !f.term.trim().is_empty() {
                             ui.label(
-                                egui::RichText::new(f.term)
+                                egui::RichText::new(f.term.as_str())
                                     .size(motif::pt(ui, 10.5))
                                     .color(motif::alert()),
                             );
@@ -13015,7 +13114,7 @@ impl App {
                         );
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(d.why)
+                                egui::RichText::new(d.why.as_str())
                                     .size(motif::pt(ui, 10.5))
                                     .italics()
                                     .color(motif::text_faint()),
@@ -14905,7 +15004,9 @@ impl App {
                                     .take(4)
                                 {
                                     if motif::toggle(ui, a.label, false)
-                                        .on_hover_text(a.note)
+                                        // Ce que l'analyte veut dire,
+                                        // avec les mots de l'officine.
+                                        .on_hover_text(crate::biology::note(a, &session.content))
                                         .clicked()
                                     {
                                         pick = Some(a);
@@ -16648,7 +16749,7 @@ impl App {
             h += 20.0;
         }
         if !n.review.is_empty() {
-            let titles = n.review.iter().map(|p| p.title);
+            let titles = n.review.iter().map(|p| p.title.as_str());
             h += 6.0 + 22.0 * Self::wrapped_rows(ui, w - 130.0, titles);
         }
         // Whatever the band would like, the acts and the journal keep
@@ -18833,10 +18934,9 @@ impl App {
             let proposed: Vec<String> = if kind.is_prevention() {
                 config.prevention.subjects.clone()
             } else {
-                crate::entretien::checklist(&theme)
-                    .iter()
-                    .map(|s| (*s).to_owned())
-                    .collect()
+                // Les mots de l'officine : la liste part sur la feuille
+                // que le pharmacien a en main face au patient.
+                crate::entretien::resolve(&theme, &session.content)
             };
             // Cochés d'avance quand ils viennent du thème — c'est ce que
             // la feuille portait déjà, et l'export ne doit pas obliger à
@@ -19536,7 +19636,9 @@ impl App {
                                 .size(motif::pt(ui, 12.0)),
                         );
                         ui.label(
-                            egui::RichText::new(reco.detail)
+                            // Les mots de l'officine : ce détail part
+                            // sur le carnet du voyageur.
+                            egui::RichText::new(crate::vaccines::detail(reco, &session.content))
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
@@ -32947,7 +33049,366 @@ impl App {
     /// avant d'imprimer : à gauche les six feuilles, à droite comment
     /// mesurer, ce qu'on vise et ce qui ne s'attend pas. Voir
     /// [`crate::selfcheck`], où tout cela est écrit et éprouvé.
-    fn carnets_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+    /// Ouvrir la réécriture d'un document : un tampon par phrase, et ce
+    /// que l'écran affichait mis de côté.
+    ///
+    /// Les deux, parce que ce sont deux choses : le tampon suit la
+    /// frappe, la valeur mise de côté ne bouge plus et c'est contre elle
+    /// que l'écriture se fait. Sans elle, deux postes qui réécrivent la
+    /// même phrase s'écraseraient — et une phrase imprimée part sur le
+    /// papier de tous les postes.
+    fn text_edit_for(
+        subject: &str,
+        phrases: &[(String, &'static str, &'static str)],
+        over: &crate::content::Overrides,
+    ) -> TextEdit {
+        let mut typed = std::collections::HashMap::new();
+        let mut seen = std::collections::HashMap::new();
+        for (key, _, shipped) in phrases {
+            let now = over.get(key, shipped).to_owned();
+            typed.insert(key.clone(), now.clone());
+            seen.insert(key.clone(), now);
+        }
+        TextEdit {
+            subject: subject.to_owned(),
+            typed,
+            seen,
+        }
+    }
+
+    /// Les phrases d'un document, en champs de saisie.
+    ///
+    /// Chaque phrase porte son état : livrée, réécrite, ou réécrite
+    /// contre un texte qui a changé depuis — auquel cas ce que
+    /// l'officine avait écrit est montré **à côté** plutôt qu'appliqué,
+    /// pour qu'elle le reprenne au lieu de le perdre.
+    fn text_edit_body(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        phrases: &[(String, &'static str, &'static str)],
+    ) {
+        let Some(edit) = &mut session.text_edit else {
+            return;
+        };
+        ui.label(
+            egui::RichText::new(tr("carnets_edit_hint"))
+                .size(motif::pt(ui, 11.0))
+                .color(motif::text_dim()),
+        );
+        ui.add_space(6.0);
+        let w = ui.available_width();
+        let mut last = "";
+        for (key, field, shipped) in phrases {
+            // Un intertitre par famille de phrases, et non un par
+            // phrase : « consigne » une fois, pas six.
+            if *field != last {
+                // L'intitulé de la famille, par une correspondance
+                // explicite : une clé composée à l'exécution n'est pas
+                // une clé que le test des chaînes peut retrouver, et une
+                // famille nouvelle doit se déclarer plutôt que de
+                // s'afficher sous son nom de champ.
+                motif::section(ui, Self::content_field_label(field));
+                last = field;
+            }
+            let state = session.content.state(key, shipped);
+            let Some(buf) = edit.typed.get_mut(key) else {
+                continue;
+            };
+            ui.add_sized(
+                [w, Self::row_height(ui) * 2.0],
+                egui::TextEdit::multiline(buf).hint_text(*shipped),
+            );
+            match state {
+                // Ce que la phrase disait avant d'être réécrite : c'est
+                // ce qu'on veut relire pour juger sa réécriture, et c'est
+                // aussi ce qu'il faut retaper pour l'annuler.
+                crate::content::State::Rewritten => {
+                    ui.label(
+                        egui::RichText::new(trf("carnets_field_shipped", *shipped))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_faint()),
+                    );
+                }
+                // La phrase livrée a changé depuis la réécriture : celle
+                // de l'officine ne s'applique plus, et elle est montrée
+                // telle quelle pour être reprise.
+                crate::content::State::Outdated => {
+                    ui.label(
+                        egui::RichText::new(tr("carnets_field_outdated"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::alert()),
+                    );
+                    if let Some(theirs) = session.content.written(key) {
+                        ui.label(
+                            egui::RichText::new(trf("carnets_field_was", theirs))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                    }
+                    // Et la phrase qu'elle visait : sans elle, « ceci ne
+                    // s'applique plus » se lit sans qu'on puisse juger
+                    // pourquoi.
+                    if let Some(aimed) = session.content.aimed_at(key) {
+                        ui.label(
+                            egui::RichText::new(trf("carnets_field_aimed", aimed))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                    }
+                }
+                crate::content::State::Shipped => {}
+            }
+            ui.add_space(4.0);
+        }
+    }
+
+    /// L'intitulé d'une famille de phrases, par correspondance explicite.
+    ///
+    /// Un champ inconnu rend son propre nom plutôt que rien : une
+    /// famille ajoutée et non déclarée se voit à l'écran, au lieu de
+    /// s'afficher sous un intertitre vide.
+    fn content_field_label(field: &str) -> &'static str {
+        match field {
+            "titre" => tr("carnets_field_titre"),
+            "objet" => tr("carnets_field_objet"),
+            "consigne" => tr("carnets_field_consigne"),
+            "cible" => tr("carnets_field_cible"),
+            "colonne" => tr("carnets_field_colonne"),
+            "total" => tr("carnets_field_total"),
+            "alerte" => tr("carnets_field_alerte"),
+            "retour" => tr("carnets_field_retour"),
+            _ => "?",
+        }
+    }
+
+    /// Écrire les phrases réécrites, chacune contre ce que l'écran
+    /// affichait.
+    ///
+    /// Une phrase inchangée n'est pas écrite : la table ne porte que de
+    /// vraies différences, et une écriture par champ à chaque
+    /// « Enregistrer » ferait trente lignes là où l'officine en a
+    /// corrigé une.
+    fn text_edit_save(
+        session: &mut Session,
+        phrases: &[(String, &'static str, &'static str)],
+        who: &str,
+    ) {
+        let Some(edit) = session.text_edit.clone() else {
+            return;
+        };
+        let day = session.today.clone();
+        let mut written = 0_usize;
+        let mut refused = 0_usize;
+        // Le texte livré vient de la liste des phrases et de nulle part
+        // ailleurs : c'est lui que la surcharge retient pour savoir, plus
+        // tard, si elle vise encore la même phrase. Le reconstituer à
+        // partir de ce que l'écran affichait donnerait la réécriture
+        // précédente dès qu'il y en avait une.
+        for (key, _, shipped) in phrases {
+            let (Some(value), Some(seen)) = (edit.typed.get(key), edit.seen.get(key)) else {
+                continue;
+            };
+            if value == seen {
+                continue;
+            }
+            match session.db.set_content(key, value, shipped, seen, &day, who) {
+                Ok(true) => written += 1,
+                Ok(false) => refused += 1,
+                Err(e) => session.error = Some(e),
+            }
+        }
+        session.content = session.db.content_overrides().unwrap_or_default();
+        if refused > 0 {
+            // Un autre poste est passé : ce qu'il a écrit est maintenant
+            // à l'écran, et la réécriture se reprend dessus.
+            session.text_edit = None;
+            session.error = Some(trf("carnets_edit_stale", refused));
+        } else {
+            session.error = Some(trf("carnets_edit_saved", written));
+            session.text_edit = None;
+        }
+    }
+
+    /// **Tous les textes imprimés, au même endroit.**
+    ///
+    /// L'autre moitié de l'édition : chaque vue réécrit déjà ses propres
+    /// phrases là où elle les montre, ce qui est la bonne porte quand on
+    /// a la feuille sous les yeux. Celui-ci est la porte de l'autre cas
+    /// — on se souvient d'une tournure qui ne va pas, sans se souvenir
+    /// de quel document elle vient.
+    ///
+    /// Il ne connaît aucun document : il parcourt le registre de
+    /// `content::documents`, et l'éditeur est celui des carnets. Deux
+    /// écrans qui sauraient chacun composer la liste des phrases
+    /// finiraient par en oublier chacun une autre.
+    fn textes_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
+        let body = motif::visible_rect(ui);
+        let docs = crate::content::documents();
+        let head_h = Self::row_height(ui) * 2.0 + 14.0;
+        let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
+        let mut close = false;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal(|ui| {
+                ui.heading(tr("textes_title"));
+                if motif::button(ui, tr("textes_close")).clicked() {
+                    close = true;
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("textes_subtitle"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+
+        let gap = 8.0;
+        let list_w = (rows[1].width() * 0.28).clamp(200.0, 340.0);
+        let list_rect =
+            egui::Rect::from_min_size(rows[1].min, egui::vec2(list_w, rows[1].height()));
+        let sheet_rect = egui::Rect::from_min_size(
+            egui::pos2(rows[1].left() + list_w + gap, rows[1].top()),
+            egui::vec2(
+                (rows[1].width() - list_w - gap).max(120.0),
+                rows[1].height(),
+            ),
+        );
+
+        let mut pick: Option<String> = None;
+        motif::panel(ui, list_rect, Some(tr("textes_docs")), |ui| {
+            let inner = ui.available_rect_before_wrap();
+            let well = motif::well(ui, inner);
+            motif::inside(ui, well, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("textes_docs")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for d in &docs {
+                            // Combien de ses phrases ne sont plus celles
+                            // qui sont livrées : c'est ce qu'on vient
+                            // chercher, et cela se lit sans ouvrir.
+                            let n = d
+                                .phrases
+                                .iter()
+                                .filter(|(k, _, shipped)| {
+                                    session.content.state(k, shipped)
+                                        != crate::content::State::Shipped
+                                })
+                                .count();
+                            let mut text =
+                                egui::RichText::new(d.label.as_str()).size(motif::pt(ui, 11.5));
+                            if n > 0 {
+                                text = text.color(motif::accent());
+                            }
+                            if motif::list_row(
+                                ui,
+                                text,
+                                session.textes_open.as_deref() == Some(d.subject.as_str()),
+                            )
+                            .clicked()
+                            {
+                                pick = Some(d.subject.clone());
+                            }
+                        }
+                    });
+            });
+        });
+
+        let open = session
+            .textes_open
+            .as_ref()
+            .and_then(|s| docs.iter().find(|d| &d.subject == s));
+        let mut save = false;
+        let mut reset: Option<String> = None;
+        let title = open.map_or_else(|| tr("textes_pick").to_owned(), |d| d.label.clone());
+        let phrases = open.map(|d| d.phrases.clone());
+        let subject = open.map(|d| d.subject.clone());
+        motif::panel(ui, sheet_rect, Some(&title), |ui| {
+            let Some(phrases) = &phrases else {
+                ui.label(
+                    egui::RichText::new(tr("textes_pick"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                );
+                return;
+            };
+            let rect = ui.available_rect_before_wrap();
+            let btn = Self::button_height(ui) + 6.0;
+            let split = motif::split_rows(rect, &[0.0, btn], 4.0);
+            motif::inside(ui, split[0], |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("textes_sheet")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        Self::text_edit_body(ui, session, phrases);
+                    });
+            });
+            motif::inside(ui, split[1], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, tr("carnets_edit_save"))
+                        .on_hover_text(tr("carnets_edit_save_tooltip"))
+                        .clicked()
+                    {
+                        save = true;
+                    }
+                    if motif::button(ui, tr("carnets_edit_reset"))
+                        .on_hover_text(tr("carnets_edit_reset_tooltip"))
+                        .clicked()
+                    {
+                        reset = subject.clone();
+                    }
+                    let rewritten = phrases
+                        .iter()
+                        .filter(|(k, _, shipped)| {
+                            session.content.state(k, shipped) != crate::content::State::Shipped
+                        })
+                        .count();
+                    ui.label(
+                        egui::RichText::new(trn("textes_count", &[&phrases.len(), &rewritten]))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    );
+                });
+            });
+        });
+
+        if let Some(subject) = pick {
+            // Ouvrir un document, c'est ouvrir son édition : cet écran
+            // n'existe que pour cela.
+            if let Some(d) = docs.iter().find(|d| d.subject == subject) {
+                session.text_edit =
+                    Some(Self::text_edit_for(&subject, &d.phrases, &session.content));
+            }
+            session.textes_open = Some(subject);
+        }
+        if save {
+            if let (Some(phrases), Some(subject)) = (&phrases, &subject) {
+                Self::text_edit_save(session, phrases, operator);
+                // Rouvrir sur ce qui vient d'être écrit, plutôt que de
+                // laisser l'écran vide après l'enregistrement.
+                session.text_edit = Some(Self::text_edit_for(subject, phrases, &session.content));
+            }
+        }
+        if let Some(prefix) = reset {
+            match session.db.reset_content(&prefix) {
+                Ok(n) => {
+                    session.content = session.db.content_overrides().unwrap_or_default();
+                    session.text_edit = None;
+                    session.textes_open = None;
+                    session.error = Some(trf("carnets_edit_reset_done", n));
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if close {
+            session.show_textes = false;
+            session.text_edit = None;
+        }
+    }
+
+    fn carnets_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         let body = motif::visible_rect(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
         let band = Self::title_band_height(
@@ -32958,6 +33419,12 @@ impl App {
         );
         let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
         let mut print: Option<&'static crate::selfcheck::Sheet> = None;
+        // Ce que les boutons demandent : rendu hors du dessin,
+        // comme partout ici — écrire dans la base au milieu d'une
+        // fermeture rendrait la vue fausse à l'image suivante.
+        let mut save = false;
+        let mut reset: Option<String> = None;
+        let mut open_textes = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("carnets_title"));
@@ -32973,6 +33440,16 @@ impl App {
                 )
                 .wrap(),
             );
+            // Ce que l'officine a réécrit, tous documents confondus : une
+            // officine qui a repris trente phrases doit le savoir sans
+            // les ouvrir une par une.
+            if !session.content.is_empty() {
+                ui.label(
+                    egui::RichText::new(trf("carnets_rewritten_all", session.content.len()))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::accent()),
+                );
+            }
             // À qui la feuille sera au nom : le dossier ouvert, ou
             // personne — auquel cas elle porte une ligne à remplir, ce
             // qui est le cas courant au comptoir.
@@ -33051,6 +33528,19 @@ impl App {
                         .id_salt("carnet_sheet")
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
+                            let subject = format!("{}.{}", crate::selfcheck::DOC, sheet.key);
+                            if session
+                                .text_edit
+                                .as_ref()
+                                .is_some_and(|e| e.subject == subject)
+                            {
+                                Self::text_edit_body(
+                                    ui,
+                                    session,
+                                    &crate::selfcheck::phrases(sheet),
+                                );
+                                return;
+                            }
                             let para = |ui: &mut egui::Ui, text: &str, size: f32| {
                                 ui.add(
                                     egui::Label::new(
@@ -33059,20 +33549,26 @@ impl App {
                                     .wrap(),
                                 );
                             };
-                            para(ui, sheet.purpose, 11.5);
+                            // Ce que la feuille dira **sur le papier** :
+                            // les mots de l'officine quand elle en a
+                            // écrit. Un écran qui montrerait le texte
+                            // livré et une imprimante qui sortirait
+                            // l'autre seraient deux feuilles.
+                            let v = crate::selfcheck::resolve(sheet, &session.content);
+                            para(ui, &v.purpose, 11.5);
                             ui.add_space(6.0);
                             motif::section(ui, tr("carnets_how"));
-                            for (i, step) in sheet.protocol.iter().enumerate() {
+                            for (i, step) in v.protocol.iter().enumerate() {
                                 para(ui, &format!("{}. {step}", i + 1), 11.0);
                             }
                             ui.add_space(6.0);
                             motif::section(ui, tr("carnets_target"));
-                            para(ui, sheet.target, 11.0);
+                            para(ui, &v.target, 11.0);
                             ui.add_space(6.0);
                             motif::section(ui, tr("carnets_alert"));
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(sheet.alert)
+                                    egui::RichText::new(v.alert.as_str())
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::alert()),
                                 )
@@ -33103,26 +33599,120 @@ impl App {
                         });
                 });
                 motif::inside(ui, split[1], |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if motif::button(ui, tr("carnets_print"))
                             .on_hover_text(tr("carnets_print_tooltip"))
                             .clicked()
                         {
                             print = Some(sheet);
                         }
+                        // Et la porte de l'écran central, depuis celui
+                        // où l'on vient de voir qu'une tournure ne va
+                        // pas : les autres documents sont là.
+                        if motif::button(ui, tr("textes_button"))
+                            .on_hover_text(tr("textes_button_tooltip"))
+                            .clicked()
+                        {
+                            open_textes = true;
+                        }
+                        // **Réécrire les mots de la feuille.** Elle part
+                        // chez un patient au nom de l'officine : le
+                        // texte livré est une proposition, pas une
+                        // contrainte. Même porte que « Modifier » sur
+                        // une fiche médicament.
+                        let subject = format!("{}.{}", crate::selfcheck::DOC, sheet.key);
+                        let editing = session
+                            .text_edit
+                            .as_ref()
+                            .is_some_and(|e| e.subject == subject);
+                        if motif::toggle(ui, tr("carnets_edit"), editing)
+                            .on_hover_text(tr("carnets_edit_tooltip"))
+                            .clicked()
+                        {
+                            session.text_edit = if editing {
+                                None
+                            } else {
+                                Some(Self::text_edit_for(
+                                    &subject,
+                                    &crate::selfcheck::phrases(sheet),
+                                    &session.content,
+                                ))
+                            };
+                        }
+                        if editing {
+                            if motif::button(ui, tr("carnets_edit_save"))
+                                .on_hover_text(tr("carnets_edit_save_tooltip"))
+                                .clicked()
+                            {
+                                save = true;
+                            }
+                            if motif::button(ui, tr("carnets_edit_reset"))
+                                .on_hover_text(tr("carnets_edit_reset_tooltip"))
+                                .clicked()
+                            {
+                                reset = Some(subject.clone());
+                            }
+                        }
+                        // Combien de phrases de cette feuille ne sont
+                        // plus celles qui sont livrées : une feuille
+                        // qu'on a réécrite doit se reconnaître sans
+                        // l'ouvrir.
+                        let rewritten = crate::selfcheck::phrases(sheet)
+                            .iter()
+                            .filter(|(k, _, shipped)| {
+                                session.content.state(k, shipped) != crate::content::State::Shipped
+                            })
+                            .count();
+                        if rewritten > 0 {
+                            ui.label(
+                                egui::RichText::new(trf("carnets_rewritten", rewritten))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::accent()),
+                            );
+                        }
                     });
                 });
             },
         );
 
+        if save {
+            // Les phrases du carnet ouvert : la liste que `selfcheck`
+            // écrit une fois, et qui sert aussi bien à l'éditer qu'à
+            // l'imprimer.
+            if let Some(sheet) = session.carnet_open {
+                let phrases = crate::selfcheck::phrases(sheet);
+                let who = operator.to_owned();
+                Self::text_edit_save(session, &phrases, &who);
+            }
+        }
+        if let Some(prefix) = reset {
+            match session.db.reset_content(&prefix) {
+                Ok(n) => {
+                    session.error = None;
+                    session.content = session.db.content_overrides().unwrap_or_default();
+                    session.text_edit = None;
+                    session.error = Some(trf("carnets_edit_reset_done", n));
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+
+        if open_textes {
+            session.show_carnets = false;
+            session.show_textes = true;
+            session.text_edit = None;
+        }
         if let Some(sheet) = print {
             let today = session
                 .db
                 .today_french()
                 .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
             let name = session.viewing.as_ref().map(Patient::full_name);
+            // Les mots de l'officine, pas ceux qui sont livrés : une
+            // feuille part chez un patient au nom de la pharmacie.
+            let resolved = crate::selfcheck::resolve(sheet, &session.content);
             if let Err(e) = crate::pdf::open_selfcheck(
-                sheet,
+                &resolved,
                 name.as_deref(),
                 &config.pharmacy,
                 &today,
@@ -33224,7 +33814,11 @@ impl App {
             return;
         }
         if session.show_carnets {
-            Self::carnets_view(ui, session, config);
+            Self::carnets_view(ui, session, operator, config);
+            return;
+        }
+        if session.show_textes {
+            Self::textes_view(ui, session, operator);
             return;
         }
         if session.show_protocols {

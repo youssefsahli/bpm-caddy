@@ -156,6 +156,64 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
     out
 }
 
+/// Le document sous lequel les phrases de la revue sont adressées.
+pub const DOC: &str = "revue";
+
+/// Toutes les phrases de la revue, avec leur adresse — voir
+/// `content.rs`.
+///
+/// Le repère est le **titre** de la règle et non son rang : les
+/// quatre-vingt-sept titres sont distincts, un test le tient, et une
+/// règle insérée au milieu du tableau ne périme donc aucune réécriture.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    let mut out = Vec::with_capacity(RULES.len() * 2);
+    for rule in RULES {
+        let id = crate::content::slug(rule.title);
+        out.push((crate::content::key(DOC, &id, "titre"), "titre", rule.title));
+        out.push((
+            crate::content::key(DOC, &id, "detail"),
+            "detail",
+            rule.detail,
+        ));
+    }
+    out
+}
+
+/// Appliquer les réécritures de l'officine à ce que la revue a trouvé.
+///
+/// Sur les points rendus et non sur le tableau : la revue reste pure —
+/// ses règles, ses appariements et ses tests portent sur ce qui est
+/// livré — et les mots de l'officine arrivent au moment d'afficher ou
+/// d'imprimer. Même frontière que les carnets.
+pub fn resolve(points: Vec<Point>, over: &crate::content::Overrides) -> Vec<Resolved> {
+    points
+        .into_iter()
+        .map(|p| {
+            let id = crate::content::slug(p.title);
+            Resolved {
+                severity: p.severity,
+                title: over
+                    .get(&crate::content::key(DOC, &id, "titre"), p.title)
+                    .to_owned(),
+                detail: over
+                    .get(&crate::content::key(DOC, &id, "detail"), p.detail)
+                    .to_owned(),
+                drugs: p.drugs,
+            }
+        })
+        .collect()
+}
+
+/// Un point de revue tel qu'il sera montré et imprimé : les mots de
+/// l'officine quand elle en a écrit.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Resolved {
+    pub severity: Severity,
+    pub title: String,
+    pub detail: String,
+    pub drugs: Vec<String>,
+}
+
 /// The classic readings of a French ordonnance, in the order they are
 /// checked. The words are matched inside a card's name, DCI, class and
 /// tags, accent- and case-insensitively.
@@ -1363,6 +1421,87 @@ mod tests {
                 "règle « {} » trop courte pour être utile",
                 rule.title
             );
+        }
+    }
+
+    /// **Le titre d'une règle est son adresse, donc il est unique.**
+    ///
+    /// C'est ce qui permet d'adresser une phrase de la revue par son
+    /// titre plutôt que par son rang : une règle insérée au milieu du
+    /// tableau ne périme alors aucune réécriture de l'officine. Deux
+    /// règles au même titre casseraient cette propriété en silence — la
+    /// seconde recevrait la réécriture de la première.
+    #[test]
+    fn a_rule_title_is_an_address_and_no_two_rules_share_one() {
+        let mut ids: Vec<String> = RULES
+            .iter()
+            .map(|r| crate::content::slug(r.title))
+            .collect();
+        assert!(ids.len() >= 55, "{} règles", ids.len());
+        ids.sort();
+        let n = ids.len();
+        ids.dedup();
+        assert_eq!(n, ids.len(), "deux règles partagent une adresse");
+        // Et aucune adresse vide : un titre qui ne laisse que des tirets
+        // ne désigne rien.
+        for rule in RULES {
+            assert!(
+                !crate::content::slug(rule.title).is_empty(),
+                "« {} » ne donne pas d'adresse",
+                rule.title
+            );
+        }
+    }
+
+    /// **Toute phrase de la revue s'édite, et toute réécriture arrive
+    /// sur le point rendu.**
+    ///
+    /// Les deux sens, comme pour les carnets : une phrase que `phrases`
+    /// oublie ne peut pas être corrigée, une phrase que `resolve` oublie
+    /// part quand même telle qu'elle est livrée.
+    #[test]
+    fn every_review_phrase_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        assert_eq!(
+            listed.len(),
+            RULES.len() * 2,
+            "un titre et un détail par règle"
+        );
+
+        // Une ordonnance qui déclenche au moins un point.
+        let treatments = [
+            Treatment {
+                name: "Bisoprolol",
+                dci: "bisoprolol",
+                class: "bêtabloquant",
+                tags: "",
+            },
+            Treatment {
+                name: "Aricept",
+                dci: "donépézil",
+                class: "anticholinestérasique",
+                tags: "",
+            },
+        ];
+        let points = review(&treatments);
+        assert!(!points.is_empty(), "l'ordonnance doit déclencher un point");
+
+        // Sans réécriture, le point résolu est le point livré.
+        let plain = resolve(points.clone(), &crate::content::Overrides::default());
+        assert_eq!(plain[0].title, points[0].title);
+        assert_eq!(plain[0].detail, points[0].detail);
+
+        // Avec, il porte les mots de l'officine.
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        let mine = resolve(points, &over);
+        for p in &mine {
+            assert!(p.title.starts_with("réécrit:"), "titre : {}", p.title);
+            assert!(p.detail.starts_with("réécrit:"), "détail : {}", p.detail);
         }
     }
 }

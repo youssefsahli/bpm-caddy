@@ -5,6 +5,64 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.184.0] - 2026-09-11
+
+### Added
+- **Tous les textes imprimés se réécrivent.** Les fiches, les
+  préparations, les dispositifs, les protocoles et les cellules des
+  tables s'éditaient déjà. Sept cent soixante-douze phrases y
+  échappaient, et ce sont précisément celles qui partent sur du papier
+  au nom de l'officine : les six carnets du patient, les points de la
+  fiche d'entretien, la feuille « peut-on écraser ? », le plan de
+  surveillance, les interprétations de biologie, la revue d'ordonnance,
+  la grossesse et l'allaitement, l'adaptation rénale, les conseils d'une
+  ordonnance TROD, les vaccins du voyageur. Une tournure qui ne
+  convenait pas était une tournure à subir.
+
+  **Deux portes, un seul éditeur.** « Réécrire » dans la vue qui montre
+  le document — la bonne porte quand on a la feuille sous les yeux — et
+  l'écran « Textes imprimés », qui les liste tous : la porte de l'autre
+  cas, quand on se souvient d'une phrase sans se souvenir d'où elle
+  vient. Les deux passent par la même liste de phrases, celle du module ;
+  deux listes des mêmes phrases finiraient par différer.
+
+  Ce qui est réécrit est **rangé dans la base**, donc vaut pour tous les
+  postes, et l'écriture se fait contre ce que l'écran affichait.
+
+  **Une réécriture se souvient de la phrase qu'elle remplaçait** et ne
+  s'applique que tant que celle-ci n'a pas changé. C'est ce qui rend
+  tenable l'adressage d'une consigne par son rang, faute d'autre repère :
+  le jour où une liste est réordonnée, la réécriture est montrée à relire
+  — avec ce qu'on avait écrit et ce qu'elle visait — au lieu d'être posée
+  sur une autre phrase.
+
+  **Retaper le texte livré rétablit la phrase** : la ligne s'en va, et la
+  phrase recommence à suivre les corrections des versions suivantes.
+
+  **Une règle est adressée par ce qui l'identifie**, jamais par son rang
+  ni par sa prose : le titre d'un point de revue, le libellé d'une
+  présentation, le code d'un analyte, la molécule et le seuil de DFG d'un
+  palier. Une adresse tirée du texte s'évanouirait le jour où on corrige
+  ce texte — la réécriture ne deviendrait pas périmée, elle deviendrait
+  introuvable. Chaque module porte le test qui prouve son identité
+  unique : deux règles à la même adresse feraient hériter la seconde de
+  la réécriture de la première, ce qui sur la feuille d'écrasement est un
+  comprimé à libération prolongée écrasé.
+
+### Fixed
+- **Le bilan imprimait l'ancienne phrase après une réécriture.** La
+  lecture d'intervalle — « Kaliémie 5,4 mmol/L — élevé (3,5 – 5). »
+  suivie de la note de l'analyte — n'est pas une règle : elle est
+  composée à la lecture. Réécrire cette note changeait l'infobulle à
+  l'écran et laissait le bilan dire ce qu'il disait avant, sans que rien
+  ne le signale. Trouvé en construisant l'édition, et c'est le pire
+  défaut que cette fonction pouvait avoir : croire une phrase corrigée et
+  voir le papier dire autre chose.
+- **Le pire de deux niveaux de grossesse était calculé à l'envers** dans
+  la couche de résolution : la table est déclarée du plus grave au moins
+  grave, donc le pire est le plus petit. Une contre-indication de
+  grossesse se serait affichée comme une prudence d'allaitement.
+
 ## [0.183.0] - 2026-09-11
 
 ### Added
