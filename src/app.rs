@@ -1592,6 +1592,29 @@ fn week_of(date: &str) -> Vec<String> {
         .collect()
 }
 
+/// Le jour qu'une période désigne quand on la quitte : celui qui était
+/// choisi s'il en fait partie, aujourd'hui s'il en fait partie, et le
+/// jour de rang `fallback` sinon.
+///
+/// Le rang n'est pas toujours zéro, et c'est tout ce que ce paramètre
+/// dit : la grille du mois commence par quelques jours du mois
+/// **précédent**, si bien que son premier jour ramènerait le mois d'où
+/// l'on vient. Son seizième, lui, est toujours dans le mois affiché —
+/// une grille commence au plus six jours avant le premier.
+fn day_in(period: &[String], picked: &str, today: &str, fallback: usize) -> String {
+    if period.iter().any(|d| d == picked) {
+        return picked.to_owned();
+    }
+    if !today.is_empty() && period.iter().any(|d| d == today) {
+        return today.to_owned();
+    }
+    period
+        .get(fallback)
+        .or_else(|| period.first())
+        .cloned()
+        .unwrap_or_else(|| picked.to_owned())
+}
+
 /// Combien d'entrées une case dessine, et combien il lui reste à
 /// **annoncer**, quand elle a `room` places et qu'annoncer en coûte
 /// `cost`.
@@ -5942,6 +5965,46 @@ impl Session {
             .notes_for(NoteSubject::Day, db::day_subject_id(&day))
             .unwrap_or_default();
         self.day_note_confirm = None;
+    }
+
+    /// Choisir un jour, **et amener les autres lectures dessus**.
+    ///
+    /// Les quatre modes gardaient chacun leur repère : le jour avançait
+    /// sous les flèches sans déplacer la semaine, la semaine défilait
+    /// sans déplacer le mois, et le calendrier du volet choisissait un
+    /// jour sans rien déplacer du tout. Passer de « Jour, 25 septembre »
+    /// à « Semaine » ramenait donc la semaine du 7 : on venait de
+    /// naviguer trois semaines pour rien, et rien à l'écran ne disait
+    /// qu'on avait changé de date en changeant de lecture. Cliquer le 25
+    /// dans le calendrier du volet, en mode Semaine, détaillait le 25 en
+    /// dessous d'une grille qui montrait toujours une autre semaine.
+    ///
+    /// Un agenda a **un** moment courant ; les quatre lectures le
+    /// cadrent différemment, elles n'en désignent pas quatre.
+    fn focus_agenda_day(&mut self, day: String) {
+        if day.is_empty() {
+            return;
+        }
+        self.agenda_day = day;
+        self.load_day();
+        let (today, day) = (self.today.clone(), self.agenda_day.clone());
+        // **Rien n'est rechargé quand rien n'a bougé.** Une flèche qui
+        // avance d'un jour dans la même semaine ne doit pas relire la
+        // semaine ni les postes de l'équipe : la vue est redessinée
+        // soixante fois par seconde et ce sont des requêtes.
+        if let Some(weeks) = crate::date::weeks_between(&today, &day) {
+            if weeks != self.agenda_offset {
+                self.agenda_offset = weeks;
+                self.agenda_week = self.db.week_dates(weeks).unwrap_or_default();
+                self.load_shifts(false);
+            }
+        }
+        if let Some(months) = crate::date::months_between(&today, &day) {
+            if months != self.agenda_month_offset {
+                self.agenda_month_offset = months;
+                self.agenda_month_days = self.db.month_grid(months).unwrap_or_default();
+            }
+        }
     }
 
     /// Reload the events shown on the week or month grid.
@@ -11160,8 +11223,11 @@ impl App {
             }
         }
         if let Some(day) = pick {
-            session.agenda_day = day;
-            session.load_day();
+            // Le calendrier du volet ne choisissait qu'un jour : la
+            // grille derrière lui restait sur sa semaine, et le 25
+            // cliqué se détaillait sous une semaine qui ne le contenait
+            // pas.
+            session.focus_agenda_day(day);
         }
 
         ui.add_space(10.0);
@@ -22607,8 +22673,7 @@ impl App {
                 if session.agenda_mode == AgendaMode::Day {
                     let day = session.agenda_day.clone();
                     if let Ok(next) = session.db.date_offset(&day, step) {
-                        session.agenda_day = next;
-                        session.load_day();
+                        session.focus_agenda_day(next);
                     }
                 } else if session.agenda_month {
                     session.agenda_month_offset += step;
@@ -22834,9 +22899,36 @@ impl App {
                                 (AgendaMode::Planning, tr("agenda_mode_planning")),
                             ] {
                                 let btn = motif::toggle(ui, label, session.agenda_mode == mode);
-                                if btn.clicked() {
+                                if btn.clicked() && session.agenda_mode != mode {
+                                    // **Changer de lecture ne change pas
+                                    // de moment.** Le jour que la lecture
+                                    // qu'on quitte désignait est celui
+                                    // sur lequel les quatre se
+                                    // recadrent — voir
+                                    // `Session::focus_agenda_day`.
+                                    let shows_month = session.agenda_mode == AgendaMode::Month
+                                        || (session.agenda_mode == AgendaMode::Planning
+                                            && session.planning_month);
+                                    let focus = if session.agenda_mode == AgendaMode::Day {
+                                        session.agenda_day.clone()
+                                    } else if shows_month {
+                                        day_in(
+                                            &session.agenda_month_days,
+                                            &session.agenda_day,
+                                            &session.today,
+                                            15,
+                                        )
+                                    } else {
+                                        day_in(
+                                            &session.agenda_week,
+                                            &session.agenda_day,
+                                            &session.today,
+                                            0,
+                                        )
+                                    };
                                     session.agenda_mode = mode;
                                     session.agenda_month = mode == AgendaMode::Month;
+                                    session.focus_agenda_day(focus);
                                     if mode == AgendaMode::Month
                                         && session.agenda_month_days.is_empty()
                                     {
@@ -23219,8 +23311,7 @@ impl App {
         }
 
         if let Some(day) = pick_day.take() {
-            session.agenda_day = day;
-            session.load_day();
+            session.focus_agenda_day(day);
         }
         if print_week {
             // **La semaine imprimée est celle qu'on regarde.**
@@ -23288,8 +23379,7 @@ impl App {
             AgendaMode::Day => {
                 let day = session.agenda_day.clone();
                 if let Some(next) = db::add_days(&day, delta) {
-                    session.agenda_day = next;
-                    session.load_day();
+                    session.focus_agenda_day(next);
                 }
             }
             AgendaMode::Month => {
@@ -23348,8 +23438,8 @@ impl App {
                 if motif::button(ui, tr("agenda_this_week")).clicked() {
                     match session.agenda_mode {
                         AgendaMode::Day => {
-                            session.agenda_day = session.today.clone();
-                            session.load_day();
+                            let today = session.today.clone();
+                            session.focus_agenda_day(today);
                         }
                         AgendaMode::Month => {
                             session.agenda_month_offset = 0;
@@ -44743,6 +44833,53 @@ mod tests {
         assert_eq!(seen[1].as_deref(), Some("Lun 07"));
         assert_eq!(seen[2], None);
         assert_eq!(seen[3], None);
+    }
+
+    /// **Changer de lecture ne change pas de moment.**
+    ///
+    /// Les quatre modes de l'agenda gardaient chacun leur repère :
+    /// passer de « Jour, 25 septembre » à « Semaine » ramenait la
+    /// semaine du 7, parce que les flèches du mode Jour déplacent le
+    /// jour et laissent `agenda_week` où elle était. On venait de
+    /// naviguer trois semaines pour rien, et rien à l'écran ne disait
+    /// qu'on avait changé de date en changeant de lecture.
+    ///
+    /// Ce que la fonction décide, c'est le jour qu'une période désigne
+    /// **en la quittant** : le choisi s'il y est, aujourd'hui s'il y
+    /// est, et un jour de rang connu sinon.
+    #[test]
+    fn leaving_a_period_keeps_a_day_that_belongs_to_it() {
+        let week: Vec<String> = (21..=27).map(|d| format!("2026-09-{d:02}")).collect();
+        assert_eq!(
+            super::day_in(&week, "2026-09-25", "2026-09-12", 0),
+            "2026-09-25"
+        );
+        // Le choisi n'y est pas, aujourd'hui si : on retient aujourd'hui,
+        // qui est le jour qu'on regardait le plus probablement.
+        assert_eq!(
+            super::day_in(&week, "2026-08-03", "2026-09-23", 0),
+            "2026-09-23"
+        );
+        // Ni l'un ni l'autre : le rang demandé.
+        assert_eq!(
+            super::day_in(&week, "2026-08-03", "2026-09-12", 0),
+            "2026-09-21"
+        );
+        // **Et le rang n'est pas toujours zéro.** La grille du mois
+        // commence par des jours du mois *précédent* : son premier jour
+        // ramènerait le mois d'où l'on vient, son seizième est toujours
+        // dans le mois affiché.
+        let grid: Vec<String> = (0..42)
+            .filter_map(|i| crate::date::add_days("2026-08-31", i))
+            .collect();
+        assert_eq!(grid.first().map(String::as_str), Some("2026-08-31"));
+        assert_eq!(
+            super::day_in(&grid, "2025-01-01", "2025-01-01", 15),
+            "2026-09-15"
+        );
+        // Une période vide ne fabrique pas un jour : elle rend celui
+        // qu'on avait.
+        assert_eq!(super::day_in(&[], "2026-09-25", "", 0), "2026-09-25");
     }
 
     /// **La semaine imprimée est celle qu'on regarde.**

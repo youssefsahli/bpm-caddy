@@ -82,6 +82,33 @@ pub fn add_days(from: &str, days: i64) -> Option<String> {
     Some(from_days(to_days(from)? + days))
 }
 
+/// De combien de **semaines** `to` est après `from` : l'écart entre les
+/// lundis de leurs semaines, négatif quand `to` précède.
+///
+/// Ce n'est pas `days_between / 7`, qui répondrait zéro pour un dimanche
+/// et le lundi qui le suit — deux semaines différentes. C'est le
+/// décalage qu'attend `Db::week_dates`, qui compte depuis la semaine
+/// d'aujourd'hui : il permet de demander « la semaine de ce jour-là »
+/// à une fonction qui ne sait dire que « dans n semaines ».
+pub fn weeks_between(from: &str, to: &str) -> Option<i64> {
+    let a = to_days(from)? - (weekday(from)? - 1);
+    let b = to_days(to)? - (weekday(to)? - 1);
+    // L'écart entre deux lundis est un multiple de sept : la division
+    // est exacte, y compris négative.
+    Some((b - a) / 7)
+}
+
+/// De combien de **mois** `to` est après `from` : l'écart entre les
+/// premiers de leurs mois, et non un nombre de jours divisé.
+///
+/// Le décalage qu'attend `Db::month_grid`, pour la même raison que
+/// [`weeks_between`].
+pub fn months_between(from: &str, to: &str) -> Option<i64> {
+    let (y1, m1, _) = parse_iso(from)?;
+    let (y2, m2, _) = parse_iso(to)?;
+    Some((y2 * 12 + m2) - (y1 * 12 + m1))
+}
+
 /// Le dernier jour de ce mois-là — 28, 29, 30 ou 31.
 ///
 /// La règle du siècle est dans l'arithmétique et non dans une condition
@@ -136,6 +163,39 @@ pub fn iso_week(iso: &str) -> Option<(i64, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Deux dates de la même semaine sont à zéro semaine l'une de
+    /// l'autre**, et un dimanche et le lundi suivant sont à une.
+    ///
+    /// C'est exactement ce qu'un écart en jours divisé par sept ne sait
+    /// pas dire : il répond zéro pour ces deux-là, qui ne sont pas dans
+    /// la même semaine, et l'agenda ramènerait alors la mauvaise.
+    #[test]
+    fn a_week_apart_is_counted_from_monday_to_monday() {
+        // Lundi 21, dimanche 27 : la même semaine.
+        assert_eq!(weeks_between("2026-09-21", "2026-09-27"), Some(0));
+        // Dimanche 27 et lundi 28 : un jour, et une semaine.
+        assert_eq!(weeks_between("2026-09-27", "2026-09-28"), Some(1));
+        assert_eq!(weeks_between("2026-09-28", "2026-09-27"), Some(-1));
+        // Et cela compte au-delà de l'année, sans passer par un
+        // numéro de semaine : c'est un écart, pas une étiquette.
+        assert_eq!(weeks_between("2026-12-28", "2027-01-04"), Some(1));
+        assert_eq!(weeks_between("2026-09-07", "2026-09-25"), Some(2));
+        assert_eq!(weeks_between("hier", "2026-09-25"), None);
+    }
+
+    /// Les mois se comptent de premier à premier, et le 31 d'un mois
+    /// suivi du 1er du suivant sont à **un** mois — pas à zéro, ce que
+    /// trente-et-un jours divisés donneraient.
+    #[test]
+    fn a_month_apart_is_counted_from_the_first_to_the_first() {
+        assert_eq!(months_between("2026-09-01", "2026-09-30"), Some(0));
+        assert_eq!(months_between("2026-09-30", "2026-10-01"), Some(1));
+        assert_eq!(months_between("2026-10-01", "2026-09-30"), Some(-1));
+        assert_eq!(months_between("2026-12-31", "2027-01-01"), Some(1));
+        assert_eq!(months_between("2026-01-15", "2027-01-15"), Some(12));
+        assert_eq!(months_between("2026-01-15", ""), None);
+    }
 
     /// L'aller et le retour se répondent, sur deux siècles.
     ///
