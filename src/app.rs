@@ -3192,6 +3192,8 @@ struct Session {
     /// Which of the two readings the side panel is showing: what the
     /// values say, or what has not been asked for.
     bio_side_tab: usize,
+    /// Ce que l'ordonnance ouverte croise sur les cytochromes.
+    cyp: crate::cyp::Reading,
     vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
@@ -4016,6 +4018,7 @@ impl Session {
             gravidity: Vec::new(),
             surveillance: Vec::new(),
             bio_side_tab: 0,
+            cyp: crate::cyp::Reading::default(),
             vacc_due: Vec::new(),
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -6608,6 +6611,13 @@ impl Session {
         // fait ouvrir treize paragraphes : ce que la grossesse et
         // l'allaitement font à cette ordonnance.
         self.gravidity = crate::gravidity::resolve(crate::gravidity::read(&terms), &self.content);
+        // Et la quatrième, qui ne dépend ni d'un chiffre ni d'un
+        // terrain : **cette ordonnance porte-t-elle deux lignes qui se
+        // rencontrent sur une enzyme ?** Les fiches le disent chacune de
+        // leur côté, sept cent trente-huit fois ; les croiser demandait
+        // de les ouvrir toutes. Voir `cyp.rs`, qui écrit d'abord ce
+        // qu'il ne sait pas.
+        self.cyp = crate::cyp::cross(&terms);
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -9957,7 +9967,7 @@ impl App {
                         // panel on the second reading: what the
                         // ordonnance asks to have measured, rather than
                         // what the values already there say.
-                        Ok(v @ ("vaccins" | "bio" | "watch" | "rein" | "grossesse")) => {
+                        Ok(v @ ("vaccins" | "bio" | "watch" | "rein" | "grossesse" | "cyp")) => {
                             let pick = session
                                 .patients
                                 .iter()
@@ -9976,6 +9986,7 @@ impl App {
                                 "watch" => 1,
                                 "rein" => 2,
                                 "grossesse" => 3,
+                                "cyp" => 4,
                                 _ => 0,
                             };
                         }
@@ -14229,23 +14240,42 @@ impl App {
             } else {
                 format!("{} ({worrying})", tr("gravid_tab"))
             };
+            // Le compte des cytochromes est celui des croisements
+            // qu'on regarde **d'abord** : compter tous les croisements
+            // ferait un chiffre qui grandit avec l'ordonnance sans dire
+            // lequel ouvrir. Et une ligne que la table ne connaît pas
+            // n'est pas un croisement — elle est comptée à part, dans le
+            // panneau, parce qu'elle ne se corrige pas de la même façon.
+            let major = session
+                .cyp
+                .crossings
+                .iter()
+                .filter(|c| c.weight == crate::cyp::Weight::Major)
+                .count();
+            let cyp = if major == 0 {
+                tr("cyp_tab").to_owned()
+            } else {
+                format!("{} ({major})", tr("cyp_tab"))
+            };
             let tabs = [
                 motif::Tab::new(tr("bio_reading")),
                 motif::Tab::new(tr("watch_section")),
                 motif::Tab::new(&renal),
                 motif::Tab::new(&gravid),
+                motif::Tab::new(&cyp),
             ];
             if let Some(motif::TabAction::Select(i)) =
-                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(3))
+                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(4))
             {
-                session.bio_side_tab = i.min(3);
+                session.bio_side_tab = i.min(4);
             }
         });
         match session.bio_side_tab {
             0 => Self::bio_reading_pane(ui, session, strip[1]),
             1 => Self::bio_watch_pane(ui, session, patient, strip[1], config),
             2 => Self::bio_renal_pane(ui, session, strip[1]),
-            _ => Self::bio_gravidity_pane(ui, session, strip[1]),
+            3 => Self::bio_gravidity_pane(ui, session, strip[1]),
+            _ => Self::bio_cyp_pane(ui, session, strip[1]),
         }
         Self::bio_trend_pane(ui, session, trend);
     }
@@ -14270,6 +14300,168 @@ impl App {
     /// qui dépend du rein et dit que le chiffre manque. C'est
     /// `renal::read` qui le garantit — il n'y a pas de place, dans le
     /// type qu'il rend, pour écrire un verdict sans clairance.
+    /// Ce que cette ordonnance croise sur les cytochromes.
+    ///
+    /// Les quatre autres panneaux lisent un chiffre, une date, un
+    /// terrain. Celui-ci ne lit que l'ordonnance contre elle-même : deux
+    /// lignes se rencontrent-elles sur une enzyme ? Chaque fiche le dit
+    /// de son côté — sept cent trente-huit fois dans ce logiciel — et
+    /// les croiser demandait de les ouvrir toutes.
+    ///
+    /// **Ce que la table ne sait pas est écrit en tête**, avant les
+    /// croisements, et non en pied de page : un panneau d'interactions
+    /// qu'on croit complet est plus dangereux que pas de panneau du
+    /// tout. Et les lignes que la table ne connaît pas sont **nommées**,
+    /// parce qu'une liste vide se lit « rien à signaler ».
+    fn bio_cyp_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        use crate::cyp::{Role, Shift, Weight};
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("bio_cyp")
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    let reading = &session.cyp;
+                    // La portée, avant le contenu — **et les enzymes
+                    // nommées**, parce que « les cytochromes » est un
+                    // mot et sept enzymes est une portée. Elles sont
+                    // lues sur `Enzyme::ALL` : une enzyme ajoutée au
+                    // type se dit ici sans que personne ait à y penser.
+                    let known = crate::cyp::Enzyme::ALL
+                        .iter()
+                        .map(|e| e.label())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    // **Courte à l'écran, entière au survol.** La mise
+                    // en garde doit se voir — c'est pourquoi elle est en
+                    // tête et non en pied — mais quatre lignes de
+                    // réserves au-dessus de zéro croisement sont la
+                    // garniture qui mange le sujet, et à
+                    // `text_scale = 1,6` il ne restait qu'elle.
+                    ui.label(
+                        egui::RichText::new(tr("cyp_scope"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .on_hover_text(trf("cyp_scope_more", known));
+                    ui.add_space(6.0);
+                    if reading.crossings.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("cyp_nothing"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        );
+                    }
+                    for c in &reading.crossings {
+                        let ink = match c.weight {
+                            Weight::Major => motif::alert(),
+                            Weight::Notable => motif::text(),
+                            Weight::Minor => motif::text_dim(),
+                        };
+                        // **La ligne qui bouge en premier**, puisque
+                        // c'est d'elle qu'on parle : « Zocor, sous
+                        // Zeclar ». L'inverse — l'acteur en tête — fait
+                        // chercher des yeux à qui il arrive quelque
+                        // chose.
+                        // **Les deux citations sont au survol**, pas
+                        // dans la colonne. Ce sont des phrases entières
+                        // de fiche, deux par croisement : posées en
+                        // clair, elles repoussent le croisement suivant
+                        // sous le pli, et c'est la liste qui est le
+                        // sujet. À un geste près, elles restent là où on
+                        // va les chercher — quand on doute.
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "cyp_head",
+                                &[&c.affected, &c.actor, &c.enzyme.label()],
+                            ))
+                            .size(motif::pt(ui, 12.0))
+                            .color(ink),
+                        )
+                        .on_hover_text(format!("{}\n\n{}", c.sources.0, c.sources.1));
+                        // Le sens, et de quoi : une prodrogue perd son
+                        // effet là où un substrat ordinaire s'accumule,
+                        // et les deux phrases ne se ressemblent pas.
+                        let role = match c.role {
+                            Role::Inducer => tr("cyp_role_inducer"),
+                            _ => tr("cyp_role_inhibitor"),
+                        };
+                        ui.label(
+                            egui::RichText::new(format!("{role} — {}", c.shift.label()))
+                                .size(motif::pt(ui, 11.5))
+                                .color(
+                                    if matches!(c.shift, Shift::ActivityDown | Shift::ActivityUp) {
+                                        // L'inversion de la prodrogue est ce
+                                        // qu'on lit de travers : elle porte
+                                        // l'encre qui arrête l'œil.
+                                        motif::alert()
+                                    } else {
+                                        motif::text()
+                                    },
+                                ),
+                        );
+                        // **Le poids avec les deux forces dont il
+                        // sort**, et non sur une ligne à lui : il est
+                        // leur conséquence, et les séparer faisait lire
+                        // trois choses là où il y en a une. Chaque force
+                        // dans son vocabulaire — « puissant » d'un
+                        // inhibiteur et « voie principale » d'un
+                        // substrat ne mesurent pas la même chose.
+                        ui.label(
+                            egui::RichText::new(trn(
+                                "cyp_forces",
+                                &[
+                                    &c.weight.label(),
+                                    &c.actor_label,
+                                    &Self::cyp_force(c.actor_force, c.role),
+                                    &c.affected_label,
+                                    &Self::cyp_force(c.substrate_force, Role::Substrate),
+                                ],
+                            ))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                        );
+                        ui.add_space(8.0);
+                    }
+                    // **Les lignes que la table ne connaît pas.** Une
+                    // liste de croisements sans elles se lit « rien à
+                    // signaler » sur une ordonnance dont six lignes sur
+                    // huit sont muettes.
+                    if !reading.unknown.is_empty() {
+                        motif::section(ui, tr("cyp_unknown_section"));
+                        ui.label(
+                            egui::RichText::new(reading.unknown.join(", "))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text()),
+                        );
+                        ui.label(
+                            egui::RichText::new(tr("cyp_unknown_note"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                    }
+                    ui.add_space(8.0);
+                    ui.label(
+                        egui::RichText::new(tr("cyp_decision"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                    ui.add_space(6.0);
+                });
+        });
+    }
+
+    /// Comment une force se dit, **ou qu'elle n'est pas chiffrée**.
+    ///
+    /// `None` n'est pas « faible » : c'est une fiche qui nomme l'enzyme
+    /// sans qualifier ce qu'elle en fait, et l'écrire « faible » serait
+    /// inventer le seul chiffre qui décide de l'ordre de lecture.
+    fn cyp_force(force: Option<crate::cyp::Force>, role: crate::cyp::Role) -> String {
+        match force {
+            Some(f) => f.label(role).to_owned(),
+            None => tr("cyp_force_unstated").to_owned(),
+        }
+    }
+
     fn bio_renal_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
         use crate::renal::Level;
         motif::inside(ui, rect, |ui| {

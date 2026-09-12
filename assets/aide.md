@@ -55,6 +55,25 @@ rendez-vous — est écrit contre ce que l'écran affichait. Si un autre
 poste a modifié la même ligne entre-temps, l'écriture est refusée et
 l'écran se recharge plutôt que d'écraser le travail de quelqu'un.
 
+## Ce que l'ordonnance dit d'elle-même
+
+Sous la biologie, cinq lectures de la même ordonnance : l'interprétation
+des résultats, ce qui n'a pas été demandé depuis trop longtemps, ce que
+la clairance du jour change, ce que la grossesse et l'allaitement
+changent, et les croisements sur les cytochromes.
+
+Le dernier répond à « ces deux lignes se rencontrent-elles sur une
+enzyme ? ». Il **ne connaît que sept cytochromes** : ni la glycoprotéine
+P, ni les transporteurs hépatiques, ni les additions d'effets — deux
+sédatifs ne se rencontrent sur aucune enzyme et s'additionnent quand
+même. Une ordonnance sans croisement n'est pas une ordonnance sans
+interaction, et les lignes que la table ne connaît pas sont **nommées**
+plutôt que passées sous silence.
+
+Une prodrogue s'y lit à l'envers, et c'est écrit sur la ligne : freiner
+l'enzyme qui fabrique le métabolite actif du clopidogrel, de la codéine
+ou du tramadol ne les fait pas s'accumuler, cela supprime leur effet.
+
 # Les entretiens
 
 Un acte porte sa thématique, son état, sa date, sa durée et les

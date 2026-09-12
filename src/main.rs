@@ -12,6 +12,7 @@ mod conciliation;
 mod config;
 mod content;
 mod crush;
+mod cyp;
 mod date;
 mod db;
 mod entretien;

@@ -41375,6 +41375,21 @@ mod tests {
                     // diurétique est exactement l'ordonnance dont la
                     // fonction rénale décide.
                     ("Glucophage", "1000 mg matin et soir"),
+                    // Et un macrolide, pour sept jours : c'est l'onglet
+                    // « Cytochromes » qui en a besoin, exactement comme
+                    // la metformine est là pour celui du rein. Sans
+                    // acteur sur l'ordonnance, le panneau s'ouvre sur
+                    // « aucun croisement » — ce qui ne prouve pas qu'il
+                    // sait croiser.
+                    //
+                    // Clinique, aussi, et c'est l'interaction la plus
+                    // classique du comptoir : une bronchite chez un
+                    // homme sous statine, et la clarithromycine qui
+                    // freine le CYP3A4 par lequel l'atorvastatine
+                    // s'élimine. Elle croise l'apixaban en même temps,
+                    // plus faiblement, si bien que la démonstration
+                    // montre aussi que les croisements se classent.
+                    ("Zeclar", "500 mg matin et soir, 7 jours"),
                 ] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();
