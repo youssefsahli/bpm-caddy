@@ -26380,14 +26380,44 @@ impl App {
                     .iter()
                     .filter(|r| r.date == *date)
                     .collect();
-                let max_blocks = ((col.height() - 32.0 - digest_h) / 24.0).max(0.0) as usize;
+                // Entries that are not acts, in their own muted colour.
+                let day_events: Vec<&db::Event> =
+                    grid_events.iter().filter(|e| e.day == *date).collect();
+                // **La hauteur d'un bloc vient de sa fonte.** Elle valait
+                // vingt-et-un pixels, avec un pas de vingt-quatre, quelle
+                // que soit `[ui] text_scale` — or à 1,6 une ligne de
+                // onze points mesure vingt-et-un pixels à elle seule, et
+                // le libellé remplissait son bloc bord à bord. Mesurée,
+                // la colonne montre moins de rangées quand le texte
+                // grossit, ce qui est la vérité de l'écran, au lieu de
+                // les tasser.
+                let blk_h = ui
+                    .fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0))))
+                    + 4.0;
+                let pitch = blk_h + 3.0;
+                let top0 = col.top() + 30.0 + digest_h;
+                let room = ((col.bottom() - top0) / pitch).max(0.0) as usize;
+                let total = day_rdvs.len() + day_events.len();
+                // **Ce qui ne tient pas se compte, et le compte a sa
+                // place.** Le « +N » ne portait que les rendez-vous : une
+                // colonne de trois rendez-vous et cinq entrées en montrait
+                // quatre et perdait les quatre autres sans un mot. Et il
+                // était peint à huit pixels du bas, c'est-à-dire
+                // par-dessus le dernier bloc, qu'il rendait illisible en
+                // annonçant ce qui manquait.
+                //
+                // Il compte donc tout ce qui n'est pas dessiné, et prend
+                // une place de bloc au lieu d'en couvrir une : une rangée
+                // en moins vaut mieux qu'une rangée illisible.
+                let max_blocks = if total > room {
+                    room.saturating_sub(1)
+                } else {
+                    room
+                };
                 for (bi, rdv) in day_rdvs.iter().take(max_blocks).enumerate() {
                     let block = egui::Rect::from_min_size(
-                        egui::pos2(
-                            col.left() + 3.0,
-                            col.top() + 30.0 + digest_h + bi as f32 * 24.0,
-                        ),
-                        egui::vec2(col.width() - 6.0, 21.0),
+                        egui::pos2(col.left() + 3.0, top0 + bi as f32 * pitch),
+                        egui::vec2(col.width() - 6.0, blk_h),
                     );
                     // La colonne du jour garde ses entrées dans l'ordre,
                     // et un éteint reste à sa ligne : la semaine ne se
@@ -26436,21 +26466,12 @@ impl App {
                         *open_id = Some(rdv.patient_id);
                     }
                 }
-                // Entries that are not acts, in their own muted colour.
-                let day_events: Vec<&db::Event> =
-                    grid_events.iter().filter(|e| e.day == *date).collect();
                 let used = day_rdvs.len().min(max_blocks);
-                for (ei, ev) in day_events
-                    .iter()
-                    .take(max_blocks.saturating_sub(used))
-                    .enumerate()
-                {
+                let ev_used = day_events.len().min(max_blocks - used);
+                for (ei, ev) in day_events.iter().take(ev_used).enumerate() {
                     let block = egui::Rect::from_min_size(
-                        egui::pos2(
-                            col.left() + 3.0,
-                            col.top() + 30.0 + digest_h + (used + ei) as f32 * 24.0,
-                        ),
-                        egui::vec2(col.width() - 6.0, 21.0),
+                        egui::pos2(col.left() + 3.0, top0 + (used + ei) as f32 * pitch),
+                        egui::vec2(col.width() - 6.0, blk_h),
                     );
                     let fill = motif::bg_dark();
                     ui.painter().rect_filled(block, 0.0, fill);
@@ -26503,14 +26524,29 @@ impl App {
                 {
                     *pick_day = Some(date.clone());
                 }
-                if day_rdvs.len() > max_blocks {
+                let hidden = total - used - ev_used;
+                if hidden > 0 {
+                    let slot = egui::Rect::from_min_size(
+                        egui::pos2(col.left() + 3.0, top0 + (used + ev_used) as f32 * pitch),
+                        egui::vec2(col.width() - 6.0, blk_h),
+                    );
                     ui.painter().text(
-                        egui::pos2(col.center().x, col.bottom() - 8.0),
+                        slot.center(),
                         egui::Align2::CENTER_CENTER,
-                        format!("+{}", day_rdvs.len() - max_blocks),
+                        format!("+{hidden}"),
                         egui::FontId::proportional(motif::pt(ui, 11.0)),
                         motif::text(),
                     );
+                    // Et il se clique : « il y en a trois de plus » est
+                    // une phrase qui appelle « montre-les », et la
+                    // journée détaillée est juste en dessous.
+                    if ui
+                        .interact(slot, ui.id().with(("wkmore", i)), egui::Sense::click())
+                        .on_hover_text(trf("agenda_more_tooltip", hidden))
+                        .clicked()
+                    {
+                        *pick_day = Some(date.clone());
+                    }
                 }
             }
         }
