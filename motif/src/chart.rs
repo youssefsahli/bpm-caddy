@@ -270,6 +270,39 @@ pub struct Row<'a> {
 /// Bounded both ways: never more than half the plot, or a long caption
 /// would leave no bar to look at; never less than a few characters. And
 /// what still does not fit is elided rather than painted over the bar.
+/// La hauteur d'une rangée d'[`hbars`] et la taille de son libellé.
+///
+/// **Le libellé d'un graphe est du texte, et il suit `[ui] text_scale`
+/// comme le reste.** Il ne le suivait pas : la rangée était bornée
+/// entre quatorze et trente pixels, la police entre dix et treize, et
+/// ces bornes-là sont des nombres de pixels. À l'échelle 1,6 les titres,
+/// les boutons et les chiffres grandissaient de moitié pendant que les
+/// légendes des barres restaient à treize pixels — le plus petit texte
+/// de l'écran était le seul à ne pas bouger, c'est-à-dire justement
+/// celui que veut agrandir qui agrandit la police.
+///
+/// Deux bornes ne changent pas, et pour deux raisons différentes :
+///
+/// * Le **plancher** de la rangée reste en pixels bruts. C'est lui qui
+///   décide, quand les rangées sont nombreuses, de combien le graphe
+///   déborde de son rectangle ; le faire grandir ferait déborder
+///   davantage, ce qui n'est pas ce qu'on corrige ici.
+/// * La police ne dépasse jamais **72 % de sa rangée**, quelle que
+///   soit l'échelle. Une police mise à l'échelle dans une rangée qui
+///   n'y est pas se peint sur ses voisines, et deux légendes qui se
+///   chevauchent valent moins qu'une légende petite.
+///
+/// Écrite à part pour être mesurable : c'est de l'arithmétique, et
+/// l'arithmétique se vérifie sans écran.
+pub fn hbar_metrics(ui: &egui::Ui, rect: egui::Rect, rows: usize) -> (f32, f32) {
+    let room = rect.height() / rows.max(1) as f32;
+    let row_h = room.clamp(14.0, crate::pt(ui, 30.0));
+    let size = (row_h * 0.46)
+        .clamp(crate::pt(ui, 10.0), crate::pt(ui, 13.0))
+        .min(row_h * 0.72);
+    (row_h, size)
+}
+
 pub fn hbars(
     ui: &mut egui::Ui,
     rect: egui::Rect,
@@ -284,8 +317,8 @@ pub fn hbars(
         .map(|r| r.value)
         .fold(0.0_f64, f64::max)
         .max(1.0);
-    let row_h = (rect.height() / rows.len() as f32).clamp(14.0, 30.0);
-    let font = egui::FontId::proportional((row_h * 0.46).clamp(10.0, 13.0));
+    let (row_h, size) = hbar_metrics(ui, rect, rows.len());
+    let font = egui::FontId::proportional(size);
     let text_w = |t: &str| {
         ui.fonts(|f| {
             f.layout_no_wrap(t.to_owned(), font.clone(), crate::text())
@@ -691,6 +724,48 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
 #[cfg(test)]
 mod tests {
     use super::nice_max;
+
+    /// **La légende d'une barre grandit avec `[ui] text_scale`**, et
+    /// elle tient toujours dans sa rangée.
+    ///
+    /// Elle ne grandissait pas : rangée bornée entre quatorze et trente
+    /// pixels, police entre dix et treize, et ce sont des nombres de
+    /// pixels. À 1,6 tout l'écran grandissait de moitié sauf les
+    /// légendes des barres — le plus petit texte de l'écran, seul à ne
+    /// pas suivre. Vérifié en remettant les bornes en pixels bruts :
+    /// les deux échelles rendent alors exactement la même taille.
+    #[test]
+    fn a_bar_caption_follows_the_text_scale_and_stays_in_its_row() {
+        use super::egui;
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 280.0));
+        let measure = |scale: f32| {
+            let ctx = egui::Context::default();
+            crate::apply_scale(&ctx, scale, crate::Density::Comfortable);
+            let seen = std::cell::Cell::new((0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    seen.set(super::hbar_metrics(ui, rect, 13));
+                });
+            });
+            seen.get()
+        };
+        let (row_one, size_one) = measure(1.0);
+        let (row_big, size_big) = measure(1.6);
+        assert!(
+            size_big > size_one,
+            "la légende ne suit pas l'échelle : {size_one} puis {size_big}"
+        );
+        // Et elle tient dans sa rangée aux deux échelles : une police
+        // agrandie dans une rangée qui ne l'est pas se peint sur ses
+        // voisines, et deux légendes qui se chevauchent valent moins
+        // qu'une légende petite.
+        for (row, size) in [(row_one, size_one), (row_big, size_big)] {
+            assert!(
+                size <= row * 0.72 + 0.01,
+                "{size} px dans une rangée de {row}"
+            );
+        }
+    }
 
     /// One scale for every series, which is the only reason [`lines`]
     /// exists beside [`sparkline`].

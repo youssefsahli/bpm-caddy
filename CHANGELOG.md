@@ -120,6 +120,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quatre-vingt-douze pixels ne couvrent plus rien et laissent voir une
   rangée de plus, coupée. Le plafond était là pour l'éviter ; il se
   compte maintenant à partir de là où les rangées commencent vraiment.
+- **La légende d'une barre horizontale ne suivait pas `[ui]
+  text_scale`.** La rangée était bornée entre quatorze et trente
+  pixels, la police entre dix et treize, et ce sont des nombres de
+  pixels : à 1,6 les titres, les boutons et les chiffres grandissaient
+  de moitié pendant que les légendes restaient à treize. Le plus petit
+  texte de l'écran était le seul à ne pas bouger — c'est-à-dire
+  justement celui que veut agrandir qui agrandit la police. La mesure
+  est sortie dans `chart::hbar_metrics`, où un test la tient aux deux
+  échelles et vérifie qu'une légende agrandie tient encore dans sa
+  rangée.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.
