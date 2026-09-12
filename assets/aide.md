@@ -71,8 +71,15 @@ interaction, et les lignes que la table ne connaît pas sont **nommées**
 plutôt que passées sous silence.
 
 Une prodrogue s'y lit à l'envers, et c'est écrit sur la ligne : freiner
-l'enzyme qui fabrique le métabolite actif du clopidogrel, de la codéine
-ou du tramadol ne les fait pas s'accumuler, cela supprime leur effet.
+l'enzyme qui fabrique le métabolite actif du clopidogrel, de la codéine,
+du tramadol, du losartan ou du tamoxifène ne les fait pas s'accumuler,
+cela supprime leur effet.
+
+Trois réponses et non deux. Une ligne peut croiser, être **sans voie
+connue** — la table la connaît et elle ne passe par aucune des enzymes
+suivies, ce qui est la réponse qu'on cherche en se demandant par quoi
+remplacer un traitement —, ou être **inconnue de la table**, ce qui
+n'est pas la même chose et ne l'innocente pas.
 
 # Croiser une liste
 

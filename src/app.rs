@@ -9858,16 +9858,24 @@ impl App {
                                 session.set_drugs(list);
                             }
                             session.view = MainView::Ddi;
-                            session.ddi_list = ["Zeclar", "Tahor", "Eliquis", "Plavix", "Mopral"]
-                                .iter()
-                                .filter_map(|n| {
-                                    session
-                                        .drugs
-                                        .iter()
-                                        .find(|d| d.name.eq_ignore_ascii_case(n))
-                                        .map(|d| d.id)
-                                })
-                                .collect();
+                            session.ddi_list = [
+                                "Zeclar",
+                                "Tahor",
+                                "Eliquis",
+                                "Plavix",
+                                "Mopral",
+                                "Vasten",
+                                "Lopressor",
+                            ]
+                            .iter()
+                            .filter_map(|n| {
+                                session
+                                    .drugs
+                                    .iter()
+                                    .find(|d| d.name.eq_ignore_ascii_case(n))
+                                    .map(|d| d.id)
+                            })
+                            .collect();
                             session.ddi_dfg = "38".to_owned();
                         }
                         Ok("explorer") => {
@@ -14642,6 +14650,25 @@ impl App {
                             .color(motif::text_dim()),
                         );
                         ui.add_space(8.0);
+                    }
+                    // **Connues, et sans voie qui compte.** À ne pas
+                    // confondre avec les inconnues, qui suivent : « on
+                    // ne sait pas » et « on sait, et il n'y a rien »
+                    // sont deux réponses opposées, et c'est la seconde
+                    // qu'on cherche en se demandant par quoi remplacer
+                    // une simvastatine sous clarithromycine.
+                    if !reading.inert.is_empty() {
+                        motif::section(ui, tr("cyp_inert_section"));
+                        ui.label(
+                            egui::RichText::new(reading.inert.join(", "))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text()),
+                        );
+                        ui.label(
+                            egui::RichText::new(tr("cyp_inert_note"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
                     }
                     // **Les lignes que la table ne connaît pas.** Une
                     // liste de croisements sans elles se lit « rien à
@@ -29829,6 +29856,18 @@ impl App {
                 .color(motif::text_dim()),
             );
             ui.add_space(6.0);
+        }
+        if !reading.inert.is_empty() {
+            ui.label(
+                egui::RichText::new(format!(
+                    "{} {}",
+                    tr("cyp_inert_section"),
+                    reading.inert.join(", ")
+                ))
+                .size(motif::pt(ui, 11.0))
+                .color(motif::text()),
+            )
+            .on_hover_text(tr("cyp_inert_note"));
         }
         if !reading.unknown.is_empty() {
             ui.label(

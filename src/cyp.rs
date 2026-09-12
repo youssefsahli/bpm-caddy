@@ -198,6 +198,13 @@ pub struct Profile {
     pub needs: &'static [&'static str],
     /// Ce que la ligne annonce.
     pub label: &'static str,
+    /// **Vide veut dire quelque chose** : la molécule est connue, et
+    /// elle ne passe par aucune des voies que cette table suit. Ce
+    /// n'est pas « on ne sait pas » — c'est le contraire, et c'est
+    /// précisément ce qu'on veut lire en cherchant par quoi remplacer
+    /// une simvastatine sous clarithromycine. La pravastatine le dit en
+    /// toutes lettres dans sa fiche ; la taire la rendrait aussi muette
+    /// qu'un produit dont personne n'a rien écrit.
     pub actions: &'static [Action],
     /// La phrase de la fiche d'où la ligne est tirée.
     pub source: &'static str,
@@ -322,6 +329,15 @@ pub struct Reading {
     /// Les lignes dont la table ne sait rien, **nommées**. Voir la
     /// première règle du module.
     pub unknown: Vec<String>,
+    /// Les lignes que la table connaît et qui ne passent par aucune de
+    /// ses voies.
+    ///
+    /// **Ce n'est pas la même chose que `unknown`, et c'est tout
+    /// l'intérêt** : « on ne sait pas » et « on sait, et il n'y a rien »
+    /// se ressemblent sur un écran qui les tairait tous les deux, et ce
+    /// sont deux réponses opposées quand on cherche par quoi remplacer
+    /// une simvastatine sous clarithromycine.
+    pub inert: Vec<String>,
 }
 
 /// Ce que la table sait de cette ligne-là.
@@ -346,12 +362,16 @@ pub fn of(name: &str, dci: &str, class: &str, tags: &str) -> Option<&'static Pro
 pub fn cross(treatments: &[crate::revue::Treatment]) -> Reading {
     let mut known: Vec<(String, &'static Profile)> = Vec::new();
     let mut unknown: Vec<String> = Vec::new();
+    let mut inert: Vec<String> = Vec::new();
     for t in treatments {
         let name = t.name.trim().to_owned();
         if name.is_empty() {
             continue;
         }
         match of(t.name, t.dci, t.class, t.tags) {
+            // Connue, et sans voie qui compte : elle ne croise rien et
+            // ce n'est pas une ignorance. Voir `Reading::inert`.
+            Some(p) if p.actions.is_empty() => inert.push(name),
             Some(p) => known.push((name, p)),
             None => unknown.push(name),
         }
@@ -399,7 +419,11 @@ pub fn cross(treatments: &[crate::revue::Treatment]) -> Reading {
             .then(a.actor.cmp(&b.actor))
             .then(a.enzyme.cmp(&b.enzyme))
     });
-    Reading { crossings, unknown }
+    Reading {
+        crossings,
+        unknown,
+        inert,
+    }
 }
 
 use Enzyme::{Cyp1a2, Cyp2b6, Cyp2c19, Cyp2c8, Cyp2c9, Cyp2d6, Cyp3a4};
@@ -825,6 +849,490 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Haldol : « Métabolisme hépatique important par les CYP3A4 et CYP2D6 » ; « Les inhibiteurs du CYP2D6 et du CYP3A4 augmentent l'exposition ».",
     },
+    // ---- Acteurs ajoutés en 0.200.0 ----
+    Profile {
+        needs: &["carbamazepine"],
+        label: "Carbamazépine",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, Some(Strong)),
+            Action::new(Cyp2c9, Inducer, Some(Strong)),
+            Action::new(Cyp2b6, Inducer, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+        ],
+        source: "Tégrétol : « Inducteur enzymatique puissant des CYP3A4, CYP2C9, CYP2B6 » ; « Les inhibiteurs du CYP3A4 augmentent la carbamazépinémie avec risque de surdosage ».",
+    },
+    Profile {
+        needs: &["oxcarbazepine"],
+        label: "Oxcarbazépine",
+        actions: &[Action::new(Cyp3a4, Inducer, None)],
+        source: "Trileptal : « l'oxcarbazépine induit le CYP3A4 et réduit l'efficacité des estroprogestatifs » — la fiche ne qualifie pas la force.",
+    },
+    Profile {
+        needs: &["enzalutamide", "xtandi"],
+        label: "Enzalutamide",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, Some(Strong)),
+            Action::new(Cyp2c9, Inducer, None),
+            Action::new(Cyp2c19, Inducer, None),
+            Action::new(Cyp2c8, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Xtandi : « L'enzalutamide est un inducteur puissant du CYP3A4 et un inducteur du CYP2C9 et du CYP2C19 » ; « Substrat du CYP2C8 et du CYP3A4 ».",
+    },
+    Profile {
+        needs: &["gemfibrozil"],
+        label: "Gemfibrozil",
+        actions: &[Action::new(Cyp2c8, Inhibitor, Some(Strong))],
+        source: "Lipur : « Le gemfibrozil est un inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée ».",
+    },
+    Profile {
+        needs: &["aprepitant"],
+        label: "Aprépitant",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
+            Action::new(Cyp2c9, Inducer, None),
+        ],
+        source: "Emend : « Inhibition modérée du CYP3A4 » ; « Induction du CYP2C9 : diminution de l'effet des anti-vitamine K ».",
+    },
+    Profile {
+        needs: &["modafinil"],
+        label: "Modafinil",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, None),
+            Action::new(Cyp2c19, Inhibitor, None),
+        ],
+        source: "Modiodal : « Inducteur du CYP3A4 » ; « Inhibiteur du CYP2C19 : concentrations augmentées de diazépam, de phénytoïne, d'oméprazole ».",
+    },
+    Profile {
+        needs: &["mirabegron"],
+        label: "Mirabégron",
+        actions: &[
+            Action::new(Cyp2d6, Inhibitor, Some(Moderate)),
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp2d6, Substrate, None),
+        ],
+        source: "Betmiga : « le mirabégron est un inhibiteur modéré du CYP2D6 » ; « Métabolisme multiple faisant intervenir la glucuronoconjugaison, les estérases, le CYP3A4 et le CYP2D6 ».",
+    },
+    Profile {
+        needs: &["roxithromycine"],
+        label: "Roxithromycine",
+        actions: &[Action::new(Cyp3a4, Inhibitor, Some(Moderate))],
+        source: "Rulid : « Inhibition du CYP3A4 plus modérée qu'avec la clarithromycine mais réelle ».",
+    },
+    Profile {
+        needs: &["pristinamycine"],
+        label: "Pristinamycine",
+        actions: &[Action::new(Cyp3a4, Inhibitor, None)],
+        source: "Pyostacine : « Inhibiteur du CYP3A4 : l'association à l'ergotamine et à la dihydroergotamine est contre-indiquée ».",
+    },
+    Profile {
+        needs: &["isoniazide", "rimifon"],
+        label: "Isoniazide",
+        actions: &[
+            Action::new(Cyp2c19, Inhibitor, None),
+            Action::new(Cyp3a4, Inhibitor, None),
+        ],
+        source: "Rimifon : « Inhibiteur du CYP2C19 et du CYP3A4 : élévation des concentrations de carbamazépine, de phénytoïne, de diazépam ».",
+    },
+    // **L'hydroquinidine, et non « la quinidine »** : c'est la fiche que
+    // le logiciel livre, et un motif « quinidine » l'attraperait sous un
+    // autre nom que le sien.
+    Profile {
+        needs: &["hydroquinidine"],
+        label: "Hydroquinidine",
+        actions: &[
+            Action::new(Cyp2d6, Inhibitor, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Hydroquinidine : « Inhibiteur puissant du CYP2D6 : concentrations augmentées des bêta-bloquants métabolisés par cette voie, des antidépresseurs et de la codéine, dont l'efficacité antalgique est abolie ».",
+    },
+    Profile {
+        needs: &["ticlopidine"],
+        label: "Ticlopidine",
+        actions: &[Action::new(Cyp2c19, Inhibitor, None)],
+        source: "Ticlopidine : « La ticlopidine inhibe le CYP2C19 et augmente l'exposition à la phénytoïne et à certaines benzodiazépines ».",
+    },
+    // **Le rabéprazole freine faiblement, et sa fiche le chiffre** :
+    // c'est ce qui le sépare de l'oméprazole devant un clopidogrel.
+    Profile {
+        needs: &["rabeprazole"],
+        label: "Rabéprazole",
+        actions: &[
+            Action::new(Cyp2c19, Inhibitor, Some(Weak)),
+            Action::new(Cyp2c19, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Pariet : « l'inhibition du CYP2C19 par le rabéprazole est faible et l'association est jugée acceptable, contrairement à l'oméprazole et à l'ésoméprazole ».",
+    },
+    // **Le pantoprazole n'est pas inhibiteur**, et c'est pour cela qu'on
+    // le choisit sous clopidogrel. Il reste substrat.
+    Profile {
+        needs: &["pantoprazole"],
+        label: "Pantoprazole",
+        actions: &[
+            Action::new(Cyp2c19, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Inipomp : « Le pantoprazole est le moins inhibiteur du CYP2C19 parmi les IPP, ce qui fonde sa place chez les patients sous clopidogrel » ; « Métabolisme hépatique par le CYP2C19 puis le CYP3A4 ».",
+    },
+    Profile {
+        needs: &["imatinib"],
+        label: "Imatinib",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Inhibitor, None),
+            Action::new(Cyp2c9, Inhibitor, None),
+        ],
+        source: "Glivec : « Substrat majeur du CYP3A4 » ; « L'imatinib inhibe le CYP3A4 et le CYP2C9 : majoration de l'effet des AVK ».",
+    },
+    Profile {
+        needs: &["duloxetine"],
+        label: "Duloxétine",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Inhibitor, Some(Moderate)),
+        ],
+        source: "Cymbalta : « Association contre-indiquée aux inhibiteurs puissants du CYP1A2, qui multiplient l'exposition » ; « Inhibiteur modéré du CYP2D6 ».",
+    },
+    // ---- Substrats ajoutés en 0.200.0 ----
+    Profile {
+        needs: &["ciclosporine"],
+        label: "Ciclosporine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Néoral : « Métabolisme hépatique et intestinal extensif par le CYP3A4 avec efflux par la glycoprotéine P » ; jus de pamplemousse « formellement interdit ».",
+    },
+    Profile {
+        needs: &["quetiapine"],
+        label: "Quétiapine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Xeroquel : « Métabolisme hépatique extensif, principalement par le CYP3A4 » ; « Les inhibiteurs puissants du CYP3A4 sont contre-indiqués ».",
+    },
+    Profile {
+        needs: &["clozapine", "leponex"],
+        label: "Clozapine",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Cyp2d6, Substrate, Some(Weak)),
+        ],
+        source: "Leponex : « Métabolisme hépatique presque complet par les CYP1A2 et CYP3A4, avec contribution du CYP2D6 » ; « Les inhibiteurs du CYP1A2 augmentent fortement la clozapinémie ».",
+    },
+    Profile {
+        needs: &["theophylline", "euphylline"],
+        label: "Théophylline",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Weak)),
+        ],
+        source: "Euphylline : « Métabolisme hépatique majoritaire, principalement par le CYP1A2 avec participation du CYP3A4 ».",
+    },
+    Profile {
+        needs: &["melatonine"],
+        label: "Mélatonine",
+        actions: &[Action::new(Cyp1a2, Substrate, Some(Strong))],
+        source: "Circadin : « La fluvoxamine, inhibiteur puissant du CYP1A2, augmente massivement l'exposition à la mélatonine ».",
+    },
+    Profile {
+        needs: &["ropinirole"],
+        label: "Ropinirole",
+        actions: &[Action::new(Cyp1a2, Substrate, Some(Strong))],
+        source: "Requip : « Métabolisme hépatique important par le CYP1A2 en métabolites inactifs ».",
+    },
+    Profile {
+        needs: &["diazepam"],
+        label: "Diazépam",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2c19, Substrate, Some(Strong)),
+        ],
+        source: "Valium : « Métabolisme hépatique par les CYP3A4 et CYP2C19 en métabolites actifs » ; « Les inhibiteurs du CYP3A4 et du CYP2C19 augmentent nettement l'exposition ».",
+    },
+    // **Prodrogue** : le losartan n'agit que par son métabolite, et
+    // freiner le CYP2C9 ne l'accumule pas, cela le désarme.
+    Profile {
+        needs: &["losartan"],
+        label: "Losartan",
+        actions: &[
+            Action::prodrug(Cyp2c9, None),
+            Action::prodrug(Cyp3a4, None),
+        ],
+        source: "Cozaar : « Métabolisme hépatique de premier passage par les CYP2C9 et CYP3A4 vers le métabolite actif ».",
+    },
+    // **Prodrogue** : la paroxétine ne majore pas le tamoxifène, elle
+    // le rend inefficace — et c'est un traitement du cancer du sein.
+    Profile {
+        needs: &["tamoxifene"],
+        label: "Tamoxifène",
+        actions: &[
+            Action::prodrug(Cyp2d6, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Tamoxifène : « L'interaction majeure concerne le CYP2D6, qui transforme le tamoxifène en endoxifène, son métabolite actif » ; « leur association fait chuter les concentrations d'endoxifène et compromet l'efficacité antitumorale ».",
+    },
+    // **Prodrogue** : sans CYP2D6, pas de morphine, donc pas d'effet.
+    Profile {
+        needs: &["codeine"],
+        label: "Codéine",
+        // **Seulement le CYP2D6.** La 3A4 déméthyle aussi la codéine,
+        // mais la fiche ne le dit pas : le test l'a refusée, et il a eu
+        // raison — une table qui en sait plus que la fiche se corrige
+        // dans la fiche, pas ici.
+        actions: &[Action::prodrug(Cyp2d6, Some(Strong))],
+        source: "Néo-Codion : « la codéine, transformée en morphine par le CYP2D6 » ; « Inhibiteurs du CYP2D6 : conversion en morphine réduite, donc perte d'efficacité ».",
+    },
+    Profile {
+        needs: &["dextromethorphane"],
+        label: "Dextrométhorphane",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Tussidane : « principalement O-déméthylation en dextrorphane par le CYP2D6 avec participation du CYP3A4 » ; « Inhibiteurs puissants du CYP2D6 : augmentation importante de l'exposition ».",
+    },
+    Profile {
+        needs: &["metoprolol"],
+        label: "Métoprolol",
+        actions: &[Action::new(Cyp2d6, Substrate, Some(Strong))],
+        source: "Lopressor : « Métabolisme hépatique presque complet par le CYP2D6 » ; « Inhibiteurs puissants du CYP2D6 : exposition fortement augmentée, bradycardie ».",
+    },
+    Profile {
+        needs: &["carvedilol"],
+        label: "Carvédilol",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, Some(Strong)),
+            Action::new(Cyp2c9, Substrate, None),
+        ],
+        source: "Kredex : « Métabolisme hépatique important, notamment par le CYP2D6 et le CYP2C9 ».",
+    },
+    Profile {
+        needs: &["nebivolol"],
+        label: "Nébivolol",
+        actions: &[Action::new(Cyp2d6, Substrate, Some(Strong))],
+        source: "Temerit : « Métabolisme hépatique important par le CYP2D6, avec un polymorphisme génétique marqué ».",
+    },
+    Profile {
+        needs: &["propafenone"],
+        label: "Propafénone",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Rythmol : « Métabolisme hépatique important, saturable, principalement par le CYP2D6 » ; « Inhibiteurs du CYP2D6 et du CYP3A4 : concentrations fortement augmentées ».",
+    },
+    Profile {
+        needs: &["flecainide"],
+        label: "Flécaïnide",
+        actions: &[Action::new(Cyp2d6, Substrate, Some(Strong))],
+        source: "Flécaïne : « Le flécaïnide est métabolisé par le CYP2D6 : la fluoxétine, la paroxétine, la quinidine, le bupropion et la terbinafine augmentent son exposition et exposent au surdosage ».",
+    },
+    Profile {
+        needs: &["atomoxetine"],
+        label: "Atomoxétine",
+        actions: &[Action::new(Cyp2d6, Substrate, Some(Strong))],
+        source: "Strattera : « Métabolisme hépatique principalement par le CYP2D6 en 4-hydroxyatomoxétine ».",
+    },
+    Profile {
+        needs: &["dronedarone"],
+        label: "Dronédarone",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Multaq : « Métabolisme hépatique important par le CYP3A4 » ; « Les inhibiteurs puissants du CYP3A4 sont contre-indiqués ».",
+    },
+    Profile {
+        needs: &["amiodarone"],
+        label: "Amiodarone",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Cordarone : « Métabolisme hépatique important, notamment par le CYP3A4, en déséthylamiodarone active ».",
+    },
+    Profile {
+        needs: &["ivabradine"],
+        label: "Ivabradine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Procoralan : « Métabolisme hépatique et intestinal exclusivement par le CYP3A4 » ; « Contre-indication avec les inhibiteurs puissants du CYP3A4 ».",
+    },
+    Profile {
+        needs: &["eplerenone"],
+        label: "Éplérénone",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Inspra : « Métabolisme hépatique par le CYP3A4 » ; « Les inhibiteurs puissants du CYP3A4 sont contre-indiqués ».",
+    },
+    Profile {
+        needs: &["repaglinide"],
+        label: "Répaglinide",
+        actions: &[
+            Action::new(Cyp2c8, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+        ],
+        source: "Novonorm : « Métabolisme hépatique complet par les CYP2C8 et CYP3A4 » ; « Gemfibrozil : contre-indication absolue, l'inhibition du CYP2C8 multipliant l'exposition avec des hypoglycémies sévères ».",
+    },
+    Profile {
+        needs: &["gliclazide"],
+        label: "Gliclazide",
+        actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
+        source: "Diamicron : « Métabolisme hépatique extensif, principalement par le CYP2C9 ».",
+    },
+    Profile {
+        needs: &["glimepiride"],
+        label: "Glimépiride",
+        actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
+        source: "Amarel : « Métabolisme hépatique complet par le CYP2C9 en deux métabolites dont l'un est faiblement actif ».",
+    },
+    Profile {
+        needs: &["celecoxib"],
+        label: "Célécoxib",
+        actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
+        source: "Celebrex : « Il est métabolisé par le CYP2C9 » ; « fluconazole, qui double l'exposition et impose de commencer à demi-dose ».",
+    },
+    Profile {
+        needs: &["diclofenac"],
+        label: "Diclofénac",
+        actions: &[
+            Action::new(Cyp2c9, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Voltarène : « Métabolisme hépatique par les CYP2C9 et CYP3A4 ».",
+    },
+    Profile {
+        needs: &["ibuprofene"],
+        label: "Ibuprofène",
+        actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
+        source: "Nurofen : « Métabolisme hépatique par le CYP2C9 puis élimination urinaire des métabolites ».",
+    },
+    Profile {
+        needs: &["montelukast"],
+        label: "Montélukast",
+        actions: &[
+            Action::new(Cyp2c8, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp2c9, Substrate, None),
+        ],
+        source: "Singulair : « Métabolisme hépatique important par les CYP2C8, CYP3A4 et CYP2C9 ».",
+    },
+    Profile {
+        needs: &["fluvastatine"],
+        label: "Fluvastatine",
+        actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
+        source: "Fluvastatine : « Métabolisme hépatique important, essentiellement par le CYP2C9 » ; « la fluconazole et les autres inhibiteurs puissants du CYP2C9 augmentent son exposition ».",
+    },
+    Profile {
+        needs: &["sildenafil"],
+        label: "Sildénafil",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2c9, Substrate, None),
+        ],
+        source: "Viagra : « Métabolisme hépatique par les CYP3A4 et CYP2C9 » ; « Les inhibiteurs puissants du CYP3A4 augmentent nettement l'exposition ».",
+    },
+    Profile {
+        needs: &["tadalafil"],
+        label: "Tadalafil",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Cialis : « Métabolisme hépatique prédominant par le CYP3A4 » ; « Les inhibiteurs puissants du CYP3A4 augmentent fortement l'exposition ».",
+    },
+    Profile {
+        needs: &["donepezil"],
+        label: "Donépézil",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp2d6, Substrate, None),
+        ],
+        source: "Aricept : « Métabolisme hépatique par les CYP3A4 et CYP2D6 et glucuronoconjugaison ».",
+    },
+    Profile {
+        needs: &["galantamine"],
+        label: "Galantamine",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Reminyl : « Métabolisme hépatique par les CYP2D6 et CYP3A4 ».",
+    },
+    Profile {
+        needs: &["oxybutynine"],
+        label: "Oxybutynine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Ditropan : « Métabolisme hépatique important par le CYP3A4, avec un métabolite actif ».",
+    },
+    Profile {
+        needs: &["solifenacine"],
+        label: "Solifénacine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Vesicare : « Métabolisme hépatique principalement par le CYP3A4 » ; les inhibiteurs puissants « imposent de limiter la dose à 5 mg par jour ».",
+    },
+    Profile {
+        needs: &["alfuzosine"],
+        label: "Alfuzosine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Xatral : « Métabolisme hépatique important par le CYP3A4 » ; les inhibiteurs puissants « sont contre-indiqués ou déconseillés ».",
+    },
+    Profile {
+        needs: &["amlodipine"],
+        label: "Amlodipine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Amlor : « Métabolisme hépatique extensif par le CYP3A4 en métabolites inactifs ».",
+    },
+    Profile {
+        needs: &["hydroxyzine"],
+        label: "Hydroxyzine",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Atarax : « Métabolisme hépatique important, notamment par l'alcool déshydrogénase et le CYP3A4 ».",
+    },
+    Profile {
+        needs: &["mefloquine"],
+        label: "Méfloquine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Lariam : « Métabolisme hépatique important par le CYP3A4 en métabolites inactifs ».",
+    },
+    Profile {
+        needs: &["ondansetron"],
+        label: "Ondansétron",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp2d6, Substrate, None),
+        ],
+        source: "Zophren : « Métabolisme hépatique étendu par les CYP3A4, CYP1A2 et CYP2D6 ».",
+    },
+    Profile {
+        needs: &["imipramine"],
+        label: "Imipramine",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, None),
+            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Tofranil : « Métabolisme hépatique par les CYP2D6, CYP1A2 et CYP3A4 en désipramine active ».",
+    },
+    Profile {
+        needs: &["buspirone"],
+        label: "Buspirone",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Buspirone : « Métabolisme hépatique important par le CYP3A4 avec un effet de premier passage majeur » ; les inhibiteurs puissants donnent une « exposition fortement augmentée ».",
+    },
+    Profile {
+        needs: &["buprenorphine", "subutex"],
+        label: "Buprénorphine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Subutex : « Métabolisme hépatique par le CYP3A4 en norbuprénorphine » ; « Inhibiteurs puissants du CYP3A4 : exposition augmentée ».",
+    },
+    Profile {
+        needs: &["methadone"],
+        label: "Méthadone",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2b6, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Substrate, None),
+        ],
+        source: "Méthadone : « Métabolisme hépatique important, principalement par les CYP3A4, CYP2B6 et CYP2D6 ».",
+    },
+    // **Connue, et sans voie qui compte.** Ce n'est pas une ignorance :
+    // c'est la réponse qu'on cherche en se demandant par quoi remplacer
+    // une simvastatine sous clarithromycine, et la fiche l'écrit.
+    Profile {
+        needs: &["pravastatine"],
+        label: "Pravastatine",
+        actions: &[],
+        source: "Vasten : « elle n'est pas métabolisée par le CYP3A4 » ; Elisor : « la pravastatine n'étant pas métabolisée de façon notable par le CYP3A4 : ni le pamplemousse ni les macrolides ni les azolés ne posent le problème observé avec la simvastatine ».",
+    },
     Profile {
         needs: &["olanzapine"],
         label: "Olanzapine",
@@ -942,6 +1450,78 @@ mod tests {
         let r = cross(&[t("Rovamycine", "spiramycine"), t("Zocor", "simvastatine")]);
         assert!(r.crossings.is_empty());
         assert_eq!(r.unknown, vec!["Rovamycine".to_owned()]);
+    }
+
+    /// **« On ne sait pas » et « on sait, et il n'y a rien » sont deux
+    /// réponses opposées.**
+    ///
+    /// C'est la question qu'on pose vraiment sous clarithromycine : par
+    /// quoi remplacer la simvastatine ? La pravastatine y répond, et sa
+    /// fiche l'écrit — « elle n'est pas métabolisée par le CYP3A4 ».
+    /// La ranger avec les inconnues la rendrait aussi muette qu'un
+    /// produit dont personne n'a rien écrit.
+    #[test]
+    fn a_molecule_with_no_route_is_not_a_molecule_nobody_knows() {
+        let r = cross(&[
+            t("Zeclar", "clarithromycine"),
+            t("Vasten", "pravastatine"),
+            t("Doliprane", "paracétamol"),
+        ]);
+        assert!(r.crossings.is_empty(), "{:?}", r.crossings);
+        assert_eq!(r.inert, vec!["Vasten".to_owned()]);
+        assert_eq!(r.unknown, vec!["Doliprane".to_owned()]);
+    }
+
+    /// **Le choix de l'IPP sous clopidogrel, tel que les fiches
+    /// l'écrivent.**
+    ///
+    /// Les trois se ressemblent sur une ordonnance et ne font pas la
+    /// même chose : l'oméprazole et l'ésoméprazole freinent le CYP2C19
+    /// qui active le clopidogrel, le rabéprazole le freine faiblement et
+    /// sa fiche juge l'association acceptable, le pantoprazole est « le
+    /// moins inhibiteur du CYP2C19 parmi les IPP, ce qui fonde sa place
+    /// chez les patients sous clopidogrel ». C'est la substitution la
+    /// plus fréquente du comptoir, et un moteur par classe la rate.
+    #[test]
+    fn the_ppi_that_disarms_clopidogrel_is_not_the_one_that_replaces_it() {
+        let effet = |ipp: (&str, &str)| {
+            cross(&[t(ipp.0, ipp.1), t("Plavix", "clopidogrel")])
+                .crossings
+                .into_iter()
+                .find(|c| c.affected == "Plavix")
+                .map(|c| (c.shift, c.actor_force))
+        };
+        // Celui qu'on évite : l'effet tombe.
+        assert_eq!(
+            effet(("Mopral", "oméprazole")),
+            Some((Shift::ActivityDown, Some(Force::Moderate)))
+        );
+        assert_eq!(
+            effet(("Inexium", "ésoméprazole")),
+            Some((Shift::ActivityDown, Some(Force::Moderate)))
+        );
+        // Celui qu'on tolère : même sens, force faible, et l'écran le
+        // dit — le croisement n'est pas caché, il est pesé.
+        assert_eq!(
+            effet(("Pariet", "rabéprazole")),
+            Some((Shift::ActivityDown, Some(Force::Weak)))
+        );
+        // Et celui qu'on prend : aucun croisement du tout.
+        assert_eq!(effet(("Inipomp", "pantoprazole")), None);
+    }
+
+    /// **Un kétoconazole local n'est pas un kétoconazole.**
+    ///
+    /// Sa fiche l'écrit : « Aucune interaction systémique cliniquement
+    /// significative n'est attendue avec les formes locales ». Une table
+    /// qui raisonnerait sur la molécule mettrait un shampooing en face
+    /// d'une simvastatine, ce qui est le genre d'alerte qui apprend à
+    /// ignorer les alertes.
+    #[test]
+    fn a_topical_azole_does_not_cross_anything() {
+        let r = cross(&[t("Kétoderm", "kétoconazole"), t("Zocor", "simvastatine")]);
+        assert!(r.crossings.is_empty(), "{:?}", r.crossings);
+        assert_eq!(r.unknown, vec!["Kétoderm".to_owned()]);
     }
 
     /// **Une molécule n'agit pas sur elle-même**, et deux lignes d'une
@@ -1126,7 +1706,6 @@ mod tests {
         let mut seen: Vec<&str> = Vec::new();
         for p in TABLE {
             assert!(!p.needs.is_empty(), "{} n'a pas de motif", p.label);
-            assert!(!p.actions.is_empty(), "{} ne fait rien", p.label);
             assert!(p.source.len() > 30, "{} : source trop courte", p.label);
             assert!(!seen.contains(&p.label), "{} est en double", p.label);
             seen.push(p.label);
