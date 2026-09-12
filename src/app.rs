@@ -21412,9 +21412,32 @@ impl App {
         open_id: &mut Option<i64>,
     ) {
         let day = session.agenda_day.clone();
-        let start = config.ui.day_start_hour.min(23);
-        let end = config.ui.day_end_hour.clamp(start + 1, 24);
-        let hours = (end - start) as f32;
+        // Where each entry of the day belongs: its own lane, computed
+        // over the whole day rather than per hour bucket, so the columns
+        // do not shift from one hour to the next.
+        //
+        // **Calculé avant la géométrie**, parce que c'est lui qui décide
+        // de la plage : voir `agenda::span`.
+        let (entries, states, clashing) = Self::agenda_day_layout(
+            &session.appointments,
+            events,
+            session.agenda_places,
+            &session.agenda_filter,
+            &day,
+        );
+        // Les heures d'ouverture donnent la plage ordinaire, et les
+        // entrées qui en sortent l'élargissent : une entrée hors plage
+        // partait dans la liste « Sans heure », c'est-à-dire qu'un
+        // rendez-vous de 20 h 30 s'affichait comme un rendez-vous dont
+        // personne n'avait noté l'heure.
+        let (start, end) = agenda::span(
+            (
+                u16::try_from(config.ui.day_start_hour).unwrap_or(8),
+                u16::try_from(config.ui.day_end_hour).unwrap_or(20),
+            ),
+            &entries,
+        );
+        let hours = f32::from(end - start);
         // No day navigation of its own any more: the agenda's control
         // band drives all three modes from one set of buttons, and two
         // « ‹ Aujourd'hui › » rows on the same screen was one too many.
@@ -21462,11 +21485,11 @@ impl App {
         let place = |time: &str| -> Option<f32> {
             let t = db::parse_hour(time)?;
             let (h, m) = t.split_once(':')?;
-            let (h, m) = (h.parse::<u32>().ok()?, m.parse::<u32>().ok()?);
+            let (h, m) = (h.parse::<u16>().ok()?, m.parse::<u16>().ok()?);
             if h < start || h >= end {
                 return None;
             }
-            Some((h - start) as f32 * row_h + (m as f32 / 60.0) * row_h)
+            Some(f32::from(h - start) * row_h + (f32::from(m) / 60.0) * row_h)
         };
         // Drawing a new entry by dragging down the plan. The gesture is
         // read *before* the blocks are drawn, so a drag started on an
@@ -21485,20 +21508,10 @@ impl App {
         // hand every time.
         let hour_at = |y: f32| -> String {
             let rows = ((y - inner.top()) / row_h).clamp(0.0, hours);
-            let quarters = (rows * 4.0).round().clamp(0.0, hours * 4.0) as u32;
+            let quarters = (rows * 4.0).round().clamp(0.0, hours * 4.0) as u16;
             format!("{:02}:{:02}", start + quarters / 4, (quarters % 4) * 15)
         };
         let mut untimed: Vec<String> = Vec::new();
-        // Where each entry of the day belongs: its own lane, computed
-        // over the whole day rather than per hour bucket, so the columns
-        // do not shift from one hour to the next.
-        let (entries, states, clashing) = Self::agenda_day_layout(
-            &session.appointments,
-            events,
-            session.agenda_places,
-            &session.agenda_filter,
-            &day,
-        );
         let by_id: std::collections::HashMap<i64, usize> =
             entries.iter().enumerate().map(|(i, e)| (e.id, i)).collect();
         // La hauteur d'une ligne de libellé, et donc le plancher d'un
@@ -21513,8 +21526,8 @@ impl App {
         let (lane_of, lane_count) = Self::agenda_day_lanes(
             &entries,
             &states,
-            // `start` et `end` sont déjà bornés à 23 et 24 plus haut.
-            (start as u16 * 60)..(end as u16 * 60),
+            // `agenda::span` borne les deux à 23 et 24.
+            (start * 60)..(end * 60),
             min_span,
         );
         // **La couverture, et c'est le dessin le plus utile du lot** :
@@ -21747,8 +21760,8 @@ impl App {
         // que de se coller au bord du plan en laissant croire qu'il est
         // huit heures.
         if day == session.today {
-            // `start` et `end` sont déjà bornés à 23 et 24 plus haut.
-            let (from, to) = (start as u16 * 60, end as u16 * 60);
+            // `agenda::span` borne les deux à 23 et 24.
+            let (from, to) = (start * 60, end * 60);
             let now = session.now_minutes;
             if now >= from && now < to {
                 let y = inner.top() + (f32::from(now - from) / 60.0) * row_h;
@@ -23588,8 +23601,8 @@ impl App {
         config: &Config,
         day: &str,
         rect: egui::Rect,
-        start: u32,
-        end: u32,
+        start: u16,
+        end: u16,
         row_h: f32,
     ) -> f32 {
         let shifts: Vec<planning::Shift> = session
@@ -23602,7 +23615,8 @@ impl App {
             return 0.0;
         }
         const STEP: u16 = 15;
-        let (from, to) = (start as u16 * 60, end as u16 * 60);
+        // `agenda::span` borne les deux à 23 et 24.
+        let (from, to) = (start * 60, end * 60);
         let band = planning::coverage(&shifts, from, to, STEP);
         // Les creux ne se lisent que contre des horaires déclarés.
         let weekday = db::weekday_fr(day).unwrap_or("");

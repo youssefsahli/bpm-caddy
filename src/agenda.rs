@@ -293,12 +293,79 @@ pub fn slot_between(time: &str, end_time: &str) -> Option<Slot> {
     })
 }
 
+/// La plage d'heures qu'un plan de journée doit couvrir : celle qu'on
+/// lui demande, **élargie jusqu'aux entrées qui en sortent**.
+///
+/// Les heures d'ouverture décident de la plage ordinaire, et c'est bien
+/// ainsi : un plan qui va de 8 à 20 se lit d'un coup d'œil. Mais une
+/// entrée posée en dehors n'en est pas moins une entrée, et elle
+/// tombait dans la liste « Sans heure » — c'est-à-dire qu'un
+/// rendez-vous de 20 h 30, dont l'heure est écrite noir sur blanc,
+/// s'affichait comme un rendez-vous dont personne n'avait noté l'heure.
+/// On étend le plan jusqu'à lui plutôt que de le renommer.
+///
+/// Les bornes sont des **heures**, début inclus et fin exclue, comme la
+/// fenêtre que le dessin teste. D'où les deux élargissements : l'heure
+/// de début doit être *dans* la plage — une entrée à 20 h 00 demande
+/// donc 21 —, et un bloc doit y tenir jusqu'à sa fin, à l'heure
+/// entamée. Une garde qui franchit minuit s'arrête à 24 : ses minutes
+/// dépassent 1 440, mais un plan de journée est d'un jour.
+pub fn span(wanted: (u16, u16), entries: &[Entry]) -> (u16, u16) {
+    let from0 = wanted.0.min(23);
+    let (mut from, mut to) = (from0, wanted.1.clamp(from0 + 1, 24));
+    for entry in entries {
+        let starts = (entry.slot.start / 60).min(23);
+        from = from.min(starts);
+        to = to.max(starts + 1);
+        if entry.slot.minutes().is_some() {
+            to = to.max(entry.slot.end.div_ceil(60));
+        }
+        to = to.min(24);
+    }
+    (from, to.clamp(from + 1, 24))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn at(id: i64, start: u16, end: u16) -> Entry {
         Entry::new(id, Slot::new(start, end), true)
+    }
+
+    /// **Une entrée hors des heures d'ouverture a quand même une
+    /// heure.** Le plan s'étend jusqu'à elle ; il ne la renomme pas
+    /// « sans heure », ce qui était le cas et se lisait comme un
+    /// rendez-vous que personne n'avait daté.
+    #[test]
+    fn the_plan_stretches_to_the_entries_that_fall_outside_it() {
+        // Rien à placer : la plage demandée, telle quelle.
+        assert_eq!(span((8, 20), &[]), (8, 20));
+        // Tout est dedans : elle ne bouge pas non plus.
+        assert_eq!(span((8, 20), &[at(1, 9 * 60, 10 * 60)]), (8, 20));
+        // Un rendez-vous de 7 h 30 tire le début vers le bas.
+        assert_eq!(span((8, 20), &[at(1, 7 * 60 + 30, 8 * 60)]), (7, 20));
+        // **La borne haute est exclue** : une entrée à 20 h 00 pile
+        // n'est pas dans une plage qui s'arrête à 20, donc il en faut
+        // 21. C'est la même heure que le dessin teste.
+        assert_eq!(
+            span((8, 20), &[Entry::new(1, Slot::point(20 * 60), true)]),
+            (8, 21)
+        );
+        // Un point à 20 h 30, et un bloc qui finit à 19 h 45 : l'heure
+        // entamée, pas celle qui est finie.
+        assert_eq!(
+            span((8, 20), &[Entry::new(1, Slot::point(20 * 60 + 30), true)]),
+            (8, 21)
+        );
+        assert_eq!(span((8, 19), &[at(1, 18 * 60, 19 * 60 + 45)]), (8, 20));
+        // Une garde de 20 h à 2 h se range `1200 → 1560` : le plan
+        // s'arrête à 24, parce qu'il est d'un jour.
+        assert_eq!(span((8, 20), &[at(1, 1200, 1560)]), (8, 24));
+        // Une plage demandée à l'envers ou vide reste lisible : au
+        // moins une heure, jamais une hauteur nulle à diviser.
+        assert_eq!(span((20, 8), &[]), (20, 21));
+        assert_eq!(span((23, 23), &[]), (23, 24));
     }
 
     /// Le défaut d'aujourd'hui, et la raison d'être du module : 9 h 00
