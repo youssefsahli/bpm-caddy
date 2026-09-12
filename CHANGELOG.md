@@ -5,6 +5,102 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.199.0] - 2026-09-12
+
+### Added
+- **Les cytochromes, comme table et non comme paragraphe.** Les fiches
+  parlent des CYP — sept cent trente-huit fois — et elles en parlent
+  bien ; elles ne répondent pas à la question du comptoir, qui est
+  « cette ordonnance-ci porte-t-elle deux lignes qui se rencontrent sur
+  une enzyme ? ». `src/cyp.rs` est cette moitié manquante : quarante-sept
+  molécules, ce que chacune fait de chaque enzyme, sa force, et la
+  phrase de la fiche d'où la ligne est tirée. Un cinquième onglet sous
+  la biologie le montre pour l'ordonnance ouverte.
+
+  Ce qu'il **ne sait pas** est écrit avant le reste : ni glycoprotéine
+  P, ni transporteurs, ni additions d'effets — deux sédatifs ne se
+  rencontrent sur aucune enzyme et s'additionnent quand même —, ni dose,
+  ni durée, ni génotype.
+
+  Cinq règles, une par test. **Pour une prodrogue, l'inhibiteur ne fait
+  pas monter l'effet, il le fait tomber** : le clopidogrel, la codéine
+  et le tramadol n'agissent que par un métabolite, et un moteur naïf
+  annonce « exposition augmentée, risque de surdosage » là où le patient
+  est en fait sans antiagrégant. **Ce que la fiche nie n'entre pas dans
+  la table** : la rosuvastatine n'est pas métabolisée par le CYP3A4, la
+  pravastatine non plus, la spiramycine est le macrolide qui n'inhibe
+  pas — ce sont exactement les trois cas qu'un moteur par classe manque
+  des deux côtés. **Le silence n'est pas une permission** : une ligne
+  que la table ne connaît pas est nommée, jamais tue.
+- **« Croisement » : croiser une liste qu'on compose soi-même.** Les
+  panneaux du dossier posent leurs questions à l'ordonnance ouverte ;
+  celui-ci n'a pas de dossier. On compose une liste — depuis un dossier,
+  ou à la main, pour l'ordonnance qu'on a sous les yeux et qui n'est
+  celle de personne dans la base — et on lit quatre choses : les
+  croisements sur les cytochromes, **le temps que met une exposition
+  déplacée à revenir**, la revue d'ordonnance, et ce que la clairance
+  change. Une carte tire une corde par croisement, de la ligne qui agit
+  vers celle qui bouge.
+
+  « Combien de temps » est la moitié qui manquait à un croisement :
+  « exposition augmentée » ne dit pas la même chose à deux heures et à
+  cinquante jours, et l'effet peut durer bien après le produit — celui
+  du clopidogrel tient sept à dix jours quand sa demi-vie est de six
+  heures.
+- **« Libellés » : relire les mille sept cent soixante-trois textes de
+  l'interface.** Le frère de « Textes imprimés ». Un fichier de mille
+  sept cents lignes se relit dans un éditeur, pas dans l'application, et
+  on n'y voit jamais ce qu'on a déjà réécrit.
+- **« Listes » : les listes de contrôle, et la feuille qui en sort.**
+  L'ouverture, la fermeture, le retour de vacances. Une case dessinée
+  par ligne, sa précision en dessous, la date et la personne laissées
+  vides — une liste cochée sans savoir quand ni par qui ne prouve rien.
+  Ce n'est pas un protocole : celui-là se lit en descendant un arbre,
+  celle-ci en cochant. Rien n'est livré, comme au codex : une liste
+  d'ouverture écrite ailleurs qu'à l'officine est une liste que personne
+  ne coche.
+
+### Fixed
+- **L'explorateur ne pose plus les huit cent soixante-deux lignes qu'il
+  cache.** Mesuré avant de toucher à quoi que ce soit : une image de
+  l'axe des demi-vies coûtait **86 ms en débogage et 3 ms en
+  publication**, une image d'un organe chargé 21 ms. Une `ScrollArea`
+  n'écarte que la *peinture* de ce qui sort de l'écran ; la mise en page
+  a lieu pour tout le monde, et avec elle le tri, la jointure et les deux
+  allocations que chaque ligne refaisait. Seule la tranche visible est
+  posée désormais : **1,3 ms**.
+
+  Trois pièges méritent d'être écrits, parce que les trois ont mordu. La
+  hauteur d'une ligne est mesurée **en la dessinant**, dans un `Ui`
+  invisible — une hauteur calculée à côté finit par ne plus être celle de
+  la ligne, et la zébrure glisse sous le texte. `Ui::cursor()` n'est pas
+  le haut du prochain objet : egui glisse un `item_spacing.y` juste avant
+  de le poser. Et le rectangle de `show_viewport` compte depuis le haut
+  du contenu, pas depuis l'écran — les mélanger donne un tableau juste
+  tant qu'on n'a pas défilé et faux ensuite.
+
+### Changed
+- **Trois écrans neufs ne refont plus leur travail à chaque image.**
+  Relus avant la barrière, ils portaient chacun la panne que
+  l'explorateur venait de corriger : la recherche des libellés repliait
+  mille sept cent soixante-trois chaînes à chaque image dès que la
+  question ne rendait rien, la vue des listes interrogeait la base
+  soixante fois par seconde tant que l'officine n'en avait écrit aucune
+  — c'est-à-dire dans le seul cas où elle n'a rien à afficher pour le
+  voir —, et le champ qui ajoute un médicament au croisement notait les
+  huit cent soixante-deux fiches pendant qu'on tape. Les trois sont
+  mémoïsés contre leur question, comme le dock des médicaments.
+- **Une réécriture de libellé se souvient de ce qu'elle remplaçait.**
+  Une surcharge plate `clé = "texte"` dans `strings.toml` s'appliquait
+  pour toujours, y compris quand une version suivante changeait le
+  libellé livré : l'officine croyait lire sa correction et lisait une
+  phrase que personne n'avait relue. Une entrée peut désormais dire
+  contre quoi elle a été écrite, et ne s'applique que tant que ce
+  texte-là est celui qu'on livre ; sinon l'écran la montre pour
+  relecture. C'est la règle de `content.rs`, appliquée là où elle
+  manquait. La forme plate reste lue — un fichier écrit il y a un an doit
+  continuer de marcher.
+
 ## [0.198.0] - 2026-09-12
 
 ### Fixed

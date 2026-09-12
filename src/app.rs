@@ -3242,6 +3242,13 @@ struct Session {
     ddi_list: Vec<i64>,
     /// Ce qu'on tape pour ajouter une ligne.
     ddi_query: String,
+    /// Ce que cette frappe a trouvé, et la question qu'elle répondait.
+    ///
+    /// **Mémoïsé contre la question et la révision du référentiel**,
+    /// comme le dock des médicaments : noter les huit cent soixante-deux
+    /// fiches à chaque image, c'est les replier soixante fois par
+    /// seconde, et c'est précisément pendant qu'on tape.
+    ddi_hits: Option<((String, u64), Vec<i64>)>,
     /// La clairance, facultative : sans elle le panneau du rein nomme
     /// ce qui en dépend et ne conclut pas — c'est `renal::read` qui le
     /// garantit.
@@ -3263,6 +3270,8 @@ struct Session {
     ui_text_hits: (String, Vec<String>),
     /// Les listes de contrôle de l'officine, et celle qu'on ouvre.
     checklists: Vec<db::Checklist>,
+    /// La liste des listes a été lue au moins une fois.
+    checklists_read: bool,
     checklist_open: Option<i64>,
     checklist_items: Vec<db::ChecklistItem>,
     /// Ce qu'on tape pour ajouter : le titre d'une liste, le texte et
@@ -4100,12 +4109,16 @@ impl Session {
             cyp: crate::cyp::Reading::default(),
             ddi_list: Vec::new(),
             ddi_query: String::new(),
+            ddi_hits: None,
             ddi_dfg: String::new(),
             ui_text_query: String::new(),
             ui_texts: std::collections::HashMap::new(),
             ui_text_edit: None,
-            ui_text_hits: (String::new(), Vec::new()),
+            // Un repère qu'aucune question repliée ne peut valoir, pour
+            // que la première image calcule et que les suivantes non.
+            ui_text_hits: ("\0".to_owned(), Vec::new()),
             checklists: Vec::new(),
+            checklists_read: false,
             checklist_open: None,
             checklist_items: Vec::new(),
             checklist_title: String::new(),
@@ -29495,22 +29508,42 @@ impl App {
                             // l'ordre sans qu'elles se suivent. Sur le
                             // nom **et** sur la DCI, parce qu'on tape
                             // aussi bien « atorva » que « Tahor ».
-                            let mut hits: Vec<(i32, &Drug)> = session
-                                .drugs
+                            //
+                            // Calculée quand la question change, comme
+                            // le dock des médicaments : la refaire à
+                            // chaque image, ce serait replier huit cent
+                            // soixante-deux fiches soixante fois par
+                            // seconde, pendant qu'on tape.
+                            let key = (q.clone(), session.drugs_rev);
+                            if session.ddi_hits.as_ref().map(|(k, _)| k) != Some(&key) {
+                                let mut hits: Vec<(i32, &Drug)> = session
+                                    .drugs
+                                    .iter()
+                                    .filter_map(|d| {
+                                        let best = crate::fuzzy::score(&q, &d.name)
+                                            .into_iter()
+                                            .chain(crate::fuzzy::score(&q, &d.dci))
+                                            .max();
+                                        best.map(|s| (s, d))
+                                    })
+                                    .collect();
+                                hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.name.cmp(&b.1.name)));
+                                hits.truncate(12);
+                                session.ddi_hits =
+                                    Some((key, hits.into_iter().map(|(_, d)| d.id).collect()));
+                            }
+                            let found: Vec<Drug> = session
+                                .ddi_hits
                                 .iter()
-                                .filter(|d| !session.ddi_list.contains(&d.id))
-                                .filter_map(|d| {
-                                    let best = crate::fuzzy::score(&q, &d.name)
-                                        .into_iter()
-                                        .chain(crate::fuzzy::score(&q, &d.dci))
-                                        .max();
-                                    best.map(|s| (s, d))
+                                .flat_map(|(_, ids)| ids.iter())
+                                .filter(|id| !session.ddi_list.contains(id))
+                                .filter_map(|id| {
+                                    session.drugs.iter().find(|d| d.id == *id).cloned()
                                 })
+                                .take(6)
                                 .collect();
-                            hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.name.cmp(&b.1.name)));
-                            hits.truncate(6);
                             ui.horizontal_wrapped(|ui| {
-                                for (_, d) in hits {
+                                for d in found {
                                     if motif::button(ui, &d.name)
                                         .on_hover_text(d.dci.as_str())
                                         .clicked()
@@ -30056,7 +30089,13 @@ impl App {
         // filtrer mille sept cent soixante-trois textes, c'est replier
         // autant de chaînes. Voir `ui_text_hits`.
         let q = crate::fuzzy::sort_key(session.ui_text_query.trim());
-        if session.ui_text_hits.0 != q || session.ui_text_hits.1.is_empty() {
+        // **La comparaison seule**, et non « ou la liste est vide » :
+        // une recherche qui ne rend rien est une recherche comme une
+        // autre, et la reprendre à chaque image serait replier mille
+        // sept cent soixante-trois chaînes soixante fois par seconde —
+        // c'est-à-dire exactement au moment où l'on tape. Le repère de
+        // départ est un caractère qu'aucune clé repliée ne porte.
+        if session.ui_text_hits.0 != q {
             let mut keys: Vec<String> = shipped
                 .iter()
                 .filter(|(k, v)| {
@@ -30334,7 +30373,14 @@ impl App {
     /// pour la même raison.
     fn checklists_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
-        if session.checklists.is_empty() && session.checklist_open.is_none() {
+        // **Une fois, et non à chaque image.** La condition d'avant
+        // était « la liste est vide » : une officine qui n'a encore
+        // écrit aucune liste interrogeait donc la base soixante fois par
+        // seconde, et c'est le seul cas où elle n'a rien à afficher pour
+        // le voir. Un témoin dit que la lecture a eu lieu ; le
+        // rechargement, lui, reste explicite partout où l'on écrit.
+        if !session.checklists_read {
+            session.checklists_read = true;
             session.reload_checklists();
         }
         let wide = body.width() >= chars_wide(ui, 108.0);
