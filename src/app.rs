@@ -16499,7 +16499,19 @@ impl App {
         let mut save_edit = false;
         let mut pick: Option<&'static crate::biology::Analyte> = None;
         let mut focus: Option<String> = None;
-        motif::panel(ui, rect, Some(tr("bio_section")), |ui| {
+        // **Le compte est dans le titre, qui ne coûte pas une ligne.**
+        // Sur un volet trop court pour la table — à 1024x700 et
+        // `text_scale = 1,6` l'intérieur du panneau fait cent trente
+        // pixels quand le seul formulaire en demande cent quarante —
+        // c'est la seule place où « il y a huit résultats » tient
+        // encore. Et aux tailles où la table s'affiche, un compte à
+        // côté du titre reste ce qu'on lit en premier.
+        let head = if results.is_empty() {
+            tr("bio_section").to_owned()
+        } else {
+            format!("{} ({})", tr("bio_section"), results.len())
+        };
+        motif::panel(ui, rect, Some(&head), |ui| {
             // The add row, and the line of suggestions that appears
             // under it while an analyte is being typed. Both wrap, so
             // the band is measured and never guessed: 58 px was one row
@@ -16563,20 +16575,30 @@ impl App {
             ];
             let taken: f32 =
                 sisters.iter().sum::<f32>() + ui.spacing().item_spacing.x * sisters.len() as f32;
+            // **Et la largeur mesurée est celle où l'on dessine.** La
+            // rangée est dessinée dans une zone défilante, qui se
+            // réserve sa barre ; le champ de l'analyte, lui, était
+            // taillé pour remplir la largeur **pleine** au pixel près,
+            // si bien qu'il ne restait aucun jeu et que la barre suffisait
+            // à renvoyer « Ajouter » à la ligne. Le modèle annonçait une
+            // rangée, le dessin en prenait deux, et le bouton qui
+            // enregistre le résultat était coupé par le cadre — invisible
+            // à l'échelle 1, où le jeu est encore positif.
+            let form_w = Self::scrolled_width(ui, body.width()).max(chars_wide(ui, 12.0));
             let field = Self::field_width(ui, [tr("bio_pick_hint")].into_iter())
-                .min((body.width() - taken).max(chars_wide(ui, 9.0)));
+                .min((form_w - taken).max(chars_wide(ui, 9.0)));
             let hint = if Self::field_width(ui, [tr("bio_pick_hint")].into_iter()) <= field {
                 tr("bio_pick_hint")
             } else {
                 tr("bio_pick_hint_short")
             };
             let mut form_rows =
-                Self::wrapped_rows_of(ui, body.width(), std::iter::once(field).chain(sisters));
+                Self::wrapped_rows_of(ui, form_w, std::iter::once(field).chain(sisters));
             let picking = !session.bio_query.trim().is_empty() && session.bio_new_code.is_empty();
             if picking {
                 form_rows += Self::wrapped_rows(
                     ui,
-                    body.width(),
+                    form_w,
                     crate::biology::search(&session.bio_query)
                         .into_iter()
                         .take(4)
@@ -16596,233 +16618,278 @@ impl App {
             // reprend ses marges sur ce qu'on lui donne, et huit pixels
             // de moins suffisaient à trancher la seule rangée visible.
             let table_floor = line + Self::row_height(ui) + 24.0;
-            let foot = (row_h * form_rows + 6.0).min((body.height() - table_floor).max(row_h));
-            let rows = motif::split_rows(body, &[0.0, foot], 6.0);
-            let inner = motif::well(ui, rows[0]);
-            motif::inside(ui, inner, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("bio_results")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if results.is_empty() {
-                            ui.label(
-                                egui::RichText::new(tr("bio_empty"))
-                                    .size(motif::pt(ui, 11.5))
-                                    .color(motif::text_dim()),
+            // **Et quand il n'y a pas la place des deux, la table cède
+            // entièrement.** Elle cédait « d'une rangée » : le
+            // formulaire était plafonné à ce que la table lui laissait,
+            // si bien qu'à 1024x700 et `text_scale = 1,6` sa seconde
+            // rangée — celle qui porte « Ajouter » — n'était pas
+            // dessinée, et la table ne montrait de toute façon aucune
+            // ligne. Ni lire un résultat, ni en saisir un : le volet ne
+            // faisait plus rien de ce pour quoi il existe.
+            //
+            // Une table réduite à sa ligne d'en-têtes n'est pas une
+            // table à une ligne près, c'est un bandeau qui mange le
+            // geste qui enregistre. Sous son plancher elle n'est donc
+            // pas rétrécie, elle n'est pas dessinée — « quand le volet
+            // est trop court, la garniture part la première ».
+            let foot = (row_h * form_rows + 6.0).min(body.height());
+            let rest = body.height() - foot - 6.0;
+            let table = (rest >= table_floor)
+                .then(|| egui::Rect::from_min_size(body.min, egui::vec2(body.width(), rest)));
+            let form = egui::Rect::from_min_size(
+                egui::pos2(body.left(), body.bottom() - foot),
+                egui::vec2(body.width(), foot),
+            );
+            let rows = [table.unwrap_or(egui::Rect::NOTHING), form];
+            // **Et elle ne part pas en silence.** Un volet intitulé
+            // « Résultats de biologie » qui n'en montre aucun se lit
+            // « ce dossier n'en a pas », ce qui est le contraire de ce
+            // qui se passe. La ligne dit combien il y en a et ce qu'il
+            // faut faire pour les voir — c'est la règle du plafond qui
+            // s'annonce, appliquée à un plancher.
+            if table.is_none() && !results.is_empty() && rest >= line {
+                let notice =
+                    egui::Rect::from_min_size(body.min, egui::vec2(body.width(), rest.max(line)));
+                motif::inside(ui, notice, |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(trf("bio_too_short", results.len()))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                });
+            }
+            if let Some(table) = table {
+                let inner = motif::well(ui, table);
+                motif::inside(ui, inner, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("bio_results")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if results.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(tr("bio_empty"))
+                                        .size(motif::pt(ui, 11.5))
+                                        .color(motif::text_dim()),
+                                );
+                                return;
+                            }
+                            // **Six colonnes non bornées dans un panneau de
+                            // comptoir sortent par la droite**, et cette
+                            // table-là ne défile que verticalement : « Usuel »
+                            // n'était pas seulement coupé, il était
+                            // inatteignable. Les quatre premières se
+                            // mesurent, l'intervalle prend ce qui reste — et
+                            // s'il ne reste pas de quoi le lire, il n'est
+                            // pas montré du tout : la colonne « Lecture »
+                            // dit déjà normal ou élevé, qui est la question
+                            // qu'on pose au comptoir.
+                            let bio_gap = 10.0_f32;
+                            let bio_avail = ui.available_width() - 14.0;
+                            let date_w = Self::widest(ui, 11.5, ["00/00/0000"].into_iter());
+                            let value_w = chars_wide(ui, 12.0);
+                            let level_w = Self::widest(
+                                ui,
+                                10.5,
+                                ["  très élevé  ", tr("bio_col_level")].into_iter(),
                             );
-                            return;
-                        }
-                        // **Six colonnes non bornées dans un panneau de
-                        // comptoir sortent par la droite**, et cette
-                        // table-là ne défile que verticalement : « Usuel »
-                        // n'était pas seulement coupé, il était
-                        // inatteignable. Les quatre premières se
-                        // mesurent, l'intervalle prend ce qui reste — et
-                        // s'il ne reste pas de quoi le lire, il n'est
-                        // pas montré du tout : la colonne « Lecture »
-                        // dit déjà normal ou élevé, qui est la question
-                        // qu'on pose au comptoir.
-                        let bio_gap = 10.0_f32;
-                        let bio_avail = ui.available_width() - 14.0;
-                        let date_w = Self::widest(ui, 11.5, ["00/00/0000"].into_iter());
-                        let value_w = chars_wide(ui, 12.0);
-                        let level_w = Self::widest(
-                            ui,
-                            10.5,
-                            ["  très élevé  ", tr("bio_col_level")].into_iter(),
-                        );
-                        let del_w = Self::button_width(ui, tr("itv_delete_confirm"));
-                        // Les quatre colonnes fixes, puis ce qui reste :
-                        // l'analyte et l'intervalle se le partagent, et
-                        // s'il n'y a pas de quoi les lire tous les deux
-                        // c'est l'analyte qui prend tout — la colonne
-                        // « Lecture » dit déjà normal ou élevé, qui est
-                        // la question qu'on pose au comptoir. Le total
-                        // tient dans les deux formes : mesurer la seule
-                        // colonne de l'intervalle laissait la croix de
-                        // suppression hors du panneau.
-                        let fixed = date_w + value_w + level_w + del_w;
-                        let rest = bio_avail - fixed - bio_gap * 5.0;
-                        let with_interval = rest >= chars_wide(ui, 16.0) + chars_wide(ui, 12.0);
-                        let (analyte_w, interval_w) = if with_interval {
-                            (rest * 0.55, rest * 0.45)
-                        } else {
-                            (
-                                (bio_avail - fixed - bio_gap * 4.0).max(chars_wide(ui, 8.0)),
-                                0.0,
-                            )
-                        };
-                        egui::Grid::new("bio_grid")
-                            .num_columns(if with_interval { 6 } else { 5 })
-                            .spacing([bio_gap, 5.0])
-                            .striped(true)
-                            .show(ui, |ui| {
-                                for (header, w) in [
-                                    (tr("bio_col_date"), date_w),
-                                    (tr("bio_col_analyte"), analyte_w),
-                                    (tr("bio_col_value"), value_w),
-                                    (tr("bio_col_level"), level_w),
-                                    (tr("bio_col_interval"), interval_w),
-                                    ("", del_w),
-                                ] {
-                                    if !with_interval && header == tr("bio_col_interval") {
-                                        continue;
-                                    }
-                                    Self::grid_cell(
-                                        ui,
-                                        w,
-                                        egui::RichText::new(header)
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::text_dim()),
-                                    );
-                                }
-                                ui.end_row();
-                                for r in &results {
-                                    ui.label(
-                                        egui::RichText::new(if r.taken_on.is_empty() {
-                                            "—".to_owned()
-                                        } else {
-                                            db::format_french_date(&r.taken_on)
-                                        })
-                                        .size(motif::pt(ui, 11.5)),
-                                    );
-                                    // The analyte's name opens its trend
-                                    // on the right: a value alone says
-                                    // little, three in a row say where
-                                    // it is going.
-                                    if ui
-                                        .scope(|ui| {
-                                            ui.set_max_width(analyte_w);
-                                            ui.add(
-                                                egui::Label::new(
-                                                    egui::RichText::new(&r.label)
-                                                        .size(motif::pt(ui, 12.0)),
-                                                )
-                                                .truncate()
-                                                .sense(egui::Sense::click()),
-                                            )
-                                        })
-                                        .inner
-                                        .on_hover_text(tr("bio_trend_tooltip"))
-                                        .clicked()
-                                        && !r.code.is_empty()
-                                    {
-                                        focus = Some(r.code.clone());
-                                    }
-                                    // The value is corrected in place:
-                                    // a result typed one digit wrong is
-                                    // the common case, and re-adding the
-                                    // line loses its date.
-                                    if session.bio_edit.as_ref().map(|e| e.id) == Some(r.id) {
-                                        ui.horizontal(|ui| {
-                                            ui.add_sized(
-                                                [chars_wide(ui, 7.0), 20.0],
-                                                egui::TextEdit::singleline(
-                                                    &mut session.bio_edit_value,
-                                                ),
-                                            );
-                                            ui.add_sized(
-                                                [Self::date_field_width(ui), 20.0],
-                                                egui::TextEdit::singleline(
-                                                    &mut session.bio_edit_date,
-                                                )
-                                                .hint_text(tr("itv_rdv_hint")),
-                                            );
-                                            if motif::button(ui, tr("form_save")).clicked() {
-                                                save_edit = true;
-                                            }
-                                        });
-                                    } else if ui
-                                        .add(
-                                            egui::Label::new(
-                                                egui::RichText::new(format!(
-                                                    "{} {}",
-                                                    crate::codex::format_quantity(r.value),
-                                                    r.unit
-                                                ))
-                                                .size(motif::pt(ui, 12.0))
-                                                .strong(),
-                                            )
-                                            .sense(egui::Sense::click()),
-                                        )
-                                        .on_hover_text(tr("bio_edit_tooltip"))
-                                        .clicked()
-                                    {
-                                        start_edit = Some(r.clone());
-                                    }
-                                    // What the value is worth: only the
-                                    // catalogue's analytes have an
-                                    // interval to be read against.
-                                    match crate::biology::find(&r.code) {
-                                        Some(a) => {
-                                            let level = crate::biology::level(a, r.value);
-                                            if level.notable() {
-                                                ui.label(
-                                                    egui::RichText::new(format!(
-                                                        "  {}  ",
-                                                        crate::biology::level_word(level)
-                                                    ))
-                                                    .size(motif::pt(ui, 10.5))
-                                                    .strong()
-                                                    .color(motif::on_fill(bio_level_color(level)))
-                                                    .background_color(bio_level_color(level)),
-                                                );
-                                            } else {
-                                                ui.label(
-                                                    egui::RichText::new(
-                                                        crate::biology::level_word(level),
-                                                    )
-                                                    .size(motif::pt(ui, 10.5))
-                                                    .color(motif::text_dim()),
-                                                );
-                                            }
-                                            if with_interval {
-                                                Self::grid_cell(
-                                                    ui,
-                                                    interval_w,
-                                                    egui::RichText::new(
-                                                        crate::biology::interval_text(a),
-                                                    )
-                                                    .size(motif::pt(ui, 10.5))
-                                                    .color(motif::text_dim()),
-                                                );
-                                            }
+                            let del_w = Self::button_width(ui, tr("itv_delete_confirm"));
+                            // Les quatre colonnes fixes, puis ce qui reste :
+                            // l'analyte et l'intervalle se le partagent, et
+                            // s'il n'y a pas de quoi les lire tous les deux
+                            // c'est l'analyte qui prend tout — la colonne
+                            // « Lecture » dit déjà normal ou élevé, qui est
+                            // la question qu'on pose au comptoir. Le total
+                            // tient dans les deux formes : mesurer la seule
+                            // colonne de l'intervalle laissait la croix de
+                            // suppression hors du panneau.
+                            let fixed = date_w + value_w + level_w + del_w;
+                            let rest = bio_avail - fixed - bio_gap * 5.0;
+                            let with_interval = rest >= chars_wide(ui, 16.0) + chars_wide(ui, 12.0);
+                            let (analyte_w, interval_w) = if with_interval {
+                                (rest * 0.55, rest * 0.45)
+                            } else {
+                                (
+                                    (bio_avail - fixed - bio_gap * 4.0).max(chars_wide(ui, 8.0)),
+                                    0.0,
+                                )
+                            };
+                            egui::Grid::new("bio_grid")
+                                .num_columns(if with_interval { 6 } else { 5 })
+                                .spacing([bio_gap, 5.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    for (header, w) in [
+                                        (tr("bio_col_date"), date_w),
+                                        (tr("bio_col_analyte"), analyte_w),
+                                        (tr("bio_col_value"), value_w),
+                                        (tr("bio_col_level"), level_w),
+                                        (tr("bio_col_interval"), interval_w),
+                                        ("", del_w),
+                                    ] {
+                                        if !with_interval && header == tr("bio_col_interval") {
+                                            continue;
                                         }
-                                        None => {
-                                            ui.label("");
-                                            if with_interval {
-                                                Self::grid_cell(
-                                                    ui,
-                                                    interval_w,
-                                                    egui::RichText::new(tr("bio_free_line"))
-                                                        .size(motif::pt(ui, 10.5))
-                                                        .color(motif::text_dim()),
-                                                );
-                                            }
-                                        }
-                                    }
-                                    let confirm = session.bio_confirm == Some(r.id);
-                                    if motif::button(
-                                        ui,
-                                        if confirm {
-                                            tr("itv_delete_confirm")
-                                        } else {
-                                            tr("itv_delete")
-                                        },
-                                    )
-                                    .clicked()
-                                    {
-                                        if confirm {
-                                            delete = Some((r.id, r.value));
-                                        } else {
-                                            session.bio_confirm = Some(r.id);
-                                        }
+                                        Self::grid_cell(
+                                            ui,
+                                            w,
+                                            egui::RichText::new(header)
+                                                .size(motif::pt(ui, 10.5))
+                                                .color(motif::text_dim()),
+                                        );
                                     }
                                     ui.end_row();
-                                }
-                            });
-                    });
-            });
+                                    for r in &results {
+                                        ui.label(
+                                            egui::RichText::new(if r.taken_on.is_empty() {
+                                                "—".to_owned()
+                                            } else {
+                                                db::format_french_date(&r.taken_on)
+                                            })
+                                            .size(motif::pt(ui, 11.5)),
+                                        );
+                                        // The analyte's name opens its trend
+                                        // on the right: a value alone says
+                                        // little, three in a row say where
+                                        // it is going.
+                                        if ui
+                                            .scope(|ui| {
+                                                ui.set_max_width(analyte_w);
+                                                ui.add(
+                                                    egui::Label::new(
+                                                        egui::RichText::new(&r.label)
+                                                            .size(motif::pt(ui, 12.0)),
+                                                    )
+                                                    .truncate()
+                                                    .sense(egui::Sense::click()),
+                                                )
+                                            })
+                                            .inner
+                                            .on_hover_text(tr("bio_trend_tooltip"))
+                                            .clicked()
+                                            && !r.code.is_empty()
+                                        {
+                                            focus = Some(r.code.clone());
+                                        }
+                                        // The value is corrected in place:
+                                        // a result typed one digit wrong is
+                                        // the common case, and re-adding the
+                                        // line loses its date.
+                                        if session.bio_edit.as_ref().map(|e| e.id) == Some(r.id) {
+                                            ui.horizontal(|ui| {
+                                                ui.add_sized(
+                                                    [chars_wide(ui, 7.0), 20.0],
+                                                    egui::TextEdit::singleline(
+                                                        &mut session.bio_edit_value,
+                                                    ),
+                                                );
+                                                ui.add_sized(
+                                                    [Self::date_field_width(ui), 20.0],
+                                                    egui::TextEdit::singleline(
+                                                        &mut session.bio_edit_date,
+                                                    )
+                                                    .hint_text(tr("itv_rdv_hint")),
+                                                );
+                                                if motif::button(ui, tr("form_save")).clicked() {
+                                                    save_edit = true;
+                                                }
+                                            });
+                                        } else if ui
+                                            .add(
+                                                egui::Label::new(
+                                                    egui::RichText::new(format!(
+                                                        "{} {}",
+                                                        crate::codex::format_quantity(r.value),
+                                                        r.unit
+                                                    ))
+                                                    .size(motif::pt(ui, 12.0))
+                                                    .strong(),
+                                                )
+                                                .sense(egui::Sense::click()),
+                                            )
+                                            .on_hover_text(tr("bio_edit_tooltip"))
+                                            .clicked()
+                                        {
+                                            start_edit = Some(r.clone());
+                                        }
+                                        // What the value is worth: only the
+                                        // catalogue's analytes have an
+                                        // interval to be read against.
+                                        match crate::biology::find(&r.code) {
+                                            Some(a) => {
+                                                let level = crate::biology::level(a, r.value);
+                                                if level.notable() {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "  {}  ",
+                                                            crate::biology::level_word(level)
+                                                        ))
+                                                        .size(motif::pt(ui, 10.5))
+                                                        .strong()
+                                                        .color(motif::on_fill(bio_level_color(
+                                                            level,
+                                                        )))
+                                                        .background_color(bio_level_color(level)),
+                                                    );
+                                                } else {
+                                                    ui.label(
+                                                        egui::RichText::new(
+                                                            crate::biology::level_word(level),
+                                                        )
+                                                        .size(motif::pt(ui, 10.5))
+                                                        .color(motif::text_dim()),
+                                                    );
+                                                }
+                                                if with_interval {
+                                                    Self::grid_cell(
+                                                        ui,
+                                                        interval_w,
+                                                        egui::RichText::new(
+                                                            crate::biology::interval_text(a),
+                                                        )
+                                                        .size(motif::pt(ui, 10.5))
+                                                        .color(motif::text_dim()),
+                                                    );
+                                                }
+                                            }
+                                            None => {
+                                                ui.label("");
+                                                if with_interval {
+                                                    Self::grid_cell(
+                                                        ui,
+                                                        interval_w,
+                                                        egui::RichText::new(tr("bio_free_line"))
+                                                            .size(motif::pt(ui, 10.5))
+                                                            .color(motif::text_dim()),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        let confirm = session.bio_confirm == Some(r.id);
+                                        if motif::button(
+                                            ui,
+                                            if confirm {
+                                                tr("itv_delete_confirm")
+                                            } else {
+                                                tr("itv_delete")
+                                            },
+                                        )
+                                        .clicked()
+                                        {
+                                            if confirm {
+                                                delete = Some((r.id, r.value));
+                                            } else {
+                                                session.bio_confirm = Some(r.id);
+                                            }
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                        });
+                });
+            }
             // The line being added: the analyte, the value, the date.
             motif::inside(ui, rows[1], |ui| {
                 egui::ScrollArea::vertical()
@@ -18141,6 +18208,75 @@ impl App {
             x += w + gap;
         }
         lines
+    }
+
+    /// La largeur qui reste **dedans** quand une zone défilante a pris
+    /// sa barre.
+    ///
+    /// Une bande mesurée sur le panneau et dessinée dans un
+    /// `ScrollArea` sont deux largeurs, et l'écart — une douzaine de
+    /// pixels — suffit à renvoyer le dernier contrôle à la ligne : le
+    /// modèle annonce une rangée, le dessin en prend deux, et la
+    /// seconde est tranchée. Le défaut a été trouvé deux fois, dans le
+    /// registre puis dans la saisie de biologie, où c'était le bouton
+    /// « Ajouter » qui tombait. Il porte donc un nom, pour qu'il ne
+    /// soit pas retrouvé une troisième.
+    fn scrolled_width(ui: &egui::Ui, width: f32) -> f32 {
+        width - ui.spacing().scroll.bar_width - ui.spacing().scroll.bar_inner_margin
+    }
+
+    /// La hauteur qu'un paragraphe **prend** à cette largeur.
+    ///
+    /// Une bande taillée doit connaître sa hauteur avant de dessiner son
+    /// contenu, et une phrase enveloppée n'en a pas une : elle en a une
+    /// par largeur et par échelle. Les deux têtes qui portaient une
+    /// phrase l'avaient donc estimée — « deux rangées plus dix-huit
+    /// pixels » — et à `[ui] text_scale = 1,6` la phrase prenait trois
+    /// lignes là où la bande en réservait le tiers d'une : le paragraphe
+    /// sortait coupé par le milieu de sa dernière ligne.
+    ///
+    /// Mesurée dans la fonte qui dessinera, à la largeur où l'on
+    /// dessinera — c'est-à-dire par `ui.fonts`, et non par une
+    /// multiplication.
+    fn prose_height(ui: &egui::Ui, text: &str, size: f32, width: f32) -> f32 {
+        let mut font = egui::TextStyle::Body.resolve(ui.style());
+        font.size = size;
+        ui.fonts(|f| {
+            f.layout(text.to_owned(), font, motif::text(), width.max(1.0))
+                .size()
+                .y
+        })
+    }
+
+    /// Ce que coûte une tête : un titre, ce qui l'accompagne sur sa
+    /// rangée, et la phrase enveloppée en dessous.
+    ///
+    /// **Mesurer ce que coûte une tête avant de régler ce que les volets
+    /// reçoivent** : c'est la leçon de la conciliation, qui ne montrait
+    /// aucune divergence parce que sa tête en prenait cent trente-six.
+    fn head_height(
+        ui: &egui::Ui,
+        width: f32,
+        title: &str,
+        beside: impl Iterator<Item = f32>,
+        note: &str,
+        note_size: f32,
+    ) -> f32 {
+        let heading = egui::TextStyle::Heading.resolve(ui.style());
+        let title_w = ui.fonts(|f| {
+            f.layout_no_wrap(title.to_owned(), heading.clone(), motif::text())
+                .size()
+                .x
+        });
+        let rows = Self::wrapped_rows_of(ui, width, [title_w].into_iter().chain(beside));
+        // La rangée du titre se mesure sur le plus haut des deux : une
+        // fonte de titre à 1,6 dépasse la rangée de boutons.
+        let row = Self::row_height(ui).max(ui.fonts(|f| f.row_height(&heading)));
+        let gap = ui.spacing().item_spacing.y;
+        rows * row
+            + (rows - 1.0).max(0.0) * gap
+            + gap
+            + Self::prose_height(ui, note, note_size, width)
     }
 
     /// La largeur du plus large de ces textes, à cette taille : ce qu'une
@@ -30223,7 +30359,19 @@ impl App {
                 session.ui_texts = crate::strings::parse_rewrites(&text);
             }
         }
-        let head_h = Self::row_height(ui) * 2.0 + 18.0;
+        let note_size = motif::pt(ui, 11.0);
+        let head_h = Self::head_height(
+            ui,
+            body.width(),
+            tr("libelles_title"),
+            [Self::field_width(
+                ui,
+                [tr("libelles_search_hint")].into_iter(),
+            )]
+            .into_iter(),
+            tr("libelles_note"),
+            note_size,
+        );
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -30237,10 +30385,13 @@ impl App {
                         .hint_text(tr("libelles_search_hint")),
                 );
             });
-            ui.label(
-                egui::RichText::new(tr("libelles_note"))
-                    .size(motif::pt(ui, 11.0))
-                    .color(motif::text_dim()),
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("libelles_note"))
+                        .size(note_size)
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
             );
         });
         // Les clés retenues, repliées une fois : la recherche de la
@@ -32413,9 +32564,7 @@ impl App {
             // tranchée par le défilement. C'est la divergence classique
             // — deux mesures d'une même chose —, et elle tient ici à une
             // douzaine de pixels.
-            let w = panel_body.width()
-                - ui.spacing().scroll.bar_width
-                - ui.spacing().scroll.bar_inner_margin;
+            let w = Self::scrolled_width(ui, panel_body.width());
             let line = ui.text_style_height(&egui::TextStyle::Body);
             let row = Self::row_height(ui);
             // La rangée des contrôles : le libellé, « Seuil », le seuil,
@@ -38938,7 +39087,15 @@ impl App {
     fn textes_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
         let body = motif::visible_rect(ui);
         let docs = crate::content::documents();
-        let head_h = Self::row_height(ui) * 2.0 + 14.0;
+        let note_size = motif::pt(ui, 11.5);
+        let head_h = Self::head_height(
+            ui,
+            body.width(),
+            tr("textes_title"),
+            [Self::button_width(ui, tr("textes_close"))].into_iter(),
+            tr("textes_subtitle"),
+            note_size,
+        );
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
         let mut close = false;
         motif::inside(ui, rows[0], |ui| {
@@ -38951,7 +39108,7 @@ impl App {
             ui.add(
                 egui::Label::new(
                     egui::RichText::new(tr("textes_subtitle"))
-                        .size(motif::pt(ui, 11.5))
+                        .size(note_size)
                         .color(motif::text_dim()),
                 )
                 .wrap(),
@@ -47932,6 +48089,84 @@ mod tests {
                      pour un contenu de {content}"
                 );
                 assert!(rows >= 1.0);
+            }
+        }
+    }
+
+    /// **Une tête qui porte une phrase est aussi haute qu'elle le
+    /// promet**, à toutes les échelles et à toutes les largeurs.
+    ///
+    /// Les deux têtes qui en portaient une l'estimaient — « deux
+    /// rangées plus dix-huit pixels ». À `[ui] text_scale = 1,6` et
+    /// 1024 px de large, la phrase de « Textes de l'interface » prend
+    /// trois lignes : la bande en réservait moins de deux, et le
+    /// paragraphe sortait coupé par le milieu de sa dernière ligne. Rien
+    /// ne plantait, rien n'était visible à l'échelle 1 — c'est-à-dire à
+    /// l'échelle où toutes les captures sont prises.
+    ///
+    /// Vérifié en remettant l'ancienne constante : l'écart passe à une
+    /// ligne et demie de manque.
+    #[test]
+    fn a_head_is_as_tall_as_the_prose_it_carries() {
+        // Les deux phrases réelles, et non un texte de test : c'est leur
+        // longueur qui décide du nombre de lignes.
+        for (title, note) in [
+            ("Textes de l'interface", crate::strings::tr("libelles_note")),
+            ("Textes imprimés", crate::strings::tr("textes_subtitle")),
+        ] {
+            for scale in [1.0_f32, 1.25, 1.6] {
+                for width in [360.0_f32, 590.0, 900.0] {
+                    let ctx = egui::Context::default();
+                    motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                    let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+                    let _ = ctx.run(Default::default(), |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            let size = motif::pt(ui, 11.0);
+                            let beside = App::button_width(ui, "Fermer");
+                            let model = App::head_height(
+                                ui,
+                                width,
+                                title,
+                                [beside].into_iter(),
+                                note,
+                                size,
+                            );
+                            let before = ui.cursor().top();
+                            ui.scope(|ui| {
+                                ui.set_max_width(width);
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.heading(title);
+                                    let _ = motif::button(ui, "Fermer");
+                                });
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(note)
+                                            .size(size)
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                            *seen.borrow_mut() = (model, ui.cursor().top() - before);
+                        });
+                    });
+                    let (model, drawn) = seen.into_inner();
+                    // La gouttière de fin appartient à ce qui suit, comme
+                    // pour la bande enveloppée d'à côté.
+                    let content = drawn - row_gap_probe(scale);
+                    assert!(
+                        model + 1.5 >= content,
+                        "« {title} » à l'échelle {scale}, largeur {width} : \
+                         {model} px annoncés, {content} px dessinés"
+                    );
+                    // Et sans réserver une ligne pour rien : une tête
+                    // trop généreuse affame le volet qu'elle surmonte.
+                    assert!(
+                        model - content <= row_height_probe(scale),
+                        "« {title} » à l'échelle {scale}, largeur {width} : \
+                         {model} px annoncés pour {content} px dessinés"
+                    );
+                }
             }
         }
     }
