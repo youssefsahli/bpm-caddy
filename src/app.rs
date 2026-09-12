@@ -21615,26 +21615,20 @@ impl App {
                     );
                 });
             }
+            // **La légende de la maison, et non une seconde.**
+            //
+            // Celle-ci était écrite ici, à la main : une pastille
+            // allouée, puis un `ui.label` dans un `horizontal_wrapped`.
+            // Or un `Label` enveloppe **son propre texte** à la largeur
+            // qui reste, si bien qu'« Amérique du Sud » sortait
+            // « Amérique du » en fin de rangée et « Sud » au début de la
+            // suivante, sans pastille — c'est-à-dire une entrée de
+            // légende qui a l'air de deux, dont l'une ne nomme aucune
+            // couleur. `chart::legend` enveloppe par **entière**, coupe
+            // sur une rangée entière, et dit « +4 » de ce qu'elle n'a
+            // pas pu montrer.
             motif::inside(ui, parts[1], |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("map_legend")
-                    .show(ui, |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            for (label, color) in &legend {
-                                let (rect, _) = ui.allocate_exact_size(
-                                    egui::vec2(11.0, 11.0),
-                                    egui::Sense::hover(),
-                                );
-                                ui.painter().rect_filled(rect, 0.0, *color);
-                                ui.label(
-                                    egui::RichText::new(*label)
-                                        .size(motif::pt(ui, 10.5))
-                                        .color(motif::text_dim()),
-                                );
-                                ui.add_space(6.0);
-                            }
-                        });
-                    });
+                motif::chart::legend(ui, &legend);
             });
         });
         if let Some(code) = pick {
@@ -43562,9 +43556,34 @@ impl App {
             // The centre last of the frame's own furniture, so nothing
             // is drawn over it.
             let half = 7.0;
+            // Les places déjà prises par un nom, pour qu'aucun second
+            // ne s'écrive dedans. **Le nom du centre en premier**, bien
+            // qu'il soit peint en dernier : il est peint en dernier
+            // pour passer par-dessus les rayons, pas pour passer
+            // par-dessus les noms — et c'est le seul nom de la figure
+            // qui ne peut pas être abandonné.
+            let hub_font = egui::FontId::proportional(motif::pt(ui, 13.0));
+            let hub_at = egui::pos2(mid.x, mid.y + 24.0);
+            let hub_size = ui.fonts(|f| {
+                f.layout_no_wrap(map.centre.1.clone(), hub_font.clone(), motif::text())
+                    .size()
+            });
+            let mut taken: Vec<egui::Rect> =
+                vec![egui::Align2::CENTER_TOP.anchor_size(hub_at, hub_size)];
+            // **Et les carrés, tous, avant le premier nom.** Ils sont
+            // peints dans la même boucle que les noms, si bien qu'un
+            // carré dessiné au tour suivant passait par-dessus le nom du
+            // tour d'avant : « Lixiana » se lisait « Li■ana ». Le nom
+            // cède devant le carré — un carré est cliquable et porte son
+            // infobulle, un nom troué ne porte rien.
             let box_of = |p: egui::Pos2, h: f32| {
                 egui::Rect::from_center_size(p, egui::vec2(h * 2.0, h * 2.0))
             };
+            // Serré au carré lui-même : un nom posé juste à côté de son
+            // propre carré le *touche*, et deux rectangles qui se
+            // touchent se croisent au sens d'egui — les trois quarts des
+            // noms se refusaient eux-mêmes.
+            taken.extend(map.nodes.iter().map(|n| box_of(at(n), half + 1.0)));
             for n in &map.nodes {
                 let p = at(n);
                 let node = box_of(p, half);
@@ -43601,22 +43620,52 @@ impl App {
                 } else {
                     p.y
                 };
-                ui.painter().text(
-                    egui::pos2(x, y),
-                    anchor,
-                    &n.name,
-                    egui::FontId::proportional(motif::pt(ui, 11.5)),
-                    if resp.hovered() {
-                        motif::text()
-                    } else {
-                        motif::text_dim()
-                    },
-                );
-                let tip = if n.dci.is_empty() {
-                    trf("graph_node_tooltip", tr(n.tie.label_key()))
+                // **Deux noms superposés n'en font aucun.** Les nœuds
+                // sont posés sur un cercle, et deux voisins d'angle
+                // proche du même côté écrivaient leur nom au même
+                // endroit : « Lixiana » et « Di-Hydan » se peignaient
+                // l'un dans l'autre et ni l'un ni l'autre ne se lisait.
+                // Le nom qui n'a pas la place n'est donc pas peint — et
+                // il n'est pas perdu, l'infobulle du nœud le porte.
+                // C'est la règle de la légende d'à côté : plutôt rien
+                // qu'une moitié.
+                let font = egui::FontId::proportional(motif::pt(ui, 11.5));
+                let size = ui.fonts(|f| {
+                    f.layout_no_wrap(n.name.clone(), font.clone(), motif::text())
+                        .size()
+                });
+                let where_ = anchor.anchor_size(egui::pos2(x, y), size);
+                let clear = !taken
+                    .iter()
+                    .any(|r: &egui::Rect| r.intersects(where_.shrink(1.0)));
+                if clear {
+                    taken.push(where_);
+                    ui.painter().text(
+                        egui::pos2(x, y),
+                        anchor,
+                        &n.name,
+                        font,
+                        if resp.hovered() {
+                            motif::text()
+                        } else {
+                            motif::text_dim()
+                        },
+                    );
+                }
+                // Le nom en tête de l'infobulle quand il n'a pas pu
+                // s'écrire : sans lui, un nœud muet n'est qu'un carré.
+                let head = if clear {
+                    String::new()
                 } else {
-                    trn("graph_node_tooltip_dci", &[&n.dci, &tr(n.tie.label_key())])
+                    format!("{} · ", n.name)
                 };
+                let tip = head
+                    + if n.dci.is_empty() {
+                        trf("graph_node_tooltip", tr(n.tie.label_key()))
+                    } else {
+                        trn("graph_node_tooltip_dci", &[&n.dci, &tr(n.tie.label_key())])
+                    }
+                    .as_str();
                 if resp.on_hover_text(tip).clicked() {
                     recentre = Some(n.id);
                 }
@@ -43637,10 +43686,10 @@ impl App {
             // in every direction, and a name written against them is a
             // name read through three lines.
             ui.painter().text(
-                egui::pos2(mid.x, mid.y + 24.0),
+                hub_at,
                 egui::Align2::CENTER_TOP,
                 &map.centre.1,
-                egui::FontId::proportional(motif::pt(ui, 13.0)),
+                hub_font,
                 motif::text(),
             );
         });

@@ -130,6 +130,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   est sortie dans `chart::hbar_metrics`, où un test la tient aux deux
   échelles et vérifie qu'une légende agrandie tient encore dans sa
   rangée.
+- **Deux noms superposés n'en font aucun.** Sur la carte de voisinage,
+  deux voisins d'angle proche écrivaient leur nom au même endroit :
+  « Lixiana » et « Di-Hydan » se peignaient l'un dans l'autre, et un
+  carré dessiné au tour suivant traversait le nom du tour d'avant
+  (« Li■ana »). Un nom qui n'a pas la place n'est plus peint, et
+  l'infobulle de son carré le porte — plutôt rien qu'une moitié, comme
+  la légende d'à côté. Neuf noms lisibles là où il y en avait huit et
+  deux illisibles.
+- **La légende de la carte des groupes de pays coupait ses entrées en
+  deux.** Elle était écrite à la main dans la vue — une pastille, puis
+  un `ui.label` — et un `Label` enveloppe **son propre texte** : « Amérique
+  du Sud » sortait « Amérique du » en fin de rangée et « Sud » au début
+  de la suivante, sans pastille. C'est-à-dire une entrée de légende qui
+  a l'air de deux, dont l'une ne nomme aucune couleur. Elle passe par
+  `chart::legend`, qui enveloppe par entière et dit « +12 » de ce qu'elle
+  n'a pas montré.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.
