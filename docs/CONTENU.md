@@ -592,6 +592,51 @@ Deux règles valent partout :
   sans chiffre. Une ligne sans seuil n'est pas une règle, et la fiche
   dit déjà « prudence » dans sa prose.
 
+## Ce que la fonction hépatique fait à une ordonnance
+
+- **Où** : `src/hepatic.rs`, `TABLE` : les mots qui désignent la
+  molécule, un libellé, des **paliers** (un stade, un niveau, une
+  conduite) et une source. Lu depuis l'écran « Croisement ».
+- **La question qu'il pose** : celle de `renal.rs`, pour l'autre organe.
+  Deux cents fiches livrées nomment le foie dans leurs
+  contre-indications, et il fallait les ouvrir une par une pour savoir
+  ce que devient l'ordonnance d'un cirrhotique.
+- **Ce qui le sépare de son voisin rénal, et qui décide de tout** :
+  *le foie n'a pas de DFG*. Le rein donne un chiffre que l'officine lit
+  sur un compte rendu ; le foie donne un **stade** de Child-Pugh qu'un
+  clinicien attribue à partir de cinq éléments dont deux ne sont pas des
+  valeurs de laboratoire. `read` prend donc un stade et jamais une
+  valeur, et le panneau offre trois boutons et non un champ : un champ
+  inviterait à écrire un chiffre, et un logiciel qui calculerait un
+  Child-Pugh à partir de ce qu'une pharmacie peut voir rendrait un score
+  faux avec l'aplomb d'un vrai. Les paliers se lisent aussi dans l'autre
+  sens — « à partir de ce stade », là où le rein dit « en dessous de ce
+  chiffre ».
+- **Six règles, un test chacune** : *sans stade, pas de verdict* ; *le
+  palier atteint est le plus grave franchi* ; *« rien à changer » est une
+  réponse* — une ligne connue que ce stade-là n'atteint pas le **dit**,
+  au lieu de disparaître, et l'oxazépam justifie la règle à lui seul ;
+  *un palier vient du RCP, jamais d'une interpolation* ; *une
+  hépatopathie évolutive n'est pas un stade* ; *un chiffre dans une
+  conduite est un plafond, jamais une posologie*.
+- **Ajouter une molécule** : une entrée `Adaptation`, copiée de ce que
+  la fiche écrit, avec la citation. Attention au champ où elle l'écrit :
+  ces fiches rangent l'adaptation hépatique dans le champ nommé
+  `renal`, qui est en réalité leur section « adaptation posologique »
+  (Zophren y écrit « Aucune adaptation en cas d'insuffisance rénale. En
+  insuffisance hépatique modérée à sévère, ne pas dépasser 8 mg par
+  jour »). Le test d'adossement le lit avec les autres.
+- **Ce qui ne s'y met pas** : une molécule contre-indiquée en
+  « affection hépatique évolutive » — les statines, le léflunomide,
+  l'agomélatine. C'est une maladie en cours, quel que soit le
+  Child-Pugh ; la ranger sous un palier dirait la chose à un stade et la
+  tairait aux autres. Un test exige leur absence.
+- **Ce qui reste ouvert** : il n'y a pas de volet hépatique côté
+  dossier, parce qu'il faudrait un Child-Pugh rangé par patient — et un
+  stade tapé une fois, contrairement à un chiffre de laboratoire daté,
+  se relit comme actuel un an plus tard. S'il est un jour rangé, il
+  portera sa date et le volet dira son âge.
+
 ## Ce qu'on peut écraser
 
 - **Où** : `src/crush.rs`, `TABLE` : les mots qui désignent la
