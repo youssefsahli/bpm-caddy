@@ -16,8 +16,16 @@
 # this is that check, run every time.
 #
 # Requires xvfb-run. Run from the repo root:
-#   ./scripts/smoke.sh
+#   ./scripts/smoke.sh            # les trois formes
+#   ./scripts/smoke.sh loupe      # une seule
+#
+# **Une forme à la fois, au besoin.** Les trois passes font deux cent
+# vingt-huit ouvertures et dépassent l'heure : lancées en arrière-plan
+# elles se font couper avant la fin, et une passe coupée ne prouve rien
+# de ce qu'elle n'a pas atteint. Le nom de la forme en argument permet
+# de les faire l'une après l'autre, chacune sous le quart d'heure.
 set -uo pipefail
+only=${1:-}
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -95,6 +103,9 @@ shapes=(
 failed=0
 for shape in "${shapes[@]}"; do
     IFS="|" read -r shape_name size ui <<< "$shape"
+    if [ -n "$only" ] && [ "$only" != "$shape_name" ]; then
+        continue
+    fi
     export BPM_CADDY_WINDOW="$size"
     cfg="$tmp/config-$shape_name"
     mkdir -p "$cfg/bpm-caddy"

@@ -20,6 +20,7 @@ mod facets;
 mod fuzzy;
 mod graph;
 mod gravidity;
+mod hepatic;
 mod insulin;
 mod location;
 mod maintenance;

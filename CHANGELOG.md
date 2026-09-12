@@ -5,6 +5,80 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.200.0] - 2026-09-12
+
+### Added
+- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, quarante-
+  six molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
+  livrées nomment le foie dans leurs contre-indications, et il fallait
+  les ouvrir une par une pour savoir ce que devenait une ordonnance chez
+  un cirrhotique. Le panneau « Croisement » le dit maintenant d'un coup.
+
+  **Le foie n'a pas de DFG**, et c'est toute la différence avec son
+  voisin rénal : le rein donne un chiffre qui se lit sur un compte
+  rendu, le foie un stade de Child-Pugh qu'un clinicien attribue à
+  partir de cinq éléments dont deux ne sont pas des valeurs de
+  laboratoire. Le panneau offre donc trois boutons et non un champ, et
+  le type de `hepatic::read` n'accepte rien d'autre : un champ
+  inviterait à écrire un chiffre, et un logiciel qui calculerait un
+  Child-Pugh à partir de ce qu'une pharmacie peut voir rendrait un score
+  faux avec l'aplomb d'un vrai.
+
+  **Une hépatopathie évolutive n'est pas un stade.** Les statines y sont
+  contre-indiquées quel que soit le Child-Pugh : les ranger sous un
+  palier dirait la chose à un stade et la tairait aux autres, ce qui est
+  faux des deux côtés. Elles ne sont pas dans cette table, et un test
+  l'exige.
+
+  **Et « rien à changer » est une réponse**, la troisième — celle que
+  `cyp.rs` venait d'apprendre à donner. L'oxazépam la justifie à lui
+  seul : sa fiche écrit qu'aucune adaptation n'est nécessaire en
+  insuffisance légère à modérée, et c'est précisément la benzodiazépine
+  qu'on cherche chez un cirrhotique. Une liste qui la tairait la rendrait
+  aussi muette qu'un produit dont personne n'a rien écrit.
+
+  Le test d'adossement a appris une chose au passage : ces fiches
+  écrivent l'adaptation hépatique dans le champ nommé `renal`, qui est en
+  réalité leur section « adaptation posologique ». C'est pour cela que la
+  moitié hépatique est restée invisible si longtemps — elle vivait sous
+  le nom de l'autre organe.
+- **La table des cytochromes passe de cinquante et une molécules à cent
+  douze**, cent quatre-vingt-seize actions, six prodrogues. Chaque rôle
+  et chaque force viennent de la fiche, citée.
+
+  Le test d'adossement a refusé une ligne en cours de route — la codéine
+  par le CYP3A4 — parce que sa fiche ne le dit pas. C'est vrai en
+  pharmacologie et ce n'est pas dans la monographie : une table qui en
+  sait plus que la fiche se corrige dans la fiche.
+- **Le choix de l'IPP sous clopidogrel, tel que les fiches l'écrivent.**
+  Les trois se ressemblent sur une ordonnance : l'oméprazole et
+  l'ésoméprazole freinent le CYP2C19 qui active le clopidogrel ; le
+  rabéprazole le freine faiblement et sa fiche juge l'association
+  acceptable ; le pantoprazole est « le moins inhibiteur du CYP2C19
+  parmi les IPP », il est substrat et ne croise rien. C'est la
+  substitution la plus fréquente du comptoir, et un moteur par classe la
+  rate. Un test la tient, ligne par ligne.
+- **Trois prodrogues de plus, et ce sont les trois qui coûtent** : le
+  losartan, le tamoxifène — un traitement du cancer du sein qu'une
+  paroxétine désarme — et la codéine.
+
+### Changed
+- **Trois réponses et non deux : « sans voie connue » n'est pas
+  « inconnue ».** Une ligne peut croiser, être inconnue de la table, ou
+  être connue et ne passer par aucune des enzymes suivies. « On ne sait
+  pas » et « on sait, et il n'y a rien » se ressemblent sur un écran qui
+  les tairait tous les deux, et ce sont deux réponses opposées quand on
+  se demande par quoi remplacer une simvastatine sous clarithromycine.
+  La pravastatine y répond, et sa fiche l'écrit.
+- **Un kétoconazole local n'est pas un kétoconazole.** Sa fiche écrit
+  « aucune interaction systémique cliniquement significative n'est
+  attendue avec les formes locales » ; une table qui raisonnerait sur la
+  molécule mettrait un shampooing en face d'une simvastatine, ce qui est
+  le genre d'alerte qui apprend à ignorer les alertes.
+- `scripts/smoke.sh` accepte le nom d'une forme en argument. Les trois
+  passes font deux cent vingt-huit ouvertures et dépassent l'heure ; une
+  passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
+
 ## [0.199.0] - 2026-09-12
 
 ### Added

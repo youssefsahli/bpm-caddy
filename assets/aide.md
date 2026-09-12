@@ -88,10 +88,29 @@ compose soi-même, sans dossier : depuis le dossier ouvert, ou en tapant
 des noms. C'est la question du téléphone — « le médecin veut ajouter ça,
 ça passe ? ».
 
-Quatre lectures de la même liste : les croisements sur les cytochromes,
+Cinq lectures de la même liste : les croisements sur les cytochromes,
 le temps que met une exposition déplacée à revenir, la revue
-d'ordonnance — doublons, associations, cascades — et ce que la clairance
-change, si on la tape.
+d'ordonnance — doublons, associations, cascades — ce que la clairance
+change, si on la tape, et ce que le foie change, au stade qu'on désigne.
+
+**Le foie n'a pas de DFG.** Le rein donne un chiffre qui se lit sur un
+compte rendu ; le foie donne un stade — Child-Pugh A, B ou C — qu'un
+clinicien attribue à partir de cinq éléments dont deux ne sont pas des
+valeurs de laboratoire. Le panneau offre donc trois boutons et non un
+champ : un champ inviterait à écrire un chiffre, et il n'y en a pas.
+
+Trois réponses et non deux, comme pour les cytochromes. « On ne sait
+pas » est en gris ; « on sait, et il n'y a rien à changer » est écrit en
+toutes lettres. L'oxazépam est le cas qui le justifie : sa fiche dit
+qu'aucune adaptation n'est nécessaire en insuffisance légère à modérée,
+et c'est précisément la benzodiazépine qu'on cherche chez un
+cirrhotique. Une liste qui la tairait la rendrait aussi muette qu'un
+produit dont personne n'a rien écrit.
+
+Une hépatopathie évolutive n'est pas un stade : les statines y sont
+contre-indiquées quel que soit le Child-Pugh, et les ranger sous un
+palier dirait la chose à un stade en la taisant aux autres. Leur fiche
+le dit là où c'est vrai.
 
 La carte dessine une corde par croisement, de la ligne qui agit vers
 celle qui bouge. Sa couleur est l'ordre de lecture, et non une gravité

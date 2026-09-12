@@ -3253,6 +3253,8 @@ struct Session {
     /// ce qui en dépend et ne conclut pas — c'est `renal::read` qui le
     /// garantit.
     ddi_dfg: String,
+    /// **Un stade, jamais un chiffre** : voir `ddi_hepatic_section`.
+    ddi_stage: Option<crate::hepatic::Stage>,
     /// Ce qu'on cherche dans l'écran des textes de l'interface.
     ui_text_query: String,
     /// Les surcharges telles qu'elles sont écrites dans `strings.toml`,
@@ -4111,6 +4113,7 @@ impl Session {
             ddi_query: String::new(),
             ddi_hits: None,
             ddi_dfg: String::new(),
+            ddi_stage: None,
             ui_text_query: String::new(),
             ui_texts: std::collections::HashMap::new(),
             ui_text_edit: None,
@@ -9866,6 +9869,12 @@ impl App {
                                 "Mopral",
                                 "Vasten",
                                 "Lopressor",
+                                // Le seul de cette liste dont le foie
+                                // change la conduite plutôt que de la
+                                // contre-indiquer : sans lui, la moitié
+                                // hépatique du panneau ne montrerait que
+                                // des « rien à changer ».
+                                "Doliprane",
                             ]
                             .iter()
                             .filter_map(|n| {
@@ -9877,6 +9886,11 @@ impl App {
                             })
                             .collect();
                             session.ddi_dfg = "38".to_owned();
+                            // Un stade, faute de quoi la moitié
+                            // hépatique du panneau ne montre que des
+                            // lignes sans verdict — c'est-à-dire rien
+                            // de ce qu'elle existe pour dire.
+                            session.ddi_stage = Some(crate::hepatic::Stage::Moderate);
                         }
                         Ok("explorer") => {
                             session.view = MainView::Explorer;
@@ -29669,6 +29683,7 @@ impl App {
                         Self::ddi_half_life_section(ui, picked, &reading);
                         Self::ddi_revue_section(ui, &terms);
                         Self::ddi_renal_section(ui, session, &terms);
+                        Self::ddi_hepatic_section(ui, session, &terms);
                     });
             });
         });
@@ -30062,6 +30077,113 @@ impl App {
             );
             ui.add_space(6.0);
         }
+        ui.add_space(6.0);
+    }
+
+    /// Ce que le foie change, au stade qu'on désigne — ou sans lui.
+    ///
+    /// **Le foie n'a pas de DFG**, et c'est la seule raison pour
+    /// laquelle ce panneau ne ressemble pas à son voisin rénal : celui-ci
+    /// offre un champ où taper une clairance, celui-là trois boutons. Un
+    /// champ inviterait à écrire un chiffre, et le Child-Pugh n'est pas
+    /// un chiffre qu'une pharmacie lit sur un compte rendu — c'est un
+    /// stade qu'un clinicien attribue à partir de cinq éléments dont
+    /// deux ne sont pas des valeurs de laboratoire. Le type de
+    /// `hepatic::read` n'en accepte pas d'autre.
+    fn ddi_hepatic_section(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        terms: &[crate::revue::Treatment],
+    ) {
+        use crate::hepatic::{Level, Stage, Verdict};
+        motif::section(ui, tr("hepatic_tab"));
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new(tr("ddi_stage"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            if ui
+                .selectable_label(session.ddi_stage.is_none(), tr("ddi_stage_none"))
+                .clicked()
+            {
+                session.ddi_stage = None;
+            }
+            for s in Stage::ALL {
+                if ui
+                    .selectable_label(session.ddi_stage == Some(*s), s.short())
+                    .on_hover_text(s.label())
+                    .clicked()
+                {
+                    session.ddi_stage = Some(*s);
+                }
+            }
+        });
+        let findings = crate::hepatic::read(terms, session.ddi_stage);
+        ui.add_space(4.0);
+        // « Aucun stade » tout seul est une remarque ; « aucun stade, et
+        // six lignes en dépendent » est une question à poser au
+        // prescripteur. C'est la seule raison d'être du compte.
+        let pending = crate::hepatic::pending(&findings);
+        if pending > 0 {
+            ui.label(
+                egui::RichText::new(match pending {
+                    1 => tr("hepatic_pending_one").to_owned(),
+                    n => trf("hepatic_pending_other", n),
+                })
+                .size(motif::pt(ui, 11.5))
+                .color(motif::emphasize(motif::text())),
+            );
+            ui.add_space(4.0);
+        }
+        if findings.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("hepatic_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for f in &findings {
+            // **Trois réponses et non deux** : « rien à changer » se lit
+            // dans l'encre ordinaire, « on ne sait pas » en gris. Les
+            // confondre rendrait l'oxazépam aussi muet qu'un produit dont
+            // personne n'a rien écrit, alors que c'est justement celui
+            // qu'on cherche.
+            let ink = match f.verdict {
+                Verdict::Adapt(Level::Contraindicated) => motif::alert(),
+                Verdict::Adapt(Level::Reduce) => motif::emphasize(motif::text()),
+                Verdict::Adapt(Level::Watch) | Verdict::Nothing => motif::text(),
+                Verdict::Unknown => motif::text_dim(),
+            };
+            let head = match (f.verdict, f.from) {
+                (Verdict::Adapt(l), Some(from)) => {
+                    format!("{} — {} dès {}", f.treatment, l.label(), from.gradation())
+                }
+                (Verdict::Nothing, _) => {
+                    format!("{} — {}", f.treatment, tr("hepatic_settled"))
+                }
+                _ => format!("{} — {}", f.treatment, tr("hepatic_unknown")),
+            };
+            ui.label(
+                egui::RichText::new(head)
+                    .size(motif::pt(ui, 12.0))
+                    .color(ink),
+            )
+            .on_hover_text(f.source);
+            ui.label(
+                egui::RichText::new(f.conduct)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.add_space(6.0);
+        }
+        ui.add_space(6.0);
+        ui.label(
+            egui::RichText::new(tr("hepatic_note"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        );
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new(tr("cyp_decision"))
