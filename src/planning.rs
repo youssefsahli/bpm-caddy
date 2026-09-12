@@ -563,13 +563,32 @@ pub fn coverage(shifts: &[Shift], from: u16, to: u16, step: u16) -> Vec<u8> {
     let mut at = from;
     while at < to {
         let slice = Slot::new(at, (at + step).min(to));
-        let n = shifts
-            .iter()
-            .filter(|s| s.kind.at_counter() && overlaps(&s.slot(), &slice))
-            .count();
-        out.push(u8::try_from(n).unwrap_or(u8::MAX));
+        out.push(u8::try_from(who_is_in(shifts, slice).len()).unwrap_or(u8::MAX));
         at += step;
     }
+    out
+}
+
+/// Qui tient le comptoir pendant ce créneau — les initiales, triées et
+/// sans doublon.
+///
+/// C'est la **même question** que [`coverage`], posée en toutes lettres :
+/// celle-ci nomme, celle-là compte, et compter n'est rien d'autre que
+/// dénombrer les noms. Deux réponses à une question finissent toujours
+/// par différer — ici, ce serait une bande qui dessine trois personnes
+/// au-dessus d'une infobulle qui en nomme deux.
+///
+/// Les mêmes exclusions que la bande, donc, et pour les mêmes raisons :
+/// l'astreinte porte des heures mais n'est pas devant le patient, et une
+/// absence ne tient rien du tout.
+pub fn who_is_in(shifts: &[Shift], slot: Slot) -> Vec<String> {
+    let mut out: Vec<String> = shifts
+        .iter()
+        .filter(|s| s.kind.at_counter() && overlaps(&s.slot(), &slot))
+        .map(|s| s.operator.clone())
+        .collect();
+    out.sort_unstable();
+    out.dedup();
     out
 }
 
@@ -877,6 +896,45 @@ mod tests {
         // Une bande demandée à l'envers, ou d'un pas nul, ne panique pas.
         assert!(coverage(&[], 12 * 60, 9 * 60, 30).is_empty());
         assert!(coverage(&[], 9 * 60, 12 * 60, 0).is_empty());
+    }
+
+    /// **Nommer et compter sont la même question.** La bande dessine un
+    /// nombre de têtes, l'infobulle écrit leurs initiales : si les deux
+    /// se calculaient chacune de leur côté, on finirait par voir trois
+    /// carrés au-dessus de deux noms.
+    #[test]
+    fn counting_heads_is_naming_them() {
+        let cl = shift(1, "CL", 9 * 60, Some(12 * 60 + 30), ShiftKind::Ouverture);
+        let ys = shift(2, "YS", 10 * 60, Some(19 * 60), ShiftKind::Journee);
+        // Deux postes d'une même personne dans la journée ne la font pas
+        // compter deux fois à l'heure où ils se rejoignent.
+        let cl_pm = shift(3, "CL", 14 * 60, Some(19 * 60), ShiftKind::Fermeture);
+        let astreinte = shift(4, "AB", 9 * 60, Some(19 * 60), ShiftKind::Astreinte);
+        let conge = shift(5, "MD", 9 * 60, Some(19 * 60), ShiftKind::Conge);
+        let day = [cl, ys, cl_pm, astreinte, conge];
+
+        assert_eq!(who_is_in(&day, Slot::point(9 * 60 + 30)), ["CL"]);
+        assert_eq!(who_is_in(&day, Slot::point(11 * 60)), ["CL", "YS"]);
+        // À treize heures, CL est partie et n'est pas revenue : ni
+        // l'astreinte ni le congé ne tiennent le comptoir.
+        assert_eq!(who_is_in(&day, Slot::point(13 * 60)), ["YS"]);
+        assert_eq!(who_is_in(&day, Slot::point(15 * 60)), ["CL", "YS"]);
+        // Hors des heures, personne — et non « tout le monde ».
+        assert!(who_is_in(&day, Slot::point(8 * 60)).is_empty());
+
+        // Et la bande compte exactement ces noms-là, tranche par
+        // tranche : c'est la même fonction qui répond.
+        let band = coverage(&day, 8 * 60, 19 * 60, 30);
+        for (i, n) in band.iter().enumerate() {
+            let at = 8 * 60 + u16::try_from(i).unwrap_or(0) * 30;
+            let slice = Slot::new(at, at + 30);
+            assert_eq!(
+                usize::from(*n),
+                who_is_in(&day, slice).len(),
+                "tranche de {}",
+                hhmm(at)
+            );
+        }
     }
 
     /// **Une garde franchit minuit, et sa fin doit rester lisible.**

@@ -22681,12 +22681,41 @@ impl App {
             };
             ui.painter().rect_filled(cell, 0.0, fill);
         }
-        let hover = if holes.is_empty() {
-            trf("planning_coverage_tooltip", busiest)
-        } else {
-            let mut t = trf("planning_coverage_tooltip", busiest);
-            t.push('\n');
-            t.push_str(&trn(
+        let resp = ui.interact(rect, ui.id().with(("coverage", day)), egui::Sense::hover());
+        // **Qui est là à cette heure-ci**, et non seulement combien ils
+        // sont dans la journée. La bande disait « jusqu'à 3 personnes »,
+        // ce qui répond à une question que personne ne pose ; celle
+        // qu'on pose devant un plan de journée est « puis-je prendre
+        // quelqu'un à 15 h, et avec qui ? ». La tranche se lit sous le
+        // pointeur — une seule zone sensible, et non quarante-quatre.
+        let mut hover = String::new();
+        if let Some(pos) = resp.hover_pos() {
+            let i = ((pos.y - rect.top()) / cell_h).floor().max(0.0);
+            let at = from.saturating_add(u16::try_from(i as i64).unwrap_or(0).saturating_mul(STEP));
+            if at < to {
+                // La **même** fonction que celle qui compte les têtes
+                // de la bande : une infobulle qui nommerait deux
+                // personnes sous trois carrés serait la pire des deux
+                // réponses.
+                let who = planning::who_is_in(&shifts, agenda::Slot::point(at));
+                hover = trn(
+                    "planning_coverage_at",
+                    &[
+                        &planning::hhmm(at),
+                        &if who.is_empty() {
+                            tr("planning_coverage_nobody").to_owned()
+                        } else {
+                            who.join(", ")
+                        },
+                    ],
+                );
+                hover.push('\n');
+            }
+        }
+        hover.push_str(&trf("planning_coverage_tooltip", busiest));
+        if !holes.is_empty() {
+            hover.push('\n');
+            hover.push_str(&trn(
                 "planning_gaps",
                 &[
                     &holes.len(),
@@ -22694,10 +22723,8 @@ impl App {
                     &planning::hhmm(holes[0].end),
                 ],
             ));
-            t
-        };
-        ui.interact(rect, ui.id().with(("coverage", day)), egui::Sense::hover())
-            .on_hover_text(hover);
+        }
+        resp.on_hover_text(hover);
         8.0
     }
 

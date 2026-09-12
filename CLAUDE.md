@@ -192,7 +192,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   hole at the counter, so filing it elsewhere would separate the hole
   from its reason. It does not recompute overlap: `agenda.rs` knows it
   already, and **there are not two overlap calculations in this
-  application**. Six rules, one test each: **hours are counted in whole
+  application**. Naming who is at the counter and counting them is **one** question:
+  `who_is_in` returns the initials and `coverage` counts what it returns —
+  two calculations would end up drawing three squares above two names.
+  Six rules, one test each: **hours are counted in whole
   minutes** (7 h 35 is 455 — the centimes of the caisse, for the same
   reason), **a shift with no end is not a shift of zero hours** (`None`,
   and the line reads « — »), **a night is counted at the day it begins**

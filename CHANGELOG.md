@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.190.0] - 2026-09-12
+
+### Added
+- **La bande de couverture dit qui est là, et pas seulement combien.**
+  Elle répondait « jusqu'à 3 personnes » — une question que personne ne
+  pose. Celle qu'on pose devant un plan de journée est « puis-je prendre
+  quelqu'un à 15 h, et avec qui ? ». Le survol nomme maintenant la
+  tranche sous le pointeur : « 15 h 00 — CL, YS », ou « personne au
+  comptoir ».
+
+  Nommer et compter sont **la même question**, et c'est la même fonction
+  qui y répond : `planning::who_is_in` rend les initiales, et la bande
+  dénombre ce qu'elle rend. Deux calculs auraient fini par montrer trois
+  carrés au-dessus de deux noms. Les mêmes exclusions valent pour les
+  deux, et pour les mêmes raisons : l'astreinte porte des heures mais
+  n'est pas devant le patient, et une absence ne tient rien du tout.
+
 ## [0.189.0] - 2026-09-12
 
 ### Added
