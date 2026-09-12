@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.191.0] - 2026-09-12
+
+### Added
+- **« Retirer la trame » — le geste symétrique de « Poser ».** Il
+  manquait : la grille de la semaine supprime une ligne rangée à la
+  fois, ce qui fait neuf gestes pour une semaine de journées coupées, et
+  neuf occasions d'en oublier une. La fenêtre retire ce qu'elle montre,
+  et rien d'autre — les postes ponctuels et les absences ne sont pas
+  touchés —, les exceptions partent avec leur ligne rangée, et
+  « Annuler » remet le tout.
+
+### Fixed
+- Le retour arrière d'un retrait de trame s'annonçait « la trame de 0
+  poste(s) », qui est exactement le libellé qu'on ne reconnaît pas, donc
+  qu'on n'ose pas presser. Il dit maintenant « le retrait de la trame
+  (N ligne(s)) ».
+
 ## [0.190.0] - 2026-09-12
 
 ### Added

@@ -7750,6 +7750,13 @@ fn undo_label(what: &PlanningUndo) -> String {
             family.first().map_or("", |f| f.operator.as_str()),
         ),
         PlanningUndo::Copied { ids, .. } => trf("planning_undo_copied", ids.len()),
+        // **Poser et retirer sont le même geste rangé**, et le retour
+        // arrière doit dire lequel : « la trame de 0 poste(s) » est
+        // exactement le libellé qu'on ne reconnaît pas, donc qu'on
+        // n'ose pas presser.
+        PlanningUndo::Framed { added, removed } if added.is_empty() => {
+            trf("planning_undo_unframed", removed.len())
+        }
         PlanningUndo::Framed { added, .. } => trf("planning_undo_framed", added.len()),
     }
 }
@@ -24564,6 +24571,7 @@ impl App {
         let screen = ctx.screen_rect().size();
         let mut close = false;
         let mut apply = false;
+        let mut remove = false;
         let mut reload = false;
         let mut copy_week = false;
         let mut spread: Option<usize> = None;
@@ -25018,6 +25026,19 @@ impl App {
                     if motif::button(ui, tr("frame_apply")).clicked() {
                         apply = true;
                     }
+                    // Le geste symétrique, et seulement quand il y a
+                    // quelque chose à retirer : un bouton qui ne ferait
+                    // rien est un bouton qu'on n'ose plus presser.
+                    if !session.frame.replacing.is_empty()
+                        && motif::button(ui, tr("frame_remove"))
+                            .on_hover_text(trf(
+                                "frame_remove_tooltip",
+                                session.frame.replacing.len(),
+                            ))
+                            .clicked()
+                    {
+                        remove = true;
+                    }
                     if motif::button(ui, tr("tpl_close")).clicked() {
                         close = true;
                     }
@@ -25054,6 +25075,9 @@ impl App {
         }
         if apply {
             Self::frame_apply(session);
+        }
+        if remove {
+            Self::frame_remove(session);
         }
         if close {
             session.frame.open = false;
@@ -25204,6 +25228,41 @@ impl App {
                 session.frame.notice = Some(trf("frame_too_rich", n));
             }
         }
+    }
+
+    /// Retirer la trame d'une personne — **celle que la fenêtre a
+    /// montrée**, et rien d'autre.
+    ///
+    /// C'est le geste symétrique de « Poser », et il manquait : la
+    /// grille de la semaine supprime une ligne rangée à la fois, ce qui
+    /// fait neuf gestes pour une semaine de journées coupées, et neuf
+    /// occasions d'en oublier une. Ici, la liste est déjà connue — c'est
+    /// celle que « Remplacer » aurait retirée.
+    ///
+    /// Les exceptions partent avec leur ligne rangée, dans la
+    /// transaction de [`db::Db::delete_shift`], et reviennent avec elle
+    /// au retour arrière.
+    fn frame_remove(session: &mut Session) {
+        let who = session.frame.operator.trim().to_owned();
+        let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
+        for id in session.frame.replacing.clone() {
+            let family = session.db.shift_family(id).unwrap_or_default();
+            match session.db.delete_shift(id, &who) {
+                Ok(true) => removed.push(family),
+                Ok(false) => {}
+                Err(e) => session.error = Some(e),
+            }
+        }
+        let n = removed.len();
+        if n > 0 {
+            session.remember(PlanningUndo::Framed {
+                added: Vec::new(),
+                removed,
+            });
+        }
+        session.planning_notice = Some(trf("frame_removed", n));
+        session.frame.open = false;
+        session.load_shifts(true);
     }
 
     /// Poser la trame : retirer ce qu'il faut retirer, écrire le reste,
