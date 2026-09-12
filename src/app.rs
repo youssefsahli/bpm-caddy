@@ -21899,8 +21899,17 @@ impl App {
                         .color(motif::text_dim()),
                 );
             }
+            // **La rangée enveloppe.** Elle était un `horizontal`, qui
+            // n'enveloppe pas, et `motif::page` ne découpe rien : à
+            // 1024x700 en texte 1,6, une ligne portant l'heure, la
+            // nature, le nom *et* un numéro de téléphone poussait
+            // « Déplacer » hors du panneau — le bouton était dessiné,
+            // simplement plus personne ne pouvait le voir ni l'atteindre,
+            // et seule la ligne d'à côté, dont le patient n'a pas de
+            // téléphone, gardait le sien. Rien ne panique, rien ne se
+            // coupe : le geste disparaît, et il disparaît selon la fiche.
             for rdv in &rdvs {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     // The hour, typed the fast way: 9, 9h30, 930, 09:30.
                     // `filter` and not « ask whether, then unwrap »: the
                     // two readings of the same Option are one line apart
@@ -21991,7 +22000,9 @@ impl App {
                 });
             }
             for ev in session.events.clone() {
-                ui.horizontal(|ui| {
+                // Même raison qu'au-dessus : un intitulé long poussait
+                // « Supprimer » hors du panneau.
+                ui.horizontal_wrapped(|ui| {
                     // An entry that runs to an hour says both, here as
                     // on the plan above and on the printed week.
                     if ev.time.is_empty() {
@@ -22533,7 +22544,16 @@ impl App {
             .first()
             .map(|m| trf("agenda_week_of", db::format_french_date(m)))
             .unwrap_or_default();
-        let control_lines = Self::wrapped_rows(
+        // Les trois boutons de navigation comptent pour **un** : ils
+        // sont alloués d'un bloc, et une estimation qui les compterait
+        // séparément annoncerait une rangée là où il en faut deux.
+        let gap = ui.spacing().item_spacing.x;
+        let nav_w = ["‹", tr("agenda_this_week"), "›"]
+            .iter()
+            .map(|l| Self::button_width(ui, l))
+            .sum::<f32>()
+            + gap * 2.0;
+        let control_lines = Self::wrapped_rows_of(
             ui,
             body.width() - 30.0,
             [
@@ -22541,14 +22561,19 @@ impl App {
                 tr("agenda_mode_week"),
                 tr("agenda_mode_month"),
                 tr("agenda_mode_planning"),
-                "‹",
-                tr("agenda_this_week"),
-                "›",
-                week_label.as_str(),
-                tr("dash_print"),
-                tr("agenda_print_week"),
             ]
-            .into_iter(),
+            .into_iter()
+            .map(|l| Self::button_width(ui, l))
+            .chain(std::iter::once(nav_w))
+            .chain(
+                [
+                    week_label.as_str(),
+                    tr("dash_print"),
+                    tr("agenda_print_week"),
+                ]
+                .into_iter()
+                .map(|l| Self::button_width(ui, l)),
+            ),
         );
         let row = Self::row_height(ui) + ui.spacing().item_spacing.y + 8.0;
         // L'estimation sert au premier dessin ; ensuite c'est ce que la
@@ -23087,40 +23112,65 @@ impl App {
                 session.load_shifts(false);
             }
         };
-        if motif::button(ui, "‹")
-            .on_hover_text(tr("agenda_prev_week"))
-            .clicked()
-        {
-            step(session, -1);
-        }
-        if motif::button(ui, tr("agenda_this_week")).clicked() {
-            match session.agenda_mode {
-                AgendaMode::Day => {
-                    session.agenda_day = session.today.clone();
-                    session.load_day();
+        // **Les trois passent à la ligne ensemble, ou pas du tout.**
+        // La bande est un `horizontal_wrapped`, qui coupe où il veut, et
+        // à `[ui] text_scale = 1,25` la coupure tombait entre « ‹ » et
+        // « Aujourd'hui » : la flèche de la semaine précédente restait
+        // accrochée aux quatre boutons de mode, et « › », une rangée
+        // plus bas, se lisait comme la suite d'« Aujourd'hui ». Trois
+        // boutons qui font *un* geste — reculer, revenir, avancer — se
+        // mesurent et s'allouent comme un seul objet.
+        //
+        // La mesure passe par `button_width`, c'est-à-dire par la
+        // formule que `motif::button` applique en dessinant : deux
+        // mesures d'une même chose finissent toujours par diverger, et
+        // ici cela se verrait en « › » rogné.
+        let gap = ui.spacing().item_spacing.x;
+        let trio = ["‹", tr("agenda_this_week"), "›"];
+        let trio_w = trio.iter().map(|l| Self::button_width(ui, l)).sum::<f32>()
+            + gap * (trio.len() - 1) as f32;
+        ui.allocate_ui_with_layout(
+            egui::vec2(trio_w, Self::row_height(ui)),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                if motif::button(ui, "‹")
+                    .on_hover_text(tr("agenda_prev_week"))
+                    .clicked()
+                {
+                    step(session, -1);
                 }
-                AgendaMode::Month => {
-                    session.agenda_month_offset = 0;
-                    session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
+                if motif::button(ui, tr("agenda_this_week")).clicked() {
+                    match session.agenda_mode {
+                        AgendaMode::Day => {
+                            session.agenda_day = session.today.clone();
+                            session.load_day();
+                        }
+                        AgendaMode::Month => {
+                            session.agenda_month_offset = 0;
+                            session.agenda_month_days =
+                                session.db.month_grid(0).unwrap_or_default();
+                        }
+                        AgendaMode::Planning if session.planning_month => {
+                            session.agenda_month_offset = 0;
+                            session.agenda_month_days =
+                                session.db.month_grid(0).unwrap_or_default();
+                            session.load_shifts(true);
+                        }
+                        AgendaMode::Week | AgendaMode::Planning => {
+                            session.agenda_offset = 0;
+                            session.agenda_week = session.db.week_dates(0).unwrap_or_default();
+                            session.load_shifts(false);
+                        }
+                    }
                 }
-                AgendaMode::Planning if session.planning_month => {
-                    session.agenda_month_offset = 0;
-                    session.agenda_month_days = session.db.month_grid(0).unwrap_or_default();
-                    session.load_shifts(true);
+                if motif::button(ui, "›")
+                    .on_hover_text(tr("agenda_next_week"))
+                    .clicked()
+                {
+                    step(session, 1);
                 }
-                AgendaMode::Week | AgendaMode::Planning => {
-                    session.agenda_offset = 0;
-                    session.agenda_week = session.db.week_dates(0).unwrap_or_default();
-                    session.load_shifts(false);
-                }
-            }
-        }
-        if motif::button(ui, "›")
-            .on_hover_text(tr("agenda_next_week"))
-            .clicked()
-        {
-            step(session, 1);
-        }
+            },
+        );
         let label = match session.agenda_mode {
             AgendaMode::Day => db::format_french_date(&session.agenda_day),
             AgendaMode::Month => session
@@ -44484,12 +44534,18 @@ mod tests {
         // Un nom composé : tout ce qui suit le prénom reste ensemble.
         assert_eq!(super::name_forms("Marie Dubois Martin")[2], "Dubois Martin");
         // Un seul mot : trois fois le même, et pas une initiale.
-        assert_eq!(super::name_forms("Dupont"), std::array::from_fn(|_| "Dupont".to_owned()));
+        assert_eq!(
+            super::name_forms("Dupont"),
+            std::array::from_fn(|_| "Dupont".to_owned())
+        );
         // Les espaces en trop ne fabriquent ni prénom vide ni double
         // espace au milieu de l'écriture la plus riche.
         assert_eq!(super::name_forms("  Jean   Dupont ")[0], "Jean Dupont");
         // Et un nom vide ne rend pas « . » : il ne rend rien.
-        assert_eq!(super::name_forms(""), std::array::from_fn(|_| String::new()));
+        assert_eq!(
+            super::name_forms(""),
+            std::array::from_fn(|_| String::new())
+        );
     }
 
     /// **L'heure cède après le nom, et non avant.**
