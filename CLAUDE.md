@@ -40,6 +40,33 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   from an interpolation**, and **the conduct is the RCP's, the decision
   is the prescriber's** — written on the panel, not only in the code.
   Pure, tested, no clock),
+  `src/hepatic.rs` (the same question for the other organ, and the
+  reason it is a separate module is one sentence: **le foie n'a pas de
+  DFG**. The kidney gives a figure the pharmacy reads off a lab slip;
+  the liver gives a **stage** a clinician assigns from five clinical
+  items, two of which are not laboratory values. `read` therefore takes
+  a `Stage` and never a value, and the panel offers three buttons rather
+  than a field — a field invites a made-up number, and a table that
+  computed a Child-Pugh from what a pharmacy can see would return a
+  wrong score with a right score's confidence. The steps also read the
+  other way: « from this stage up », where the kidney says « below this
+  figure », which is why the two modules do not share a type. Forty-six
+  molecules, each copied from the card that says it, cited. Six rules,
+  one test each — the three that are not `renal`'s: **« rien à changer »
+  is an answer** (a line the table knows and this stage does not reach
+  says so instead of vanishing; oxazépam justifies it alone — its card
+  says no adaptation is needed in mild-to-moderate impairment, and it is
+  precisely the benzodiazepine one looks for in a cirrhotic), **an
+  active liver disease is not a stage** (the statins are contraindicated
+  in « affection hépatique évolutive » whatever the Child-Pugh, so they
+  are *not* in the table and a test demands their absence), and **a
+  figure in a conduct is a ceiling, never a posology** — `renal` refuses
+  every milligram because a reduced dose also depends on indication,
+  weight and age, whereas « ne pas dépasser 3 g de paracétamol par
+  jour » depends on none of that, so the rule is refined rather than
+  copied. One trap when adding a molecule: these cards write hepatic
+  adaptation in the field named `renal`, which is really their
+  « adaptation posologique » section. Pure, tested, no clock),
   `src/crush.rs` (« peut-on écraser ? » — the question asked every day,
   whose answer sits in the prose of dozens of cards. A table keyed on
   the **presentation** and a printable sheet for the EHPAD or the nurse.
@@ -477,7 +504,16 @@ add clicking and typing; it is not the price of entry.
   text of `app.rs` and refuses the next literal. **And the measurement
   goes through the same function as the drawing** — `Self::widest` and
   the register's own templates still counted in pixels after the
-  conversion, and the register elided its dates.
+  conversion, and the register elided its dates. **And `motif` is held
+  to the same rule by its own test**
+  (`no_text_size_in_this_crate_is_written_in_pixels`), because the
+  `app.rs` one reads only `app.rs` — the crate where sizes are actually
+  decided was covered by nothing, and it carried one: the caption of a
+  horizontal bar, clamped between ten and thirteen pixels. Note the two
+  tests differ on purpose: the `app.rs` one refuses a digit **stuck to**
+  the call, and that is why this one escaped it —
+  `FontId::proportional((row_h * 0.46).clamp(10.0, 13.0))` starts with a
+  bracket. The `motif` test reads the whole argument, brackets counted.
 - **Colour comes from the theme, never from a literal.** `motif::bg()`,
   `text_dim()`, `accent()`… are functions over `motif::THEMES` (eight
   palettes, `[ui] theme`); a hard-coded `Color32::from_rgb` in the
@@ -633,6 +669,30 @@ add clicking and typing; it is not the price of entry.
   two rows where it drew one — a hundred pixels held back on a pane with
   two hundred and fifty-five. Compute the widths once, above, and hand
   them to the drawing; two measurements of one thing always diverge.
+- **And a `ScrollArea` takes its bar off that width** —
+  `App::scrolled_width`. A dozen pixels, and they are enough to send the
+  last control of a measured row onto a second row that the cap then
+  slices. Found twice before it got a name: the register's band, then
+  the biology form, where the control that fell off was « Ajouter » —
+  the gesture that records the result. The lesson is the one above, but
+  the *path* is what differs, so the subtraction needs a name rather
+  than a comment.
+- **A head that carries a sentence measures it** — `App::head_height`,
+  over `App::prose_height`. « Two rows plus eighteen pixels » is right
+  at scale 1 and wrong at 1,6, where the sentence wraps to three lines
+  and comes out cut through the middle of the last. Paired with
+  `a_head_is_as_tall_as_the_prose_it_carries`, which draws the real
+  thing headless at three scales and three widths.
+- **Never add a fixed gutter allowance on top of whole rows.** The batch
+  sheet reserved five gutters — those of everything it *can* carry — and
+  when neither the write-reply nor the subtitle was drawn, those
+  ninety-two pixels covered nothing and showed one more row, cut. A cap
+  that lands on a whole row has to be counted **from where the rows
+  actually begin**; anything above them is measured, not provisioned.
+- **Two rects that merely touch `intersects` in egui.** Reserving the
+  places a label may not go — the graph does it — a name laid against
+  its own node box therefore rejected itself, and three names in ten
+  vanished for a tangency. Shrink one side by a pixel before testing.
 - **A list of records needs a `Grid`, not a row of `horizontal`.** Drawn
   one row at a time, every column starts where the previous one ended,
   so nothing lines up between rows — and the defect grows with each
@@ -901,7 +961,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|rein|grossesse|base|codex|
+  vaccine_map|ordonnance|rein|grossesse|cyp|ddi|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   trame|
