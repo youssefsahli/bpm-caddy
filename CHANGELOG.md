@@ -152,6 +152,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   monographies » se lisait « Recherche dans les monograph » avec
   « Retour » posé sur la fin du mot. Le bouton est réservé d'abord, le
   titre prend le reste. Le carnet de transmissions avait la même rangée.
+- **Et le test qui refuse une taille en pixels ne lisait que le premier
+  caractère de l'argument** — donc pas
+  `FontId::proportional((tile * 0.42).clamp(6.0, 11.0))`, qui commence
+  par une parenthèse. C'est par là que deux tailles en pixels étaient
+  restées : la légende d'une barre, et l'étiquette d'une tuile de la
+  carte des pays. Il lit l'argument entier, parenthèses comptées, et
+  `motif` a désormais le sien — le crate où les tailles sont décidées
+  n'était couvert par rien.
+- **« Demi-vie pla… »** dans l'explorateur : une colonne qui a perdu le
+  mot qui qualifie *et* se lit cassée, là où « Demi-vie » n'en dit pas
+  moins et se lit entière.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.

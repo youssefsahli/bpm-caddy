@@ -1852,6 +1852,7 @@ drugs_classes_tooltip = "Parcourir le référentiel par famille et par classe th
 explorer_axis_half_life = "Demi-vie"
 explorer_col_card = "Fiche"
 explorer_col_half_life = "Demi-vie plasmatique"
+explorer_col_half_life_short = "Demi-vie"
 explorer_col_organs = "Organes altérés"
 explorer_cover_half_life = "{} fiches classées. Les monographies sans demi-vie chiffrée sont placées en fin de liste, non à zéro."
 explorer_cover_organ = "{} fiches sur cet axe, d'après leur monographie. Une fiche absente est une fiche dont la monographie ne dit rien sur cet axe."

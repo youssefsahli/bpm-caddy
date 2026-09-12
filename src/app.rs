@@ -21598,7 +21598,16 @@ impl App {
                 grid.center().x - tile * cols as f32 / 2.0,
                 grid.center().y - tile * grid_rows as f32 / 2.0,
             );
-            let font = egui::FontId::proportional((tile * 0.42).clamp(6.0, 11.0));
+            // La tuile décide, et c'est normal : l'étiquette est écrite
+            // *dedans*, donc bornée par une géométrie et non par
+            // l'échelle du texte. Mais le **plafond** en est une, et un
+            // plafond en pixels ne suit pas `[ui] text_scale` — sur un
+            // volet large, où la tuile aurait de quoi porter plus, il
+            // gardait l'étiquette à onze pixels quand tout le reste de
+            // l'écran avait grandi de moitié. Le plancher, lui, reste en
+            // pixels : c'est lui qui décide quand l'étiquette cesse
+            // d'être lisible, et la lisibilité est en pixels.
+            let font = egui::FontId::proportional((tile * 0.42).clamp(6.0, motif::pt(ui, 11.0)));
             for country in vaccines::COUNTRIES {
                 let (x, y) = country.tile();
                 let rect = egui::Rect::from_min_size(
@@ -29631,14 +29640,35 @@ impl App {
         match axis {
             None => {
                 ui.horizontal(|ui| {
-                    for (w, key) in [
-                        (name_w, "explorer_col_card"),
-                        (value_w, "explorer_col_half_life"),
-                        (rest_w, "explorer_col_organs"),
+                    for (w, key, short) in [
+                        (name_w, "explorer_col_card", None),
+                        (
+                            value_w,
+                            "explorer_col_half_life",
+                            Some("explorer_col_half_life_short"),
+                        ),
+                        (rest_w, "explorer_col_organs", None),
                     ] {
                         Self::explorer_cell(ui, w, &mut |ui| {
+                            // **Raccourcir, ne pas élider.** « Demi-vie
+                            // pla… » a perdu le mot qui qualifie *et* se
+                            // lit cassé ; « Demi-vie » n'en dit pas
+                            // moins et se lit entier. Les deux autres
+                            // colonnes n'ont pas de forme plus pauvre à
+                            // proposer, et gardent l'ellipse.
+                            let room = ui.available_width();
+                            let font = egui::TextStyle::Body.resolve(ui.style());
+                            let wide = ui.fonts(|f| {
+                                f.layout_no_wrap(tr(key).to_owned(), font, motif::text())
+                                    .size()
+                                    .x
+                            });
+                            let label = match short {
+                                Some(k) if wide > room => tr(k),
+                                _ => tr(key),
+                            };
                             ui.add(
-                                egui::Label::new(egui::RichText::new(tr(key)).strong()).truncate(),
+                                egui::Label::new(egui::RichText::new(label).strong()).truncate(),
                             );
                         });
                     }
@@ -48423,10 +48453,36 @@ mod tests {
         ];
         let mut offenders: Vec<String> = Vec::new();
         for (i, l) in SOURCE.lines().enumerate() {
+            // Un commentaire n'est pas du code — celui-ci cite des
+            // appels fautifs, et le test se trouvait lui-même.
+            if l.trim_start().starts_with("//") {
+                continue;
+            }
             for call in calls {
                 let mut rest = l;
                 while let Some((_, tail)) = rest.split_once(call) {
-                    if tail.starts_with(|c: char| c.is_ascii_digit()) {
+                    // **L'argument entier, et non le premier
+                    // caractère.** Le test refusait un chiffre *collé* à
+                    // l'appel, et laissait donc passer
+                    // `FontId::proportional((tile * 0.42).clamp(6.0,
+                    // 11.0))`, qui commence par une parenthèse — c'est
+                    // par là qu'une taille en pixels est restée ici, et
+                    // la même faute exactement se cachait dans `motif`.
+                    // Les parenthèses se comptent, parce que
+                    // l'expression en porte elle-même.
+                    let mut depth = 1usize;
+                    let arg: String = tail
+                        .chars()
+                        .take_while(|c| {
+                            match c {
+                                '(' => depth += 1,
+                                ')' => depth -= 1,
+                                _ => {}
+                            }
+                            depth > 0
+                        })
+                        .collect();
+                    if arg.chars().any(|c| c.is_ascii_digit()) && !l.contains("pt(") {
                         offenders.push(format!("app.rs:{} : {}", i + 1, l.trim()));
                     }
                     rest = tail;
