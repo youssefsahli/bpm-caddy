@@ -26,7 +26,7 @@
 //!
 //! ## Ce que le module tient
 //!
-//! Cinq règles, une par test :
+//! Six règles, une par test :
 //!
 //! * **Sans stade, pas de verdict.** Le module nomme alors ce qui
 //!   dépend du foie et dit que le stade manque — jamais ce qu'il
@@ -47,6 +47,17 @@
 //! * **Un palier vient du RCP, jamais d'une interpolation.** Le module
 //!   ne calcule pas une dose à partir d'un stade : il répète ce que la
 //!   fiche écrit.
+//! * **Un chiffre dans une conduite est un plafond, jamais une
+//!   posologie.** `renal.rs` refuse tout milligramme, et sa raison est
+//!   bonne chez lui : la dose réduite d'un AOD dépend aussi de
+//!   l'indication, du poids et de l'âge, si bien qu'un chiffre écrit là
+//!   se lirait comme une prescription. Les RCP hépatiques, eux, posent
+//!   des **bornes** — « ne pas dépasser 3 g de paracétamol par jour »
+//!   ne dépend d'aucune indication, et la taire perdrait la seule chose
+//!   utile de la ligne. La règle est donc affinée plutôt que copiée :
+//!   une conduite peut porter un chiffre s'il est dans un « ne pas
+//!   dépasser » ; une dose de départ s'écrit en fraction de la dose
+//!   usuelle, comme la fiche l'écrit le plus souvent elle-même.
 //! * **La conduite est celle du RCP, la décision est celle du
 //!   prescripteur.** Beaucoup de ces contre-indications ne tiennent pas
 //!   au métabolisme mais au **risque d'encéphalopathie** — les
@@ -323,7 +334,7 @@ pub const TABLE: &[Adaptation] = &[
             step(
                 Mild,
                 Reduce,
-                "Débuter à 0,25 mg une à deux fois par jour et ne pas dépasser la moitié de la dose adulte.",
+                "Ne pas dépasser la moitié de la dose adulte, en débutant à la plus faible.",
             ),
             step(Severe, Contraindicated, "Insuffisance hépatique sévère avec risque d'encéphalopathie : contre-indiqué."),
         ],
@@ -364,7 +375,7 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["zolpidem"],
         label: "Zolpidem",
         steps: &[
-            step(Mild, Reduce, "5 mg par jour, à ne pas dépasser."),
+            step(Mild, Reduce, "Ne pas dépasser 5 mg par jour."),
             step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
         ],
         source: "Stilnox : « Chez le sujet de plus de 65 ans, l'insuffisant hépatique ou le patient fragile, la posologie est de 5 mg par jour et ne doit pas être dépassée ».",
@@ -373,7 +384,7 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["zopiclone"],
         label: "Zopiclone",
         steps: &[
-            step(Mild, Reduce, "3,75 mg, soit un demi-comprimé."),
+            step(Mild, Reduce, "La moitié de la dose usuelle, soit un demi-comprimé."),
             step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
         ],
         source: "Imovane : « Chez le sujet de plus de 65 ans, l'insuffisant hépatique, l'insuffisant rénal ou l'insuffisant respiratoire chronique, la posologie est de 3,75 mg, soit un demi-comprimé ».",
@@ -520,7 +531,7 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["losartan"],
         label: "Losartan",
         steps: &[
-            step(Mild, Reduce, "Débuter à 25 mg."),
+            step(Mild, Reduce, "Débuter à la moitié de la dose usuelle."),
             step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
         ],
         source: "Cozaar : « Débuter à 25 mg chez le sujet de plus de 75 ans, en cas de déplétion volémique, de traitement diurétique à forte dose ou d'insuffisance hépatique » ; contre-indication en « insuffisance hépatique sévère ».",
@@ -528,7 +539,7 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["amlodipine"],
         label: "Amlodipine",
-        steps: &[step(Mild, Reduce, "Débuter à 2,5 mg et titrer lentement ; contrôler les transaminases.")],
+        steps: &[step(Mild, Reduce, "Débuter à la dose la plus faible et titrer lentement ; contrôler les transaminases.")],
         source: "Amlor : « En cas d'insuffisance hépatique, débuter à 2,5 mg et titrer lentement » ; « Chez l'insuffisant hépatique, contrôler les transaminases ».",
     },
     Adaptation {
@@ -872,6 +883,38 @@ mod tests {
             unbacked.is_empty(),
             "molécules dont la fiche ne parle pas du foie : {unbacked:?}"
         );
+    }
+
+    /// **Un chiffre dans une conduite est un plafond, jamais une
+    /// posologie.**
+    ///
+    /// `renal.rs` refuse tout milligramme, et il a raison chez lui : la
+    /// dose réduite d'un AOD dépend aussi de l'indication, du poids et
+    /// de l'âge. Les RCP hépatiques posent des bornes, et « ne pas
+    /// dépasser 3 g de paracétamol par jour » ne dépend d'aucune
+    /// indication — la taire perdrait la seule chose utile de la ligne.
+    /// Le test tient la version affinée : un chiffre n'est admis que
+    /// dans un « ne pas dépasser ». Une dose de **départ** s'écrit en
+    /// fraction de la dose usuelle, comme la fiche l'écrit elle-même.
+    ///
+    /// Vérifié en remettant « Débuter à 0,25 mg » chez l'alprazolam.
+    #[test]
+    fn a_figure_in_a_conduct_is_a_ceiling_and_never_a_dose() {
+        for a in TABLE {
+            for s in a.steps {
+                let numbered = s.conduct.contains(" mg")
+                    || s.conduct.contains(" g ")
+                    || s.conduct.contains(" g.");
+                if numbered {
+                    assert!(
+                        s.conduct.contains("dépasser"),
+                        "{} : « {} » porte un chiffre hors d'un plafond",
+                        a.label,
+                        s.conduct
+                    );
+                }
+            }
+        }
     }
 
     /// Chaque ligne cite sa source, ne se répète pas, et ses paliers

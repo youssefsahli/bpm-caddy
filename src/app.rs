@@ -15277,6 +15277,35 @@ impl App {
     /// Ce que le panneau des divergences dépense avant d'en montrer
     /// une : son titre, la ligne de comptage, et la rangée de boutons —
     /// qui passe à deux lignes dès que le troisième bouton apparaît.
+    /// Les trois actions de la conciliation, **en forme longue tant
+    /// que la rangée tient sur une ligne**.
+    ///
+    /// « Raccourcir, plutôt qu'élider », appliqué à une rangée. Et la
+    /// décision se prend sur la **rangée entière** et non bouton par
+    /// bouton : deux libellés longs et un court se lisent comme un
+    /// oubli, alors que trois courts se lisent comme un choix.
+    ///
+    /// Ce que cela rachète se mesure : à 1024x700 et `text_scale = 1,6`
+    /// la rangée longue passe à deux lignes et coûte cinquante-sept
+    /// pixels au panneau, qui n'en a pas cinquante-sept à donner — il
+    /// annonçait « 4 divergence(s) » et n'en montrait aucune, ce qui est
+    /// exactement le défaut que cet onglet avait déjà appris une fois à
+    /// 1,25. La leçon manquait d'un cran : la rangée avait été réduite
+    /// de quatre boutons à trois, pas raccourcie.
+    fn concil_actions(ui: &egui::Ui, width: f32) -> [&'static str; 3] {
+        let long = [tr("concil_journal"), tr("concil_print"), tr("concil_adopt")];
+        let rows = Self::wrapped_rows_of(ui, width, long.iter().map(|l| Self::button_width(ui, l)));
+        if rows <= 1.0 {
+            long
+        } else {
+            [
+                tr("concil_journal_short"),
+                tr("concil_print"),
+                tr("concil_adopt_short"),
+            ]
+        }
+    }
+
     fn concil_head(ui: &egui::Ui, width: f32) -> f32 {
         let line = ui.text_style_height(&egui::TextStyle::Body);
         // Le compte a sa propre ligne sous le titre : il n'entre plus
@@ -15285,12 +15314,9 @@ impl App {
         let rows = Self::wrapped_rows_of(
             ui,
             width - 24.0,
-            [
-                Self::button_width(ui, tr("concil_journal")),
-                Self::button_width(ui, tr("concil_print")),
-                Self::button_width(ui, tr("concil_adopt")),
-            ]
-            .into_iter(),
+            Self::concil_actions(ui, width - 24.0)
+                .into_iter()
+                .map(|l| Self::button_width(ui, l)),
         );
         // Le titre du panneau et son filet, la ligne du compte, puis les
         // rangées de boutons.
@@ -15565,11 +15591,19 @@ impl App {
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
+            // **Les libellés viennent de la même fonction que la
+            // mesure.** Deux choix d'une même chose divergent toujours,
+            // et ici la divergence coûterait au panneau la rangée qu'on
+            // vient de lui rendre.
+            let actions = Self::concil_actions(ui, ui.available_width());
             ui.horizontal_wrapped(|ui| {
-                if motif::button(ui, tr("concil_journal")).clicked() {
+                if motif::button(ui, actions[0])
+                    .on_hover_text(tr("concil_journal"))
+                    .clicked()
+                {
                     journal = true;
                 }
-                if motif::button(ui, tr("concil_print"))
+                if motif::button(ui, actions[1])
                     .on_hover_text(tr("concil_print_tooltip"))
                     .clicked()
                 {
@@ -15606,7 +15640,7 @@ impl App {
                             &[&counts.added, &counts.dose_changed],
                         )
                     } else {
-                        tr("concil_adopt").to_owned()
+                        actions[2].to_owned()
                     };
                     if motif::button(ui, &label)
                         .on_hover_text(tr("concil_adopt_tooltip"))
@@ -33321,20 +33355,33 @@ impl App {
         // **Et le plafond tombe sur une rangée entière.** Le reste de la
         // bande défile, mais toujours entre deux choses entières — la
         // même règle que la bande du registre, à côté.
+        // Ce qui précède les rangées **et qui n'est pas une rangée** :
+        // la réponse de l'écriture, le sous-titre quand il est montré,
+        // et la marge du cadre. Chacun suivi de sa gouttière, et
+        // seulement quand il est dessiné.
+        let gap = ui.spacing().item_spacing.y;
+        let lead = note_h
+            + if note_h > 0.0 { gap } else { 0.0 }
+            + if show_sub { sub_h + gap } else { 0.0 }
+            + 12.0;
         let head_h = if want <= cap {
             want
         } else {
             // La réponse de l'écriture garde sa place même ici : c'est
             // ce qu'on vient de faire au registre, et le reste de la
             // bande défile devant elle.
-            let room = (cap - gutters - note_h).max(row);
-            whole_rows(
-                room,
-                row,
-                ui.spacing().item_spacing.y,
-                kind_rows + field_rows,
-            ) + note_h
-                + gutters
+            //
+            // **Et « entière » se compte là où les rangées commencent
+            // vraiment.** La bande ajoutait par-dessus les rangées
+            // entières une provision fixe de cinq gouttières — celles
+            // de tout ce qu'elle *peut* porter. Quand ni la réponse ni
+            // le sous-titre ne sont dessinés, ces quatre-vingt-douze
+            // pixels ne couvrent plus rien : ils laissaient voir une
+            // rangée de plus, coupée en travers, et c'était celle du
+            // jour et du filtre. Une rangée coupée en deux se lit
+            // « cassé », pas « il y en a d'autres » — et le plafond
+            // était justement là pour l'éviter.
+            lead + whole_rows((cap - lead).max(row), row, gap, kind_rows + field_rows)
         };
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
 

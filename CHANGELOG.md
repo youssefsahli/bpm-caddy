@@ -79,6 +79,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passes font deux cent vingt-huit ouvertures et dépassent l'heure ; une
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
+### Fixed
+- **L'onglet « Biologie » ne faisait plus rien de ce pour quoi il
+  existe** à 1024x700 avec `text_scale = 1,6` : aucun résultat affiché,
+  et le bouton « Ajouter » coupé par le cadre. Ni lire un résultat, ni
+  en saisir un. Trois causes, chacune déjà connue ailleurs dans le
+  fichier.
+
+  Le champ de l'analyte était taillé pour remplir la largeur du panneau
+  au pixel près, mais la rangée est dessinée dans une zone défilante,
+  qui réserve sa barre : le modèle annonçait une rangée, le dessin en
+  prenait deux, et la seconde portait « Ajouter ». Le registre avait
+  donné la même leçon ; elle porte maintenant un nom — `scrolled_width`
+  — pour qu'elle ne soit pas retrouvée une troisième fois.
+
+  Le formulaire était plafonné à ce que la table lui laissait, alors que
+  la règle écrite juste au-dessus dit l'inverse : on tape dans l'un, on
+  lit l'autre. La table cède donc, et **entièrement** — réduite à sa
+  ligne d'en-têtes, elle n'est pas une table à une ligne près, c'est un
+  bandeau qui mange le geste qui enregistre.
+
+  Mais elle ne cède pas en silence : un volet intitulé « Résultats de
+  biologie » qui n'en montre aucun se lit « ce dossier n'en a pas ». Le
+  compte va dans le titre, qui ne coûte pas une ligne.
+- **La conciliation annonçait « 4 divergence(s) » et n'en montrait
+  aucune** — le défaut que cet onglet avait déjà appris une fois à
+  `text_scale = 1,25`, revenu à 1,6. La leçon manquait d'un cran : la
+  rangée d'actions avait été réduite de quatre boutons à trois, pas
+  **raccourcie**. Elle passe à deux lignes et coûte au panneau
+  cinquante-sept pixels qu'il n'a pas. « Écrire au journal » devient
+  « Journal » et « Reprendre au dossier » « Reprendre » tant que la
+  rangée ne tient pas sur une ligne — et la décision se prend sur la
+  rangée entière, parce que deux libellés longs et un court se lisent
+  comme un oubli.
+- **La feuille de saisie du registre peignait sa rangée du jour et du
+  filtre en travers du panneau d'en dessous.** La bande ajoutait
+  par-dessus ses rangées entières une provision fixe de cinq
+  gouttières — celles de tout ce qu'elle *peut* porter. Quand ni la
+  réponse de l'écriture ni le sous-titre ne sont dessinés, ces
+  quatre-vingt-douze pixels ne couvrent plus rien et laissent voir une
+  rangée de plus, coupée. Le plafond était là pour l'éviter ; il se
+  compte maintenant à partir de là où les rangées commencent vraiment.
+- **Deux têtes coupaient leur phrase par le milieu.** « Textes de
+  l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
+  rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.
+  `head_height` la mesure, et `a_head_is_as_tall_as_the_prose_it_carries`
+  confronte la mesure au dessin à trois échelles et trois largeurs —
+  trente-sept pixels de manque si l'on remet la constante.
+
+  Aucun des quatre défauts n'était visible à l'échelle 1, c'est-à-dire à
+  l'échelle où les captures sont prises.
+
 ## [0.199.0] - 2026-09-12
 
 ### Added
