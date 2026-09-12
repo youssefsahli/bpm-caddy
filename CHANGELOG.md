@@ -146,6 +146,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a l'air de deux, dont l'une ne nomme aucune couleur. Elle passe par
   `chart::legend`, qui enveloppe par entière et dit « +12 » de ce qu'elle
   n'a pas montré.
+- **Un titre de page passait sous le bouton d'à côté.** `ui.heading`
+  s'étale autant qu'il veut, et un bouton aligné à droite dans la même
+  rangée se peint par-dessus : à 1,6, « Recherche dans les
+  monographies » se lisait « Recherche dans les monograph » avec
+  « Retour » posé sur la fin du mot. Le bouton est réservé d'abord, le
+  titre prend le reste. Le carnet de transmissions avait la même rangée.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.

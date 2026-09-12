@@ -18283,6 +18283,37 @@ impl App {
         width - ui.spacing().scroll.bar_width - ui.spacing().scroll.bar_inner_margin
     }
 
+    /// Un titre de page qui **ne passe pas sous le bouton d'à côté**.
+    ///
+    /// `ui.heading` s'étale autant qu'il veut, et un bouton aligné à
+    /// droite dans la même rangée se peint par-dessus : à
+    /// `[ui] text_scale = 1,6`, « Recherche dans les monographies » se
+    /// lisait « Recherche dans les monograph » avec « Retour » posé sur
+    /// la fin du mot. Rien ne plante, rien ne manque — cela se lit
+    /// seulement comme un défaut de rendu, ce qui est la famille de
+    /// défauts que seule une capture trouve.
+    ///
+    /// `beside` est la largeur de ce qui l'accompagne à droite, zéro
+    /// quand il n'y a rien. Le titre prend le reste, et se coupe
+    /// plutôt que de sortir — un titre n'a pas de forme plus pauvre à
+    /// proposer, c'est le seul endroit où l'ellipse est la bonne
+    /// réponse.
+    fn page_title(ui: &mut egui::Ui, title: &str, beside: f32) {
+        let gap = if beside > 0.0 {
+            ui.spacing().item_spacing.x
+        } else {
+            0.0
+        };
+        let room = (ui.available_width() - beside - gap).max(chars_wide(ui, 8.0));
+        ui.allocate_ui_with_layout(
+            egui::vec2(room, Self::row_height(ui)),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.add(egui::Label::new(egui::RichText::new(title).heading()).truncate());
+            },
+        );
+    }
+
     /// La hauteur qu'un paragraphe **prend** à cette largeur.
     ///
     /// Une bande taillée doit connaître sa hauteur avant de dessiner son
@@ -21778,7 +21809,15 @@ impl App {
         motif::page(ui, 900.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
-                ui.heading(tr("trans_title"));
+                Self::page_title(
+                    ui,
+                    tr("trans_title"),
+                    if session.trans_notes.is_empty() {
+                        0.0
+                    } else {
+                        Self::button_width(ui, tr("dash_print"))
+                    },
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if !session.trans_notes.is_empty()
                         && motif::button(ui, tr("dash_print"))
@@ -43805,7 +43844,11 @@ impl App {
         motif::page(ui, 900.0, |ui| {
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                ui.heading(tr("mono_title"));
+                Self::page_title(
+                    ui,
+                    tr("mono_title"),
+                    Self::button_width(ui, tr("patient_back")),
+                );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if motif::button(ui, tr("patient_back")).clicked() {
                         session.show_mono = false;
