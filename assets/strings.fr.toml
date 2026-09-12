@@ -1283,6 +1283,7 @@ agenda_counts = "{} rendez-vous affiché(s) · {} masqué(s) · {} chevauchement
 agenda_counts_tooltip = "« Masqués » compte les entrées éteintes par le filtre. Rien n'est retiré de la journée : une entrée qui chevauche un rendez-vous affiché reste dessinée, les autres deviennent un trait contre les heures."
 agenda_print_week = "Imprimer la semaine"
 agenda_print_week_tooltip = "Plan de la semaine affichée, rendez-vous et autres entrées"
+agenda_print_week_nothing = "Aucune semaine à imprimer : la date affichée n'a pas pu être lue."
 agenda_event_delete = "Supprimer cette entrée"
 agenda_event_delete_series = "Supprimer toute la série"
 agenda_repeat_mark = "· tous les {} j"

@@ -1569,6 +1569,29 @@ fn arrow_move(at: Option<usize>, last: usize, dx: i64) -> ArrowMove {
     }
 }
 
+/// La semaine — lundi à dimanche — qui contient `date`.
+///
+/// Elle n'existait pas : `Db::week_dates` compte des semaines depuis
+/// *celle d'aujourd'hui*, ce qui répond à « la semaine suivante » et pas
+/// à « la semaine de ce jour-là ». En mode Jour, les flèches déplacent
+/// le jour et non la semaine, si bien qu'« Imprimer la semaine » posé
+/// sur le 25 septembre sortait la semaine du 7 : une feuille qui n'était
+/// pas celle qu'on regardait, et rien sur la feuille pour le dire.
+///
+/// Le calcul est celui de `date.rs`, la seule arithmétique de calendrier
+/// de cette application, et elle ne demande rien à la base.
+fn week_of(date: &str) -> Vec<String> {
+    let Some(weekday) = crate::date::weekday(date) else {
+        return Vec::new();
+    };
+    let Some(monday) = crate::date::add_days(date, 1 - weekday) else {
+        return Vec::new();
+    };
+    (0..7)
+        .filter_map(|d| crate::date::add_days(&monday, d))
+        .collect()
+}
+
 /// Combien d'entrées une case dessine, et combien il lui reste à
 /// **annoncer**, quand elle a `room` places et qu'annoncer en coûte
 /// `cost`.
@@ -23200,15 +23223,44 @@ impl App {
             session.load_day();
         }
         if print_week {
-            let week = if session.agenda_month {
-                session.agenda_month_days.clone()
-            } else {
-                session.agenda_week.clone()
+            // **La semaine imprimée est celle qu'on regarde.**
+            //
+            // Au jour et au mois, c'est la semaine du jour choisi : les
+            // flèches y déplacent le jour ou le mois, jamais
+            // `agenda_week`, qui restait donc sur la semaine courante.
+            // Posé sur le 25 septembre, le bouton sortait la feuille de
+            // la semaine du 7 — et rien sur la feuille ne disait que ce
+            // n'était pas celle qu'on venait de lire. Au mois, c'étaient
+            // les sept premiers jours de la grille, c'est-à-dire une
+            // semaine qui n'est même pas toujours dans le mois.
+            //
+            // À la semaine et au planning, c'est la semaine affichée,
+            // parce que c'est elle le sujet — et le jour choisi peut
+            // très bien n'y être plus, si on a fait défiler les semaines
+            // sans cliquer sur une case.
+            let week: Vec<String> = match session.agenda_mode {
+                AgendaMode::Day => week_of(&session.agenda_day),
+                // Au mois, le jour choisi seulement s'il est dans la
+                // grille affichée — il y porte son liseré. Faire défiler
+                // les mois ne le déplace pas, et sa semaine n'aurait
+                // alors rien à voir avec ce qu'on regarde ; c'est la
+                // première semaine du mois qui sort.
+                AgendaMode::Month => {
+                    if session.agenda_month_days.contains(&session.agenda_day) {
+                        week_of(&session.agenda_day)
+                    } else {
+                        session.agenda_month_days.iter().take(7).cloned().collect()
+                    }
+                }
+                AgendaMode::Week | AgendaMode::Planning => {
+                    session.agenda_week.iter().take(7).cloned().collect()
+                }
             };
-            // The month grid prints as its first seven days: the week
-            // plan is a week, whichever view asked for it.
-            let week: Vec<String> = week.into_iter().take(7).collect();
-            if let Err(e) = crate::pdf::open_week_plan(
+            // Une feuille de semaine sans jours est une feuille vide
+            // qu'il faut ensuite comprendre : on ne l'ouvre pas.
+            if week.is_empty() {
+                session.error = Some(tr("agenda_print_week_nothing").to_owned());
+            } else if let Err(e) = crate::pdf::open_week_plan(
                 &week,
                 &session.appointments,
                 &grid_events,
@@ -44691,6 +44743,36 @@ mod tests {
         assert_eq!(seen[1].as_deref(), Some("Lun 07"));
         assert_eq!(seen[2], None);
         assert_eq!(seen[3], None);
+    }
+
+    /// **La semaine imprimée est celle qu'on regarde.**
+    ///
+    /// `Db::week_dates` compte des semaines depuis *celle
+    /// d'aujourd'hui* : elle répond à « la semaine suivante », jamais à
+    /// « la semaine de ce jour-là ». Or en mode Jour les flèches
+    /// déplacent le jour et laissent `agenda_week` où elle était, si
+    /// bien qu'« Imprimer la semaine » posé sur le 25 septembre sortait
+    /// la feuille de la semaine du 7 — et rien sur la feuille ne disait
+    /// que ce n'était pas celle qu'on venait de lire.
+    #[test]
+    fn a_week_is_the_seven_days_around_the_one_asked_for() {
+        // Un vendredi : la semaine commence le lundi d'avant.
+        let week = super::week_of("2026-09-25");
+        assert_eq!(week.len(), 7);
+        assert_eq!(week.first().map(String::as_str), Some("2026-09-21"));
+        assert_eq!(week.last().map(String::as_str), Some("2026-09-27"));
+        assert!(week.contains(&"2026-09-25".to_owned()));
+        // Un lundi est le premier de sa semaine, un dimanche le
+        // dernier : les deux bords, qu'un décalage d'un jour casse.
+        assert_eq!(super::week_of("2026-09-21")[0], "2026-09-21");
+        assert_eq!(super::week_of("2026-09-27")[6], "2026-09-27");
+        // Et la semaine traverse le mois et l'année sans se couper.
+        assert_eq!(super::week_of("2026-11-01")[0], "2026-10-26");
+        assert_eq!(super::week_of("2027-01-01")[0], "2026-12-28");
+        // Une date illisible ne rend pas sept jours faux : elle n'en
+        // rend aucun, et le plan de semaine ne s'imprime pas.
+        assert!(super::week_of("").is_empty());
+        assert!(super::week_of("hier").is_empty());
     }
 
     /// **Ce qu'une case ne dessine pas, elle l'annonce** — et la place
