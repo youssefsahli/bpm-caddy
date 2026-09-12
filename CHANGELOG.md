@@ -5,6 +5,39 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.193.0] - 2026-09-12
+
+### Added
+- **La qualité d'une personne est une catégorie, sans cesser d'être du
+  texte libre.** Sept qualités d'officine — pharmacien titulaire,
+  adjoint, remplaçant, étudiant en pharmacie, préparateur, apprenti
+  préparateur, rayonnagiste — se choisissent dans un menu, et la case
+  qui s'imprime reste à côté : c'est elle qui part au bas d'un document,
+  et une officine doit pouvoir y écrire « Pharmacien adjoint, DU de
+  nutrition ».
+
+  Le menu **lit** ce qui est écrit plutôt que de le remplacer, sur le
+  modèle du référentiel des classes : les libellés réellement tapés se
+  replient — féminins et abréviations compris, « Préparatrice » comme
+  « PRÉPARATEUR EN PHARMACIE » —, et ce que la liste ne connaît pas reste
+  lisible et se range en « Autre ». Rien à migrer : les qualités déjà
+  saisies se lisent sans que la ligne change.
+
+- **Et la bande de couverture dit si un pharmacien est là.** « Deux
+  personnes au comptoir » ne répond pas à la question qu'une officine se
+  pose en premier. Au survol, quand aucun pharmacien n'est inscrit à la
+  tranche, la bande le dit.
+
+  Trois états et non deux, pour la même raison que partout ici : **« on
+  ne sait pas » n'est pas « non »**. Un étudiant en pharmacie n'est pas
+  un pharmacien — il exerce sous la responsabilité de l'un d'eux, et
+  c'est justement la distinction qu'un logiciel a le droit de
+  connaître —, mais une qualité écrite à la main ne répond ni oui ni
+  non, et la phrase dit alors combien de qualités elle n'a pas su lire.
+  Rien ne s'affiche tant que l'officine n'a déclaré aucune qualité : la
+  même règle que les creux, qui ne se lisent que contre des horaires
+  écrits.
+
 ## [0.192.0] - 2026-09-12
 
 ### Fixed

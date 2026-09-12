@@ -281,6 +281,11 @@ mod tests {
                     .into_iter()
                     .map(crate::planning::ShiftKind::label),
             )
+            .chain(
+                crate::config::Role::ALL
+                    .into_iter()
+                    .map(crate::config::Role::label),
+            )
         {
             for c in text.chars() {
                 assert!(

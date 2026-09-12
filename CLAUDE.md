@@ -7,7 +7,12 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
 
 - root `bpm-caddy` — the app: `src/app.rs` (UI/state), `src/db.rs`
   (SQLCipher storage), `src/fuzzy.rs` (search), `src/pdf.rs` (Typst),
-  `src/config.rs` (config.toml), `src/vaccines.rs` (calendrier vaccinal
+  `src/config.rs` (config.toml — and `Role`, the seven officine
+  qualities: the field stays free text because it is what prints at the
+  foot of a document, and the enum is a **reading** of it, folding the
+  labels people actually type the way `classes.rs` folds drifted class
+  labels. `is_pharmacist` returns `Option<bool>`: an étudiant is *not* a
+  pharmacist, and a hand-written quality answers neither yes nor no), `src/vaccines.rs` (calendrier vaccinal
   rules and the traveller's country table — static, pure, tested),
   `src/bulletin.rs` (fills the official Assurance Maladie bulletins
   d'adhésion in `assets/bulletins/`), `src/ordonnance.rs` (what a

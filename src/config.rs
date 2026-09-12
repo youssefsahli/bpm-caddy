@@ -795,6 +795,163 @@ pub struct Horaire {
     pub a: String,
 }
 
+/// Les qualités qu'on trouve dans une officine.
+///
+/// La qualité était — et reste — du texte libre : c'est elle qui
+/// s'imprime au bas d'un document, et une officine doit pouvoir écrire
+/// « Pharmacien adjoint, DU de nutrition » si elle le veut. Ce que ce
+/// type ajoute, c'est une **lecture** de ce texte, sur le modèle du
+/// référentiel des classes : une liste canonique, les libellés
+/// réellement rencontrés qui s'y replient, et ce que l'officine a écrit
+/// d'autre qui reste tel quel plutôt que d'être réécrit.
+///
+/// Rien à migrer, donc : « Préparatrice » déjà tapée se replie sur
+/// [`Role::Preparateur`] sans que la ligne change, et une qualité que
+/// la liste ne connaît pas reste lisible et se range en
+/// [`Role::Autre`].
+///
+/// Ce que la lecture décide est écrit sur [`Role::is_pharmacist`], et
+/// c'est le seul endroit où elle décide quoi que ce soit.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Role {
+    /// Le pharmacien titulaire de l'officine.
+    Titulaire,
+    /// Pharmacien adjoint.
+    Adjoint,
+    /// Pharmacien remplaçant — le temps d'une garde, d'un congé.
+    Remplacant,
+    /// Étudiant en pharmacie : **il n'est pas encore pharmacien**, et
+    /// c'est toute la différence que ce type sache la faire.
+    Etudiant,
+    /// Préparateur en pharmacie.
+    Preparateur,
+    /// Apprenti préparateur.
+    Apprenti,
+    /// Rayonnagiste, employé : au comptoir sans qualification
+    /// pharmaceutique.
+    Rayonnagiste,
+    /// Tout le reste, tel que l'officine l'a écrit — et ce n'est pas une
+    /// erreur : c'est la case qui garde le texte libre.
+    Autre,
+}
+
+impl Role {
+    /// Les qualités que le menu propose. [`Role::Autre`] n'y est pas :
+    /// elle se choisit en écrivant, ce qui est précisément ce qu'elle
+    /// veut dire.
+    pub const ALL: [Role; 7] = [
+        Self::Titulaire,
+        Self::Adjoint,
+        Self::Remplacant,
+        Self::Etudiant,
+        Self::Preparateur,
+        Self::Apprenti,
+        Self::Rayonnagiste,
+    ];
+
+    /// Le libellé canonique — celui que le menu écrit dans la case, et
+    /// donc celui qui s'imprime.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Titulaire => "Pharmacien titulaire",
+            Self::Adjoint => "Pharmacien adjoint",
+            Self::Remplacant => "Pharmacien remplaçant",
+            Self::Etudiant => "Étudiant en pharmacie",
+            Self::Preparateur => "Préparateur en pharmacie",
+            Self::Apprenti => "Apprenti préparateur",
+            Self::Rayonnagiste => "Rayonnagiste",
+            Self::Autre => "",
+        }
+    }
+
+    /// Les écritures rencontrées qui désignent cette qualité — féminins
+    /// compris, abréviations comprises.
+    ///
+    /// C'est la moitié utile du référentiel : personne ne tape le
+    /// libellé canonique. On trouve « préparatrice », « titulaire »
+    /// tout court, « pharmacien assistant » pour un adjoint.
+    fn aliases(self) -> &'static [&'static str] {
+        match self {
+            Self::Titulaire => &[
+                "pharmacien titulaire",
+                "pharmacienne titulaire",
+                "titulaire",
+            ],
+            Self::Adjoint => &[
+                "pharmacien adjoint",
+                "pharmacienne adjointe",
+                "adjoint",
+                "adjointe",
+                "pharmacien assistant",
+            ],
+            Self::Remplacant => &[
+                "pharmacien remplacant",
+                "pharmacienne remplacante",
+                "remplacant",
+                "remplacante",
+            ],
+            Self::Etudiant => &[
+                "etudiant en pharmacie",
+                "etudiante en pharmacie",
+                "etudiant",
+                "etudiante",
+                "stagiaire",
+                "interne",
+            ],
+            Self::Preparateur => &[
+                "preparateur en pharmacie",
+                "preparatrice en pharmacie",
+                "preparateur",
+                "preparatrice",
+            ],
+            Self::Apprenti => &[
+                "apprenti preparateur",
+                "apprentie preparatrice",
+                "apprenti",
+                "apprentie",
+            ],
+            Self::Rayonnagiste => &["rayonnagiste", "employe", "employee"],
+            Self::Autre => &[],
+        }
+    }
+
+    /// De quelle qualité ce texte-là relève — [`Role::Autre`] quand la
+    /// liste ne le connaît pas.
+    ///
+    /// Insensible à la casse et aux accents, comme toute correspondance
+    /// de nom ici : « PRÉPARATRICE » est une préparatrice.
+    pub fn parse(text: &str) -> Self {
+        let key = crate::fuzzy::sort_key(text.trim());
+        if key.is_empty() {
+            return Self::Autre;
+        }
+        Self::ALL
+            .into_iter()
+            .find(|r| r.aliases().iter().any(|a| *a == key))
+            .unwrap_or(Self::Autre)
+    }
+
+    /// Cette qualité est-elle celle d'un pharmacien ? **`None` quand on
+    /// ne sait pas**, et c'est le cas d'une qualité écrite à la main.
+    ///
+    /// Trois états et non deux, pour la même raison que partout ici :
+    /// « on ne sait pas » n'est pas « non ». Une officine qui écrit
+    /// « Pharmacien adjoint, DU d'orthopédie » ne doit pas s'entendre
+    /// dire qu'aucun pharmacien n'est présent — et un rayonnagiste ne
+    /// doit pas être compté comme un pharmacien pour autant.
+    ///
+    /// Un étudiant en pharmacie n'est pas un pharmacien : il exerce sous
+    /// la responsabilité de l'un d'eux, ce qui est justement la
+    /// distinction qu'un logiciel a le droit de connaître.
+    pub fn is_pharmacist(self) -> Option<bool> {
+        match self {
+            Self::Titulaire | Self::Adjoint | Self::Remplacant => Some(true),
+            Self::Etudiant | Self::Preparateur | Self::Apprenti | Self::Rayonnagiste => Some(false),
+            Self::Autre => None,
+        }
+    }
+}
+
 /// One member of the team: the initials that stamp a note, and the name
 /// that signs a document.
 #[derive(Deserialize, Serialize, Default, Clone, PartialEq, Debug)]
@@ -805,6 +962,10 @@ pub struct Operator {
     /// "Claire Leroy".
     pub name: String,
     /// "Pharmacien titulaire", "Préparatrice"…
+    ///
+    /// Reste du **texte libre** : c'est ce qui s'imprime au bas d'un
+    /// document, et une officine doit pouvoir y écrire ce qu'elle veut.
+    /// [`Operator::role_kind`] en donne la lecture.
     pub role: String,
 }
 
@@ -821,6 +982,12 @@ impl Operator {
             (true, false) => role.to_owned(),
             (true, true) => self.initials.trim().to_owned(),
         }
+    }
+
+    /// De quelle qualité cette personne relève — [`Role::Autre`] quand
+    /// ce qui est écrit n'est d'aucune que la liste connaisse.
+    pub fn role_kind(&self) -> Role {
+        Role::parse(&self.role)
     }
 
     /// What the operator picker shows: "CL — Claire Leroy".
@@ -1536,6 +1703,78 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **« On ne sait pas » n'est pas « non ».** La qualité reste du
+    /// texte libre ; ce que la liste en lit décide d'une seule chose —
+    /// est-ce un pharmacien — et elle a le droit de ne pas savoir.
+    ///
+    /// Une officine qui écrit « Pharmacien adjoint, DU de nutrition » ne
+    /// doit pas s'entendre dire qu'aucun pharmacien n'est présent ; un
+    /// rayonnagiste ne doit pas être compté comme un pharmacien pour
+    /// autant. Deux états ne suffisent pas à tenir les deux.
+    #[test]
+    fn a_quality_the_list_does_not_know_is_not_a_no() {
+        assert_eq!(Role::Titulaire.is_pharmacist(), Some(true));
+        assert_eq!(Role::Adjoint.is_pharmacist(), Some(true));
+        assert_eq!(Role::Remplacant.is_pharmacist(), Some(true));
+        assert_eq!(Role::Preparateur.is_pharmacist(), Some(false));
+        assert_eq!(Role::Rayonnagiste.is_pharmacist(), Some(false));
+        // **Un étudiant en pharmacie n'est pas un pharmacien** : il
+        // exerce sous la responsabilité de l'un d'eux, et c'est
+        // justement la distinction qu'un logiciel a le droit de
+        // connaître.
+        assert_eq!(Role::Etudiant.is_pharmacist(), Some(false));
+        assert_eq!(Role::Apprenti.is_pharmacist(), Some(false));
+        // Et le texte que la liste ne connaît pas ne répond ni oui ni
+        // non.
+        assert_eq!(Role::Autre.is_pharmacist(), None);
+        assert_eq!(
+            Role::parse("Pharmacien adjoint, DU de nutrition").is_pharmacist(),
+            None
+        );
+    }
+
+    /// **Les libellés réellement écrits se replient**, féminins et
+    /// abréviations compris — et ce que la liste ne connaît pas reste
+    /// lisible plutôt que d'être réécrit.
+    ///
+    /// C'est la règle du référentiel des classes, appliquée à la
+    /// qualité : rien à migrer, puisque « Préparatrice » déjà tapée se
+    /// lit sans que la ligne change.
+    #[test]
+    fn the_qualities_people_actually_write_are_folded() {
+        for (written, expected) in [
+            ("Pharmacien titulaire", Role::Titulaire),
+            ("pharmacienne titulaire", Role::Titulaire),
+            ("TITULAIRE", Role::Titulaire),
+            ("Pharmacien adjoint", Role::Adjoint),
+            ("Adjointe", Role::Adjoint),
+            ("Préparatrice", Role::Preparateur),
+            ("PRÉPARATEUR EN PHARMACIE", Role::Preparateur),
+            ("  préparateur  ", Role::Preparateur),
+            ("Apprentie préparatrice", Role::Apprenti),
+            ("Étudiante en pharmacie", Role::Etudiant),
+            ("Pharmacien remplaçant", Role::Remplacant),
+            ("Rayonnagiste", Role::Rayonnagiste),
+        ] {
+            assert_eq!(Role::parse(written), expected, "« {written} »");
+        }
+        // Ce que la liste ne connaît pas reste ce que l'officine a
+        // écrit : la case est du texte libre, et c'est voulu.
+        for free in ["", "   ", "Conseillère dermo-cosmétique", "Chef d'équipe"] {
+            assert_eq!(Role::parse(free), Role::Autre, "« {free} »");
+        }
+        // Le libellé canonique se relit lui-même — sans quoi choisir
+        // une qualité dans le menu puis rouvrir l'écran ne la
+        // retrouverait pas.
+        for r in Role::ALL {
+            assert_eq!(Role::parse(r.label()), r, "{r:?}");
+            assert!(!r.label().is_empty());
+        }
+        // Et « Autre » n'a pas de libellé à écrire : elle *est* ce qui
+        // est écrit.
+        assert!(Role::Autre.label().is_empty());
+    }
 
     #[test]
     fn parses_spec_example() {

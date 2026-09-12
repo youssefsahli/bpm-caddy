@@ -22715,6 +22715,37 @@ impl App {
                 // personnes sous trois carrés serait la pire des deux
                 // réponses.
                 let who = planning::who_is_in(&shifts, agenda::Slot::point(at));
+                // **Un pharmacien est-il là ?** C'est la question que
+                // l'officine se pose en premier, et « deux personnes au
+                // comptoir » n'y répond pas.
+                //
+                // Seulement quand l'officine a déclaré des qualités :
+                // sans elles il n'y a rien à lire, et on ne va pas
+                // annoncer tous les matins qu'aucun pharmacien n'est
+                // inscrit à une équipe dont on ne sait rien. La même
+                // règle que les creux, qui ne se lisent que contre des
+                // horaires écrits.
+                let declared = config
+                    .pharmacy
+                    .operators
+                    .iter()
+                    .any(|o| !o.role.trim().is_empty());
+                let mut a_pharmacist = false;
+                let mut unsure = 0_usize;
+                for initials in &who {
+                    match config
+                        .pharmacy
+                        .operator(initials)
+                        .map(|o| o.role_kind().is_pharmacist())
+                    {
+                        Some(Some(true)) => a_pharmacist = true,
+                        Some(Some(false)) => {}
+                        // Quelqu'un que la liste ne nomme pas, ou dont
+                        // la qualité est écrite à la main : **on ne sait
+                        // pas**, et on ne le compte pas pour un non.
+                        _ => unsure += 1,
+                    }
+                }
                 hover = trn(
                     "planning_coverage_at",
                     &[
@@ -22727,6 +22758,14 @@ impl App {
                     ],
                 );
                 hover.push('\n');
+                if declared && !who.is_empty() && !a_pharmacist {
+                    hover.push_str(&if unsure > 0 {
+                        trf("planning_no_pharmacist_unsure", unsure)
+                    } else {
+                        tr("planning_no_pharmacist").to_owned()
+                    });
+                    hover.push('\n');
+                }
             }
         }
         hover.push_str(&trf("planning_coverage_tooltip", busiest));
@@ -42150,13 +42189,14 @@ impl eframe::App for App {
                                 ui.add_space(4.0);
                                 let mut drop: Option<usize> = None;
                                 egui::Grid::new("opts_operators")
-                                    .num_columns(4)
+                                    .num_columns(5)
                                     .spacing([8.0, 6.0])
                                     .show(ui, |ui| {
                                         for header in [
                                             tr("opts_op_initials"),
                                             tr("opts_op_name"),
                                             tr("opts_op_role"),
+                                            tr("opts_op_role_free"),
                                             "",
                                         ] {
                                             ui.label(
@@ -42177,10 +42217,46 @@ impl eframe::App for App {
                                                 [chars_wide(ui, 25.0), 24.0],
                                                 egui::TextEdit::singleline(&mut op.name),
                                             );
+                                            // **Le menu écrit dans la
+                                            // case, il ne la remplace
+                                            // pas.** La qualité reste du
+                                            // texte libre — c'est elle
+                                            // qui s'imprime au bas d'un
+                                            // document, et une officine
+                                            // doit pouvoir y écrire
+                                            // « Pharmacien adjoint, DU
+                                            // de nutrition ». Le menu
+                                            // n'est qu'un raccourci de
+                                            // frappe, et il affiche
+                                            // « Autre… » dès que ce qui
+                                            // est écrit n'est d'aucune
+                                            // qualité qu'il connaisse.
+                                            let kind = op.role_kind();
+                                            egui::ComboBox::from_id_salt(("opts_op_role", i))
+                                                .width(chars_wide(ui, 20.0))
+                                                .selected_text(
+                                                    if kind == crate::config::Role::Autre {
+                                                        tr("opts_op_role_other")
+                                                    } else {
+                                                        kind.label()
+                                                    },
+                                                )
+                                                .show_ui(ui, |ui| {
+                                                    for r in crate::config::Role::ALL {
+                                                        if ui
+                                                            .selectable_label(kind == r, r.label())
+                                                            .clicked()
+                                                        {
+                                                            op.role = r.label().to_owned();
+                                                        }
+                                                    }
+                                                });
                                             ui.add_sized(
-                                                [chars_wide(ui, 25.0), 24.0],
-                                                egui::TextEdit::singleline(&mut op.role),
-                                            );
+                                                [chars_wide(ui, 22.0), 24.0],
+                                                egui::TextEdit::singleline(&mut op.role)
+                                                    .hint_text(tr("opts_op_role_hint")),
+                                            )
+                                            .on_hover_text(tr("opts_op_role_tooltip"));
                                             if motif::button(ui, tr("itv_delete"))
                                                 .on_hover_text(tr("opts_op_remove"))
                                                 .clicked()
