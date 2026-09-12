@@ -1615,6 +1615,51 @@ fn day_in(period: &[String], picked: &str, today: &str, fallback: usize) -> Stri
         .unwrap_or_else(|| picked.to_owned())
 }
 
+/// La jauge de charge d'une colonne de semaine : un filet, et un filet
+/// n'a pas de fonte.
+const WEEK_BAR_H: f32 = 3.0;
+
+/// Ce qu'une colonne de semaine réserve, en partant de son sommet : la
+/// hauteur que prend la ligne d'équipe (zéro quand elle ne se dessine
+/// pas), le haut de la première case, et le nombre de cases.
+///
+/// **Les trois sortent d'un seul calcul parce qu'ils dépendent l'un de
+/// l'autre.** La ligne d'équipe est de la garniture : elle ne se dessine
+/// que s'il reste deux rangées de rendez-vous sous elle — on ne peut
+/// donc pas compter les rangées avant d'avoir décidé de la ligne, ni
+/// décider de la ligne sans compter les rangées. Écrits séparément, les
+/// deux finiraient par ne plus être d'accord, et c'est celui qu'on
+/// regarde le moins qui aurait tort.
+///
+/// Le seuil se compte en rangées et non en pixels : il valait
+/// « au-dessus de cent cinquante », ce qui ne veut rien dire à une
+/// échelle de texte qui change la taille des rangées.
+fn week_column(
+    height: f32,
+    head_h: f32,
+    dig_h: f32,
+    wants_digest: bool,
+    pitch: f32,
+) -> (f32, f32, usize) {
+    // Ce que la colonne dépense avant sa première case : deux pixels
+    // au-dessus du nom du jour, la ligne d'équipe s'il y en a une, deux
+    // avant la jauge, la jauge, cinq après elle.
+    let chrome = |digest_h: f32| 9.0 + head_h + digest_h + WEEK_BAR_H;
+    let digest_h = if wants_digest && height - chrome(dig_h) >= 2.0 * pitch {
+        dig_h
+    } else {
+        0.0
+    };
+    let top = chrome(digest_h);
+    // `pitch` vient d'une hauteur de fonte : il est toujours positif,
+    // mais une division dont le résultat sert d'indice se borne quand
+    // même — un `as usize` sur un flottant négatif rend zéro, et sur un
+    // `NaN` rend zéro aussi, ce qui est la bonne réponse dans les deux
+    // cas et non celle qu'on voudrait deviner.
+    let room = ((height - top) / pitch).max(0.0) as usize;
+    (digest_h, top, room)
+}
+
 /// Combien d'entrées une case dessine, et combien il lui reste à
 /// **annoncer**, quand elle a `room` places et qu'annoncer en coûte
 /// `cost`.
@@ -26545,8 +26590,6 @@ impl App {
             let blk_h =
                 ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0)))) + 4.0;
             let pitch = blk_h + 3.0;
-            // La jauge de charge : un filet, et il n'a pas de fonte.
-            const BAR_H: f32 = 3.0;
             for (i, date) in session.agenda_week.clone().iter().enumerate() {
                 let col = egui::Rect::from_min_size(
                     egui::pos2(inner.left() + i as f32 * col_w, inner.top()),
@@ -26617,19 +26660,11 @@ impl App {
                     };
                     richest_form(ui, forms, col.width() - 8.0, 10.0).map(|l| (l, d.uncovered))
                 });
-                // Le seuil se mesure en **rangées de rendez-vous**, et
-                // non en pixels : « au-dessus de cent cinquante » ne veut
-                // rien dire à une échelle de texte qui change la taille
-                // des rangées. La garniture ne se dessine que s'il en
-                // reste deux en dessous d'elle ; sinon c'est elle qui
-                // mange le sujet.
-                let digest_h = if digest.is_some()
-                    && col.height() - (9.0 + head_h + dig_h + BAR_H) >= 2.0 * pitch
-                {
-                    dig_h
-                } else {
-                    0.0
-                };
+                // Le seuil se mesure en **rangées de rendez-vous** et non
+                // en pixels ; le calcul est dans `week_column`, avec ce
+                // qui l'oblige.
+                let (digest_h, top_off, room) =
+                    week_column(col.height(), head_h, dig_h, digest.is_some(), pitch);
                 if digest_h > 0.0 {
                     if let Some((line, red)) = &digest {
                         ui.painter().text(
@@ -26671,7 +26706,7 @@ impl App {
                     let bar_top = col.top() + 4.0 + head_h + digest_h;
                     let bar = egui::Rect::from_min_max(
                         egui::pos2(col.left() + 3.0, bar_top),
-                        egui::pos2(col.right() - 3.0, bar_top + BAR_H),
+                        egui::pos2(col.right() - 3.0, bar_top + WEEK_BAR_H),
                     );
                     ui.painter()
                         .rect_filled(bar, 0.0, motif::bg_dark().gamma_multiply(0.35));
@@ -26690,8 +26725,7 @@ impl App {
                 // Entries that are not acts, in their own muted colour.
                 let day_events: Vec<&db::Event> =
                     grid_events.iter().filter(|e| e.day == *date).collect();
-                let top0 = col.top() + 9.0 + head_h + digest_h + BAR_H;
-                let room = ((col.bottom() - top0) / pitch).max(0.0) as usize;
+                let top0 = col.top() + top_off;
                 // Ce qui ne tient pas est annoncé, et le compte prend une
                 // place de bloc au lieu d'en couvrir une — les deux
                 // règles sont dans `shown_and_hidden`, avec ce qu'elles
@@ -26834,11 +26868,19 @@ impl App {
                     *pick_day = Some(date.clone());
                 }
                 debug_assert_eq!(used + ev_used + hidden, total);
-                if hidden > 0 {
-                    let slot = egui::Rect::from_min_size(
-                        egui::pos2(col.left() + 3.0, top0 + (used + ev_used) as f32 * pitch),
-                        egui::vec2(col.width() - 6.0, blk_h),
-                    );
+                let slot = egui::Rect::from_min_size(
+                    egui::pos2(col.left() + 3.0, top0 + (used + ev_used) as f32 * pitch),
+                    egui::vec2(col.width() - 6.0, blk_h),
+                );
+                // **Le compte ne se peint pas hors de sa colonne.** Une
+                // colonne trop courte pour son propre en-tête n'a plus
+                // *aucune* place — cela arrive dès qu'une grille de
+                // soixante pixels rencontre `text_scale = 1,6` — et le
+                // « +N » serait alors écrit sous le panneau, sur ce qui
+                // vient après : un `Painter` peint où on lui dit, rien
+                // ne le clipe. Là, il n'y a rien à dire dans la colonne ;
+                // le survol de l'en-tête, lui, compte toujours.
+                if hidden > 0 && slot.bottom() <= col.bottom() {
                     ui.painter().text(
                         slot.center(),
                         egui::Align2::CENTER_CENTER,
@@ -45017,6 +45059,80 @@ mod tests {
         // rend aucun, et le plan de semaine ne s'imprime pas.
         assert!(super::week_of("").is_empty());
         assert!(super::week_of("hier").is_empty());
+    }
+
+    /// **Une colonne de semaine tient les rangées qu'elle annonce**, et
+    /// sa garniture ne mange jamais le sujet.
+    ///
+    /// C'est la forme que ce fichier s'est donnée pour les hauteurs : une
+    /// fonction qui mesure, un dessin sans écran, une assertion dans les
+    /// deux sens. Les fontes sont celles qui dessineront, à trois
+    /// échelles de texte — le défaut corrigé ici ne se voyait qu'à 1,6,
+    /// c'est-à-dire sur aucune capture prise à l'échelle 1, c'est-à-dire
+    /// sur aucune de celles qu'on prend.
+    ///
+    /// La colonne sans une seule place est le cas qui compte : elle
+    /// existe — une grille de soixante pixels à 1,6 n'a plus rien sous
+    /// son en-tête —, et elle annonce **zéro**, jamais une rangée qu'il
+    /// faudrait peindre hors du panneau.
+    #[test]
+    fn a_week_column_holds_the_rows_it_announces() {
+        let seen = std::cell::RefCell::new(Vec::new());
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let row = |pt: f32| {
+                        ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, pt))))
+                    };
+                    let (head_h, dig_h, pitch) = (row(12.0), row(10.0), row(11.0) + 7.0);
+                    assert!(
+                        head_h > 0.0 && dig_h > 0.0 && pitch > 0.0,
+                        "les fontes se mesurent à l'échelle {scale}"
+                    );
+                    let mut out = seen.borrow_mut();
+                    for tenth in 0..4000 {
+                        let height = tenth as f32 / 10.0;
+                        for wants in [false, true] {
+                            let (digest_h, top, room) =
+                                super::week_column(height, head_h, dig_h, wants, pitch);
+                            out.push((scale, height, wants, digest_h, top, room, pitch));
+                        }
+                    }
+                });
+            });
+        }
+        let seen = seen.into_inner();
+        assert!(!seen.is_empty(), "le dessin sans écran a bien eu lieu");
+        // Au moins une colonne de chaque sorte dans l'échantillon,
+        // sinon les assertions ne portent sur rien.
+        assert!(
+            seen.iter().any(|r| r.5 == 0),
+            "la colonne sans place existe"
+        );
+        assert!(
+            seen.iter().any(|r| r.3 > 0.0),
+            "la garniture se dessine parfois"
+        );
+        for (scale, height, wants, digest_h, top, room, pitch) in seen {
+            let why = format!("échelle {scale}, hauteur {height}, garniture demandée {wants}");
+            // Ce qui est annoncé tient : la dernière case ne dépasse pas
+            // le bas de la colonne. Zéro rangée ne promet rien, et c'est
+            // la seule façon honnête de répondre à une colonne trop
+            // courte pour son propre en-tête.
+            assert!(
+                room == 0 || top + room as f32 * pitch <= height + 0.001,
+                "{why} — {room} rangées annoncées ne tiennent pas"
+            );
+            // La garniture n'existe que si elle laisse deux rangées.
+            assert!(
+                digest_h == 0.0 || room >= 2,
+                "{why} — la garniture a mangé le sujet"
+            );
+            // Et elle ne se dessine jamais quand on n'en veut pas.
+            assert!(wants || digest_h == 0.0, "{why} — garniture non demandée");
+        }
     }
 
     /// **Ce qu'une case ne dessine pas, elle l'annonce** — et la place
