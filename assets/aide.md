@@ -163,6 +163,21 @@ l'écran le dit et ne propose pas de remplacer ce qu'il ne montre pas.
 seule occurrence. La trame reste écrite, une ligne la contredit ce
 jour-là, et la semaine dit la vérité.
 
+# Les listes de contrôle
+
+« Listes » tient les suites de choses à cocher : l'ouverture, la
+fermeture, le retour de vacances, ce qu'on vérifie avant de délivrer.
+Elles s'impriment en A4, une case par ligne, la date et la personne
+laissées à remplir.
+
+Ce n'est pas un protocole. Un protocole répond à « que fait-on dans ce
+cas-là » et se lit en descendant un arbre ; une liste répond à
+« qu'est-ce qu'on n'a pas oublié » et se lit en cochant.
+
+**Rien n'est livré** : une base neuve n'a aucune liste. Une liste
+d'ouverture écrite ailleurs qu'à l'officine est une liste que personne
+ne coche.
+
 # Le registre des stupéfiants
 
 Il vit dans son propre fichier, chiffré comme la base, et **il ne

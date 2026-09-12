@@ -2301,6 +2301,13 @@ enum MainView {
     /// route. C'est aussi pourquoi une réécriture s'applique à la
     /// prochaine ouverture, et que l'écran le dit.
     UiTexts,
+    /// Les listes de contrôle : ce qu'on coche, et ce qu'on imprime.
+    ///
+    /// Un protocole répond à « que fait-on dans ce cas-là » et se lit
+    /// en descendant un arbre ; une liste répond à « qu'est-ce qu'on
+    /// n'a pas oublié » et se lit en cochant. Les deux s'impriment, et
+    /// les confondre ferait une feuille sans cases.
+    Checklists,
 }
 
 impl MainView {
@@ -2329,6 +2336,7 @@ impl MainView {
             MainView::CaisseHistory => "caisses",
             MainView::Ddi => "ddi",
             MainView::UiTexts => "libelles",
+            MainView::Checklists => "listes",
         }
     }
 
@@ -2350,6 +2358,7 @@ impl MainView {
             "caisses" => Some(MainView::CaisseHistory),
             "ddi" => Some(MainView::Ddi),
             "libelles" => Some(MainView::UiTexts),
+            "listes" => Some(MainView::Checklists),
             _ => None,
         }
     }
@@ -2440,6 +2449,8 @@ enum WorkTab {
     Ddi,
     /// Les textes de l'interface.
     UiTexts,
+    /// Les listes de contrôle.
+    Checklists,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -3250,6 +3261,18 @@ struct Session {
     /// tri va avec — la table livrée est un `HashMap`, donc sans lui
     /// l'ordre changerait d'une image à l'autre.
     ui_text_hits: (String, Vec<String>),
+    /// Les listes de contrôle de l'officine, et celle qu'on ouvre.
+    checklists: Vec<db::Checklist>,
+    checklist_open: Option<i64>,
+    checklist_items: Vec<db::ChecklistItem>,
+    /// Ce qu'on tape pour ajouter : le titre d'une liste, le texte et
+    /// la note d'une ligne.
+    checklist_title: String,
+    checklist_subject: String,
+    checklist_text: String,
+    checklist_note: String,
+    /// La ligne qu'on corrige : son identifiant, son texte et sa note.
+    checklist_edit: Option<(i64, String, String)>,
     vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
@@ -4082,6 +4105,14 @@ impl Session {
             ui_texts: std::collections::HashMap::new(),
             ui_text_edit: None,
             ui_text_hits: (String::new(), Vec::new()),
+            checklists: Vec::new(),
+            checklist_open: None,
+            checklist_items: Vec::new(),
+            checklist_title: String::new(),
+            checklist_subject: String::new(),
+            checklist_text: String::new(),
+            checklist_note: String::new(),
+            checklist_edit: None,
             vacc_due: Vec::new(),
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -4417,6 +4448,7 @@ impl Session {
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
             MainView::UiTexts => WorkTab::UiTexts,
+            MainView::Checklists => WorkTab::Checklists,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -4476,6 +4508,10 @@ impl Session {
             }
             WorkTab::UiTexts => {
                 self.view = MainView::UiTexts;
+            }
+            WorkTab::Checklists => {
+                self.view = MainView::Checklists;
+                self.reload_checklists();
             }
             WorkTab::Classes => {
                 self.view = MainView::Classes;
@@ -5956,6 +5992,7 @@ impl Session {
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
             WorkTab::Ddi => tr("tab_ddi").to_owned(),
             WorkTab::UiTexts => tr("tab_libelles").to_owned(),
+            WorkTab::Checklists => tr("tab_listes").to_owned(),
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
@@ -6103,6 +6140,19 @@ impl Session {
         });
         self.vitale_found.clear();
         self.vitale_note = Some((false, tr("vitale_new").to_owned()));
+    }
+
+    /// Relire les listes de contrôle de l'officine.
+    fn reload_checklists(&mut self) {
+        self.checklists = self.db.checklists().unwrap_or_default();
+    }
+
+    /// Relire les lignes de la liste ouverte.
+    fn reload_checklist_items(&mut self) {
+        self.checklist_items = match self.checklist_open {
+            Some(id) => self.db.checklist_items(id).unwrap_or_default(),
+            None => Vec::new(),
+        };
     }
 
     /// Reload the codex from the base.
@@ -9752,6 +9802,40 @@ impl App {
                         // ce qu'il existe pour dessiner. C'est la même
                         // raison qui fait ouvrir la caisse sur un tiroir
                         // déjà compté.
+                        // Les listes de contrôle, **avec une liste
+                        // déjà écrite** : vide, l'écran ne montre ni
+                        // ligne, ni case, ni bouton d'impression — rien
+                        // de ce qu'il existe pour dessiner.
+                        Ok("listes") => {
+                            session.view = MainView::Checklists;
+                            let id = session
+                                .db
+                                .add_checklist(
+                                    "Ouverture de l'officine",
+                                    "Ce qu'on vérifie avant d'ouvrir",
+                                )
+                                .unwrap_or(0);
+                            for (text, note) in [
+                                (
+                                    "Relever la température du réfrigérateur",
+                                    "Entre +2 et +8 °C, relevé signé",
+                                ),
+                                ("Compter le fonds de caisse", ""),
+                                (
+                                    "Vérifier le coffre des stupéfiants",
+                                    "Solde du registre contre ce qui est dedans",
+                                ),
+                                ("Relever les messages du répondeur", ""),
+                            ] {
+                                let _ = session.db.add_checklist_item(id, text, note);
+                            }
+                            session.reload_checklists();
+                            session.checklist_open = Some(id);
+                            session.checklist_items =
+                                session.db.checklist_items(id).unwrap_or_default();
+                            session.checklist_subject =
+                                "Ce qu'on vérifie avant d'ouvrir".to_owned();
+                        }
                         Ok("libelles") => {
                             session.view = MainView::UiTexts;
                             session.ui_text_query = "rendez-vous".to_owned();
@@ -10935,7 +11019,11 @@ impl App {
                             // Les libellés ne trient ni le référentiel
                             // ni les dossiers : ils gardent le dock
                             // qu'on avait devant soi.
-                            | MainView::UiTexts => {
+                            | MainView::UiTexts
+                            // Une liste de contrôle est un papier de
+                            // l'officine, comme les registres : elle ne
+                            // trie ni le référentiel ni les dossiers.
+                            | MainView::Checklists => {
                                 Self::nav_patients(ui, session, focus, &config)
                             }
                         }
@@ -12259,6 +12347,10 @@ impl App {
             }
             if session.view == MainView::UiTexts {
                 Self::ui_texts_view(ui, session);
+                return;
+            }
+            if session.view == MainView::Checklists {
+                Self::checklists_view(ui, session, &config);
                 return;
             }
             if session.view == MainView::Classes {
@@ -30225,6 +30317,348 @@ impl App {
         }
     }
 
+    /// Les listes de contrôle : ce qu'on coche, et ce qu'on imprime.
+    ///
+    /// Un protocole répond à « que fait-on dans ce cas-là » et se lit en
+    /// descendant un arbre. Une liste répond à l'autre question de
+    /// l'officine — « qu'est-ce qu'on n'a pas oublié » — et se lit en
+    /// cochant : l'ouverture, la fermeture, le retour de vacances, ce
+    /// qu'on vérifie avant de délivrer un anticoagulant. Les deux
+    /// s'impriment, et rien ne gagnerait à les confondre : une liste
+    /// rangée dans l'arbre serait un arbre sans branche, et la feuille
+    /// qui en sort n'aurait pas de cases.
+    ///
+    /// **Rien n'est livré.** Une base neuve n'a aucune liste, et c'est
+    /// voulu : une liste d'ouverture écrite ailleurs qu'à l'officine
+    /// est une liste que personne ne coche. Le codex a la même règle et
+    /// pour la même raison.
+    fn checklists_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let body = motif::visible_rect(ui);
+        if session.checklists.is_empty() && session.checklist_open.is_none() {
+            session.reload_checklists();
+        }
+        let wide = body.width() >= chars_wide(ui, 108.0);
+        let cols = if wide {
+            let split = motif::split_columns(body, 3, 8.0);
+            vec![
+                split[0],
+                motif::split_columns(body, 3, 8.0)[1].union(split[2]),
+            ]
+        } else {
+            let split = motif::split_rows(body, &[body.height() * 0.32, 0.0], 6.0);
+            vec![split[0], split[1]]
+        };
+        let mut open: Option<i64> = None;
+        let mut make = false;
+        let mut drop: Option<(i64, String)> = None;
+        motif::panel(ui, cols[0], Some(tr("listes_title")), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("checklists")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add_sized(
+                                [
+                                    Self::field_width(ui, [tr("listes_new_hint")].into_iter()),
+                                    24.0,
+                                ],
+                                egui::TextEdit::singleline(&mut session.checklist_title)
+                                    .hint_text(tr("listes_new_hint")),
+                            );
+                            if motif::button_enabled(
+                                ui,
+                                tr("listes_new"),
+                                !session.checklist_title.trim().is_empty(),
+                            )
+                            .clicked()
+                            {
+                                make = true;
+                            }
+                        });
+                        ui.add_space(6.0);
+                        if session.checklists.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("listes_empty"))
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for list in &session.checklists {
+                            let on = session.checklist_open == Some(list.id);
+                            if motif::list_row_pair(ui, &list.title, &list.subject, on, 0.0)
+                                .clicked()
+                            {
+                                open = Some(list.id);
+                            }
+                        }
+                    });
+            });
+        });
+        if make {
+            let title = session.checklist_title.trim().to_owned();
+            match session.db.add_checklist(&title, "") {
+                Ok(id) => {
+                    session.checklist_title.clear();
+                    session.reload_checklists();
+                    open = Some(id);
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(id) = open {
+            session.checklist_open = Some(id);
+            session.checklist_items = session.db.checklist_items(id).unwrap_or_default();
+            session.checklist_edit = None;
+            session.checklist_subject = session
+                .checklists
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| c.subject.clone())
+                .unwrap_or_default();
+        }
+        Self::checklist_detail(ui, session, cols[1], config, &mut drop);
+        if let Some((id, title)) = drop {
+            match session.db.delete_checklist(id, &title) {
+                Ok(true) => {
+                    session.checklist_open = None;
+                    session.checklist_items.clear();
+                    session.reload_checklists();
+                }
+                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
+    /// La liste ouverte : son intitulé, ses lignes, et le papier.
+    fn checklist_detail(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        config: &Config,
+        drop: &mut Option<(i64, String)>,
+    ) {
+        let Some(list) = session
+            .checklist_open
+            .and_then(|id| session.checklists.iter().find(|c| c.id == id).cloned())
+        else {
+            motif::panel(ui, rect, Some(tr("listes_detail")), |ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(tr("listes_pick"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                );
+            });
+            return;
+        };
+        let mut add = false;
+        let mut print = false;
+        let mut rename = false;
+        let mut save: Option<(i64, String, String, String)> = None;
+        let mut remove: Option<(i64, String)> = None;
+        let mut shift: Option<(i64, bool)> = None;
+        let mut edit: Option<Option<(i64, String, String)>> = None;
+        motif::panel(ui, rect, Some(&list.title), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("checklist_detail")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("listes_print"))
+                                .on_hover_text(tr("listes_print_tooltip"))
+                                .clicked()
+                            {
+                                print = true;
+                            }
+                            if motif::button(ui, tr("listes_delete")).clicked() {
+                                *drop = Some((list.id, list.title.clone()));
+                            }
+                        });
+                        ui.add_space(6.0);
+                        // **Ce à quoi la liste sert, sur la feuille.**
+                        // Une liste s'imprime et se laisse sur un
+                        // comptoir : « Ouverture » en tête dit à qui
+                        // elle s'adresse, là où le titre seul demande de
+                        // le savoir déjà.
+                        ui.label(
+                            egui::RichText::new(tr("listes_subject"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                        ui.horizontal_wrapped(|ui| {
+                            ui.add_sized(
+                                [
+                                    Self::field_width(ui, [tr("listes_subject_hint")].into_iter()),
+                                    24.0,
+                                ],
+                                egui::TextEdit::singleline(&mut session.checklist_subject)
+                                    .hint_text(tr("listes_subject_hint")),
+                            );
+                            if motif::button(ui, tr("listes_save")).clicked() {
+                                rename = true;
+                            }
+                        });
+                        ui.add_space(6.0);
+                        // Les lignes, dans l'ordre où on les coche.
+                        let items = session.checklist_items.clone();
+                        for (i, item) in items.iter().enumerate() {
+                            let editing = session
+                                .checklist_edit
+                                .as_ref()
+                                .is_some_and(|(id, _, _)| *id == item.id);
+                            if editing {
+                                if let Some((_, text, note)) = session.checklist_edit.as_mut() {
+                                    ui.add_sized(
+                                        [ui.available_width(), 24.0],
+                                        egui::TextEdit::singleline(text),
+                                    );
+                                    ui.add_sized(
+                                        [ui.available_width(), 24.0],
+                                        egui::TextEdit::singleline(note)
+                                            .hint_text(tr("listes_note_hint")),
+                                    );
+                                }
+                                let typed = session.checklist_edit.clone();
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button(ui, tr("listes_save")).clicked() {
+                                        if let Some((id, text, note)) = typed {
+                                            save = Some((id, text, note, item.text.clone()));
+                                        }
+                                    }
+                                    if motif::button(ui, tr("libelles_cancel")).clicked() {
+                                        edit = Some(None);
+                                    }
+                                });
+                            } else {
+                                ui.label(
+                                    egui::RichText::new(format!("{}. {}", i + 1, item.text))
+                                        .size(motif::pt(ui, 12.0)),
+                                );
+                                if !item.note.trim().is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(item.note.as_str())
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                }
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button_enabled(ui, "‹", i > 0)
+                                        .on_hover_text(tr("listes_up"))
+                                        .clicked()
+                                    {
+                                        shift = Some((item.id, true));
+                                    }
+                                    if motif::button_enabled(ui, "›", i + 1 < items.len())
+                                        .on_hover_text(tr("listes_down"))
+                                        .clicked()
+                                    {
+                                        shift = Some((item.id, false));
+                                    }
+                                    if motif::button(ui, tr("listes_edit")).clicked() {
+                                        edit = Some(Some((
+                                            item.id,
+                                            item.text.clone(),
+                                            item.note.clone(),
+                                        )));
+                                    }
+                                    if motif::button(ui, tr("itv_delete")).clicked() {
+                                        remove = Some((item.id, item.text.clone()));
+                                    }
+                                });
+                            }
+                            ui.add_space(8.0);
+                        }
+                        motif::section(ui, tr("listes_add"));
+                        ui.add_space(4.0);
+                        ui.add_sized(
+                            [ui.available_width(), 24.0],
+                            egui::TextEdit::singleline(&mut session.checklist_text)
+                                .hint_text(tr("listes_item_hint")),
+                        );
+                        ui.add_sized(
+                            [ui.available_width(), 24.0],
+                            egui::TextEdit::singleline(&mut session.checklist_note)
+                                .hint_text(tr("listes_note_hint")),
+                        );
+                        ui.add_space(4.0);
+                        if motif::button_enabled(
+                            ui,
+                            tr("listes_add_item"),
+                            !session.checklist_text.trim().is_empty(),
+                        )
+                        .clicked()
+                        {
+                            add = true;
+                        }
+                    });
+            });
+        });
+        if let Some(next) = edit {
+            session.checklist_edit = next;
+        }
+        if add {
+            let (text, note) = (
+                session.checklist_text.trim().to_owned(),
+                session.checklist_note.trim().to_owned(),
+            );
+            if let Err(e) = session.db.add_checklist_item(list.id, &text, &note) {
+                session.error = Some(e);
+            }
+            session.checklist_text.clear();
+            session.checklist_note.clear();
+            session.reload_checklist_items();
+        }
+        if let Some((id, text, note, expected)) = save {
+            match session
+                .db
+                .update_checklist_item(id, &text, &note, &expected)
+            {
+                Ok(true) => session.checklist_edit = None,
+                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+            session.reload_checklist_items();
+        }
+        if let Some((id, text)) = remove {
+            match session.db.delete_checklist_item(id, &text) {
+                Ok(true) => {}
+                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+            session.reload_checklist_items();
+        }
+        if let Some((id, up)) = shift {
+            if let Err(e) = session.db.move_checklist_item(list.id, id, up) {
+                session.error = Some(e);
+            }
+            session.reload_checklist_items();
+        }
+        if rename {
+            let subject = session.checklist_subject.trim().to_owned();
+            match session
+                .db
+                .rename_checklist(list.id, &list.title, &subject, &list.title)
+            {
+                Ok(true) => session.reload_checklists(),
+                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if print {
+            if let Err(e) = crate::pdf::open_checklist(
+                &list.title,
+                &list.subject,
+                &session.checklist_items,
+                &config.doc_template_path("liste"),
+            ) {
+                session.error = Some(e);
+            }
+        }
+    }
+
     fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         use crate::facets::Organ;
         let body = motif::visible_rect(ui);
@@ -44365,7 +44799,8 @@ impl eframe::App for App {
                     | MainView::Caisse
                     | MainView::CaisseHistory
                     | MainView::Ddi
-                    | MainView::UiTexts => {
+                    | MainView::UiTexts
+                    | MainView::Checklists => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard

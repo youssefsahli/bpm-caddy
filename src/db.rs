@@ -83,6 +83,27 @@ CREATE TABLE IF NOT EXISTS protocols (
     subject     TEXT NOT NULL DEFAULT '',
     created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+-- Les listes de contrôle : une suite de choses à cocher, à imprimer.
+--
+-- Un protocole est un **arbre** — une question, deux branches — et il
+-- répond à « que fait-on dans ce cas-là ». Une liste est plate et
+-- répond à autre chose : « qu'est-ce qu'on n'a pas oublié ». Les deux
+-- s'impriment, et rien ne gagnerait à les confondre : une liste
+-- rangée dans l'arbre serait un arbre sans branche, et la feuille qui
+-- en sort n'aurait pas de cases à cocher.
+CREATE TABLE IF NOT EXISTS checklists (
+    id          INTEGER PRIMARY KEY,
+    title       TEXT NOT NULL,
+    subject     TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS checklist_items (
+    id           INTEGER PRIMARY KEY,
+    checklist_id INTEGER NOT NULL,
+    text         TEXT NOT NULL,
+    note         TEXT NOT NULL DEFAULT '',
+    position     INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS protocol_nodes (
     id          INTEGER PRIMARY KEY,
     protocol_id INTEGER NOT NULL,
@@ -526,6 +547,21 @@ const INDEXES: &[&str] = &[
 
 /// Idempotent migrations for databases created by older versions.
 const MIGRATIONS: &[&str] = &[
+    // Les listes de contrôle — voir le commentaire au-dessus des tables
+    // dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS checklists (
+        id          INTEGER PRIMARY KEY,
+        title       TEXT NOT NULL,
+        subject     TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
+    "CREATE TABLE IF NOT EXISTS checklist_items (
+        id           INTEGER PRIMARY KEY,
+        checklist_id INTEGER NOT NULL,
+        text         TEXT NOT NULL,
+        note         TEXT NOT NULL DEFAULT '',
+        position     INTEGER NOT NULL DEFAULT 0
+    )",
     "CREATE TABLE IF NOT EXISTS seed_state (
         key    TEXT PRIMARY KEY,
         value  TEXT NOT NULL
@@ -1326,6 +1362,33 @@ pub struct Protocol {
     pub title: String,
     /// The drug or class it is about, free text.
     pub subject: String,
+}
+
+/// Une liste de contrôle : ce qu'on coche, et pourquoi elle existe.
+///
+/// **Ce n'est pas un protocole sans branches.** Un protocole répond à
+/// « que fait-on dans ce cas-là » et se lit en descendant un arbre ;
+/// une liste répond à « qu'est-ce qu'on n'a pas oublié » et se lit en
+/// cochant. La feuille qui en sort n'a pas la même forme, et c'est la
+/// feuille qui décide.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Checklist {
+    pub id: i64,
+    pub title: String,
+    /// Ce à quoi elle sert, en une ligne : « Ouverture », « Retour de
+    /// vacances », « Avant de délivrer un AOD ».
+    pub subject: String,
+}
+
+/// Une ligne d'une liste de contrôle.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChecklistItem {
+    pub id: i64,
+    pub text: String,
+    /// Ce qu'il faut savoir pour cocher : un seuil, un numéro, un
+    /// endroit. Vide quand la ligne se suffit.
+    pub note: String,
+    pub position: i64,
 }
 
 /// What a node of a protocol does.
@@ -30900,6 +30963,181 @@ impl Db {
     }
 
     /// Create a protocol with its first step.
+    /// Les listes de contrôle de l'officine, la plus récente d'abord.
+    pub fn checklists(&self) -> Result<Vec<Checklist>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, title, subject FROM checklists ORDER BY title COLLATE NOCASE")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Checklist {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    subject: r.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ce qu'une liste demande de cocher, dans l'ordre.
+    pub fn checklist_items(&self, id: i64) -> Result<Vec<ChecklistItem>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, text, note, position FROM checklist_items
+                 WHERE checklist_id = ?1 ORDER BY position, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([id], |r| {
+                Ok(ChecklistItem {
+                    id: r.get(0)?,
+                    text: r.get(1)?,
+                    note: r.get(2)?,
+                    position: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_checklist(&self, title: &str, subject: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO checklists (title, subject) VALUES (?1, ?2)",
+                (title, subject),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Renommer une liste, **contre ce que l'écran affichait** : la base
+    /// est partagée, et deux postes qui renomment la même liste ne
+    /// doivent pas s'écraser en silence.
+    pub fn rename_checklist(
+        &self,
+        id: i64,
+        title: &str,
+        subject: &str,
+        expected_title: &str,
+    ) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE checklists SET title = ?2, subject = ?3 WHERE id = ?1 AND title = ?4",
+                (id, title, subject, expected_title),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    /// Supprimer une liste **et ses lignes** : une ligne orpheline est
+    /// une ligne que plus rien n'affiche et que rien n'efface.
+    pub fn delete_checklist(&self, id: i64, expected_title: &str) -> Result<bool, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let n = tx
+            .execute(
+                "DELETE FROM checklists WHERE id = ?1 AND title = ?2",
+                (id, expected_title),
+            )
+            .map_err(|e| e.to_string())?;
+        if n == 1 {
+            tx.execute("DELETE FROM checklist_items WHERE checklist_id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    /// Ajouter une ligne **à la fin** : une liste de contrôle se lit
+    /// dans l'ordre où on la parcourt, et une ligne qui s'insérerait au
+    /// milieu changerait cet ordre sans qu'on l'ait demandé.
+    pub fn add_checklist_item(&self, list: i64, text: &str, note: &str) -> Result<i64, String> {
+        let next: i64 = self
+            .conn
+            .query_row(
+                "SELECT COALESCE(MAX(position), 0) + 1 FROM checklist_items WHERE checklist_id = ?1",
+                [list],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT INTO checklist_items (checklist_id, text, note, position)
+                 VALUES (?1, ?2, ?3, ?4)",
+                (list, text, note, next),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn update_checklist_item(
+        &self,
+        id: i64,
+        text: &str,
+        note: &str,
+        expected_text: &str,
+    ) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE checklist_items SET text = ?2, note = ?3 WHERE id = ?1 AND text = ?4",
+                (id, text, note, expected_text),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    pub fn delete_checklist_item(&self, id: i64, expected_text: &str) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "DELETE FROM checklist_items WHERE id = ?1 AND text = ?2",
+                (id, expected_text),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    /// Échanger une ligne avec sa voisine, **en une transaction**.
+    ///
+    /// Les deux positions bougent ensemble ou pas du tout : une moitié
+    /// écrite laisse deux lignes au même rang, et l'ordre devient celui
+    /// des identifiants — c'est-à-dire un ordre que personne n'a choisi.
+    pub fn move_checklist_item(&self, list: i64, id: i64, up: bool) -> Result<bool, String> {
+        let items = self.checklist_items(list)?;
+        let Some(at) = items.iter().position(|i| i.id == id) else {
+            return Ok(false);
+        };
+        let other = if up {
+            at.checked_sub(1)
+        } else {
+            (at + 1 < items.len()).then_some(at + 1)
+        };
+        let Some(other) = other else { return Ok(false) };
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        for (row, pos) in [
+            (&items[at], items[other].position),
+            (&items[other], items[at].position),
+        ] {
+            tx.execute(
+                "UPDATE checklist_items SET position = ?2 WHERE id = ?1",
+                (row.id, pos),
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+
     pub fn add_protocol(&self, title: &str, subject: &str) -> Result<i64, String> {
         self.conn
             .execute(
@@ -36603,6 +36841,15 @@ mod tests {
         db.patient_posologies(pid).expect("patient_posologies");
         db.patient_dosages(pid).expect("patient_dosages");
         db.dosages_used(did).expect("dosages_used");
+        // Les listes de contrôle : deux tables ajoutées après la 0.109,
+        // donc deux `CREATE TABLE IF NOT EXISTS` dans `MIGRATIONS`.
+        // Oubliés, ces deux lectures échouent ici et nulle part
+        // ailleurs — sur une base neuve, `SCHEMA` les aurait créées.
+        let list = db.add_checklist("Ouverture", "").expect("add_checklist");
+        db.add_checklist_item(list, "Réfrigérateur", "")
+            .expect("add_checklist_item");
+        db.checklists().expect("checklists");
+        db.checklist_items(list).expect("checklist_items");
         // Les agrégats des statistiques : quatre noms de tables et une
         // faute de frappe suffit à rendre zéro sans rien dire, parce que
         // la vue lit `unwrap_or_default`. Ce test est ce qui l'attrape —

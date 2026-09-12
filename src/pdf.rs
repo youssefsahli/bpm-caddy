@@ -2314,6 +2314,85 @@ pub fn open_protocol(
 
 const MARKERS_PROTOCOLE: &[&str] = &["{{TITLE}}", "{{SUBJECT}}", "{{TREE}}"];
 
+/// Une liste de contrôle sur une page, **avec ses cases**.
+///
+/// C'est la case qui fait la différence avec un protocole : on ne
+/// descend pas une liste, on la coche, et une feuille sans case se
+/// coche au stylo dans la marge. La date et la personne sont en tête,
+/// vides : une liste cochée sans savoir quand ni par qui ne prouve
+/// rien, et les pré-remplir serait remplir à la place de quelqu'un.
+pub fn open_checklist(
+    title: &str,
+    subject: &str,
+    items: &[crate::db::ChecklistItem],
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("liste", template_path),
+            &checklist_values(title, subject, items),
+        ),
+        "liste",
+    )
+}
+
+const MARKERS_LISTE: &[&str] = &["{{TITLE}}", "{{SUBJECT}}", "{{ITEMS}}"];
+
+const DEFAULT_LISTE_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(15pt, weight: "bold")[{{TITLE}}]]
+#align(center)[{{SUBJECT}}]
+#v(3mm)
+#grid(columns: (1fr, 1fr), gutter: 6mm,
+  [Date : #box(width: 1fr, repeat[.])],
+  [Par : #box(width: 1fr, repeat[.])],
+)
+#v(2mm)
+#line(length: 100%, stroke: 0.6pt)
+#v(3mm)
+{{ITEMS}}
+"##;
+
+fn checklist_values(
+    title: &str,
+    subject: &str,
+    items: &[crate::db::ChecklistItem],
+) -> Vec<(&'static str, String)> {
+    let mut body = String::new();
+    for item in items {
+        // Une case dessinée, et non un caractère : la police d'une
+        // feuille imprimée n'est pas celle de l'écran, et un carré
+        // typographique manquant sort en blanc — une liste sans cases.
+        body.push_str("#grid(columns: (6mm, 1fr), gutter: 0mm, align: (left + top, left + top),\n");
+        body.push_str("  [#box(width: 3.6mm, height: 3.6mm, stroke: 0.6pt)],\n  [");
+        body.push_str(&format!("#{}", typst_str(item.text.trim())));
+        if !item.note.trim().is_empty() {
+            body.push_str(&format!(
+                "\\\n#text(size: 9pt, fill: rgb(90, 90, 90))[#{}]",
+                typst_str(item.note.trim())
+            ));
+        }
+        body.push_str("],\n)\n#v(2.4mm)\n");
+    }
+    if items.is_empty() {
+        body.push_str("#text(fill: rgb(120, 120, 120))[Cette liste n'a pas encore de ligne.]\n");
+    }
+    vec![
+        ("{{TITLE}}", format!("#{}", typst_str(title.trim()))),
+        (
+            "{{SUBJECT}}",
+            if subject.trim().is_empty() {
+                String::new()
+            } else {
+                format!("#text(size: 10pt)[#{}]", typst_str(subject.trim()))
+            },
+        ),
+        ("{{ITEMS}}", body),
+    ]
+}
+
 const DEFAULT_PROTOCOLE_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 2cm)
 #set text(size: 11pt, lang: "fr", hyphenate: true)
@@ -3582,6 +3661,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_PROTOCOLE_TEMPLATE,
     },
     Doc {
+        key: "liste",
+        label: "tpl_target_liste",
+        markers: MARKERS_LISTE,
+        default: DEFAULT_LISTE_TEMPLATE,
+    },
+    Doc {
         key: "semaine",
         label: "tpl_target_semaine",
         markers: MARKERS_SEMAINE,
@@ -4068,6 +4153,24 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 text: "Le patient a-t-il une ordonnance en cours ?".to_owned(),
                 position: 0,
             }],
+        ),
+        "liste" => checklist_values(
+            "Ouverture de l'officine",
+            "Ce qu'on vérifie avant d'ouvrir",
+            &[
+                crate::db::ChecklistItem {
+                    id: 1,
+                    text: "Relever la température du réfrigérateur".to_owned(),
+                    note: "Entre +2 et +8 °C, relevé signé".to_owned(),
+                    position: 1,
+                },
+                crate::db::ChecklistItem {
+                    id: 2,
+                    text: "Compter le fonds de caisse".to_owned(),
+                    note: String::new(),
+                    position: 2,
+                },
+            ],
         ),
         "semaine" => week_plan_values(
             &[
@@ -5460,6 +5563,62 @@ mod tests {
     /// « recompté », et le total ne retient que la seconde. Une
     /// histoire de caisse d'où l'on aurait retiré les comptages refaits
     /// ne prouverait rien ; une histoire qui les additionne est fausse.
+    /// **Une liste de contrôle sort avec ses cases.**
+    ///
+    /// C'est la case qui la sépare d'un protocole : on ne descend pas
+    /// une liste, on la coche, et une feuille sans case se coche au
+    /// stylo dans la marge. La case est **dessinée** et non écrite : la
+    /// police d'une feuille imprimée n'est pas celle de l'écran, et un
+    /// carré typographique manquant sort en blanc — c'est-à-dire une
+    /// liste sans cases, qui compile et ne sert à rien.
+    ///
+    /// La date et la personne sont laissées vides : une liste cochée
+    /// sans savoir quand ni par qui ne prouve rien, et les pré-remplir
+    /// serait remplir à la place de quelqu'un.
+    #[test]
+    fn a_checklist_prints_its_boxes() {
+        let items = vec![
+            crate::db::ChecklistItem {
+                id: 1,
+                text: "Relever la température du réfrigérateur".to_owned(),
+                note: "Entre +2 et +8 °C".to_owned(),
+                position: 1,
+            },
+            crate::db::ChecklistItem {
+                id: 2,
+                text: "Compter le fonds de caisse".to_owned(),
+                note: String::new(),
+                position: 2,
+            },
+        ];
+        let values = checklist_values("Ouverture", "Avant d'ouvrir", &items);
+        let src = fill(DEFAULT_LISTE_TEMPLATE, &values);
+        // Une case par ligne, dessinée.
+        assert_eq!(src.matches("stroke: 0.6pt)]").count(), items.len());
+        // La date et la personne sont sur la feuille, et vides.
+        assert!(src.contains("Date :") && src.contains("Par :"));
+        assert!(!src.contains("{{"));
+        let world = PdfWorld::new(src.clone());
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+        // Une liste sans ligne le dit plutôt que de sortir une page
+        // blanche qu'on croirait ratée.
+        let empty = fill(DEFAULT_LISTE_TEMPLATE, &checklist_values("Vide", "", &[]));
+        assert!(empty.contains("pas encore de ligne"));
+        assert!(typst::compile::<PagedDocument>(&PdfWorld::new(empty))
+            .output
+            .is_ok());
+        // Écrite sur disque quand on demande à la regarder : une feuille
+        // se juge à l'œil, pas à une assertion de sous-chaîne.
+        if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+            let doc: PagedDocument = typst::compile(&PdfWorld::new(src))
+                .output
+                .expect("la feuille doit compiler");
+            if let Ok(pdf) = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()) {
+                let _ = std::fs::write(std::path::Path::new(&dir).join("liste_exemple.pdf"), &pdf);
+            }
+        }
+    }
+
     #[test]
     fn the_till_history_shows_a_recount_and_counts_it_once() {
         let counts = sample_counted();
