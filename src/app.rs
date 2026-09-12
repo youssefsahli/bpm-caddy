@@ -21442,12 +21442,32 @@ impl App {
         // band drives all three modes from one set of buttons, and two
         // « ‹ Aujourd'hui › » rows on the same screen was one too many.
 
+        // La hauteur d'une ligne de libellé, et donc le plancher d'un
+        // bloc : au-dessous, il ne se lit pas. Mesurée dans la fonte qui
+        // dessinera, jamais devinée.
+        let label_h =
+            ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5)))) + 4.0;
         // The hour column fills the pane it is given, down to a legible
         // row: a fixed 34 px row left the plan floating in the top half
         // of a panel and scrolling in a short one.
+        //
+        // **Et « lisible » est une ligne de texte, pas vingt pixels.**
+        // Deux graduations consécutives sont à `row_h` l'une de l'autre,
+        // donc une rangée plus courte que la ligne qu'elle porte fait se
+        // toucher « 08 h » et « 09 h ». C'est la hauteur de *cette*
+        // ligne-là qui décide — celle des heures, onze points — et non
+        // celle d'un libellé de bloc : un bloc a son propre plancher, et
+        // prendre le sien ici coûterait deux heures de journée visible
+        // pour rien.
+        //
+        // Le plafond est relevé au plancher plutôt que supposé au-dessus :
+        // `f32::clamp` **panique** quand le minimum passe le maximum, et
+        // une échelle de texte assez grande les croise.
         let avail = motif::visible_rect(ui);
         let w = (avail.width() - 16.0).max(300.0);
-        let row_h = ((avail.height() - 12.0) / hours).clamp(20.0, 44.0);
+        let row_floor =
+            ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0)))) + 2.0;
+        let row_h = ((avail.height() - 12.0) / hours).clamp(row_floor, row_floor.max(44.0));
         let (alloc, _) =
             ui.allocate_exact_size(egui::vec2(w, hours * row_h + 8.0), egui::Sense::hover());
         let plan =
@@ -21455,7 +21475,21 @@ impl App {
         ui.painter().rect_filled(plan, 0.0, motif::trough());
         motif::bevel(ui.painter(), plan, false);
         let inner = plan.shrink(4.0);
-        let gutter = 54.0;
+        // **La gouttière fait la largeur de l'heure la plus large**, et
+        // non cinquante-quatre pixels : « 00 h » en mesure déjà
+        // quarante-cinq à `text_scale = 1,6`, et la marge qui l'entoure
+        // fond à mesure que le texte grossit. Mesurée au gabarit « 00 h »
+        // et non sur l'heure du moment, pour que la colonne ne change pas
+        // de largeur entre neuf heures et dix.
+        let gutter = ui.fonts(|f| {
+            f.layout_no_wrap(
+                "00 h".to_owned(),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                motif::text(),
+            )
+            .size()
+            .x
+        }) + 12.0;
         // Hour lines and their labels.
         for i in 0..=(end - start) {
             let y = inner.top() + i as f32 * row_h;
@@ -21514,11 +21548,6 @@ impl App {
         let mut untimed: Vec<String> = Vec::new();
         let by_id: std::collections::HashMap<i64, usize> =
             entries.iter().enumerate().map(|(i, e)| (e.id, i)).collect();
-        // La hauteur d'une ligne de libellé, et donc le plancher d'un
-        // bloc : au-dessous, il ne se lit pas. Mesurée dans la fonte qui
-        // dessinera, jamais devinée.
-        let label_h =
-            ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5)))) + 4.0;
         // Ce plancher, retraduit en minutes : c'est l'étendue minimale
         // qu'un bloc occupe **à l'écran**, et c'est sur elle que les
         // voies se calculent. Voir `agenda_day_lanes`.
@@ -26753,13 +26782,6 @@ impl App {
                     ui.interact(block, ui.id().with(("wkev", i, ei)), egui::Sense::hover())
                         .on_hover_text(format!("{} — {}", ev.category.label(), ev.title));
                 }
-                // Clicking the column header details that day below.
-                // La zone cliquable de l'en-tête est ce que l'en-tête
-                // occupe — mesuré comme lui, et non vingt-quatre pixels.
-                let head = egui::Rect::from_min_size(
-                    col.min,
-                    egui::vec2(col.width(), 4.0 + head_h + digest_h),
-                );
                 // La ligne d'équipe est élidée dans une colonne de
                 // semaine : le survol la rend entière, sinon
                 // « CL YS · 14 h… » est un chiffre qu'on ne peut plus
@@ -26777,6 +26799,33 @@ impl App {
                         head_hover.push_str(tr("planning_day_uncovered"));
                     }
                 }
+                // **Toute la colonne choisit son jour**, et pas seulement
+                // ses vingt premiers pixels. Une case du mois se clique
+                // en entier ; ici il fallait viser l'en-tête, c'est-à-dire
+                // une bande de la hauteur d'une ligne de texte au sommet
+                // d'une colonne haute de trois cents pixels. Le reste de
+                // la colonne est vide par construction — les blocs ont
+                // déjà pris leur clic au-dessus —, et une cible de cette
+                // taille se vise sans regarder.
+                let rest = egui::Rect::from_min_max(
+                    egui::pos2(col.left(), top0 + (used + ev_used) as f32 * pitch),
+                    col.max,
+                );
+                if rest.height() > 4.0
+                    && ui
+                        .interact(rest, ui.id().with(("wkrest", i)), egui::Sense::click())
+                        .on_hover_text(head_hover.clone())
+                        .clicked()
+                {
+                    *pick_day = Some(date.clone());
+                }
+                // Clicking the column header details that day below.
+                // La zone cliquable de l'en-tête est ce que l'en-tête
+                // occupe — mesuré comme lui, et non vingt-quatre pixels.
+                let head = egui::Rect::from_min_size(
+                    col.min,
+                    egui::vec2(col.width(), 4.0 + head_h + digest_h),
+                );
                 if ui
                     .interact(head, ui.id().with(("wkday", i)), egui::Sense::click())
                     .on_hover_text(head_hover)
