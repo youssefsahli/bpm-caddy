@@ -39,10 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lettre et sans même l'ellipse. On raccourcit désormais — « Jean
   Dupont », « J. Dupont », « Dupont » — et l'heure ne cède qu'après.
 - **« Prochains RDV », dans le volet, affichait cinq fois
-  « 12/09/… ».** Chaque rangée portait « date + nom » : la date tient
-  sur cent cinquante pixels, le nom est ce que l'ellipse mange. La date
-  est la clé du tri, donc elle s'écrit une fois en tête de groupe, et le
-  nom récupère toute la largeur.
+  « 12/09/… ».** Chaque rangée portait « date + nom », et le volet fait
+  cent cinquante pixels : la date y tient, le nom est ce que l'ellipse
+  mange. Or la date est la clé du tri — ce qui se répète s'écrit une
+  fois, en tête de groupe, et le nom récupère toute la largeur.
 - **« Déplacer » sortait du panneau du jour.** La rangée était un
   `horizontal`, qui n'enveloppe pas, et `motif::page` ne découpe rien :
   une ligne portant l'heure, la nature, le nom *et* un numéro de
@@ -87,11 +87,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   détaillait le 25 sous une grille qui montrait toujours autre chose. Un
   agenda a **un** moment courant ; les quatre lectures le cadrent
   différemment, elles n'en désignent pas quatre.
-- **La hauteur d'un bloc de la grille de semaine vient de sa fonte.**
-  Elle valait vingt-et-un pixels quelle que soit `[ui] text_scale`, or à
-  1,6 une ligne de onze points mesure vingt-et-un pixels à elle seule.
-  La colonne montre plus de rangées à l'échelle 1, moins à 1,6, et le
-  « +N » dit ce que cela coûte.
+- **Tout ce qu'une colonne de semaine occupe est mesuré.** Quatre
+  constantes tenaient son en-tête — le nom du jour centré à douze
+  pixels, la ligne d'équipe à vingt-six, la jauge de charge à
+  vingt-et-un, les blocs à trente — et aucune ne suit
+  `[ui] text_scale`, alors que chacun de ces textes grandit avec lui. À
+  1,6, « Lun 07 » descendait jusqu'à vingt-trois pixels et « CL YS »
+  commençait à seize : ils se chevauchaient de sept, et la jauge passait
+  dans le bas de la seconde. Les hauteurs viennent des fontes qui
+  dessineront, et le seuil de la garniture se compte en rangées de
+  rendez-vous — « au-dessus de cent cinquante pixels » ne veut rien dire
+  à une échelle qui change la taille des rangées.
+
+  Conséquence visible : la colonne montre plus de rangées à l'échelle 1,
+  moins à 1,6, et le « +N » dit ce que cela coûte.
 
 ## [0.196.0] - 2026-09-12
 

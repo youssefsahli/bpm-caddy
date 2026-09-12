@@ -71,6 +71,11 @@ pas** : ce qu'il écarte reste dessiné en trait contre la gouttière, et
 ce qui chevauche une entrée retenue reste dessiné en entier — sans quoi
 le filtre fabriquerait le conflit qu'il devait montrer.
 
+Les quatre lectures parlent **du même moment** : changer de lecture
+recadre les autres sur le jour qu'on regardait. Le jour détaillé porte
+son liseré dans la grille de la semaine comme dans celle du mois, et
+« Imprimer la semaine » sort la semaine affichée.
+
 Le plan de journée porte **un pointillé à l'heure qu'il est**, avec un
 point rouge dans la marge. Il ne se dessine que sur la journée
 d'aujourd'hui : posé sur un autre jour, il dirait l'heure d'un jour
