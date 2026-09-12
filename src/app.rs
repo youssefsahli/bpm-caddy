@@ -1430,21 +1430,41 @@ fn day_head(ui: &egui::Ui, date: &str, width: f32, size: f32) -> String {
     let short = three_letters(db::weekday_fr(date).unwrap_or(""));
     let day = date.get(8..10).unwrap_or("").to_owned();
     let month = date.get(5..7).unwrap_or("");
+    richest_form(
+        ui,
+        [
+            format!("{short} {day}/{month}"),
+            format!("{short} {day}"),
+            day.clone(),
+        ],
+        width,
+        size,
+    )
+    .unwrap_or(day)
+}
+
+/// La plus riche de ces écritures qui tienne dans `width` — et **rien**
+/// quand aucune ne tient.
+///
+/// On raccourcit, on n'élide pas. « Lun 07/0… » a perdu le mois *et* se
+/// lit cassé, là où « Lun 07 » ne dit pas le mois et se lit entier ;
+/// « CL YS ·… » laisse croire qu'il manque un nom, là où « CL YS » dit
+/// exactement ce qu'il sait. Les formes vont de la plus riche à la plus
+/// pauvre, comme celles de [`table_shape`] pour les colonnes.
+fn richest_form(
+    ui: &egui::Ui,
+    forms: impl IntoIterator<Item = String>,
+    width: f32,
+    size: f32,
+) -> Option<String> {
     let font = egui::FontId::proportional(motif::pt(ui, size));
-    [
-        format!("{short} {day}/{month}"),
-        format!("{short} {day}"),
-        day.clone(),
-    ]
-    .into_iter()
-    .find(|form| {
+    forms.into_iter().find(|form| {
         ui.fonts(|f| {
             f.layout_no_wrap(form.clone(), font.clone(), motif::text())
                 .size()
                 .x
         }) <= width
     })
-    .unwrap_or(day)
 }
 
 /// 540 → « 9 », 575 → « 9h35 » : l'heure la plus courte qui se lise
@@ -23332,7 +23352,35 @@ impl App {
                     // hors du champ, et un total qu'il faut aller
                     // chercher en faisant défiler n'est pas un total.
                     let week_w = chars_wide(ui, 13.0);
-                    let day_w = chars_wide(ui, 12.0);
+                    // Mesurée sur ce qu'elle porte, comme celle de la
+                    // semaine : une journée coupée s'écrit « 9–12h30 ·
+                    // 14–19 » même serré, et une colonne fixe la
+                    // couperait en « 14–… », qui veut dire « sans fin ».
+                    let day_w = Self::widest(
+                        ui,
+                        11.0,
+                        mine.iter()
+                            .map(|(d, _)| d.clone())
+                            .collect::<std::collections::BTreeSet<_>>()
+                            .iter()
+                            .map(|d| {
+                                format!(
+                                    "00  {}",
+                                    Self::planning_cell_text_tight(
+                                        &mine
+                                            .iter()
+                                            .filter(|(dd, _)| dd == d)
+                                            .map(|(_, sh)| sh)
+                                            .collect::<Vec<_>>(),
+                                    )
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .iter()
+                            .map(String::as_str),
+                    )
+                    .clamp(chars_wide(ui, 12.0), chars_wide(ui, 24.0))
+                        + 8.0;
                     // **Les rangées remplissent le volet.** Six rangées
                     // de la hauteur d'une ligne laissaient les deux
                     // tiers du panneau vides sous elles, et un mois est
@@ -23744,7 +23792,42 @@ impl App {
                     .fold(0.0_f32, f32::max)
                     + 12.0;
                 let total_w = chars_wide(ui, 12.0);
-                let day_w = chars_wide(ui, 13.0);
+                // **La colonne des jours est mesurée sur ce qu'elle
+                // porte.** Une journée coupée écrit « 9 h–12 h 30 ·
+                // 14 h–19 h », deux fois ce qu'une journée d'un tenant
+                // demande, et treize caractères écrits en dur la
+                // coupaient en « 14 h–… » — qui est précisément ce que
+                // la grille écrit d'un poste **sans fin**. Deux choses
+                // différentes sous une même apparence est la seule
+                // élision qu'une case d'horaire ne peut pas se
+                // permettre.
+                //
+                // Bornée quand même : la grille défile, et une colonne
+                // qui suivrait une case bavarde pousserait les six
+                // autres hors du volet.
+                let day_w = Self::widest(
+                    ui,
+                    11.0,
+                    parsed
+                        .iter()
+                        .map(|(r, c, _, _)| (*r, *c))
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .iter()
+                        .map(|(r, c)| {
+                            Self::planning_cell_text(
+                                &parsed
+                                    .iter()
+                                    .filter(|(rr, cc, _, _)| rr == r && cc == c)
+                                    .map(|(_, _, sh, _)| sh)
+                                    .collect::<Vec<_>>(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .map(String::as_str),
+                )
+                .clamp(chars_wide(ui, 13.0), chars_wide(ui, 28.0))
+                    + 10.0;
                 let clip_left = ui.clip_rect().left();
                 egui::Grid::new("planning_grid")
                     .striped(true)
@@ -24462,6 +24545,13 @@ impl App {
             .collapsible(false)
             .resizable(true)
             .max_height((screen.y - 40.0).max(240.0))
+            // **Et pas plus large que l'écran.** Une fenêtre grandit
+            // avec son contenu : les huit colonnes d'une journée coupée,
+            // à `text_scale = 1,6`, la poussaient au-delà des bords — et
+            // comme elle est centrée, « Lundi » se lisait « undi ». Le
+            // corps défile alors dans les deux sens plutôt que de
+            // pousser ses murs.
+            .max_width((screen.x - 40.0).max(320.0))
             // **La largeur voulue suit l'échelle du texte.** 760 px
             // portent sept colonnes à l'échelle 1 et cinq à 1,6 : le
             // même nombre de pixels pour deux tiers du texte, et
@@ -24485,7 +24575,7 @@ impl App {
                 // coupé en bas.
                 let body_cap =
                     (screen.y - Self::row_height(ui) * 3.0 - 40.0).max(Self::row_height(ui) * 4.0);
-                egui::ScrollArea::vertical()
+                egui::ScrollArea::both()
                     .id_salt("frame_body")
                     .max_height(body_cap)
                     .show(ui, |ui| {
@@ -25282,14 +25372,26 @@ impl App {
                 // rendez-vous, qui sont le sujet. La ligne prise est
                 // ajoutée à ce que le reste de la colonne décale, jamais
                 // peinte par-dessus.
-                let digest = digests.get(date).map(|d| match d.minutes {
-                    Some(m) if !d.who.is_empty() => {
-                        (format!("{} · {}", d.who, planning::hhmm(m)), d.uncovered)
-                    }
-                    Some(m) => (planning::hhmm(m), d.uncovered),
-                    None => (d.who.clone(), d.uncovered),
+                // **La plus riche des écritures qui tienne**, et non la
+                // plus riche élidée : « CL YS ·… » laisse croire qu'il
+                // manque un nom, là où « CL YS » dit exactement ce qu'il
+                // sait. Et quand rien ne tient, la ligne ne se dessine
+                // pas — c'est de la garniture, et une garniture coupée
+                // n'en est plus une.
+                //
+                // Les noms passent avant les heures : la ligne a été
+                // ajoutée pour répondre à « qui tient le comptoir
+                // jeudi ? » sans ouvrir le planning.
+                let digest = digests.get(date).and_then(|d| {
+                    let hours = d.minutes.map(planning::hhmm);
+                    let forms: Vec<String> = match (d.who.is_empty(), hours) {
+                        (false, Some(h)) => vec![format!("{} · {h}", d.who), d.who.clone()],
+                        (false, None) => vec![d.who.clone()],
+                        (true, Some(h)) => vec![h],
+                        (true, None) => Vec::new(),
+                    };
+                    richest_form(ui, forms, col.width() - 8.0, 10.0).map(|l| (l, d.uncovered))
                 });
-                let digest = digest.filter(|(line, _)| !line.is_empty());
                 let digest_h = if digest.is_some() && col.height() >= 150.0 {
                     13.0
                 } else {
@@ -25300,7 +25402,7 @@ impl App {
                         ui.painter().text(
                             egui::pos2(col.center().x, col.top() + 26.0),
                             egui::Align2::CENTER_CENTER,
-                            elide(ui, line, col.width() - 8.0, 10.0),
+                            line,
                             egui::FontId::proportional(motif::pt(ui, 10.0)),
                             if *red {
                                 motif::alert()

@@ -5,6 +5,36 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.188.0] - 2026-09-12
+
+### Fixed
+- **Une case du planning coupée en « 14 h–… » disait « sans fin ».** La
+  colonne des jours faisait treize caractères écrits en dur, et une
+  journée coupée — « 9 h–12 h 30 · 14 h–19 h » — en demande le double :
+  elle s'élidait donc en « 14 h–… », qui est exactement ce que la grille
+  écrit d'un poste dont personne n'a noté la fin. Deux choses
+  différentes sous une même apparence est la seule élision qu'une case
+  d'horaire ne peut pas se permettre. La colonne est mesurée sur ce
+  qu'elle porte, bornée, et la grille défile au-delà — au mois comme à
+  la semaine.
+- **La fenêtre de trame débordait de l'écran.** Une fenêtre grandit avec
+  son contenu : les huit colonnes d'une journée coupée, à
+  `text_scale = 1,6`, la poussaient au-delà des bords, et comme elle est
+  centrée, « Lundi » se lisait « undi ». Elle est désormais bornée à
+  l'écran, et son corps défile dans les deux sens plutôt que de pousser
+  ses murs.
+- **« CL YS ·… » laissait croire qu'il manquait un nom.** La ligne qui
+  dit qui tient le comptoir sous chaque jour de la semaine s'élidait ;
+  elle prend maintenant la plus riche des écritures qui tienne — « CL YS
+  · 14 h 00 », puis « CL YS » —, et ne se dessine pas du tout quand
+  aucune ne tient. C'est de la garniture, et une garniture coupée n'en
+  est plus une. Les noms passent avant les heures : la ligne existe pour
+  répondre à « qui tient le comptoir jeudi ? » sans ouvrir le planning.
+
+  La règle est écrite une fois, dans `richest_form` : **on raccourcit, on
+  n'élide pas**, et les trois endroits qui la suivent — l'en-tête du
+  jour, cette ligne-ci, et la colonne des jours — y passent tous.
+
 ## [0.187.0] - 2026-09-12
 
 ### Added

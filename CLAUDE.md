@@ -582,6 +582,16 @@ add clicking and typing; it is not the price of entry.
   below: the overflow breaks nothing, it just reads wrong. Any text laid
   out for a carved rectangle takes a `max_width` and, if it must stay on
   one line, `max_rows: 1` with an overflow character.
+- **Shorten, don't elide — `motif`-adjacent rule, `richest_form` in
+  `app.rs`.** « Lun 07/0… » has lost the month *and* reads broken, where
+  « Lun 07 » does not say the month and reads whole; « CL YS ·… » makes
+  it look as though a name is missing, where « CL YS » says exactly what
+  it knows. Give the richest-to-poorest forms and take the first that
+  fits; draw nothing when none does. And the elision that **must** never
+  happen: a planning cell cut to « 14 h–… » is character-for-character
+  what the grid writes for a shift whose end nobody noted — two
+  different things under one appearance. That column is measured on what
+  it carries.
 - **A list row takes two lines when it can break cleanly, one when it
   cannot.** `list_row` and `list_row_pair` were one line with an
   ellipsis, and on a narrow dock that cost the information the row was
