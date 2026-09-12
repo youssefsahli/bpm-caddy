@@ -314,6 +314,44 @@ fn place(ring: &[&Known], tie: Tie, out: &mut Vec<Node>) {
     }
 }
 
+/// Une ordonnance disposée en cercle : chaque ligne à sa place, toutes
+/// au même rayon.
+///
+/// L'autre disposition de ce module a un **centre** — une fiche, et ce
+/// qu'il y a autour. Celle-ci n'en a pas : sur une ordonnance, aucune
+/// ligne n'est le milieu, et en choisir une donnerait à lire une
+/// hiérarchie qui n'existe pas. Ce qu'on veut voir, ce sont les cordes :
+/// qui rencontre qui.
+///
+/// Comme l'autre, elle rend des points du cercle unité et la vue les met
+/// à l'échelle de son rectangle. C'est ce partage qui permet de la
+/// tester sans écran — et une disposition qu'on ne teste pas est une
+/// disposition dont on découvre les chevauchements sur une capture.
+///
+/// Le premier point est **en haut**, et on tourne dans le sens des
+/// aiguilles : c'est le sens de lecture d'un cadran, et le même que
+/// [`place`]. L'ordre reçu est l'ordre gardé, si bien qu'une même
+/// ordonnance dessine toujours le même cercle — un cercle dont les
+/// membres changeraient de place entre deux ouvertures serait une image
+/// que personne ne peut apprendre.
+pub fn circle(n: usize) -> Vec<(f32, f32)> {
+    if n == 0 {
+        return Vec::new();
+    }
+    // **Un point seul est au centre, pas en haut.** Une ordonnance d'une
+    // ligne n'a pas de cercle à dessiner, et poser son unique point sur
+    // le bord laisserait un grand rond vide à côté d'un nom.
+    if n == 1 {
+        return vec![(0.0, 0.0)];
+    }
+    (0..n)
+        .map(|i| {
+            let a = std::f32::consts::TAU * i as f32 / n as f32;
+            (a.sin(), -a.cos())
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,6 +435,42 @@ mod tests {
         let ring = |t: Tie| map.nodes.iter().find(|n| n.tie == t).map(radius).unwrap();
         assert!(ring(Tie::Molecule) < ring(Tie::Class));
         assert!(ring(Tie::Class) < ring(Tie::Interaction));
+    }
+
+    /// **Le cercle d'une ordonnance** : chaque ligne à sa place, toutes
+    /// au même rayon, la première en haut, dans le sens des aiguilles.
+    ///
+    /// L'ordre reçu est l'ordre gardé : un cercle dont les membres
+    /// changeraient de place entre deux ouvertures serait une image que
+    /// personne ne peut apprendre.
+    #[test]
+    fn an_ordonnance_is_laid_out_as_one_ring() {
+        assert!(super::circle(0).is_empty());
+        // Une seule ligne : au centre, pas sur le bord.
+        assert_eq!(super::circle(1), vec![(0.0, 0.0)]);
+        let four = super::circle(4);
+        assert_eq!(four.len(), 4);
+        // La première en haut, puis à droite : le sens des aiguilles.
+        assert!(four[0].0.abs() < 1e-5 && four[0].1 < -0.99);
+        assert!(four[1].0 > 0.99 && four[1].1.abs() < 1e-5);
+        assert!(four[2].1 > 0.99);
+        assert!(four[3].0 < -0.99);
+        // Toutes sur le cercle unité, et aucune sur une autre.
+        for n in 2..40_usize {
+            let ring = super::circle(n);
+            assert_eq!(ring.len(), n);
+            for (i, (x, y)) in ring.iter().enumerate() {
+                assert!(
+                    (x.hypot(*y) - 1.0).abs() < 1e-5,
+                    "n={n} i={i} hors du cercle"
+                );
+                for (j, (u, v)) in ring.iter().enumerate() {
+                    if i != j {
+                        assert!((x - u).hypot(y - v) > 1e-3, "n={n} : {i} et {j} confondus");
+                    }
+                }
+            }
+        }
     }
 
     /// A ring bigger than its cap is cut — and says by how much.

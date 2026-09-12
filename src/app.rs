@@ -2279,6 +2279,16 @@ enum MainView {
     /// en insertion seule, et un historique qui pourrait corriger une
     /// soirée serait un historique qui ne prouve plus rien.
     CaisseHistory,
+    /// Le croisement d'une liste de médicaments : ce que les lignes se
+    /// font les unes aux autres.
+    ///
+    /// Les panneaux du dossier répondent à la même question **pour
+    /// l'ordonnance ouverte**. Celui-ci n'a pas de dossier : on compose
+    /// une liste — depuis un dossier, ou à la main, pour l'ordonnance
+    /// qu'on a sous les yeux et qui n'est celle de personne dans la
+    /// base — et on lit ce qu'elle dit d'elle-même. C'est la question du
+    /// téléphone : « le médecin veut ajouter ça, ça passe ? »
+    Ddi,
 }
 
 impl MainView {
@@ -2305,6 +2315,7 @@ impl MainView {
             MainView::Script => "script",
             MainView::Caisse => "caisse",
             MainView::CaisseHistory => "caisses",
+            MainView::Ddi => "ddi",
         }
     }
 
@@ -2324,6 +2335,7 @@ impl MainView {
             "script" => Some(MainView::Script),
             "caisse" => Some(MainView::Caisse),
             "caisses" => Some(MainView::CaisseHistory),
+            "ddi" => Some(MainView::Ddi),
             _ => None,
         }
     }
@@ -2410,6 +2422,8 @@ enum WorkTab {
     Script,
     /// Le comptage de la caisse.
     Caisse,
+    /// Le croisement d'une liste de médicaments.
+    Ddi,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -3194,6 +3208,17 @@ struct Session {
     bio_side_tab: usize,
     /// Ce que l'ordonnance ouverte croise sur les cytochromes.
     cyp: crate::cyp::Reading,
+    /// La liste qu'on croise dans la vue « Croisement », par
+    /// identifiant de fiche. **Des identifiants et non des fiches** :
+    /// une fiche corrigée entre-temps doit être relue, pas gardée dans
+    /// l'état où on l'avait prise.
+    ddi_list: Vec<i64>,
+    /// Ce qu'on tape pour ajouter une ligne.
+    ddi_query: String,
+    /// La clairance, facultative : sans elle le panneau du rein nomme
+    /// ce qui en dépend et ne conclut pas — c'est `renal::read` qui le
+    /// garantit.
+    ddi_dfg: String,
     vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
@@ -4019,6 +4044,9 @@ impl Session {
             surveillance: Vec::new(),
             bio_side_tab: 0,
             cyp: crate::cyp::Reading::default(),
+            ddi_list: Vec::new(),
+            ddi_query: String::new(),
+            ddi_dfg: String::new(),
             vacc_due: Vec::new(),
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -4352,6 +4380,7 @@ impl Session {
             MainView::Stats => WorkTab::Stats,
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
+            MainView::Ddi => WorkTab::Ddi,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -4405,6 +4434,9 @@ impl Session {
             WorkTab::Registres => self.open_registres(self.registre_tab),
             WorkTab::Explorer => {
                 self.view = MainView::Explorer;
+            }
+            WorkTab::Ddi => {
+                self.view = MainView::Ddi;
             }
             WorkTab::Classes => {
                 self.view = MainView::Classes;
@@ -5883,6 +5915,7 @@ impl Session {
             WorkTab::Map => tr("tab_map").to_owned(),
             WorkTab::Registres => tr("tab_registres").to_owned(),
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
+            WorkTab::Ddi => tr("tab_ddi").to_owned(),
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
@@ -9673,6 +9706,29 @@ impl App {
                         // trois formes — c'est une fenêtre qu'on ne
                         // rencontre qu'en pressant F9.
                         Ok("companion") => {}
+                        // Le croisement **avec une liste déjà
+                        // composée** : vide, l'écran ne montre ni carte,
+                        // ni corde, ni croisement — c'est-à-dire rien de
+                        // ce qu'il existe pour dessiner. C'est la même
+                        // raison qui fait ouvrir la caisse sur un tiroir
+                        // déjà compté.
+                        Ok("ddi") => {
+                            if let Ok(list) = session.db.drugs() {
+                                session.set_drugs(list);
+                            }
+                            session.view = MainView::Ddi;
+                            session.ddi_list = ["Zeclar", "Tahor", "Eliquis", "Plavix", "Mopral"]
+                                .iter()
+                                .filter_map(|n| {
+                                    session
+                                        .drugs
+                                        .iter()
+                                        .find(|d| d.name.eq_ignore_ascii_case(n))
+                                        .map(|d| d.id)
+                                })
+                                .collect();
+                            session.ddi_dfg = "38".to_owned();
+                        }
                         Ok("explorer") => {
                             session.view = MainView::Explorer;
                         }
@@ -10815,10 +10871,14 @@ impl App {
                             // référentiel : même dock que l'explorateur.
                             // Les statistiques parlent surtout du
                             // référentiel : même dock qu'eux.
+                            // Le croisement se compose de fiches : c'est
+                            // le dock des médicaments qui sert à les
+                            // trouver, et non celui des dossiers.
                             MainView::Explorer
                             | MainView::Classes
                             | MainView::Stats
-                            | MainView::Script => Self::nav_drugs(ui, session, focus),
+                            | MainView::Script
+                            | MainView::Ddi => Self::nav_drugs(ui, session, focus),
                             MainView::Dashboard
                             | MainView::Search
                             | MainView::Registres
@@ -12143,6 +12203,10 @@ impl App {
             }
             if session.view == MainView::Explorer {
                 Self::explorer_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Ddi {
+                Self::ddi_view(ui, session);
                 return;
             }
             if session.view == MainView::Classes {
@@ -29192,6 +29256,605 @@ impl App {
         }
     }
 
+    /// Le croisement d'une liste de médicaments : ce que les lignes se
+    /// font les unes aux autres.
+    ///
+    /// Les panneaux du dossier posent les mêmes questions **à
+    /// l'ordonnance ouverte**. Celui-ci n'a pas de dossier : on compose
+    /// une liste — depuis un dossier, ou à la main, pour l'ordonnance
+    /// qu'on a sous les yeux et qui n'est celle de personne dans la
+    /// base — et on lit ce qu'elle dit d'elle-même. C'est la question du
+    /// téléphone : « le médecin veut ajouter ça, ça passe ? »
+    ///
+    /// **Quatre lectures d'une même liste**, et chacune a son module,
+    /// pur et testé : la carte des croisements et les cytochromes
+    /// (`cyp`), la revue d'ordonnance (`revue`), ce que le rein change
+    /// (`renal`). La vue ne calcule rien — elle compose la liste, la
+    /// passe, et dessine.
+    fn ddi_view(ui: &mut egui::Ui, session: &mut Session) {
+        let body = motif::visible_rect(ui);
+        // La bande de composition : ce qu'on croise, et d'où ça vient.
+        // Sa hauteur est mesurée sur ce qu'elle porte — les puces des
+        // lignes ajoutées s'enroulent — puis plafonnée à une part du
+        // volet, comme partout ici : une bande mesurée sans plafond
+        // mange le tableau qu'elle titre.
+        let picked: Vec<Drug> = session
+            .ddi_list
+            .iter()
+            .filter_map(|id| session.drugs.iter().find(|d| d.id == *id).cloned())
+            .collect();
+        let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
+        let chips = Self::wrapped_rows(
+            ui,
+            body.width() - 24.0,
+            picked.iter().map(|d| d.name.as_str()),
+        );
+        let head = whole_rows(
+            body.height() * 0.32,
+            row,
+            ui.spacing().item_spacing.y,
+            chips + 2.0,
+        );
+        let rows = motif::split_rows(body, &[head, 0.0], 6.0);
+        let mut drop: Option<i64> = None;
+        let mut add: Option<i64> = None;
+        motif::panel(ui, rows[0], Some(tr("ddi_compose")), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("ddi_compose")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            // **Depuis le dossier ouvert**, parce que
+                            // c'est de là que vient la liste neuf fois
+                            // sur dix, et retaper huit noms pour poser
+                            // une question qu'on a déjà sous les yeux
+                            // est ce qui fait qu'on ne la pose pas.
+                            if motif::button_enabled(
+                                ui,
+                                tr("ddi_from_file"),
+                                session.viewing.is_some(),
+                            )
+                            .on_hover_text(tr("ddi_from_file_tooltip"))
+                            .clicked()
+                            {
+                                session.ddi_list =
+                                    session.patient_treats.iter().map(|d| d.id).collect();
+                            }
+                            if motif::button_enabled(ui, tr("ddi_clear"), !picked.is_empty())
+                                .clicked()
+                            {
+                                session.ddi_list.clear();
+                            }
+                            ui.label(
+                                egui::RichText::new(tr("ddi_add"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            let field = ui.add_sized(
+                                [
+                                    Self::field_width(ui, [tr("ddi_add_hint")].into_iter()),
+                                    24.0,
+                                ],
+                                egui::TextEdit::singleline(&mut session.ddi_query)
+                                    .hint_text(tr("ddi_add_hint")),
+                            );
+                            let _ = field;
+                        });
+                        // Ce que la frappe trouve, en quelques lignes :
+                        // la recherche de la maison, repliée, accents et
+                        // casse ignorés.
+                        let q = session.ddi_query.trim().to_owned();
+                        if !q.is_empty() {
+                            // La recherche de la maison : repliée,
+                            // accents et casse ignorés, les lettres dans
+                            // l'ordre sans qu'elles se suivent. Sur le
+                            // nom **et** sur la DCI, parce qu'on tape
+                            // aussi bien « atorva » que « Tahor ».
+                            let mut hits: Vec<(i32, &Drug)> = session
+                                .drugs
+                                .iter()
+                                .filter(|d| !session.ddi_list.contains(&d.id))
+                                .filter_map(|d| {
+                                    let best = crate::fuzzy::score(&q, &d.name)
+                                        .into_iter()
+                                        .chain(crate::fuzzy::score(&q, &d.dci))
+                                        .max();
+                                    best.map(|s| (s, d))
+                                })
+                                .collect();
+                            hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.name.cmp(&b.1.name)));
+                            hits.truncate(6);
+                            ui.horizontal_wrapped(|ui| {
+                                for (_, d) in hits {
+                                    if motif::button(ui, &d.name)
+                                        .on_hover_text(d.dci.as_str())
+                                        .clicked()
+                                    {
+                                        add = Some(d.id);
+                                    }
+                                }
+                            });
+                        }
+                        // La liste composée : une puce par ligne, et la
+                        // croix qui la retire.
+                        ui.horizontal_wrapped(|ui| {
+                            for d in &picked {
+                                if motif::button(ui, &format!("{} ×", d.name))
+                                    .on_hover_text(tr("ddi_remove"))
+                                    .clicked()
+                                {
+                                    drop = Some(d.id);
+                                }
+                            }
+                        });
+                    });
+            });
+        });
+        if let Some(id) = add {
+            session.ddi_list.push(id);
+            session.ddi_query.clear();
+        }
+        if let Some(id) = drop {
+            session.ddi_list.retain(|x| *x != id);
+        }
+        Self::ddi_body(ui, session, &picked, rows[1]);
+    }
+
+    /// Ce que la liste composée dit d'elle-même : la carte, les
+    /// cytochromes, la revue, le rein.
+    ///
+    /// Quatre panneaux, quatre modules purs, et **aucun calcul ici** :
+    /// la vue passe la liste et dessine ce qui revient. C'est ce qui
+    /// permet à chacune des quatre lectures d'être tenue par ses propres
+    /// tests plutôt que par une capture d'écran.
+    fn ddi_body(ui: &mut egui::Ui, session: &mut Session, picked: &[Drug], rect: egui::Rect) {
+        if picked.is_empty() {
+            motif::panel(ui, rect, Some(tr("ddi_title")), |ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(tr("ddi_empty"))
+                        .size(motif::pt(ui, 12.0))
+                        .color(motif::text_dim()),
+                );
+            });
+            return;
+        }
+        let terms = ordonnance_terms(picked);
+        let reading = crate::cyp::cross(&terms);
+        // **Côte à côte si les deux tiennent, l'un sous l'autre sinon.**
+        // La carte est un carré : sous une certaine largeur elle ne
+        // vaut plus la place qu'elle prend, et c'est la liste des
+        // croisements qui est le sujet.
+        let wide = rect.width() >= chars_wide(ui, 96.0);
+        let cols = if wide {
+            motif::split_columns(rect, 2, 8.0)
+        } else {
+            vec![rect, egui::Rect::NOTHING]
+        };
+        motif::panel(ui, cols[0], Some(tr("ddi_title")), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("ddi_readings")
+                    .show(ui, |ui| {
+                        // Sur un volet étroit, la carte passe au-dessus
+                        // des lectures plutôt qu'à côté. **Mais elle est
+                        // plafonnée à une part du volet, et elle
+                        // disparaît sous un plancher** : c'est de la
+                        // garniture, et les croisements sont le sujet. À
+                        // `text_scale = 1,6` elle prenait cinq cent
+                        // vingt pixels dans un panneau qui en fait trois
+                        // cent soixante-dix — l'écran s'ouvrait sur un
+                        // rond et pas une ligne de ce qu'il faut lire.
+                        if !wide {
+                            let side = ui
+                                .available_width()
+                                .min(chars_wide(ui, 44.0))
+                                .min(rect.height() * 0.38);
+                            if side >= chars_wide(ui, 22.0) {
+                                let (r, _) = ui.allocate_exact_size(
+                                    egui::vec2(ui.available_width(), side),
+                                    egui::Sense::hover(),
+                                );
+                                Self::ddi_map(ui, picked, &reading, r);
+                                ui.add_space(6.0);
+                            }
+                        }
+                        Self::ddi_cyp_section(ui, &reading);
+                        Self::ddi_half_life_section(ui, picked, &reading);
+                        Self::ddi_revue_section(ui, &terms);
+                        Self::ddi_renal_section(ui, session, &terms);
+                    });
+            });
+        });
+        if wide && cols[1] != egui::Rect::NOTHING {
+            motif::panel(ui, cols[1], Some(tr("ddi_map")), |ui| {
+                let inner = ui.max_rect();
+                // **La légende d'abord, découpée, puis la carte dans ce
+                // qui reste.** Une couleur sans légende est une
+                // décoration : trois rouges et un gris ne disent rien
+                // si rien ne nomme ce qu'ils séparent.
+                let legend_h = motif::chart::legend_row_height(ui) + 6.0;
+                let split = motif::split_rows(inner, &[0.0, legend_h], 4.0);
+                Self::ddi_map(ui, picked, &reading, split[0]);
+                motif::inside(ui, split[1], |ui| {
+                    motif::chart::legend(
+                        ui,
+                        &[
+                            (tr("ddi_legend_major"), motif::alert()),
+                            (tr("ddi_legend_notable"), motif::accent()),
+                            (tr("ddi_legend_minor"), motif::text_faint()),
+                        ],
+                    );
+                });
+            });
+        }
+    }
+
+    /// La carte : une ligne par point du cercle, une corde par
+    /// croisement.
+    ///
+    /// **Les flèches sont peintes, jamais écrites.** La fonte livrée n'a
+    /// pas de glyphe pour « → » dans sa face proportionnelle, et trois
+    /// chaînes de cette application ont été des carrés vides pendant des
+    /// mois pour l'avoir oublié. Une pointe est un triangle.
+    ///
+    /// La disposition vient de `graph::circle`, pure et testée : la vue
+    /// met à l'échelle et peint, elle ne place pas.
+    fn ddi_map(
+        ui: &mut egui::Ui,
+        picked: &[Drug],
+        reading: &crate::cyp::Reading,
+        rect: egui::Rect,
+    ) {
+        use crate::cyp::Weight;
+        if rect.width() < 40.0 || rect.height() < 40.0 {
+            return;
+        }
+        ui.painter().rect_filled(rect, 0.0, motif::trough());
+        motif::bevel(ui.painter(), rect, false);
+        let ring = crate::graph::circle(picked.len());
+        // Le rayon laisse la place aux noms : un cercle qui touche le
+        // bord est un cercle dont on ne lit pas les étiquettes.
+        let centre = rect.center();
+        let r = (rect.width().min(rect.height()) / 2.0 - chars_wide(ui, 7.0)).max(10.0);
+        let at = |i: usize| -> egui::Pos2 {
+            let (x, y) = ring.get(i).copied().unwrap_or((0.0, 0.0));
+            egui::pos2(centre.x + x * r, centre.y + y * r)
+        };
+        // Les cordes d'abord, sous les noms : une flèche par-dessus une
+        // étiquette la rend illisible, et c'est l'étiquette qu'on lit.
+        for c in &reading.crossings {
+            let (Some(from), Some(to)) = (
+                picked.iter().position(|d| d.name == c.actor),
+                picked.iter().position(|d| d.name == c.affected),
+            ) else {
+                continue;
+            };
+            let ink = match c.weight {
+                Weight::Major => motif::alert(),
+                Weight::Notable => motif::accent(),
+                Weight::Minor => motif::text_faint(),
+            };
+            let (a, b) = (at(from), at(to));
+            let width = match c.weight {
+                Weight::Major => 2.0_f32,
+                Weight::Notable => 1.5,
+                Weight::Minor => 1.0,
+            };
+            ui.painter()
+                .line_segment([a, b], egui::Stroke::new(width, ink));
+            // La pointe, posée avant l'étiquette de la ligne touchée
+            // plutôt qu'à son centre : c'est **vers** elle que ça va, et
+            // une flèche qui s'arrête au milieu ne dit pas le sens.
+            let dir = (b - a).normalized();
+            let tip = b - dir * chars_wide(ui, 2.0);
+            let side = egui::vec2(-dir.y, dir.x) * chars_wide(ui, 0.7);
+            let back = tip - dir * chars_wide(ui, 1.6);
+            ui.painter().add(egui::Shape::convex_polygon(
+                vec![tip, back + side, back - side],
+                ink,
+                egui::Stroke::NONE,
+            ));
+        }
+        // Les noms, raccourcis à ce que la carte peut porter — on
+        // raccourcit, on n'élide pas.
+        for (i, d) in picked.iter().enumerate() {
+            let p = at(i);
+            let [full, initialed, short] = name_forms(&d.name);
+            let label = fit_form(ui, &[full, initialed, short], chars_wide(ui, 13.0), 11.0);
+            let anchor = if p.x > centre.x + 1.0 {
+                egui::Align2::LEFT_CENTER
+            } else if p.x < centre.x - 1.0 {
+                egui::Align2::RIGHT_CENTER
+            } else if p.y < centre.y {
+                egui::Align2::CENTER_BOTTOM
+            } else {
+                egui::Align2::CENTER_TOP
+            };
+            let nudge = egui::vec2(
+                (p.x - centre.x).signum() * 6.0,
+                if (p.x - centre.x).abs() < 1.0 {
+                    (p.y - centre.y).signum() * 4.0
+                } else {
+                    0.0
+                },
+            );
+            ui.painter().circle_filled(p, 4.0, motif::accent());
+            ui.painter().text(
+                p + nudge,
+                anchor,
+                label,
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                motif::text(),
+            );
+        }
+    }
+
+    /// Les croisements sur les cytochromes, dans la vue « Croisement ».
+    ///
+    /// La même lecture que l'onglet du dossier, et la même retenue :
+    /// la portée d'abord, les lignes inconnues nommées, la décision au
+    /// prescripteur. Elle est écrite deux fois parce que les deux
+    /// panneaux n'ont pas la même largeur ni le même voisinage ; ce qui
+    /// n'est écrit qu'une fois, et c'est ce qui compte, c'est le calcul.
+    fn ddi_cyp_section(ui: &mut egui::Ui, reading: &crate::cyp::Reading) {
+        use crate::cyp::{Role, Shift, Weight};
+        motif::section(ui, tr("cyp_tab"));
+        ui.add_space(4.0);
+        if reading.crossings.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("cyp_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for c in &reading.crossings {
+            let ink = match c.weight {
+                Weight::Major => motif::alert(),
+                Weight::Notable => motif::text(),
+                Weight::Minor => motif::text_dim(),
+            };
+            ui.label(
+                egui::RichText::new(trn("cyp_head", &[&c.affected, &c.actor, &c.enzyme.label()]))
+                    .size(motif::pt(ui, 12.0))
+                    .color(ink),
+            )
+            .on_hover_text(format!("{}\n\n{}", c.sources.0, c.sources.1));
+            let role = match c.role {
+                Role::Inducer => tr("cyp_role_inducer"),
+                _ => tr("cyp_role_inhibitor"),
+            };
+            ui.label(
+                egui::RichText::new(format!("{role} — {}", c.shift.label()))
+                    .size(motif::pt(ui, 11.5))
+                    .color(
+                        if matches!(c.shift, Shift::ActivityDown | Shift::ActivityUp) {
+                            motif::alert()
+                        } else {
+                            motif::text()
+                        },
+                    ),
+            );
+            ui.label(
+                egui::RichText::new(trn(
+                    "cyp_forces",
+                    &[
+                        &c.weight.label(),
+                        &c.actor_label,
+                        &Self::cyp_force(c.actor_force, c.role),
+                        &c.affected_label,
+                        &Self::cyp_force(c.substrate_force, Role::Substrate),
+                    ],
+                ))
+                .size(motif::pt(ui, 11.0))
+                .color(motif::text_dim()),
+            );
+            ui.add_space(6.0);
+        }
+        if !reading.unknown.is_empty() {
+            ui.label(
+                egui::RichText::new(format!(
+                    "{} {}",
+                    tr("cyp_unknown_section"),
+                    reading.unknown.join(", ")
+                ))
+                .size(motif::pt(ui, 11.0))
+                .color(motif::text_dim()),
+            )
+            .on_hover_text(tr("cyp_unknown_note"));
+        }
+        ui.add_space(10.0);
+    }
+
+    /// Combien de temps une exposition déplacée met à revenir.
+    ///
+    /// **C'est la moitié manquante d'un croisement.** « Exposition
+    /// augmentée » ne dit pas la même chose d'un produit dont la
+    /// demi-vie est de deux heures et d'un autre dont elle est de
+    /// cinquante jours : le premier redescend le lendemain de l'arrêt de
+    /// l'inhibiteur, le second met des semaines, et la fenêtre
+    /// dangereuse n'a rien à voir. L'amiodarone est l'exemple que tout
+    /// le monde cite ; les fiches portent le chiffre, et personne ne le
+    /// rapprochait du croisement.
+    ///
+    /// Seules les lignes **touchées** par un croisement y figurent :
+    /// lister la demi-vie de tout le monde ferait une colonne de plus à
+    /// lire, et c'est exactement ce que cette vue existe pour éviter.
+    /// Et une fiche sans chiffre le dit — `facets` ne donne pas de
+    /// demi-vie quand la monographie n'en écrit pas.
+    fn ddi_half_life_section(ui: &mut egui::Ui, picked: &[Drug], reading: &crate::cyp::Reading) {
+        let mut touched: Vec<&str> = reading
+            .crossings
+            .iter()
+            .map(|c| c.affected.as_str())
+            .collect();
+        touched.sort_unstable();
+        touched.dedup();
+        if touched.is_empty() {
+            return;
+        }
+        motif::section(ui, tr("ddi_half_life"));
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("ddi_half_life_why"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        );
+        ui.add_space(4.0);
+        for name in touched {
+            let Some(d) = picked.iter().find(|d| d.name == name) else {
+                continue;
+            };
+            let facets = crate::facets::facets(&d.name);
+            let value = facets.map_or_else(
+                || tr("ddi_half_life_unknown").to_owned(),
+                |f| f.half_life.label().to_owned(),
+            );
+            ui.label(
+                egui::RichText::new(format!("{name} — {value}"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(
+                        if facets.is_some_and(|f| f.half_life.sort_key().is_some()) {
+                            motif::text()
+                        } else {
+                            // Sans chiffre, l'encre éteinte : la ligne dit
+                            // qu'elle ne sait pas, et elle ne doit pas se
+                            // lire comme les autres.
+                            motif::text_dim()
+                        },
+                    ),
+            );
+            // Ce qui dure au-delà du plasma, quand la fiche le dit :
+            // c'est ce qui fait qu'une demi-vie courte ne suffit pas
+            // toujours à rassurer.
+            if let Some(f) = facets.filter(|f| !f.beyond.is_empty()) {
+                ui.label(
+                    egui::RichText::new(f.beyond)
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                );
+            }
+            ui.add_space(4.0);
+        }
+        ui.add_space(8.0);
+    }
+
+    /// Ce que la revue d'ordonnance voit de cette liste : doublons,
+    /// associations, cascades.
+    ///
+    /// Elle ne passe par aucune enzyme — deux sédatifs ne se rencontrent
+    /// nulle part et s'additionnent quand même —, et c'est précisément
+    /// ce que le panneau des cytochromes dit ne pas savoir.
+    fn ddi_revue_section(ui: &mut egui::Ui, terms: &[crate::revue::Treatment]) {
+        let points = crate::revue::review(terms);
+        motif::section(ui, tr("ddi_revue"));
+        ui.add_space(4.0);
+        if points.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("ddi_revue_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for p in &points {
+            ui.label(
+                egui::RichText::new(p.title)
+                    .size(motif::pt(ui, 12.0))
+                    .color(match p.severity {
+                        crate::biology::Severity::Alert => motif::alert(),
+                        crate::biology::Severity::Warn => motif::emphasize(motif::text()),
+                        crate::biology::Severity::Info => motif::text(),
+                    }),
+            );
+            ui.label(
+                egui::RichText::new(p.detail)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.add_space(6.0);
+        }
+        ui.add_space(10.0);
+    }
+
+    /// Ce que le rein change, à la clairance qu'on tape — ou sans elle.
+    ///
+    /// **Sans chiffre, pas de verdict** : le panneau nomme ce qui dépend
+    /// du rein et dit que la clairance manque. C'est `renal::read` qui
+    /// le garantit, et non cette vue : il n'y a pas de place, dans le
+    /// type qu'il rend, pour écrire une conduite sans clairance.
+    fn ddi_renal_section(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        terms: &[crate::revue::Treatment],
+    ) {
+        motif::section(ui, tr("renal_tab"));
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(tr("ddi_dfg"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.add_sized(
+                [
+                    Self::field_width(ui, [tr("ddi_dfg_hint")].into_iter()),
+                    24.0,
+                ],
+                egui::TextEdit::singleline(&mut session.ddi_dfg).hint_text(tr("ddi_dfg_hint")),
+            );
+        });
+        let dfg: Option<f64> = session
+            .ddi_dfg
+            .trim()
+            .replace(',', ".")
+            .parse::<f64>()
+            .ok()
+            .filter(|v| *v > 0.0);
+        let findings = crate::renal::read(terms, dfg);
+        ui.add_space(4.0);
+        if findings.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("renal_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for f in &findings {
+            use crate::renal::Level;
+            let ink = match f.level {
+                Some(Level::Contraindicated) => motif::alert(),
+                Some(Level::Reduce) => motif::emphasize(motif::text()),
+                Some(Level::Watch) => motif::text(),
+                None => motif::text_dim(),
+            };
+            let head = match (f.level, f.below) {
+                (Some(l), Some(b)) => format!("{} — {} sous {b} mL/min", f.treatment, l.label()),
+                _ => format!("{} — {}", f.treatment, tr("renal_unknown")),
+            };
+            ui.label(
+                egui::RichText::new(head)
+                    .size(motif::pt(ui, 12.0))
+                    .color(ink),
+            )
+            .on_hover_text(f.source);
+            ui.label(
+                egui::RichText::new(f.conduct)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.add_space(6.0);
+        }
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new(tr("cyp_decision"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        );
+        ui.add_space(6.0);
+    }
+
     fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         use crate::facets::Organ;
         let body = motif::visible_rect(ui);
@@ -43330,7 +43993,8 @@ impl eframe::App for App {
                     | MainView::Stats
                     | MainView::Script
                     | MainView::Caisse
-                    | MainView::CaisseHistory => {
+                    | MainView::CaisseHistory
+                    | MainView::Ddi => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard

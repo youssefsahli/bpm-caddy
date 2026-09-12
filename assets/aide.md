@@ -74,6 +74,28 @@ Une prodrogue s'y lit à l'envers, et c'est écrit sur la ligne : freiner
 l'enzyme qui fabrique le métabolite actif du clopidogrel, de la codéine
 ou du tramadol ne les fait pas s'accumuler, cela supprime leur effet.
 
+# Croiser une liste
+
+L'écran « Croisement » pose les mêmes questions à une liste qu'on
+compose soi-même, sans dossier : depuis le dossier ouvert, ou en tapant
+des noms. C'est la question du téléphone — « le médecin veut ajouter ça,
+ça passe ? ».
+
+Quatre lectures de la même liste : les croisements sur les cytochromes,
+le temps que met une exposition déplacée à revenir, la revue
+d'ordonnance — doublons, associations, cascades — et ce que la clairance
+change, si on la tape.
+
+La carte dessine une corde par croisement, de la ligne qui agit vers
+celle qui bouge. Sa couleur est l'ordre de lecture, et non une gravité
+clinique : le logiciel ne sait ni la dose, ni la durée, ni le terrain.
+
+**Le temps compte autant que le sens.** « Exposition augmentée » ne dit
+pas la même chose d'un produit dont la demi-vie est de deux heures et
+d'un autre dont elle est de cinquante jours, et un effet peut durer bien
+après le produit — l'effet antiplaquettaire du clopidogrel tient sept à
+dix jours quand sa demi-vie est de six heures.
+
 # Les entretiens
 
 Un acte porte sa thématique, son état, sa date, sa durée et les
