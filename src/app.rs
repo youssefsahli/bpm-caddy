@@ -26491,6 +26491,33 @@ impl App {
             motif::bevel(ui.painter(), grid, false);
             let inner = grid.shrink(4.0);
             let col_w = inner.width() / 7.0;
+            // **Tout ce que l'en-tête d'une colonne occupe est mesuré.**
+            // Il l'était en pixels : le nom du jour centré à douze, la
+            // ligne d'équipe à vingt-six, la jauge à vingt-et-un, les
+            // blocs à trente. Quatre constantes qui ne suivent pas
+            // `[ui] text_scale`, alors que chacun de ces textes grandit
+            // avec lui — à 1,6 « Lun 07 » descendait jusqu'à vingt-trois
+            // pixels et « CL YS » commençait à seize : ils se
+            // chevauchaient de sept, et la jauge passait dans le bas de
+            // la seconde. Les hauteurs viennent des fontes qui
+            // dessineront, l'empilement s'en déduit, et les mesures sont
+            // prises **une fois** plutôt que sept.
+            let head_h =
+                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 12.0))));
+            let dig_h =
+                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 10.0))));
+            // **La hauteur d'un bloc vient de sa fonte**, elle aussi :
+            // elle valait vingt-et-un pixels avec un pas de vingt-quatre,
+            // or à 1,6 une ligne de onze points mesure vingt-et-un pixels
+            // à elle seule, et le libellé remplissait son bloc bord à
+            // bord. Mesurée, la colonne montre plus de rangées à
+            // l'échelle 1 et moins à 1,6 : c'est la vérité de l'écran, et
+            // le « +N » dit ce qu'elle coûte.
+            let blk_h =
+                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0)))) + 4.0;
+            let pitch = blk_h + 3.0;
+            // La jauge de charge : un filet, et il n'a pas de fonte.
+            const BAR_H: f32 = 3.0;
             for (i, date) in session.agenda_week.clone().iter().enumerate() {
                 let col = egui::Rect::from_min_size(
                     egui::pos2(inner.left() + i as f32 * col_w, inner.top()),
@@ -26505,9 +26532,24 @@ impl App {
                         egui::Stroke::new(1.0_f32, motif::bg_dark()),
                     );
                 }
+                // **Le jour que le panneau détaille porte son liseré.**
+                // La grille du mois le marque, le calendrier du volet le
+                // remplit ; ici, rien. Cliquer un en-tête changeait donc
+                // ce qu'on lit en dessous sans que rien, dans les sept
+                // colonnes, ne dise laquelle. Et quand le jour choisi
+                // est aujourd'hui, le fond suffisait par accident — ce
+                // qui est la pire façon d'avoir raison, puisque cela
+                // tient tant qu'on ne clique pas ailleurs.
+                if *date == session.agenda_day {
+                    ui.painter().rect_stroke(
+                        col.shrink(1.0),
+                        0.0,
+                        egui::Stroke::new(1.5_f32, motif::accent()),
+                    );
+                }
                 // « Lun 24/08 », ou ce qui en tient dans la colonne.
                 ui.painter().text(
-                    egui::pos2(col.center().x, col.top() + 12.0),
+                    egui::pos2(col.center().x, col.top() + 2.0 + head_h / 2.0),
                     egui::Align2::CENTER_CENTER,
                     day_head(ui, date, col.width() - 6.0, 12.0),
                     egui::FontId::proportional(motif::pt(ui, 12.0)),
@@ -26546,15 +26588,23 @@ impl App {
                     };
                     richest_form(ui, forms, col.width() - 8.0, 10.0).map(|l| (l, d.uncovered))
                 });
-                let digest_h = if digest.is_some() && col.height() >= 150.0 {
-                    13.0
+                // Le seuil se mesure en **rangées de rendez-vous**, et
+                // non en pixels : « au-dessus de cent cinquante » ne veut
+                // rien dire à une échelle de texte qui change la taille
+                // des rangées. La garniture ne se dessine que s'il en
+                // reste deux en dessous d'elle ; sinon c'est elle qui
+                // mange le sujet.
+                let digest_h = if digest.is_some()
+                    && col.height() - (9.0 + head_h + dig_h + BAR_H) >= 2.0 * pitch
+                {
+                    dig_h
                 } else {
                     0.0
                 };
                 if digest_h > 0.0 {
                     if let Some((line, red)) = &digest {
                         ui.painter().text(
-                            egui::pos2(col.center().x, col.top() + 26.0),
+                            egui::pos2(col.center().x, col.top() + 2.0 + head_h + dig_h / 2.0),
                             egui::Align2::CENTER_CENTER,
                             line,
                             egui::FontId::proportional(motif::pt(ui, 10.0)),
@@ -26589,9 +26639,10 @@ impl App {
                         .filter(|r| r.date == *date)
                         .count()
                         + grid_events.iter().filter(|e| e.day == *date).count();
+                    let bar_top = col.top() + 4.0 + head_h + digest_h;
                     let bar = egui::Rect::from_min_max(
-                        egui::pos2(col.left() + 3.0, col.top() + 21.0 + digest_h),
-                        egui::pos2(col.right() - 3.0, col.top() + 24.0 + digest_h),
+                        egui::pos2(col.left() + 3.0, bar_top),
+                        egui::pos2(col.right() - 3.0, bar_top + BAR_H),
                     );
                     ui.painter()
                         .rect_filled(bar, 0.0, motif::bg_dark().gamma_multiply(0.35));
@@ -26610,19 +26661,7 @@ impl App {
                 // Entries that are not acts, in their own muted colour.
                 let day_events: Vec<&db::Event> =
                     grid_events.iter().filter(|e| e.day == *date).collect();
-                // **La hauteur d'un bloc vient de sa fonte.** Elle valait
-                // vingt-et-un pixels, avec un pas de vingt-quatre, quelle
-                // que soit `[ui] text_scale` — or à 1,6 une ligne de
-                // onze points mesure vingt-et-un pixels à elle seule, et
-                // le libellé remplissait son bloc bord à bord. Mesurée,
-                // la colonne montre moins de rangées quand le texte
-                // grossit, ce qui est la vérité de l'écran, au lieu de
-                // les tasser.
-                let blk_h = ui
-                    .fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0))))
-                    + 4.0;
-                let pitch = blk_h + 3.0;
-                let top0 = col.top() + 30.0 + digest_h;
+                let top0 = col.top() + 9.0 + head_h + digest_h + BAR_H;
                 let room = ((col.bottom() - top0) / pitch).max(0.0) as usize;
                 // Ce qui ne tient pas est annoncé, et le compte prend une
                 // place de bloc au lieu d'en couvrir une — les deux
@@ -26715,7 +26754,12 @@ impl App {
                         .on_hover_text(format!("{} — {}", ev.category.label(), ev.title));
                 }
                 // Clicking the column header details that day below.
-                let head = egui::Rect::from_min_size(col.min, egui::vec2(col.width(), 24.0));
+                // La zone cliquable de l'en-tête est ce que l'en-tête
+                // occupe — mesuré comme lui, et non vingt-quatre pixels.
+                let head = egui::Rect::from_min_size(
+                    col.min,
+                    egui::vec2(col.width(), 4.0 + head_h + digest_h),
+                );
                 // La ligne d'équipe est élidée dans une colonne de
                 // semaine : le survol la rend entière, sinon
                 // « CL YS · 14 h… » est un chiffre qu'on ne peut plus

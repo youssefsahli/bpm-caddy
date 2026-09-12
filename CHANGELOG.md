@@ -5,6 +5,94 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.197.0] - 2026-09-12
+
+### Added
+- **Le plan de journée dit où on en est.** Un pointillé à la minute
+  qu'il est, un point rouge dans la marge, et le survol le nomme.
+  Ouvrir l'agenda au comptoir, c'est demander « et maintenant ? » :
+  il fallait jusqu'ici compter les graduations depuis « 08 h » pour
+  savoir si le rendez-vous qu'on regarde est passé, c'est-à-dire faire
+  des yeux le seul calcul que ce dessin devait épargner.
+
+  Pointillé, et non un filet plein : le trait passe par-dessus les
+  blocs, c'est à cela qu'il sert, et plein il barrait « 14:00 Claire
+  Martin » en son milieu — un libellé rayé se lit comme annulé. Il ne
+  se dessine que sur la journée d'aujourd'hui, et entre les bornes du
+  plan : ailleurs il dirait l'heure d'un jour qu'on ne regarde pas, ou
+  se collerait à un bord en laissant croire qu'il est huit heures.
+- **Le jour détaillé porte son liseré dans la grille de la semaine.**
+  La grille du mois le marquait, le calendrier du volet le remplissait ;
+  ici, rien. Cliquer un en-tête changeait ce qu'on lit en dessous sans
+  que rien, dans les sept colonnes, ne dise laquelle.
+
+### Fixed
+- **Un bloc d'agenda cède son heure avant le nom qu'il porte.** Il
+  écrivait « {heure} {nom} » puis élidait, et une élision mange par la
+  fin : à 1024x700 en texte 1,6, les quatre rendez-vous du samedi se
+  lisaient « 09:00… », « 09:15… », « 09:45… », « 14:00… ». L'heure — que
+  la place du bloc dans sa colonne redit déjà — survivait entière, et le
+  nom, qui est tout ce qui distingue un rendez-vous du suivant,
+  disparaissait en entier. Le plan de journée faisait pire : le libellé
+  partait entier dans un `with_clip_rect`, donc trois rendez-vous à la
+  même heure sortaient « 09:00 Jean Dupon », tranchés au milieu d'une
+  lettre et sans même l'ellipse. On raccourcit désormais — « Jean
+  Dupont », « J. Dupont », « Dupont » — et l'heure ne cède qu'après.
+- **« Prochains RDV », dans le volet, affichait cinq fois
+  « 12/09/… ».** Chaque rangée portait « date + nom » : la date tient
+  sur cent cinquante pixels, le nom est ce que l'ellipse mange. La date
+  est la clé du tri, donc elle s'écrit une fois en tête de groupe, et le
+  nom récupère toute la largeur.
+- **« Déplacer » sortait du panneau du jour.** La rangée était un
+  `horizontal`, qui n'enveloppe pas, et `motif::page` ne découpe rien :
+  une ligne portant l'heure, la nature, le nom *et* un numéro de
+  téléphone poussait le bouton hors du panneau. Il était dessiné,
+  simplement plus personne ne pouvait l'atteindre — et la ligne d'à
+  côté, dont le patient n'a pas de téléphone, gardait le sien.
+- **« ‹ Aujourd'hui › » se coupait en deux.** La bande de contrôle
+  enveloppe où elle veut, et à `text_scale = 1,25` la coupure tombait
+  entre la flèche et le bouton : le « › », une rangée plus bas, se
+  lisait comme la suite d'« Aujourd'hui ». Les trois boutons font un
+  seul geste et sont alloués d'un bloc.
+- **Le « +N » de la semaine ne comptait que les rendez-vous**, quand la
+  colonne dessine aussi les réunions et les formations : un jour de
+  trois rendez-vous et cinq entrées en montrait quatre et perdait les
+  quatre autres sans un mot. Et il était peint par-dessus le dernier
+  bloc, qu'il rendait illisible en annonçant ce qui manquait. Il prend
+  une place de bloc désormais, et il se clique.
+- **Une case de mois plafonnait ses pastilles en silence.** Une journée
+  de douze entrées dans une case qui en porte quatre se lisait comme une
+  journée de quatre — or un mois se lit à la densité de ses cases, et
+  c'est la seule chose que cette vue existe pour dire. Le reste s'écrit
+  « +N ».
+- **« Imprimer la semaine » sortait une autre semaine.** Les flèches du
+  mode Jour déplacent le jour et laissent la semaine où elle était :
+  posé sur le 25 septembre, le bouton sortait la feuille de la semaine
+  du 7, et rien sur la feuille ne disait que ce n'était pas celle qu'on
+  venait de lire.
+- **Un rendez-vous de 20 h 30 n'est pas un rendez-vous sans heure.** Le
+  plan de journée s'arrêtait aux heures d'ouverture, et tout ce qui
+  tombait dehors partait dans la liste « Sans heure » — l'entrée
+  disparaissait du seul dessin où l'on voit ce qui chevauche quoi. La
+  plage s'étend jusqu'aux entrées qui en sortent.
+- **« Aujourd'hui » ne vieillit plus.** La date du jour n'était relue
+  qu'au chargement : un poste laissé ouvert la nuit gardait la veille,
+  et l'anneau du calendrier comme la liste des rendez-vous en retard
+  parlaient d'un jour qui n'était plus.
+
+### Changed
+- **Les quatre lectures de l'agenda parlent du même moment.** Chacune
+  gardait son repère : passer de « Jour, 25 septembre » à « Semaine »
+  ramenait la semaine du 7, et cliquer le 25 dans le calendrier du volet
+  détaillait le 25 sous une grille qui montrait toujours autre chose. Un
+  agenda a **un** moment courant ; les quatre lectures le cadrent
+  différemment, elles n'en désignent pas quatre.
+- **La hauteur d'un bloc de la grille de semaine vient de sa fonte.**
+  Elle valait vingt-et-un pixels quelle que soit `[ui] text_scale`, or à
+  1,6 une ligne de onze points mesure vingt-et-un pixels à elle seule.
+  La colonne montre plus de rangées à l'échelle 1, moins à 1,6, et le
+  « +N » dit ce que cela coûte.
+
 ## [0.196.0] - 2026-09-12
 
 ### Fixed
