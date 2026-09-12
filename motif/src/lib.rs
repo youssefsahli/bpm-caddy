@@ -1612,6 +1612,81 @@ pub fn progress_marquee(ui: &mut egui::Ui, width: f32, t: f64) {
 
 #[cfg(test)]
 mod tests {
+    /// **Une taille de texte passe par `pt`, y compris ici.**
+    ///
+    /// `app.rs` a son test qui refuse la prochaine taille écrite en
+    /// pixels — et il ne lit **que** `app.rs`. Ce coin-là n'était donc
+    /// tenu par rien, et il en portait une : la légende d'une barre
+    /// horizontale était bornée entre dix et treize pixels, la rangée
+    /// qui la porte entre quatorze et trente. À `[ui] text_scale = 1,6`
+    /// tout l'écran grandissait de moitié et ces légendes restaient
+    /// où elles étaient — le plus petit texte de l'écran, seul à ne pas
+    /// bouger, c'est-à-dire justement celui que veut agrandir qui
+    /// agrandit la police.
+    ///
+    /// Le test d'`app.rs` ne l'aurait pas vue : il refuse un chiffre
+    /// **collé** à l'appel, et celui-ci s'écrivait
+    /// `FontId::proportional((row_h * 0.46).clamp(10.0, 13.0))`, qui
+    /// commence par une parenthèse. Celui-ci lit l'argument entier : un
+    /// nombre écrit dedans, sans `pt(` sur la ligne, est refusé — où
+    /// qu'il soit dans l'expression.
+    ///
+    /// Un filet, non une preuve : une variable peut toujours porter une
+    /// constante. Vérifié en remettant les bornes de `hbar_metrics`.
+    #[test]
+    fn no_text_size_in_this_crate_is_written_in_pixels() {
+        // Assemblés, sinon le test se trouve lui-même.
+        let calls = [
+            concat!("FontId::propor", "tional("),
+            concat!("FontId::mono", "space("),
+        ];
+        let files = [
+            ("lib.rs", include_str!("lib.rs")),
+            ("chart.rs", include_str!("chart.rs")),
+            ("layout.rs", include_str!("layout.rs")),
+        ];
+        let mut offenders: Vec<String> = Vec::new();
+        for (name, source) in files {
+            for (i, line) in source.lines().enumerate() {
+                // Un commentaire n'est pas du code — celui de ce test
+                // cite l'appel fautif, et se trouvait lui-même.
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                for call in calls {
+                    let Some((_, tail)) = line.split_once(call) else {
+                        continue;
+                    };
+                    // L'argument, jusqu'à la parenthèse qui ferme
+                    // l'appel : le compte des parenthèses, parce que
+                    // l'expression en contient elle-même.
+                    let mut depth = 1usize;
+                    let arg: String = tail
+                        .chars()
+                        .take_while(|c| {
+                            match c {
+                                '(' => depth += 1,
+                                ')' => depth -= 1,
+                                _ => {}
+                            }
+                            depth > 0
+                        })
+                        .collect();
+                    let numbered = arg.chars().any(|c| c.is_ascii_digit());
+                    if numbered && !line.contains("pt(") {
+                        offenders.push(format!("{name}:{} : {}", i + 1, line.trim()));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "une taille de texte passe par motif::pt, elle ne s'écrit pas \
+             en pixels :\n{}",
+            offenders.join("\n")
+        );
+    }
+
     #[test]
     fn icon_is_32x32_rgba() {
         let icon = super::icon();
