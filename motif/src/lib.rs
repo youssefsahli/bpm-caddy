@@ -1429,6 +1429,16 @@ pub fn toggle(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
 /// A section heading: small bold label with a sunken rule to the right,
 /// the Motif take on group separators.
 pub fn section(ui: &mut egui::Ui, label: &str) {
+    section_ink(ui, label, crate::text());
+}
+
+/// [`section`] with the heading in an ink of its own.
+///
+/// A separator that *groups* carries what the group has in common, and
+/// that is sometimes the thing to raise the eyes at: a day already past,
+/// in the list of the rendez-vous still waiting. The rule stays the
+/// quiet sunken one — it is the decoration, not the statement.
+pub fn section_ink(ui: &mut egui::Ui, label: &str, ink: Color32) {
     ui.horizontal(|ui| {
         ui.add_space(4.0);
         let sz = pt(ui, 13.0);
@@ -1466,7 +1476,7 @@ pub fn section(ui: &mut egui::Ui, label: &str) {
             label.to_owned(),
             egui::TextFormat {
                 font_id: font,
-                color: crate::text(),
+                color: ink,
                 ..Default::default()
             },
         );

@@ -1569,6 +1569,109 @@ fn arrow_move(at: Option<usize>, last: usize, dx: i64) -> ArrowMove {
     }
 }
 
+/// Les écritures d'un nom de patient, de la plus riche à la plus
+/// pauvre : « Jean Dupont », « J. Dupont », « Dupont ».
+///
+/// Le dernier mot est ce qui distingue, donc c'est lui qui reste. Un nom
+/// d'un seul mot donne trois fois la même écriture, ce qui ne coûte
+/// rien : [`richest_form`] prend la première qui tient et les suivantes
+/// ne sont jamais mesurées.
+fn name_forms(name: &str) -> [String; 3] {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    let full = words.join(" ");
+    match words.split_first() {
+        Some((first, rest)) if !rest.is_empty() => {
+            let tail = rest.join(" ");
+            let initial = first.chars().next().unwrap_or(' ');
+            [full, format!("{initial}. {tail}"), tail]
+        }
+        _ => [full.clone(), full.clone(), full],
+    }
+}
+
+/// Ce qu'un bloc d'agenda peut écrire du rendez-vous qu'il porte, de la
+/// forme la plus riche à la plus pauvre.
+///
+/// Il écrivait « {heure} {nom} » et élidait, **et une élision mange par
+/// la fin** : dans une colonne de semaine à `text_scale = 1,6`, les
+/// quatre blocs d'un samedi se lisaient « 09:00… », « 09:15… »,
+/// « 09:45… », « 14:00… ». L'heure, qui est la même à trente minutes
+/// près et que la position du bloc redit déjà, survivait entière ; le
+/// nom, qui est la seule chose distinguant un rendez-vous du suivant,
+/// disparaissait en entier. Quatre rangées identiques, et rien à
+/// l'écran pour dire qu'il manquait quelque chose.
+///
+/// L'ordre des formes est donc celui-là : on raccourcit le prénom, on le
+/// retire, et l'heure ne cède qu'après — mais elle cède, parce qu'un
+/// bloc qui ne porte qu'une heure ne dit rien de plus que sa place dans
+/// la colonne.
+fn block_forms(time: &str, name: &str) -> Vec<String> {
+    let [full, initialed, surname] = name_forms(name);
+    if time.is_empty() {
+        vec![full, initialed, surname]
+    } else {
+        vec![
+            format!("{time} {full}"),
+            format!("{time} {initialed}"),
+            format!("{time} {surname}"),
+            surname,
+            time.to_owned(),
+        ]
+    }
+}
+
+/// La plus riche de [`block_forms`] qui tienne, et la plus pauvre élidée
+/// quand aucune ne tient.
+fn block_label(ui: &egui::Ui, time: &str, name: &str, width: f32, size: f32) -> String {
+    fit_form(ui, &block_forms(time, name), width, size)
+}
+
+/// La plus riche de `forms` qui tienne dans `width` — et, quand aucune
+/// ne tient, **la plus pauvre élidée**.
+///
+/// [`richest_form`] ne dessine rien plutôt que d'écrire faux, ce qui est
+/// juste d'une garniture ; un bloc qui porte un rendez-vous doit dire
+/// quelque chose, fût-ce « Dupo… ».
+fn fit_form(ui: &egui::Ui, forms: &[String], width: f32, size: f32) -> String {
+    richest_form(ui, forms.iter().cloned(), width, size).unwrap_or_else(|| {
+        elide(
+            ui,
+            forms.last().map(String::as_str).unwrap_or_default(),
+            width,
+            size,
+        )
+    })
+}
+
+/// L'intitulé du groupe d'un jour, dans la liste des prochains RDV :
+/// « Lun 07/09 », puis « 07/09 », puis « 07 ».
+///
+/// L'ordre des formes n'est pas celui de [`day_head`], et c'est la même
+/// règle qui les sépare : on garde ce qui distingue. Dans une grille de
+/// semaine le mois est écrit au-dessus, donc c'est lui qui cède ; dans
+/// une liste qui court sur plusieurs semaines, deux « Lun 07 » à un mois
+/// d'écart sont la même rangée, et c'est le nom du jour qui cède.
+fn rdv_day_head(ui: &egui::Ui, date: &str) -> String {
+    let short = three_letters(db::weekday_fr(date).unwrap_or(""));
+    let day = date.get(8..10).unwrap_or("").to_owned();
+    let month = date.get(5..7).unwrap_or("");
+    // La largeur que `motif::section` laisse à son intitulé, moins
+    // l'espace qu'il pose devant : le filet est ce qui cède d'abord, et
+    // il n'en reste rien ici.
+    let room = (ui.available_width() - 16.0).max(1.0);
+    richest_form(
+        ui,
+        [
+            format!("{short} {day}/{month}"),
+            format!("{day}/{month}"),
+            day.clone(),
+        ],
+        room,
+        13.0,
+    )
+    .unwrap_or(day)
+}
+
 /// L'en-tête d'une colonne de jour, dans la forme la plus riche qui
 /// tienne : « Lun 07/09 », puis « Lun 07 », puis « 07 ».
 ///
@@ -10995,20 +11098,50 @@ impl App {
         let today = session.today.clone();
         let mut open_id: Option<i64> = None;
         Self::nav_list(ui, |ui| {
+            // **Le jour s'écrit une fois, au-dessus des noms.** Chaque
+            // rangée portait « 12/09/2026  Jean Dupont » : sur un volet
+            // de cent cinquante pixels à l'échelle 1,6, la date tient et
+            // le nom est ce que l'ellipse mange, si bien que la liste
+            // affichait cinq fois « 12/09/… » — cinq rangées qui se
+            // ressemblent, et pas un patient nommé. Or la date est la
+            // clé du tri : elle se répète, et ce qui se répète s'écrit
+            // une fois, en tête de groupe. Le nom récupère alors toute
+            // la largeur, et `list_row` lui donne sa deuxième ligne
+            // quand « Paul Bernard » ne tient pas sur une.
+            //
+            // Le retard passe sur l'intitulé du jour, qui est l'endroit
+            // où il est vrai — c'est le jour qui est passé, pas tel
+            // rendez-vous plutôt que tel autre —, et les noms du groupe
+            // le gardent aussi : une rangée lue sans son intitulé, la
+            // liste défilée, ne dirait plus rien.
+            let mut group = String::new();
             for rdv in session.appointments.iter().take(60) {
                 let overdue = !today.is_empty() && rdv.date < today;
-                let text = format!(
-                    "{}  {}",
-                    db::format_french_date(&rdv.date),
-                    rdv.patient_name
-                );
+                if rdv.date != group {
+                    group = rdv.date.clone();
+                    let head = rdv_day_head(ui, &rdv.date);
+                    motif::section_ink(
+                        ui,
+                        &head,
+                        if overdue {
+                            motif::alert()
+                        } else {
+                            motif::text()
+                        },
+                    );
+                }
+                let label = egui::RichText::new(rdv.patient_name.clone());
                 let label = if overdue {
-                    egui::RichText::new(text).color(motif::alert())
+                    label.color(motif::alert())
                 } else {
-                    egui::RichText::new(text)
+                    label
                 };
                 if motif::list_row(ui, label, false)
-                    .on_hover_text(rdv.kind.label())
+                    .on_hover_text(format!(
+                        "{} — {}",
+                        db::format_french_date(&rdv.date),
+                        rdv.kind.label()
+                    ))
                     .clicked()
                 {
                     open_id = Some(rdv.patient_id);
@@ -21270,18 +21403,23 @@ impl App {
         );
         let gutter = gutter + cover_w;
         let width = (inner.width() - gutter - 8.0) / lane_count as f32;
+        // `forms` va de l'écriture la plus riche à la plus pauvre, et
+        // **la première est le libellé entier** : c'est elle que la
+        // liste « sans heure » reçoit, là où la largeur n'est pas en
+        // cause. Le bloc, lui, prend la première qui tienne dans sa
+        // voie — voir `fit_form`.
         #[allow(clippy::too_many_arguments)]
         let draw = |ui: &mut egui::Ui,
                     entry_id: i64,
                     time: &str,
-                    label: String,
+                    forms: Vec<String>,
                     color: egui::Color32,
                     hover: String,
                     patient: Option<i64>,
                     untimed: &mut Vec<String>,
                     open_id: &mut Option<i64>| {
             let Some(offset) = place(time) else {
-                untimed.push(label);
+                untimed.push(forms.into_iter().next().unwrap_or_default());
                 return;
             };
             let Some(&i) = by_id.get(&entry_id) else {
@@ -21370,6 +21508,17 @@ impl App {
             // un bloc de deux heures dont le nom flotte au centre se
             // lit mal en regardant l'heure, et un bloc au plancher n'a
             // de toute façon que cette ligne-là.
+            //
+            // **Et ce qui ne tient pas est raccourci, jamais coupé.**
+            // Le libellé partait entier dans un `with_clip_rect`, si
+            // bien que trois rendez-vous à la même heure — trois voies,
+            // donc un tiers de la largeur chacune — sortaient « 09:00
+            // Jean Dupon », « 09:15 Lucie Morea », « 09:45 Paul
+            // Bernar » : tranchés au milieu d'une lettre, et sans même
+            // l'ellipse qui aurait dit qu'il manquait quelque chose. Le
+            // clip reste, comme garde-fou ; il n'est plus la mise en
+            // page.
+            let label = fit_form(ui, &forms, (block.width() - 10.0).max(1.0), 11.5);
             ui.painter().with_clip_rect(block.shrink(2.0)).text(
                 egui::pos2(block.left() + 6.0, block.top() + label_h / 2.0),
                 egui::Align2::LEFT_CENTER,
@@ -21400,7 +21549,7 @@ impl App {
             .cloned()
             .collect::<Vec<_>>()
         {
-            let label = format!("{} {}", rdv.time, rdv.patient_name);
+            let forms = block_forms(&rdv.time, &rdv.patient_name);
             let mut hover = format!("{} — {}", rdv.patient_name, rdv.kind.label());
             if rdv.remote {
                 hover.push_str(&format!(" · {}", tr("agenda_place_remote")));
@@ -21412,7 +21561,7 @@ impl App {
                 ui,
                 rdv.id,
                 &rdv.time,
-                label,
+                forms,
                 kind_color(rdv.kind),
                 hover,
                 Some(rdv.patient_id),
@@ -21421,17 +21570,24 @@ impl App {
             );
         }
         for ev in events.iter().filter(|e| e.day == day) {
-            let label = if ev.end_time.is_empty() {
-                format!("{} {}", ev.time, ev.title)
+            // Un intitulé est de la prose : il ne se raccourcit pas
+            // comme un nom se raccourcit, et c'est donc l'heure qui
+            // cède, puis l'heure de fin, avant lui.
+            let forms = if ev.end_time.is_empty() {
+                vec![format!("{} {}", ev.time, ev.title), ev.title.clone()]
             } else {
-                format!("{}–{} {}", ev.time, ev.end_time, ev.title)
+                vec![
+                    format!("{}–{} {}", ev.time, ev.end_time, ev.title),
+                    format!("{} {}", ev.time, ev.title),
+                    ev.title.clone(),
+                ]
             };
             let hover = format!("{} — {}", ev.category.label(), ev.title);
             draw(
                 ui,
                 -(ev.id + 1),
                 &ev.time,
-                label,
+                forms,
                 motif::bg_dark(),
                 hover,
                 None,
@@ -26115,13 +26271,10 @@ impl App {
                             colour,
                         );
                     }
-                    // The hour leads the block when it is known.
-                    let label = if rdv.time.is_empty() {
-                        rdv.patient_name.clone()
-                    } else {
-                        format!("{} {}", rdv.time, rdv.patient_name)
-                    };
-                    let label = elide(ui, &label, block.width() - 8.0, 11.0);
+                    // L'heure mène le bloc quand on la connaît — et elle
+                    // passe après le nom quand la colonne se resserre.
+                    let label =
+                        block_label(ui, &rdv.time, &rdv.patient_name, block.width() - 8.0, 11.0);
                     ui.painter().text(
                         egui::pos2(block.left() + 6.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
@@ -26168,12 +26321,19 @@ impl App {
                     );
                     let fill = motif::bg_dark();
                     ui.painter().rect_filled(block, 0.0, fill);
-                    let label = if ev.time.is_empty() {
-                        ev.title.clone()
-                    } else {
-                        format!("{} {}", ev.time, ev.title)
-                    };
-                    let label = elide(ui, &label, block.width() - 8.0, 11.0);
+                    // Un intitulé est de la prose et ne se raccourcit
+                    // pas comme un nom se raccourcit ; ce qui cède ici,
+                    // c'est l'heure, et l'intitulé s'élide en dernier.
+                    let room = block.width() - 8.0;
+                    let label = richest_form(
+                        ui,
+                        [format!("{} {}", ev.time, ev.title), ev.title.clone()]
+                            .into_iter()
+                            .map(|f| f.trim().to_owned()),
+                        room,
+                        11.0,
+                    )
+                    .unwrap_or_else(|| elide(ui, &ev.title, room, 11.0));
                     ui.painter().text(
                         egui::pos2(block.left() + 4.0, block.center().y),
                         egui::Align2::LEFT_CENTER,
@@ -44302,6 +44462,116 @@ mod tests {
         assert_eq!(seen[1].as_deref(), Some("Lun 07"));
         assert_eq!(seen[2], None);
         assert_eq!(seen[3], None);
+    }
+
+    /// **Un nom cède son prénom, jamais son nom de famille.**
+    ///
+    /// C'est ce qui distingue deux rangées d'une liste, et donc ce qui
+    /// reste en dernier. Une initiale seule — « J. » — ne nomme
+    /// personne, si bien qu'un nom d'un seul mot ne se raccourcit pas :
+    /// il donne trois fois la même écriture, ce qui ne coûte rien
+    /// puisque `richest_form` prend la première qui tient.
+    #[test]
+    fn a_name_gives_up_its_first_name_before_its_last() {
+        assert_eq!(
+            super::name_forms("Jean Dupont"),
+            [
+                "Jean Dupont".to_owned(),
+                "J. Dupont".to_owned(),
+                "Dupont".to_owned()
+            ]
+        );
+        // Un nom composé : tout ce qui suit le prénom reste ensemble.
+        assert_eq!(super::name_forms("Marie Dubois Martin")[2], "Dubois Martin");
+        // Un seul mot : trois fois le même, et pas une initiale.
+        assert_eq!(super::name_forms("Dupont"), std::array::from_fn(|_| "Dupont".to_owned()));
+        // Les espaces en trop ne fabriquent ni prénom vide ni double
+        // espace au milieu de l'écriture la plus riche.
+        assert_eq!(super::name_forms("  Jean   Dupont ")[0], "Jean Dupont");
+        // Et un nom vide ne rend pas « . » : il ne rend rien.
+        assert_eq!(super::name_forms(""), std::array::from_fn(|_| String::new()));
+    }
+
+    /// **L'heure cède après le nom, et non avant.**
+    ///
+    /// Un bloc de semaine écrivait « {heure} {nom} » et élidait ; une
+    /// élision mange par la fin, donc les quatre rendez-vous d'un samedi
+    /// sortaient « 09:00… », « 09:15… », « 09:45… », « 14:00… ». L'heure
+    /// — que la place du bloc dans la colonne redit déjà — survivait
+    /// entière, et le nom, qui est tout ce qui distingue un rendez-vous
+    /// du suivant, disparaissait en entier.
+    ///
+    /// Le test tient l'ordre : toutes les écritures sauf la dernière
+    /// nomment quelqu'un, et le nom seul passe avant l'heure seule.
+    #[test]
+    fn a_block_gives_up_its_hour_before_the_patient_it_names() {
+        let forms = super::block_forms("09:00", "Jean Dupont");
+        assert_eq!(forms.first().map(String::as_str), Some("09:00 Jean Dupont"));
+        assert_eq!(forms.last().map(String::as_str), Some("09:00"));
+        let named = forms.len() - 1;
+        assert!(forms[..named].iter().all(|f| f.contains("Dupont")));
+        assert_eq!(forms[named - 1], "Dupont");
+        // Sans heure, il n'y a que le nom à raccourcir.
+        assert_eq!(super::block_forms("", "Jean Dupont").len(), 3);
+    }
+
+    /// La même règle, mesurée dans la fonte qui dessinera : un bloc trop
+    /// étroit pour l'écriture entière **nomme encore son patient**, et
+    /// aucune des formes retenues n'est coupée.
+    ///
+    /// Et quand même la plus pauvre ne tient pas, `fit_form` élide
+    /// plutôt que de ne rien rendre : un bloc porte un rendez-vous, il
+    /// doit dire quelque chose — c'est ce qui le sépare d'une garniture,
+    /// que `richest_form` laisse disparaître.
+    #[test]
+    fn a_block_narrower_than_its_label_still_names_its_patient() {
+        let seen = std::cell::RefCell::new(Vec::new());
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let width = |t: &str| {
+                    ui.fonts(|f| {
+                        f.layout_no_wrap(
+                            t.to_owned(),
+                            egui::FontId::proportional(motif::pt(ui, 11.0)),
+                            motif::text(),
+                        )
+                        .size()
+                        .x
+                    })
+                };
+                let whole = width("09:00 Jean Dupont");
+                let mut s = seen.borrow_mut();
+                s.push(super::block_label(
+                    ui,
+                    "09:00",
+                    "Jean Dupont",
+                    whole + 1.0,
+                    11.0,
+                ));
+                s.push(super::block_label(
+                    ui,
+                    "09:00",
+                    "Jean Dupont",
+                    whole - 1.0,
+                    11.0,
+                ));
+                s.push(super::block_label(
+                    ui,
+                    "09:00",
+                    "Jean Dupont",
+                    width("Dupont") + 1.0,
+                    11.0,
+                ));
+                s.push(super::block_label(ui, "09:00", "Jean Dupont", 1.0, 11.0));
+            });
+        });
+        let seen = seen.into_inner();
+        assert_eq!(seen[0], "09:00 Jean Dupont");
+        assert_eq!(seen[1], "09:00 J. Dupont");
+        assert_eq!(seen[2], "Dupont");
+        assert!(seen[..3].iter().all(|f| !f.contains('…')));
+        assert!(seen[3].ends_with('…'));
     }
 
     /// **La largeur d'un champ de saisie ne s'écrit pas en pixels.**
