@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.189.0] - 2026-09-12
+
+### Added
+- **La trame posée rend la semaine qu'elle promettait** — le seul test
+  qui parcoure la chaîne entière : la grille de la fenêtre, l'écriture
+  en base, le dépliage, et la semaine qu'on relit. Chaque maillon avait
+  le sien ; celui-ci vérifie qu'ils sont attachés, sur une trame qui
+  porte à la fois une alternance, une journée coupée et une journée
+  hebdomadaire, lue sur deux semaines de parité contraire. Il finit par
+  la raison d'être de la journée coupée : le comptoir est vide de midi
+  et demi à deux heures, ce qu'un poste de 9 h à 19 h 30 avec une pause
+  de quatre-vingt-dix minutes n'aurait jamais dit.
+- La règle « on raccourcit, on n'élide pas » gagne son test, mené dans
+  un contexte egui sans écran — la seule façon de mesurer un texte dans
+  la fonte qui le dessinera.
+
+### Fixed
+- **Une date de fin antérieure à la première occurrence posait des
+  lignes que personne ne verrait jamais.** « Les semaines paires jusqu'au
+  10 » réglé pendant une semaine impaire écrit une trame dont la
+  première occurrence tombe *après* sa fin : rien ne s'affiche, et on
+  croit avoir posé ses horaires. La fenêtre le dit avant, et l'écriture
+  le refuse.
+
 ## [0.188.0] - 2026-09-12
 
 ### Fixed

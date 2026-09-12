@@ -24954,8 +24954,17 @@ impl App {
                                 .collect::<Vec<_>>()
                                 .join(" · ")
                         });
+                        // **Une fin antérieure à la première occurrence
+                        // ne pose rien du tout.** « Les semaines paires
+                        // jusqu'au 10 » réglé une semaine impaire écrit
+                        // des lignes que personne ne verra jamais : la
+                        // première occurrence tombe après la fin. Le
+                        // dire ici, et le refuser à l'écriture.
+                        let stillborn = !rows.is_empty() && when.is_empty();
                         ui.label(
-                            egui::RichText::new(if rows.is_empty() {
+                            egui::RichText::new(if stillborn {
+                                tr("frame_until_too_soon").to_owned()
+                            } else if rows.is_empty() {
                                 tr("frame_nothing_yet").to_owned()
                             } else if weekly > 0 && weekly < rows.len() {
                                 trn(
@@ -24968,11 +24977,13 @@ impl App {
                                 trn("frame_will_write", &[&rows.len(), &when])
                             })
                             .size(motif::pt(ui, 11.0))
-                            .color(if rows.is_empty() {
-                                motif::text_dim()
-                            } else {
-                                motif::accent()
-                            }),
+                            .color(
+                                match (stillborn, rows.is_empty()) {
+                                    (true, _) => motif::warn(),
+                                    (_, true) => motif::text_dim(),
+                                    _ => motif::accent(),
+                                },
+                            ),
                         );
                     });
                 ui.add_space(6.0);
@@ -25180,6 +25191,24 @@ impl App {
         let rows = Self::frame_shifts(&form);
         if rows.is_empty() {
             session.error = Some(tr("frame_needs_a_day").to_owned());
+            return;
+        }
+        // **Une fin antérieure à la première occurrence n'écrit rien de
+        // visible.** Poser des lignes que la lecture n'atteindra jamais
+        // est la seule façon de laisser quelqu'un croire qu'il a posé sa
+        // trame alors qu'il n'a rien posé.
+        if !form.until.is_empty()
+            && rows.iter().all(|r| {
+                planning::occurrences(
+                    planning::Cadence::parse(&r.cadence).unwrap_or(form.cadence),
+                    &r.day,
+                    1,
+                )
+                .first()
+                .is_none_or(|d| *d > form.until)
+            })
+        {
+            session.error = Some(tr("frame_until_too_soon").to_owned());
             return;
         }
         // Les trames retirées sont lues **avant** d'être supprimées :
@@ -43582,6 +43611,53 @@ mod tests {
         assert!(short.chars().count() < long.chars().count());
     }
 
+    /// **On raccourcit, on n'élide pas** — et quand rien ne tient, on
+    /// ne dessine rien.
+    ///
+    /// La règle est mesurée dans la fonte qui dessine, donc elle se
+    /// vérifie avec un `egui::Context` sans écran : on demande la même
+    /// suite d'écritures à trois largeurs et on regarde laquelle sort.
+    ///
+    /// Ce qu'elle empêche est écrit dans son nom : « Lun 07/0… » a perdu
+    /// le mois *et* se lit cassé, là où « Lun 07 » ne dit pas le mois et
+    /// se lit entier. Et sur une case d'horaire, l'élision ment
+    /// carrément — « 14 h–… » est mot pour mot ce que la grille écrit
+    /// d'un poste sans fin.
+    #[test]
+    fn the_richest_spelling_that_fits_is_the_one_drawn() {
+        let forms = || ["Lun 07/09".to_owned(), "Lun 07".to_owned(), "07".to_owned()];
+        let seen = std::cell::RefCell::new(Vec::new());
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let mut s = seen.borrow_mut();
+                // Large : l'écriture entière.
+                s.push(super::richest_form(ui, forms(), 4000.0, 12.0));
+                // Étroit : la suivante, entière elle aussi.
+                let narrow = ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        "Lun 07/09".to_owned(),
+                        egui::FontId::proportional(motif::pt(ui, 12.0)),
+                        motif::text(),
+                    )
+                    .size()
+                    .x
+                }) - 1.0;
+                s.push(super::richest_form(ui, forms(), narrow, 12.0));
+                // Rien ne tient : **rien** ne se dessine, plutôt qu'une
+                // écriture coupée.
+                s.push(super::richest_form(ui, forms(), 1.0, 12.0));
+                // Et une liste vide ne rend rien non plus.
+                s.push(super::richest_form(ui, Vec::new(), 4000.0, 12.0));
+            });
+        });
+        let seen = seen.into_inner();
+        assert_eq!(seen[0].as_deref(), Some("Lun 07/09"));
+        assert_eq!(seen[1].as_deref(), Some("Lun 07"));
+        assert_eq!(seen[2], None);
+        assert_eq!(seen[3], None);
+    }
+
     /// **La largeur d'un champ de saisie ne s'écrit pas en pixels.**
     ///
     /// C'est la règle de la maison — « mesurer, jamais deviner un
@@ -44220,6 +44296,132 @@ mod tests {
             ("20:00", "26:00")
         );
         assert_eq!(rows[0].kind, "GARDE");
+    }
+
+    /// **La trame posée rend la semaine qu'elle promettait.**
+    ///
+    /// Le seul test qui parcoure la chaîne entière : la grille de la
+    /// fenêtre, `frame_shifts`, l'écriture en base, le dépliage, et la
+    /// semaine qu'on lit. Chaque maillon a le sien ; celui-ci vérifie
+    /// qu'ils sont bien attachés — une alternance, une journée coupée et
+    /// une journée hebdomadaire dans la même trame, lues sur deux
+    /// semaines de parité contraire.
+    #[test]
+    fn a_posted_frame_gives_back_the_week_it_promised() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-frame-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("un dossier à soi");
+        let db = db::Db::open(&dir.join("frame.db"), "secret").expect("une base neuve");
+
+        // Lundi toutes les semaines, en journée coupée ; samedi une
+        // semaine sur deux. Le 7 septembre 2026 est un lundi, en
+        // semaine 37 — impaire.
+        let mut form = super::FrameForm {
+            operator: "CL".to_owned(),
+            cadence: crate::planning::Cadence::Paires,
+            from: "2026-09-07".to_owned(),
+            ..Default::default()
+        };
+        let coupee = super::FrameDay {
+            kind: None,
+            from: "9".to_owned(),
+            to: "12h30".to_owned(),
+            pause: String::new(),
+            from2: "14".to_owned(),
+            to2: "19h30".to_owned(),
+        };
+        form.weeks[0][0] = coupee.clone();
+        form.weeks[1][0] = coupee;
+        form.weeks[0][5] = super::FrameDay {
+            from: "9".to_owned(),
+            to: "12h30".to_owned(),
+            ..Default::default()
+        };
+        for row in App::frame_shifts(&form) {
+            db.add_shift(&row).expect("la trame s'écrit");
+        }
+
+        let week = |from: &str, to: &str| -> Vec<(String, String, String)> {
+            db.shifts_between(from, to)
+                .expect("la semaine se lit")
+                .into_iter()
+                .map(|s| (s.day, s.start_time, s.end_time))
+                .collect()
+        };
+        // Semaine 37, impaire : le lundi coupé, pas de samedi.
+        assert_eq!(
+            week("2026-09-07", "2026-09-13"),
+            [
+                (
+                    "2026-09-07".to_owned(),
+                    "09:00".to_owned(),
+                    "12:30".to_owned()
+                ),
+                (
+                    "2026-09-07".to_owned(),
+                    "14:00".to_owned(),
+                    "19:30".to_owned()
+                ),
+            ]
+        );
+        // Semaine 38, paire : le même lundi, **et** le samedi.
+        assert_eq!(
+            week("2026-09-14", "2026-09-20"),
+            [
+                (
+                    "2026-09-14".to_owned(),
+                    "09:00".to_owned(),
+                    "12:30".to_owned()
+                ),
+                (
+                    "2026-09-14".to_owned(),
+                    "14:00".to_owned(),
+                    "19:30".to_owned()
+                ),
+                (
+                    "2026-09-19".to_owned(),
+                    "09:00".to_owned(),
+                    "12:30".to_owned()
+                ),
+            ]
+        );
+        // Et le samedi ne revient qu'une semaine sur deux, sur deux
+        // mois : c'est la parité, lue par la base et non par la
+        // fenêtre.
+        let samedis: Vec<String> = db
+            .shifts_between("2026-09-01", "2026-10-31")
+            .expect("le mois se lit")
+            .into_iter()
+            .filter(|s| crate::date::weekday(&s.day) == Some(6))
+            .map(|s| s.day)
+            .collect();
+        assert_eq!(
+            samedis,
+            ["2026-09-19", "2026-10-03", "2026-10-17", "2026-10-31"]
+        );
+
+        // Une journée coupée fait bien deux postes et non un poste à
+        // longue pause : c'est ce qui permet au creux de midi de se
+        // voir.
+        let lundi: Vec<crate::planning::Shift> = db
+            .shifts_between("2026-09-07", "2026-09-07")
+            .expect("le lundi se lit")
+            .iter()
+            .filter_map(super::planned_shift)
+            .collect();
+        assert_eq!(lundi.len(), 2);
+        assert!(lundi.iter().all(|s| s.pause == 0));
+        // 9 h – 12 h 30 puis 14 h – 19 h 30 : trois heures et demie plus
+        // cinq heures et demie, neuf heures pleines.
+        assert_eq!(crate::planning::day_total(&lundi, "CL"), Some(9 * 60));
+        // Et le comptoir est vide de 12 h 30 à 14 h, ce qu'un poste de
+        // 9 h à 19 h 30 avec une pause de quatre-vingt-dix minutes
+        // n'aurait jamais dit.
+        assert_eq!(
+            crate::planning::gaps(&lundi, &[crate::agenda::Slot::new(9 * 60, 19 * 60 + 30)]),
+            [crate::agenda::Slot::new(12 * 60 + 30, 14 * 60)]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// **Sept pas à droite font une semaine, et rien ne se saute.**
