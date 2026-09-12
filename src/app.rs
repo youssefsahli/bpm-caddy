@@ -1223,10 +1223,11 @@ enum HelpBlock {
 fn help_blocks(body: &str) -> Vec<HelpBlock> {
     fn flush(out: &mut Vec<HelpBlock>, buf: &mut String, bullet: &mut bool) {
         if !buf.is_empty() {
+            let text = help_bound(&std::mem::take(buf));
             out.push(if *bullet {
-                HelpBlock::Bullet(std::mem::take(buf))
+                HelpBlock::Bullet(text)
             } else {
-                HelpBlock::Para(std::mem::take(buf))
+                HelpBlock::Para(text)
             });
         }
         *bullet = false;
@@ -1237,7 +1238,7 @@ fn help_blocks(body: &str) -> Vec<HelpBlock> {
     for line in body.lines().map(str::trim) {
         if let Some(sub) = line.strip_prefix("## ") {
             flush(&mut out, &mut buf, &mut bullet);
-            out.push(HelpBlock::Sub(sub.to_owned()));
+            out.push(HelpBlock::Sub(help_bound(sub)));
         } else if let Some(item) = line.strip_prefix("- ") {
             flush(&mut out, &mut buf, &mut bullet);
             buf.push_str(item);
@@ -1255,13 +1256,58 @@ fn help_blocks(body: &str) -> Vec<HelpBlock> {
     out
 }
 
+/// La ponctuation double française se lie au mot qui la précède.
+///
+/// `RichText` coupe la ligne où il veut, et ce qu'on lit alors est
+/// « ; rien n'est envoyé » en tête de ligne. C'est le seul endroit de
+/// l'application où la question se pose : ailleurs les phrases tiennent
+/// sur une ligne, ici elles enveloppent dans un volet de deux cents
+/// pixels.
+///
+/// L'insécable est **U+00A0 et non l'espace fine U+202F** que la
+/// typographie française voudrait : la fonte livrée n'a pas de glyphe
+/// pour la seconde, et c'est exactement la panne du séparateur de
+/// milliers de la caisse — « 1□240,50 » à l'écran, invisible à tout test
+/// qui lit les chaînes puisque le caractère n'est écrit nulle part.
+/// Celui-ci non plus : il est **produit** ici, et c'est à ce titre qu'il
+/// est inscrit au test des glyphes.
+fn help_bound(text: &str) -> String {
+    let mut out = text.to_owned();
+    for (loose, bound) in [
+        (" ;", "\u{A0};"),
+        (" :", "\u{A0}:"),
+        (" ?", "\u{A0}?"),
+        (" !", "\u{A0}!"),
+        (" »", "\u{A0}»"),
+        ("« ", "«\u{A0}"),
+    ] {
+        if out.contains(loose) {
+            out = out.replace(loose, bound);
+        }
+    }
+    out
+}
+
+/// Une section du mode d'emploi, découpée, recollée et repliée.
+struct HelpSection {
+    /// Le titre, tel qu'il s'affiche.
+    title: String,
+    /// Le corps, prêt à dessiner.
+    blocks: Vec<HelpBlock>,
+    /// Ce sur quoi la recherche porte, **déjà replié**.
+    key: String,
+}
+
 /// Le mode d'emploi livré, découpé à son premier niveau de titre.
 ///
-/// Découpé **une fois** : la découpe est une passe sur six kilo-octets,
-/// et le volet est redessiné soixante fois par seconde.
-fn help_sections() -> &'static [(&'static str, &'static str)] {
-    static SECTIONS: std::sync::OnceLock<Vec<(&'static str, &'static str)>> =
-        std::sync::OnceLock::new();
+/// Fait **une fois**, et c'est tout l'intérêt de la `OnceLock` : la
+/// découpe, le recollage des paragraphes et le repli de la recherche
+/// sont trois passes sur six kilo-octets, et le volet est redessiné
+/// soixante fois par seconde. Le repli surtout — chercher, c'est
+/// comparer une clé courte à onze clés longues, et non replier le manuel
+/// entier à chaque image.
+fn help_sections() -> &'static [HelpSection] {
+    static SECTIONS: std::sync::OnceLock<Vec<HelpSection>> = std::sync::OnceLock::new();
     SECTIONS.get_or_init(|| {
         const HELP: &str = include_str!("../assets/aide.md");
         // Le premier niveau de titre et lui seul : « ## » est un
@@ -1278,10 +1324,13 @@ fn help_sections() -> &'static [(&'static str, &'static str)] {
                 let end = heads.get(n + 1).copied().unwrap_or(HELP.len());
                 let block = &HELP[*start..end];
                 let (head, body) = block.split_once('\n').unwrap_or((block, ""));
-                (
-                    head.trim_start_matches("# ").trim(),
-                    body.trim_matches('\n'),
-                )
+                let title = head.trim_start_matches("# ").trim();
+                let body = body.trim_matches('\n');
+                HelpSection {
+                    title: help_bound(title),
+                    blocks: help_blocks(body),
+                    key: crate::fuzzy::sort_key(&format!("{title}\n{body}")),
+                }
             })
             .collect()
     })
@@ -9995,19 +10044,16 @@ impl App {
             .id_salt("side_help")
             .show(ui, |ui| {
                 let mut shown = 0_usize;
-                for (title, body) in help_sections() {
+                for section in help_sections() {
                     // La recherche garde ou écarte une **section
                     // entière** : un mode d'emploi dont il ne reste
                     // qu'une phrase sur deux ne se lit pas.
-                    if !key.is_empty()
-                        && !crate::fuzzy::sort_key(title).contains(&key)
-                        && !crate::fuzzy::sort_key(body).contains(&key)
-                    {
+                    if !key.is_empty() && !section.key.contains(&key) {
                         continue;
                     }
                     shown += 1;
-                    motif::section(ui, title);
-                    Self::help_body(ui, body);
+                    motif::section(ui, &section.title);
+                    Self::help_body(ui, &section.blocks);
                     ui.add_space(6.0);
                 }
                 // Les sections engendrées : elles ne sont pas écrites,
@@ -10193,9 +10239,11 @@ impl App {
         Self::help_text(ui, &format!("· {text}"));
     }
 
-    /// Le corps d'une section, tel que `help_blocks` l'a découpé.
-    fn help_body(ui: &mut egui::Ui, body: &str) {
-        for block in help_blocks(body) {
+    /// Le corps d'une section, tel que `help_blocks` l'a découpé — il
+    /// ne reste qu'à dessiner : le découpage est fait une fois pour
+    /// toutes, et non soixante fois par seconde.
+    fn help_body(ui: &mut egui::Ui, blocks: &[HelpBlock]) {
+        for block in blocks {
             match block {
                 HelpBlock::Sub(sub) => {
                     ui.add_space(4.0);
@@ -10205,8 +10253,8 @@ impl App {
                             .color(motif::emphasize(motif::text())),
                     );
                 }
-                HelpBlock::Bullet(item) => Self::help_bullet(ui, &item),
-                HelpBlock::Para(para) => Self::help_text(ui, &para),
+                HelpBlock::Bullet(item) => Self::help_bullet(ui, item),
+                HelpBlock::Para(para) => Self::help_text(ui, para),
             }
         }
     }
@@ -44297,11 +44345,12 @@ mod tests {
         let cut = super::help_sections();
         assert!(cut.len() >= 8, "{} sections", cut.len());
         let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
-        for (title, body) in cut {
+        for section in cut {
+            let title = &section.title;
             assert!(!title.is_empty(), "une section sans titre");
-            assert!(!body.trim().is_empty(), "« {title} » n'a pas de corps");
+            assert!(!section.blocks.is_empty(), "« {title} » n'a pas de corps");
             assert!(
-                seen.insert(*title),
+                seen.insert(title.as_str()),
                 "« {title} » deux fois : la recherche ne saurait laquelle montrer"
             );
         }
@@ -44313,8 +44362,11 @@ mod tests {
             if line.is_empty() || line.starts_with("# ") {
                 continue;
             }
+            // Recollé et lié, le texte dessiné n'est plus la ligne du
+            // fichier : on compare sur ce que la recherche compare.
+            let needle = crate::fuzzy::sort_key(line);
             assert!(
-                cut.iter().any(|(_, b)| b.lines().any(|l| l.trim() == line)),
+                cut.iter().any(|s| s.key.contains(&needle)),
                 "« {line} » n'est dans aucune section"
             );
         }
@@ -44336,9 +44388,9 @@ mod tests {
     #[test]
     fn no_markup_of_the_manual_reaches_the_screen() {
         let mut seen = 0_usize;
-        for (_, body) in super::help_sections() {
-            for block in super::help_blocks(body) {
-                let text = match &block {
+        for section in super::help_sections() {
+            for block in &section.blocks {
+                let text = match block {
                     super::HelpBlock::Sub(s) => {
                         assert!(
                             !s.contains('*') && !s.contains('`'),

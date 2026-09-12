@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.195.0] - 2026-09-12
+
+### Fixed
+- **La ponctuation double française ne commence plus une ligne dans
+  l'aide.** Le volet fait deux cents pixels de large et enveloppe ses
+  phrases où il veut : « ; rien n'est envoyé nulle part » se lisait en
+  tête de ligne. Les deux-points, le point-virgule, les points
+  d'interrogation et d'exclamation et les guillemets se lient désormais
+  au mot qui les précède. C'est le seul écran où la question se pose —
+  ailleurs les phrases tiennent sur une ligne.
+
+  L'insécable employé est **U+00A0 et non l'espace fine U+202F** que la
+  typographie voudrait : la fonte livrée n'a pas de glyphe pour la
+  seconde, et c'est exactement la panne du séparateur de milliers de la
+  caisse — « 1□240,50 » à l'écran. Le caractère n'est écrit dans aucune
+  chaîne, il est **produit** ; il est inscrit à ce titre au test des
+  glyphes, comme la sortie de `caisse::euros` l'est déjà.
+
+### Changed
+- **Le mode d'emploi est découpé une fois, et non soixante fois par
+  seconde.** Le découpage en sections, le recollage des paragraphes et
+  le repli de la recherche sont trois passes sur six kilo-octets, et le
+  volet est redessiné à chaque image. Ils se font maintenant au premier
+  affichage, et chercher revient à comparer une clé courte à onze clés
+  longues déjà repliées.
+
 ## [0.194.0] - 2026-09-12
 
 ### Added

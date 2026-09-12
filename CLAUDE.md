@@ -459,7 +459,12 @@ add clicking and typing; it is not the price of entry.
   that reads the strings file, because nothing writes that character
   down. The glyph test now passes the *output* of that function, not a
   constant; a formatted character is checked the same way a written one
-  is.
+  is. `app::help_bound` is the second producer, and it is why the
+  no-break space in the help pane is the **ordinary** U+00A0 and not the
+  thin U+202F that French typography wants: binding « ; » to the word
+  before it stops « ; rien n'est envoyé » starting a wrapped line, and
+  the thin one would have drawn a box doing it. That character is listed
+  in the glyph test with its reason, since no string carries it either.
 - **A font size comes from `motif::pt`, never from a literal.**
   `RichText::size(11.0)` is a number of pixels: `[ui] text_scale` scales
   the `TextStyle` ladder, and a literal does not go through the ladder.
@@ -1176,6 +1181,13 @@ either direction — plus it runs every example against the test
 snapshot, because an example that fails is worse than no example: it is
 tried before it is read. « Essayer » places the example in the console
 **and runs it**.
+
+The manual's own typography is bound before it is drawn
+(`help_bound`): the pane wraps at two hundred pixels, and French double
+punctuation left loose starts lines with « ; ». The section list, the
+recollected paragraphs and the search's folded key are all computed in
+that same `OnceLock` — three passes over six kilobytes, and the pane is
+redrawn sixty times a second.
 
 And the manual goes through the same glyph test as the strings file
 (`every_symbol_the_code_draws_has_a_glyph_in_the_face_that_draws_it`):

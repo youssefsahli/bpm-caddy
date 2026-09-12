@@ -240,9 +240,16 @@ mod tests {
         // Written into sentences: the interaction pair, the breadcrumbs
         // of the codex and the protocols, the euro sign, the en and em
         // dashes that stand in for the arrow.
+        // U+00A0 n'est écrit dans aucune chaîne : il est **produit** par
+        // `app::help_bound`, qui lie la ponctuation double française au
+        // mot qui la précède pour qu'un « ; » ne commence pas une ligne
+        // du volet d'aide. C'est l'insécable ordinaire et non l'espace
+        // fine U+202F que la typographie voudrait, précisément parce que
+        // la fonte livrée n'a pas de glyphe pour celle-là — la panne du
+        // séparateur de milliers de la caisse, deux lignes plus bas.
         for c in [
             '\u{2194}', '\u{203A}', '\u{2039}', '\u{20AC}', '\u{2013}', '\u{2014}', '\u{00B7}',
-            '\u{2026}', '\u{00AB}', '\u{00BB}',
+            '\u{2026}', '\u{00AB}', '\u{00BB}', '\u{00A0}',
         ] {
             assert!(
                 fonts.has_glyph(&body, c),
