@@ -1192,6 +1192,101 @@ fn three_letters(day: &str) -> String {
         .collect()
 }
 
+/// Un bloc du mode d'emploi : ce que le découpage rend et ce que le
+/// dessin consomme.
+enum HelpBlock {
+    /// Un sous-titre, `## ` retiré.
+    Sub(String),
+    /// Une puce, sa suite recollée.
+    Bullet(String),
+    /// Un paragraphe, ses lignes recollées.
+    Para(String),
+}
+
+/// Le corps d'une section, découpé en blocs.
+///
+/// Le sous-ensemble de markdown est **celui que l'aide emploie** et pas
+/// un de plus : un moteur de rendu complet pour trois tournures serait
+/// une dépendance de plus à tenir à jour.
+///
+/// Un paragraphe du fichier est coupé à septante-deux colonnes pour se
+/// relire au clavier. Dessiné ligne à ligne, il arriverait à l'écran
+/// avec une gouttière entre chacune — un texte lâche, coupé à une
+/// largeur qui n'est pas celle du volet, que personne ne lit. On
+/// recolle donc, et c'est egui qui coupe, là où il dessine. La suite
+/// d'une puce rejoint sa puce pour la même raison.
+///
+/// Pur, et c'est ce qui permet au test de vérifier qu'aucune marque
+/// n'arrive à l'écran sur le texte **tel qu'il sera dessiné** : une
+/// emphase ouverte sur une ligne et refermée sur la suivante ne se voit
+/// pas autrement.
+fn help_blocks(body: &str) -> Vec<HelpBlock> {
+    fn flush(out: &mut Vec<HelpBlock>, buf: &mut String, bullet: &mut bool) {
+        if !buf.is_empty() {
+            out.push(if *bullet {
+                HelpBlock::Bullet(std::mem::take(buf))
+            } else {
+                HelpBlock::Para(std::mem::take(buf))
+            });
+        }
+        *bullet = false;
+    }
+    let mut out: Vec<HelpBlock> = Vec::new();
+    let mut buf = String::new();
+    let mut bullet = false;
+    for line in body.lines().map(str::trim) {
+        if let Some(sub) = line.strip_prefix("## ") {
+            flush(&mut out, &mut buf, &mut bullet);
+            out.push(HelpBlock::Sub(sub.to_owned()));
+        } else if let Some(item) = line.strip_prefix("- ") {
+            flush(&mut out, &mut buf, &mut bullet);
+            buf.push_str(item);
+            bullet = true;
+        } else if line.is_empty() {
+            flush(&mut out, &mut buf, &mut bullet);
+        } else {
+            if !buf.is_empty() {
+                buf.push(' ');
+            }
+            buf.push_str(line);
+        }
+    }
+    flush(&mut out, &mut buf, &mut bullet);
+    out
+}
+
+/// Le mode d'emploi livré, découpé à son premier niveau de titre.
+///
+/// Découpé **une fois** : la découpe est une passe sur six kilo-octets,
+/// et le volet est redessiné soixante fois par seconde.
+fn help_sections() -> &'static [(&'static str, &'static str)] {
+    static SECTIONS: std::sync::OnceLock<Vec<(&'static str, &'static str)>> =
+        std::sync::OnceLock::new();
+    SECTIONS.get_or_init(|| {
+        const HELP: &str = include_str!("../assets/aide.md");
+        // Le premier niveau de titre et lui seul : « ## » est un
+        // sous-titre *dans* une section, et le découper en ferait une
+        // section sans nom que la recherche garderait seule.
+        let mut heads: Vec<usize> = HELP.match_indices("\n# ").map(|(i, _)| i + 1).collect();
+        if HELP.starts_with("# ") {
+            heads.insert(0, 0);
+        }
+        heads
+            .iter()
+            .enumerate()
+            .map(|(n, start)| {
+                let end = heads.get(n + 1).copied().unwrap_or(HELP.len());
+                let block = &HELP[*start..end];
+                let (head, body) = block.split_once('\n').unwrap_or((block, ""));
+                (
+                    head.trim_start_matches("# ").trim(),
+                    body.trim_matches('\n'),
+                )
+            })
+            .collect()
+    })
+}
+
 /// Les sept jours, **lundi en tête** : c'est l'ordre ISO, celui de
 /// `crate::date::weekday`, et l'indice dans ce tableau plus un *est* le
 /// numéro du jour. La trame s'en sert pour savoir sur quel jour de la
@@ -8459,6 +8554,10 @@ pub struct App {
     layout_changed: Instant,
     /// Which content the right pane shows: "docs", "carnet", "notes".
     side_pane: String,
+    /// Ce qu'on cherche dans l'aide. Le volet fait deux cents pixels de
+    /// large et le mode d'emploi une dizaine de sections : sans un
+    /// champ pour y entrer, on le parcourt à la molette.
+    help_query: String,
     doc_text: String,
     doc_dirty: bool,
     doc_last_edit: Instant,
@@ -8676,7 +8775,8 @@ impl App {
         // The shape the post was last left in wins over the start-up
         // flags; the flags are what a first launch has to go on.
         let layout = crate::config::Layout::load();
-        let show_docs = layout.docs_open.unwrap_or(config.ui.show_docs_on_start);
+        let show_docs = layout.docs_open.unwrap_or(config.ui.show_docs_on_start)
+            || std::env::var("BPM_CADDY_START_VIEW").as_deref() == Ok("aide");
         let show_nav = layout.nav_open.unwrap_or(config.ui.show_nav_on_start);
 
         // Silent unlock when the OS credential manager holds the password.
@@ -9566,7 +9666,13 @@ impl App {
         };
         // The pane's content is remembered too, so a post left on the
         // carnet does not open on the team documentation every morning.
-        let side_pane = if layout.side_pane.is_empty() {
+        let side_pane = if start_view == "aide" {
+            // « aide » n'est pas une vue mais un volet : la clé ouvre le
+            // dock et l'y pose. Sans elle, ni la fumée ni une capture
+            // n'auraient de chemin vers le seul écran qui ne soit dans
+            // aucune barre d'onglets.
+            "aide".to_owned()
+        } else if layout.side_pane.is_empty() {
             config.ui.side_pane.clone()
         } else {
             layout.side_pane.clone()
@@ -9585,6 +9691,7 @@ impl App {
             layout,
             layout_changed: Instant::now(),
             side_pane,
+            help_query: String::new(),
             doc_base: doc_text.clone(),
             doc_text,
             doc_dirty: false,
@@ -9859,6 +9966,284 @@ impl App {
     }
 
     /// The pane showing only the operator's personal notes, with room.
+    /// L'aide : le mode d'emploi du logiciel, et l'explorateur de l'API
+    /// de la console.
+    ///
+    /// Un **volet** et non une vue, et c'est le point : on lit un mode
+    /// d'emploi à côté de ce qu'on est en train de faire, pas à sa
+    /// place. Cliquer « Essayer » sur un exemple le pose dans la console
+    /// et l'exécute — l'explorateur n'explique pas l'API, il la fait
+    /// tourner.
+    ///
+    /// Ce qui est **écrit** vit dans `assets/aide.md`. Ce qui est **su**
+    /// vient des registres qui le savent déjà : les documents
+    /// imprimables de `pdf::DOCS`, les sections d'une monographie de
+    /// `MONO_FIELDS`, les fonctions et les bornes de `script::API`. Une
+    /// aide qui recopierait ces listes serait fausse dès la première
+    /// ligne ajoutée ailleurs — et fausse en silence, puisque personne
+    /// ne relit un mode d'emploi pour vérifier qu'il a vieilli.
+    fn side_help(&mut self, ui: &mut egui::Ui) {
+        ui.add(
+            egui::TextEdit::singleline(&mut self.help_query)
+                .hint_text(tr("help_search"))
+                .desired_width(ui.available_width() - ui.spacing().item_spacing.x),
+        );
+        ui.add_space(4.0);
+        let key = crate::fuzzy::sort_key(&self.help_query);
+        let mut run_example: Option<String> = None;
+        egui::ScrollArea::vertical()
+            .id_salt("side_help")
+            .show(ui, |ui| {
+                let mut shown = 0_usize;
+                for (title, body) in help_sections() {
+                    // La recherche garde ou écarte une **section
+                    // entière** : un mode d'emploi dont il ne reste
+                    // qu'une phrase sur deux ne se lit pas.
+                    if !key.is_empty()
+                        && !crate::fuzzy::sort_key(title).contains(&key)
+                        && !crate::fuzzy::sort_key(body).contains(&key)
+                    {
+                        continue;
+                    }
+                    shown += 1;
+                    motif::section(ui, title);
+                    Self::help_body(ui, body);
+                    ui.add_space(6.0);
+                }
+                // Les sections engendrées : elles ne sont pas écrites,
+                // elles sont lues sur les registres qui les portent.
+                for (title, lines) in Self::help_generated() {
+                    if !key.is_empty()
+                        && !crate::fuzzy::sort_key(&title).contains(&key)
+                        && !lines
+                            .iter()
+                            .any(|l| crate::fuzzy::sort_key(l).contains(&key))
+                    {
+                        continue;
+                    }
+                    shown += 1;
+                    motif::section(ui, &title);
+                    for line in lines {
+                        Self::help_bullet(ui, &line);
+                    }
+                    ui.add_space(6.0);
+                }
+                // L'API, qui porte des boutons et non seulement du
+                // texte.
+                let api_hit = key.is_empty()
+                    || crate::script::API.iter().any(|c| {
+                        crate::fuzzy::sort_key(c.call).contains(&key)
+                            || crate::fuzzy::sort_key(c.returns).contains(&key)
+                    })
+                    || crate::fuzzy::sort_key(tr("help_api")).contains(&key);
+                if api_hit {
+                    shown += 1;
+                    motif::section(ui, tr("help_api"));
+                    for limit in crate::script::LIMITS {
+                        Self::help_bullet(ui, limit);
+                    }
+                    ui.add_space(4.0);
+                    for call in crate::script::API {
+                        ui.label(
+                            egui::RichText::new(call.call)
+                                .size(motif::pt(ui, 12.0))
+                                .color(motif::accent())
+                                .monospace(),
+                        );
+                        Self::help_text(ui, call.returns);
+                        for (field, what) in call.fields {
+                            // La clé entre accents graves : un script
+                            // la tape telle quelle.
+                            Self::help_bullet(ui, &format!("`{field}` — {what}"));
+                        }
+                        if !call.note.is_empty() {
+                            Self::help_text(ui, call.note);
+                        }
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(call.example.trim_end())
+                                    .size(motif::pt(ui, 10.5))
+                                    .monospace()
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                        if motif::button(ui, tr("help_try"))
+                            .on_hover_text(tr("help_try_tooltip"))
+                            .clicked()
+                        {
+                            run_example = Some(call.example.to_owned());
+                        }
+                        ui.add_space(6.0);
+                    }
+                }
+                if shown == 0 {
+                    ui.label(
+                        egui::RichText::new(tr("help_nothing"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    );
+                }
+            });
+        if let Some(source) = run_example {
+            if let State::Unlocked(session) = &mut self.state {
+                // Posé **et exécuté** : un exemple qu'il faut encore
+                // lancer soi-même est une capture d'écran.
+                session.script_open = None;
+                session.script_name.clear();
+                session.script_text = source;
+                let data = session.script_snapshot();
+                session.script_out = Some(crate::script::run(&session.script_text, &data));
+                session.view = MainView::Script;
+            }
+        }
+    }
+
+    /// Une phrase de l'aide découpée en passages : le texte, s'il est
+    /// appuyé, s'il est littéral.
+    ///
+    /// Les deux marques que l'aide emploie, et pas une de plus :
+    /// `**appuyé**` et `` `littéral` ``. Dans un littéral, seul l'accent
+    /// grave qui le ferme compte — un astérisque cité entre deux
+    /// accents est un astérisque, non le début d'une emphase.
+    fn help_runs(text: &str) -> Vec<(&str, bool, bool)> {
+        let mut out: Vec<(&str, bool, bool)> = Vec::new();
+        let (mut strong, mut code) = (false, false);
+        let mut rest = text;
+        while !rest.is_empty() {
+            let next = if code {
+                rest.find('`').map(|i| (i, 1))
+            } else {
+                match (
+                    rest.find("**").map(|i| (i, 2)),
+                    rest.find('`').map(|i| (i, 1)),
+                ) {
+                    (Some(b), Some(l)) => Some(if b.0 <= l.0 { b } else { l }),
+                    (Some(b), None) => Some(b),
+                    (None, l) => l,
+                }
+            };
+            match next {
+                Some((at, len)) => {
+                    if at > 0 {
+                        out.push((&rest[..at], strong, code));
+                    }
+                    if len == 2 {
+                        strong = !strong;
+                    } else {
+                        code = !code;
+                    }
+                    rest = &rest[at + len..];
+                }
+                None => {
+                    out.push((rest, strong, code));
+                    break;
+                }
+            }
+        }
+        out
+    }
+
+    /// Une phrase de l'aide, ses marques interprétées.
+    ///
+    /// Le markdown écrit dans le fichier **ne doit pas arriver à
+    /// l'écran** : `RichText` n'interprète rien, et un astérisque tapé
+    /// pour appuyer, un accent grave tapé pour citer une date se lisent
+    /// tels quels. C'est la règle que les trois tables cliniques
+    /// tiennent chacune par un test, et l'aide n'y échappe pas —
+    /// d'autant qu'elle est écrite en markdown, où la marque est un
+    /// réflexe.
+    ///
+    /// Appuyer, c'est **s'éloigner du fond** et non noircir : il n'y a
+    /// pas de graisse dans la fonte livrée, et deux des huit peaux sont
+    /// sombres. Un littéral passe en chasse fixe, qui est aussi la seule
+    /// fonte livrée où la flèche a un glyphe.
+    fn help_text(ui: &mut egui::Ui, text: &str) {
+        let size = motif::pt(ui, 11.0);
+        let mut job = egui::text::LayoutJob::default();
+        for (run, strong, code) in Self::help_runs(text) {
+            job.append(
+                run,
+                0.0,
+                egui::TextFormat {
+                    font_id: if code {
+                        egui::FontId::monospace(size)
+                    } else {
+                        egui::FontId::proportional(size)
+                    },
+                    color: if strong {
+                        motif::emphasize(motif::text())
+                    } else {
+                        motif::text()
+                    },
+                    ..Default::default()
+                },
+            );
+        }
+        // `Label::new(LayoutJob)` écrase la largeur d'enveloppe du job
+        // par celle de l'`Ui` : ici c'est justement ce qu'on veut — la
+        // largeur du volet, quelle qu'elle soit.
+        ui.add(egui::Label::new(job).wrap());
+    }
+
+    /// Une puce. Le point médian a un glyphe dans la fonte livrée, là où
+    /// la puce ronde et la flèche n'en ont pas : un carré creux en tête
+    /// de chaque ligne serait exactement le défaut que la maison traque.
+    fn help_bullet(ui: &mut egui::Ui, text: &str) {
+        Self::help_text(ui, &format!("· {text}"));
+    }
+
+    /// Le corps d'une section, tel que `help_blocks` l'a découpé.
+    fn help_body(ui: &mut egui::Ui, body: &str) {
+        for block in help_blocks(body) {
+            match block {
+                HelpBlock::Sub(sub) => {
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(sub)
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::emphasize(motif::text())),
+                    );
+                }
+                HelpBlock::Bullet(item) => Self::help_bullet(ui, &item),
+                HelpBlock::Para(para) => Self::help_text(ui, &para),
+            }
+        }
+    }
+
+    /// Les sections que l'aide ne rédige pas : elle les lit.
+    fn help_generated() -> Vec<(String, Vec<String>)> {
+        vec![
+            (
+                tr("help_printables").to_owned(),
+                crate::pdf::DOCS
+                    .iter()
+                    .map(|d| tr(d.label).to_owned())
+                    .collect(),
+            ),
+            (
+                tr("help_rewritable").to_owned(),
+                // Ici le libellé est déjà résolu — `content::documents`
+                // rend des titres, non des clés — là où `pdf::DOCS`
+                // porte la clé de chaîne. Deux registres, deux
+                // conventions : on lit chacun comme il est écrit.
+                crate::content::documents()
+                    .into_iter()
+                    .map(|d| d.label)
+                    .collect(),
+            ),
+            (
+                tr("help_mono_fields").to_owned(),
+                MONO_FIELDS
+                    .iter()
+                    // La clé entre accents graves : c'est un littéral
+                    // qu'un script tape, non un mot de la phrase.
+                    .map(|(key, _)| format!("`{key}` — {}", tr(key)))
+                    .collect(),
+            ),
+        ]
+    }
+
     fn side_operator_notes(&mut self, ui: &mut egui::Ui) {
         let op = self.operator.trim().to_owned();
         if op.is_empty() {
@@ -10700,6 +11085,7 @@ impl App {
                         ("docs", tr("side_pane_docs")),
                         ("carnet", tr("side_pane_carnet")),
                         ("notes", tr("side_pane_notes")),
+                        ("aide", tr("side_pane_help")),
                     ] {
                         if ui
                             .selectable_label(self.side_pane == value, label)
@@ -10723,6 +11109,10 @@ impl App {
                 }
                 if self.side_pane == "notes" {
                     self.side_operator_notes(ui);
+                    return;
+                }
+                if self.side_pane == "aide" {
+                    self.side_help(ui);
                     return;
                 }
                 let status = if let Some(err) = &self.doc_error {
@@ -43892,6 +44282,152 @@ mod tests {
             "une largeur de champ se mesure, elle ne s'écrit pas en pixels :\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// **Le mode d'emploi se découpe en sections nommées.**
+    ///
+    /// C'est la section que la recherche garde ou écarte : un mode
+    /// d'emploi dont il ne resterait qu'une phrase sur deux ne se lit
+    /// pas. Deux sections de même titre en feraient deux que rien ne
+    /// distingue, et une ligne écrite avant le premier titre
+    /// n'appartiendrait à aucune — elle ne s'afficherait alors jamais,
+    /// sans que rien le dise.
+    #[test]
+    fn the_manual_is_cut_into_named_sections() {
+        let cut = super::help_sections();
+        assert!(cut.len() >= 8, "{} sections", cut.len());
+        let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for (title, body) in cut {
+            assert!(!title.is_empty(), "une section sans titre");
+            assert!(!body.trim().is_empty(), "« {title} » n'a pas de corps");
+            assert!(
+                seen.insert(*title),
+                "« {title} » deux fois : la recherche ne saurait laquelle montrer"
+            );
+        }
+        // Et **rien ne tombe hors d'une section** : une ligne écrite
+        // avant le premier titre n'appartiendrait à aucune, et ne
+        // s'afficherait donc jamais — sans que rien le dise.
+        const MANUAL: &str = include_str!("../assets/aide.md");
+        for line in MANUAL.lines().map(str::trim) {
+            if line.is_empty() || line.starts_with("# ") {
+                continue;
+            }
+            assert!(
+                cut.iter().any(|(_, b)| b.lines().any(|l| l.trim() == line)),
+                "« {line} » n'est dans aucune section"
+            );
+        }
+    }
+
+    /// **Aucune marque du mode d'emploi n'arrive à l'écran.**
+    ///
+    /// `RichText` n'interprète rien : un astérisque tapé pour appuyer,
+    /// un accent grave tapé pour citer une date se lisent tels quels.
+    /// C'est la règle que les trois tables cliniques tiennent chacune
+    /// par un test — et l'aide, elle, est écrite en markdown, où la
+    /// marque est un réflexe. Le premier jet l'a prouvé : les dates
+    /// courtes du dossier sont arrivées à l'écran entre deux accents.
+    ///
+    /// La vérification porte sur le texte **tel qu'il sera dessiné**, et
+    /// non ligne à ligne : une emphase ouverte sur une ligne et refermée
+    /// sur la suivante ne se voit pas autrement. Un sous-titre, lui, est
+    /// dessiné tel quel et ne doit donc porter aucune marque du tout.
+    #[test]
+    fn no_markup_of_the_manual_reaches_the_screen() {
+        let mut seen = 0_usize;
+        for (_, body) in super::help_sections() {
+            for block in super::help_blocks(body) {
+                let text = match &block {
+                    super::HelpBlock::Sub(s) => {
+                        assert!(
+                            !s.contains('*') && !s.contains('`'),
+                            "« {s} » : un sous-titre se dessine tel quel"
+                        );
+                        continue;
+                    }
+                    super::HelpBlock::Bullet(t) | super::HelpBlock::Para(t) => t,
+                };
+                assert_eq!(
+                    text.matches("**").count() % 2,
+                    0,
+                    "emphase non refermée : « {text} »"
+                );
+                assert_eq!(
+                    text.matches('`').count() % 2,
+                    0,
+                    "littéral non refermé : « {text} »"
+                );
+                for (run, _, _) in App::help_runs(text) {
+                    assert!(!run.contains('*'), "« {run} » : un astérisque à l'écran");
+                    assert!(!run.contains('`'), "« {run} » : un accent grave à l'écran");
+                }
+                seen += 1;
+            }
+        }
+        // Le repère lui-même : sans blocs, les boucles ci-dessus ne
+        // vérifient rien et le test passe toujours.
+        assert!(seen >= 20, "{seen} blocs");
+        // Et ce que la console dit d'elle-même passe par le même
+        // dessin, donc par la même règle : une phrase de `script.rs`
+        // porte des accents graves autour des littéraux qu'elle cite.
+        for text in crate::script::LIMITS.iter().copied().chain(
+            crate::script::API
+                .iter()
+                .flat_map(|c| [c.returns, c.note])
+                .filter(|t| !t.is_empty()),
+        ) {
+            assert_eq!(
+                text.matches('`').count() % 2,
+                0,
+                "littéral non refermé : « {text} »"
+            );
+            for (run, _, _) in App::help_runs(text) {
+                assert!(!run.contains('*'), "« {run} » : un astérisque à l'écran");
+                assert!(!run.contains('`'), "« {run} » : un accent grave à l'écran");
+            }
+        }
+        // Et les deux marques sont bien interprétées, plutôt que
+        // simplement absentes : un découpage qui ne trouverait jamais
+        // rien passerait aussi les assertions ci-dessus.
+        let runs = App::help_runs("un `230826` et un **appui**");
+        assert_eq!(
+            runs,
+            vec![
+                ("un ", false, false),
+                ("230826", false, true),
+                (" et un ", false, false),
+                ("appui", true, false),
+            ]
+        );
+    }
+
+    /// **Les listes que l'aide montre sont lues, jamais recopiées.**
+    ///
+    /// Une aide qui énumérerait les documents imprimables à la main
+    /// serait fausse à la première ligne ajoutée dans `pdf::DOCS` — et
+    /// fausse en silence, puisque personne ne relit un mode d'emploi
+    /// pour vérifier qu'il a vieilli. Ce test tient l'autre bout :
+    /// chaque section engendrée porte autant de lignes que le registre
+    /// dont elle est tirée.
+    #[test]
+    fn the_generated_sections_are_read_off_their_registers() {
+        let made = App::help_generated();
+        let counts: Vec<usize> = made.iter().map(|(_, lines)| lines.len()).collect();
+        assert_eq!(
+            counts,
+            vec![
+                crate::pdf::DOCS.len(),
+                crate::content::documents().len(),
+                super::MONO_FIELDS.len(),
+            ]
+        );
+        for (title, lines) in &made {
+            assert!(!title.is_empty());
+            for line in lines {
+                assert!(!line.trim().is_empty(), "une ligne vide sous « {title} »");
+            }
+        }
     }
 
     /// **Le modèle de rangée est celui du dessin, et non l'inverse.**

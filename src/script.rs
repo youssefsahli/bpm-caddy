@@ -270,6 +270,133 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
     }
 }
 
+/// Une fonction que la console offre, décrite **là où elle est
+/// enregistrée**.
+///
+/// Une seconde liste, tenue à la main dans l'écran d'aide, finirait par
+/// décrire une console qui n'existe plus : c'est la description que
+/// personne ne relit qui aurait tort, et elle aurait tort en silence.
+/// Un test lit le texte de ce module, y cherche les fonctions
+/// réellement enregistrées, et refuse qu'il en manque une ici — ou
+/// l'inverse.
+pub struct Call {
+    /// Comme on l'écrit : « patients() », « fiche(id) ». Le nom que le
+    /// moteur connaît est ce qui précède la parenthèse.
+    pub call: &'static str,
+    /// Ce qu'elle rend, en une ligne.
+    pub returns: &'static str,
+    /// Les clés des cartes rendues, et ce que chacune porte.
+    pub fields: &'static [(&'static str, &'static str)],
+    /// Ce qu'il faut savoir avant de s'en servir, ou rien.
+    pub note: &'static str,
+    /// Un script court qui marche tel quel — c'est lui que l'explorateur
+    /// pose dans la console, et un test l'exécute.
+    pub example: &'static str,
+}
+
+/// Tout ce qu'un script peut lire. Quatre tableaux et une prose.
+pub const API: &[Call] = &[
+    Call {
+        call: "patients()",
+        returns: "Les dossiers de la base, en tableau de cartes.",
+        fields: &[
+            ("id", "le numéro de dossier"),
+            ("nom", "le nom de famille"),
+            ("prenom", "le prénom"),
+            ("naissance", "la date de naissance, AAAA-MM-JJ"),
+            ("traitements", "les noms des traitements, en tableau"),
+        ],
+        note: "",
+        example: "for p in patients() {\n    \
+                  if p.traitements.len >= 5 { print(`${p.nom} ${p.prenom}`); }\n\
+                  }\n",
+    },
+    Call {
+        call: "medicaments()",
+        returns: "Les fiches de la base, en tableau de cartes.",
+        fields: &[
+            ("id", "le numéro de fiche"),
+            ("nom", "le nom commercial"),
+            ("dci", "la dénomination commune"),
+            ("classe", "la classe thérapeutique, telle qu'elle est écrite"),
+            ("tags", "les étiquettes de la fiche"),
+            ("statut", "commercialisé, arrêté…"),
+        ],
+        note: "Sans la prose : huit cent cinquante monographies entières \
+               seraient quelques mégaoctets recopiés à chaque exécution. \
+               La prose se demande fiche par fiche, par `fiche(id)`.",
+        example: "let sans = [];\n\
+                  for d in medicaments() { if d.classe == \"\" { sans.push(d.nom); } }\n\
+                  `${sans.len} fiche(s) sans classe`\n",
+    },
+    Call {
+        call: "entretiens()",
+        returns: "Les actes du suivi, en tableau de cartes.",
+        fields: &[
+            ("theme", "la thématique, telle qu'elle s'affiche"),
+            ("etat", "l'état de l'acte"),
+            ("mois", "le mois de création, AAAA-MM"),
+            ("minutes", "la durée saisie, en minutes"),
+            ("operateur", "les initiales de qui l'a fait"),
+        ],
+        note: "",
+        example: "let par = #{};\n\
+                  for a in entretiens() {\n    \
+                      let qui = if a.operateur == \"\" { \"(non signé)\" } else { a.operateur };\n    \
+                      par[qui] = if qui in par { par[qui] + 1 } else { 1 };\n\
+                  }\n\
+                  for qui in par.keys() { print(`${qui} : ${par[qui]}`); }\n",
+    },
+    Call {
+        call: "registre()",
+        returns: "Les lignes du registre des stupéfiants, les plus récentes.",
+        fields: &[
+            ("produit", "le libellé de la présentation"),
+            ("nature", "entrée, sortie, inventaire, annulation…"),
+            ("jour", "le jour de la ligne, AAAA-MM-JJ"),
+            ("quantite", "la quantité de la ligne"),
+            ("dossier", "le numéro de dossier, jamais le nom"),
+        ],
+        note: "Une ligne de registre porte le numéro de dossier et non le \
+               nom : un registre s'imprime et se laisse sur un comptoir.",
+        example: "let par = #{};\n\
+                  for l in registre() {\n    \
+                      if l.nature != \"SORTIE\" { continue; }\n    \
+                      let eu = if l.produit in par { par[l.produit] } else { 0 };\n    \
+                      par[l.produit] = eu + l.quantite;\n\
+                  }\n\
+                  for p in par.keys() { print(`${p} : ${par[p]}`); }\n",
+    },
+    Call {
+        call: "fiche(id)",
+        returns: "La prose d'une fiche : une carte de sections.",
+        fields: &[],
+        note: "Les clés sont celles des sections de la monographie, \
+               listées sous « Les sections d'une fiche ». Une section \
+               vide n'est pas dans la carte.",
+        example: "for d in medicaments() {\n    \
+                      let f = fiche(d.id);\n    \
+                      if !(\"mono_f_ddi\" in f) { print(d.nom); }\n\
+                  }\n",
+    },
+];
+
+/// Ce que la console **ne peut pas** faire, dit à qui l'ouvre.
+///
+/// Écrit ici, à côté des bornes qui l'imposent : une phrase rangée dans
+/// l'écran d'aide survivrait au jour où le moteur changerait.
+pub const LIMITS: &[&str] = &[
+    "Un script ne peut rien écrire : la console lit un instantané pris \
+     avant l'exécution, et aucune fonction ne modifie la base.",
+    "Un script n'a ni fichier, ni réseau, ni processus. Le seul chemin \
+     qu'il a vers le monde est le texte qu'il imprime dans le volet.",
+    "Un script s'arrête : le moteur est borné en nombre d'opérations, et \
+     non en secondes — une horloge ferait passer sur un poste ce qui \
+     échoue sur l'autre.",
+    "`print(...)` écrit une ligne dans le volet de sortie ; la dernière \
+     expression du script y est rendue aussi.",
+];
+
 /// Les exemples livrés : ce qu'on ouvre pour comprendre ce que la
 /// console sait faire.
 ///
@@ -490,6 +617,54 @@ mod tests {
     /// éprouvés sur un instantané où chaque table porte quelque chose,
     /// parce qu'un exemple qui ne se casse que sur une base pleine se
     /// casserait chez l'officine et nulle part ici.
+    /// **Toute fonction offerte est décrite, et toute description
+    /// désigne une fonction offerte.**
+    ///
+    /// La description vit à côté de l'enregistrement, et ce test est ce
+    /// qui l'y tient : il lit le texte de ce module, y cherche les
+    /// `register_fn` et compare. Sans lui, ajouter une fonction sans la
+    /// décrire donnerait une console qui sait faire une chose que
+    /// l'explorateur ignore, et retirer une fonction décrite donnerait
+    /// un exemple qui ne s'exécute plus — les deux en silence.
+    #[test]
+    fn every_call_the_console_offers_is_described() {
+        let source = include_str!("script.rs");
+        // Assemblé, comme ailleurs dans la maison : un test qui se lit
+        // lui-même trouverait d'abord son propre repère.
+        let marker = concat!("register_", "fn(\"");
+        let mut registered: Vec<&str> = Vec::new();
+        let mut rest = source;
+        while let Some(at) = rest.find(marker) {
+            rest = &rest[at + marker.len()..];
+            if let Some(end) = rest.find('"') {
+                registered.push(&rest[..end]);
+            }
+        }
+        registered.sort_unstable();
+        let mut described: Vec<&str> = API
+            .iter()
+            .map(|c| c.call.split('(').next().unwrap_or(c.call))
+            .collect();
+        described.sort_unstable();
+        assert_eq!(
+            described, registered,
+            "les fonctions décrites et celles qu'on enregistre"
+        );
+        assert!(!registered.is_empty(), "le repère lui-même doit marcher");
+
+        // Chaque description porte de quoi s'en servir, et son exemple
+        // s'exécute : un exemple qui échoue est pire que pas d'exemple,
+        // puisqu'on l'essaie avant de lire.
+        let data = sample();
+        for c in API {
+            assert!(!c.returns.is_empty(), "{}", c.call);
+            assert!(!c.example.trim().is_empty(), "{}", c.call);
+            let out = run(c.example, &data);
+            assert!(out.error.is_none(), "{} : {:?}", c.call, out.error);
+        }
+        assert!(!LIMITS.is_empty());
+    }
+
     #[test]
     fn every_shipped_example_runs() {
         for (name, source) in EXAMPLES {

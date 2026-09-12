@@ -5,6 +5,55 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.194.0] - 2026-09-12
+
+### Added
+- **Un mode d'emploi qui reste à l'écran, et l'API de la console à
+  côté.** `F12` imprime les raccourcis ; voici l'autre moitié. Un
+  quatrième onglet du volet de droite porte le mode d'emploi — le plan
+  de travail, les rythmes du planning, ce que le registre refuse de
+  faire, pourquoi un écart est énoncé et jamais résorbé —, avec un champ
+  de recherche : un mode d'emploi qu'on fait défiler est un mode
+  d'emploi que personne n'ouvre deux fois. La recherche garde ou écarte
+  une **section entière**, parce qu'un texte dont il ne resterait qu'une
+  phrase sur deux ne se lit pas.
+
+  **Un volet et non une vue**, et c'est le point : on lit un mode
+  d'emploi à côté de ce qu'on est en train de faire, pas à sa place.
+
+- **Et trois listes que l'aide ne rédige pas : elle les lit.** Les
+  documents imprimables, les textes réécrivables, les sections d'une
+  fiche — chacune prise sur le registre qui la porte déjà (`pdf::DOCS`,
+  `content::documents()`, `MONO_FIELDS`). Une aide qui les recopierait
+  serait fausse dès la première ligne ajoutée ailleurs, et fausse en
+  silence : personne ne relit un mode d'emploi pour vérifier qu'il a
+  vieilli.
+
+- **L'API de la console, décrite là où elle est enregistrée.** Chaque
+  fonction qu'un script peut appeler, les clés des cartes qu'elle rend,
+  ce que le moteur refuse — ni fichier, ni réseau, ni écriture, et un
+  arrêt borné en **opérations** et non en secondes. Chacune porte un
+  exemple et un bouton « Essayer » qui le pose dans la console **et
+  l'exécute** : un exemple qu'il faut encore lancer soi-même est une
+  capture d'écran.
+
+  Un test lit le texte de `script.rs`, y cherche les fonctions
+  réellement enregistrées et refuse une description qui aurait dérivé
+  dans un sens comme dans l'autre — puis exécute chaque exemple, parce
+  qu'un exemple qui échoue est pire que pas d'exemple : on l'essaie
+  avant de le lire.
+
+### Fixed
+- **Le markdown du mode d'emploi n'arrive plus à l'écran.** `RichText`
+  n'interprète rien : un astérisque tapé pour appuyer, un accent grave
+  tapé pour citer une date courte se lisaient tels quels — la règle que
+  les trois tables cliniques tiennent chacune par un test, et l'aide est
+  justement écrite là où la marque est un réflexe. Un paragraphe coupé à
+  septante-deux colonnes pour se relire au clavier arrivait par ailleurs
+  à l'écran ligne à ligne, avec une gouttière entre chacune, coupé à une
+  largeur qui n'était pas celle du volet. Tout cela se voyait sur la
+  première capture et sur aucun test.
+
 ## [0.193.0] - 2026-09-12
 
 ### Added

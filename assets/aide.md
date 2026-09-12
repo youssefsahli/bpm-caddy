@@ -23,7 +23,8 @@ Trois volets autour d'un cahier d'onglets.
 Les deux volets latéraux se ferment et se redimensionnent ; leur largeur
 et la vue ouverte sont retrouvées à la session suivante.
 
-Le bouton « ? » de la barre du haut liste tous les raccourcis clavier.
+Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
+clavier.
 C'est la liste à jour : elle est tenue par l'application elle-même, et
 non recopiée ici.
 

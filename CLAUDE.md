@@ -903,8 +903,11 @@ add clicking and typing; it is not the price of entry.
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|script|carnets|caisse|caisses|peaux`
-  — land on a specific view (screenshots, e2e). `about` is the Options
+  finances|stats|companion|script|carnets|caisse|caisses|peaux|aide`
+  — land on a specific view (screenshots, e2e). `aide` is not a view at
+  all: it opens the right-hand dock on its « Aide » tab, which is in no
+  tab strip and therefore reachable no other way.
+  `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the eight skins are picked — each drawn in its
   own palette, which is the one thing only a screenshot can check.
@@ -1143,6 +1146,41 @@ frame (`#set page`, `#set text`, the `#let sec` helper) plus one
 `{{BODY}}`. That is the honest split: the frame is what an officine
 edits, and a body whose structure is computed from a file cannot be
 re-columned from a template.
+
+## L'aide est un volet, et ce qu'elle énumère est lu
+
+`assets/aide.md` is the prose — French, markdown, cut at its
+first-level headings by `help_sections()` (memoised in a `OnceLock`: the
+pane is redrawn sixty times a second). The section is the unit the
+search keeps or drops, because a manual with every other sentence
+missing does not read, and `the_manual_is_cut_into_named_sections`
+refuses a duplicate title and any line that falls outside a section —
+prose written before the first heading would belong to none and never
+appear, with nothing saying so.
+
+Everything that is a **list** is read off the register that already
+holds it: `pdf::DOCS`, `content::documents()`, `MONO_FIELDS`,
+`script::API`, `script::LIMITS`. A manual that recopied one of them
+would be wrong at the first line added elsewhere — and wrong in
+silence, since nobody re-reads a manual to check that it has aged.
+`the_generated_sections_are_read_off_their_registers` holds the other
+end. Note the two registers disagree on purpose: `pdf::DOCS` carries a
+strings **key**, `content::documents()` a resolved **label**; each is
+read as it is written.
+
+The console's API is described **beside the `register_fn` calls** that
+create it, in `src/script.rs`, and
+`every_call_the_console_offers_is_described` reads the module's own
+text, collects the names actually registered and refuses a drift in
+either direction — plus it runs every example against the test
+snapshot, because an example that fails is worse than no example: it is
+tried before it is read. « Essayer » places the example in the console
+**and runs it**.
+
+And the manual goes through the same glyph test as the strings file
+(`every_symbol_the_code_draws_has_a_glyph_in_the_face_that_draws_it`):
+it is text that reaches the screen without being in
+`assets/strings.fr.toml`, and the application ships no font.
 
 ## Releases
 

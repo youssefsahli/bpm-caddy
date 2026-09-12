@@ -296,6 +296,44 @@ mod tests {
             }
         }
 
+        // **Et le mode d'emploi livré**, qui part à l'écran comme
+        // n'importe quelle chaîne sans être dans le fichier de chaînes :
+        // c'est de la prose, écrite en markdown à côté, et le tiret
+        // cadratin, le chevron et l'espace fine s'y glissent aussi bien
+        // que dans un libellé. Avec elle, ce que la console dit d'elle-
+        // même — les bornes et les descriptions de l'API — qui est du
+        // français porté par le code, pour la même raison que les
+        // rythmes ci-dessus.
+        let manual = include_str!("../assets/aide.md");
+        for (c, whence) in manual
+            .chars()
+            .map(|c| (c, "le mode d'emploi"))
+            .chain(
+                crate::script::LIMITS
+                    .iter()
+                    .flat_map(|l| l.chars())
+                    .map(|c| (c, "une borne de la console")),
+            )
+            .chain(
+                crate::script::API
+                    .iter()
+                    .flat_map(|call| {
+                        [call.call, call.returns, call.note]
+                            .into_iter()
+                            .chain(call.fields.iter().flat_map(|(f, w)| [*f, *w]))
+                    })
+                    .flat_map(str::chars)
+                    .map(|c| (c, "la description de l'API")),
+            )
+            .filter(|(c, _)| !c.is_control())
+        {
+            assert!(
+                fonts.has_glyph(&body, c),
+                "« {c} » (U+{:04X}) est écrit dans {whence} et n'a pas de glyphe",
+                c as u32
+            );
+        }
+
         // Only ever set in a key chip, which is monospace.
         for c in ['\u{2190}', '\u{2192}', '\u{2191}', '\u{2193}'] {
             assert!(
