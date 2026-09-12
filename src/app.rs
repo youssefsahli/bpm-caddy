@@ -1615,6 +1615,92 @@ fn day_in(period: &[String], picked: &str, today: &str, fallback: usize) -> Stri
         .unwrap_or_else(|| picked.to_owned())
 }
 
+/// Une ligne de l'explorateur, mesurée : le texte de droite déjà
+/// composé — c'est le seul que le tableau fabrique, les autres sont
+/// dans la fiche —, s'il s'écrit en alerte, et la hauteur que la ligne a
+/// prise.
+struct ExplorerRow {
+    text: String,
+    alert: bool,
+    h: f32,
+}
+
+/// Une section du tableau : ses lignes, et les hauts cumulés qui
+/// permettent de trouver la première visible par dichotomie.
+///
+/// `offsets` en a **une de plus** que de lignes : la dernière est le bas
+/// de la section, et c'est elle qui donne l'espace à réserver sous la
+/// tranche dessinée.
+#[derive(Default)]
+struct ExplorerSection {
+    rows: Vec<ExplorerRow>,
+    offsets: Vec<f32>,
+}
+
+/// Ce que le tableau de l'explorateur a mesuré, pour ne pas le remesurer
+/// soixante fois par seconde.
+///
+/// **Huit cent soixante-deux lignes** sur l'axe des demi-vies, deux
+/// cent quatre-vingt-huit sur le plus chargé des organes. C'est le seul
+/// écran de cette application qui en ait autant, et il les posait toutes
+/// à chaque image : mesuré, une image coûtait **86 ms en débogage et
+/// 3 ms en publication** pour les demi-vies, 21 ms pour un organe — onze
+/// images par seconde d'un côté, un cinquième du budget d'une image de
+/// l'autre, pour un seul tableau. Une `ScrollArea` n'écarte que la
+/// *peinture* de ce qui sort de l'écran ; la mise en page, elle, a lieu
+/// pour tout le monde.
+///
+/// Seule la tranche visible est posée désormais, et le reste est deux
+/// espaces : **1,3 ms** dans les deux cas, en débogage. Le test qui
+/// tient la manœuvre est
+/// `the_explorer_table_is_as_tall_whatever_it_draws`, et il redit ces
+/// temps quand on le lance avec `--nocapture`.
+///
+/// La clé est **l'axe, les largeurs et la taille du corps**, et rien
+/// d'autre : les facettes sont `'static` et ne bougent pas de la
+/// session, donc aucun compteur de révision n'a de sens ici — c'est la
+/// mise en page qui change, jamais la donnée.
+///
+/// Une section pour l'axe des demi-vies ; deux pour un organe, ce qu'il
+/// altère et ce qu'il traite, qui ne se mélangent pas.
+#[derive(Default)]
+struct ExplorerTable {
+    key: [u32; 5],
+    sections: Vec<ExplorerSection>,
+}
+
+/// La tranche de lignes qu'une fenêtre montre, `offsets` étant les hauts
+/// cumulés et `[from, to]` la fenêtre, comptés depuis le haut de la
+/// section.
+///
+/// Dichotomie et non parcours : parcourir huit cent soixante-deux cumuls
+/// à chaque image rendrait une partie de ce qu'on vient d'économiser, et
+/// surtout remettrait le coût en proportion du nombre de lignes — or
+/// c'est exactement ce dont on essaie de sortir.
+///
+/// La première ligne visible est la dernière dont le haut est **au plus**
+/// `from` : une ligne à cheval sur le bord haut se montre par sa moitié
+/// basse, et la sauter laisserait un trou.
+fn visible_rows(offsets: &[f32], from: f32, to: f32) -> std::ops::Range<usize> {
+    if offsets.len() < 2 {
+        return 0..0;
+    }
+    let rows = offsets.len() - 1;
+    let first = match offsets.binary_search_by(|o| o.total_cmp(&from)) {
+        Ok(i) => i,
+        // `Err(i)` est le rang d'insertion : la ligne précédente est
+        // celle qui contient `from`.
+        Err(i) => i.saturating_sub(1),
+    }
+    .min(rows);
+    let last = match offsets.binary_search_by(|o| o.total_cmp(&to)) {
+        Ok(i) => i,
+        Err(i) => i,
+    }
+    .min(rows);
+    first..last.max(first)
+}
+
 /// La jauge de charge d'une colonne de semaine : un filet, et un filet
 /// n'a pas de fonte.
 const WEEK_BAR_H: f32 = 3.0;
@@ -3521,6 +3607,8 @@ struct Session {
     /// Quel axe l'explorateur de facettes montre : 0 = la demi-vie,
     /// puis les organes renseignés dans l'ordre de `Organ::ALL`.
     explorer_axis: usize,
+    /// Ce que le tableau des demi-vies a mesuré : voir [`ExplorerTable`].
+    explorer_table: ExplorerTable,
     /// La famille ouverte dans la vue des classes, et la classe ouverte
     /// dedans — des **indices** dans `crate::classes`, jamais des
     /// copies : la table est statique et vit aussi longtemps que le
@@ -4079,6 +4167,7 @@ impl Session {
             show_scans: None,
             registre_tab: RegistreTab::default(),
             explorer_axis: 0,
+            explorer_table: ExplorerTable::default(),
             class_family: 0,
             class_open: None,
             class_counts: std::collections::HashMap::new(),
@@ -28509,8 +28598,410 @@ impl App {
         }
     }
 
+    /// L'espacement vertical entre deux lignes du tableau de
+    /// l'explorateur, et celui entre la demi-vie et sa note.
+    ///
+    /// Ils sont écrits une fois : la mesure et le dessin les prennent au
+    /// même endroit. Et **le tableau met l'espacement d'egui à zéro pour
+    /// les poser lui-même** — `Ui::cursor()` rend l'endroit où le
+    /// prochain objet *commencera*, mais egui glisse un `item_spacing.y`
+    /// juste avant de le poser. Une zébrure peinte au curseur tombait
+    /// donc dix pixels au-dessus de sa ligne, et l'écart s'accumulait :
+    /// au bout de trente lignes, la bande grise était sous le nom de la
+    /// ligne d'avant. Un espacement qu'on pose soi-même est un
+    /// espacement qu'on peut mesurer.
+    const EXPLORER_ROW_GAP: f32 = 6.0;
+    const EXPLORER_NOTE_GAP: f32 = 3.0;
+
+    /// Une cellule de largeur imposée, empilant ce qu'on lui donne.
+    fn explorer_cell(ui: &mut egui::Ui, w: f32, add: &mut dyn FnMut(&mut egui::Ui)) {
+        ui.allocate_ui_with_layout(
+            egui::vec2(w, 0.0),
+            egui::Layout::top_down(egui::Align::LEFT),
+            |ui| {
+                ui.set_width(w);
+                add(ui);
+            },
+        );
+    }
+
+    /// Poser une ligne de l'axe des demi-vies.
+    ///
+    /// **C'est la même fonction qui mesure et qui dessine**, et c'est la
+    /// seule façon d'en être sûr : une hauteur calculée à côté finit par
+    /// ne plus être celle de la ligne, et cela se voit tout de suite —
+    /// la zébrure glisse sous le texte, et la barre de défilement ment
+    /// sur la longueur du tableau.
+    fn explorer_row_half_life(
+        ui: &mut egui::Ui,
+        f: &crate::facets::Facets,
+        row: &ExplorerRow,
+        widths: (f32, f32, f32),
+        open: &mut Option<String>,
+    ) {
+        let (name_w, value_w, rest_w) = widths;
+        ui.horizontal(|ui| {
+            Self::explorer_cell(ui, name_w, &mut |ui| {
+                if ui
+                    .add(
+                        egui::Label::new(f.name)
+                            .truncate()
+                            .sense(egui::Sense::click()),
+                    )
+                    .clicked()
+                {
+                    *open = Some(f.name.to_owned());
+                }
+            });
+            // « Ce qui dure au-delà » qualifie la demi-vie : sa place est
+            // sous elle, et non dans une quatrième colonne que le volet
+            // ne peut pas montrer.
+            Self::explorer_cell(ui, value_w, &mut |ui| {
+                ui.label(egui::RichText::new(f.half_life.label()).color(
+                    match f.half_life.sort_key() {
+                        Some(_) => motif::text(),
+                        None => motif::text_faint(),
+                    },
+                ));
+                if !f.beyond.is_empty() {
+                    ui.add_space(Self::EXPLORER_NOTE_GAP);
+                    let small = egui::TextStyle::Body.resolve(ui.style()).size * 0.85;
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(f.beyond)
+                                .size(small)
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                }
+            });
+            // Les organes que la fiche altère, le plus lourd en tête :
+            // c'est ce qui fait le lien entre les deux façons de lire la
+            // même donnée.
+            Self::explorer_cell(ui, rest_w, &mut |ui| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(row.text.as_str()).color(if row.alert {
+                        motif::alert()
+                    } else {
+                        motif::text_dim()
+                    }))
+                    .wrap(),
+                );
+            });
+        });
+    }
+
+    /// Poser une ligne d'un axe par organe : le poids, la fiche, et ce
+    /// que la monographie en dit.
+    fn explorer_row_organ(
+        ui: &mut egui::Ui,
+        entry: &(&'static crate::facets::Facets, crate::facets::Impact),
+        row: &ExplorerRow,
+        widths: (f32, f32, f32),
+        open: &mut Option<String>,
+    ) {
+        use crate::facets::Grade;
+        let (name_w, value_w, rest_w) = widths;
+        let (f, im) = entry;
+        ui.horizontal(|ui| {
+            Self::explorer_cell(ui, value_w, &mut |ui| {
+                ui.add(
+                    egui::Label::new(egui::RichText::new(im.grade.label()).color(match im.grade {
+                        Grade::Majeur => motif::alert(),
+                        Grade::Notable => motif::text(),
+                        Grade::Mineur => motif::text_dim(),
+                    }))
+                    .truncate(),
+                );
+            });
+            Self::explorer_cell(ui, name_w, &mut |ui| {
+                if ui
+                    .add(
+                        egui::Label::new(f.name)
+                            .truncate()
+                            .sense(egui::Sense::click()),
+                    )
+                    .clicked()
+                {
+                    *open = Some(f.name.to_owned());
+                }
+            });
+            Self::explorer_cell(ui, rest_w, &mut |ui| {
+                ui.add(egui::Label::new(row.text.as_str()).wrap());
+            });
+        });
+    }
+
+    /// Mesurer une section **une fois** pour ces largeurs-là : la
+    /// hauteur de chaque ligne, et les cumuls.
+    ///
+    /// Le coût est celui d'une image d'autrefois, et il n'est payé qu'au
+    /// changement d'axe, de largeur ou de taille du texte.
+    ///
+    /// La hauteur d'une ligne est **ce qu'elle a consommé** et non ce que
+    /// sa rangée dit occuper : `ui.horizontal` part d'une hauteur
+    /// minimale d'`interact_size.y` et rend un rectangle qui n'est pas
+    /// toujours celui dont le curseur a avancé. Ce qui compte pour
+    /// empiler des lignes, c'est l'avance du curseur.
+    fn explorer_measure(
+        ui: &egui::Ui,
+        gapx: f32,
+        full: f32,
+        salt: &str,
+        rows: Vec<ExplorerRow>,
+        mut draw: impl FnMut(&mut egui::Ui, usize, &ExplorerRow),
+    ) -> ExplorerSection {
+        // Un `Ui` à part, invisible : il porte le style du vrai — donc la
+        // même fonte et la même échelle — et **la même largeur**, qui
+        // n'est pas un détail, `ui.horizontal` partant de la largeur
+        // disponible. Pas de passe de dimensionnement : celle-ci fait
+        // exprès de ne pas envelopper le texte, c'est-à-dire le contraire
+        // de ce qu'on veut mesurer.
+        // **Un identifiant par section.** Les deux sections d'un organe
+        // se mesurent dans la même image ; deux `Ui` du même nom, et
+        // egui écrit sa plainte en rouge en travers de l'écran — c'est
+        // la panne des deux `ScrollArea` anonymes, à l'identique.
+        let id = egui::Id::new(("explorer_measure", salt));
+        let mut scratch = egui::Ui::new(
+            ui.ctx().clone(),
+            egui::LayerId::new(egui::Order::Background, id),
+            id,
+            egui::UiBuilder::new()
+                .invisible()
+                .style(ui.style().clone())
+                .max_rect(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(full.max(1.0), f32::INFINITY),
+                )),
+        );
+        scratch.spacing_mut().item_spacing = egui::vec2(gapx, 0.0);
+        let mut rows = rows;
+        let mut offsets = Vec::with_capacity(rows.len() + 1);
+        let mut at = 0.0_f32;
+        for (i, row) in rows.iter_mut().enumerate() {
+            let before = scratch.cursor().top();
+            draw(&mut scratch, i, row);
+            row.h = scratch.cursor().top() - before;
+            offsets.push(at);
+            at += row.h + Self::EXPLORER_ROW_GAP;
+            scratch.add_space(Self::EXPLORER_ROW_GAP);
+        }
+        offsets.push(at);
+        ExplorerSection { rows, offsets }
+    }
+
+    /// Poser une section sans poser ce qu'on ne voit pas : la tranche
+    /// visible, et deux espaces pour tout le reste.
+    ///
+    /// `viewport` vient de `ScrollArea::show_viewport` et compte **depuis
+    /// le haut du contenu**, pas depuis l'écran ; `origin` est la
+    /// position à l'écran de ce zéro-là. Mélanger les deux repères donne
+    /// un tableau juste tant qu'on n'a pas défilé, et faux ensuite — ce
+    /// qui est la pire des deux façons d'avoir tort.
+    fn explorer_section(
+        ui: &mut egui::Ui,
+        section: &ExplorerSection,
+        viewport: egui::Rect,
+        origin: f32,
+        mut draw: impl FnMut(&mut egui::Ui, usize, &ExplorerRow),
+    ) {
+        let start = ui.cursor().top() - origin;
+        let range = visible_rows(
+            &section.offsets,
+            viewport.min.y - start,
+            viewport.max.y - start,
+        );
+        let total = section.offsets.last().copied().unwrap_or(0.0);
+        ui.add_space(section.offsets.get(range.start).copied().unwrap_or(0.0));
+        for i in range.clone() {
+            let row = &section.rows[i];
+            // La zébrure est peinte **avant** la ligne, à la hauteur que
+            // la ligne a prise lors de la mesure — qui est la même
+            // fonction que le dessin, donc la même hauteur. Peinte après,
+            // elle couvrirait le texte.
+            if i % 2 == 1 {
+                let top = ui.cursor().top();
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::pos2(ui.max_rect().left(), top),
+                        egui::vec2(ui.available_width(), row.h),
+                    ),
+                    0.0,
+                    motif::stripe(),
+                );
+            }
+            draw(ui, i, row);
+            ui.add_space(Self::EXPLORER_ROW_GAP);
+        }
+        // Et ce qui reste dessous, pour que la barre de défilement dise
+        // la vérité sur la longueur du tableau.
+        ui.add_space(total - section.offsets.get(range.end).copied().unwrap_or(total));
+    }
+
+    /// Ce qui, en changeant, oblige à remesurer : l'axe, les trois
+    /// largeurs et la taille du corps. Les facettes, elles, sont
+    /// `'static`.
+    fn explorer_key(ui: &egui::Ui, axis: usize, widths: (f32, f32, f32)) -> [u32; 5] {
+        [
+            axis as u32,
+            widths.0.to_bits(),
+            widths.1.to_bits(),
+            widths.2.to_bits(),
+            egui::TextStyle::Body.resolve(ui.style()).size.to_bits(),
+        ]
+    }
+
+    /// Le corps de l'explorateur : l'axe des demi-vies, ou les deux
+    /// sections d'un organe.
+    ///
+    /// L'en-tête et les zébrures sont dessinés à la main plutôt que
+    /// confiés à une `egui::Grid` : une grille veut toutes ses lignes
+    /// pour décider de ses colonnes, et c'est justement ce qu'on ne veut
+    /// plus lui donner. Les trois largeurs sont imposées par l'appelant,
+    /// donc la grille ne décidait de rien.
+    #[allow(clippy::too_many_arguments)]
+    fn explorer_table(
+        ui: &mut egui::Ui,
+        axis: Option<crate::facets::Organ>,
+        axis_ix: usize,
+        widths: (f32, f32, f32),
+        gapx: f32,
+        table: &mut ExplorerTable,
+        viewport: egui::Rect,
+        open: &mut Option<String>,
+    ) {
+        use crate::facets::{Effect, Grade};
+        let (name_w, value_w, rest_w) = widths;
+        let origin = ui.cursor().top();
+        let full = ui.available_width();
+        // L'espacement vertical est posé à la main — voir
+        // `EXPLORER_ROW_GAP`. À zéro, `ui.cursor()` est exactement le
+        // haut de ce qui vient, et la zébrure tombe sur sa ligne.
+        ui.spacing_mut().item_spacing = egui::vec2(gapx, 0.0);
+        if table.key != Self::explorer_key(ui, axis_ix, widths) {
+            table.key = Self::explorer_key(ui, axis_ix, widths);
+            table.sections = match axis {
+                None => {
+                    let rows = crate::facets::by_half_life_desc()
+                        .iter()
+                        .map(|f| {
+                            // Le tri et la jointure étaient refaits par
+                            // ligne et par image — deux allocations et un
+                            // tri, huit cent soixante-deux fois, soixante
+                            // fois par seconde.
+                            let mut harms: Vec<&crate::facets::Impact> = f
+                                .impacts
+                                .iter()
+                                .filter(|i| i.effect == Effect::Altere)
+                                .collect();
+                            harms.sort_by_key(|i| std::cmp::Reverse(i.grade));
+                            ExplorerRow {
+                                alert: harms.iter().any(|i| i.grade == Grade::Majeur),
+                                text: harms
+                                    .iter()
+                                    .map(|i| i.organ.label())
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                h: 0.0,
+                            }
+                        })
+                        .collect();
+                    let facets = crate::facets::by_half_life_desc();
+                    let mut sink = None;
+                    vec![Self::explorer_measure(
+                        ui,
+                        gapx,
+                        full,
+                        "demi-vie",
+                        rows,
+                        |ui, i, row| {
+                            Self::explorer_row_half_life(ui, &facets[i], row, widths, &mut sink);
+                        },
+                    )]
+                }
+                Some(organ) => [Effect::Altere, Effect::Traite]
+                    .into_iter()
+                    .map(|effect| {
+                        let entries = crate::facets::on_organ(organ, effect);
+                        let rows = entries
+                            .iter()
+                            .map(|(_, im)| ExplorerRow {
+                                text: im.why.to_owned(),
+                                alert: false,
+                                h: 0.0,
+                            })
+                            .collect();
+                        let mut sink = None;
+                        Self::explorer_measure(
+                            ui,
+                            gapx,
+                            full,
+                            effect.label(),
+                            rows,
+                            |ui, i, row| {
+                                Self::explorer_row_organ(ui, &entries[i], row, widths, &mut sink);
+                            },
+                        )
+                    })
+                    .collect(),
+            };
+        }
+        match axis {
+            None => {
+                ui.horizontal(|ui| {
+                    for (w, key) in [
+                        (name_w, "explorer_col_card"),
+                        (value_w, "explorer_col_half_life"),
+                        (rest_w, "explorer_col_organs"),
+                    ] {
+                        Self::explorer_cell(ui, w, &mut |ui| {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(tr(key)).strong()).truncate(),
+                            );
+                        });
+                    }
+                });
+                ui.add_space(Self::EXPLORER_ROW_GAP);
+                let facets = crate::facets::by_half_life_desc();
+                if let Some(section) = table.sections.first() {
+                    Self::explorer_section(ui, section, viewport, origin, |ui, i, row| {
+                        Self::explorer_row_half_life(ui, &facets[i], row, widths, open);
+                    });
+                }
+            }
+            Some(organ) => {
+                for (effect, section) in [Effect::Altere, Effect::Traite]
+                    .into_iter()
+                    .zip(table.sections.iter())
+                {
+                    let entries = crate::facets::on_organ(organ, effect);
+                    if entries.is_empty() {
+                        continue;
+                    }
+                    motif::section(
+                        ui,
+                        &trf(
+                            if effect == Effect::Altere {
+                                "explorer_section_harms"
+                            } else {
+                                "explorer_section_treats"
+                            },
+                            organ.label(),
+                        ),
+                    );
+                    ui.add_space(Self::EXPLORER_ROW_GAP);
+                    Self::explorer_section(ui, section, viewport, origin, |ui, i, row| {
+                        Self::explorer_row_organ(ui, &entries[i], row, widths, open);
+                    });
+                    ui.add_space(8.0);
+                }
+            }
+        }
+    }
+
     fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
-        use crate::facets::{Effect, Grade, Organ};
+        use crate::facets::Organ;
         let body = motif::visible_rect(ui);
         let gap = ui.spacing().item_spacing.x;
 
@@ -28614,6 +29105,11 @@ impl App {
         });
 
         let mut open: Option<String> = None;
+        // Le cache du tableau est emprunté ici : la fermeture du panneau
+        // n'a plus besoin de la session entière, et c'est la seule chose
+        // qu'elle lui prend.
+        let session_axis = session.explorer_axis;
+        let table = &mut session.explorer_table;
         motif::panel(ui, strip[2], None, |ui| {
             // **Ce tableau se replie, il ne défile pas de côté.** Ses
             // colonnes ne sont pas des phrases entières comme celles des
@@ -28634,186 +29130,23 @@ impl App {
             let name_w = chars_wide(ui, 24.0).min(body_w * 0.34);
             let value_w = chars_wide(ui, 16.0).min(body_w * 0.24);
             let rest_w = (body_w - name_w - value_w - gapx * 2.0).max(chars_wide(ui, 10.0));
+            // **`show_viewport` et non `show`** : c'est lui qui dit
+            // quelle tranche du contenu est à l'écran, et le tableau ne
+            // pose que celle-là. Voir `ExplorerTable`.
             egui::ScrollArea::vertical()
                 .id_salt("explorer_body")
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.visuals_mut().faint_bg_color = motif::bg_dark();
-                    match axis {
-                        None => {
-                            egui::Grid::new("explorer_hl")
-                                .num_columns(3)
-                                .spacing([gap * 2.0, 6.0])
-                                .striped(true)
-                                .show(ui, |ui| {
-                                    Self::grid_cell(
-                                        ui,
-                                        name_w,
-                                        egui::RichText::new(tr("explorer_col_card")).strong(),
-                                    );
-                                    Self::grid_cell(
-                                        ui,
-                                        value_w,
-                                        egui::RichText::new(tr("explorer_col_half_life")).strong(),
-                                    );
-                                    Self::grid_cell(
-                                        ui,
-                                        rest_w,
-                                        egui::RichText::new(tr("explorer_col_organs")).strong(),
-                                    );
-                                    ui.end_row();
-                                    for f in crate::facets::by_half_life_desc() {
-                                        if ui
-                                            .allocate_ui_with_layout(
-                                                egui::vec2(name_w, 0.0),
-                                                egui::Layout::left_to_right(egui::Align::TOP),
-                                                |ui| {
-                                                    ui.set_width(name_w);
-                                                    ui.add(
-                                                        egui::Label::new(f.name)
-                                                            .truncate()
-                                                            .sense(egui::Sense::click()),
-                                                    )
-                                                },
-                                            )
-                                            .inner
-                                            .clicked()
-                                        {
-                                            open = Some(f.name.to_owned());
-                                        }
-                                        let value = f.half_life.label();
-                                        let colour = match f.half_life.sort_key() {
-                                            Some(_) => motif::text(),
-                                            None => motif::text_faint(),
-                                        };
-                                        // « Ce qui dure au-delà » qualifie la
-                                        // demi-vie : sa place est sous elle, et
-                                        // non dans une quatrième colonne que le
-                                        // volet ne peut pas montrer.
-                                        // Un `scope` et non `allocate_ui_with_layout` :
-                                        // celui-ci réserve la taille qu'on lui
-                                        // demande, et une hauteur nulle laisse la
-                                        // note déborder sur la ligne d'en dessous —
-                                        // « interactions des » se peignait par-dessus
-                                        // « 70 j ». Le `scope` prend la hauteur de ce
-                                        // qu'il contient, et la grille suit.
-                                        ui.scope(|ui| {
-                                            ui.set_max_width(value_w);
-                                            // Verticale : la note est *sous* la
-                                            // valeur, et la disposition d'une
-                                            // cellule de grille ne l'est pas.
-                                            ui.vertical(|ui| {
-                                                ui.label(egui::RichText::new(value).color(colour));
-                                                if !f.beyond.is_empty() {
-                                                    let small = egui::TextStyle::Body
-                                                        .resolve(ui.style())
-                                                        .size
-                                                        * 0.85;
-                                                    ui.add(
-                                                        egui::Label::new(
-                                                            egui::RichText::new(f.beyond)
-                                                                .size(small)
-                                                                .color(motif::text_dim()),
-                                                        )
-                                                        .wrap(),
-                                                    );
-                                                }
-                                            });
-                                        });
-                                        // Les organes que la fiche altère,
-                                        // le plus lourd en tête : c'est ce
-                                        // qui fait le lien entre les deux
-                                        // façons de lire la même donnée.
-                                        let mut harms: Vec<&crate::facets::Impact> = f
-                                            .impacts
-                                            .iter()
-                                            .filter(|i| i.effect == Effect::Altere)
-                                            .collect();
-                                        harms.sort_by_key(|i| std::cmp::Reverse(i.grade));
-                                        let organs: Vec<&str> =
-                                            harms.iter().map(|i| i.organ.label()).collect();
-                                        let tint = if harms.iter().any(|i| i.grade == Grade::Majeur)
-                                        {
-                                            motif::alert()
-                                        } else {
-                                            motif::text_dim()
-                                        };
-                                        ui.scope(|ui| {
-                                            ui.set_max_width(rest_w);
-                                            ui.add(
-                                                egui::Label::new(
-                                                    egui::RichText::new(organs.join(", "))
-                                                        .color(tint),
-                                                )
-                                                .wrap(),
-                                            );
-                                        });
-                                        ui.end_row();
-                                    }
-                                });
-                        }
-                        Some(organ) => {
-                            for effect in [Effect::Altere, Effect::Traite] {
-                                let rows = crate::facets::on_organ(organ, effect);
-                                if rows.is_empty() {
-                                    continue;
-                                }
-                                motif::section(
-                                    ui,
-                                    &trf(
-                                        if effect == Effect::Altere {
-                                            "explorer_section_harms"
-                                        } else {
-                                            "explorer_section_treats"
-                                        },
-                                        organ.label(),
-                                    ),
-                                );
-                                egui::Grid::new(("explorer_organ", organ.label(), effect.label()))
-                                    .num_columns(3)
-                                    .spacing([gap * 2.0, 6.0])
-                                    .striped(true)
-                                    .show(ui, |ui| {
-                                        for (f, im) in rows {
-                                            let tint = match im.grade {
-                                                Grade::Majeur => motif::alert(),
-                                                Grade::Notable => motif::text(),
-                                                Grade::Mineur => motif::text_dim(),
-                                            };
-                                            Self::grid_cell(
-                                                ui,
-                                                value_w,
-                                                egui::RichText::new(im.grade.label()).color(tint),
-                                            );
-                                            if ui
-                                                .allocate_ui_with_layout(
-                                                    egui::vec2(name_w, 0.0),
-                                                    egui::Layout::left_to_right(egui::Align::TOP),
-                                                    |ui| {
-                                                        ui.set_width(name_w);
-                                                        ui.add(
-                                                            egui::Label::new(f.name)
-                                                                .truncate()
-                                                                .sense(egui::Sense::click()),
-                                                        )
-                                                    },
-                                                )
-                                                .inner
-                                                .clicked()
-                                            {
-                                                open = Some(f.name.to_owned());
-                                            }
-                                            ui.scope(|ui| {
-                                                ui.set_max_width(rest_w);
-                                                ui.add(egui::Label::new(im.why).wrap());
-                                            });
-                                            ui.end_row();
-                                        }
-                                    });
-                                ui.add_space(8.0);
-                            }
-                        }
-                    }
+                .show_viewport(ui, |ui, viewport| {
+                    Self::explorer_table(
+                        ui,
+                        axis,
+                        session_axis,
+                        (name_w, value_w, rest_w),
+                        gap * 2.0,
+                        table,
+                        viewport,
+                        &mut open,
+                    );
                 });
         });
         let _ = config;
@@ -45069,6 +45402,145 @@ mod tests {
         // rend aucun, et le plan de semaine ne s'imprime pas.
         assert!(super::week_of("").is_empty());
         assert!(super::week_of("hier").is_empty());
+    }
+
+    /// **La tranche visible d'une fenêtre de défilement**, par
+    /// dichotomie sur les hauts cumulés.
+    #[test]
+    fn a_scroll_window_shows_the_rows_it_crosses() {
+        // Quatre lignes de dix pixels : 0, 10, 20, 30, et 40 au bas.
+        let offsets: Vec<f32> = (0..=4).map(|i| i as f32 * 10.0).collect();
+        // Une fenêtre sur les deux premières.
+        assert_eq!(super::visible_rows(&offsets, 0.0, 20.0), 0..2);
+        // **Une ligne à cheval sur le bord haut reste dessinée** : à
+        // partir de 15, la ligne 1 montre sa moitié basse, et la sauter
+        // laisserait un trou en haut de l'écran.
+        assert_eq!(super::visible_rows(&offsets, 15.0, 25.0), 1..3);
+        // Une fenêtre plus haute que le tableau ne réclame pas de ligne
+        // qui n'existe pas.
+        assert_eq!(super::visible_rows(&offsets, 0.0, 400.0), 0..4);
+        // Une fenêtre au-delà du bas ne rend rien plutôt qu'un rang
+        // négatif — le défilement peut dépasser, l'élan des pavés
+        // tactiles le fait.
+        let past = super::visible_rows(&offsets, 100.0, 140.0);
+        assert!(past.start >= past.end || past.end <= 4);
+        // Un tableau vide n'a pas de tranche.
+        assert_eq!(super::visible_rows(&[], 0.0, 10.0), 0..0);
+        assert_eq!(super::visible_rows(&[0.0], 0.0, 10.0), 0..0);
+    }
+
+    /// **Ce que le tableau des demi-vies occupe ne dépend pas de la
+    /// tranche qu'il dessine.** C'est toute la garantie de la
+    /// virtualisation, et c'est ce qui se casse en premier.
+    ///
+    /// Huit cent soixante-deux lignes posées à chaque image coûtaient,
+    /// mesuré : **86 ms en débogage, 3 ms en publication** — onze images
+    /// par seconde d'un côté, un cinquième du budget d'une image de
+    /// l'autre, pour un seul tableau. Une `ScrollArea` n'écarte que la
+    /// *peinture* de ce qui sort de l'écran ; la mise en page a lieu
+    /// pour tout le monde. Seules les lignes visibles sont posées
+    /// désormais, et le reste est deux espaces : **1,6 ms**.
+    ///
+    /// Le risque de la manœuvre est que les espaces ne vaillent pas les
+    /// lignes qu'ils remplacent — la barre de défilement mentirait, et
+    /// les lignes sauteraient en défilant. Le test dessine donc le même
+    /// tableau à travers deux fenêtres, l'une qui montre tout et l'autre
+    /// une poignée de lignes, et demande la même hauteur.
+    ///
+    /// Lancer `cargo test the_explorer_table -- --nocapture` pour revoir
+    /// les temps.
+    #[test]
+    fn the_explorer_table_is_as_tall_whatever_it_draws() {
+        let widths = (200.0, 140.0, 300.0);
+        let draw = |axis: Option<crate::facets::Organ>,
+                    axis_ix: usize,
+                    viewport_h: f32|
+         -> (f32, usize, std::time::Duration) {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, 1.0, motif::Density::Comfortable);
+            let mut table = super::ExplorerTable::default();
+            let out = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+            let mut spent = std::time::Duration::ZERO;
+            // Deux images : la première mesure, la seconde est celle
+            // qu'on regarde.
+            for _ in 0..2 {
+                let t0 = std::time::Instant::now();
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let mut open = None;
+                        let before = ui.cursor().top();
+                        App::explorer_table(
+                            ui,
+                            axis,
+                            axis_ix,
+                            widths,
+                            12.0,
+                            &mut table,
+                            egui::Rect::from_min_size(
+                                egui::pos2(0.0, 0.0),
+                                egui::vec2(660.0, viewport_h),
+                            ),
+                            &mut open,
+                        );
+                        *out.borrow_mut() = (
+                            ui.cursor().top() - before,
+                            table
+                                .sections
+                                .iter()
+                                .filter_map(|sec| sec.offsets.last().copied())
+                                .sum::<f32>(),
+                        );
+                    });
+                });
+                spent = t0.elapsed();
+            }
+            let (drawn, promised) = out.into_inner();
+            (drawn, promised as usize, spent)
+        };
+        let (whole, promised, t_whole) = draw(None, 0, 1_000_000.0);
+        let (window, _, t_window) = draw(None, 0, 600.0);
+        println!(
+            "demi-vies : {} lignes, annoncé {promised}, tout {whole} en {t_whole:?}, fenêtre {window} en {t_window:?}",
+            crate::facets::by_half_life_desc().len()
+        );
+        // **Et l'axe par organe, qui a deux sections.** Une seule
+        // suffisait à faire passer la mesure pour juste : c'est la
+        // seconde, posée après un intitulé et l'espace qui va avec, qui
+        // dit si le repère du contenu a été tenu jusqu'au bout.
+        let organ = crate::facets::Organ::Neuro;
+        let (o_whole, _, o_t_whole) = draw(Some(organ), 9, 1_000_000.0);
+        let (o_window, _, o_t_window) = draw(Some(organ), 9, 600.0);
+        println!(
+            "neurologique : {} + {} lignes, tout {o_whole} en {o_t_whole:?}, fenêtre {o_window} en {o_t_window:?}",
+            crate::facets::on_organ(organ, crate::facets::Effect::Altere).len(),
+            crate::facets::on_organ(organ, crate::facets::Effect::Traite).len()
+        );
+        assert!(
+            (o_whole - o_window).abs() < 1.0,
+            "organe — tout : {o_whole}, fenêtre : {o_window}"
+        );
+        assert!(
+            o_t_window <= o_t_whole,
+            "organe — fenêtre {o_t_window:?} contre tout {o_t_whole:?}"
+        );
+        // Le tableau est aussi haut dans les deux cas : les espaces
+        // valent exactement les lignes qu'ils remplacent.
+        assert!(
+            (whole - window).abs() < 1.0,
+            "tout : {whole}, fenêtre : {window}"
+        );
+        // Et il est bien aussi haut que ce qu'il annonce, à l'en-tête
+        // près — sans quoi la barre de défilement mentirait.
+        assert!(
+            whole > promised as f32 && whole - (promised as f32) < 80.0,
+            "annoncé {promised}, occupé {whole}"
+        );
+        // Enfin, la fenêtre étroite doit être **plus rapide**, sinon la
+        // virtualisation ne virtualise rien.
+        assert!(
+            t_window <= t_whole,
+            "fenêtre {t_window:?} contre tout {t_whole:?}"
+        );
     }
 
     /// **Une colonne de semaine tient les rangées qu'elle annonce**, et
