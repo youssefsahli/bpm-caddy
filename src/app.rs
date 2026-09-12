@@ -1569,6 +1569,32 @@ fn arrow_move(at: Option<usize>, last: usize, dx: i64) -> ArrowMove {
     }
 }
 
+/// Combien d'entrées une case dessine, et combien il lui reste à
+/// **annoncer**, quand elle a `room` places et qu'annoncer en coûte
+/// `cost`.
+///
+/// Deux règles, et la grille de la semaine les enfreignait toutes les
+/// deux. **Ce qui n'est pas dessiné est annoncé** : son « +N » ne
+/// comptait que les rendez-vous, là où la colonne dessinait les
+/// rendez-vous *et* les autres entrées, si bien qu'un jour de trois
+/// rendez-vous et cinq réunions en montrait quatre et perdait les
+/// quatre autres sans un mot. Et **le compte a sa place** : il était
+/// peint à huit pixels du bas, c'est-à-dire par-dessus le dernier bloc,
+/// qu'il rendait illisible en annonçant ce qui manquait. Une rangée en
+/// moins vaut mieux qu'une rangée illisible.
+///
+/// Le dessin et le compte sortent donc du même calcul, une fois : deux
+/// arithmétiques d'une même case finissent toujours par ne plus dire la
+/// même chose, et c'est celle qu'on regarde le moins qui a tort.
+fn shown_and_hidden(total: usize, room: usize, cost: usize) -> (usize, usize) {
+    if total <= room {
+        (total, 0)
+    } else {
+        let shown = room.saturating_sub(cost);
+        (shown, total - shown)
+    }
+}
+
 /// Les écritures d'un nom de patient, de la plus riche à la plus
 /// pauvre : « Jean Dupont », « J. Dupont », « Dupont ».
 ///
@@ -21848,40 +21874,85 @@ impl App {
             // One chip per act, then the other entries, clipped to the
             // cell. On a short cell they sit beside the day number
             // rather than under it, where there is no room left.
-            let mut x = cell.left() + if compact { 24.0 } else { 5.0 };
-            let mut y = cell.top() + if compact { 6.0 } else { 22.0 };
-            let mut chip = |color: egui::Color32, painter: &egui::Painter| {
-                if x + 12.0 > cell.right() - 4.0 {
-                    x = cell.left() + 5.0;
-                    y += 12.0;
+            //
+            // **Les places sont comptées avant d'être remplies.** La
+            // pastille qui ne tenait pas n'était tout simplement pas
+            // dessinée : une journée de douze entrées dans une case qui
+            // en porte quatre se lisait comme une journée de quatre, et
+            // c'est précisément ce que la vue du mois existe pour dire.
+            // Un mois se lit à la densité de ses cases ; une densité
+            // plafonnée en silence est un mois qui ment.
+            let mut slots: Vec<egui::Pos2> = Vec::new();
+            {
+                let mut x = cell.left() + if compact { 24.0 } else { 5.0 };
+                let mut y = cell.top() + if compact { 6.0 } else { 22.0 };
+                while y + 8.0 < cell.bottom() {
+                    if x + 12.0 > cell.right() - 4.0 {
+                        x = cell.left() + 5.0;
+                        y += 12.0;
+                        continue;
+                    }
+                    slots.push(egui::pos2(x, y));
+                    x += 12.0;
                 }
-                if y + 8.0 < cell.bottom() {
-                    painter.rect_filled(
-                        egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(9.0, 7.0)),
-                        0.0,
-                        color,
-                    );
-                }
-                x += 12.0;
-            };
+            }
             // Une case de mois ne dessine pas de blocs : elle compte.
             // Un rendez-vous que le filtre éteint garde donc sa
             // pastille, en encre de fond — la densité du mois est ce
             // qu'on lit ici, et un mois qui maigrit sous un filtre se
             // lit comme un mois vide.
-            for rdv in session.appointments.iter().filter(|r| r.date == *date) {
-                let full = Self::agenda_keeps(session.agenda_places, &session.agenda_filter, rdv);
-                chip(
-                    if full {
+            let chips: Vec<egui::Color32> = session
+                .appointments
+                .iter()
+                .filter(|r| r.date == *date)
+                .map(|rdv| {
+                    if Self::agenda_keeps(session.agenda_places, &session.agenda_filter, rdv) {
                         kind_color(rdv.kind)
                     } else {
                         motif::stripe()
-                    },
-                    ui.painter(),
+                    }
+                })
+                .chain(
+                    events
+                        .iter()
+                        .filter(|e| e.day == *date)
+                        .map(|_| motif::bg_dark()),
+                )
+                .collect();
+            // Ce que le « + » coûte, en places de pastille : mesuré au
+            // pire cas qu'on écrira, jamais deviné. Deux places de moins
+            // pour dire « il y en a neuf de plus » est un bon échange ;
+            // neuf entrées effacées n'en est pas un.
+            let over_font = egui::FontId::proportional(motif::pt(ui, 9.5));
+            // Le pire cas, et non le cas probable : le nombre caché est
+            // au plus le nombre d'entrées, donc c'est lui qu'on mesure.
+            // Mesurer « ce qu'on croit qu'on écrira » fait une réserve
+            // d'un chiffre trop courte le jour où il y en a dix.
+            let over_text = format!("+{}", chips.len());
+            let over_w = ui.fonts(|f| {
+                f.layout_no_wrap(over_text.clone(), over_font.clone(), motif::text_dim())
+                    .size()
+                    .x
+            });
+            let over_slots = (over_w / 12.0).ceil().max(1.0) as usize;
+            let (drawn, over) = shown_and_hidden(chips.len(), slots.len(), over_slots);
+            for (pos, colour) in slots.iter().zip(chips.iter().take(drawn)) {
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(*pos, egui::vec2(9.0, 7.0)),
+                    0.0,
+                    *colour,
                 );
             }
-            for _ in events.iter().filter(|e| e.day == *date) {
-                chip(motif::bg_dark(), ui.painter());
+            if over > 0 {
+                if let Some(pos) = slots.get(drawn) {
+                    ui.painter().text(
+                        egui::pos2(pos.x, pos.y + 3.5),
+                        egui::Align2::LEFT_CENTER,
+                        format!("+{over}"),
+                        over_font,
+                        motif::text_dim(),
+                    );
+                }
             }
             let count = counts.get(date).copied().unwrap_or_default();
             // Les heures du jour, en second chiffre sous le numéro —
@@ -26397,23 +26468,12 @@ impl App {
                 let pitch = blk_h + 3.0;
                 let top0 = col.top() + 30.0 + digest_h;
                 let room = ((col.bottom() - top0) / pitch).max(0.0) as usize;
+                // Ce qui ne tient pas est annoncé, et le compte prend une
+                // place de bloc au lieu d'en couvrir une — les deux
+                // règles sont dans `shown_and_hidden`, avec ce qu'elles
+                // ont corrigé.
                 let total = day_rdvs.len() + day_events.len();
-                // **Ce qui ne tient pas se compte, et le compte a sa
-                // place.** Le « +N » ne portait que les rendez-vous : une
-                // colonne de trois rendez-vous et cinq entrées en montrait
-                // quatre et perdait les quatre autres sans un mot. Et il
-                // était peint à huit pixels du bas, c'est-à-dire
-                // par-dessus le dernier bloc, qu'il rendait illisible en
-                // annonçant ce qui manquait.
-                //
-                // Il compte donc tout ce qui n'est pas dessiné, et prend
-                // une place de bloc au lieu d'en couvrir une : une rangée
-                // en moins vaut mieux qu'une rangée illisible.
-                let max_blocks = if total > room {
-                    room.saturating_sub(1)
-                } else {
-                    room
-                };
+                let (max_blocks, hidden) = shown_and_hidden(total, room, 1);
                 for (bi, rdv) in day_rdvs.iter().take(max_blocks).enumerate() {
                     let block = egui::Rect::from_min_size(
                         egui::pos2(col.left() + 3.0, top0 + bi as f32 * pitch),
@@ -26524,7 +26584,7 @@ impl App {
                 {
                     *pick_day = Some(date.clone());
                 }
-                let hidden = total - used - ev_used;
+                debug_assert_eq!(used + ev_used + hidden, total);
                 if hidden > 0 {
                     let slot = egui::Rect::from_min_size(
                         egui::pos2(col.left() + 3.0, top0 + (used + ev_used) as f32 * pitch),
@@ -44631,6 +44691,51 @@ mod tests {
         assert_eq!(seen[1].as_deref(), Some("Lun 07"));
         assert_eq!(seen[2], None);
         assert_eq!(seen[3], None);
+    }
+
+    /// **Ce qu'une case ne dessine pas, elle l'annonce** — et la place
+    /// du compte est prise sur les dessinées, jamais peinte par-dessus.
+    ///
+    /// La grille de la semaine enfreignait les deux. Son « +N » ne
+    /// comptait que les rendez-vous, quand la colonne dessinait aussi
+    /// les réunions et les formations : un jour de trois rendez-vous et
+    /// cinq entrées en montrait quatre et perdait les quatre autres sans
+    /// un mot. Et le compte était peint à huit pixels du bas, c'est-à-
+    /// dire par-dessus le dernier bloc — il rendait illisible ce qui
+    /// était là pour dire ce qui manquait.
+    ///
+    /// L'invariant est le test : `dessinées + annoncées == total`,
+    /// toujours, y compris quand il n'y a pas une seule place.
+    #[test]
+    fn what_a_cell_cannot_draw_it_announces() {
+        // Tout tient : rien à annoncer, et rien de réservé pour rien.
+        assert_eq!(super::shown_and_hidden(3, 5, 1), (3, 0));
+        assert_eq!(super::shown_and_hidden(5, 5, 1), (5, 0));
+        // Une de trop : quatre dessinées et **deux** annoncées, et non
+        // cinq et une — la cinquième place porte le compte.
+        assert_eq!(super::shown_and_hidden(6, 5, 1), (4, 2));
+        // Le compte à deux places : on en dessine une de moins encore,
+        // on ne perd toujours rien.
+        assert_eq!(super::shown_and_hidden(20, 5, 2), (3, 17));
+        // Pas de place du tout, ou moins que le compte n'en demande :
+        // aucune dessinée, et le total reste à annoncer.
+        assert_eq!(super::shown_and_hidden(4, 0, 1), (0, 4));
+        assert_eq!(super::shown_and_hidden(4, 1, 2), (0, 4));
+        for total in 0..24_usize {
+            for room in 0..12_usize {
+                for cost in 1..4_usize {
+                    let (shown, hidden) = super::shown_and_hidden(total, room, cost);
+                    assert_eq!(shown + hidden, total, "{total}/{room}/{cost}");
+                    assert!(shown <= room, "{total}/{room}/{cost}");
+                    // Quand il y a quelque chose à annoncer, la place du
+                    // compte est libre — ou il n'y avait rien à dessiner.
+                    assert!(
+                        hidden == 0 || shown == 0 || shown + cost <= room,
+                        "{total}/{room}/{cost}"
+                    );
+                }
+            }
+        }
     }
 
     /// **Un nom cède son prénom, jamais son nom de famille.**
