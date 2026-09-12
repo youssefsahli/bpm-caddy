@@ -71,6 +71,11 @@ pas** : ce qu'il écarte reste dessiné en trait contre la gouttière, et
 ce qui chevauche une entrée retenue reste dessiné en entier — sans quoi
 le filtre fabriquerait le conflit qu'il devait montrer.
 
+Le plan de journée porte **un pointillé à l'heure qu'il est**, avec un
+point rouge dans la marge. Il ne se dessine que sur la journée
+d'aujourd'hui : posé sur un autre jour, il dirait l'heure d'un jour
+qu'on ne regarde pas.
+
 « Planning » est la quatrième lecture : l'équipe, une ligne par
 personne, sept colonnes de jours. Le total d'un jour passe au rouge
 quand l'officine est ouverte et que personne n'est inscrit.

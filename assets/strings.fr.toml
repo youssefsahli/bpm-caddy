@@ -1277,6 +1277,7 @@ agenda_hidden_tooltip = "Écarté par le filtre — sans chevauchement avec les 
 agenda_day_hidden = "\n{} masqué(s) par le filtre"
 agenda_title_hidden = " — {} masqué(s)"
 agenda_clash_tooltip = "Chevauche un autre rendez-vous"
+agenda_now = "Il est {} — repère de l'heure courante, sur la journée d'aujourd'hui seulement"
 agenda_counts = "{} rendez-vous affiché(s) · {} masqué(s) · {} chevauchement(s)"
 agenda_counts_tooltip = "« Masqués » compte les entrées éteintes par le filtre. Rien n'est retiré de la journée : une entrée qui chevauche un rendez-vous affiché reste dessinée, les autres deviennent un trait contre les heures."
 agenda_print_week = "Imprimer la semaine"

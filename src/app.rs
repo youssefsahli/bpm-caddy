@@ -3150,6 +3150,14 @@ struct Session {
     export_notice: Option<String>,
     /// Today as ISO `YYYY-MM-DD`, to flag overdue appointments.
     today: String,
+    /// L'heure qu'il est, en minutes depuis minuit — le trait
+    /// « maintenant » du plan de journée.
+    ///
+    /// **Relue au rythme de la veille multi-poste et pas à chaque
+    /// image** : une vue est redessinée soixante fois par seconde, et
+    /// l'horloge est une requête. Deux secondes de retard sur un trait
+    /// dont la graduation est la minute ne se voient pas.
+    now_minutes: u16,
     /// Tomorrow as ISO `YYYY-MM-DD`, for agenda day labels.
     tomorrow: String,
     /// The 7 dates (Mon..Sun) of the agenda's displayed week.
@@ -3865,6 +3873,7 @@ impl Session {
             today_notes: Vec::new(),
             export_notice: None,
             today: String::new(),
+            now_minutes: 0,
             tomorrow: String::new(),
             agenda_week: Vec::new(),
             agenda_mode: AgendaMode::Week,
@@ -4789,6 +4798,20 @@ impl Session {
             return;
         }
         self.sync_next = Instant::now() + Self::SYNC_EVERY;
+        // **L'horloge se relit ici, et avant le témoin.** Elle n'a rien
+        // à voir avec ce qu'un autre poste a écrit — mais c'est la seule
+        // cadence de cette application, et une deuxième aurait été une
+        // deuxième chose à ne pas oublier.
+        //
+        // `today` en fait partie : il n'était relu qu'au chargement, si
+        // bien qu'un poste laissé ouvert la nuit gardait la veille pour
+        // « aujourd'hui » — l'anneau du calendrier, les rendez-vous en
+        // retard et le trait de « maintenant » parlaient tous d'un jour
+        // qui n'était plus.
+        if let Ok((day, minutes)) = self.db.now_local() {
+            self.today = day;
+            self.now_minutes = minutes;
+        }
         let now = self.db.data_version();
         if now == self.sync_seen {
             return;
@@ -21594,6 +21617,66 @@ impl App {
                 &mut untimed,
                 open_id,
             );
+        }
+        // **Où on en est.** Un trait à la minute qu'il est, par-dessus
+        // les blocs. Ouvrir le plan de journée au comptoir, c'est
+        // demander « et maintenant ? » : sans lui, il faut compter les
+        // graduations depuis « 08 h » pour savoir si le rendez-vous
+        // qu'on regarde est passé ou non — c'est-à-dire faire des yeux
+        // le seul calcul que ce dessin devait épargner.
+        //
+        // **Seulement aujourd'hui, et seulement dans la fenêtre
+        // affichée.** Posé sur un autre jour, le trait dirait l'heure
+        // d'un jour qu'on ne regarde pas ; borné à `start`..`end`, il ne
+        // se dessine pas avant l'ouverture ni après la fermeture, plutôt
+        // que de se coller au bord du plan en laissant croire qu'il est
+        // huit heures.
+        if day == session.today {
+            // `start` et `end` sont déjà bornés à 23 et 24 plus haut.
+            let (from, to) = (start as u16 * 60, end as u16 * 60);
+            let now = session.now_minutes;
+            if now >= from && now < to {
+                let y = inner.top() + (f32::from(now - from) / 60.0) * row_h;
+                let x = inner.left() + gutter;
+                // **Pointillé, et non un filet plein.** Le trait passe
+                // par-dessus les blocs — c'est à cela qu'il sert, on
+                // doit lire d'un coup d'œil ce qui est derrière nous —
+                // et plein, il barrait « 14:00 Claire Martin » en son
+                // milieu : un libellé rayé se lit comme annulé. Un
+                // pointillé traverse sans rien barrer.
+                let stroke = egui::Stroke::new(1.5_f32, motif::alert());
+                let (dash, hole) = (6.0, 4.0);
+                let mut at = x;
+                while at < inner.right() {
+                    let to_x = (at + dash).min(inner.right());
+                    ui.painter()
+                        .line_segment([egui::pos2(at, y), egui::pos2(to_x, y)], stroke);
+                    at = to_x + hole;
+                }
+                // Une pointe à gauche du trait : un filet seul, sur un
+                // plan qui en porte déjà un par heure, se lit comme une
+                // graduation de plus.
+                ui.painter().circle_filled(
+                    egui::pos2(x, y),
+                    (row_h * 0.12).clamp(2.5, 4.5),
+                    motif::alert(),
+                );
+                // Le survol le nomme, et dit l'heure : un trait rouge
+                // sur un agenda qui met du rouge sur les retards et les
+                // chevauchements doit pouvoir dire qu'il n'est ni l'un
+                // ni l'autre. La zone est celle de la pointe, pas celle
+                // du trait — une bande sensible en travers du plan
+                // prendrait le survol des blocs qu'elle croise.
+                ui.interact(
+                    egui::Rect::from_center_size(egui::pos2(x, y), egui::vec2(14.0, 14.0)),
+                    ui.id().with("day_now"),
+                    egui::Sense::hover(),
+                )
+                .on_hover_text(trf(
+                    "agenda_now",
+                    format!("{:02}:{:02}", now / 60, now % 60),
+                ));
+            }
         }
         // The sweep itself, drawn over the blocks so it is visible while
         // it is being made, and turned into an entry when it is let go.

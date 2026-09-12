@@ -30681,6 +30681,29 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
+    /// Le jour et l'heure qu'il est : la date ISO locale, et les minutes
+    /// écoulées depuis minuit.
+    ///
+    /// **Les deux d'un seul coup**, parce que ce sont deux lectures d'un
+    /// même instant : demandées séparément, elles peuvent tomber de part
+    /// et d'autre de minuit, et le plan de journée dessinerait alors le
+    /// trait de « maintenant » — zéro minute — sur la journée de la
+    /// veille. C'est aussi l'horloge de SQLite et pas une autre : il n'y
+    /// en a qu'une dans cette application, et deux finiraient par ne
+    /// plus être d'accord.
+    pub fn now_local(&self) -> Result<(String, u16), String> {
+        self.conn
+            .query_row(
+                "SELECT date('now', 'localtime'),
+                        CAST(strftime('%H', 'now', 'localtime') AS INTEGER) * 60
+                      + CAST(strftime('%M', 'now', 'localtime') AS INTEGER)",
+                [],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .map_err(|e| e.to_string())
+            .map(|(day, minutes)| (day, minutes.clamp(0, 1439) as u16))
+    }
+
     /// The 7 ISO dates (Monday..Sunday) of the current week shifted by
     /// `offset_weeks` — the agenda's week grid.
     pub fn week_dates(&self, offset_weeks: i64) -> Result<Vec<String>, String> {
