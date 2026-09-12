@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.192.0] - 2026-09-12
+
+### Fixed
+- **« Poser la trame » ne disait pas ce qu'il avait remplacé.** Le
+  commentaire du code l'affirmait, la phrase ne le portait pas : « Trame
+  posée : 10 poste(s) » après en avoir effacé six est exactement le
+  silence que « Remplacer » ne doit pas avoir. Elle dit les deux
+  nombres.
+- Trois commentaires de règles avaient vieilli d'une version : la
+  relecture d'une trame déclarait encore « deux postes le même jour »
+  illisible — c'est une journée coupée depuis 0.187.0 —, et les deux
+  fonctions qui écrivent et relisent annonçaient moins de règles
+  qu'elles n'en tiennent. Un commentaire faux est pire qu'un commentaire
+  absent : c'est celui qu'on croit.
+
 ## [0.191.0] - 2026-09-12
 
 ### Added

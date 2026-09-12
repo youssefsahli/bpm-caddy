@@ -1215,6 +1215,7 @@ frame_too_rich = "Cette personne a {} ligne(s) de trame que cet écran ne sait p
 frame_needs_a_person = "Choisissez d'abord la personne concernée."
 frame_needs_a_day = "Une trame demande au moins une journée avec une heure de début."
 frame_posed = "Trame posée : {} poste(s)."
+frame_posed_replacing = "Trame posée : {} poste(s), {} ligne(s) remplacée(s)."
 planning_title_total = " — {} sur {} jour(s) comptés"
 planning_edit = "Modifier"
 planning_edit_day = "Modifier ce jour"

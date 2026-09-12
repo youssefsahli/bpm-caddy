@@ -1237,17 +1237,27 @@ enum FrameLoad {
 
 /// Relire les lignes rangées d'une personne comme une trame.
 ///
-/// Trois règles, une par test :
+/// Quatre règles, une par test :
 ///
 /// * **une alternance se relit comme une alternance** — deux rythmes qui
 ///   sont les deux moitiés d'une parité reviennent sur les deux onglets,
 ///   celui des paires en tête, quel que soit l'ordre où la base les rend ;
+/// * **une journée hebdomadaire est celle des deux semaines** : dans une
+///   alternance, elle remplit les deux onglets, ce qui est ce qui permet
+///   de montrer « du lundi au vendredi toutes les semaines, plus un
+///   samedi sur deux » ;
+/// * **deux postes le même jour sont une journée coupée** — le plus tôt
+///   tient la première moitié —, à condition qu'ils portent la même
+///   nature ;
 /// * **une ligne d'avant les rythmes se relit** : `cadence` vide, sept
 ///   jours de `repeat_days` sont une trame hebdomadaire, et rien d'autre
-///   ne se devine ;
-/// * **ce qui n'entre pas n'est pas approximé.** Deux postes le même
-///   jour, trois rythmes, une date illisible : l'écran le dit, laisse la
-///   grille vide et ne propose pas de remplacer ce qu'il ne montre pas.
+///   ne se devine.
+///
+/// Et ce qui n'entre pas n'est pas approximé : deux natures différentes
+/// le même jour, un troisième poste, un pas qu'on ne sait pas ranger, un
+/// rythme qui exige une fin, une date illisible. L'écran le dit, laisse
+/// la grille vide et **ne coche pas « Remplacer »** — approximer
+/// reviendrait à écraser ce qu'on n'a pas su montrer.
 fn frame_from_patterns(rows: &[db::NewShift]) -> FrameLoad {
     if rows.is_empty() {
         return FrameLoad::Vide;
@@ -25090,8 +25100,8 @@ impl App {
     /// Ce qu'une trame écrit : une ligne rangée par journée remplie, et
     /// par page.
     ///
-    /// Quatre règles, et elles sont toutes ici plutôt qu'éparpillées
-    /// dans le dessin, pour qu'un test les tienne sans écran :
+    /// Six règles, et elles sont toutes ici plutôt qu'éparpillées dans
+    /// le dessin, pour qu'un test les tienne sans écran :
     ///
     /// * **une journée sans heure de début n'écrit rien.** C'est un jour
     ///   où la personne n'est pas là, pas un poste de zéro heure — la
@@ -25106,7 +25116,14 @@ impl App {
     ///   toucher l'autre ;
     /// * **le pas rangé est celui du rythme.** `repeat_days` porte
     ///   `Cadence::pas`, ce qui garde « Recopier » exact : une trame ne
-    ///   se recopie pas sur la semaine suivante, elle y figure déjà.
+    ///   se recopie pas sur la semaine suivante, elle y figure déjà ;
+    /// * **une journée identique sur les deux onglets s'écrit une
+    ///   fois**, hebdomadaire, plutôt que deux fois en parités. C'est
+    ///   ce qui rend l'aller-retour exact : relire une trame puis la
+    ///   reposer sans rien changer redonne les mêmes lignes ;
+    /// * **une journée coupée est deux postes**, jamais un poste à
+    ///   longue pause — une pause n'a pas d'heure, donc la couverture ne
+    ///   saurait pas où est le trou.
     fn frame_shifts(form: &FrameForm) -> Vec<db::NewShift> {
         let mut out = Vec::new();
         let who = form.operator.trim().to_owned();
@@ -25320,13 +25337,18 @@ impl App {
             }
         }
         let n = added.len();
-        if n > 0 || !removed.is_empty() {
+        let replaced = removed.len();
+        if n > 0 || replaced > 0 {
             session.remember(PlanningUndo::Framed { added, removed });
         }
-        // Le compte est dit, et ce qui a été retiré avec : un bouton
+        // Le compte est dit, **et ce qui a été retiré avec** : un bouton
         // silencieux laisse croire qu'il n'a rien fait, et « Remplacer »
         // qui efface sans le dire est la pire des deux erreurs.
-        session.planning_notice = Some(trf("frame_posed", n));
+        session.planning_notice = Some(if replaced == 0 {
+            trf("frame_posed", n)
+        } else {
+            trn("frame_posed_replacing", &[&n, &replaced])
+        });
         session.frame.open = false;
         session.load_shifts(true);
     }
