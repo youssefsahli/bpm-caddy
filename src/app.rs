@@ -25443,15 +25443,7 @@ impl App {
                         // précisément l'erreur que cette ligne existe pour
                         // éviter.
                         let shown = pages.get(page).copied().unwrap_or(session.frame.cadence);
-                        // **Trois comptes, parce qu'il y a trois sortes
-                        // de lignes.** Une journée identique sur les deux
-                        // semaines s'écrit une fois, hebdomadaire :
-                        // l'annoncer « sur l'autre semaine » était faux,
-                        // elle est sur les deux.
-                        let weekly_key = planning::Cadence::Hebdomadaire.as_str();
-                        let weekly = rows.iter().filter(|r| r.cadence == weekly_key).count();
-                        let here = rows.iter().filter(|r| r.cadence == shown.as_str()).count();
-                        let elsewhere = rows.len() - weekly - here;
+                        let (weekly, here, elsewhere) = Self::frame_counts(&rows, shown);
                         // Les dates nommées sont celles d'une ligne de
                         // **l'onglet ouvert** quand il en porte une — ce
                         // sont les occurrences qui sautent une semaine,
@@ -25572,6 +25564,38 @@ impl App {
         if session.frame.open && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             session.frame.open = false;
         }
+    }
+
+    /// Les trois comptes de l'aperçu d'une trame : ce qui vaut pour les
+    /// deux semaines, ce qui ne vaut que pour l'onglet ouvert, ce qui ne
+    /// vaut que pour l'autre.
+    ///
+    /// **Ils se partagent les lignes et ne se recouvrent pas**, et c'est
+    /// la seule chose à tenir ici. Une journée identique sur les deux
+    /// semaines s'écrit une fois, hebdomadaire ; sur une trame « chaque
+    /// semaine », l'onglet ouvert **est** cette semaine-là, si bien que
+    /// la même ligne se comptait dans deux des trois comptes et que le
+    /// troisième — obtenu par soustraction — passait sous zéro. Sur un
+    /// `usize`, passer sous zéro n'est pas un chiffre faux : c'est
+    /// l'application par terre au comptoir, au milieu d'une saisie
+    /// d'horaires.
+    ///
+    /// Écrit comme une partition plutôt que rattrapé par un
+    /// `saturating_sub` : la soustraction ne peut plus déborder parce
+    /// que les deux premiers comptes portent sur des ensembles
+    /// disjoints, et non parce qu'on a borné le résultat.
+    ///
+    /// La démonstration n'ouvre la trame que sur une alternance, où le
+    /// recouvrement n'existe pas — ni la fumée, qui ouvre cet écran
+    /// trois fois, ni aucune capture ne pouvaient le voir.
+    fn frame_counts(rows: &[db::NewShift], shown: planning::Cadence) -> (usize, usize, usize) {
+        let weekly_key = planning::Cadence::Hebdomadaire.as_str();
+        let weekly = rows.iter().filter(|r| r.cadence == weekly_key).count();
+        let here = rows
+            .iter()
+            .filter(|r| r.cadence != weekly_key && r.cadence == shown.as_str())
+            .count();
+        (weekly, here, rows.len() - weekly - here)
     }
 
     /// Ce qu'une trame écrit : une ligne rangée par journée remplie, et
@@ -44977,6 +45001,80 @@ mod tests {
         let copies = App::planning_copies(&source, &[]);
         assert_eq!(copies.len(), 2);
         assert!(copies.iter().all(|c| c.repeat_days == 0));
+    }
+
+    /// **Les trois comptes de l'aperçu d'une trame se partagent ses
+    /// lignes.**
+    ///
+    /// Une journée identique sur les deux semaines s'écrit une fois,
+    /// hebdomadaire. Sur une trame « chaque semaine », l'onglet ouvert
+    /// *est* cette semaine-là : la même ligne se comptait comme
+    /// hebdomadaire **et** comme « ici », et le troisième compte, obtenu
+    /// par soustraction, passait sous zéro. Sur un `usize`, ce n'est pas
+    /// un chiffre faux — c'est l'application par terre au comptoir, au
+    /// milieu d'une saisie d'horaires.
+    ///
+    /// Trouvé à l'usage et par rien d'autre : la démonstration n'ouvre
+    /// la trame que sur une alternance, où le recouvrement n'existe pas,
+    /// si bien que la fumée ouvrait cet écran trois fois par passage
+    /// sans jamais y toucher.
+    #[test]
+    fn the_three_counts_of_a_frame_share_its_rows() {
+        use super::{FrameDay, FrameForm};
+        use crate::planning::Cadence;
+        let hours = |from: &str, to: &str| FrameDay {
+            kind: None,
+            from: from.to_owned(),
+            to: to.to_owned(),
+            ..Default::default()
+        };
+
+        // **Le cas qui mettait l'application par terre** : une trame
+        // « chaque semaine ». L'onglet ouvert *est* la semaine
+        // hebdomadaire, et chaque ligne se comptait deux fois.
+        let mut form = FrameForm {
+            operator: "CL".to_owned(),
+            cadence: Cadence::Hebdomadaire,
+            from: "2026-09-16".to_owned(),
+            ..Default::default()
+        };
+        form.weeks[0][0] = hours("9", "19h30");
+        form.weeks[0][2] = hours("9", "12h30");
+        let rows = App::frame_shifts(&form);
+        assert_eq!(rows.len(), 2);
+        let (weekly, here, elsewhere) = App::frame_counts(&rows, Cadence::Hebdomadaire);
+        assert_eq!(
+            (weekly, here, elsewhere),
+            (2, 0, 0),
+            "une trame hebdomadaire n'a pas d'« autre semaine »"
+        );
+
+        // Et l'alternance, où les trois comptes ont chacun leur part :
+        // le lundi sur les deux semaines, le mercredi sur les paires, le
+        // samedi sur les impaires.
+        let mut form = FrameForm {
+            operator: "CL".to_owned(),
+            cadence: Cadence::Paires,
+            from: "2026-09-16".to_owned(),
+            ..Default::default()
+        };
+        form.weeks[0][0] = hours("9", "19h30");
+        form.weeks[1][0] = hours("9", "19h30");
+        form.weeks[0][2] = hours("9", "12h30");
+        form.weeks[1][5] = hours("9", "12h30");
+        let rows = App::frame_shifts(&form);
+        let (weekly, here, elsewhere) = App::frame_counts(&rows, Cadence::Paires);
+        assert_eq!((weekly, here, elsewhere), (1, 1, 1));
+        // Vues de l'autre onglet, « ici » et « ailleurs » s'échangent —
+        // et leur somme ne bouge pas.
+        assert_eq!(App::frame_counts(&rows, Cadence::Impaires), (1, 1, 1));
+
+        // La règle, sur les deux formes : les trois comptes se
+        // partagent les lignes, sans en perdre ni en compter deux fois.
+        for shown in Cadence::ALL {
+            let (w, h, e) = App::frame_counts(&rows, shown);
+            assert_eq!(w + h + e, rows.len(), "{shown:?}");
+        }
     }
 
     /// **Une trame écrit une ligne rangée par journée remplie — et deux

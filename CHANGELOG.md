@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.196.0] - 2026-09-12
+
+### Fixed
+- **L'écran de trame ne tombe plus sur une trame « chaque semaine ».**
+  L'aperçu annonce trois choses — ce qui vaut pour les deux semaines, ce
+  qui ne vaut que pour l'onglet ouvert, ce qui ne vaut que pour
+  l'autre —, et le troisième était obtenu en retranchant les deux
+  premiers. Sur une alternance, chaque ligne appartient à un seul des
+  trois comptes et le calcul tombe juste. Sur une trame hebdomadaire,
+  l'onglet ouvert **est** la semaine hebdomadaire : la même ligne était
+  comptée deux fois, la soustraction passait sous zéro, et sur un
+  `usize` cela n'est pas un chiffre faux mais l'application par terre au
+  comptoir, au milieu d'une saisie d'horaires.
+
+  Le compte est désormais une **partition** : les deux premiers portent
+  sur des ensembles disjoints, si bien que la soustraction ne peut plus
+  déborder — plutôt qu'un résultat borné après coup, qui aurait caché un
+  compte faux au lieu du plantage. Sorti du dessin dans
+  `App::frame_counts`, pur, avec un test qui reprend les deux formes et
+  vérifie sur les huit rythmes que les trois comptes font bien le total.
+
+  À signaler, parce que c'est la leçon : **aucune barrière ne pouvait le
+  voir.** La démonstration n'ouvre la trame que sur l'alternance de
+  Claire, si bien que `smoke.sh` ouvrait cet écran trois fois par
+  passage sans jamais toucher le cas fautif, et une capture montre un
+  écran qui n'a pas planté. Il a fallu s'en servir.
+
 ## [0.195.0] - 2026-09-12
 
 ### Fixed
