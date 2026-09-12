@@ -11678,14 +11678,38 @@ impl App {
         let current = session.trans_day.clone();
         let mut pick: Option<String> = None;
         Self::nav_list(ui, |ui| {
-            for day in &days {
-                if motif::list_row(
-                    ui,
-                    egui::RichText::new(db::format_french_date(day)),
-                    *day == current,
-                )
-                .clicked()
-                {
+            // **Raccourcir, ne pas élider.** « 13/09/… » a perdu
+            // l'année *et* se lit cassé ; « 13/09 » ne dit pas l'année
+            // et se lit entier — et dans une liste de journées
+            // consécutives, l'année est la seule chose qu'on n'a pas
+            // besoin de lire. `list_row` prend douze pixels sur la
+            // largeur : c'est son budget de texte, et c'est celui qu'on
+            // mesure.
+            let budget = (ui.available_width() - 12.0).max(1.0);
+            // Mesuré dans la fonte où `list_row` dessinera — celle du
+            // style, et non une taille repassée par `motif::pt`, qui
+            // l'aurait mise à l'échelle deux fois.
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let labels: Vec<String> = ui.fonts(|f| {
+                days.iter()
+                    .map(|day| {
+                        let full = db::format_french_date(day);
+                        let wide = f
+                            .layout_no_wrap(full.clone(), font.clone(), motif::text())
+                            .size()
+                            .x;
+                        if wide <= budget {
+                            full
+                        } else {
+                            full.rsplit_once('/')
+                                .map(|(d, _)| d.to_owned())
+                                .unwrap_or(full)
+                        }
+                    })
+                    .collect()
+            });
+            for (day, label) in days.iter().zip(labels) {
+                if motif::list_row(ui, egui::RichText::new(label), *day == current).clicked() {
                     pick = Some(day.clone());
                 }
             }
