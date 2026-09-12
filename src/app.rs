@@ -22121,8 +22121,18 @@ impl App {
             }
             if over > 0 {
                 if let Some(pos) = slots.get(drawn) {
+                    // **Le compte reste dans sa case.** Les places
+                    // libérées sont contiguës dans l'ordre, pas
+                    // forcément sur une même rangée : la dernière d'une
+                    // rangée suivie de la première de la suivante, et
+                    // « +12 » écrit à partir de là sortait de douze
+                    // pixels dans la case du jour d'à côté. Un
+                    // `Painter` peint où on lui dit. On recule donc
+                    // jusqu'à ce qu'il tienne — au pire sur des places
+                    // qu'on venait de libérer.
+                    let x = pos.x.min(cell.right() - 4.0 - over_w);
                     ui.painter().text(
-                        egui::pos2(pos.x, pos.y + 3.5),
+                        egui::pos2(x, pos.y + 3.5),
                         egui::Align2::LEFT_CENTER,
                         format!("+{over}"),
                         over_font,
