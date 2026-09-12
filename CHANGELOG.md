@@ -5,6 +5,41 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.198.0] - 2026-09-12
+
+### Fixed
+- **Le plan de journée mesure sa gouttière et ses graduations.** La
+  colonne des heures valait cinquante-quatre pixels — or « 00 h » en
+  mesure déjà quarante-cinq à `[ui] text_scale = 1,6`, et à l'échelle 1
+  ce sont quatorze pixels pris aux blocs pour rien. Le plancher d'une
+  graduation valait vingt pixels, alors que deux graduations
+  consécutives sont à cette distance l'une de l'autre : dès 1,25,
+  « 08 h » et « 09 h » se touchaient. Les deux se mesurent désormais
+  dans la fonte qui dessine, et le plafond est relevé au plancher plutôt
+  que supposé au-dessus — `f32::clamp` panique quand le minimum passe le
+  maximum.
+- **Une colonne de semaine peut n'avoir aucune place**, et elle
+  l'annonce au lieu de peindre dehors. Une grille de soixante pixels à
+  `text_scale = 1,6` est intégralement mangée par son en-tête ; le
+  « +N » partait alors s'écrire sous le panneau, sur ce qui vient après.
+  Trouvé par le test avant de l'être à l'écran.
+- **Le compte d'une case de mois reste dans sa case.** Les places
+  libérées pour écrire « +N » sont contiguës dans l'ordre mais pas
+  forcément sur une même rangée, et le compte sortait alors de douze
+  pixels dans la case du jour d'à côté.
+
+### Changed
+- **Toute la colonne de la semaine choisit son jour**, et pas seulement
+  ses vingt premiers pixels : une case du mois se clique en entier, là
+  où il fallait ici viser une bande de la hauteur d'une ligne au sommet
+  d'une colonne de trois cents pixels.
+- **La géométrie d'une colonne de semaine sort d'un seul calcul.** La
+  décision de dessiner la ligne d'équipe et le nombre de cases
+  dépendent l'un de l'autre — la ligne ne se dessine que s'il reste deux
+  rangées sous elle —, et ils étaient écrits à deux endroits. Un test
+  sans écran les confronte sur quatre mille hauteurs, à trois échelles
+  de texte, avec les fontes qui dessineront.
+
 ## [0.197.0] - 2026-09-12
 
 ### Added
