@@ -2,6 +2,30 @@
 //! (`assets/strings.fr.toml`). Any key can be overridden by a
 //! `strings.toml` placed next to `config.toml`, so a pharmacy can adapt
 //! the wording (or translate the app) without recompiling.
+//!
+//! **Une réécriture se souvient de ce qu'elle remplaçait.** C'est la
+//! règle de `content.rs`, et elle manquait ici : une surcharge plate
+//! `clé = "texte"` s'applique pour toujours, y compris quand la version
+//! suivante a changé le libellé livré. L'officine croit alors lire sa
+//! correction, et elle lit une phrase que personne n'a relue — le pire
+//! des deux états, puisque rien ne le dit.
+//!
+//! Une entrée peut donc s'écrire de deux façons :
+//!
+//! ```toml
+//! # Ancienne forme, toujours lue : elle s'applique sans condition.
+//! form_last_name = "Patronyme"
+//!
+//! # Nouvelle : elle dit contre quoi elle a été écrite, et ne
+//! # s'applique que tant que ce texte-là est celui qu'on livre.
+//! [form_first_name]
+//! texte = "Prénom usuel"
+//! livre = "Prénom"
+//! ```
+//!
+//! La forme plate reste valide — un fichier écrit il y a un an doit
+//! continuer de marcher —, et l'écran qui édite les textes écrit la
+//! seconde.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -9,8 +33,30 @@ use std::sync::OnceLock;
 const EMBEDDED: &str = include_str!("../assets/strings.fr.toml");
 
 static STRINGS: OnceLock<HashMap<String, String>> = OnceLock::new();
+static SHIPPED: OnceLock<HashMap<String, String>> = OnceLock::new();
 
-fn parse(text: &str) -> HashMap<String, String> {
+/// Ce qu'une surcharge demande : le texte, et le texte livré qu'elle
+/// visait — `None` pour la forme plate, qui ne visait rien et
+/// s'applique donc toujours.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Rewrite {
+    pub value: String,
+    pub aimed_at: Option<String>,
+}
+
+/// Ce qu'une clé est devenue, pour l'écran qui les relit.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum State {
+    /// Telle qu'elle est livrée : personne n'y a touché.
+    Shipped,
+    /// Réécrite, et toujours en face du texte qu'elle remplaçait.
+    Rewritten,
+    /// Réécrite, mais le texte livré a changé depuis : la surcharge ne
+    /// s'applique plus et attend une relecture.
+    Outdated,
+}
+
+fn parse_shipped(text: &str) -> HashMap<String, String> {
     text.parse::<toml::Table>()
         .map(|t| {
             t.into_iter()
@@ -20,13 +66,77 @@ fn parse(text: &str) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+/// Les surcharges telles qu'elles sont écrites, sans décider encore si
+/// elles s'appliquent.
+pub fn parse_rewrites(text: &str) -> HashMap<String, Rewrite> {
+    text.parse::<toml::Table>()
+        .map(|t| {
+            t.into_iter()
+                .filter_map(|(k, v)| match &v {
+                    // La forme plate : elle ne vise rien, elle
+                    // s'applique.
+                    toml::Value::String(s) => Some((
+                        k,
+                        Rewrite {
+                            value: s.clone(),
+                            aimed_at: None,
+                        },
+                    )),
+                    toml::Value::Table(inner) => {
+                        let value = inner.get("texte")?.as_str()?.to_owned();
+                        Some((
+                            k,
+                            Rewrite {
+                                value,
+                                aimed_at: inner
+                                    .get("livre")
+                                    .and_then(|v| v.as_str())
+                                    .map(str::to_owned),
+                            },
+                        ))
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Le texte livré, sans aucune surcharge : ce que l'écran de relecture
+/// montre à côté de ce que l'officine a écrit.
+pub fn shipped() -> &'static HashMap<String, String> {
+    SHIPPED.get_or_init(|| parse_shipped(EMBEDDED))
+}
+
+/// Ce qu'une surcharge est devenue face au texte livré d'aujourd'hui.
+///
+/// **Une réécriture posée sur autre chose que ce qu'elle visait serait
+/// pire que pas de réécriture du tout** : elle ne s'applique pas, et
+/// l'écran la montre pour relecture.
+pub fn state(rewrite: &Rewrite, shipped_now: Option<&str>) -> State {
+    match (&rewrite.aimed_at, shipped_now) {
+        (None, _) => State::Rewritten,
+        (Some(seen), Some(now)) if seen == now => State::Rewritten,
+        _ => State::Outdated,
+    }
+}
+
+/// Le chemin du fichier de surcharges, à côté de `config.toml`.
+pub fn overrides_path() -> std::path::PathBuf {
+    crate::config::Config::path().with_file_name("strings.toml")
+}
+
 fn table() -> &'static HashMap<String, String> {
     STRINGS.get_or_init(|| {
-        let mut map = parse(EMBEDDED);
-        let override_path = crate::config::Config::path().with_file_name("strings.toml");
-        if let Ok(text) = std::fs::read_to_string(override_path) {
-            for (k, v) in parse(&text) {
-                map.insert(k, v);
+        let mut map = shipped().clone();
+        if let Ok(text) = std::fs::read_to_string(overrides_path()) {
+            for (k, r) in parse_rewrites(&text) {
+                // Une surcharge qui ne vise plus le texte livré ne
+                // s'applique pas : c'est la règle du module, et c'est
+                // ici qu'elle mord.
+                if state(&r, map.get(&k).map(String::as_str)) == State::Rewritten {
+                    map.insert(k, r.value);
+                }
             }
         }
         map
@@ -354,6 +464,70 @@ mod tests {
                 "« {c} » a un glyphe en romain : la règle « les flèches restent dans les pastilles » n'a plus de raison d'être, et ce test non plus"
             );
         }
+    }
+
+    /// **Une réécriture se souvient de ce qu'elle remplaçait**, et ne
+    /// s'applique que tant que le texte livré n'a pas bougé.
+    ///
+    /// C'est la règle de `content.rs`, et elle manquait ici : une
+    /// surcharge plate s'applique pour toujours, y compris quand la
+    /// version suivante a changé le libellé. L'officine croit alors lire
+    /// sa correction et lit une phrase que personne n'a relue — le pire
+    /// des deux états, puisque rien ne le dit.
+    ///
+    /// La forme plate reste valide : un fichier écrit il y a un an doit
+    /// continuer de marcher, et il n'a jamais rien visé.
+    #[test]
+    fn a_rewrite_remembers_what_it_replaced() {
+        let rows = parse_rewrites(
+            r#"
+form_last_name = "Patronyme"
+
+[form_first_name]
+texte = "Prénom usuel"
+livre = "Prénom"
+
+[form_birth_date]
+texte = "Date de naissance complète"
+livre = "Une phrase qui n'est plus livrée"
+"#,
+        );
+        assert_eq!(rows.len(), 3);
+        // La forme plate ne vise rien, donc elle s'applique toujours.
+        let flat = &rows["form_last_name"];
+        assert_eq!(flat.aimed_at, None);
+        assert_eq!(state(flat, Some("Nom")), State::Rewritten);
+        assert_eq!(state(flat, Some("autre chose")), State::Rewritten);
+        // Celle qui vise juste s'applique.
+        let aimed = &rows["form_first_name"];
+        assert_eq!(aimed.aimed_at.as_deref(), Some("Prénom"));
+        assert_eq!(state(aimed, Some("Prénom")), State::Rewritten);
+        // Celle qui vise à côté ne s'applique pas : elle attend une
+        // relecture, et c'est l'écran qui la montre.
+        assert_eq!(state(aimed, Some("Prénom (usuel)")), State::Outdated);
+        assert_eq!(
+            state(&rows["form_birth_date"], Some("Date de naissance")),
+            State::Outdated
+        );
+        // Une clé que l'application ne livre plus du tout : la
+        // surcharge ne vise plus rien.
+        assert_eq!(state(aimed, None), State::Outdated);
+        // Ce qui ne se lit pas ne casse rien : une valeur d'un autre
+        // type, ou une table sans `texte`, est ignorée plutôt que de
+        // faire tomber tout le fichier.
+        let junk = parse_rewrites("a = 3\n[b]\nlivre = \"x\"\n");
+        assert!(junk.is_empty());
+    }
+
+    /// Le texte livré se lit sans surcharge, et il n'est pas vide : c'est
+    /// lui que l'écran de relecture montre en face de ce que l'officine
+    /// a écrit.
+    #[test]
+    fn the_shipped_text_is_readable_on_its_own() {
+        let ship = shipped();
+        assert!(ship.len() > 500, "{} clés livrées", ship.len());
+        assert_eq!(ship.get("form_last_name").map(String::as_str), Some("Nom"));
+        assert!(ship.values().all(|v| !v.is_empty()));
     }
 
     /// Look a key up without the `'static` requirement of [`tr`].

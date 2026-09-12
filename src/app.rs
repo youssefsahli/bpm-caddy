@@ -2289,6 +2289,18 @@ enum MainView {
     /// base — et on lit ce qu'elle dit d'elle-même. C'est la question du
     /// téléphone : « le médecin veut ajouter ça, ça passe ? »
     Ddi,
+    /// Tous les textes de l'interface, au même endroit : ce qui est
+    /// livré, ce que l'officine a réécrit, et ce qui attend une
+    /// relecture.
+    ///
+    /// Son frère `textes` fait la même chose des phrases **imprimées**.
+    /// Celles-là vivent dans la base, parce qu'elles partent sur du
+    /// papier au nom de l'officine ; les libellés de l'interface vivent
+    /// dans un fichier à côté de `config.toml`, parce que `tr` rend un
+    /// `&'static str` et qu'on ne remplace pas un `'static` en cours de
+    /// route. C'est aussi pourquoi une réécriture s'applique à la
+    /// prochaine ouverture, et que l'écran le dit.
+    UiTexts,
 }
 
 impl MainView {
@@ -2316,6 +2328,7 @@ impl MainView {
             MainView::Caisse => "caisse",
             MainView::CaisseHistory => "caisses",
             MainView::Ddi => "ddi",
+            MainView::UiTexts => "libelles",
         }
     }
 
@@ -2336,6 +2349,7 @@ impl MainView {
             "caisse" => Some(MainView::Caisse),
             "caisses" => Some(MainView::CaisseHistory),
             "ddi" => Some(MainView::Ddi),
+            "libelles" => Some(MainView::UiTexts),
             _ => None,
         }
     }
@@ -2424,6 +2438,8 @@ enum WorkTab {
     Caisse,
     /// Le croisement d'une liste de médicaments.
     Ddi,
+    /// Les textes de l'interface.
+    UiTexts,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -3219,6 +3235,21 @@ struct Session {
     /// ce qui en dépend et ne conclut pas — c'est `renal::read` qui le
     /// garantit.
     ddi_dfg: String,
+    /// Ce qu'on cherche dans l'écran des textes de l'interface.
+    ui_text_query: String,
+    /// Les surcharges telles qu'elles sont écrites dans `strings.toml`,
+    /// relues à l'ouverture de l'écran — et non à chaque image.
+    ui_texts: std::collections::HashMap<String, crate::strings::Rewrite>,
+    /// La clé qu'on est en train de réécrire, et le texte tapé.
+    ui_text_edit: Option<(String, String)>,
+    /// La question posée, et les clés qui y répondent.
+    ///
+    /// **Mémoïsé contre la question**, comme partout ici : filtrer
+    /// mille sept cent soixante-trois textes, c'est replier autant de
+    /// chaînes, et une vue est redessinée soixante fois par seconde. Le
+    /// tri va avec — la table livrée est un `HashMap`, donc sans lui
+    /// l'ordre changerait d'une image à l'autre.
+    ui_text_hits: (String, Vec<String>),
     vacc_due: Vec<vaccines::DueLine>,
     /// In-progress country search of the travel panel.
     travel_query: String,
@@ -4047,6 +4078,10 @@ impl Session {
             ddi_list: Vec::new(),
             ddi_query: String::new(),
             ddi_dfg: String::new(),
+            ui_text_query: String::new(),
+            ui_texts: std::collections::HashMap::new(),
+            ui_text_edit: None,
+            ui_text_hits: (String::new(), Vec::new()),
             vacc_due: Vec::new(),
             travel_query: String::new(),
             patient_doses: Vec::new(),
@@ -4381,6 +4416,7 @@ impl Session {
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
+            MainView::UiTexts => WorkTab::UiTexts,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -4437,6 +4473,9 @@ impl Session {
             }
             WorkTab::Ddi => {
                 self.view = MainView::Ddi;
+            }
+            WorkTab::UiTexts => {
+                self.view = MainView::UiTexts;
             }
             WorkTab::Classes => {
                 self.view = MainView::Classes;
@@ -5916,6 +5955,7 @@ impl Session {
             WorkTab::Registres => tr("tab_registres").to_owned(),
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
             WorkTab::Ddi => tr("tab_ddi").to_owned(),
+            WorkTab::UiTexts => tr("tab_libelles").to_owned(),
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
@@ -9712,6 +9752,10 @@ impl App {
                         // ce qu'il existe pour dessiner. C'est la même
                         // raison qui fait ouvrir la caisse sur un tiroir
                         // déjà compté.
+                        Ok("libelles") => {
+                            session.view = MainView::UiTexts;
+                            session.ui_text_query = "rendez-vous".to_owned();
+                        }
                         Ok("ddi") => {
                             if let Ok(list) = session.db.drugs() {
                                 session.set_drugs(list);
@@ -10887,7 +10931,11 @@ impl App {
                             // référentiel ni les dossiers ; il garde le
                             // dock qu'on avait devant soi en fermant.
                             | MainView::Caisse
-                            | MainView::CaisseHistory => {
+                            | MainView::CaisseHistory
+                            // Les libellés ne trient ni le référentiel
+                            // ni les dossiers : ils gardent le dock
+                            // qu'on avait devant soi.
+                            | MainView::UiTexts => {
                                 Self::nav_patients(ui, session, focus, &config)
                             }
                         }
@@ -12207,6 +12255,10 @@ impl App {
             }
             if session.view == MainView::Ddi {
                 Self::ddi_view(ui, session);
+                return;
+            }
+            if session.view == MainView::UiTexts {
+                Self::ui_texts_view(ui, session);
                 return;
             }
             if session.view == MainView::Classes {
@@ -29855,6 +29907,324 @@ impl App {
         ui.add_space(6.0);
     }
 
+    /// **Tous les textes de l'interface, au même endroit.**
+    ///
+    /// Son frère « Textes imprimés » fait la même chose des phrases qui
+    /// partent sur du papier. Celui-ci montre les libellés, les invites
+    /// et les infobulles : ce que l'application dit d'elle-même, et que
+    /// personne ne pouvait relire autrement qu'en ouvrant chaque écran.
+    ///
+    /// **Une liste et un détail, et non mille sept cent soixante-trois
+    /// formulaires.** Une rangée par texte, toutes de la même hauteur,
+    /// ce qui laisse `ScrollArea::show_rows` ne poser que celles qu'on
+    /// voit : quatre objets par rangée sur mille sept cents rangées font
+    /// sept mille objets par image, c'est-à-dire la panne que
+    /// l'explorateur vient de corriger. On ne la réintroduit pas dans
+    /// l'écran d'à côté.
+    ///
+    /// **Une réécriture s'applique à la prochaine ouverture**, et
+    /// l'écran le dit plutôt que de laisser croire le contraire : `tr`
+    /// rend un `&'static str`, et on ne remplace pas un `'static` en
+    /// cours de route. Le fichier est écrit tout de suite ; c'est la
+    /// lecture qui attend.
+    fn ui_texts_view(ui: &mut egui::Ui, session: &mut Session) {
+        use crate::strings::State;
+        let body = motif::visible_rect(ui);
+        let shipped = crate::strings::shipped();
+        // Relu à l'ouverture, et non à chaque image : c'est un fichier.
+        if session.ui_texts.is_empty() && session.ui_text_edit.is_none() {
+            if let Ok(text) = std::fs::read_to_string(crate::strings::overrides_path()) {
+                session.ui_texts = crate::strings::parse_rewrites(&text);
+            }
+        }
+        let head_h = Self::row_height(ui) * 2.0 + 18.0;
+        let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("libelles_title"));
+                ui.add_sized(
+                    [
+                        Self::field_width(ui, [tr("libelles_search_hint")].into_iter()),
+                        24.0,
+                    ],
+                    egui::TextEdit::singleline(&mut session.ui_text_query)
+                        .hint_text(tr("libelles_search_hint")),
+                );
+            });
+            ui.label(
+                egui::RichText::new(tr("libelles_note"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        });
+        // Les clés retenues, repliées une fois : la recherche de la
+        // maison, sur la clé **et** sur le texte, parce qu'on se
+        // souvient d'une tournure et jamais d'une clé.
+        // Calculée quand la question change, et pas à chaque image :
+        // filtrer mille sept cent soixante-trois textes, c'est replier
+        // autant de chaînes. Voir `ui_text_hits`.
+        let q = crate::fuzzy::sort_key(session.ui_text_query.trim());
+        if session.ui_text_hits.0 != q || session.ui_text_hits.1.is_empty() {
+            let mut keys: Vec<String> = shipped
+                .iter()
+                .filter(|(k, v)| {
+                    q.is_empty()
+                        || crate::fuzzy::contains_folded(k, &q)
+                        || crate::fuzzy::contains_folded(v, &q)
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
+            keys.sort_unstable();
+            session.ui_text_hits = (q, keys);
+        }
+        let keys = session.ui_text_hits.1.clone();
+        // La liste et le détail se partagent la largeur quand il y en a
+        // assez, et se superposent sinon : un détail où l'on tape passe
+        // avant une liste qu'on parcourt.
+        let wide = rows[1].width() >= chars_wide(ui, 110.0);
+        let cols = if wide {
+            motif::split_columns(rows[1], 2, 8.0)
+        } else {
+            let split = motif::split_rows(rows[1], &[0.0, rows[1].height() * 0.45], 6.0);
+            vec![split[0], split[1]]
+        };
+        let mut pick: Option<String> = None;
+        motif::panel(
+            ui,
+            cols[0],
+            Some(&trn(
+                "libelles_count",
+                &[&keys.len(), &session.ui_texts.len()],
+            )),
+            |ui| {
+                let inner = ui.max_rect();
+                motif::inside(ui, inner, |ui| {
+                    let row_h = Self::row_height(ui);
+                    egui::ScrollArea::vertical()
+                        .id_salt("ui_texts_list")
+                        .auto_shrink([false, false])
+                        .show_rows(ui, row_h, keys.len(), |ui, range| {
+                            for key in &keys[range] {
+                                let ship = shipped.get(key).map(String::as_str).unwrap_or_default();
+                                let state = session.ui_texts.get(key).map_or(State::Shipped, |r| {
+                                    crate::strings::state(r, Some(ship))
+                                });
+                                let chosen =
+                                    session.ui_text_edit.as_ref().is_some_and(|(k, _)| k == key);
+                                // Une rangée d'une ligne, allouée à une
+                                // hauteur fixe : c'est ce qui permet à
+                                // `show_rows` de ne poser que ce qu'on
+                                // voit. Un `list_row` mesure sa galée et
+                                // prend parfois deux lignes — juste
+                                // ailleurs, faux ici.
+                                let (rect, resp) = ui.allocate_exact_size(
+                                    egui::vec2(ui.available_width(), row_h),
+                                    egui::Sense::click(),
+                                );
+                                if ui.is_rect_visible(rect) {
+                                    if chosen {
+                                        ui.painter().rect_filled(rect, 0.0, motif::accent());
+                                    } else if resp.hovered() {
+                                        ui.painter().rect_filled(rect, 0.0, motif::bg_hover());
+                                    }
+                                    let ink = if chosen {
+                                        motif::on_fill(motif::accent())
+                                    } else {
+                                        match state {
+                                            State::Shipped => motif::text(),
+                                            State::Rewritten => motif::emphasize(motif::text()),
+                                            // Périmée : la seule qui
+                                            // demande qu'on s'arrête.
+                                            State::Outdated => motif::alert(),
+                                        }
+                                    };
+                                    let shown = session
+                                        .ui_texts
+                                        .get(key)
+                                        .map_or(ship, |r| r.value.as_str());
+                                    ui.painter().text(
+                                        egui::pos2(rect.left() + 8.0, rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        elide(ui, shown, rect.width() - 16.0, 11.5),
+                                        egui::FontId::proportional(motif::pt(ui, 11.5)),
+                                        ink,
+                                    );
+                                }
+                                if resp.on_hover_text(key.as_str()).clicked() {
+                                    pick = Some(key.clone());
+                                }
+                            }
+                        });
+                });
+            },
+        );
+        if let Some(key) = pick {
+            let value = session
+                .ui_texts
+                .get(&key)
+                .map(|r| r.value.clone())
+                .or_else(|| shipped.get(&key).cloned())
+                .unwrap_or_default();
+            session.ui_text_edit = Some((key, value));
+        }
+        Self::ui_text_detail(ui, session, cols[1]);
+    }
+
+    /// Le texte choisi : sa clé, ce qui est livré, ce que l'officine a
+    /// écrit, et de quoi le changer.
+    fn ui_text_detail(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        use crate::strings::State;
+        let shipped = crate::strings::shipped();
+        let Some((key, _)) = session.ui_text_edit.clone() else {
+            motif::panel(ui, rect, Some(tr("libelles_detail")), |ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(tr("libelles_pick"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                );
+            });
+            return;
+        };
+        let ship = shipped.get(&key).cloned().unwrap_or_default();
+        let state = session
+            .ui_texts
+            .get(&key)
+            .map_or(State::Shipped, |r| crate::strings::state(r, Some(&ship)));
+        let mut save = false;
+        let mut restore = false;
+        let mut close = false;
+        motif::panel(ui, rect, Some(tr("libelles_detail")), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("ui_text_detail")
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new(key.as_str())
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                        ui.add_space(4.0);
+                        // Le texte livré, toujours : c'est la référence
+                        // contre laquelle on relit.
+                        ui.label(
+                            egui::RichText::new(tr("libelles_shipped"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add(egui::Label::new(egui::RichText::new(ship.as_str())).wrap());
+                        if state == State::Outdated {
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("libelles_outdated"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::alert()),
+                                )
+                                .wrap(),
+                            );
+                            if let Some(seen) =
+                                session.ui_texts.get(&key).and_then(|r| r.aimed_at.clone())
+                            {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("libelles_aimed_at", seen))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                        }
+                        ui.add_space(8.0);
+                        // Le champ prend sa propre rangée, et les
+                        // boutons la leur : une rangée de boutons sous
+                        // un champ qui grandit est une rangée qu'on
+                        // finit par dessiner à moitié.
+                        if let Some((_, text)) = session.ui_text_edit.as_mut() {
+                            ui.add_sized(
+                                [ui.available_width(), Self::row_height(ui) * 2.0],
+                                egui::TextEdit::multiline(text),
+                            );
+                        }
+                        ui.add_space(6.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("libelles_save")).clicked() {
+                                save = true;
+                            }
+                            if session.ui_texts.contains_key(&key)
+                                && motif::button(ui, tr("libelles_restore"))
+                                    .on_hover_text(tr("libelles_restore_tooltip"))
+                                    .clicked()
+                            {
+                                restore = true;
+                            }
+                            if motif::button(ui, tr("libelles_cancel")).clicked() {
+                                close = true;
+                            }
+                        });
+                    });
+            });
+        });
+        if restore {
+            session.ui_texts.remove(&key);
+            session.ui_text_edit = None;
+            Self::write_ui_texts(session);
+        } else if save {
+            let text = session
+                .ui_text_edit
+                .as_ref()
+                .map(|(_, t)| t.clone())
+                .unwrap_or_default();
+            // **Réécrire le texte livré n'est pas une surcharge** : la
+            // ligne s'en va, et la clé suit de nouveau les mises à
+            // jour. C'est la règle de `content.rs`, et elle vaut ici.
+            if text.trim() == ship.trim() || text.trim().is_empty() {
+                session.ui_texts.remove(&key);
+            } else {
+                session.ui_texts.insert(
+                    key,
+                    crate::strings::Rewrite {
+                        value: text,
+                        aimed_at: Some(ship),
+                    },
+                );
+            }
+            session.ui_text_edit = None;
+            Self::write_ui_texts(session);
+        } else if close {
+            session.ui_text_edit = None;
+        }
+    }
+
+    /// Écrire `strings.toml`, **en entier et d'un coup**.
+    ///
+    /// Chaque entrée dit contre quel texte livré elle a été écrite : une
+    /// surcharge qui ne vise plus rien serait une phrase que personne
+    /// n'a relue et que l'application afficherait quand même.
+    fn write_ui_texts(session: &mut Session) {
+        let mut doc = toml::Table::new();
+        for (key, r) in &session.ui_texts {
+            let mut entry = toml::Table::new();
+            entry.insert("texte".into(), toml::Value::String(r.value.clone()));
+            if let Some(seen) = &r.aimed_at {
+                entry.insert("livre".into(), toml::Value::String(seen.clone()));
+            }
+            doc.insert(key.clone(), toml::Value::Table(entry));
+        }
+        let path = crate::strings::overrides_path();
+        let body = format!(
+            "{}{}",
+            tr("libelles_file_header"),
+            toml::to_string_pretty(&doc).unwrap_or_default()
+        );
+        match std::fs::write(&path, body) {
+            Ok(()) => session.error = Some(trf("libelles_saved", path.display())),
+            Err(e) => session.error = Some(e.to_string()),
+        }
+    }
+
     fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         use crate::facets::Organ;
         let body = motif::visible_rect(ui);
@@ -43994,7 +44364,8 @@ impl eframe::App for App {
                     | MainView::Script
                     | MainView::Caisse
                     | MainView::CaisseHistory
-                    | MainView::Ddi => {
+                    | MainView::Ddi
+                    | MainView::UiTexts => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard

@@ -200,6 +200,11 @@ réécrivent, dans la vue qui montre le document ou dans l'écran « Textes
 imprimés ». Ce qui est réécrit est rangé dans la base et vaut donc pour
 tous les postes.
 
+Les **libellés de l'interface** — ce que l'application dit d'elle-même :
+boutons, invites, infobulles — se relisent et se réécrivent dans
+« Libellés ». Ils vivent dans un fichier à côté de la configuration,
+donc par poste, et une réécriture s'affiche à la prochaine ouverture.
+
 Une réécriture se souvient de la phrase qu'elle remplaçait. Si la phrase
 livrée change, la réécriture est montrée à relire plutôt que posée sur
 une autre phrase.
