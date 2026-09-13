@@ -555,6 +555,74 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Tout document réécrivable a son test apparié.**
+    ///
+    /// `content::documents()` est le registre des phrases que l'officine
+    /// peut réécrire, et chaque source doit prouver **les deux sens** :
+    /// toute phrase listée pour l'édition, toute réécriture atteignant
+    /// la page. Sans les deux, une phrase absente de `phrases()` ne se
+    /// corrige pas, et une phrase absente de la résolution part telle
+    /// qu'elle est livrée pendant qu'on la croit corrigée — ce qui est
+    /// pire.
+    ///
+    /// Sur onze sources, deux n'avaient pas ce test : l'ordonnance du
+    /// TROD et les conseils du voyageur. Toutes deux étaient bien
+    /// câblées ; c'est la preuve qui manquait, et elle manque toujours
+    /// au moment où quelqu'un déplace la résolution. Le douzième
+    /// document aurait eu le même trou.
+    #[test]
+    fn every_rewritable_document_has_its_paired_test() {
+        // Le nom des tests n'est pas uniforme — « reaches_the_paper »
+        // pour les carnets, « arrives » ailleurs —, et il n'a pas à
+        // l'être : c'est le mot `rewrite` qui les réunit.
+        const SOURCES: &[(&str, &str)] = &[
+            ("biology.rs", include_str!("biology.rs")),
+            ("crush.rs", include_str!("crush.rs")),
+            ("entretien.rs", include_str!("entretien.rs")),
+            ("gravidity.rs", include_str!("gravidity.rs")),
+            ("hepatic.rs", include_str!("hepatic.rs")),
+            ("ordonnance.rs", include_str!("ordonnance.rs")),
+            ("renal.rs", include_str!("renal.rs")),
+            ("revue.rs", include_str!("revue.rs")),
+            ("selfcheck.rs", include_str!("selfcheck.rs")),
+            ("surveillance.rs", include_str!("surveillance.rs")),
+            ("vaccines.rs", include_str!("vaccines.rs")),
+        ];
+        // Autant de sources que le registre en cite : les carnets
+        // partagent la leur, d'où un module de moins que de documents.
+        let subjects: std::collections::HashSet<String> = crate::content::documents()
+            .iter()
+            .map(|d| {
+                d.subject
+                    .split_once('.')
+                    .map_or(d.subject.clone(), |(head, _)| head.to_owned())
+            })
+            .collect();
+        assert_eq!(
+            subjects.len(),
+            SOURCES.len(),
+            "le registre cite {} sujets et ce test lit {} modules",
+            subjects.len(),
+            SOURCES.len()
+        );
+        let mut mute: Vec<&str> = Vec::new();
+        for (file, src) in SOURCES {
+            let paired = src.lines().any(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && t.starts_with("fn ") && t.contains("rewrite")
+            });
+            if !paired {
+                mute.push(file);
+            }
+        }
+        assert!(
+            mute.is_empty(),
+            "document réécrivable sans son test apparié — il faut prouver \
+             les deux sens, la phrase listée et la réécriture qui \
+             arrive :\n{mute:?}"
+        );
+    }
+
     /// **Toute vue documentée est balayée par le passage de fumée.**
     ///
     /// `BPM_CADDY_START_VIEW` est la seule façon d'atteindre certaines

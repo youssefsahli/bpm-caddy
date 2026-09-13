@@ -1304,7 +1304,13 @@ real differences. The full account is in `docs/CONTENU.md` under
     in `content::documents()` + a label key + **the paired test in both
     directions**. A phrase missing from `phrases()` cannot be corrected;
     one missing from `resolve()` prints as shipped while you believe you
-    fixed it, which is worse.
+    fixed it, which is worse. Two of the eleven sources had no such test
+    — the TROD ordonnance and the traveller's advice — and both were
+    correctly wired: what was missing was the proof, and the proof is
+    what is missing again the day someone moves the resolution.
+    `every_rewritable_document_has_its_paired_test` (in `strings.rs`)
+    now refuses the twelfth, and checks the module count against the
+    registry so the test cannot quietly stop reading a source.
   - A phrase **composed at read time** needs its own path: the bilan's
     interval reading ends with the analyte's note, so rewriting that note
     changed the tooltip and left the printed bilan saying the old
