@@ -321,6 +321,12 @@ bio_info = "INFO"
 bio_trend = "Évolution"
 bio_trend_empty = "Deux résultats au moins sur un analyte pour tracer la courbe."
 bio_trend_span = "Du {} ({}) au {} ({})"
+# Les formes plus pauvres de la même phrase, prises dans l'ordre quand
+# la plus riche ne tient pas sur une ligne : le volet de la courbe est
+# étroit, et la ligne s'enveloppait sur une seconde que le panneau
+# coupait — on lisait « Du 03/02/2026 (4,9) au » et rien d'autre.
+bio_trend_span_dates = "Du {} au {}"
+bio_trend_span_short = "{} — {}"
 
 # --- Surveillance biologique demandée par l'ordonnance ---
 watch_section = "À surveiller"

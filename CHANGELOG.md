@@ -296,6 +296,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« Du 03/02/2026 (4,9) au ».** La ligne qui date la courbe de
+  biologie est la dernière du volet : enveloppée sur une seconde ligne,
+  elle se faisait couper par le cadre, et une phrase qui s'arrête à
+  « au » se lit cassée. Elle a maintenant trois formes, de la plus riche
+  à la plus pauvre, et prend la première qui tient sur une ligne — les
+  dates et les valeurs quand il y a la place, les dates seules sinon.
+  C'est la règle de la maison, « raccourcir, ne pas élider », et
+  `richest_form` existait déjà pour cela.
 - **Une posologie coupée sur l'étiquette collée à la boîte.** Le
   commentaire qui ouvre la fonction promet depuis toujours que « le nom
   et la posologie passent en entier, c'est la phrase de l'oubli qui

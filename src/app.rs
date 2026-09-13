@@ -17417,19 +17417,42 @@ impl App {
             ui.add_space(2.0);
             let first = series.first().expect("checked above");
             let last = series.last().expect("checked above");
-            ui.label(
-                egui::RichText::new(trn(
-                    "bio_trend_span",
-                    &[
-                        &db::format_french_date(&first.0),
-                        &crate::codex::format_quantity(first.1),
-                        &db::format_french_date(&last.0),
-                        &crate::codex::format_quantity(last.1),
-                    ],
-                ))
-                .size(motif::pt(ui, 10.5))
-                .color(motif::text_dim()),
+            // **Raccourcir, ne pas envelopper.** Cette ligne est la
+            // dernière du volet ; enveloppée sur une seconde ligne,
+            // elle se faisait couper par le cadre et on lisait « Du
+            // 03/02/2026 (4,9) au » — une phrase qui s'arrête à « au »
+            // se lit cassée, là où « Du 03/02/2026 au 20/08/2026 » ne
+            // dit pas les valeurs mais se lit entière. De la plus riche
+            // à la plus pauvre, et la première qui tient.
+            let (d1, d2) = (
+                db::format_french_date(&first.0),
+                db::format_french_date(&last.0),
             );
+            let span = richest_form(
+                ui,
+                [
+                    trn(
+                        "bio_trend_span",
+                        &[
+                            &d1,
+                            &crate::codex::format_quantity(first.1),
+                            &d2,
+                            &crate::codex::format_quantity(last.1),
+                        ],
+                    ),
+                    trn("bio_trend_span_dates", &[&d1, &d2]),
+                    trn("bio_trend_span_short", &[&d1, &d2]),
+                ],
+                ui.available_width(),
+                10.5,
+            );
+            if let Some(span) = span {
+                ui.label(
+                    egui::RichText::new(span)
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                );
+            }
         });
     }
 
