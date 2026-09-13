@@ -166,6 +166,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pour empêcher, et ils se prenaient sur la grille : à 1024x700 en
   `text_scale = 1,6`, la ligne « Total » — celle où le rouge dit qu'un
   creux reste pendant l'ouverture — n'était pas dessinée du tout.
+- **Le cadre d'un panneau se demande à qui le dessine.** Deux vues le
+  comptaient à la main — « 44 px » pour la carte vaccinale, « la hauteur
+  du corps plus 26 » pour les pièces scannées — et ni l'un ni l'autre ne
+  suivait `[ui] text_scale`, alors que la légende encastrée, elle, le
+  suit : à l'échelle 1 le premier réservait six pixels pour rien, et à
+  partir de 1,4 il en manquait, c'est-à-dire une rangée de loupes sur
+  une bande déjà plafonnée. `motif::panel_chrome` est cette hauteur,
+  écrite là où le cadre est décidé, et
+  `a_panel_leaves_the_room_its_chrome_announces` dessine le vrai
+  panneau à quatre échelles pour confronter l'annonce à ce qui est pris
+  — dans les deux sens, puisque trop réservé fait du blanc qui se lit
+  comme une intention.
 - **Et la barre de cette bande-là ne flotte plus.** Le formulaire est
   plafonné à la moitié du volet et défile, ce qui est la règle de la
   maison ; mais la barre flottante d'egui est invisible tant que le

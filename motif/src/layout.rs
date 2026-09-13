@@ -140,6 +140,37 @@ pub fn panel<R>(
 /// même chose finissent toujours par diverger.
 ///
 /// Quand aucune forme ne tient, la plus pauvre est élidée, comme avant.
+/// Ce qu'un [`panel`] prend à son contenu, en hauteur : la marge du
+/// cadre, le titre en capitale espacée, son filet et l'air autour.
+///
+/// **Écrit là où le cadre est décidé**, comme [`tab_strip_height`] :
+/// deux vues le comptaient à la main, l'une « 44 px », l'autre
+/// « hauteur du corps plus 26 », et ni l'une ni l'autre ne suivait
+/// `[ui] text_scale` — le titre, lui, le suit. À 1,6 la carte vaccinale
+/// perdait ainsi cinq pixels, c'est-à-dire la dernière rangée de
+/// loupes, celle où la bande était déjà plafonnée.
+///
+/// `titled` parce qu'un panneau sans titre n'a ni filet ni légende à
+/// payer, et que la différence vaut une rangée.
+pub fn panel_chrome(ui: &egui::Ui, titled: bool) -> f32 {
+    // Les deux marges du `shrink(8.0)`.
+    let frame = 16.0;
+    if !titled {
+        return frame;
+    }
+    let font = egui::FontId::proportional(crate::pt(ui, 11.0));
+    // Mesuré dans la fonte qui peindra, comme le titre lui-même. La
+    // capitale espacée ne change pas la hauteur d'une ligne ; ce qui la
+    // change est l'échelle, et elle est dans `pt`.
+    let title = ui.fonts(|f| {
+        f.layout_no_wrap("M".to_owned(), font, crate::text_dim())
+            .size()
+            .y
+    });
+    // Les trois pixels sous la légende, les six sous le filet.
+    frame + title + 3.0 + 6.0
+}
+
 pub fn panel_forms<R>(
     ui: &mut egui::Ui,
     rect: egui::Rect,
@@ -537,6 +568,45 @@ fn bg_hover_strong() -> Color32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Et un panneau laisse à son contenu ce que `panel_chrome`
+    /// annonce.** Les deux sens, comme pour la bande d'onglets : trop
+    /// peu annoncé coupe la dernière rangée d'une bande plafonnée, trop
+    /// annoncé fait du blanc que personne n'a demandé et qui se lit
+    /// comme une intention.
+    ///
+    /// Aux quatre échelles, parce que c'est l'échelle qui a fait mentir
+    /// les deux littéraux que cette fonction remplace.
+    #[test]
+    fn a_panel_leaves_the_room_its_chrome_announces() {
+        for scale in [1.0_f32, 1.25, 1.6, 2.0] {
+            for titled in [false, true] {
+                let ctx = egui::Context::default();
+                crate::apply_scale(&ctx, scale, crate::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let rect =
+                            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 300.0));
+                        let announced = panel_chrome(ui, titled);
+                        let inner = panel(
+                            ui,
+                            rect,
+                            titled.then_some("Patients sous ce traitement"),
+                            |ui| ui.max_rect().height(),
+                        );
+                        *seen.borrow_mut() = (announced, rect.height() - inner);
+                    });
+                });
+                let (announced, taken) = seen.into_inner();
+                assert!(
+                    (announced - taken).abs() <= 1.0,
+                    "échelle {scale}, titré {titled} : {announced} px annoncés, \
+                     {taken} px pris"
+                );
+            }
+        }
+    }
 
     /// **Ce qu'une bande d'onglets prend, et ce qu'elle dit prendre.**
     ///

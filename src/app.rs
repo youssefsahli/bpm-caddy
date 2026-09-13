@@ -21837,10 +21837,14 @@ impl App {
                 MapLens::ALL.iter().map(|l| l.label()),
             );
             let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
-            // 44 px of panel chrome: the inset title, its rule, and the
-            // padding above and below. Leaving it out cost the band a
-            // row, and the last lens with it.
-            let want = 44.0 + row * lines;
+            // Le cadre du panneau — la légende encastrée, son filet et
+            // l'air autour — demandé à qui le dessine. L'oublier coûtait
+            // une rangée à la bande, et la dernière loupe avec elle ;
+            // l'écrire « 44 px » coûtait la même rangée à partir de
+            // `text_scale = 1,4`, puisque le titre grandit et pas le
+            // nombre.
+            let chrome = motif::panel_chrome(ui, true);
+            let want = chrome + row * lines;
             let cap = body.height() * 0.35;
             if want <= cap {
                 want
@@ -21850,15 +21854,15 @@ impl App {
                 // de loupes et le haut d'une troisième : une pastille
                 // coupée par le milieu se lit « cassé » et non « il y en
                 // a d'autres ». Ici, contrairement à la bande du
-                // dossier, une rangée au moins doit rester — les
-                // quarante-quatre pixels d'en-tête sont le cadre du
-                // panneau et ne portent aucune loupe.
-                44.0 + whole_rows(
-                    cap - 44.0,
-                    Self::row_height(ui),
-                    ui.spacing().item_spacing.y,
-                    lines,
-                )
+                // dossier, une rangée au moins doit rester — le cadre du
+                // panneau ne porte aucune loupe.
+                chrome
+                    + whole_rows(
+                        cap - chrome,
+                        Self::row_height(ui),
+                        ui.spacing().item_spacing.y,
+                        lines,
+                    )
             }
         };
         let rows = motif::split_rows(body, &[lens_h, 0.0], 8.0);
@@ -31790,8 +31794,12 @@ impl App {
             widths.push(Self::button_width(ui, msg));
         }
         let field_row = Self::wrapped_rows_of(ui, inner_w, widths.into_iter()) * step;
-        // Le titre du panneau, son filet, et les marges de `panel`.
-        let chrome = ui.text_style_height(&egui::TextStyle::Body) + 26.0;
+        // Le titre du panneau, son filet, et les marges de `panel` —
+        // demandés à qui les dessine. « La hauteur du corps plus 26 »
+        // était une seconde construction de la même chose : la légende
+        // n'est pas écrite dans la fonte du corps, et deux mesures d'une
+        // même chose finissent toujours par diverger.
+        let chrome = motif::panel_chrome(ui, true);
         let want = kinds * step + field_row + chrome;
         // Ce que la liste garde : son en-tête et une ligne. En dessous
         // ce n'est plus une liste, c'est un titre au-dessus de rien.
