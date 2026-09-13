@@ -489,6 +489,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **« Sans objet » et « non chiffrée » ne sont pas la même chose**, et
+  la Spéciafoldine était du mauvais côté. `SansObjet` veut dire que la
+  notion n'a pas de sens — produit non absorbé, action locale, ion
+  physiologique, vaccin ; `NonChiffree` qu'elle en a un et que la
+  monographie ne le chiffre pas. La différence se lit au comptoir :
+  « combien de temps » sans réponse invite à chercher, « sans objet »
+  dit qu'il n'y a rien à chercher. Or la fiche de la Spéciafoldine ouvre
+  par « Notion peu pertinente : l'acide folique est rapidement capté et
+  stocké » — mot pour mot le raisonnement de celle du Tardyferon, qui
+  est rangé en « sans objet ». Un test refuse la prochaine, sur les mots
+  par lesquels une fiche décline la question elle-même.
+
+  Vérifié au passage, et sans rien trouver : les **669 demi-vies
+  chiffrées** des facettes concordent toutes avec le nombre écrit sur la
+  fiche dont elles viennent, semaines et secondes comprises.
 - **Note pour les officines qui ont réécrit des phrases imprimées.**
   Cette version corrige beaucoup de phrases livrées : des conduites
   rénales, des niveaux et des notes de grossesse, des lectures de

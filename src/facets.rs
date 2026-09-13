@@ -1072,7 +1072,11 @@ const NO_HALF_LIFE: &[(&str, Unknown)] = &[
     ("Smecta", Unknown::SansObjet),
     ("Spagulax", Unknown::SansObjet),
     ("Sprégal", Unknown::SansObjet),
-    ("Spéciafoldine", Unknown::NonChiffree),
+    // « Notion peu pertinente : l'acide folique est rapidement capté et
+    // stocké » — mot pour mot le raisonnement du Tardyferon, qui est
+    // `SansObjet` deux lignes plus bas. Deux fiches qui disent la même
+    // chose étaient rangées de deux côtés.
+    ("Spéciafoldine", Unknown::SansObjet),
     ("Sterdex", Unknown::SansObjet),
     ("Tantum", Unknown::SansObjet),
     ("Tardyferon", Unknown::SansObjet),
@@ -4382,5 +4386,54 @@ mod demo {
         assert!(!on_organ(Organ::Thyroide, Effect::Altere).is_empty());
         assert!(!on_organ(Organ::Thyroide, Effect::Traite).is_empty());
         assert!(!on_organ(Organ::Coeur, Effect::Altere).is_empty());
+    }
+    /// **« Sans objet » et « non chiffrée » ne sont pas la même chose,
+    /// et c'est la fiche qui dit laquelle.**
+    ///
+    /// `SansObjet` veut dire que la notion n'a pas de sens — produit non
+    /// absorbé, action locale, ion physiologique, vaccin ; `NonChiffree`
+    /// qu'elle en a un et que la monographie ne le chiffre pas. La
+    /// différence se lit au comptoir : « combien de temps » sans réponse
+    /// invite à chercher, « sans objet » dit qu'il n'y a rien à
+    /// chercher.
+    ///
+    /// La Spéciafoldine était rangée en « non chiffrée » alors que sa
+    /// fiche ouvre par « Notion peu pertinente : l'acide folique est
+    /// rapidement capté et stocké » — mot pour mot le raisonnement du
+    /// Tardyferon, qui est « sans objet ». Deux fiches qui disent la
+    /// même chose, de deux côtés.
+    #[test]
+    fn a_card_that_says_the_notion_has_no_sense_is_not_merely_unquantified() {
+        // Les mots par lesquels une fiche décline la question elle-même.
+        const NO_SENSE: &[&str] = &[
+            "notion peu pertinente",
+            "sans objet",
+            "n'a pas de sens",
+            "non absorb",
+        ];
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, unknown) in NO_HALF_LIFE {
+            if *unknown != Unknown::NonChiffree {
+                continue;
+            }
+            let Some(card) = crate::db::STARTER_DETAILS.iter().find(|d| d.name == *name) else {
+                continue;
+            };
+            let prose = crate::fuzzy::sort_key(card.half_life);
+            if let Some(cue) = NO_SENSE
+                .iter()
+                .find(|c| crate::fuzzy::contains_folded(&prose, c))
+            {
+                wrong.push(format!(
+                    "« {name} » est « non chiffrée » mais sa fiche dit « {cue} »"
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "une fiche qui décline la question n'est pas une fiche qui \
+             oublie de répondre :\n{}",
+            wrong.join("\n")
+        );
     }
 }
