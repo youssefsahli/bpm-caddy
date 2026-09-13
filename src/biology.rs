@@ -164,10 +164,29 @@ struct Rule {
 ///
 /// Only the most recent reading of each analyte is read: a kaliémie
 /// corrected last month is not an alert today.
-pub fn read(readings: &[Reading], treatments: &[String]) -> Vec<Finding> {
+/// Les traitements arrivent **entiers** — nom, DCI, classe, étiquettes —
+/// et non aplatis en une liste de mots, comme partout ailleurs ici.
+///
+/// La différence n'est pas cosmétique : aplatis, la classe se perdait de
+/// vue, et une forme locale de la même molécule prenait la lecture de la
+/// voie générale. Vingt et une boîtes le faisaient — un collyre à
+/// l'indométacine expliquait une insuffisance rénale et une anémie, une
+/// crème antifongique une cholestase, un gel au lithium une TSH qui
+/// dérive.
+///
+/// Elles sont écartées ici, une fois. Ce qu'on y perd est nommé, parce
+/// que ce n'est pas rien : un dermocorticoïde très fort sur une grande
+/// surface **peut** freiner la surrénale, et « cortisol bas sous
+/// corticothérapie » avait donc un sens pour lui. Mais cette même règle
+/// se déclenchait sur une crème d'hydrocortisone à 0,5 % achetée sans
+/// ordonnance, et une lecture juste une fois sur vingt et une est une
+/// lecture qu'on cesse de croire. Le jour où l'officine la veut, c'est
+/// un mot dans la règle — pas un oubli à retrouver.
+pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
     let haystack: Vec<String> = treatments
         .iter()
-        .map(|t| crate::fuzzy::sort_key(t))
+        .filter(|t| !crate::classes::is_local_form(t.class))
+        .map(|t| crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags)))
         .collect();
     let takes = |needle: &str| {
         haystack
@@ -1845,6 +1864,20 @@ mod tests {
         assert_eq!(n, all.len(), "une note et une lecture à la même adresse");
     }
 
+    fn treat<'a>(
+        name: &'a str,
+        dci: &'a str,
+        class: &'a str,
+        tags: &'a str,
+    ) -> crate::revue::Treatment<'a> {
+        crate::revue::Treatment {
+            name,
+            dci,
+            class,
+            tags,
+        }
+    }
+
     /// Toute lecture s'édite, et toute réécriture arrive sur le bilan.
     #[test]
     fn every_biology_reading_is_editable_and_every_rewrite_arrives() {
@@ -1854,7 +1887,7 @@ mod tests {
             value: 5.4,
             date: "2026-09-11",
         }];
-        let treatments = ["ramipril".to_owned()];
+        let treatments = [treat("Triatec", "ramipril", "IEC", "")];
         let found = read(&readings, &treatments);
         assert!(!found.is_empty(), "la kaliémie haute sous IEC doit parler");
 
@@ -1925,7 +1958,7 @@ mod tests {
         assert!(alone.iter().any(|f| f.text.contains("Kaliémie")));
         // With a sartan on the file, it becomes an alert — and the
         // match is on the class, whatever the brand is called.
-        let treated = read(&readings, &["Coversyl".to_owned(), "IEC".to_owned()]);
+        let treated = read(&readings, &[treat("Coversyl", "périndopril", "IEC", "")]);
         assert!(treated.iter().any(|f| f.severity == Severity::Alert));
         // Loudest first.
         assert_eq!(treated[0].severity, Severity::Alert);
@@ -1946,7 +1979,7 @@ mod tests {
                 date: "2026-08-20",
             },
         ];
-        let found = read(&readings, &["IEC".to_owned()]);
+        let found = read(&readings, &[treat("Coversyl", "périndopril", "IEC", "")]);
         assert!(found.is_empty(), "{found:?}");
     }
 
@@ -1957,7 +1990,7 @@ mod tests {
             value: 26.0,
             date: "2026-08-20",
         }];
-        let found = read(&readings, &["Eliquis".to_owned(), "apixaban".to_owned()]);
+        let found = read(&readings, &[treat("Eliquis", "apixaban", "AOD", "")]);
         assert!(found
             .iter()
             .any(|f| f.text.contains("anticoagulant oral direct")));
@@ -2159,5 +2192,58 @@ mod tests {
         assert_eq!(search("kalie")[0].code, "K");
         assert_eq!(search("DFG")[0].code, "DFG");
         assert_eq!(search("")[0].code, CATALOGUE[0].code);
+    }
+    /// **Une forme locale n'explique pas un résultat de biologie.**
+    ///
+    /// Vingt et une boîtes le faisaient : un collyre à l'indométacine
+    /// expliquait une insuffisance rénale, une anémie et une carence
+    /// martiale ; quatre crèmes antifongiques une cholestase ; un gel au
+    /// lithium une TSH qui dérive ; un collyre à la ciclosporine une
+    /// hyperkaliémie. Chaque règle était juste — pour la voie générale.
+    ///
+    /// Le repère est la classe de la fiche, par `classes::is_local_form`,
+    /// et c'est pour l'avoir que `read` reçoit des traitements entiers
+    /// plutôt qu'une liste de mots aplatie.
+    #[test]
+    fn a_local_form_explains_no_result() {
+        // Une valeur franchement hors bornes pour chaque analyte que la
+        // table connaît : si une règle peut parler, elle parlera.
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+            if !crate::classes::is_local_form(class) {
+                continue;
+            }
+            let t = crate::revue::Treatment {
+                name,
+                dci,
+                class,
+                tags,
+            };
+            for a in CATALOGUE {
+                // Très bas puis très haut, pour réveiller les deux côtés.
+                for v in [0.01_f64, 100_000.0] {
+                    let readings = [Reading {
+                        code: a.code,
+                        value: v,
+                        date: "2026-09-13",
+                    }];
+                    // Ce que la valeur dit d'elle-même n'est pas en
+                    // cause : seules les règles qui nomment un
+                    // traitement le sont.
+                    let alone = read(&readings, &[]).len();
+                    let with = read(&readings, std::slice::from_ref(&t)).len();
+                    if with > alone {
+                        wrong.push(format!("« {name} » ({class}) explique un {}", a.code));
+                    }
+                }
+            }
+        }
+        wrong.sort();
+        wrong.dedup();
+        assert!(
+            wrong.is_empty(),
+            "une forme locale explique un résultat :\n{}",
+            wrong.join("\n")
+        );
     }
 }

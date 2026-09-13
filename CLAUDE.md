@@ -22,7 +22,18 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/entretien.rs` (what each thematic covers, printed on the fiche),
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
-  tested. Two rules it turns on. **A target is not an interval**: an
+  tested. `read` takes **whole treatments**, like every other clinical
+  module, and not a flattened list of words: the class carries the
+  route, and without it twenty-one local forms were explaining results
+  they cannot cause — an indometacin collyre accounting for renal
+  failure, an anaemia and an iron deficiency; four antifungal creams for
+  a cholestasis; a lithium gel for a drifting TSH. They are filtered
+  once, through `classes::is_local_form`. What that knowingly gives up
+  is written beside it: a very potent dermocorticoid over a large area
+  *can* suppress the adrenal axis, so « cortisol bas sous
+  corticothérapie » did mean something for it — but the same rule fired
+  on a 0,5 % hydrocortisone cream bought off the shelf, and a reading
+  right one time in twenty-one is a reading people stop believing. Two rules it turns on. **A target is not an interval**: an
   HbA1c of 7,4 % is a failure in a recent diabetic and a good result in
   a frail eighty-year-old, and the software does not know which one is
   at the counter — so that analyte has *no* `high`, like the INR, and

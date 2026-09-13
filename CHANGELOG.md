@@ -330,6 +330,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Et vingt et une formes locales expliquaient des résultats de
+  biologie.** Un collyre à l'indométacine rendait compte d'une
+  insuffisance rénale, d'une anémie et d'une carence martiale ; quatre
+  crèmes antifongiques d'une cholestase ; un gel au lithium d'une TSH
+  qui dérive ; un collyre à la ciclosporine d'une hyperkaliémie. Chaque
+  règle était juste — pour la voie générale.
+
+  `biology::read` reçoit désormais des **traitements entiers**, comme
+  les cinq autres modules cliniques, et non une liste de mots aplatie où
+  la classe se perdait de vue. C'est cette classe qui porte la voie.
+
+  Ce qu'on y perd est écrit à côté, parce que ce n'est pas rien : un
+  dermocorticoïde très fort sur une grande surface **peut** freiner la
+  surrénale, et « cortisol bas sous corticothérapie » avait donc un sens
+  pour lui. Mais la même règle se déclenchait sur une crème
+  d'hydrocortisone à 0,5 % achetée sans ordonnance, et une lecture juste
+  une fois sur vingt et une est une lecture qu'on cesse de croire.
 - **Le plan de surveillance réclamait une lithiémie pour un gel.** Sept
   lignes sortaient pour cinq boîtes qui ne passent pas dans le sang :
   lithiémie, TSH et débit de filtration pour le Lithioderm, gel de la

@@ -6718,20 +6718,18 @@ impl Session {
                 date: r.taken_on.as_str(),
             })
             .collect();
-        // Everything the file knows about what the patient takes: the
-        // brand, the DCI, the class and the tags all feed the rules.
-        let treatments: Vec<String> = self
+        // Everything the file knows about what the patient takes —
+        // entier, et non aplati en une liste de mots : la classe dit la
+        // voie, et `biology::read` écarte les formes locales.
+        let treatments: Vec<crate::revue::Treatment> = self
             .patient_treats
             .iter()
-            .flat_map(|d| {
-                [
-                    d.name.clone(),
-                    d.dci.clone(),
-                    d.class.clone(),
-                    d.tags.clone(),
-                ]
+            .map(|d| crate::revue::Treatment {
+                name: &d.name,
+                dci: &d.dci,
+                class: &d.class,
+                tags: &d.tags,
             })
-            .filter(|t| !t.trim().is_empty())
             .collect();
         // Les mots de l'officine : ces lectures partent sur le bilan.
         self.bio_findings =
@@ -8066,7 +8064,6 @@ fn bio_watch(db: &Db, today: &str) -> Vec<BioWatch> {
                 date: date.as_str(),
             })
             .collect();
-        let findings = crate::biology::read(&readings, &row.treatments);
         let terms: Vec<crate::revue::Treatment> = row
             .drugs
             .iter()
@@ -8077,6 +8074,7 @@ fn bio_watch(db: &Db, today: &str) -> Vec<BioWatch> {
                 tags,
             })
             .collect();
+        let findings = crate::biology::read(&readings, &terms);
         let points = crate::revue::review(&terms);
         let count = |severity: crate::biology::Severity| {
             findings.iter().filter(|f| f.severity == severity).count()
@@ -17948,17 +17946,14 @@ impl App {
                 date: r.taken_on.as_str(),
             })
             .collect();
-        let words: Vec<String> = treats
+        let words: Vec<crate::revue::Treatment> = treats
             .iter()
-            .flat_map(|d| {
-                [
-                    d.name.clone(),
-                    d.dci.clone(),
-                    d.class.clone(),
-                    d.tags.clone(),
-                ]
+            .map(|d| crate::revue::Treatment {
+                name: &d.name,
+                dci: &d.dci,
+                class: &d.class,
+                tags: &d.tags,
             })
-            .filter(|t| !t.trim().is_empty())
             .collect();
         let findings: Vec<(String, String)> = crate::biology::read(&readings, &words)
             .into_iter()
