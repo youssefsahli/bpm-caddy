@@ -384,7 +384,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Le manuel et `config.toml` envoyaient dans « Options › Modèles ».**
   L'éditeur de modèles n'est pas un onglet des Options : c'est le bouton
   « Modèles… » de la barre du haut. Un chemin de menu faux fait chercher
-  là où il n'y a rien.
+  là où il n'y a rien, et rien ne le signale — la prose ne compile pas.
+  `every_menu_path_written_in_prose_leads_somewhere` exige désormais que
+  ce qui suit « Options › » soit un libellé que l'application écrit
+  vraiment, onglet ou bouton.
 - **« Copier la base… » prend trois fichiers, pas deux.** La phrase des
   Options le disait encore au temps où il n'y en avait que deux — avant
   que le registre des stupéfiants ait le sien.

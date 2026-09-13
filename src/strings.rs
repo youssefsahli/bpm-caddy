@@ -820,6 +820,73 @@ livre = "Une phrase qui n'est plus livrée"
         );
     }
 
+    /// **Un chemin de menu écrit en toutes lettres doit mener quelque
+    /// part.**
+    ///
+    /// Le manuel et `config.toml` envoyaient tous deux dans
+    /// « Options › Modèles » ; l'éditeur de modèles n'est pas un onglet
+    /// des Options, c'est le bouton « Modèles… » de la barre du haut. Un
+    /// chemin faux fait chercher là où il n'y a rien, et rien ne le
+    /// signale — la prose ne compile pas.
+    ///
+    /// La règle : ce qui suit « Options › » doit être **un libellé que
+    /// l'application écrit vraiment**, onglet ou bouton, c'est-à-dire une
+    /// valeur de la table des chaînes.
+    #[test]
+    fn every_menu_path_written_in_prose_leads_somewhere() {
+        const SOURCES: [(&str, &str); 3] = [
+            ("assets/aide.md", include_str!("../assets/aide.md")),
+            (
+                "assets/strings.fr.toml",
+                include_str!("../assets/strings.fr.toml"),
+            ),
+            ("src/config.rs", include_str!("config.rs")),
+        ];
+        let labels: std::collections::HashSet<&str> =
+            shipped().values().map(|v| v.trim()).collect();
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, src) in SOURCES {
+            for (i, _) in src.match_indices("Options › ") {
+                let rest = &src[i + "Options › ".len()..];
+                // Le libellé s'arrête à la ponctuation ou à la fin de
+                // ligne : « Options › Base. », « Options › Mentions »,
+                // « Options › Locations) ».
+                let end = rest
+                    .find(|c: char| {
+                        matches!(c, '.' | ',' | ';' | ':' | ')' | '»' | '\n' | '…' | '"')
+                    })
+                    .unwrap_or(rest.len());
+                let label = rest[..end].trim();
+                if label.is_empty() {
+                    continue;
+                }
+                // Les commentaires anglais de ce dépôt écrivent parfois
+                // « Options › Base for the … » : on ne garde que ce qui
+                // ressemble à un libellé, c'est-à-dire ce que la table
+                // des chaînes connaît, sur le mot ou sur ses premiers
+                // mots.
+                let leads = labels.contains(label)
+                    || label
+                        .split_whitespace()
+                        .scan(String::new(), |acc, w| {
+                            if !acc.is_empty() {
+                                acc.push(' ');
+                            }
+                            acc.push_str(w);
+                            Some(acc.clone())
+                        })
+                        .any(|prefix| labels.contains(prefix.as_str()));
+                if !leads {
+                    wrong.push(format!("{name} : « Options › {label} »"));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "chemin de menu qui ne mène à aucun libellé de l'application : {wrong:?}"
+        );
+    }
+
     /// **Ce que « Aller à… » cherche est une liste, et une liste se
     /// confronte à son registre.**
     ///
