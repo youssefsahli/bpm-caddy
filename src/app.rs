@@ -27108,6 +27108,12 @@ impl App {
                 // coupé en bas.
                 let body_cap =
                     (screen.y - Self::row_height(ui) * 3.0 - 40.0).max(Self::row_height(ui) * 4.0);
+                // **La barre reste flottante ici, et c'est mesuré.**
+                // Cette région défile dans les *deux* sens : une barre
+                // pleine y coûte une colonne **et** une rangée — la
+                // colonne des totaux sortait « 8 h 3 » et le ruban
+                // horizontal mangeait la ligne de vendredi, qu'il était
+                // censé annoncer. Essayé, regardé, retiré.
                 egui::ScrollArea::both()
                     .id_salt("frame_body")
                     .max_height(body_cap)
