@@ -35878,8 +35878,6 @@ impl App {
     /// dissous.
     fn vigilance_body(ui: &mut egui::Ui, session: &mut Session, body: egui::Rect) {
         let line = ui.text_style_height(&egui::TextStyle::Body);
-        let band = Self::title_band_height(ui, body.width(), [].into_iter(), tr("vigilance_note"));
-        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         let rules = crate::vigilance::Rules::default();
         let borrowed: Vec<crate::vigilance::Dispensing> = session
             .stup_watch
@@ -35901,6 +35899,28 @@ impl App {
         let unfiled = crate::vigilance::unfiled(&borrowed);
         let unwatched = crate::vigilance::unwatched(&borrowed);
         let mut open_patient: Option<i64> = None;
+
+        // **Cette bande ne porte qu'une phrase.** Pas de titre — l'onglet
+        // au-dessus dit « Vigilance » —, pas de boutons. Elle était
+        // pourtant mesurée par `title_band_height`, qui réserve la
+        // rangée d'un titre *et* celle d'une rangée de commandes : à
+        // 1024x700 en texte 1,6, près de quatre-vingts pixels de vide
+        // au-dessus du tableau, sur un écran qui en a sept cents. Une
+        // tête se mesure sur ce qu'elle porte, et ce qu'elle porte ici
+        // est de la prose — y compris la seconde ligne, qui n'est
+        // comptée que les jours où elle est écrite.
+        let usable = (body.width() - 24.0).max(80.0);
+        let mut band = Self::prose_height(ui, tr("vigilance_note"), motif::pt(ui, 11.5), usable);
+        if unfiled > 0 || unwatched > 0 {
+            band += ui.spacing().item_spacing.y
+                + Self::prose_height(
+                    ui,
+                    &trn("vigilance_blind", &[&unfiled, &unwatched]),
+                    motif::pt(ui, 10.5),
+                    usable,
+                );
+        }
+        let rows = motif::split_rows(body, &[band + 14.0, 0.0], 6.0);
 
         motif::inside(ui, rows[0], |ui| {
             // Pas de titre : l'onglet au-dessus dit « Vigilance », et

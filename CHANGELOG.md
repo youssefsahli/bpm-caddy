@@ -276,6 +276,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Quatre-vingts pixels de vide en haut de la vigilance.** Sa bande ne
+  porte qu'une phrase — pas de titre, l'onglet au-dessus dit
+  « Vigilance », et pas de commandes —, mais elle se mesurait avec
+  `title_band_height`, qui réserve la rangée d'un titre *et* celle d'une
+  rangée de boutons. À 1024x700 en texte 1,6 cela faisait près de quatre-
+  vingts pixels de blanc au-dessus du tableau, sur un écran qui en a sept
+  cents ; les deux panneaux les récupèrent. La tête se mesure maintenant
+  sur ce qu'elle porte, seconde ligne comprise — celle qui dit de combien
+  la vigilance est aveugle, et qui n'est comptée que les jours où elle
+  est écrite.
 - **« ALERTE  K », et rien d'autre.** Dans la bande du bas de l'onglet
   Biologie, chaque constat tient en deux lignes : la pastille de gravité
   avec le code de l'analyte, puis la phrase qui dit ce qu'il faut en
