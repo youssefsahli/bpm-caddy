@@ -33397,7 +33397,29 @@ impl App {
                 .filter(|s| !s.is_empty()),
             );
             let rename_rows = f32::from(u8::from(!session.stup_renames.is_empty()));
-            let want = ctrl_rows * row + (info_rows + rename_rows) * line + 8.0;
+            // **Et les gouttières se comptent, entre tout ce que la
+            // bande empile.** Le modèle est celui de
+            // `wrapped_band_height` : *n* choses valent leurs hauteurs
+            // plus *n − 1* espacements. Comptées sans, la bande était
+            // courte de dix pixels et la dernière ligne — « 12
+            // comprimés au registre · non inventorié · 12 comprimés à
+            // détruire », c'est-à-dire le solde, ce pour quoi on ouvre
+            // cet écran — sortait tranchée en hauteur, six pixels
+            // dépassant sous les contrôles.
+            let gap_y = ui.spacing().item_spacing.y;
+            let lines = info_rows + rename_rows;
+            // **Et une ligne de lecture ne vaut pas la hauteur de sa
+            // fonte.** Une rangée d'egui ne descend jamais sous
+            // `interact_size.y` : mesurée à la hauteur du corps, elle
+            // était comptée seize pixels là où elle en occupe
+            // vingt-deux, et les six manquants sont exactement ce qui
+            // coupait les jambages du solde. C'est la même raison qui
+            // fait que `row_height` prend le plus grand des deux.
+            let info_line = line.max(ui.spacing().interact_size.y);
+            let band = |rows: f32, lines: f32| {
+                rows * row + lines * info_line + (rows + lines - 1.0).max(0.0) * gap_y
+            };
+            let want = band(ctrl_rows, lines);
             // Le plafond, en part du volet — et jamais sous une rangée,
             // sans quoi le champ où l'on tape disparaîtrait.
             let cap = (panel_body.height() * 0.42).max(row);
@@ -33411,14 +33433,21 @@ impl App {
             let head_h = if want <= cap {
                 want.max(row)
             } else {
-                let rows_kept = (cap / row).floor().max(1.0);
-                let left = cap - rows_kept * row;
-                let lines_kept = if line > 0.0 {
-                    (left / line).floor().max(0.0)
-                } else {
-                    0.0
-                };
-                rows_kept * row + lines_kept * line
+                // **Et on ne garde pas plus de rangées qu'il n'y en
+                // a.** Le plafond en portait trois pour deux rangées de
+                // contrôles : les trente pixels de la troisième étaient
+                // réservés à rien, et ils manquaient à la ligne du
+                // solde. On descend donc rangée par rangée, puis ligne
+                // par ligne, sur le modèle exact du dessin.
+                let mut rows_kept = ctrl_rows.max(1.0);
+                while rows_kept > 1.0 && band(rows_kept, 0.0) > cap {
+                    rows_kept -= 1.0;
+                }
+                let mut lines_kept = lines;
+                while lines_kept > 0.0 && band(rows_kept, lines_kept) > cap {
+                    lines_kept -= 1.0;
+                }
+                band(rows_kept, lines_kept)
             };
             let split = motif::split_rows(panel_body, &[head_h, 0.0], 6.0);
             let head_rect = split[0];

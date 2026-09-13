@@ -183,6 +183,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **La tête du registre coupait le solde en deux.** Trois fautes
+  cumulées, toutes dans le même sens : le plafond gardait *trois*
+  rangées de contrôles là où il n'y en a que deux — trente pixels
+  réservés à rien —, les gouttières entre ce que la bande empile
+  n'étaient pas comptées, et une ligne de lecture était mesurée à la
+  hauteur du corps alors qu'une rangée d'egui ne descend jamais sous
+  `interact_size.y` : seize pixels comptés pour vingt-deux occupés. Ce
+  qui sortait tranché dans le sens de la hauteur était « 12 comprimés au
+  registre · non inventorié · 12 comprimés à détruire », c'est-à-dire le
+  solde, ce pour quoi on ouvre cet écran.
 - **« Tout » se dessinait sur chaque acte et ne se mesurait pas.** Les
   trois seuils du tableau des entretiens étaient donc courts d'un bouton
   depuis le jour où il a été ajouté : la rangée entière et la fiche

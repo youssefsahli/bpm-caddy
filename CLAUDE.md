@@ -929,6 +929,17 @@ add clicking and typing; it is not the price of entry.
   to say, came out « Renouvellemer ». A row of buttons in a cell takes
   `allocate_ui_with_layout` **and** `with_main_wrap(true)`, so it wraps
   instead of shoving its neighbour.
+- **A row of labels is at least `interact_size.y` tall, whatever the
+  font says.** egui never lays a row shorter than that, so a band that
+  measures its reading lines with `text_style_height(&Body)` reserves 16
+  px for something that occupies 22 — and the six missing are the
+  descenders of the last line. The register's head did exactly that, and
+  what came out cut through the middle was « 12 comprimés au registre ·
+  non inventorié · 12 comprimés à détruire », i.e. the balance, which is
+  what one opens that screen for. Take `line.max(interact_size.y)`, the
+  way `Self::row_height` already takes the larger of the two. And count
+  the gutters **between** everything a band stacks, controls and lines
+  alike: *n* things cost their heights plus *n − 1* spacings.
 - **A widget's height comes from the widget.** Three call sites carved
   24 or 28 px for a strip whose own rule is `font.size + 14` — thirty-
   eight at `text_scale = 1.6`. Two got away with painting over the panel
