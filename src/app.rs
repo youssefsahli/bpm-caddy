@@ -48988,6 +48988,72 @@ mod tests {
         assert!(seen[3].ends_with('…'));
     }
 
+    /// **Un bouton qui se dessine se mesure.**
+    ///
+    /// Les trois dispositions du tableau des entretiens sont choisies
+    /// sur `acts_widths`, qui additionne ce que chaque cellule demande.
+    /// « Tout » y manquait — dessiné sur chaque acte, compté nulle part
+    /// —, si bien que les trois seuils étaient courts d'un bouton
+    /// depuis le jour de son ajout : la rangée entière était choisie
+    /// trop tôt, et la dernière ligne de la fiche serrée débordait par
+    /// la droite.
+    ///
+    /// Le test lit le texte de ce fichier, comme les lints qui
+    /// l'entourent : il relève les clés que les cellules passent à
+    /// `motif::button` et exige que la mesure les nomme. Un bouton
+    /// conditionnel compte comme les autres — c'est le pire cas qui
+    /// décide d'une disposition.
+    #[test]
+    fn every_button_an_act_row_draws_is_measured_by_acts_widths() {
+        const SOURCE: &str = include_str!("app.rs");
+        let body_of = |name: &str| -> &str {
+            let i = SOURCE.find(&format!("fn {name}(")).unwrap_or_else(|| {
+                panic!("{name} a disparu : le test doit suivre le découpage des cellules")
+            });
+            let j = SOURCE[i..]
+                .find("\n    fn ")
+                .map_or(SOURCE.len(), |k| i + k);
+            &SOURCE[i..j]
+        };
+        let measure = body_of("acts_widths");
+        let mut missing = Vec::new();
+        for cell in [
+            "acts_kind",
+            "acts_act",
+            "acts_theme",
+            "acts_made",
+            "acts_state",
+            "acts_advance",
+            "acts_sheet",
+            "acts_duration",
+            "acts_rdv",
+            "acts_delete",
+        ] {
+            let drawn = body_of(cell);
+            for line in drawn.lines().filter(|l| l.contains("motif::button(")) {
+                // La clé est lue **sur la ligne du bouton** et nulle
+                // part ailleurs : l'infobulle est posée à la ligne
+                // suivante, et la prendre pour le libellé faisait
+                // réclamer la mesure d'un texte que personne ne dessine.
+                // Un libellé littéral — « « » — n'a pas de clé et se
+                // mesure à la main ; il n'y a rien à confronter.
+                let Some(open) = line.find("tr(\"") else {
+                    continue;
+                };
+                let key = &line[open + 4..];
+                let Some(end) = key.find('"') else { continue };
+                let key = &key[..end];
+                if !measure.contains(key) {
+                    missing.push(format!("{cell} dessine « {key} »"));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "mesuré nulle part, donc les trois seuils sont courts d'autant : {missing:?}"
+        );
+    }
+
     /// **La glissière d'egui ne se voit pas sous le style Motif.**
     ///
     /// Elle peint son rail avec `widgets.inactive.bg_fill`, et

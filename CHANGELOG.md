@@ -194,7 +194,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   s'enveloppe pas et ne se laisse pas clipper : le défaut que ce dépôt
   nomme déjà pour `ui.columns` et pour les trois boutons d'une cellule
   de location. La dernière ligne est mesurée à son tour et se coupe en
-  deux plutôt que de déborder ; un test l'exige.
+  deux plutôt que de déborder ; un test l'exige. Et
+  `every_button_an_act_row_draws_is_measured_by_acts_widths` lit le
+  texte de `app.rs` — comme les lints qui l'entourent — pour confronter
+  les clés que les cellules passent à `motif::button` à celles que la
+  mesure nomme : c'est la seule façon de rattraper un bouton ajouté à
+  une cellule sans que personne ne pense à la fonction qui la mesure.
 - **Et la bande du dossier cachait ce que l'ordonnance dit
   d'elle-même.** Elle est plafonnée à une part du dossier et défile —
   c'est ce qui protège le tableau des actes —, mais la barre flottante
