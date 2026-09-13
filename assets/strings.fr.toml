@@ -157,7 +157,6 @@ trans_print_tooltip = "Imprimer la page du jour affiché"
 
 # --- Carte vaccinale et groupes de pays ---
 map_title = "Carte des groupes de pays"
-map_lens_title = "Regroupement"
 map_lens_group = "Groupe"
 map_lens_yf = "Fièvre jaune"
 map_lens_palu = "Paludisme"
@@ -1884,6 +1883,10 @@ explorer_col_organs = "Organes altérés"
 # du volet et défile — mais la barre d'egui est flottante, invisible tant
 # qu'on ne la survole pas, et quatre organes sur douze se lisaient comme
 # n'existant pas.
+# Le compte des loupes, dans la légende du panneau : la bande est
+# plafonnée et défile, et la barre d'egui est flottante — sans ce
+# chiffre, six loupes sur sept se lisaient comme la liste entière.
+map_lens_title_n = "Regroupement ({})"
 explorer_axes_more = "{} axes en tout — la bande défile"
 explorer_cover_half_life = "{} fiches classées. Les monographies sans demi-vie chiffrée sont placées en fin de liste, non à zéro."
 explorer_cover_organ = "{} fiches sur cet axe, d'après leur monographie. Une fiche absente est une fiche dont la monographie ne dit rien sur cet axe."

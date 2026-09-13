@@ -21819,7 +21819,16 @@ impl App {
             }
         };
         let rows = motif::split_rows(body, &[lens_h, 0.0], 8.0);
-        motif::panel(ui, rows[0], Some(tr("map_lens_title")), |ui| {
+        // **Le compte est dans la légende, qui ne coûte pas une
+        // ligne.** La bande est plafonnée à une part du volet et
+        // défile, mais la barre de défilement d'egui est flottante,
+        // donc invisible tant qu'on ne la survole pas : à 1024x700 en
+        // texte 1,6, six loupes sur sept se voyaient et l'encéphalite
+        // japonaise se lisait comme n'existant pas. C'est le tour du
+        // volet de biologie, qui met « (8) » dans son titre pour la
+        // même raison.
+        let lens_title = trn("map_lens_title_n", &[&MapLens::ALL.len()]);
+        motif::panel(ui, rows[0], Some(&lens_title), |ui| {
             // Capped: on a short window the band scrolls past its share
             // rather than hiding a lens behind its own bottom edge.
             egui::ScrollArea::vertical()

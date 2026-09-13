@@ -326,6 +326,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **La carte vaccinale montrait six loupes sur sept.** L'encéphalite
+  japonaise tombait sur une troisième rangée que la bande, plafonnée à
+  une part du volet, ne montre pas — et la barre de défilement d'egui
+  étant flottante, rien ne le disait. Le compte est passé dans la
+  légende du panneau, « Regroupement (7) », qui ne coûte pas une ligne :
+  c'est le tour du volet de biologie, dont le titre porte « (8) » pour
+  la même raison.
 - **La bande des axes de l'explorateur montrait huit organes sur
   douze.** Même défaut que le sélecteur de modèles, et la même cause :
   la bande est plafonnée à une part du volet et défile, mais la barre
