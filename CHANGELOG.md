@@ -489,6 +489,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Un Bactrim ne levait pas l'alerte d'hémolyse du déficit en G6PD.**
+  La règle qui lit une LDH élevée sous molécule oxydante nomme la
+  nitrofurantoïne, la dapsone, le **sulfaméthoxazole**, la primaquine et
+  la rasburicase ; or la fiche livrée du Bactrim porte « cotrimoxazole »
+  pour DCI, et non ses deux composants. La règle parlait donc pour
+  quatre des cinq, et se taisait pour celui qu'on délivre. Le test de
+  déclenchement ne pouvait pas le voir : il demande qu'**un** mot
+  cherché trouve une fiche, pas que chacun en trouve une.
 - **« Sans objet » et « non chiffrée » ne sont pas la même chose**, et
   la Spéciafoldine était du mauvais côté. `SansObjet` veut dire que la
   notion n'a pas de sens — produit non absorbé, action locale, ion

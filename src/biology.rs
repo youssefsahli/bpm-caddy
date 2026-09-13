@@ -992,7 +992,20 @@ const RULES: &[Rule] = &[
         code: "LDH",
         side: Side::Above,
         threshold: 400.0,
-        needs: &["nitrofurantoïne", "dapsone", "sulfaméthoxazole", "primaquine", "rasburicase"],
+        // **Le cotrimoxazole, sous ses deux noms.** La fiche livrée du
+        // Bactrim porte « cotrimoxazole » pour DCI et non ses deux
+        // composants, si bien que « sulfaméthoxazole » ne l'attrapait
+        // pas — et c'est de loin le plus délivré des cinq oxydants de
+        // cette liste.
+        needs: &[
+            "nitrofurantoïne",
+            "dapsone",
+            "sulfaméthoxazole",
+            "cotrimoxazole",
+            "bactrim",
+            "primaquine",
+            "rasburicase",
+        ],
         severity: Severity::Alert,
         text: "LDH élevée sous une molécule oxydante : penser à l'hémolyse du déficit en G6PD, surtout devant des urines foncées et une pâleur récente. Arrêt et avis le jour même ; la liste des médicaments interdits en cas de déficit est à donner au patient.",
     },
