@@ -55,7 +55,7 @@ rendez-vous — est écrit contre ce que l'écran affichait. Si un autre
 poste a modifié la même ligne entre-temps, l'écriture est refusée et
 l'écran se recharge plutôt que d'écraser le travail de quelqu'un.
 
-## Ce que l'ordonnance dit d'elle-même
+## Lecture d'ordonnance
 
 Sous la biologie, cinq lectures de la même ordonnance : l'interprétation
 des résultats, ce qui n'a pas été demandé depuis trop longtemps, ce que
@@ -85,8 +85,7 @@ n'est pas la même chose et ne l'innocente pas.
 
 L'écran « Croisement » pose les mêmes questions à une liste qu'on
 compose soi-même, sans dossier : depuis le dossier ouvert, ou en tapant
-des noms. C'est la question du téléphone — « le médecin veut ajouter ça,
-ça passe ? ».
+des noms.
 
 Cinq lectures de la même liste : les croisements sur les cytochromes,
 le temps que met une exposition déplacée à revenir, la revue
@@ -129,7 +128,7 @@ initiales de qui l'a fait. « Tout imprimer » rend la fiche d'entretien,
 le bilan et le plan de prise en un seul document.
 
 Rien n'est jamais sélectionné d'office et toute posologie proposée est
-modifiable : l'application propose, le pharmacien décide.
+modifiable.
 
 # L'agenda et le planning
 

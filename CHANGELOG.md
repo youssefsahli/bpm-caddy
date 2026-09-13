@@ -330,6 +330,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **La revue disait deux fois la même chose de la lévothyroxine.**
+  « Lévothyroxine à distance » et « Lévothyroxine et chélation »
+  partaient des mêmes traitements — le fer, le calcium, les IPP — pour
+  dire la même conduite, l'une en information et l'autre en
+  avertissement. Un patient sous Levothyrox et calcium recevait donc les
+  deux, à deux gravités différentes et en deux formulations voisines, ce
+  qui est la manière la plus sûre de faire cesser de lire une revue.
+  Elles sont fondues dans la plus complète, celle qui garde les résines,
+  le magnésium, le contrôle de la TSH à six semaines et la phrase qui
+  compte — une TSH qui dérive vient plus souvent de là que de la dose.
+  Le plancher du cliquet descend donc de 87 à 86, et le commentaire qui
+  l'accompagne dit pourquoi : **aucune question n'a été perdue**, c'est
+  le seul motif qui autorise à baisser ce chiffre.
 - **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
   dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
   nomme le produit fautif.

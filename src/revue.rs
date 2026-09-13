@@ -494,15 +494,6 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["lévothyroxine", "hormone thyroïdienne"],
-            &["ferreux", "ferrique", "fer saccharose", "calcium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "magnésium"],
-        ]),
-        severity: Severity::Info,
-        title: "Lévothyroxine à distance",
-        detail: "Fer, calcium, magnésium et IPP réduisent l'absorption de la lévothyroxine. Deux heures d'écart au moins, et la TSH se contrôle après tout changement de rythme.",
-    },
-    Rule {
-        kind: Kind::Combination(&[
             &["biphosphonate", "bisphosphonate", "alendronate", "risédronate", "ibandronate"],
             &["calcium", "ferreux", "ferrique", "fer saccharose", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         ]),
@@ -654,7 +645,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["lévothyroxine", "hormone thyroïdienne"],
-            &["ferreux", "ferrique", "fer saccharose", "calcium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "colestyramine"],
+            &["ferreux", "ferrique", "fer saccharose", "calcium", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "colestyramine"],
         ]),
         severity: Severity::Warn,
         title: "Lévothyroxine et chélation",
@@ -1487,7 +1478,19 @@ mod tests {
         // nobody does any more. The floor is a named constant the
         // message reads back — written twice, in figures and in words,
         // the two had already drifted by six.
-        const RULES_FLOOR: usize = 87;
+        //
+        // **Descendu de 87 à 86 le 13/09/2026, et c'est le seul motif
+        // qui l'autorise :** « Lévothyroxine à distance » et
+        // « Lévothyroxine et chélation » disaient la même chose des
+        // mêmes traitements, l'une en `Info` et l'autre en `Warn`. Un
+        // patient sous Levothyrox et calcium recevait les deux, en deux
+        // formulations voisines — et une revue qui se répète est une
+        // revue qu'on cesse de lire. Les deux ont été fondues dans la
+        // plus complète, qui garde les résines, le magnésium, et la
+        // phrase qui compte : une TSH qui dérive vient plus souvent de
+        // là que de la dose. **Aucune question n'a été perdue** ; c'est
+        // ce qu'il faut pouvoir écrire ici pour baisser ce chiffre.
+        const RULES_FLOOR: usize = 86;
         assert!(
             RULES.len() >= RULES_FLOOR,
             "{} règles de revue, il y en avait {RULES_FLOOR}",
