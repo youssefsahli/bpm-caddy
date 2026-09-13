@@ -2125,8 +2125,8 @@ mod tests {
                 if !same(a, b) && !same(b, a) {
                     continue;
                 }
-                for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
-                    let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+                for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
+                    let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class}"));
                     if hit(a, &hay).is_some() && hit(b, &hay).is_some() {
                         doubled.push(format!(
                             "{} sur « {name} » : « {} » et « {} »",
@@ -2229,7 +2229,7 @@ mod tests {
         // Une valeur franchement hors bornes pour chaque analyte que la
         // table connaît : si une règle peut parler, elle parlera.
         let mut wrong: Vec<String> = Vec::new();
-        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+        for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
             if !crate::classes::is_local_form(class) {
                 continue;
             }
@@ -2237,7 +2237,12 @@ mod tests {
                 name,
                 dci,
                 class,
-                tags,
+                // Le quatrième champ du tuple est l'**antidote**, et non
+                // les étiquettes : au comptoir, `Treatment.tags` porte
+                // celles que l'officine a écrites, vides sur toute fiche
+                // livrée. Lui passer l'antidote ferait juger la règle
+                // sur une botte de foin que le comptoir n'a pas.
+                tags: "",
             };
             for a in CATALOGUE {
                 // Très bas puis très haut, pour réveiller les deux côtés.

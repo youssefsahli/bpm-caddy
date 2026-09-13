@@ -1554,10 +1554,10 @@ mod tests {
             .collect();
         let drugs: Vec<(String, String)> = crate::db::STARTER_DRUGS
             .iter()
-            .map(|(name, dci, class, tags)| {
+            .map(|(name, dci, class, _antidote)| {
                 (
                     crate::fuzzy::sort_key(name),
-                    crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}")),
+                    crate::fuzzy::sort_key(&format!("{name} {dci} {class}")),
                 )
             })
             .collect();

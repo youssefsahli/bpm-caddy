@@ -968,8 +968,8 @@ mod tests {
             .map(|d| (crate::fuzzy::sort_key(d.name), d.pregnancy.to_lowercase()))
             .collect();
         let mut wrong: Vec<String> = Vec::new();
-        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
-            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+        for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class}"));
             let Some(a) = TABLE.iter().find(|a| claims(a, &hay)) else {
                 continue;
             };
@@ -1222,14 +1222,14 @@ mod tests {
         const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] = &["Sterdex"];
 
         let mut wrong: Vec<String> = Vec::new();
-        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+        for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
             if !crate::classes::is_local_form(class) {
                 continue;
             }
             if ITS_OWN_CARD_IS_CAUTIOUS.contains(name) {
                 continue;
             }
-            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class}"));
             let Some(a) = TABLE.iter().find(|a| claims(a, &hay)) else {
                 continue;
             };

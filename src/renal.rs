@@ -1233,8 +1233,8 @@ mod tests {
             .map(|d| (crate::fuzzy::sort_key(d.name), d.renal.to_lowercase()))
             .collect();
         let mut wrong: Vec<String> = Vec::new();
-        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
-            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+        for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class}"));
             // La ligne qui **revendique** cette fiche est la première
             // qui l'attrape, celle que `read` retiendra.
             let Some(a) = TABLE.iter().find(|a| claims(a, &hay)) else {

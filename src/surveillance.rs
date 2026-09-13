@@ -1004,7 +1004,7 @@ mod tests {
     #[test]
     fn a_local_form_asks_for_no_test() {
         let mut wrong: Vec<String> = Vec::new();
-        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+        for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
             if !crate::classes::is_local_form(class) {
                 continue;
             }
@@ -1012,7 +1012,12 @@ mod tests {
                 name,
                 dci,
                 class,
-                tags,
+                // Le quatrième champ du tuple est l'**antidote**, et non
+                // les étiquettes : au comptoir, `Treatment.tags` porte
+                // celles que l'officine a écrites, vides sur toute fiche
+                // livrée. Lui passer l'antidote ferait juger la règle
+                // sur une botte de foin que le comptoir n'a pas.
+                tags: "",
             };
             let due = due(&[t], &[], "2026-09-13");
             if !due.is_empty() {

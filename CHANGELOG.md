@@ -489,6 +489,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Les tests de confrontation voyaient un mot que le comptoir ne voit
+  pas.** Ils construisaient leur botte de foin à partir du quatrième
+  champ des tuples de `STARTER_DRUGS` — qui est l'**antidote**, semé
+  dans sa propre colonne — là où un traitement porte, au comptoir, les
+  étiquettes de l'officine, vides sur toute fiche livrée. Une règle
+  atteignable uniquement par « naloxone » ou « pyridoxine » aurait donc
+  passé leur contrôle et ne se serait jamais déclenchée en officine.
+  Aucune ne l'est ; les sept sites lisent désormais ce que le comptoir
+  lit, et la suite reste verte — donc aucun test ne s'appuyait
+  dessus.
 - **Deux tests ne partagent pas un répertoire temporaire**, et rien ne
   le tenait. Ils tournent en parallèle dans un **seul** processus, si
   bien que deux `format!("bpm-caddy-x-{}", std::process::id())` donnent
