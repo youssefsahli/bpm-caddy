@@ -117,6 +117,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **La spiramycine est le macrolide qui n'inhibe pas**, et quatre règles
+  de la revue l'ignoraient. La table de référence « Interactions »
+  l'écrit — « Macrolides, *sauf* spiramycine » — et `cyp.rs` la porte
+  pour la même raison ; mais les règles d'inhibition enzymatique
+  cherchaient le mot « macrolide », qui attrape la Rovamycine, le Rulid,
+  le Zithromax et jusqu'à l'Azyter, qui est un collyre. Une statine avec
+  une spiramycine levait donc « c'est la rhabdomyolyse », et une
+  colchicine aussi.
+
+  Les règles de **classe** gardent le mot, et c'est voulu :
+  l'allongement du QT et la déstabilisation de l'INR sous antibiotique
+  valent pour la spiramycine comme pour les autres. Ce n'est pas la même
+  propriété, et un test tient les deux côtés.
 - **Un verdict contredisait sa propre explication.** Sur la feuille
   « peut-on écraser ? », les formes orodispersibles et effervescentes
   étaient marquées « Peut être écrasé » — et la ligne du dessous, dans

@@ -402,7 +402,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["colchicine"],
-            &["macrolide", "clarithromycine", "érythromycine", "vastatine", "vérapamil", "antifongique azolé", "ciclosporine"],
+            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "vastatine", "vérapamil", "antifongique azolé", "ciclosporine"],
         ]),
         severity: Severity::Alert,
         title: "Colchicine exposée",
@@ -519,7 +519,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["vastatine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
-            &["macrolide", "clarithromycine", "érythromycine", "kétoconazole", "itraconazole", "fluconazole", "voriconazole", "posaconazole", "miconazole", "vérapamil", "diltiazem"],
+            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "kétoconazole", "itraconazole", "fluconazole", "voriconazole", "posaconazole", "miconazole", "vérapamil", "diltiazem"],
         ]),
         severity: Severity::Alert,
         title: "Statine + inhibiteur enzymatique",
@@ -663,7 +663,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["digoxine", "digitalique"],
-            &["amiodarone", "vérapamil", "diltiazem", "macrolide", "clarithromycine", "itraconazole"],
+            &["amiodarone", "vérapamil", "diltiazem", "clarithromycine", "érythromycine", "josamycine", "itraconazole"],
         ]),
         severity: Severity::Alert,
         title: "Digoxine potentialisée",
@@ -923,7 +923,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["méthylergométrine", "méthergin"],
-            &["macrolide", "clarithromycine", "érythromycine", "josamycine", "itraconazole", "kétoconazole", "voriconazole", "posaconazole", "ritonavir"],
+            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "itraconazole", "kétoconazole", "voriconazole", "posaconazole", "ritonavir"],
         ]),
         severity: Severity::Alert,
         title: "Méthylergométrine + inhibiteur CYP3A4",
@@ -1339,6 +1339,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **La spiramycine est le macrolide qui n'inhibe pas.**
+    ///
+    /// La table de référence « Interactions » l'écrit — « Macrolides,
+    /// **sauf** spiramycine » — et `cyp.rs` la porte pour la même
+    /// raison. Les règles d'inhibition enzymatique cherchaient pourtant
+    /// le mot « macrolide », qui attrape la Rovamycine, le Rulid, le
+    /// Zithromax et jusqu'à l'Azyter, qui est un collyre. Une statine
+    /// avec une spiramycine levait donc « c'est la rhabdomyolyse ».
+    ///
+    /// Les règles de **classe** gardent le mot, et c'est voulu :
+    /// l'allongement du QT et la déstabilisation de l'INR sous
+    /// antibiotique valent pour la spiramycine comme pour les autres.
+    /// Ce n'est pas la même propriété.
+    #[test]
+    fn spiramycin_is_the_macrolide_that_does_not_inhibit() {
+        let with = |dci: &str| {
+            review(&[
+                t("Tahor", "atorvastatine", "statine"),
+                t("X", dci, "macrolide"),
+            ])
+        };
+        let title = "Statine + inhibiteur enzymatique";
+        assert!(
+            !with("spiramycine").iter().any(|p| p.title == title),
+            "la spiramycine n'inhibe pas"
+        );
+        assert!(
+            with("clarithromycine").iter().any(|p| p.title == title),
+            "la clarithromycine, si"
+        );
+        // Et la propriété de classe reste : deux allongeurs du QT.
+        let qt = review(&[
+            t("Rovamycine", "spiramycine", "macrolide"),
+            t("Cordarone", "amiodarone", "antiarythmique"),
+        ]);
+        assert!(
+            qt.iter().any(|p| p.title == "Deux allongeurs du QT"),
+            "l'allongement du QT vaut pour toute la classe"
+        );
     }
 
     /// **Une statine avec un IPP ne lève pas l'alerte de
