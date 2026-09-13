@@ -371,6 +371,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sur la feuille. C'est pourtant cet exemple que l'officine lit dans
   l'éditeur de modèles pour comprendre le sien. Les six traitements y
   sont désormais.
+- **Ni celle du choix rapide d'un acte.** À 1024x700 en
+  `text_scale = 1,6` la fenêtre montre neuf actes sur dix :
+  « 0 · Prévention » est sous le pli, alors que le mode d'emploi imprimé
+  annonce « les chiffres 1 … 9, 0 posent l'acte ». La touche marchait ;
+  c'est l'acte qu'on ne voyait pas.
 - **Ni celle du formulaire du registre.** À 1024x700 en
   `text_scale = 1,25` la bande ne montrait que les natures — la
   quantité, la date, le prescripteur sont dessous, et « Inscrire », qui

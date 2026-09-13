@@ -9189,6 +9189,13 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                 - App::row_height(ui) * 3.0
                 - ui.text_style_height(&egui::TextStyle::Body) * 4.0)
                 .max(App::row_height(ui) * 3.0);
+            // **Et la barre de cette liste-là ne flotte pas.** À
+            // 1024x700 en `text_scale = 1,6` la fenêtre montre neuf
+            // actes sur dix : « 0 · Prévention » est sous le pli, et le
+            // mode d'emploi imprimé annonce pourtant « les chiffres
+            // 1 … 9, 0 posent l'acte ». Un acte qu'on ne voit pas est un
+            // acte qu'on ne pose pas — et la touche, elle, marche.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("act_picker_body")
                 .max_height(room)
