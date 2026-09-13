@@ -341,12 +341,62 @@ fn field_box(ui: &mut egui::Ui, id: &str, width: f32, height: f32, text: &mut St
         });
 }
 
+/// Ce qui reste à un champ une fois la colonne des intitulés servie —
+/// **mesurée, jamais devinée**.
+///
+/// Une grille donne à sa première colonne la largeur de son plus long
+/// libellé ; retrancher un nombre écrit à la main laisse le champ plus
+/// large que la place qui reste, et un `allocate_exact_size` prend la
+/// largeur qu'on lui donne sans regarder si elle tient. À l'échelle 1,
+/// « Grossesse / allaitement » fait deux cents pixels là où la constante
+/// en retranchait cent trente-huit : les soixante-douze de trop
+/// sortaient du panneau, qui les coupait — et comme le texte, lui,
+/// s'enveloppait sur la largeur *annoncée*, chaque ligne y perdait ses
+/// derniers caractères. « Élimination majoritairement biliaire [et]
+/// fécale ; environ 25 % rénale sous fo[rme] inchangée. »
+fn form_field_width(ui: &egui::Ui, labels: &[&str]) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let widest = labels
+        .iter()
+        .map(|l| {
+            ui.fonts(|f| {
+                f.layout_no_wrap((*l).to_owned(), font.clone(), motif::text())
+                    .size()
+                    .x
+            })
+        })
+        .fold(0.0_f32, f32::max);
+    // La gouttière de la grille, et l'air que le cadre prend autour du
+    // champ : les deux viennent du style, comme le reste.
+    let gutter = ui.spacing().item_spacing.x + 10.0;
+    (ui.available_width() - widest - gutter).max(130.0)
+}
+
 /// The clinical half of the editable drug card.
 fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
     let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
     motif::section(ui, tr("drug_sec_clinical"));
     ui.add_space(4.0);
-    let w = (ui.available_width() - 118.0).max(140.0);
+    let w = form_field_width(
+        ui,
+        &[
+            tr("drug_name"),
+            tr("drug_dci"),
+            tr("drug_class"),
+            tr("drug_sec_indications"),
+            tr("drug_sec_mechanism"),
+            tr("drug_dosage"),
+            tr("drug_sec_ci"),
+            tr("drug_ddi"),
+            tr("drug_sec_adverse"),
+            tr("drug_sec_monitoring"),
+            tr("drug_iup"),
+            tr("drug_missed"),
+            tr("drug_flags"),
+            tr("drug_antidote"),
+            tr("drug_notes"),
+        ],
+    );
     egui::Grid::new("drug_card")
         .num_columns(2)
         .min_col_width(90.0)
@@ -411,7 +461,22 @@ fn drug_form_pk(ui: &mut egui::Ui, form: &mut Drug) {
     let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
     motif::section(ui, tr("drug_sec_pk"));
     ui.add_space(4.0);
-    let w = (ui.available_width() - 138.0).max(130.0);
+    let w = form_field_width(
+        ui,
+        &[
+            tr("drug_half_life"),
+            tr("drug_auc"),
+            tr("drug_elimination"),
+            tr("drug_renal"),
+            tr("drug_pregnancy"),
+            tr("tables_sources"),
+            tr("drug_forms"),
+            tr("drug_status"),
+            tr("drug_tags"),
+            tr("drug_sec_smr"),
+            tr("drug_sec_toxicity"),
+        ],
+    );
     egui::Grid::new("drug_pk")
         .num_columns(2)
         .min_col_width(110.0)

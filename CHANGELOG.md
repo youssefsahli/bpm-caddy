@@ -183,6 +183,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Le formulaire de fiche coupait ses champs pharmacocinétiques.** La
+  largeur d'un champ y était « ce qui reste une fois cent trente-huit
+  pixels retirés » — un nombre écrit à la main pour une colonne
+  d'intitulés qui, elle, prend la largeur de son plus long libellé :
+  « Grossesse / allaitement » en fait deux cents à l'échelle 1. Les
+  soixante-douze de trop sortaient du panneau, qui les coupait, et comme
+  le texte s'enveloppait sur la largeur *annoncée*, chaque ligne y
+  perdait ses derniers caractères : « Élimination majoritairement
+  biliaire [et] fécale ; environ 25 % rénale sous fo[rme] inchangée ».
+  Les deux moitiés du formulaire mesurent maintenant leur colonne
+  d'intitulés.
 - **Le plancher de couverture du workspace monte de 45 à 47 %.** Mesuré
   à 49,3 % ce jour-là, contre 89,8 % pour la logique métier — dont le
   plancher reste à 89, faute d'assez de marge : un module pur de plus le
