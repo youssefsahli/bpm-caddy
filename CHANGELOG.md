@@ -296,6 +296,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« 4 semaine » sur le récapitulatif de facturation.** L'écran écrit
+  « 4 semaines » et le papier écrivait le singulier : le mot était pris
+  avec `Period::label()`, avant même que le nombre de périodes soit
+  calculé, ce qui rendait l'accord impossible. `Period::agreed` existe
+  depuis toujours pour cela, et sa documentation décrit la faute mot
+  pour mot — « une table qui écrit 11 semaine est une table écrite à la
+  hâte, et ça se voit ». C'est la feuille qui part au comptable.
 - **L'exemple du procès-verbal de destruction comptait un jour de
   trop.** Du 02/11/2025 au 08/09/2026 il y a 310 jours et l'exemple en
   écrivait 311 — un nombre recopié à la main à côté d'une date, ce qui

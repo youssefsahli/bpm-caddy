@@ -5937,7 +5937,9 @@ mod tests {
             started: "2026-08-03".to_owned(),
             ended: String::new(),
             periods: 4,
-            period_word: "semaine".to_owned(),
+            // Accordé avec le nombre : c'est `Period::agreed` qui le
+            // donne, et l'exemple doit montrer ce que la feuille écrit.
+            period_word: "semaines".to_owned(),
             amount: 48.0,
         }];
         let src = fill(

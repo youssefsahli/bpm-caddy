@@ -7979,7 +7979,6 @@ fn billing_rentals(db: &Db, today: &str) -> Vec<crate::pdf::BillingRental> {
         .unwrap_or_default()
         .into_iter()
         .filter_map(|(l, patient)| {
-            let period_word = l.period().label().to_owned();
             let (periods, amount) = crate::location::amount_due(
                 &l.started_on,
                 &l.ended_on,
@@ -7988,6 +7987,15 @@ fn billing_rentals(db: &Db, today: &str) -> Vec<crate::pdf::BillingRental> {
                 l.fee,
                 l.max_periods,
             )?;
+            // **Le mot s'accorde avec le nombre**, comme à l'écran.
+            // `Period::agreed` existe pour cela et sa documentation
+            // décrit exactement la faute : « une table qui écrit
+            // 11 semaine est une table écrite à la hâte, et ça se
+            // voit ». Le récapitulatif imprimé — celui qui part au
+            // comptable — écrivait « 4 semaine » quand l'écran écrivait
+            // « 4 semaines », et le mot était pris avant que le compte
+            // soit connu, ce qui rendait l'accord impossible.
+            let period_word = l.period().agreed(periods).to_owned();
             Some(crate::pdf::BillingRental {
                 patient,
                 label: l.label,
@@ -52800,7 +52808,8 @@ mod tests {
         assert_eq!(recap[0].label, "Nébuliseur");
         assert_eq!(recap[0].periods, 4);
         assert_eq!(recap[0].amount, 48.0);
-        assert_eq!(recap[0].period_word, "semaine");
+        // Accordé : quatre semaines et non « 4 semaine ».
+        assert_eq!(recap[0].period_word, "semaines");
         assert!(recap[0].patient.contains("Jean"));
         // A rental taken back is off the recap: it is not still out.
         let running = db.running_locations().unwrap();
