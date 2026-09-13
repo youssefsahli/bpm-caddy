@@ -274,9 +274,15 @@ pub const TABLE: &[Adaptation] = &[
         label: "Metformine",
         steps: &[
             Step {
+                // `Reduce` et non `Watch` : la fiche du Glucophage écrit
+                // « dose maximale réduite, surveillance rapprochée » à ce
+                // palier, et la table de référence « Fonction rénale »
+                // écrit « dose réduite » pour le stade G3a. Ce palier
+                // disait « poursuivre », c'est-à-dire le contraire des
+                // deux autres textes de l'application.
                 below: 60,
-                level: Level::Watch,
-                conduct: "Entre 45 et 60 : poursuivre, contrôler le DFG au moins deux fois par an.",
+                level: Level::Reduce,
+                conduct: "Entre 45 et 60 : dose maximale réduite, surveillance rapprochée, et contrôle du DFG tous les trois à six mois.",
             },
             Step {
                 below: 45,
@@ -908,10 +914,15 @@ mod tests {
 
     /// **Le palier atteint est le plus bas des paliers franchis.**
     ///
-    /// La metformine se surveille sous 60, se réduit sous 45 et se
-    /// contre-indique sous 30. Lue à 28, elle est contre-indiquée :
+    /// La metformine se réduit sous 60, se réduit davantage sous 45 et
+    /// se contre-indique sous 30. Lue à 28, elle est contre-indiquée :
     /// prendre le premier palier de la liste dirait « réduire la dose »
     /// d'un traitement qu'il faut arrêter.
+    ///
+    /// Ses deux premiers paliers portent le **même niveau** et deux
+    /// conduites différentes, ce qui n'affaiblit pas ce test mais le
+    /// renforce : entre 52 et 38, le niveau ne distingue rien et seul
+    /// le seuil retenu dit lequel des deux a parlé.
     #[test]
     fn the_lowest_step_crossed_is_the_one_that_speaks() {
         let ordo = [treat("Metformine")];
@@ -920,7 +931,7 @@ mod tests {
         assert_eq!(at(28.0).below, Some(30));
         assert_eq!(at(38.0).level, Some(Level::Reduce));
         assert_eq!(at(38.0).below, Some(45));
-        assert_eq!(at(52.0).level, Some(Level::Watch));
+        assert_eq!(at(52.0).level, Some(Level::Reduce));
         assert_eq!(at(52.0).below, Some(60));
         // Le seuil s'applique **strictement au-dessous** : à 30 pile, on
         // n'est pas contre-indiqué.

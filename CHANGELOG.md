@@ -330,6 +330,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **La metformine disait « poursuivre » là où sa propre fiche dit
+  « dose maximale réduite ».** Entre 45 et 60 mL/min, `renal.rs` posait
+  une simple surveillance ; la fiche du Glucophage écrit « dose maximale
+  réduite, surveillance rapprochée », et la table de référence
+  « Fonction rénale » écrit « dose réduite » pour le stade G3a. Deux
+  textes de l'application sur trois disaient la même chose, et c'est le
+  troisième qui s'affichait au comptoir. Le palier est un `Reduce`, avec
+  la conduite des deux autres et le contrôle du DFG tous les trois à six
+  mois.
+
+  Ses deux premiers paliers portent maintenant le même niveau et deux
+  conduites différentes, ce qui renforce le test qui les lit : entre 52
+  et 38 mL/min le niveau ne distingue rien, et seul le seuil retenu dit
+  lequel des deux a parlé.
 - **Une ferritine à 22 µg/L sous anticoagulant ne disait rien.** La
   carence martiale se déclenchait au-dessous de 15 µg/L, quand la table
   de référence « Unités » écrit le seuil qui fait agir : 30 µg/L, dans
