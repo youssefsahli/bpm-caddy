@@ -115,8 +115,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/smoke.sh` accepte le nom d'une forme en argument. Les trois
   passes font deux cent vingt-huit ouvertures et dépassent l'heure ; une
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
-
-### Changed
 - **La spiramycine est le macrolide qui n'inhibe pas**, et quatre règles
   de la revue l'ignoraient. La table de référence « Interactions »
   l'écrit — « Macrolides, *sauf* spiramycine » — et `cyp.rs` la porte
