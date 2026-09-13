@@ -296,6 +296,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Une posologie coupée sur l'étiquette collée à la boîte.** Le
+  commentaire qui ouvre la fonction promet depuis toujours que « le nom
+  et la posologie passent en entier, c'est la phrase de l'oubli qui
+  s'arrête » — et le code coupait la posologie à soixante-dix
+  caractères, avec trois points : « 1 comprimé le matin et 1 le soir
+  pendant 7 jours, puis 1 comprimé le… ». C'est la moitié dangereuse, et
+  elle est sur la boîte. C'est le corps qui cède maintenant, d'un cran,
+  et la posologie passe entière.
+
+  Le test qui garde cette étiquette affirmait déjà « la posologie passe
+  entière » — sur une posologie de soixante-deux caractères, c'est-à-dire
+  sur un cas qui tenait de toute façon. Il en porte une longue.
 - **Deux signes moins différents sur une même page de caisse.** Les
   montants des cellules sont posés en markup Typst, qui rend le trait
   d'union d'un nombre négatif par le vrai signe moins (U+2212) ; le

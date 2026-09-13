@@ -5081,10 +5081,25 @@ fn label_sheet_values(data: &LabelSheet, pharmacy: &PharmacyConfig) -> Vec<(&'st
                 typst_str(&missed)
             )
         };
+        // **La posologie passe en entier, quoi qu'il en coûte en
+        // corps.** Elle était coupée à soixante-dix caractères avec
+        // trois points, alors que le commentaire au-dessus de cette
+        // fonction promet le contraire depuis toujours — et une
+        // posologie coupée sur une étiquette collée à la boîte est la
+        // moitié dangereuse : « 1 comprimé le matin et 1 le soir
+        // pendant 7 jours, puis 1 comprimé le… ». On coupe à la
+        // lecture, jamais au sens : c'est le corps qui cède, d'un cran,
+        // et la phrase de l'oubli qui s'arrête.
+        let dose = dose.trim();
+        let dose_pt = if dose.chars().count() <= 70 {
+            "9.5pt"
+        } else {
+            "8pt"
+        };
         body.push_str(&format!(
-            "  box(width: 100%, height: 100%, stroke: 0.5pt, inset: 5pt, clip: true)[\n    #text(11pt, weight: \"bold\")[#{}] \\\n    #text(9.5pt)[#{}]{}\n    #place(bottom + left)[#text(6.5pt)[#{} — #{}]]\n  ],\n",
+            "  box(width: 100%, height: 100%, stroke: 0.5pt, inset: 5pt, clip: true)[\n    #text(11pt, weight: \"bold\")[#{}] \\\n    #text({dose_pt})[#{}]{}\n    #place(bottom + left)[#text(6.5pt)[#{} — #{}]]\n  ],\n",
             typst_str(name.trim()),
-            typst_str(&short(dose, 70)),
+            typst_str(dose),
             missed,
             typst_str(&data.patient.full_name()),
             typst_str(data.today),
@@ -5786,6 +5801,8 @@ mod tests {
     fn the_labels_carry_the_dose_and_shorten_only_what_they_must() {
         let patient = sample_patient();
         let long = "Prendre le comprimé oublié dès que l'on s'en aperçoit, sauf s'il est presque l'heure de la prise suivante, auquel cas on saute la prise oubliée et on reprend le rythme habituel sans jamais doubler la dose.";
+        const LONG_DOSE: &str =
+            "1 comprimé le matin et 1 le soir pendant 7 jours, puis 1 comprimé le matin seul";
         let data = LabelSheet {
             patient: &patient,
             today: "24/08/2026",
@@ -5800,6 +5817,18 @@ mod tests {
                     String::new(),
                     String::new(),
                 ),
+                // **Une posologie plus longue que ce qu'une étiquette
+                // porte confortablement.** Sans elle, l'assertion « la
+                // posologie passe entière » se vérifiait sur soixante-
+                // deux caractères, c'est-à-dire sur un cas qui tenait
+                // de toute façon — et la posologie était bel et bien
+                // coupée à soixante-dix, avec trois points, sur la
+                // boîte du patient.
+                (
+                    "Kardégic 75 mg".to_owned(),
+                    LONG_DOSE.to_owned(),
+                    String::new(),
+                ),
             ],
             mention: "",
         };
@@ -5812,6 +5841,14 @@ mod tests {
         assert!(
             labels.contains("30 minutes avant le petit-déjeuner"),
             "la posologie passe entière : c'est ce qu'on lit sur la boîte"
+        );
+        assert!(
+            labels.contains(LONG_DOSE),
+            "et une posologie longue aussi : c'est le corps qui cède, pas le sens"
+        );
+        assert!(
+            labels.contains("8pt)"),
+            "le corps descend d'un cran quand la posologie est longue"
         );
         assert!(labels.contains('…'), "la phrase d'oubli est coupée");
         assert!(
