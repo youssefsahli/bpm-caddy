@@ -183,6 +183,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **L'explorateur tranchait sa phrase de couverture.** La bande sous
+  les axes porte deux choses et non une : quand les portes ne tiennent
+  pas dans leur part, une ligne le dit — « 13 axes en tout — la bande
+  défile » — et sa hauteur n'entrait pas dans la mesure. La phrase était
+  poussée d'une ligne et coupée par le bas du cadre en plein milieu des
+  lettres : « 862 fiches classées. Les monographies sans demi-vie… » sur
+  une demi-ligne.
 - **Le carnet de transmissions élidait sa date.** Le commentaire au-
   dessus disait la bonne règle depuis toujours — « la mention du jour
   est du contexte et c'est elle qui s'élide ; la date, jamais, c'est le

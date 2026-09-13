@@ -31675,8 +31675,31 @@ impl App {
                 crate::facets::coverage(o).to_string(),
             ),
         };
-        let note_h = ui
-            .fonts(|f| {
+        // **Et la bande porte deux choses, pas une.** Quand les axes ne
+        // tiennent pas dans leur part, une ligne le dit au-dessus de la
+        // phrase — c'est la règle de la maison —, et sa hauteur
+        // n'entrait pas dans la mesure : la phrase était poussée d'une
+        // ligne et tranchée par le bas du cadre, en plein milieu des
+        // lettres. « 862 fiches classées. Les monographies sans demi-vie
+        // chiffrée sont placées en fin de liste, non à zéro » se lisait
+        // sur une demi-ligne.
+        let axes_cut = Self::wrapped_band_height(
+            ui,
+            body.width(),
+            labels.iter().map(|l| Self::button_width(ui, l)),
+        ) > head;
+        let more_h = if axes_cut {
+            Self::prose_height(
+                ui,
+                &trf("explorer_axes_more", labels.len()),
+                motif::pt(ui, 10.5),
+                body.width(),
+            ) + ui.spacing().item_spacing.y
+        } else {
+            0.0
+        };
+        let note_h = (more_h
+            + ui.fonts(|f| {
                 f.layout(
                     note.clone(),
                     egui::TextStyle::Body.resolve(ui.style()),
@@ -31685,8 +31708,8 @@ impl App {
                 )
                 .size()
                 .y
-            })
-            .min(body.height() * 0.2)
+            }))
+        .min(body.height() * 0.25)
             + 4.0;
         let strip = motif::split_rows(body, &[head, note_h, 0.0], 6.0);
 
@@ -31722,12 +31745,7 @@ impl App {
             // les quatre autres — neuro, peau, digestif, oreille — se
             // lisaient comme n'existant pas. Même règle qu'au sélecteur
             // de modèles et qu'à la carte de voisinage.
-            if Self::wrapped_band_height(
-                ui,
-                ui.available_width(),
-                labels.iter().map(|l| Self::button_width(ui, l)),
-            ) > head
-            {
+            if axes_cut {
                 ui.label(
                     egui::RichText::new(trf("explorer_axes_more", labels.len()))
                         .size(motif::pt(ui, 10.5))
