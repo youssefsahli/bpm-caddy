@@ -183,6 +183,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Une bande d'onglets ne montre plus jamais un onglet à moitié.** Elle
+  défilait au plus juste pour amener l'actif dans le hublot, ce qui
+  laisse le précédent tranché : « À surveiller » s'y lisait « ller », le
+  cahier du haut « eau » pour « Tableau », et le bord droit coupait
+  « Cytochromes » en « Cytocl ». Un onglet tranché ne se lit pas « il y
+  en a d'autres », il se lit « cassé » — c'est la règle que ce dépôt
+  applique partout ailleurs, et la bande d'onglets ne l'avait jamais
+  reçue. Le décalage se calcule maintenant sur une **frontière
+  d'onglet**, un onglet qui ne tient pas entier n'est pas dessiné du
+  tout — donc pas cliquable : ce qu'on ne voit pas ne se clique pas —,
+  et les chevrons disent de quel côté il y a une suite.
 - **Sept nombres décimaux écrits à l'anglaise sur un écran français.**
   « 15.00 € » sur l'infobulle d'un honoraire et dans les Options,
   « 1.2 Mo » sur une pièce scannée, « 6.3 » mégaoctets dans « À

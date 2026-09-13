@@ -357,8 +357,45 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
         ui.cursor().min,
         Vec2::new(ui.available_width(), height + 2.0),
     );
+    // **Et la bande commence sur un onglet entier.** Elle défilait au
+    // plus juste pour amener l'onglet actif dans le hublot — c'est ce
+    // que fait `scroll_to_rect` sans alignement —, ce qui laisse le
+    // précédent coupé en deux : « À surveiller » s'y lisait « ller », et
+    // un onglet tranché ne se lit pas « il y en a d'autres », il se lit
+    // « cassé ». C'est la règle que ce fichier applique déjà partout
+    // ailleurs ; le décalage se calcule donc ici, sur une frontière
+    // d'onglet, et le chevron dit qu'il y a une suite.
+    let gap = 2.0_f32;
+    let widths: Vec<f32> = tabs
+        .iter()
+        .map(|t| {
+            let g = ui
+                .painter()
+                .layout_no_wrap(t.label.to_owned(), font.clone(), crate::text());
+            g.size().x + 24.0 + if t.closable { 18.0 } else { 0.0 }
+        })
+        .collect();
+    let mut starts: Vec<f32> = Vec::with_capacity(widths.len());
+    let mut x = 0.0;
+    for w in &widths {
+        starts.push(x);
+        x += w + gap;
+    }
+    // Le premier onglet montré est le plus à gauche qui laisse encore
+    // l'actif tenir dans la bande. Un onglet plus large que la bande
+    // entière se pose à gauche et déborde à droite : il n'y a pas mieux
+    // à faire, et au moins il se lit par son début.
+    let room = strip.width();
+    let mut first = 0_usize;
+    if let (Some(&start), Some(&w)) = (starts.get(active), widths.get(active)) {
+        while first < active && start + w - starts[first] > room {
+            first += 1;
+        }
+    }
+    let offset = starts.get(first).copied().unwrap_or(0.0);
     let out = egui::ScrollArea::horizontal()
         .id_salt(salt)
+        .horizontal_scroll_offset(offset)
         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -382,8 +419,18 @@ pub fn tab_strip(ui: &mut egui::Ui, salt: &str, tabs: &[Tab], active: usize) -> 
                     // page whose own tab was off-screen. A tab clipped to
                     // one letter does not read as « il y en a d'autres »,
                     // it reads as broken.
-                    if is_active {
-                        ui.scroll_to_rect(rect, None);
+                    // **Et jamais un onglet à moitié.** Le bord droit
+                    // en tranchait un comme le bord gauche le faisait :
+                    // « Cytochromes » s'y lisait « Cytocl ». Un onglet
+                    // qui ne tient pas entier n'est pas dessiné du tout
+                    // — le chevron dit qu'il y a une suite —, et il n'est
+                    // donc pas cliquable : ce qu'on ne voit pas ne se
+                    // clique pas. L'actif fait exception : plus large que
+                    // la bande, il vaut mieux le montrer coupé que le
+                    // faire disparaître.
+                    let whole = ui.clip_rect().contains_rect(rect.shrink(0.5));
+                    if !is_active && !whole {
+                        continue;
                     }
                     if !ui.is_rect_visible(rect) {
                         continue;
