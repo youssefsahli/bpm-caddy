@@ -117,47 +117,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Fixed
-- **Un fragment de quatre lettres attrapait des produits qu'il ne visait
-  pas, dans trois tables cliniques.** Les mots cherchés sont des
-  sous-chaînes d'un texte replié **sans espaces**, et c'est ce repli qui
-  fabrique les collisions : « Apidra insuline glulisine » devient
-  « apidrainsulineglulisine », qui contient « ains ». Deux insulines —
-  Apidra et Tresiba — recevaient donc la conduite des AINS : au rein,
-  « au-dessous de 30 : contre-indication » ; à la grossesse,
-  « contre-indication formelle à partir de 24 SA ». Lu au comptoir chez
-  une diabétique enceinte, cela dit d'arrêter l'insuline.
-
-  Deux autres du même genre : « grippe » contient « ipp », si bien que le
-  Tamiflu et le Relenza recevaient la ligne des inhibiteurs de la pompe à
-  protons ; et « diméthylfumarate » contient « imeth », si bien que le
-  Skilarence recevait celle du méthotrexate — dans trois modules à la
-  fois, dont « tératogène et abortif » sur le panneau grossesse et
-  « cytotoxique » sur la feuille d'écrasement. Aucune fiche livrée ne
-  s'appelle Imeth : le fragment ne visait rien et n'attrapait que cela.
+- **Un fragment court attrapait des produits qu'il ne visait pas, dans
+  cinq tables cliniques.** Les mots cherchés sont des sous-chaînes, et
+  une sous-chaîne vit aussi **à l'intérieur d'un autre mot** :
+  « gr**ipp**e » contient « ipp », de sorte que le Tamiflu et le Relenza
+  recevaient la ligne des inhibiteurs de la pompe à protons — au panneau
+  grossesse comme dans les règles de biologie, où cela donnait
+  « hypomagnésémie sous IPP » devant un antiviral. « dim**éth**ylfumarate »
+  contient « imeth », et **aucune fiche livrée ne s'appelle Imeth** : le
+  fragment ne visait rien et n'attrapait que le Skilarence, à qui trois
+  modules prêtaient les règles du méthotrexate — dont « tératogène et
+  abortif » sur le panneau grossesse et « cytotoxique » sur la feuille
+  d'écrasement. « cholécalci**fér**ol », « inter**fér**on » et
+  « dif**fér**ine » contiennent « fer », d'où « saturation de la
+  transferrine encore basse sous fer oral » devant une vitamine D.
+  « anti**sep**tique » contient « SEP », d'où « lymphopénie sévère sous
+  traitement de fond de la sclérose en plaques » devant un Ercéfuryl.
 
   Les molécules sont nommées une à une. Les AINS locaux — un collyre à
-  l'indométacine, un bain de bouche à la benzydamine — restent dehors :
-  une conduite rénale systémique prêtée à deux gouttes dans un œil est
-  le genre d'alerte qui apprend à ignorer les alertes.
-- **Et quatre fragments du même genre dans les règles de biologie et de
-  surveillance**, dont trois font parler une règle devant un patient qui
-  n'a rien à voir : « cholécalci**fér**ol » et « inter**fér**on »
-  contiennent « fer », de sorte qu'un patient sous ZymaD ou sous Rebif
-  lisait « saturation de la transferrine basse sous fer oral » ;
-  « anti**sep**tique » contient « SEP », de sorte qu'un Ercéfuryl lisait
-  « lymphopénie sévère sous traitement de fond de la sclérose en
-  plaques » ; et « gr**ipp**e » contient « IPP », de sorte qu'un Tamiflu
-  lisait « hypomagnésémie sous IPP ». Les molécules sont nommées.
-
-  Le quatrième se corrige autrement, et c'est le plus joli : la classe du
-  Xyrem s'écrivait « narcolepsie — cataplexie », qui replié donne
-  « narcolepsie**c**ataplexie » et contient donc « iec ». Le Xyrem
-  recevait les règles des IEC — « kaliémie élevée sous bloqueur du
-  système rénine-angiotensine ». La classe s'écrit « narcolepsie et
-  cataplexie » : une conjonction défait la collision, se lit aussi bien,
-  et **« IEC » reste dans les règles** — une fiche saisie à la main porte
-  souvent une classe et pas de DCI, et la lui retirer aurait coûté une
-  alerte vraie pour en éviter une fausse.
+  l'indométacine, un bain de bouche à la benzydamine, dont les classes
+  portent le mot « AINS » — sortent des lignes rénale et grossesse : une
+  conduite systémique prêtée à deux gouttes dans un œil est le genre
+  d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
+  est retiré ; « sartan » fait le travail.
 - **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
   dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
   nomme le produit fautif.

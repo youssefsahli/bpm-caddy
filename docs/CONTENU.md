@@ -6,17 +6,19 @@ en ajoute. Il s'adresse à qui reprend le projet — y compris à moi-même
 dans six mois.
 
 **Avant d'ajouter un mot cherché (`needs`), regardez ce qu'il attrape.**
-Les tables cliniques comparent des sous-chaînes sur un texte replié
-**sans espaces** — nom, DCI, classe et étiquettes collés — et c'est ce
-repli qui fabrique les collisions : « Apidra insuline glulisine » devient
-« apidrainsulineglulisine », qui contient « ains ». Deux insulines ont
-ainsi porté la conduite des AINS, au rein comme à la grossesse ;
-« grippe » contient « ipp », d'où le Tamiflu lu comme un IPP ; et
+Les tables cliniques comparent des sous-chaînes — case et accents repliés,
+espaces gardés —, et une sous-chaîne vit aussi **à l'intérieur d'un autre
+mot** : « grippe » contient « ipp », d'où le Tamiflu lu comme un IPP ;
 « diméthylfumarate » contient « imeth », d'où le Skilarence lu comme du
-méthotrexate dans trois modules à la fois. **On nomme les molécules, pas
-l'abréviation de la classe** — et une table peut être parfaitement
-cohérente avec elle-même tout en se trompant de fiche, ce que seule la
-rencontre avec les fiches livrées révèle.
+méthotrexate dans trois modules à la fois, alors qu'aucune fiche ne
+s'appelle Imeth ; « cholécalciférol » et « interféron » contiennent
+« fer » ; « antiseptique » contient « SEP ». **On nomme les molécules**,
+et quand un mot de classe est vraiment voulu — « AVK », « AOD », « IEC »
+attrapent exactement les bonnes fiches, et une fiche saisie à la main
+porte souvent une classe sans DCI — on vérifie d'abord ce qu'il prend.
+Une table peut être parfaitement cohérente avec elle-même tout en se
+trompant de fiche, ce que seule la rencontre avec les fiches livrées
+révèle.
 
 Deux règles valent partout :
 

@@ -597,15 +597,9 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
-        // Écrit « et » et non un tiret : les classes sont repliées sans
-        // séparateurs pour être cherchées, et « narcolepsie — cataplexie »
-        // devenait « narcolepsiecataplexie », qui contient « iec ». Le
-        // Xyrem recevait ainsi les règles des IEC — « kaliémie élevée sous
-        // bloqueur du système rénine-angiotensine ». Une conjonction suffit
-        // à défaire la collision, et se lit aussi bien.
-        name: "narcolepsie et cataplexie",
+        name: "narcolepsie — cataplexie",
         family: "neuro",
-        aliases: &["narcolepsie — cataplexie"],
+        aliases: &[],
     },
     Class {
         name: "patch — douleur neuropathique",

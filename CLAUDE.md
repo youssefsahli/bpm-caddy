@@ -847,22 +847,25 @@ add clicking and typing; it is not the price of entry.
   `f32::clamp` with a computed min: all of them take the whole
   application down at the counter. Prefer `total_cmp`, an `if let`, and
   a cap raised to its floor.
-- **A `needs` fragment is a substring of a haystack folded *without
-  spaces*, and a short one catches what it never meant to.** Every
-  clinical table (`renal`, `gravidity`, `crush`, `cyp`, `hepatic`)
-  matches this way, and the folding is what makes the collisions:
-  « Apidra insuline glulisine » becomes « apidrainsulineglulisine »,
-  which contains « ains » — so two insulins were being told
-  « au-dessous de 30 : contre-indication » and « contre-indication
-  formelle à partir de 24 SA ». Likewise « grippe » contains « ipp »
-  (Tamiflu read as a PPI) and « diméthylfumarate » contains « imeth »
-  (Skilarence read as methotrexate, in three modules at once — including
-  « tératogène et abortif » on the pregnancy panel). **Name the
-  molecules; never the class abbreviation.** When adding a row, list
-  what the fragment actually catches across `STARTER_DRUGS` before
-  trusting it — the table can be perfectly consistent with itself and
-  still be wrong about a card, which is why only the *encounter* with
-  the shipped fiches finds this.
+- **A `needs` fragment is a substring, and a substring lives inside
+  other words.** Every clinical table (`renal`, `gravidity`, `crush`,
+  `cyp`, `hepatic`, `biology`, `surveillance`) matches by
+  `contains_folded`, which folds case and accents but keeps spaces — so
+  the danger is not words running together, it is a short fragment
+  sitting inside a longer one: « gr**ipp**e » contains « ipp » (Tamiflu
+  read as a PPI), « dim**éth**ylfumarate » contains « imeth » (Skilarence
+  read as methotrexate, in three modules at once — including
+  « tératogène et abortif » on the pregnancy panel, and **no shipped card
+  is even named Imeth**), « cholécalci**fér**ol » and « inter**fér**on »
+  contain « fer », « anti**sep**tique » contains « SEP ».
+  **Name the molecules; never the class abbreviation** — and when a
+  class word is genuinely wanted (« AVK », « AOD », « IEC » match exactly
+  the right cards, and a hand-typed card often has a class and no DCI),
+  check what it catches first. Before trusting any fragment, list every
+  card in `STARTER_DRUGS` whose folded text contains it and read the
+  list: a table can be perfectly consistent with itself and still be
+  wrong about a card, which is why only the *encounter* with the shipped
+  fiches finds this.
 - **And a backing test must judge every card a row catches — against
   the row that actually claims it.** Checking only the first card
   validates the row on the product it meant and lends its claims,
