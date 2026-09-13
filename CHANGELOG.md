@@ -296,6 +296,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **L'exemple du plan de surveillance se contredisait.** La case à
+  cocher ne se pose que sur ce qui est en retard ou jamais fait — « une
+  feuille où tout est à cocher ne dit plus ce qui presse » —, et
+  l'exemple montrait une kaliémie trimestrielle datée de six mois, sans
+  case. Ces valeurs-là sont l'aperçu de l'éditeur de modèles,
+  c'est-à-dire ce que l'officine lit pour comprendre sa propre feuille :
+  elle y voyait l'inverse de la règle. La date passe à une kaliémie
+  réellement à jour, ce qui rend à l'exemple le contraste qu'il existe
+  pour montrer — une ligne en retard, une ligne à l'heure.
 - **« Peut-on écraser une seringue ? »** La table répondait à une
   question orale pour douze produits qui ne passent pas par la bouche.
   Extencilline — une benzathine benzylpénicilline **intramusculaire** —

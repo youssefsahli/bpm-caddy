@@ -4409,7 +4409,15 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                     (
                         "Kaliémie".to_owned(),
                         "tous les 3 mois".to_owned(),
-                        "12/02/2026".to_owned(),
+                        // **À jour, et l'exemple doit le rester.** La
+                        // case ne se pose que sur ce qui est en retard
+                        // ou jamais fait ; une kaliémie trimestrielle
+                        // datée de six mois et sans case montrait
+                        // l'inverse de ce que la feuille dit — et ces
+                        // valeurs-là sont l'aperçu de l'éditeur de
+                        // modèles, c'est-à-dire ce que l'officine lit
+                        // pour comprendre sa propre feuille.
+                        "12/07/2026".to_owned(),
                         "Périndopril".to_owned(),
                     ),
                 ],
@@ -5838,7 +5846,9 @@ mod tests {
                 (
                     "Kaliémie".to_owned(),
                     "tous les 3 mois".to_owned(),
-                    "12/02/2026".to_owned(),
+                    // À jour : la case ne se pose que sur ce qui est en
+                    // retard, et l'exemple doit montrer les deux cas.
+                    "12/07/2026".to_owned(),
                     "Périndopril".to_owned(),
                 ),
             ],
