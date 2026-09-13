@@ -80,8 +80,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 
 [templates]
 # Modèles Typst personnalisés. Chaque document imprimable en a un ;
-# ils s'éditent dans Options › Modèles, et le modèle embarqué sert tant
-# qu'aucun fichier n'existe. « dir » est le dossier où ils sont rangés,
+# ils s'éditent par le bouton « Modèles… » de la barre du haut, et le
+# modèle embarqué sert tant qu'aucun fichier n'existe. « dir » est le dossier où ils sont rangés,
 # un « <clé>.typ » par document.
 # dir = "modeles"
 # Les quatre premiers gardent leur chemin historique, pour qu'une

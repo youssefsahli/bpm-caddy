@@ -375,7 +375,8 @@ garde le dernier comptage de chaque soir et montre les autres barrés.
 
 # Ce qui s'imprime
 
-Chaque document imprimable a un modèle éditable — Options › Modèles. Un
+Chaque document imprimable a un modèle éditable — le bouton
+« Modèles… » de la barre du haut. Un
 modèle est du Typst ; les `{{MARQUEURS}}` qu'il accepte sont listés dans
 l'éditeur, et l'aperçu passe par la même fonction que l'impression.
 
