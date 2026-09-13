@@ -479,11 +479,16 @@ pub const TABLE: &[Adaptation] = &[
             step(
                 Mild,
                 Reduce,
-                "Ne pas dépasser 3 g par jour, et espacer les prises d'au moins six heures.",
+                // Les deux grammes viennent de la table de référence
+                // « Foie », qui les réserve au cumul : cirrhose **et**
+                // dénutrition, alcoolisation active ou poids faible.
+                // Ce module n'écrivait que les trois grammes de la
+                // fiche, et le cumul est le cas ordinaire, pas l'exotique.
+                "Ne pas dépasser 3 g par jour, et espacer les prises d'au moins six heures. Deux grammes seulement si s'y ajoutent une dénutrition, une alcoolisation active ou un poids faible.",
             ),
             step(Severe, Contraindicated, "Insuffisance hépatocellulaire sévère : contre-indiqué."),
         ],
-        source: "Doliprane : « Sujet âgé, poids inférieur à 50 kg, dénutrition, alcoolisme chronique ou insuffisance hépatocellulaire : ne pas dépasser 3 g et espacer les prises d'au moins 6 heures » ; contre-indication : « insuffisance hépatocellulaire sévère ».",
+        source: "Doliprane : « Sujet âgé, poids inférieur à 50 kg, dénutrition, alcoolisme chronique ou insuffisance hépatocellulaire : ne pas dépasser 3 g et espacer les prises d'au moins 6 heures » ; contre-indication : « insuffisance hépatocellulaire sévère ». EASL et HAS, prise en charge de la cirrhose, pour le plafond abaissé à 2 g quand la dénutrition ou l'alcoolisation s'ajoutent.",
     },
     // **La benzodiazépine du cirrhotique**, et la seule ligne de cette
     // table dont l'intérêt est de ne rien demander.

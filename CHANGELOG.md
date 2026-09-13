@@ -330,6 +330,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Le plafond de paracétamol du cirrhotique dénutri n'était écrit
+  qu'à un endroit.** Les quatre fiches qui citent un plafond concordent
+  — 3 g d'usage courant, 4 g sur avis seulement, 3 g et six heures
+  d'écart chez le sujet à risque —, et la table « Antalgiques » aussi.
+  Mais la table « Foie » ajoute ce qu'aucune des deux ne dit : **2 g**
+  quand s'ajoutent à la cirrhose une dénutrition, une alcoolisation
+  active ou un poids faible. `hepatic.rs` n'écrivait que les trois
+  grammes de la fiche, et ce cumul-là est le cas ordinaire au comptoir,
+  pas l'exception. Le palier le porte, avec sa source.
 - **Deux dermocorticoïdes étaient rangés d'un cran à côté, dans les
   deux sens.** Le Betneval, « dermocorticoïde fort » sur sa propre
   fiche, figurait en classe III — modérée, dont la case des zones porte
