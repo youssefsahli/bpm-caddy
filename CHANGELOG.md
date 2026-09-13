@@ -373,6 +373,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
   c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
   enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
+- **Et l'aperçu du comptage de caisse se lisait comme un doublon.**
+  Avec une seule ligne hors tiroir, la feuille écrivait « Carte
+  450,75 € » puis « Autres encaissements 450,75 € » — la ligne et son
+  total, au même chiffre. Deux lignes montrent ce que la somme
+  additionne, et la recette attendue est ajustée pour que l'écart reste
+  ce qu'un écart doit être : petit.
 - **Et quatre aperçus ne montraient pas le document.** La fiche d'un
   dispositif s'ouvrait sur une page blanche sous son titre ; la
   monographie n'avait qu'une section, alors que c'est le style des

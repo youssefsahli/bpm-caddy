@@ -4383,17 +4383,28 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             q[4] = 7;
             q[7] = 9;
             q[9] = 5;
-            let others = [crate::caisse::Other {
-                label: "Carte".to_owned(),
-                cents: 45_075,
-            }];
+            // **Deux lignes hors tiroir, pas une.** Avec une seule, la
+            // feuille écrivait « Carte 450,75 » puis « Autres
+            // encaissements 450,75 » — la ligne et son total, au même
+            // chiffre, ce qui se lit comme un doublon. Deux lignes
+            // montrent ce que la somme additionne.
+            let others = [
+                crate::caisse::Other {
+                    label: "Carte".to_owned(),
+                    cents: 45_075,
+                },
+                crate::caisse::Other {
+                    label: "Chèques".to_owned(),
+                    cents: 12_000,
+                },
+            ];
             caisse_values(
                 &pharmacy.name,
                 "24/08/2026",
                 "Claire Leroy",
                 &q,
                 &others,
-                &crate::caisse::tally(&q, 15_000, &others, Some(66_000)),
+                &crate::caisse::tally(&q, 15_000, &others, Some(92_500)),
                 "Un billet de 20 € retrouvé sous le tiroir en fin de comptage.",
             )
         }
