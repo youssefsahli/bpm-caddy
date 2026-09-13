@@ -11,7 +11,7 @@
 //! source, et le panneau comme la feuille renvoient au CRAT. Une table
 //! figée dans un binaire vieillit ; la référence, non.
 //!
-//! Cinq règles le tiennent, une par test :
+//! Six règles le tiennent, une par test :
 //!
 //! * **« Pas de donnée » n'est pas « pas de risque ».** C'est la règle
 //!   qui décide de tout le reste, et c'est la même que celle du module
@@ -30,6 +30,19 @@
 //! * **Une contre-indication dit ce qu'on met à la place**, quand il y
 //!   a quelque chose — sans quoi la ligne renvoie le problème au
 //!   comptoir sans l'avancer.
+//! * **Une ligne de classe ne contredit pas la fiche qu'elle
+//!   revendique.** Une classe parle de la classe, et un membre — ou une
+//!   association — peut dire autre chose : le RCP du rabéprazole le
+//!   contre-indique là où les IPP sont utilisables, la Lamaline porte de
+//!   l'opium sous son paracétamol, le Xigduo une gliflozine sous sa
+//!   metformine, l'Actifed Rhume et le Dérinox un vasoconstricteur sous
+//!   leur composant rassurant. Les deux textes étaient dans le logiciel
+//!   et rien ne les mettait face à face : la table était cohérente avec
+//!   elle-même, et c'est la **rencontre** avec les fiches livrées qui le
+//!   montre. Le plus précis passe devant, et le test est étroit — il ne
+//!   parle que d'une ligne compatible des deux côtés dont la fiche écrit
+//!   une contre-indication, parce qu'un test qui crie au loup finit
+//!   désactivé.
 //! * **La table ne décide de rien.** Elle rappelle, elle cite, elle
 //!   renvoie. L'arrêt ou le maintien d'un traitement chez une femme
 //!   enceinte est une décision médicale, et une grossesse mal
