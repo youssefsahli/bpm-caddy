@@ -183,6 +183,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Ni celle du tableau des entretiens.** Le volet est court par
+  construction — le journal, celui où l'on tape, garde sa rangée — et la
+  table défile donc ; à 1024x700 en `text_scale = 1,6` elle montrait une
+  ligne et demie sur quatre, la seconde ligne de l'acte étant tranchée
+  par le bord du panneau. C'est celle qui porte la croix qui retire
+  l'acte, et une croix coupée en deux se lit « cassé » et non « fais
+  défiler ». Le seuil qui décide en combien de lignes l'acte se plie se
+  mesure désormais sur la largeur qui reste une fois la barre posée.
 - **Le manuel annonçait le rouge du planning pour le mauvais jour.** Il
   disait « quand l'officine est ouverte et que personne n'est inscrit » ;
   le total passe au rouge dès qu'un **creux reste pendant l'ouverture**,

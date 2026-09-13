@@ -922,6 +922,22 @@ add clicking and typing; it is not the price of entry.
   the frame. `motif::tab_strip_height(ui)` is that height, written where
   it is decided. The same for anything a `motif::` function sizes
   itself: ask it, never copy the number.
+  `motif::panel_chrome(ui, titled)` is the second one: two views were
+  counting a panel's inset title, its rule and its margins by hand —
+  « 44 px » in one, « body height plus 26 » in the other — and neither
+  followed `[ui] text_scale`, though the caption does. At scale 1 the
+  first reserved six pixels for nothing; from 1.4 it was short, which on
+  a band already capped is one row of lenses gone.
+- **And a margin you did not measure is a margin that does not exist.**
+  The planning's entry band was « whole rows **plus fourteen pixels** »,
+  a padding believed to be `motif::inside`'s — which takes none: it
+  hands over the whole rect. Those fourteen pixels were therefore the
+  *top of the next row*, so the band ended on buttons sliced through
+  their height — the exact thing `whole_rows` exists to prevent — and
+  they cost the grid the line where the red says a hole remains during
+  opening hours. Before adding a constant to a measured height, find
+  the function that spends it; if there is none, there is nothing to
+  add.
 - **And writing the measurement in the right place is still not
   enough — confront it with the drawing.** `tab_strip_height` was
   written where the height is decided and was *still* wrong, because it

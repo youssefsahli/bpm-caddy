@@ -21018,7 +21018,22 @@ impl App {
         // rien ne sort à droite, et les dix cellules sont écrites une
         // seule fois : deux copies du même code divergent le jour où
         // l'on en corrige une.
-        let avail = ui.available_width();
+        // **La barre de cette table-là ne flotte pas non plus.** Le
+        // volet est court par construction — le journal, celui où l'on
+        // tape, garde sa rangée — et la table défile donc. À 1024x700 en
+        // texte 1,6 elle en montrait une ligne et demie sur quatre : la
+        // seconde ligne de l'acte, celle qui porte la croix qui le
+        // retire, était tranchée par le bord du panneau, et la barre
+        // flottante d'egui ne disait pas qu'il y avait une suite. Une
+        // croix coupée en deux se lit « cassé », pas « fais défiler ».
+        //
+        // Et la largeur suit : une barre pleine prend ses douze pixels,
+        // donc le seuil qui décide en combien de lignes l'acte se plie
+        // se mesure sur ce qui reste — c'est exactement ce à quoi
+        // `scrolled_width` sert, et le mesurer avant la barre ferait
+        // tomber le dernier bouton de la rangée hors du volet.
+        ui.spacing_mut().scroll.floating = false;
+        let avail = Self::scrolled_width(ui, ui.available_width());
         // Trois dispositions, et deux seuils mesurés : la rangée
         // entière, puis sa moitié la plus large. En dessous des deux, la
         // fiche se plie en trois.
