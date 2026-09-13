@@ -32,7 +32,7 @@
 //! les alertes — c'est la leçon du kétoconazole local dans `cyp.rs`, et
 //! celle de `crush.rs`, qui s'indexe justement sur la présentation parce
 //! qu'une table par DCI s'y tromperait une fois sur deux. Ici la
-//! molécule suffit pour les soixante-cinq lignes de la table ; le jour
+//! molécule suffit pour les soixante-dix-sept lignes de la table ; le jour
 //! où elle ne suffira plus, c'est le type qui devra changer, pas la
 //! ligne qui devra ruser.
 //!
@@ -554,6 +554,15 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[step(Severe, Reduce, "Ne pas dépasser 20 mg par jour.")],
         source: "Inexium : « En cas d'insuffisance hépatique sévère, la dose ne doit pas dépasser 20 mg par jour ».",
     },
+    // Après l'ésoméprazole, et jamais avant : « esomeprazole » contient
+    // « omeprazole », si bien que l'Inexium serait lu comme du Mopral.
+    // C'est la leçon de `crush.rs` et de `cyp.rs`, et elle vaut ici.
+    Adaptation {
+        needs: &["omeprazole"],
+        label: "Oméprazole",
+        steps: &[step(Severe, Reduce, "Ne pas dépasser 20 mg par jour.")],
+        source: "Mopral : « En insuffisance hépatique sévère, ne pas dépasser 20 mg par jour ».",
+    },
     Adaptation {
         needs: &["losartan"],
         label: "Losartan",
@@ -879,6 +888,90 @@ pub const TABLE: &[Adaptation] = &[
         source: "Inspra : contre-indication en « insuffisance hépatique sévère ».",
     },
     Adaptation {
+        needs: &["metronidazole"],
+        label: "Métronidazole",
+        steps: &[step(
+            Severe,
+            Reduce,
+            "Réduire la posologie ; prudence, l'atteinte sévère majorant aussi le risque neurologique.",
+        )],
+        source: "Flagyl : « la posologie doit être réduite en cas d'insuffisance hépatique sévère » ; contre-indications : « Prudence en cas d'antécédent de neuropathie périphérique, de trouble hématologique ou d'atteinte hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["ornidazole"],
+        label: "Ornidazole",
+        steps: &[step(Severe, Reduce, "Réduire la posologie.")],
+        source: "Tibéral : « la posologie doit être réduite en cas d'insuffisance hépatique sévère » ; « Prudence en cas d'atteinte hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["molsidomine"],
+        label: "Molsidomine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Corvasal : « Contre-indiqué en cas d'insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["voriconazole"],
+        label: "Voriconazole",
+        steps: &[
+            step(Mild, Reduce, "Dose d'entretien réduite de moitié."),
+            step(
+                Severe,
+                Contraindicated,
+                "Insuffisance hépatique sévère : non évaluée, contre-indiqué.",
+            ),
+        ],
+        source: "Vfend : « Une insuffisance hépatique légère à modérée impose de réduire de moitié la dose d'entretien » ; contre-indication : « Insuffisance hépatique sévère non évaluée ».",
+    },
+    Adaptation {
+        needs: &["griseofulvine"],
+        label: "Griséofulvine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Griséfuline : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["mefloquine"],
+        label: "Méfloquine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Lariam : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["safinamide"],
+        label: "Safinamide",
+        steps: &[
+            step(Moderate, Reduce, "Réduire la posologie."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Xadago : « La posologie est réduite en cas d'insuffisance hépatique modérée et le médicament est contre-indiqué en cas d'insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["moclobemide"],
+        label: "Moclobémide",
+        steps: &[step(Severe, Reduce, "Posologie nettement réduite.")],
+        source: "Moclamine : « la posologie doit être nettement réduite en cas d'insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["tofacitinib"],
+        label: "Tofacitinib",
+        steps: &[
+            step(Moderate, Reduce, "Dose diminuée de moitié."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Xeljanz : « La dose est diminuée de moitié en cas […] d'insuffisance hépatique modérée » ; contre-indication : « Insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["mirabegron"],
+        label: "Mirabégron",
+        steps: &[
+            step(Moderate, Reduce, "Réduire la posologie."),
+            step(
+                Severe,
+                Contraindicated,
+                "L'utilisation n'est pas recommandée à ce stade.",
+            ),
+        ],
+        source: "Betmiga : « La posologie est réduite en cas […] d'insuffisance hépatique modérée » ; « L'utilisation n'est pas recommandée en cas […] d'insuffisance hépatique sévère ».",
+    },
+    Adaptation {
         needs: &["dronedarone"],
         label: "Dronédarone",
         steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
@@ -959,6 +1052,25 @@ mod tests {
         let verdicts: Vec<Verdict> = both.iter().map(|f| f.verdict).collect();
         assert!(verdicts.contains(&Verdict::Nothing));
         assert!(verdicts.contains(&Verdict::Adapt(Level::Reduce)));
+    }
+
+    /// **Le plus précis d'abord** : « esomeprazole » contient
+    /// « omeprazole ».
+    ///
+    /// La table est lue dans l'ordre et la première ligne qui répond
+    /// gagne, si bien qu'une ligne « oméprazole » placée avant ferait
+    /// lire l'Inexium comme du Mopral — leurs plafonds sont les mêmes
+    /// ici, mais la ligne citerait la mauvaise fiche, et le jour où
+    /// l'un des deux change ce serait une conduite fausse. Même piège
+    /// que « actiskenan »/« skenan » dans `crush.rs`.
+    #[test]
+    fn the_more_precise_row_answers_first() {
+        let eso = read(&[t("Inexium", "ésoméprazole")], Some(Stage::Severe));
+        assert_eq!(eso[0].label, "Ésoméprazole");
+        assert!(eso[0].source.contains("Inexium"));
+        let om = read(&[t("Mopral", "oméprazole")], Some(Stage::Severe));
+        assert_eq!(om[0].label, "Oméprazole");
+        assert!(om[0].source.contains("Mopral"));
     }
 
     /// **Une hépatopathie évolutive n'est pas un stade**, donc les
