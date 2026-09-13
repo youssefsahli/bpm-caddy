@@ -16333,24 +16333,11 @@ impl App {
                                     // l'enveloppe de l'italique à la
                                     // largeur qu'elle aura, gouttière
                                     // comprise.
-                                    let body_h = ui.text_style_height(&egui::TextStyle::Body);
-                                    let foot_h = if foot.is_empty() {
-                                        0.0
-                                    } else {
-                                        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
-                                        ui.fonts(|r| {
-                                            r.layout(
-                                                foot.clone(),
-                                                font,
-                                                motif::text_faint(),
-                                                name_w,
-                                            )
-                                        })
-                                        .size()
-                                        .y + ui.spacing().item_spacing.y
-                                    };
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(name_w, body_h + foot_h),
+                                        egui::vec2(
+                                            name_w,
+                                            Self::loc_name_cell_height(ui, &foot, name_w),
+                                        ),
                                         egui::Layout::top_down(egui::Align::LEFT),
                                         |ui| {
                                             ui.set_width(name_w);
@@ -18612,6 +18599,29 @@ impl App {
     ///
     /// Sorti de la vue pour être mesurable : c'est un partage, donc de
     /// l'arithmétique.
+    /// La hauteur de la cellule du nom d'une location : le matériel, et
+    /// sous lui la ligne que la largeur n'a pas permis de mettre en
+    /// colonnes.
+    ///
+    /// **Mesurée, parce que `allocate_ui_with_layout` ne pousse rien.**
+    /// Elle réserve ce qu'on lui donne et le reste déborde : la cellule
+    /// annonçait une ligne, en peignait deux, et la seconde — celle qui
+    /// porte la date de pose, l'état et le montant — sortait tranchée
+    /// sous la rangée de boutons. L'italique est enveloppée à la largeur
+    /// qu'elle **aura**, et la gouttière entre les deux se compte.
+    fn loc_name_cell_height(ui: &egui::Ui, foot: &str, name_w: f32) -> f32 {
+        let body = ui.text_style_height(&egui::TextStyle::Body);
+        if foot.is_empty() {
+            return body;
+        }
+        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
+        let wrapped = ui
+            .fonts(|r| r.layout(foot.to_owned(), font, motif::text_faint(), name_w))
+            .size()
+            .y;
+        body + wrapped + ui.spacing().item_spacing.y
+    }
+
     fn carnet_split(inner_h: f32, form_full: f32, table_min: f32) -> (f32, bool) {
         let folded = inner_h - form_full - 6.0 < table_min;
         let form_h = if folded {
@@ -48467,6 +48477,73 @@ mod tests {
             assert!(!title.is_empty());
             for line in lines {
                 assert!(!line.trim().is_empty(), "une ligne vide sous « {title} »");
+            }
+        }
+    }
+
+    /// **La cellule d'une location annonce ce qu'elle dessine.**
+    ///
+    /// `allocate_ui_with_layout` réserve ce qu'on lui donne et laisse
+    /// déborder le reste : elle ne pousse rien. Une cellule qui annonce
+    /// une ligne et en peint deux fait donc sortir la seconde sous ce
+    /// qui suit — ici, la ligne qui porte la date de pose, l'état et le
+    /// montant, tranchée par la rangée de boutons.
+    ///
+    /// Dessiné sans écran et comparé dans les deux sens, à trois
+    /// échelles et deux largeurs : c'est la forme que les notes du
+    /// projet recommandent pour ce défaut-là.
+    #[test]
+    fn a_rental_name_cell_is_as_tall_as_it_announces() {
+        const FOOT: &str = "15/06/2026 · en cours · 13 semaines · 156 €";
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for name_w in [150.0_f32, 260.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let announced = App::loc_name_cell_height(ui, FOOT, name_w);
+                        let bare = App::loc_name_cell_height(ui, "", name_w);
+                        let before = ui.cursor().top();
+                        ui.scope(|ui| {
+                            ui.set_max_width(name_w);
+                            ui.vertical(|ui| {
+                                ui.set_width(name_w);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new("Nébuliseur").size(motif::pt(ui, 12.0)),
+                                    )
+                                    .truncate(),
+                                );
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(FOOT)
+                                            .size(motif::pt(ui, 10.5))
+                                            .italics(),
+                                    )
+                                    .wrap(),
+                                );
+                            });
+                        });
+                        let drawn = ui.cursor().top() - before;
+                        *seen.borrow_mut() = (announced, drawn, bare);
+                    });
+                });
+                let (announced, drawn, bare) = seen.into_inner();
+                // Le curseur avance d'une gouttière qui appartient à la
+                // disposition d'après, comme pour la bande d'à côté.
+                let drawn = drawn - ctx.style().spacing.item_spacing.y;
+                assert!(
+                    announced + 0.5 >= drawn,
+                    "échelle {scale}, largeur {name_w} : annoncé {announced}, dessiné {drawn}"
+                );
+                // Et sans la ligne italique, une seule ligne suffit :
+                // une cellule qui réserverait deux lignes pour rien
+                // pousserait la table vers le bas sur tout le tableau.
+                assert!(
+                    bare < announced,
+                    "échelle {scale} : la ligne italique doit coûter quelque chose"
+                );
             }
         }
     }

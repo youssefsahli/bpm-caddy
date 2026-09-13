@@ -500,7 +500,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   et la rangée grandit » — c'était l'intention, pas ce que fait la
   fonction. La hauteur se mesure maintenant, enveloppe de l'italique
   comprise. Sur un volet large, où ces valeurs ont leurs colonnes et où
-  la seconde ligne n'existe pas, rien ne change.
+  la seconde ligne n'existe pas, rien ne change. La mesure est sortie
+  dans `loc_name_cell_height` et tenue par un test qui **dessine** la
+  cellule sans écran, à trois échelles et deux largeurs, et compare dans
+  les deux sens — c'est la forme que les notes du projet recommandent
+  pour ce défaut-là, et elle manquait ici.
 - **Quatre préparations du codex s'appelaient toutes « Bain de bouche
   … »** dans une liste faite pour les distinguer. Une ligne prend deux
   lignes quand elle peut se couper proprement, et le mot le plus long
