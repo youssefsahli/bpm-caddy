@@ -276,6 +276,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Une bande de titre mesurait vingt-quatre pixels plus étroit qu'elle
+  ne dessine**, et gardait soixante-dix pixels de blanc au comptoir.
+  `title_band_height` retranchait ce retrait sans raison écrite, alors
+  que les onze bandes de titre sont toutes dessinées dans un
+  `motif::inside`, qui ne rétrécit pas le rectangle qu'on lui donne. Le
+  retrait ne faisait que surestimer le nombre de rangées — mais
+  seulement dans la fenêtre où le dernier élément tombe à moins de
+  vingt-quatre pixels du bord, et cette fenêtre contient la largeur d'un
+  écran de comptoir : mesuré à 640 px de large en texte 1,6, la bande du
+  codex annonçait trois rangées pour deux dessinées ; à 660, la même
+  bande était juste.
+
+  Le test qui garde cette bande existait et ne l'a pas vu, pour deux
+  raisons qui se tiennent : **il ne regardait qu'un sens** — celui qui
+  coupe —, et une réserve trop grande ne coupe rien, elle fait du blanc ;
+  et ses trois largeurs sautaient par-dessus la fenêtre du défaut. Il
+  compare maintenant dans les deux sens, à sept largeurs dont celle d'un
+  comptoir.
 - **Et cette clé disait plus que la donnée.** Écrite « marge
   thérapeutique étroite », elle nommait une propriété clinique précise —
   digoxine, lithium, AVK — là où l'anneau est en fait tracé dès que la

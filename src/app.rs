@@ -18867,7 +18867,18 @@ impl App {
         controls: impl Iterator<Item = f32>,
         subtitle: &str,
     ) -> f32 {
-        let usable = (width - 24.0).max(80.0);
+        // **La largeur mesurée est celle où l'on dessine.** Il y avait
+        // ici vingt-quatre pixels de retrait, sans raison écrite : les
+        // onze bandes de titre sont toutes dessinées dans un
+        // `motif::inside`, qui ne rétrécit pas le rectangle qu'on lui
+        // donne. Le retrait ne faisait que surestimer le nombre de
+        // rangées dans la fenêtre où le dernier élément tombe à moins de
+        // vingt-quatre pixels du bord — et cette fenêtre contient la
+        // largeur d'un comptoir. Mesuré : à 1024x700 en texte 1,6, la
+        // bande du codex annonçait trois rangées pour deux dessinées,
+        // soixante-dix pixels de blanc entre le sous-titre et les
+        // panneaux ; à 660 px, la même bande était juste.
+        let usable = width.max(80.0);
         let rows = Self::wrapped_rows_of(ui, usable, controls);
         // A heading is taller than a button, and it is on the first row.
         let heading = ui.text_style_height(&egui::TextStyle::Heading);
@@ -51075,10 +51086,10 @@ mod tests {
     #[test]
     fn a_title_band_is_as_tall_as_what_it_holds() {
         for scale in [1.0_f32, 1.25, 1.6] {
-            for width in [420.0_f32, 700.0, 1100.0] {
+            for width in [420.0_f32, 600.0, 620.0, 640.0, 660.0, 700.0, 1100.0] {
                 let ctx = egui::Context::default();
                 motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
-                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32));
                 let _ = ctx.run(Default::default(), |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         let field =
@@ -51122,13 +51133,29 @@ mod tests {
                             .response
                             .rect
                             .height();
-                        *seen.borrow_mut() = (band, drawn);
+                        *seen.borrow_mut() = (band, drawn, App::row_height(ui));
                     });
                 });
-                let (band, drawn) = seen.into_inner();
+                let (band, drawn, row) = seen.into_inner();
                 assert!(
                     band >= drawn,
                     "échelle {scale}, largeur {width} : bande de {band} px pour {drawn} px dessinés"
+                );
+                // **Et dans l'autre sens.** Une réserve trop grande ne
+                // coupe rien, donc rien ne la signale : c'est du blanc,
+                // et du blanc se lit comme une intention. La bande du
+                // codex en gardait soixante-dix pixels à 640 de large en
+                // texte 1,6 — une rangée et demie — parce que la mesure
+                // retranchait vingt-quatre pixels que le dessin ne
+                // retranche pas. Ce test ne l'a pas vu pendant tout ce
+                // temps : il ne regardait que le sens qui coupe, et ses
+                // trois largeurs sautaient par-dessus la fenêtre du
+                // défaut. 640, c'est un écran de 1024 avec ses volets.
+                assert!(
+                    band - drawn <= row,
+                    "échelle {scale}, largeur {width} : {} px réservés pour rien, \
+                     soit plus d'une rangée ({row} px)",
+                    band - drawn
                 );
             }
         }
