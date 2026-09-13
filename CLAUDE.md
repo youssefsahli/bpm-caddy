@@ -322,7 +322,16 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   0.185.0, which no test could show because each half worked),
   `src/graph.rs` (a card's neighbourhood as points on the unit circle:
   same molecule, same class, named in its interactions — pure, tested,
-  no egui, so the view only scales and paints),
+  no egui, so the view only scales and paints. The **seventh** reading
+  keyed on the molecule, and the last to be swept: an AOD's interactions
+  section names the azoles, meaning the *systemic* ones, so the map put
+  Kétoderm — a shampoo — face to face with an anticoagulant, which is
+  the very sentence `cyp.rs` has always used to refuse it. Only the
+  `Interaction` tie filters: two cards of the same **molecule** are
+  genuinely the same molecule whatever the route, and a local centre
+  still cites the local forms it names. Finding it showed a hole in the
+  filter: the fiches say « local » as often as « topique », and
+  nineteen boxes escaped on that one word),
   `src/facets.rs` (what each card says about itself, **as data rather
   than sentences**: the plasma half-life in hours, and what the card
   *treats* or *alters*, by organ and by grade. The monographs answer
@@ -533,7 +542,7 @@ add clicking and typing; it is not the price of entry.
 - **The route is a question every molecule-keyed table has to ask, and
   it is asked in one place.** `classes::is_local_form` reads a card's
   *class* — « collyre — AINS », « dermocorticoïde fort », « antifongique
-  topique » — and every clinical table consults it, because all six are
+  topique », « antifongique **local** », « anesthésique local » — and every clinical table consults it, because all seven are
   keyed on the **molecule** and a local form of a systemic molecule
   falls straight into its row. Shipped instances found in one sweep on
   2026-09-13: seven printed surveillance lines (a lithiémie demanded for
