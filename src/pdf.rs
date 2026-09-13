@@ -3390,10 +3390,14 @@ fn billing_recap_values(
             typst_str(&l.step),
             typst_str(&l.situation),
             typst_str(&format!("{} %", l.coverage)),
-            typst_str(&format!("{:.2} EUR", l.fee).replace('.', ",")),
+            typst_str(&format!("{:.2} €", l.fee).replace('.', ",")),
         ));
     }
-    let total = format!("{total:.2} EUR").replace('.', ",");
+    // **Le symbole, comme partout ailleurs.** Ce récapitulatif écrivait
+    // « 15,00 EUR » là où l'écran, les feuilles de caisse et le registre
+    // écrivent « 15,00 € » — le même chiffre sous deux graphies, sur les
+    // deux documents qu'on met côte à côte en fin de mois.
+    let total = format!("{total:.2} €").replace('.', ",");
     let count = lines.len();
     // The rentals are a second table, not more rows of the first: they
     // are not acts, they have no code acte and no étape, and adding them
@@ -3415,10 +3419,10 @@ fn billing_recap_values(
                     crate::db::format_french_date(&r.ended)
                 }),
                 typst_str(&format!("{} {}", r.periods, r.period_word)),
-                typst_str(&format!("{:.2} EUR", r.amount).replace('.', ",")),
+                typst_str(&format!("{:.2} €", r.amount).replace('.', ",")),
             ));
         }
-        let sum = format!("{sum:.2} EUR").replace('.', ",");
+        let sum = format!("{sum:.2} €").replace('.', ",");
         rental_block = format!(
             r#"
 #v(6mm)
@@ -6067,9 +6071,9 @@ mod tests {
         assert!(!src.contains("#eval \"Bernard\"]"));
         // The TPH code sits beside the act code, and the total adds up.
         assert!(src.contains("BMI + TPH"));
-        assert!(src.contains("35,50 EUR"));
+        assert!(src.contains("35,50 €"));
         assert!(src.contains("Locations de matériel"));
-        assert!(src.contains("48,00 EUR"));
+        assert!(src.contains("48,00 €"));
         assert!(src.contains("en cours"));
         // No rental, no second table: an empty heading reads as a bug.
         let bare = fill(

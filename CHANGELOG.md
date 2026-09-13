@@ -360,6 +360,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   date les redit — et la colonne du jour se mesure sur la date seule,
   puisque « (recompté) » y pesait la moitié d'une colonne d'argent quand
   la ligne éteinte le dit déjà.
+- **Le récapitulatif de facturation écrivait « EUR ».** L'écran, les
+  feuilles de caisse et le registre écrivent « € » : le même chiffre
+  sous deux graphies, sur les deux documents qu'une officine met côte à
+  côte en fin de mois.
 - **L'échantillon du bilan partagé se contredisait.** Il portait deux
   traitements et ses propres lectures en nommaient quatre autres — un
   AINS pour la revue, un IEC pour la kaliémie, une statine et un
