@@ -176,6 +176,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bord du panneau sans ellipse** — « Posologies par indication — Conc »,
   qui se lit comme un défaut de rendu et non comme un texte plus long
   qu'on ne voit pas.
+- **Une légende de panneau raccourcit avant d'élider.** « FICHE TEC… »
+  et « PATIENTS SOUS CE T… » sur la fiche d'un médicament, là où
+  « FICHE » et « PATIENTS » ne disent pas moins et se lisent entiers —
+  la capitale espacée du style Motif coûte cher en largeur, ce qui rend
+  le cas fréquent. Le choix se fait dans `motif::panel_forms`, où la
+  légende est déjà mesurée : dehors, ce serait une seconde mesure de la
+  même chose.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.

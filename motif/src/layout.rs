@@ -108,16 +108,57 @@ pub fn panel<R>(
     title: Option<&str>,
     add: impl FnOnce(&mut egui::Ui) -> R,
 ) -> R {
+    match title {
+        Some(t) => panel_forms(ui, rect, std::slice::from_ref(&t), add),
+        None => panel_forms(ui, rect, &[], add),
+    }
+}
+
+/// [`panel`], mais avec **plusieurs formes du titre, de la plus riche à
+/// la plus pauvre**.
+///
+/// « Raccourcir, ne pas élider » — la règle de la maison, qui manquait
+/// ici : sur un volet étroit « FICHE TECHNIQUE » sortait « FICHE TEC… »
+/// et « PATIENTS SOUS CE TRAITEMENT » sortait « PATIENTS SOUS CE T… »,
+/// alors que « FICHE » et « PATIENTS » ne disent pas moins et se lisent
+/// entiers. La capitale espacée coûte cher en largeur, ce qui rend le
+/// cas fréquent plutôt que rare.
+///
+/// Le choix se fait **ici**, où la légende est déjà mesurée : dehors, ce
+/// serait une seconde mesure de la même chose — la capitale, l'espace
+/// fine entre les lettres, la marge du cadre — et deux mesures d'une
+/// même chose finissent toujours par diverger.
+///
+/// Quand aucune forme ne tient, la plus pauvre est élidée, comme avant.
+pub fn panel_forms<R>(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    forms: &[&str],
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
     ui.painter().rect_filled(rect, 0.0, crate::bg());
     bevel(ui.painter(), rect, true);
     let mut inner = rect.shrink(8.0);
-    if let Some(title) = title {
+    if let Some(poorest) = forms.last() {
         let font = egui::FontId::proportional(crate::pt(ui, 11.0));
-        let caption: String = title
-            .to_uppercase()
-            .chars()
-            .flat_map(|c| [c, '\u{2009}'])
-            .collect();
+        let spaced = |t: &str| -> String {
+            t.to_uppercase()
+                .chars()
+                .flat_map(|c| [c, '\u{2009}'])
+                .collect()
+        };
+        let room = (inner.width() - 4.0).max(8.0);
+        let caption: String = forms
+            .iter()
+            .map(|t| spaced(t))
+            .find(|c| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(c.trim_end().to_owned(), font.clone(), crate::text_dim())
+                        .size()
+                        .x
+                }) <= room
+            })
+            .unwrap_or_else(|| spaced(poorest));
         // Élidé sur la largeur du panneau, et **jamais** `layout_no_wrap`.
         //
         // Le titre était posé sans limite de largeur : « PATIENTS SOUS CE
@@ -143,7 +184,7 @@ pub fn panel<R>(
             },
         );
         job.wrap = egui::text::TextWrapping {
-            max_width: (inner.width() - 4.0).max(8.0),
+            max_width: room,
             max_rows: 1,
             break_anywhere: false,
             overflow_character: Some('…'),

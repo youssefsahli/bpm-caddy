@@ -10,7 +10,7 @@ pub mod chart;
 pub mod layout;
 
 pub use layout::{
-    column_count, inside, page, panel, rule, split_columns, split_rows, tab_strip,
+    column_count, inside, page, panel, panel_forms, rule, split_columns, split_rows, tab_strip,
     tab_strip_height, visible_rect, vrule, well, Tab, TabAction,
 };
 

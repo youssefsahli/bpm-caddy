@@ -40408,56 +40408,73 @@ impl App {
                 )
             };
             let mut fold = false;
-            motif::panel(ui, tech, Some(tr("drug_tech_section")), |ui| {
-                if motif::button(
-                    ui,
+            motif::panel_forms(
+                ui,
+                tech,
+                &[tr("drug_tech_section"), tr("drug_tech_section_short")],
+                |ui| {
+                    if motif::button(
+                        ui,
+                        if session.drug_tech_open {
+                            tr("drug_tech_fold")
+                        } else {
+                            tr("drug_tech_unfold")
+                        },
+                    )
+                    .on_hover_text(tr("drug_tech_tooltip"))
+                    .clicked()
+                    {
+                        fold = true;
+                    }
                     if session.drug_tech_open {
-                        tr("drug_tech_fold")
-                    } else {
-                        tr("drug_tech_unfold")
-                    },
-                )
-                .on_hover_text(tr("drug_tech_tooltip"))
-                .clicked()
-                {
-                    fold = true;
-                }
-                if session.drug_tech_open {
-                    let body = ui.available_rect_before_wrap();
-                    if body.height() > 30.0 {
-                        if let Some(card) = session.drug_form.clone() {
-                            // Read once per card, not per frame: it is a
-                            // pass over the whole base.
-                            session.refresh_drug_kin(&card);
-                            let shown = session.drug_kin_show;
-                            match Self::drug_tech_pane(ui, &card, &session.drug_kin, shown, body) {
-                                Some(TechAction::Search(word)) => search_keyword = Some(word),
-                                Some(TechAction::Open(id)) => follow_link = Some(id),
-                                // Clicking the chip that is already open
-                                // closes it again: one gesture, both ways.
-                                Some(TechAction::Neighbours(which)) => {
-                                    session.drug_kin_show = (shown != Some(which)).then_some(which);
+                        let body = ui.available_rect_before_wrap();
+                        if body.height() > 30.0 {
+                            if let Some(card) = session.drug_form.clone() {
+                                // Read once per card, not per frame: it is a
+                                // pass over the whole base.
+                                session.refresh_drug_kin(&card);
+                                let shown = session.drug_kin_show;
+                                match Self::drug_tech_pane(
+                                    ui,
+                                    &card,
+                                    &session.drug_kin,
+                                    shown,
+                                    body,
+                                ) {
+                                    Some(TechAction::Search(word)) => search_keyword = Some(word),
+                                    Some(TechAction::Open(id)) => follow_link = Some(id),
+                                    // Clicking the chip that is already open
+                                    // closes it again: one gesture, both ways.
+                                    Some(TechAction::Neighbours(which)) => {
+                                        session.drug_kin_show =
+                                            (shown != Some(which)).then_some(which);
+                                    }
+                                    None => {}
                                 }
-                                None => {}
                             }
                         }
                     }
-                }
-            });
+                },
+            );
             if fold {
                 session.drug_tech_open = !session.drug_tech_open;
             }
-            motif::panel(ui, recalls, Some(tr("drug_patients_label")), |ui| {
-                if session.drug_patients.is_empty() {
-                    ui.label(
-                        egui::RichText::new(tr("drug_patients_none"))
-                            .size(motif::pt(ui, 11.5))
-                            .color(motif::text_dim()),
-                    );
-                } else if let Some(id) = Self::drug_patients_pane(ui, session) {
-                    open_patient_id = Some(id);
-                }
-            });
+            motif::panel_forms(
+                ui,
+                recalls,
+                &[tr("drug_patients_label"), tr("drug_patients_short")],
+                |ui| {
+                    if session.drug_patients.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("drug_patients_none"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        );
+                    } else if let Some(id) = Self::drug_patients_pane(ui, session) {
+                        open_patient_id = Some(id);
+                    }
+                },
+            );
             motif::panel(ui, journal, Some(tr("drug_notes_section")), |ui| {
                 let h = 420.0;
                 Self::drug_notes_pane(ui, session, card_id, operator, h);
