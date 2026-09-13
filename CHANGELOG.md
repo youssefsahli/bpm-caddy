@@ -276,6 +276,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Une puce de traitement se coupait au bord de la rangée.** Dans un
+  `horizontal_wrapped`, egui enveloppe le texte *dans* l'étiquette et
+  non seulement entre étiquettes : la puce « Lasilix » laissait ses deux
+  espaces de tête en fin de première ligne — un bloc d'accent de dix
+  pixels sur vingt-quatre que rien n'expliquait — et reprenait dessous.
+  Ici la coupure tombait sur les espaces ; à une autre largeur elle
+  tombe au milieu du nom, chaque moitié portant son fond bleu. C'est le
+  défaut déjà corrigé pour les pastilles de la revue, et pas ici : un
+  fond coloré est tout ce qui rend la coupure visible. La seconde rangée
+  de puces se rejoint maintenant en faisant défiler la bande, ce qui est
+  ce que cette bande fait depuis toujours.
 - **Une bande enveloppée oubliait les gouttières entre ses rangées**, et
   trois écrans en perdaient une commande. L'arithmétique sur laquelle
   repose tout plafond de ce fichier est `n × hauteur de rangée +

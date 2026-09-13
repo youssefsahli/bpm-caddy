@@ -19475,6 +19475,16 @@ impl App {
                     // ouvrir la posologie pour l'apprendre — quand
                     // quelqu'un l'y avait écrit.
                     let strength = session.strength_of(t.id);
+                    // **Insécable.** Dans un `horizontal_wrapped`, egui
+                    // enveloppe le texte *dans* l'étiquette et non
+                    // seulement entre étiquettes : la puce se coupait
+                    // au bord de la rangée, ses deux espaces de tête
+                    // restant en fin de première ligne sous forme d'un
+                    // bloc d'accent de dix pixels sur vingt-quatre que
+                    // rien n'expliquait, le nom reprenant en dessous.
+                    // Même défaut que les pastilles de la revue, corrigé
+                    // là-bas et pas ici : un fond coloré rend la coupure
+                    // visible, c'est tout ce qui les distingue.
                     let chip = ui.add(
                         egui::Label::new(
                             egui::RichText::new(format!(
@@ -19485,6 +19495,7 @@ impl App {
                             .color(motif::on_fill(motif::accent()))
                             .background_color(motif::accent()),
                         )
+                        .wrap_mode(egui::TextWrapMode::Extend)
                         .sense(egui::Sense::click()),
                     );
                     chip_at.push((t.name.trim().to_owned(), chip.rect));
