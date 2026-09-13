@@ -33902,12 +33902,45 @@ impl App {
                                     // cette colonne dit : une case vide
                                     // n'écrit rien.
                                     if filled {
+                                        // **Et « obligatoire » ne vaut
+                                        // que là où il y a un écart.**
+                                        // Un inventaire ne demande un
+                                        // motif que pour la boîte qui
+                                        // ne tombe pas juste ; une
+                                        // ligne comptée exacte n'a rien
+                                        // à motiver, et l'invite le
+                                        // disait quand même. Sur une
+                                        // feuille de quarante produits
+                                        // dont trente-neuf tombent
+                                        // juste, c'est trente-neuf fois
+                                        // « obligatoire » pour rien —
+                                        // la même faute que celle que
+                                        // le commentaire au-dessus
+                                        // corrige, d'un cran plus loin.
+                                        // Les autres natures, elles,
+                                        // demandent leur motif quoi
+                                        // qu'il arrive.
+                                        // La règle est celle du
+                                        // registre, demandée et non
+                                        // recopiée : deux calculs d'une
+                                        // même règle finissent toujours
+                                        // par diverger, et celui-ci
+                                        // comparait deux nombres quand
+                                        // l'autre tolère l'arrondi.
+                                        let owed = batch
+                                            .typed
+                                            .get(&id)
+                                            .and_then(|t| crate::codex::parse_amount(t))
+                                            .is_some_and(|(v, _)| {
+                                                crate::ordonnancier::reason_owed(kind, s.stock, v)
+                                                    .is_some()
+                                            });
                                         ui.add_sized(
                                             [reason_w, Self::button_height(ui)],
                                             egui::TextEdit::singleline(
                                                 batch.reasons.entry(id).or_default(),
                                             )
-                                            .hint_text(reason_hint),
+                                            .hint_text(if owed { reason_hint } else { "" }),
                                         );
                                     } else {
                                         Self::grid_cell(ui, reason_w, egui::RichText::new(""));

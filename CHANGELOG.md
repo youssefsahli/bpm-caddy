@@ -489,6 +489,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Trente-neuf « obligatoire » pour rien sur une feuille de comptage.**
+  Sur la feuille de saisie groupée, le motif d'un inventaire n'est dû
+  que pour la boîte qui ne tombe pas juste ; l'invite du champ, elle,
+  annonçait « obligatoire » sur **toute** ligne comptée. Le code voisin
+  corrigeait déjà la même faute d'un cran en deçà — il n'affiche pas le
+  champ sur une ligne vide, « et c'est le contraire de ce que cette
+  colonne dit : une case vide n'écrit rien ». L'invite suit maintenant
+  l'écart.
+
+  Et elle le suit en **demandant la règle au registre** plutôt qu'en la
+  recopiant : la première version comparait deux nombres là où `plan`
+  passe par `Discrepancy::matters`, qui tolère l'arrondi — deux calculs
+  d'une même règle, qui finissent toujours par diverger. `reason_owed`
+  est écrit une fois et lu des deux côtés ; la capture avant et après le
+  remaniement ne diffère pas d'un pixel.
 - **La carte du voisinage mettait un shampooing face à un
   anticoagulant.** La section « interactions » d'un AOD nomme les
   azolés — elle parle des azolés **généraux** —, et `graph.rs`, qui est

@@ -1409,6 +1409,27 @@ impl Plan {
 /// vide est une information, une délivrance de zéro unité n'en est pas
 /// une.
 ///
+/// **Cette ligne doit-elle porter un motif, et lequel manque ?**
+///
+/// Écrit une fois, et lu des deux côtés : par [`plan`], qui en fait un
+/// embarras quand le motif manque, et par l'écran, qui n'annonce
+/// « obligatoire » que là où il l'est. Les deux le calculaient chacun de
+/// son côté, et ils ne le calculaient pas pareil — l'écran comparait
+/// deux nombres quand le registre passe par [`Discrepancy::matters`],
+/// qui tolère l'arrondi. Deux calculs d'une même règle finissent
+/// toujours par diverger.
+///
+/// Rend `None` quand aucun motif n'est dû : un inventaire qui tombe
+/// juste, une entrée, une délivrance. Le champ reste là — on peut
+/// toujours écrire une remarque — mais rien ne la réclame.
+pub fn reason_owed(kind: Kind, expected: f64, counted: f64) -> Option<Snag> {
+    if kind == Kind::Inventaire {
+        let gap = Discrepancy { expected, counted };
+        return gap.matters().then_some(Snag::GapWithoutReason);
+    }
+    kind.needs_record().then_some(Snag::RecordRequired)
+}
+
 /// **Un écart se motive case par case**, et pas une fois pour la
 /// feuille : deux produits qui manquent ne manquent pas pour la même
 /// raison, et un motif commun n'expliquerait ni l'un ni l'autre. Il en
@@ -1431,19 +1452,11 @@ pub fn plan(kind: Kind, slots: &[Slot]) -> Plan {
             out.snags.push((slot.stup_id, Snag::NotPositive));
             continue;
         }
-        if kind == Kind::Inventaire {
-            let gap = Discrepancy {
-                expected: slot.expected,
-                counted: quantity,
-            };
-            if gap.matters() && slot.reason.trim().is_empty() {
-                out.snags.push((slot.stup_id, Snag::GapWithoutReason));
+        if let Some(snag) = reason_owed(kind, slot.expected, quantity) {
+            if slot.reason.trim().is_empty() {
+                out.snags.push((slot.stup_id, snag));
                 continue;
             }
-        }
-        if kind.needs_record() && slot.reason.trim().is_empty() {
-            out.snags.push((slot.stup_id, Snag::RecordRequired));
-            continue;
         }
         out.lines.push(Planned {
             stup_id: slot.stup_id,
@@ -2579,5 +2592,39 @@ mod tests {
                 );
             }
         }
+    }
+    /// **Un motif n'est dû que là où il manque quelque chose.**
+    ///
+    /// La règle est lue des deux côtés — le registre en fait un
+    /// embarras, l'écran en fait une invite « obligatoire » —, et elle
+    /// était calculée deux fois, pas de la même façon : l'écran
+    /// comparait deux nombres, le registre passe par
+    /// [`Discrepancy::matters`], qui tolère l'arrondi. Sur une feuille
+    /// de quarante produits dont trente-neuf tombent juste, c'était
+    /// trente-neuf « obligatoire » pour rien.
+    #[test]
+    fn a_reason_is_owed_only_where_something_is_missing() {
+        // Un inventaire qui tombe juste ne doit rien.
+        assert_eq!(reason_owed(Kind::Inventaire, 14.0, 14.0), None);
+        // Et l'arrondi ne fabrique pas un écart.
+        assert_eq!(reason_owed(Kind::Inventaire, 14.0, 14.000_000_1), None);
+        // Un écart, si.
+        assert_eq!(
+            reason_owed(Kind::Inventaire, 27.0, 26.0),
+            Some(Snag::GapWithoutReason)
+        );
+        // Une destruction doit son procès-verbal, comptée juste ou non.
+        assert_eq!(
+            reason_owed(Kind::Destruction, 5.0, 5.0),
+            Some(Snag::RecordRequired)
+        );
+        assert_eq!(
+            reason_owed(Kind::DestructionPerimes, 5.0, 2.0),
+            Some(Snag::RecordRequired)
+        );
+        // Une entrée et une délivrance ne doivent rien : le champ reste,
+        // pour une remarque, et rien ne la réclame.
+        assert_eq!(reason_owed(Kind::Entree, 0.0, 3.0), None);
+        assert_eq!(reason_owed(Kind::Sortie, 0.0, 3.0), None);
     }
 }
