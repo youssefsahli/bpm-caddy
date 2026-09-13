@@ -229,8 +229,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `text_scale = 1,6` — la forme du comptoir — « Aller à… » s'y réduisait
   à un liseré de six pixels, qui se lit comme un séparateur : c'est
   pourquoi quatre passes de captures l'avaient laissé passer. Les deux
-  groupes sont mesurés, et la barre prend une seconde rangée plutôt que
-  d'en écraser un.
+  groupes sont mesurés — gouttières **entre** les boutons et non
+  derrière chacun, faute de quoi deux de trop font trente-deux pixels —
+  et la barre prend une seconde rangée plutôt que d'en écraser un. Le
+  nom de l'application, lui, ne disparaît que s'il est ce qui empêche
+  une seule rangée : sur deux rangées, la première a la place de le
+  reprendre.
 - **Et l'échelle du texte s'arrête où la glissière s'arrête.**
   `motif::apply_scale` acceptait de 0,7 à 1,8 quand l'application offre
   de 0,8 à 1,6 : au-delà, sur un écran de 1024, la barre du haut et la

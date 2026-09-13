@@ -46271,53 +46271,86 @@ impl eframe::App for App {
             // Ce que les deux groupes demandent, mesuré avant de les
             // dessiner : le nom, les quatre bascules de gauche, les
             // trois boutons de droite, et les gouttières entre eux.
-            let two_rows = {
+            let (show_name, two_rows) = {
+                // **Les gouttières se comptent entre les boutons, pas
+                // derrière chacun.** Comptées derrière, deux de trop
+                // font trente-deux pixels, et la barre passait à deux
+                // rangées là où elle tenait sur une. C'est le modèle de
+                // `wrapped_band_height` : *n* choses valent leurs
+                // largeurs plus *n − 1* espacements.
                 let gap = ui.spacing().item_spacing.x;
                 let unlocked = matches!(self.state, State::Unlocked(_));
-                let left: f32 = Self::widest(ui, 14.0, ["BPM-Caddy"].into_iter())
-                    + 10.0
-                    + if unlocked {
-                        [
+                let group = |ui: &egui::Ui, labels: &[&str]| -> f32 {
+                    let n = labels.len() as f32;
+                    labels
+                        .iter()
+                        .map(|l| Self::button_width(ui, l))
+                        .sum::<f32>()
+                        + (n - 1.0).max(0.0) * gap
+                };
+                let name = Self::widest(ui, 14.0, ["BPM-Caddy"].into_iter()) + 10.0;
+                let left = if unlocked {
+                    group(
+                        ui,
+                        &[
                             tr("toolbar_nav"),
                             tr("toolbar_docs"),
                             tr("toolbar_keys"),
                             tr("toolbar_goto"),
-                        ]
-                        .into_iter()
-                        .map(|l| Self::button_width(ui, l) + gap)
-                        .sum::<f32>()
-                    } else {
-                        0.0
-                    };
-                let right: f32 = if unlocked {
-                    [
-                        tr("toolbar_lock"),
-                        tr("toolbar_options"),
-                        tr("toolbar_template"),
-                    ]
-                    .into_iter()
-                    .map(|l| Self::button_width(ui, l) + gap)
-                    .sum::<f32>()
+                        ],
+                    )
                 } else {
-                    Self::button_width(ui, tr("toolbar_docs")) + gap
+                    0.0
                 };
-                left + right > ui.available_width()
+                let right = if unlocked {
+                    group(
+                        ui,
+                        &[
+                            tr("toolbar_lock"),
+                            tr("toolbar_options"),
+                            tr("toolbar_template"),
+                        ],
+                    )
+                } else {
+                    group(ui, &[tr("toolbar_docs")])
+                };
+                // **Le nom de l'application cède avant la place de
+                // travail.** Il est décoratif — le titre de la fenêtre
+                // le porte —, là où une seconde rangée coûte quarante-six
+                // pixels au volet central, sur les écrans qui en ont le
+                // moins. On le retire d'abord ; on ne passe à deux
+                // rangées que si cela ne suffit pas.
+                let room = ui.available_width();
+                let two_rows = left + gap + right > room;
+                // Sur deux rangées, la première a de la place : le nom
+                // revient. Il ne disparaît que lorsqu'il est ce qui
+                // empêche la barre de tenir sur une seule.
+                let show_name = if two_rows {
+                    name + left <= room
+                } else {
+                    name + left + gap + right <= room
+                };
+                (show_name, two_rows)
             };
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("BPM-Caddy").strong())
-                    .on_hover_text(format!(
-                        concat!(
-                            "BPM-Caddy v",
-                            env!("CARGO_PKG_VERSION"),
-                            "\nBase : {}\nConfiguration : {}"
-                        ),
-                        self.config.db_path().display(),
-                        Config::path().display()
-                    ));
+                if show_name {
+                    ui.label(egui::RichText::new("BPM-Caddy").strong())
+                        .on_hover_text(format!(
+                            concat!(
+                                "BPM-Caddy v",
+                                env!("CARGO_PKG_VERSION"),
+                                "\nBase : {}\nConfiguration : {}"
+                            ),
+                            self.config.db_path().display(),
+                            Config::path().display()
+                        ));
+                }
                 // The dock toggles sit next to the name, on the left:
                 // they act on the frame around the work, not on the work.
                 if matches!(self.state, State::Unlocked(_)) {
-                    ui.add_space(10.0);
+                    if show_name {
+                        ui.add_space(10.0);
+                    }
                     if motif::toggle(ui, tr("toolbar_nav"), self.show_nav)
                         .on_hover_text(tr("toolbar_nav_tooltip"))
                         .clicked()
