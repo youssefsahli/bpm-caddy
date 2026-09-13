@@ -99,23 +99,10 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   table's *order*, since the first row that matches wins: it earned its
   keep the day it was written — « actiskenan » contains « skenan », and
   immediate-release Actiskenan was getting Skenan LP's answer),
-  `src/gravidity.rs` (pregnancy and breastfeeding as a level: twenty-four
+  `src/gravidity.rs` (pregnancy and breastfeeding as a level: thirty-five
   molecules, **two levels each** — they are two questions, and codeine is
-  usable pregnant and discouraged while nursing, the AVKs the reverse.
-  **It does not replace the CRAT**, and the panel says so in its footer:
-  the French reference is kept up to date molecule by molecule and it is
-  online, where a table frozen in a binary ages. Rules, one test each:
-  **« no data » is not « no risk »** (`SansDonnee` is a level apart from
-  `Compatible`), **the term decides** (an NSAID is not « to avoid », it
-  is contraindicated from 24 weeks of amenorrhoea, even as a single
-  dose — and for aspirin it is the *dose* that decides, the same
-  molecule being a treatment *of* pregnancy at 75 mg), and **the table
-  decides nothing**: stopping a treatment in a pregnant woman is a
-  medical decision, and a badly-accompanied pregnancy is more dangerous
-  than a treatment continued),
-  `src/gravidity.rs` (pregnancy and breastfeeding as a level: twenty-four
-  molecules, **two levels each** — they are two questions, and codeine is
-  usable pregnant and discouraged while nursing, the AVKs the reverse.
+  usable pregnant and contraindicated while nursing, the AVKs the exact
+  reverse.
   **It does not replace the CRAT**, and the panel says so in its footer:
   the French reference is kept up to date molecule by molecule and it is
   online, where a table frozen in a binary ages. Rules, one test each:
@@ -1096,9 +1083,6 @@ add clicking and typing; it is not the price of entry.
   or the next session would open on a 460 px workspace
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
-- `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that
-  self-monitoring sheet (`tension`, `glycemie`, `poids`, `souffle`,
-  `inr`, `douleur`) rather than the widest one
 - `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that
   self-monitoring sheet (`tension`, `glycemie`, `poids`, `souffle`,
   `inr`, `douleur`) rather than the widest one

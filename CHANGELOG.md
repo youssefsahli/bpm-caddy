@@ -330,6 +330,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **La codéine était « à éviter » pendant l'allaitement, quand les trois
+  autres textes de l'application la disent contre-indiquée.** La table
+  de référence « Grossesse et allaitement » l'écrit dans sa colonne
+  « contre-indiqué » et le répète en repère ; la fiche de la Lamaline
+  écrit « contre-indiqué pendant l'allaitement en raison du passage des
+  opiacés dans le lait » ; et la ligne voisine « Paracétamol + opium »
+  était déjà en interdit. Seule la ligne « Codéine et tramadol » était
+  plus permissive — pour la molécule qui, seule, a tué des nourrissons
+  de mères métaboliseuses ultrarapides. Elle porte désormais le niveau
+  de ce qu'elle a de plus inquiétant, comme les associations, et sa
+  phrase dit où le tramadol se tient : à éviter pour la même raison,
+  sans la même interdiction formelle.
+
+  L'écart grossesse/allaitement y devient complet — possible
+  ponctuellement enceinte, contre-indiquée en allaitant —, ce qui rend
+  l'exemple encore plus net dans le test qui tient les deux colonnes
+  séparées.
 - **La metformine disait « poursuivre » là où sa propre fiche dit
   « dose maximale réduite ».** Entre 45 et 60 mL/min, `renal.rs` posait
   une simple surveillance ; la fiche du Glucophage écrit « dose maximale

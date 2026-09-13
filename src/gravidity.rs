@@ -427,9 +427,17 @@ pub const TABLE: &[Advice] = &[
         pregnancy: Level::Prudence,
         term: "En fin de grossesse : syndrome de sevrage et dépression respiratoire du nouveau-né si la prise est prolongée ou proche de l'accouchement.",
         pregnancy_note: "Ponctuellement, l'usage est possible. Le paracétamol reste le premier choix.",
-        breastfeeding: Level::Eviter,
-        breastfeeding_note: "La codéine est déconseillée : une mère métaboliseuse ultrarapide transforme trop de codéine en morphine, et des dépressions respiratoires du nourrisson ont été décrites. Préférer le paracétamol ou l'ibuprofène.",
-        source: "CRAT ; ANSM",
+        // La ligne porte le niveau de ce qu'elle a de plus inquiétant,
+        // comme les associations : la codéine est **contre-indiquée**
+        // pendant l'allaitement — c'est ce qu'écrivent la table de
+        // référence « Grossesse et allaitement », la fiche de la
+        // Lamaline, et la ligne voisine « Paracétamol + opium », déjà
+        // en interdit. Elle était ici « à éviter », c'est-à-dire plus
+        // permissive que les trois autres textes de l'application pour
+        // la molécule qui, seule, a tué des nourrissons.
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "La codéine est contre-indiquée pendant l'allaitement : une mère métaboliseuse ultrarapide transforme trop de codéine en morphine, et des dépressions respiratoires du nourrisson ont été décrites, dont des décès. Le tramadol est à éviter pour la même raison, sans porter la même interdiction formelle. Préférer le paracétamol ou l'ibuprofène, compatibles l'un et l'autre.",
+        source: "CRAT ; ANSM, contre-indication de la codéine pendant l'allaitement",
     },
     Advice {
         needs: &["nitrofurantoine", "furadantine"],
@@ -954,14 +962,14 @@ mod tests {
     }
 
     /// **Grossesse et allaitement sont deux questions.** La codéine est
-    /// l'exemple que tout le monde connaît : ponctuellement possible
-    /// enceinte, déconseillée en allaitant. Une réponse unique serait
-    /// fausse une fois sur deux.
+    /// l'exemple que tout le monde connaît, et l'écart y est complet :
+    /// ponctuellement possible enceinte, contre-indiquée en allaitant.
+    /// Une réponse unique serait fausse une fois sur deux.
     #[test]
     fn pregnancy_and_breastfeeding_are_two_questions() {
         let f = read(&[treat("Codoliprane")]).remove(0);
         assert_eq!(f.pregnancy, Level::Prudence);
-        assert_eq!(f.breastfeeding, Level::Eviter);
+        assert_eq!(f.breastfeeding, Level::Interdit);
         assert_ne!(f.pregnancy, f.breastfeeding);
         // Et l'inverse existe aussi : les AVK sont contre-indiqués
         // pendant la grossesse et compatibles avec l'allaitement.
