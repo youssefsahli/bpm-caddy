@@ -489,6 +489,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **L'infobulle du HPV disait pour qui, pas combien de doses.** Le
+  `schedule` du catalogue des vaccins s'affiche au survol du nom, au
+  moment précis où l'on **note une dose** ; celui du HPV répondait
+  « 11-14 ans, rattrapage jusqu'à 19 ans ». Le nombre de doses vient
+  d'abord maintenant — deux avant 15 ans, trois au-delà —, et la
+  population suit. Le chiffre vient de la table « Vaccination à
+  l'officine », dont les dix autres lignes concordent avec le catalogue,
+  parfois en moins précis que lui (« grossesse (20-36 SA) »).
 - **Le manuel dit ce que les formes locales ne reçoivent pas.** C'est un
   silence, et un silence ne se remarque pas : un collyre, une pommade,
   un gel ou une pulvérisation nasale n'ont ni palier rénal, ni niveau de

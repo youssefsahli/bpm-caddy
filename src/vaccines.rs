@@ -405,7 +405,11 @@ pub const CATALOGUE: &[VaccineRef] = &[
     VaccineRef {
         code: "HPV",
         label: "Papillomavirus (HPV)",
-        schedule: "11-14 ans, rattrapage jusqu'à 19 ans",
+        // Le nombre de doses d'abord : cette phrase s'affiche en
+        // infobulle sur le nom, au moment où l'on **note une dose**, et
+        // elle ne répondait qu'à « pour qui ». Le schéma vient de la
+        // table de référence « Vaccination à l'officine ».
+        schedule: "2 doses avant 15 ans, 3 au-delà ; 11-14 ans, rattrapage jusqu'à 19 ans",
     },
     VaccineRef {
         code: "MENACYW",
