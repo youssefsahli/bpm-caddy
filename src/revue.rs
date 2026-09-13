@@ -1341,6 +1341,49 @@ mod tests {
         }
     }
 
+    /// **Une statine avec un IPP ne lève pas l'alerte de
+    /// rhabdomyolyse**, et une statine avec un macrolide, si.
+    ///
+    /// La règle cherchait « azolé », et « ésoméprazole » le contient —
+    /// comme « cotrimoxazole », « aripiprazole », « mébendazole » :
+    /// dix-sept fiches sur vingt-cinq. Un Tahor avec un Mopral,
+    /// c'est-à-dire une ordonnance de tous les jours, annonçait donc
+    /// « la concentration de la statine grimpe et c'est la
+    /// rhabdomyolyse ». Une alerte qui se lève tous les jours est une
+    /// alerte qu'on apprend à fermer, et c'est la seule chose que la
+    /// revue ne peut pas se permettre.
+    #[test]
+    fn a_statin_with_a_ppi_is_not_a_rhabdomyolysis_alert() {
+        let title = "Statine + inhibiteur enzymatique";
+        let with_ppi = [
+            t("Tahor", "atorvastatine", "statine"),
+            t("Mopral", "oméprazole", "IPP"),
+        ];
+        assert!(
+            !review(&with_ppi).iter().any(|p| p.title == title),
+            "une statine et un IPP ne font pas une rhabdomyolyse"
+        );
+        // Et le vrai cas se lève toujours : c'est le macrolide qui
+        // freine l'enzyme, et lui seul.
+        let with_macrolide = [
+            t("Tahor", "atorvastatine", "statine"),
+            t("Zeclar", "clarithromycine", "macrolide"),
+        ];
+        assert!(
+            review(&with_macrolide).iter().any(|p| p.title == title),
+            "une statine et un macrolide, si"
+        );
+        // Un azolé systémique aussi.
+        let with_azole = [
+            t("Tahor", "atorvastatine", "statine"),
+            t("Sporanox", "itraconazole", "antifongique azolé"),
+        ];
+        assert!(
+            review(&with_azole).iter().any(|p| p.title == title),
+            "une statine et un azolé systémique, si"
+        );
+    }
+
     /// What is *missing* only counts as a finding when the thing that
     /// should be there is not: the same ordonnance with a laxative on
     /// it must say nothing.
