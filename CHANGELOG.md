@@ -183,6 +183,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Et la configuration de démonstration porte enfin une identité
+  d'officine.** Options › Officine se capturait sur cinq champs vides,
+  c'est-à-dire sur rien de ce que l'écran fait, et les documents
+  imprimés depuis la base de démonstration ne se signaient pas.
 - **Le formulaire de fiche coupait ses champs pharmacocinétiques.** La
   largeur d'un champ y était « ce qui reste une fois cent trente-huit
   pixels retirés » — un nombre écrit à la main pour une colonne

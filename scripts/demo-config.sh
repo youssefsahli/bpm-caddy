@@ -30,6 +30,14 @@ discreet_finances = false
 text_scale = $2
 theme = "$3"
 [pharmacy]
+# L'identité, parce qu'une capture d'Options › Officine sur cinq champs
+# vides ne montre rien de ce que l'écran fait, et que les documents
+# imprimés depuis la base de démonstration se signent avec.
+name = "Pharmacie du Centre"
+address = "12 place du Marché, 34000 Montpellier"
+phone = "04 67 00 00 00"
+pharmacist = "Claire Leroy, pharmacien titulaire"
+am_number = "341234567"
 # L'équipe que la démo sème au planning. Sans elle, la grille range CL,
 # YS et MB en « personnes que la liste ne connaît pas » : lisible, mais
 # ce n'est pas la forme qu'une officine voit.
