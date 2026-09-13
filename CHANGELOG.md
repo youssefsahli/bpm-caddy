@@ -117,6 +117,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Huit présentations de plus sur la feuille « peut-on écraser ? »**,
+  toutes tirées de ce que leur fiche écrit. Trois qui blessent
+  l'œsophage si on les croque — le chlorure de potassium, la
+  pristinamycine, le pivmécillinam : ce ne sont pas des formes à
+  libération modifiée, c'est le comprimé lui-même qui brûle la muqueuse
+  s'il s'arrête en chemin, et la consigne va plus loin que « ne pas
+  écraser » puisqu'elle dit aussi de rester debout. Six anticancéreux
+  oraux, où la poussière expose la personne qui manipule avant le
+  patient — et plusieurs sont tératogènes, ce qui met une soignante
+  enceinte en cause la première. Le lévétiracétam et la mélatonine LP,
+  qui ne s'écrasent pas mais dont l'un a une solution buvable faite pour
+  cela. La venlafaxine LP, dont on cherche justement à ouvrir la gélule.
+  Et le ticagrélor, que sa fiche **autorise** explicitement à être
+  écrasé dans un demi-verre d'eau — assez rare parmi les antiagrégants
+  pour valoir d'être su.
 - **Une boîte qui s'annonce « LP » n'est plus « à vérifier ».** La
   feuille « peut-on écraser ? » répondait d'une cinquantaine des huit
   cent soixante-deux fiches livrées, et « à vérifier » pour tout le

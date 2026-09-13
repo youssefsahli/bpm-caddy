@@ -455,6 +455,91 @@ pub const TABLE: &[Rule] = &[
         instead: "",
         source: "Liste nationale des médicaments écrasables",
     },
+    // --- Ce qui blesse l'œsophage si on le croque ---------------------
+    //
+    // Ces trois-là ne sont pas des formes à libération modifiée : c'est
+    // le comprimé lui-même qui brûle la muqueuse s'il s'arrête en
+    // chemin. La consigne va donc plus loin que « ne pas écraser » —
+    // elle dit aussi de rester debout, et c'est ce que la fiche écrit.
+    Rule {
+        needs: &["kaleorid", "chlorure de potassium", "diffu-k"],
+        label: "Chlorure de potassium",
+        verdict: Verdict::No,
+        why: "Croqué, écrasé ou sucé, il libère d'un coup un sel qui brûle la muqueuse : c'est une cause classique d'ulcération de l'œsophage. Le comprimé s'avale entier, avec un grand verre d'eau, assis ou debout, et sans s'allonger dans l'heure qui suit.",
+        instead: "La solution buvable de potassium, ou un apport alimentaire discuté avec le prescripteur.",
+        source: "Kaléorid : « Avalez les comprimés entiers, sans les croquer, les écraser ni les sucer ».",
+    },
+    Rule {
+        needs: &["pyostacine", "pristinamycine"],
+        label: "Pristinamycine",
+        verdict: Verdict::No,
+        why: "Les comprimés ne se croquent ni ne se sucent : ils irritent l'œsophage s'ils s'y arrêtent. Ils se prennent au milieu du repas, avec un grand verre d'eau, sans s'allonger dans la demi-heure.",
+        instead: "Un antibiotique de la même indication en forme buvable, à voir avec le prescripteur.",
+        source: "Pyostacine : « sans être croqués ni sucés, et sans s'allonger dans la demi-heure qui suit ».",
+    },
+    Rule {
+        needs: &["selexid", "pivmecillinam"],
+        label: "Pivmécillinam",
+        verdict: Verdict::No,
+        why: "Le comprimé s'avale entier, avec un grand verre d'eau, au cours d'un repas, en restant assis ou debout : croqué ou écrasé, il expose à l'ulcération de l'œsophage.",
+        instead: "Un autre antibiotique de la cystite, à voir avec le prescripteur.",
+        source: "Selexid : « Les comprimés s'avalent entiers, sans être croqués ni écrasés ».",
+    },
+    // --- Ce qui protège celui qui écrase, suite -----------------------
+    Rule {
+        needs: &[
+            "revlimid",
+            "lenalidomide",
+            "imnovid",
+            "pomalidomide",
+            "ibrance",
+            "palbociclib",
+            "xtandi",
+            "enzalutamide",
+            "zytiga",
+            "abiraterone",
+            "xeloda",
+            "capecitabine",
+        ],
+        label: "Anticancéreux oraux",
+        verdict: Verdict::No,
+        why: "Ni ouverts, ni écrasés, ni coupés. La poussière expose la personne qui manipule — et plusieurs de ces molécules sont tératogènes, ce qui met une soignante enceinte en cause avant le patient.",
+        instead: "Aucune forme écrasable : c'est au prescripteur de proposer autre chose si la déglutition ne passe plus.",
+        source: "Revlimid : « les gélules s'avalent entières, sans être ouvertes ni écrasées » ; Xtandi : « sans être ouverts, croqués ni dissous » ; Xeloda : « sans être écrasés ni coupés ».",
+    },
+    // --- Ce que la fiche autorise explicitement ------------------------
+    Rule {
+        needs: &["brilique", "ticagrelor"],
+        label: "Ticagrélor",
+        verdict: Verdict::Yes,
+        why: "Sa fiche l'autorise : le comprimé peut être écrasé et pris dans un demi-verre d'eau. C'est assez rare parmi les antiagrégants pour valoir d'être su.",
+        instead: "",
+        source: "Brilique : « si vous ne pouvez pas avaler le comprimé, il peut être écrasé et pris dans un demi-verre d'eau ».",
+    },
+    Rule {
+        needs: &["keppra", "levetiracetam"],
+        label: "Lévétiracétam",
+        verdict: Verdict::No,
+        why: "Les comprimés s'avalent entiers — mais la question ne se pose pas : il existe une solution buvable, faite pour cela.",
+        instead: "La solution buvable, à la même dose, prescrite comme telle.",
+        source: "Keppra : « les comprimés s'avalent entiers avec un verre d'eau et il existe une solution buvable si la déglutition est difficile ».",
+    },
+    Rule {
+        needs: &["circadin"],
+        label: "Mélatonine à libération prolongée",
+        verdict: Verdict::No,
+        why: "Le comprimé est fait pour libérer la mélatonine lentement pendant la nuit : le casser supprime exactement l'effet recherché.",
+        instead: "Une forme à libération immédiate, dont l'indication n'est pas la même — c'est une décision du prescripteur.",
+        source: "Circadin : « Avalez le comprimé entier, sans le couper ni le croquer ».",
+    },
+    Rule {
+        needs: &["effexor", "venlafaxine"],
+        label: "Venlafaxine à libération prolongée",
+        verdict: Verdict::No,
+        why: "La gélule à libération prolongée ne s'ouvre pas et ne se croque pas : la dose de la journée partirait d'un coup.",
+        instead: "La forme à libération immédiate, répartie sur la journée — un changement de forme qui se prescrit.",
+        source: "Effexor : « Une gélule à libération prolongée par jour, à avaler entière sans l'ouvrir ni la croquer ».",
+    },
     // --- Le filet, en dernier -----------------------------------------
     //
     // **Ce que la boîte dit d'elle-même, quand aucune règle ne la
@@ -516,7 +601,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 30;
+        const FLOOR: usize = 38;
         assert!(
             TABLE.len() >= FLOOR,
             "{} présentations, il y en avait {FLOOR}",
