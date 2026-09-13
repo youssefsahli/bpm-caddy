@@ -183,6 +183,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **L'historique de caisse perdait la colonne pour laquelle il
+  existe.** Il avait deux formes, et la resserrée était *supposée*
+  tenir : à 1024x700 en `text_scale = 1,6` elle débordait son volet, la
+  table défilait latéralement — barre flottante, donc invisible — et ce
+  qui sortait par la droite était « Écart ». Les trois soirs visibles
+  affichaient « +0,25 » sans son euro et « -0,50 € » tranché en deux.
+  Une troisième forme, mesurée elle aussi : « Par » et la remarque
+  tombent — elles se relisent sur le comptage du soir et le survol de la
+  date les redit — et la colonne du jour se mesure sur la date seule,
+  puisque « (recompté) » y pesait la moitié d'une colonne d'argent quand
+  la ligne éteinte le dit déjà.
 - **Ni celle du tableau des entretiens.** Le volet est court par
   construction — le journal, celui où l'on tape, garde sa rangée — et la
   table défile donc ; à 1024x700 en `text_scale = 1,6` elle montrait une

@@ -18898,7 +18898,7 @@ impl App {
     /// large contenu : une seule valeur trop longue, et tout ce qui suit
     /// sort du panneau à droite. La largeur est donc décidée au-dessus,
     /// et le texte s'élide.
-    fn grid_cell(ui: &mut egui::Ui, width: f32, text: egui::RichText) {
+    fn grid_cell(ui: &mut egui::Ui, width: f32, text: egui::RichText) -> egui::Response {
         // **La place est réservée avant d'être remplie.** Un `ui.scope`
         // n'annonce pas sa taille : dans un `horizontal_wrapped`, egui
         // ne sait donc pas qu'il ne tiendra pas et ne va pas à la ligne
@@ -18907,14 +18907,17 @@ impl App {
         // demande la largeur d'abord, et l'enveloppement redevient
         // possible.
         let h = ui.text_style_height(&egui::TextStyle::Body);
+        // La réponse est rendue : une cellule d'une forme resserrée
+        // porte au survol ce que la colonne tombée disait.
         ui.allocate_ui_with_layout(
             egui::vec2(width, h),
             egui::Layout::left_to_right(egui::Align::Center),
             |ui| {
                 ui.set_width(width);
-                ui.add(egui::Label::new(text).truncate());
+                ui.add(egui::Label::new(text).truncate())
             },
-        );
+        )
+        .inner
     }
 
     /// [`wrapped_rows_of`] for a row that is all buttons.
@@ -42763,19 +42766,54 @@ impl App {
             // colonnes.
             let gutter = ui.spacing().item_spacing.x;
             let gap_cols = if want_expected { 2.0 } else { 0.0 };
-            // La forme large est-elle possible ? On la mesure avec les
-            // colonnes réellement voulues, sinon le seuil parlerait
-            // d'une table qui n'existe pas.
+            // **Trois formes, et la plus pauvre est mesurée elle
+            // aussi.** Il y en avait deux, et la resserrée était
+            // *supposée* tenir : à 1024x700 en `text_scale = 1,6` elle
+            // débordait de son volet, et la table défilait donc
+            // latéralement — barre flottante, donc invisible. Ce qui
+            // sortait par la droite était « Écart », c'est-à-dire la
+            // colonne pour laquelle cet écran existe : les trois lignes
+            // visibles montraient « +0,25 » sans son euro et
+            // « -0,50 € » tranché en deux.
+            //
+            // Sous la forme resserrée, « Par » et la remarque tombent —
+            // elles se relisent sur le comptage du soir, et le survol de
+            // la date les redit — et la colonne du jour se mesure sur la
+            // date **seule** : le mot « (recompté) » y pesait la moitié
+            // d'une colonne d'argent, alors que la ligne éteinte le dit
+            // déjà, et le survol l'écrit.
             let full = day_w
                 + (3.0 + gap_cols) * money_w
                 + by_w
                 + (4.0 + gap_cols) * gutter
                 + chars_wide(ui, 12.0);
             let tight = full > inner.width();
+            let tight_w = day_w
+                + (1.0 + gap_cols) * money_w
+                + by_w
+                + (2.0 + gap_cols) * gutter
+                + chars_wide(ui, 8.0);
+            let bare = tight && tight_w > inner.width();
+            let day_w = if bare {
+                Self::widest_in(
+                    ui,
+                    egui::TextStyle::Body.resolve(ui.style()),
+                    ["08/09/2026", tr("caisses_col_day")].into_iter(),
+                )
+            } else {
+                day_w
+            };
             let detail_cols = if tight { 0.0 } else { 2.0 };
             let money_cols = 1.0 + detail_cols + gap_cols;
-            let cols = 4 + detail_cols as usize + gap_cols as usize;
-            let fixed = day_w + money_cols * money_w + by_w + (cols as f32 - 1.0) * gutter;
+            let cols = if bare {
+                2 + gap_cols as usize
+            } else {
+                4 + detail_cols as usize + gap_cols as usize
+            };
+            let fixed = day_w
+                + money_cols * money_w
+                + if bare { 0.0 } else { by_w }
+                + (cols as f32 - 1.0) * gutter;
             let remark_w = (inner.width() - fixed).max(chars_wide(ui, 8.0));
             egui::ScrollArea::both()
                 .id_salt("caisse_history_table")
@@ -42805,8 +42843,10 @@ impl App {
                                 head(ui, money_w, "caisses_col_expected");
                                 head(ui, money_w, "caisses_col_gap");
                             }
-                            head(ui, by_w, "caisses_col_by");
-                            head(ui, remark_w, "caisses_col_remark");
+                            if !bare {
+                                head(ui, by_w, "caisses_col_by");
+                                head(ui, remark_w, "caisses_col_remark");
+                            }
                             ui.end_row();
                             for (c, counted) in
                                 session.caisse_period.iter().zip(&session.caisse_counted)
@@ -42821,7 +42861,7 @@ impl App {
                                 } else {
                                     motif::text()
                                 };
-                                let day = if stale {
+                                let day = if stale && !bare {
                                     format!(
                                         "{} ({})",
                                         db::format_french_date(&c.day),
@@ -42830,7 +42870,31 @@ impl App {
                                 } else {
                                     db::format_french_date(&c.day)
                                 };
-                                Self::grid_cell(ui, day_w, egui::RichText::new(day).color(ink));
+                                let cell =
+                                    Self::grid_cell(ui, day_w, egui::RichText::new(day).color(ink));
+                                // Sous la forme la plus pauvre, la date
+                                // porte ce que les colonnes tombées
+                                // disaient — et le mot « recompté », que
+                                // l'encre éteinte dit sans l'écrire.
+                                if bare {
+                                    let mut hover = String::new();
+                                    if stale {
+                                        hover.push_str(tr("caisses_recounted"));
+                                        hover.push('\n');
+                                    }
+                                    if !c.operator.trim().is_empty() {
+                                        hover.push_str(&c.operator);
+                                    }
+                                    if !c.remark.trim().is_empty() {
+                                        if !hover.is_empty() {
+                                            hover.push('\n');
+                                        }
+                                        hover.push_str(&c.remark);
+                                    }
+                                    if !hover.is_empty() {
+                                        cell.on_hover_text(hover);
+                                    }
+                                }
                                 let detail: &[i64] = if tight {
                                     &[]
                                 } else {
@@ -42881,18 +42945,20 @@ impl App {
                                         }),
                                     );
                                 }
-                                Self::grid_cell(
-                                    ui,
-                                    by_w,
-                                    egui::RichText::new(c.operator.clone()).color(ink),
-                                );
-                                Self::grid_cell(
-                                    ui,
-                                    remark_w,
-                                    egui::RichText::new(c.remark.clone())
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
+                                if !bare {
+                                    Self::grid_cell(
+                                        ui,
+                                        by_w,
+                                        egui::RichText::new(c.operator.clone()).color(ink),
+                                    );
+                                    Self::grid_cell(
+                                        ui,
+                                        remark_w,
+                                        egui::RichText::new(c.remark.clone())
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                }
                                 ui.end_row();
                             }
                         });
