@@ -296,6 +296,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« Ebixa … » : un nom entier suivi d'un point de suspension.** Les
+  deux moitiés d'une rangée — le nom et sa mention tranquille — étaient
+  posées dans une seule galée et s'élidaient donc ensemble. Sur un volet
+  étroit, un nom complet se lisait « Ebixa … », ce qui fait croire qu'il
+  manque quelque chose au nom ; et pire, la moitié tranquille prenait la
+  place que le nom n'avait plus, si bien que « Effentora » et
+  « Efferalgan » sortaient coupés alors qu'ils tiennent entiers sans
+  elle. Mesuré sur la liste des médicaments à 1024x700 en texte 1,6 :
+  cinq rangées, cinq noms abîmés, zéro après. La moitié tranquille part
+  entière ou ne part pas — c'est `richest_form` appliqué à la rangée. Un
+  nom qui ne tient pas *lui-même* s'élide encore : un nom coupé reste
+  plus utile qu'une rangée vide.
 - **« Du 03/02/2026 (4,9) au ».** La ligne qui date la courbe de
   biologie est la dernière du volet : enveloppée sur une seconde ligne,
   elle se faisait couper par le cadre, et une phrase qui s'arrête à

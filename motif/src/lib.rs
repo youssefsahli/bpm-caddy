@@ -1247,6 +1247,86 @@ pub fn list_row(ui: &mut egui::Ui, text: egui::RichText, selected: bool) -> egui
     }
     response
 }
+/// La galée d'une rangée à deux moitiés, **la plus riche qui tienne**.
+///
+/// Posées dans une seule galée, les deux moitiés s'élidaient ensemble :
+/// sur un volet étroit, « Ebixa » — un nom complet — se lisait
+/// « Ebixa … », et ce point de suspension fait croire qu'il manque
+/// quelque chose au nom. Pire, la moitié tranquille prenait la place
+/// que le nom n'avait plus : « Effentora » et « Efferalgan » sortaient
+/// coupés alors qu'ils tiennent entiers sans elle.
+///
+/// C'est la règle de la maison, celle de `richest_form` : de la plus
+/// riche à la plus pauvre, et la première qui tient. Le nom seul tient
+/// presque toujours ; s'il ne tient pas lui-même, il s'élide — un nom
+/// coupé reste plus utile qu'une rangée vide.
+fn pair_galley(
+    ui: &egui::Ui,
+    primary: &str,
+    secondary: &str,
+    selected: bool,
+    indent: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let width = ui.available_width();
+    // Both faces come from the style, so the pair grows with the text
+    // scale like the plain row beside it.
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let quiet = egui::FontId::new(font.size * 0.86, font.family.clone());
+    let color = if selected {
+        Color32::WHITE
+    } else {
+        crate::text()
+    };
+    // On the selection blue, a dimmed grey is unreadable: the quiet
+    // half stays white and leans on the italics alone.
+    let dim = if selected {
+        Color32::WHITE
+    } else {
+        crate::text_faint()
+    };
+    let lay = |secondary: &str| -> std::sync::Arc<egui::Galley> {
+        let mut job = egui::text::LayoutJob::default();
+        job.append(
+            primary,
+            0.0,
+            egui::TextFormat {
+                font_id: font.clone(),
+                color,
+                ..Default::default()
+            },
+        );
+        if !secondary.is_empty() {
+            // Un vrai espace, et non le seul `leading_space` : celui-ci
+            // est un écart en pixels, pas une frontière de mot, et egui
+            // coupait alors « Efferalgan paracétamol » en
+            // « paracéta / mol » faute d'avoir où passer à la ligne.
+            job.append(
+                &format!(" {secondary}"),
+                0.0,
+                egui::TextFormat {
+                    font_id: quiet.clone(),
+                    color: dim,
+                    italics: true,
+                    ..Default::default()
+                },
+            );
+        }
+        let max_width = (width - 12.0 - indent).max(1.0);
+        job.wrap = egui::text::TextWrapping {
+            max_width,
+            max_rows: label_rows(ui, &job.text, &font, max_width),
+            break_anywhere: false,
+            overflow_character: Some('…'),
+        };
+        ui.fonts(|f| f.layout_job(job))
+    };
+    let full = lay(secondary);
+    if full.elided && !secondary.is_empty() {
+        lay("")
+    } else {
+        full
+    }
+}
 
 /// [`list_row`] with a second, quieter half: a name and what it *is*,
 /// on one line — « Aclasta  acide zolédronique », the second in italics
@@ -1264,22 +1344,10 @@ pub fn list_row_pair(
     indent: f32,
 ) -> egui::Response {
     let width = ui.available_width();
-    // Both faces come from the style, so the pair grows with the text
-    // scale like the plain row beside it.
-    let font = egui::TextStyle::Body.resolve(ui.style());
-    let quiet = egui::FontId::new(font.size * 0.86, font.family.clone());
-    let font_for_rows = font.clone();
     let color = if selected {
         Color32::WHITE
     } else {
         crate::text()
-    };
-    // On the selection blue, a dimmed grey is unreadable: the quiet
-    // half stays white and leans on the italics alone.
-    let dim = if selected {
-        Color32::WHITE
-    } else {
-        crate::text_faint()
     };
     // **Mise en page d'abord, hauteur ensuite.** La rangée était
     // allouée sur une ligne puis peinte dedans, donc « Paul Bernard »
@@ -1287,42 +1355,7 @@ pub fn list_row_pair(
     // même prénom devenaient la même rangée. Elle prend deux lignes
     // quand il en faut deux, comme `list_row_count`, et la hauteur
     // suit la galée au lieu de la précéder.
-    let galley = {
-        let mut job = egui::text::LayoutJob::default();
-        job.append(
-            primary,
-            0.0,
-            egui::TextFormat {
-                font_id: font,
-                color,
-                ..Default::default()
-            },
-        );
-        if !secondary.is_empty() {
-            // Un vrai espace, et non le seul `leading_space` : celui-ci
-            // est un écart en pixels, pas une frontière de mot, et egui
-            // coupait alors « Efferalgan paracétamol » en
-            // « paracéta / mol » faute d'avoir où passer à la ligne.
-            job.append(
-                &format!(" {secondary}"),
-                0.0,
-                egui::TextFormat {
-                    font_id: quiet,
-                    color: dim,
-                    italics: true,
-                    ..Default::default()
-                },
-            );
-        }
-        let max_width = (width - 12.0 - indent).max(1.0);
-        job.wrap = egui::text::TextWrapping {
-            max_width,
-            max_rows: label_rows(ui, &job.text, &font_for_rows, max_width),
-            break_anywhere: false,
-            overflow_character: Some('…'),
-        };
-        ui.fonts(|f| f.layout_job(job))
-    };
+    let galley = pair_galley(ui, primary, secondary, selected, indent);
     let height = (ui.spacing().interact_size.y + 2.0)
         .max(galley.size().y + 4.0)
         .max(18.0);
@@ -1840,6 +1873,53 @@ mod tests {
     /// a changé la teinte sans lever la confusion. C'est une distance
     /// et jamais une direction — les deux palettes de nuit écrivent
     /// clair sur sombre.
+    /// **La moitié tranquille part entière ou ne part pas.**
+    ///
+    /// Les deux moitiés partageaient une galée et s'élidaient ensemble.
+    /// Sur un volet étroit, « Ebixa » — un nom complet — se lisait
+    /// « Ebixa … », et ce point de suspension fait croire qu'il manque
+    /// quelque chose au nom. Pire : la moitié tranquille prenait la
+    /// place que le nom n'avait plus, si bien que « Effentora » et
+    /// « Efferalgan » sortaient coupés alors qu'ils tiennent entiers
+    /// sans elle. Mesuré sur la liste des médicaments à 1024x700 en
+    /// texte 1,6 : cinq rangées, cinq noms abîmés, zéro après.
+    #[test]
+    fn the_quiet_half_of_a_row_leaves_whole_or_does_not_leave() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        let ctx = egui::Context::default();
+        super::apply_scale(&ctx, 1.0, super::Density::Comfortable);
+        let seen = std::cell::RefCell::new((String::new(), String::new()));
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                // Étroit : le couple ne tient pas, le nom seul si.
+                let narrow = ui
+                    .scope(|ui| {
+                        ui.set_max_width(90.0);
+                        super::pair_galley(ui, "Ebixa", "chlorhydratedemémantine", false, 0.0)
+                    })
+                    .inner;
+                // Large : les deux tiennent, et les deux sont là.
+                let wide = ui
+                    .scope(|ui| {
+                        ui.set_max_width(600.0);
+                        super::pair_galley(ui, "Ebixa", "chlorhydratedemémantine", false, 0.0)
+                    })
+                    .inner;
+                *seen.borrow_mut() = (narrow.text().to_owned(), wide.text().to_owned());
+            });
+        });
+        let (narrow, wide) = seen.into_inner();
+        assert_eq!(
+            narrow, "Ebixa",
+            "le nom seul, entier, sans point de suspension"
+        );
+        assert!(
+            wide.contains("Ebixa") && wide.contains("chlorhydratedemémantine"),
+            "au large, les deux moitiés : {wide}"
+        );
+    }
+
     #[test]
     fn a_hint_keeps_its_colour_and_stays_nearer_the_field_than_an_ink() {
         use eframe::egui::{self, Color32};
