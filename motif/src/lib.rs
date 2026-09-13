@@ -1134,8 +1134,18 @@ pub fn button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Res
 /// large que la moyenne des lettres : l'erreur penche donc vers une
 /// seule ligne, c'est-à-dire vers l'ellipse plutôt que vers la coupe.
 fn label_rows(ui: &egui::Ui, text: &str, font: &egui::FontId, max_width: f32) -> usize {
+    // **Un trait d'union est une occasion de couper**, et egui la prend :
+    // mesuré, « lidocaine-bicarbonate-nystatine » se coupe en
+    // « lidocaine-bicarbonate- » puis « nystatine », ce qui se lit. Compté
+    // comme un seul mot de trente et un caractères, il faisait retomber
+    // toute la ligne sur l'ellipse, et « Bain de bouche
+    // lidocaïne-bicarbonate-nystatine » s'affichait « Bain de bouche … »
+    // — c'est-à-dire le nom de quatre préparations à la fois, dans une
+    // liste faite pour les distinguer. Les segments se mesurent donc
+    // entre les traits d'union, comme entre les espaces.
     let longest = text
         .split_whitespace()
+        .flat_map(|w| w.split('-'))
         .map(|w| w.chars().count())
         .max()
         .unwrap_or(0) as f32;
@@ -2029,5 +2039,50 @@ mod tests {
             );
         }
         super::set_theme(super::THEMES[0].key);
+    }
+    /// **Un trait d'union est une occasion de couper ; une longue suite
+    /// de lettres n'en est pas une.**
+    ///
+    /// egui coupe à l'union — mesuré :
+    /// « lidocaine-bicarbonate-nystatine » devient
+    /// « lidocaine-bicarbonate- » puis « nystatine », ce qui se lit.
+    /// Compté comme un mot de trente et un caractères, il faisait
+    /// retomber la ligne entière sur l'ellipse, et quatre préparations
+    /// du codex s'affichaient toutes « Bain de bouche … » dans une liste
+    /// faite pour les distinguer.
+    ///
+    /// Et l'inverse ne bouge pas : « Benzodiazépines » n'a pas d'union,
+    /// egui le couperait donc n'importe où — « Benzodiazép / ines » se
+    /// lit plus mal que l'ellipse, et c'est l'ellipse qu'on garde.
+    #[test]
+    fn a_hyphen_is_a_place_to_break_and_a_long_word_is_not() {
+        use eframe::egui;
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                let ch = ui.fonts(|f| f.glyph_width(&font, '0'));
+                // Une colonne qui tient « bicarbonate » — onze lettres,
+                // le plus long segment entre deux unions — et pas
+                // « Benzodiazepines », qui en fait quinze. C'est entre
+                // ces deux-là que la question se pose.
+                let room = ch * 13.0;
+                assert_eq!(
+                    super::label_rows(
+                        ui,
+                        "Bain de bouche lidocaine-bicarbonate-nystatine (formule type)",
+                        &font,
+                        room
+                    ),
+                    2,
+                    "les segments se mesurent entre les traits d'union"
+                );
+                assert_eq!(
+                    super::label_rows(ui, "Benzodiazepines et apparentes", &font, room),
+                    1,
+                    "sans union, une longue suite de lettres garde l'ellipse"
+                );
+            });
+        });
     }
 }

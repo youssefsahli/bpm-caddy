@@ -489,6 +489,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Quatre préparations du codex s'appelaient toutes « Bain de bouche
+  … »** dans une liste faite pour les distinguer. Une ligne prend deux
+  lignes quand elle peut se couper proprement, et le mot le plus long
+  décidait — or « lidocaïne-bicarbonate-nystatine » était compté comme un
+  seul mot de trente et un caractères, qui ne tient dans aucune colonne,
+  donc ellipse pour toute la ligne. **Mais egui coupe au trait
+  d'union** : mesuré sur un contexte sans écran, il rend
+  « lidocaine-bicarbonate- » puis « nystatine », ce qui se lit très
+  bien. Les segments se mesurent donc entre les unions comme entre les
+  espaces, et le nom montre enfin ce qui le distingue. L'inverse ne
+  bouge pas : « Benzodiazépines » n'a pas d'union, egui le couperait
+  n'importe où, et « Benzodiazép / ines » se lit plus mal que l'ellipse.
 - **La date du fil du dossier sortait « 13/09/20… ».** La colonne se
   peint en chasse fixe et sa largeur était mesurée en proportionnelle :
   trop étroite, elle élidait la date au milieu de l'année — ce qui a
