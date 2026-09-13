@@ -2121,7 +2121,8 @@ fn notes_box(
                 let field = ui
                     .add_sized(
                         [field_w, 24.0],
-                        egui::TextEdit::singleline(text).hint_text(tr("notes_add_hint")),
+                        egui::TextEdit::singleline(text)
+                            .hint_text(motif::hint(tr("notes_add_hint"))),
                     )
                     .on_hover_text(tr("notes_markup_hint"));
                 if !stacked {
@@ -8792,7 +8793,7 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             let field = ui.add(
                 egui::TextEdit::singleline(&mut session.goto_query)
                     .desired_width(f32::INFINITY)
-                    .hint_text(tr("goto_hint")),
+                    .hint_text(motif::hint(tr("goto_hint"))),
             );
             // The box opens ready to type: it is summoned by a keystroke
             // and asking for a click first would waste the gesture.
@@ -8993,7 +8994,8 @@ fn export_window(
                 ui.available_width(),
                 (screen.height() * 0.09).clamp(40.0, 74.0),
             ],
-            egui::TextEdit::multiline(&mut box_.extra).hint_text(tr("export_extra_placeholder")),
+            egui::TextEdit::multiline(&mut box_.extra)
+                .hint_text(motif::hint(tr("export_extra_placeholder"))),
         );
         ui.add_space(8.0);
         ui.horizontal(|ui| {
@@ -10691,7 +10693,7 @@ impl App {
     fn side_help(&mut self, ui: &mut egui::Ui) {
         ui.add(
             egui::TextEdit::singleline(&mut self.help_query)
-                .hint_text(tr("help_search"))
+                .hint_text(motif::hint(tr("help_search")))
                 .desired_width(ui.available_width() - ui.spacing().item_spacing.x),
         );
         ui.add_space(4.0);
@@ -11136,7 +11138,10 @@ impl App {
         // ». Quand le nom ne tient pas, on garde le verbe.
         let w = ui.available_width();
         let hint = Self::hint_that_fits(ui, w, hint);
-        let resp = ui.add_sized([w, 26.0], egui::TextEdit::singleline(text).hint_text(hint));
+        let resp = ui.add_sized(
+            [w, 26.0],
+            egui::TextEdit::singleline(text).hint_text(motif::hint(hint)),
+        );
         motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
         ui.add_space(6.0);
         resp
@@ -12259,7 +12264,7 @@ impl App {
                         [(ui.available_width() - 20.0).clamp(60.0, 320.0), 30.0],
                         egui::TextEdit::singleline(password)
                             .password(true)
-                            .hint_text(tr("lock_password_hint")),
+                            .hint_text(motif::hint(tr("lock_password_hint"))),
                     );
                     motif::bevel(ui.painter(), field.rect.expand(2.0), false);
                     // The lock screen holds a single field, so any Enter
@@ -12513,7 +12518,8 @@ impl App {
                 ui.add_space(14.0);
                 let search = ui.add_sized(
                     [ui.available_width(), 32.0],
-                    egui::TextEdit::singleline(&mut session.query).hint_text(tr("search_hint")),
+                    egui::TextEdit::singleline(&mut session.query)
+                        .hint_text(motif::hint(tr("search_hint"))),
                 );
                 motif::bevel(ui.painter(), search.rect.expand(2.0), false);
                 // Search is the default view: keep the bar focused.
@@ -12689,7 +12695,7 @@ impl App {
                                     26.0,
                                 ],
                                 egui::TextEdit::singleline(&mut form.birth_date)
-                                    .hint_text(tr("form_birth_hint")),
+                                    .hint_text(motif::hint(tr("form_birth_hint"))),
                             );
                             ui.end_row();
                             // Enter in any field submits (spec 3.1: shortcut
@@ -13296,7 +13302,7 @@ impl App {
                                     ui.add_sized(
                                         [ui.available_width().max(120.0), 24.0],
                                         egui::TextEdit::singleline(&mut choice.posology)
-                                            .hint_text(tr("ord_posology_hint")),
+                                            .hint_text(motif::hint(tr("ord_posology_hint"))),
                                     );
                                 });
                                 if !atb.caution.is_empty() {
@@ -13378,7 +13384,7 @@ impl App {
                                 ui.add_sized(
                                     [ui.available_width().max(120.0), 24.0],
                                     egui::TextEdit::singleline(&mut choice.adjuvant_posology)
-                                        .hint_text(tr("ord_posology_hint")),
+                                        .hint_text(motif::hint(tr("ord_posology_hint"))),
                                 );
                             });
                         }
@@ -13401,7 +13407,7 @@ impl App {
                         ui.add_sized(
                             [ui.available_width(), 60.0],
                             egui::TextEdit::multiline(&mut choice.extra)
-                                .hint_text(tr("ord_extra_hint")),
+                                .hint_text(motif::hint(tr("ord_extra_hint"))),
                         );
                     });
 
@@ -14160,32 +14166,32 @@ impl App {
                                     ui.add_sized(
                                         [widths[0], h],
                                         egui::TextEdit::singleline(&mut e.label)
-                                            .hint_text(tr("vacc_label_hint")),
+                                            .hint_text(motif::hint(tr("vacc_label_hint"))),
                                     ),
                                     ui.add_sized(
                                         [widths[1], h],
                                         egui::TextEdit::singleline(&mut e.dose)
-                                            .hint_text(tr("vacc_dose_hint")),
+                                            .hint_text(motif::hint(tr("vacc_dose_hint"))),
                                     ),
                                     ui.add_sized(
                                         [widths[2], h],
                                         egui::TextEdit::singleline(vacc_edit_date)
-                                            .hint_text(tr("vacc_date_hint")),
+                                            .hint_text(motif::hint(tr("vacc_date_hint"))),
                                     ),
                                     ui.add_sized(
                                         [widths[3], h],
                                         egui::TextEdit::singleline(&mut e.lot)
-                                            .hint_text(tr("vacc_lot_hint")),
+                                            .hint_text(motif::hint(tr("vacc_lot_hint"))),
                                     ),
                                     ui.add_sized(
                                         [widths[4], h],
                                         egui::TextEdit::singleline(&mut e.site)
-                                            .hint_text(tr("vacc_site_hint")),
+                                            .hint_text(motif::hint(tr("vacc_site_hint"))),
                                     ),
                                     ui.add_sized(
                                         [widths[5], h],
                                         egui::TextEdit::singleline(&mut e.operator)
-                                            .hint_text(tr("vacc_col_operator")),
+                                            .hint_text(motif::hint(tr("vacc_col_operator"))),
                                     ),
                                 ];
                                 if entered(ui, &fields) {
@@ -14216,7 +14222,7 @@ impl App {
                             let name = ui.add_sized(
                                 [widths[0], h],
                                 egui::TextEdit::singleline(&mut session.vacc_new.label)
-                                    .hint_text(tr("vacc_label_hint")),
+                                    .hint_text(motif::hint(tr("vacc_label_hint"))),
                             );
                             if want_focus {
                                 name.request_focus();
@@ -14226,22 +14232,22 @@ impl App {
                                 ui.add_sized(
                                     [widths[1], h],
                                     egui::TextEdit::singleline(&mut session.vacc_new.dose)
-                                        .hint_text(tr("vacc_dose_hint")),
+                                        .hint_text(motif::hint(tr("vacc_dose_hint"))),
                                 ),
                                 ui.add_sized(
                                     [widths[2], h],
                                     egui::TextEdit::singleline(&mut session.vacc_new_date)
-                                        .hint_text(tr("vacc_date_hint")),
+                                        .hint_text(motif::hint(tr("vacc_date_hint"))),
                                 ),
                                 ui.add_sized(
                                     [widths[3], h],
                                     egui::TextEdit::singleline(&mut session.vacc_new.lot)
-                                        .hint_text(tr("vacc_lot_hint")),
+                                        .hint_text(motif::hint(tr("vacc_lot_hint"))),
                                 ),
                                 ui.add_sized(
                                     [widths[4], h],
                                     egui::TextEdit::singleline(&mut session.vacc_new.site)
-                                        .hint_text(tr("vacc_site_hint")),
+                                        .hint_text(motif::hint(tr("vacc_site_hint"))),
                                 ),
                             ];
                             if motif::button(ui, tr("vacc_add")).clicked() {
@@ -15531,7 +15537,7 @@ impl App {
                 ui.add_sized(
                     [ui.available_width(), h],
                     egui::TextEdit::multiline(&mut session.concil_sheet)
-                        .hint_text(tr("concil_sheet_hint"))
+                        .hint_text(motif::hint(tr("concil_sheet_hint")))
                         .layouter(&mut layouter),
                 );
             });
@@ -15618,7 +15624,7 @@ impl App {
                                     ui.spacing().interact_size.y,
                                 ],
                                 egui::TextEdit::singleline(buf)
-                                    .hint_text(tr("concil_posology_hint")),
+                                    .hint_text(motif::hint(tr("concil_posology_hint"))),
                             );
                             if field
                                 .on_hover_text(tr("concil_posology_tooltip"))
@@ -16101,7 +16107,7 @@ impl App {
                     let day = ui.add_sized(
                         [chars_wide(ui, 12.0), 22.0],
                         egui::TextEdit::singleline(&mut session.loc_start)
-                            .hint_text(db::format_french_date(&today)),
+                            .hint_text(motif::hint(db::format_french_date(&today))),
                     );
                     // Entrée pose le matériel : le matériel se pose au
                     // comptoir, une main sur le clavier et l'autre sur
@@ -16462,8 +16468,8 @@ impl App {
                                                         ui.add_sized(
                                                             [chars_wide(ui, 11.0), 20.0],
                                                             egui::TextEdit::singleline(date)
-                                                                .hint_text(db::format_french_date(
-                                                                    &today,
+                                                                .hint_text(motif::hint(
+                                                                    db::format_french_date(&today),
                                                                 )),
                                                         );
                                                         if motif::button(ui, tr("form_save"))
@@ -16939,7 +16945,7 @@ impl App {
                                                     egui::TextEdit::singleline(
                                                         &mut session.bio_edit_date,
                                                     )
-                                                    .hint_text(tr("itv_rdv_hint")),
+                                                    .hint_text(motif::hint(tr("itv_rdv_hint"))),
                                                 );
                                                 if motif::button(ui, tr("form_save")).clicked() {
                                                     save_edit = true;
@@ -17048,7 +17054,8 @@ impl App {
                         ui.horizontal_wrapped(|ui| {
                             let analyte = ui.add_sized(
                                 [field, 22.0],
-                                egui::TextEdit::singleline(&mut session.bio_query).hint_text(hint),
+                                egui::TextEdit::singleline(&mut session.bio_query)
+                                    .hint_text(motif::hint(hint)),
                             );
                             // Typing over a picked analyte unpicks it: a line
                             // must never be stored with one analyte's name and
@@ -17064,7 +17071,7 @@ impl App {
                             let value = ui.add_sized(
                                 [value_w, 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_new_value)
-                                    .hint_text(tr("bio_value_hint")),
+                                    .hint_text(motif::hint(tr("bio_value_hint"))),
                             );
                             ui.label(
                                 egui::RichText::new(&session.bio_new_unit)
@@ -17074,7 +17081,7 @@ impl App {
                             let when = ui.add_sized(
                                 [date_w, 22.0],
                                 egui::TextEdit::singleline(&mut session.bio_new_date)
-                                    .hint_text(tr("itv_rdv_hint")),
+                                    .hint_text(motif::hint(tr("itv_rdv_hint"))),
                             );
                             // Entrée écrit le résultat : un bilan se
                             // saisit analyte après analyte. Sur le champ
@@ -17561,7 +17568,7 @@ impl App {
             ui.add_sized(
                 [ui.available_width().min(260.0), 22.0],
                 egui::TextEdit::singleline(&mut session.travel_query)
-                    .hint_text(tr("vacc_travel_add_hint")),
+                    .hint_text(motif::hint(tr("vacc_travel_add_hint"))),
             );
             let query = session.travel_query.clone();
             if !query.trim().is_empty() {
@@ -19297,7 +19304,7 @@ impl App {
                             26.0,
                         ],
                         egui::TextEdit::singleline(&mut form.birth_date)
-                            .hint_text(tr("form_birth_hint")),
+                            .hint_text(motif::hint(tr("form_birth_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_phone")));
@@ -19307,7 +19314,7 @@ impl App {
                             26.0,
                         ],
                         egui::TextEdit::singleline(&mut form.phone)
-                            .hint_text(tr("form_phone_hint")),
+                            .hint_text(motif::hint(tr("form_phone_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_comment")));
@@ -19317,7 +19324,7 @@ impl App {
                             26.0,
                         ],
                         egui::TextEdit::singleline(&mut form.notes)
-                            .hint_text(tr("form_comment_hint")),
+                            .hint_text(motif::hint(tr("form_comment_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_physician")));
@@ -19328,7 +19335,7 @@ impl App {
                             26.0,
                         ],
                         egui::TextEdit::singleline(&mut form.physician)
-                            .hint_text(tr("form_physician_hint")),
+                            .hint_text(motif::hint(tr("form_physician_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_email")));
@@ -19354,7 +19361,7 @@ impl App {
                                 26.0,
                             ],
                             egui::TextEdit::singleline(&mut form.nir)
-                                .hint_text(tr("form_nir_hint")),
+                                .hint_text(motif::hint(tr("form_nir_hint"))),
                         );
                         ui.label(dim(tr("form_regime")));
                         ui.add_sized(
@@ -19364,7 +19371,7 @@ impl App {
                                 26.0,
                             ],
                             egui::TextEdit::singleline(&mut form.regime)
-                                .hint_text(tr("form_regime_hint")),
+                                .hint_text(motif::hint(tr("form_regime_hint"))),
                         );
                     });
                     ui.end_row();
@@ -19475,7 +19482,7 @@ impl App {
                         ui.spacing().interact_size.y,
                     ],
                     egui::TextEdit::singleline(&mut session.treat_query)
-                        .hint_text(tr("treat_add_hint")),
+                        .hint_text(motif::hint(tr("treat_add_hint"))),
                 );
                 if want_focus {
                     f.request_focus();
@@ -19692,7 +19699,7 @@ impl App {
                                 ui.spacing().interact_size.y,
                             ],
                             egui::TextEdit::singleline(&mut strength_edit)
-                                .hint_text(tr("treat_strength_hint")),
+                                .hint_text(motif::hint(tr("treat_strength_hint"))),
                         );
                         if resp.lost_focus() && strength_edit.trim() != strength.trim() {
                             set_strength = Some((id, strength_edit.trim().to_owned()));
@@ -20518,7 +20525,7 @@ impl App {
             let field = ui
                 .add_sized(
                     [Self::date_field_width(ui), 22.0],
-                    egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                    egui::TextEdit::singleline(text).hint_text(motif::hint(tr("itv_rdv_hint"))),
                 )
                 .on_hover_text(tr("itv_created_tooltip"));
             if field.lost_focus() {
@@ -20555,7 +20562,7 @@ impl App {
                         Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter()),
                         22.0,
                     ],
-                    egui::TextEdit::singleline(who).hint_text(tr("itv_by_hint")),
+                    egui::TextEdit::singleline(who).hint_text(motif::hint(tr("itv_by_hint"))),
                 )
                 .on_hover_text(
                     config_operator_label(row.config, &row.itv.operator)
@@ -20733,7 +20740,7 @@ impl App {
             .horizontal(|ui| {
                 let field = ui.add_sized(
                     [Self::date_field_width(ui), 22.0],
-                    egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                    egui::TextEdit::singleline(text).hint_text(motif::hint(tr("itv_rdv_hint"))),
                 );
                 // The hour sits with its date; it only
                 // means something once one is set.
@@ -20747,7 +20754,8 @@ impl App {
                             Self::field_width(ui, [tr("agenda_hour_hint"), "00:00"].into_iter()),
                             22.0,
                         ],
-                        egui::TextEdit::singleline(hour).hint_text(tr("agenda_hour_hint")),
+                        egui::TextEdit::singleline(hour)
+                            .hint_text(motif::hint(tr("agenda_hour_hint"))),
                     );
                     if h.lost_focus() && *hour != row.itv.scheduled_time {
                         let parsed = if hour.trim().is_empty() {
@@ -23207,7 +23215,8 @@ impl App {
                                     .max(56.0),
                                 22.0,
                             ],
-                            egui::TextEdit::singleline(text).hint_text(tr("agenda_hour_hint")),
+                            egui::TextEdit::singleline(text)
+                                .hint_text(motif::hint(tr("agenda_hour_hint"))),
                         );
                         if field.lost_focus() {
                             set_time = Some((rdv.id, text.clone(), rdv.time.clone()));
@@ -23264,7 +23273,8 @@ impl App {
                     if let Some((_, text)) = moving {
                         let field = ui.add_sized(
                             [Self::date_field_width(ui), 22.0],
-                            egui::TextEdit::singleline(text).hint_text(tr("itv_rdv_hint")),
+                            egui::TextEdit::singleline(text)
+                                .hint_text(motif::hint(tr("itv_rdv_hint"))),
                         );
                         if field.lost_focus() {
                             move_rdv = Some((rdv.id, text.clone(), rdv.date.clone()));
@@ -23388,7 +23398,7 @@ impl App {
                 ui.add_sized(
                     [hour_w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_time)
-                        .hint_text(tr("agenda_hour_hint")),
+                        .hint_text(motif::hint(tr("agenda_hour_hint"))),
                 )
                 .on_hover_text(tr("agenda_sweep_tooltip"));
                 // An en dash and not an arrow: the embedded family has
@@ -23401,14 +23411,14 @@ impl App {
                 ui.add_sized(
                     [end_w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_end)
-                        .hint_text(tr("agenda_end_hint")),
+                        .hint_text(motif::hint(tr("agenda_end_hint"))),
                 );
             };
             let title = |ui: &mut egui::Ui, session: &mut Session, w: f32| -> egui::Response {
                 let field = ui.add_sized(
                     [w, 24.0],
                     egui::TextEdit::singleline(&mut session.event_title)
-                        .hint_text(tr("agenda_event_hint")),
+                        .hint_text(motif::hint(tr("agenda_event_hint"))),
                 );
                 // A sweep just filled the hours in: the only thing left
                 // to say is what it is, so the cursor goes there.
@@ -24896,19 +24906,19 @@ impl App {
                         );
                         ui.add(
                             egui::TextEdit::singleline(&mut session.shift_form.from)
-                                .hint_text(tr("agenda_hour_hint"))
+                                .hint_text(motif::hint(tr("agenda_hour_hint")))
                                 .desired_width(day_field),
                         )
                         .on_hover_text(tr("planning_from_tooltip"));
                         ui.add(
                             egui::TextEdit::singleline(&mut session.shift_form.to)
-                                .hint_text(tr("agenda_end_hint"))
+                                .hint_text(motif::hint(tr("agenda_end_hint")))
                                 .desired_width(day_field),
                         )
                         .on_hover_text(tr("planning_to_tooltip"));
                         ui.add(
                             egui::TextEdit::singleline(&mut session.shift_form.pause)
-                                .hint_text("45")
+                                .hint_text(motif::hint("45"))
                                 .desired_width(chars_wide(ui, 5.0)),
                         )
                         .on_hover_text(tr("planning_pause_tooltip"));
@@ -24948,7 +24958,7 @@ impl App {
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut session.shift_form.until_text)
-                                    .hint_text(tr("vacc_date_hint"))
+                                    .hint_text(motif::hint(tr("vacc_date_hint")))
                                     .desired_width(Self::date_field_width(ui)),
                             )
                             .on_hover_text(if rhythm.needs_an_end() {
@@ -26723,7 +26733,7 @@ impl App {
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut session.frame.from_text)
-                                    .hint_text(tr("vacc_date_hint"))
+                                    .hint_text(motif::hint(tr("vacc_date_hint")))
                                     .desired_width(Self::date_field_width(ui)),
                             );
                             ui.label(
@@ -26733,7 +26743,7 @@ impl App {
                             );
                             ui.add(
                                 egui::TextEdit::singleline(&mut session.frame.until_text)
-                                    .hint_text(tr("vacc_date_hint"))
+                                    .hint_text(motif::hint(tr("vacc_date_hint")))
                                     .desired_width(Self::date_field_width(ui)),
                             )
                             .on_hover_text(tr("frame_until_tooltip"));
@@ -26875,18 +26885,19 @@ impl App {
                                     ui.add_sized(
                                         [hour_w, 24.0],
                                         egui::TextEdit::singleline(&mut day.from)
-                                            .hint_text(tr("agenda_hour_hint")),
+                                            .hint_text(motif::hint(tr("agenda_hour_hint"))),
                                     )
                                     .on_hover_text(tr("planning_from_tooltip"));
                                     ui.add_sized(
                                         [hour_w, 24.0],
                                         egui::TextEdit::singleline(&mut day.to)
-                                            .hint_text(tr("agenda_end_hint")),
+                                            .hint_text(motif::hint(tr("agenda_end_hint"))),
                                     )
                                     .on_hover_text(tr("planning_to_tooltip"));
                                     ui.add_sized(
                                         [chars_wide(ui, 5.0), 24.0],
-                                        egui::TextEdit::singleline(&mut day.pause).hint_text("45"),
+                                        egui::TextEdit::singleline(&mut day.pause)
+                                            .hint_text(motif::hint("45")),
                                     )
                                     .on_hover_text(tr("planning_pause_tooltip"));
                                     // **La seconde moitié d'une journée
@@ -26897,13 +26908,13 @@ impl App {
                                     ui.add_sized(
                                         [hour_w, 24.0],
                                         egui::TextEdit::singleline(&mut day.from2)
-                                            .hint_text(tr("frame_afternoon_from")),
+                                            .hint_text(motif::hint(tr("frame_afternoon_from"))),
                                     )
                                     .on_hover_text(tr("frame_split_tooltip"));
                                     ui.add_sized(
                                         [hour_w, 24.0],
                                         egui::TextEdit::singleline(&mut day.to2)
-                                            .hint_text(tr("frame_afternoon_to")),
+                                            .hint_text(motif::hint(tr("frame_afternoon_to"))),
                                     )
                                     .on_hover_text(tr("frame_split_tooltip"));
                                     // **La durée s'écrit pendant qu'on
@@ -28426,7 +28437,7 @@ impl App {
                         24.0,
                     ],
                     egui::TextEdit::singleline(&mut session.codex_new_name)
-                        .hint_text(tr("codex_new_hint")),
+                        .hint_text(motif::hint(tr("codex_new_hint"))),
                 );
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("codex_print_all_tooltip"))
@@ -28480,8 +28491,9 @@ impl App {
             let w = ui.available_width();
             let field = ui.add_sized(
                 [w, 24.0],
-                egui::TextEdit::singleline(&mut session.codex_query)
-                    .hint_text(Self::hint_that_fits(ui, w, tr("codex_search_hint"))),
+                egui::TextEdit::singleline(&mut session.codex_query).hint_text(motif::hint(
+                    Self::hint_that_fits(ui, w, tr("codex_search_hint")),
+                )),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -28657,7 +28669,7 @@ impl App {
                         ui.add_sized(
                             [chars_wide(ui, 11.0), 22.0],
                             egui::TextEdit::singleline(&mut session.codex_target)
-                                .hint_text(prep.yield_amount.trim()),
+                                .hint_text(motif::hint(prep.yield_amount.trim())),
                         );
                         if motif::button(ui, tr("tpl_reset"))
                             .on_hover_text(trf("codex_reset_tooltip", prep.yield_amount.trim()))
@@ -28840,7 +28852,7 @@ impl App {
         let field = |ui: &mut egui::Ui, value: &mut String, hint: &str| {
             ui.add_sized(
                 [chars_wide(ui, 8.0), 22.0],
-                egui::TextEdit::singleline(value).hint_text(hint),
+                egui::TextEdit::singleline(value).hint_text(motif::hint(hint)),
             );
         };
         // Titre : x % de y g de préparation.
@@ -29961,7 +29973,7 @@ impl App {
                                     24.0,
                                 ],
                                 egui::TextEdit::singleline(&mut session.ddi_query)
-                                    .hint_text(tr("ddi_add_hint")),
+                                    .hint_text(motif::hint(tr("ddi_add_hint"))),
                             );
                             let _ = field;
                         });
@@ -30495,7 +30507,8 @@ impl App {
                     Self::field_width(ui, [tr("ddi_dfg_hint")].into_iter()),
                     24.0,
                 ],
-                egui::TextEdit::singleline(&mut session.ddi_dfg).hint_text(tr("ddi_dfg_hint")),
+                egui::TextEdit::singleline(&mut session.ddi_dfg)
+                    .hint_text(motif::hint(tr("ddi_dfg_hint"))),
             );
         });
         ui.add_space(4.0);
@@ -30699,7 +30712,7 @@ impl App {
                         24.0,
                     ],
                     egui::TextEdit::singleline(&mut session.ui_text_query)
-                        .hint_text(tr("libelles_search_hint")),
+                        .hint_text(motif::hint(tr("libelles_search_hint"))),
                 );
             });
             ui.add(
@@ -31039,7 +31052,7 @@ impl App {
                                     24.0,
                                 ],
                                 egui::TextEdit::singleline(&mut session.checklist_title)
-                                    .hint_text(tr("listes_new_hint")),
+                                    .hint_text(motif::hint(tr("listes_new_hint"))),
                             );
                             if motif::button_enabled(
                                 ui,
@@ -31170,7 +31183,7 @@ impl App {
                                     24.0,
                                 ],
                                 egui::TextEdit::singleline(&mut session.checklist_subject)
-                                    .hint_text(tr("listes_subject_hint")),
+                                    .hint_text(motif::hint(tr("listes_subject_hint"))),
                             );
                             if motif::button(ui, tr("listes_save")).clicked() {
                                 rename = true;
@@ -31193,7 +31206,7 @@ impl App {
                                     ui.add_sized(
                                         [ui.available_width(), 24.0],
                                         egui::TextEdit::singleline(note)
-                                            .hint_text(tr("listes_note_hint")),
+                                            .hint_text(motif::hint(tr("listes_note_hint"))),
                                     );
                                 }
                                 let typed = session.checklist_edit.clone();
@@ -31251,12 +31264,12 @@ impl App {
                         ui.add_sized(
                             [ui.available_width(), 24.0],
                             egui::TextEdit::singleline(&mut session.checklist_text)
-                                .hint_text(tr("listes_item_hint")),
+                                .hint_text(motif::hint(tr("listes_item_hint"))),
                         );
                         ui.add_sized(
                             [ui.available_width(), 24.0],
                             egui::TextEdit::singleline(&mut session.checklist_note)
-                                .hint_text(tr("listes_note_hint")),
+                                .hint_text(motif::hint(tr("listes_note_hint"))),
                         );
                         ui.add_space(4.0);
                         if motif::button_enabled(
@@ -31674,7 +31687,7 @@ impl App {
                         ui.add_sized(
                             [label_w, Self::button_height(ui)],
                             egui::TextEdit::singleline(&mut session.scan_new_label)
-                                .hint_text(tr("scan_label_hint")),
+                                .hint_text(motif::hint(tr("scan_label_hint"))),
                         );
                         // Mesurée sur le texte d'invite : « Date du document »
                         // dans un champ de 110 px se lit « Date du docume », ce
@@ -31685,7 +31698,7 @@ impl App {
                                 Self::button_height(ui),
                             ],
                             egui::TextEdit::singleline(&mut session.scan_new_day)
-                                .hint_text(tr("scan_day_hint")),
+                                .hint_text(motif::hint(tr("scan_day_hint"))),
                         );
                         if motif::button(ui, tr("scan_import"))
                             .on_hover_text(tr("scan_import_tooltip"))
@@ -32050,7 +32063,7 @@ impl App {
                             Self::button_height(ui),
                         ],
                         egui::TextEdit::singleline(&mut edited.label)
-                            .hint_text(tr("scan_label_hint")),
+                            .hint_text(motif::hint(tr("scan_label_hint"))),
                     );
                     ui.add_sized(
                         [
@@ -32058,7 +32071,7 @@ impl App {
                             Self::button_height(ui),
                         ],
                         egui::TextEdit::singleline(&mut edited.taken_on)
-                            .hint_text(tr("scan_day_iso_hint")),
+                            .hint_text(motif::hint(tr("scan_day_iso_hint"))),
                     );
                     ui.add_sized(
                         [
@@ -32066,7 +32079,7 @@ impl App {
                             Self::button_height(ui),
                         ],
                         egui::TextEdit::singleline(&mut edited.remark)
-                            .hint_text(tr("scan_remark_hint")),
+                            .hint_text(motif::hint(tr("scan_remark_hint"))),
                     );
                     ui.horizontal(|ui| {
                         if motif::button(ui, tr("form_save")).clicked() {
@@ -32460,7 +32473,7 @@ impl App {
                                 Self::button_height(ui),
                             ],
                             egui::TextEdit::singleline(&mut session.stup_scan)
-                                .hint_text(tr("stup_scan_hint")),
+                                .hint_text(motif::hint(tr("stup_scan_hint"))),
                         );
                         let scan = scan.on_hover_text(tr("stup_scan_tooltip"));
                         if scan.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
@@ -32663,7 +32676,7 @@ impl App {
                 let search = ui.add_sized(
                     [w, Self::row_height(ui)],
                     egui::TextEdit::singleline(&mut query)
-                        .hint_text(Self::hint_that_fits(ui, w, hint)),
+                        .hint_text(motif::hint(Self::hint_that_fits(ui, w, hint))),
                 );
                 if std::mem::take(&mut session.focus_list_search) {
                     search.request_focus();
@@ -33073,7 +33086,7 @@ impl App {
                                     .add_sized(
                                         [label_w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut e.label)
-                                            .hint_text(tr("stup_label_hint")),
+                                            .hint_text(motif::hint(tr("stup_label_hint"))),
                                     )
                                     .on_hover_text(tr("stup_label_tooltip"));
                                 if resp.lost_focus()
@@ -33087,7 +33100,7 @@ impl App {
                                 let resp = ui.add_sized(
                                     [thr_w, Self::button_height(ui)],
                                     egui::TextEdit::singleline(&mut e.threshold)
-                                        .hint_text(tr("stup_threshold_hint")),
+                                        .hint_text(motif::hint(tr("stup_threshold_hint"))),
                                 );
                                 if resp.lost_focus() {
                                     edited.threshold = crate::codex::parse_amount(&e.threshold)
@@ -33102,7 +33115,7 @@ impl App {
                                 let resp = ui.add_sized(
                                     [unit_w, Self::button_height(ui)],
                                     egui::TextEdit::singleline(&mut e.unit)
-                                        .hint_text(tr("stup_unit_hint")),
+                                        .hint_text(motif::hint(tr("stup_unit_hint"))),
                                 );
                                 if resp.lost_focus() && e.unit.trim() != product.unit {
                                     let mut with_unit = product.clone();
@@ -33121,7 +33134,7 @@ impl App {
                                     .add_sized(
                                         [box_w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut e.per_box)
-                                            .hint_text(tr("stup_per_box_hint")),
+                                            .hint_text(motif::hint(tr("stup_per_box_hint"))),
                                     )
                                     .on_hover_text(tr("stup_per_box_tooltip"));
                                 if resp.lost_focus() {
@@ -33725,13 +33738,13 @@ impl App {
                         ui.add_sized(
                             [day_w, Self::button_height(ui)],
                             egui::TextEdit::singleline(&mut batch.day)
-                                .hint_text(tr("stup_day_hint")),
+                                .hint_text(motif::hint(tr("stup_day_hint"))),
                         );
                         if kind.is_dispensing() {
                             ui.add_sized(
                                 [text_w, Self::button_height(ui)],
                                 egui::TextEdit::singleline(&mut batch.prescriber)
-                                    .hint_text(tr("stup_prescriber_hint")),
+                                    .hint_text(motif::hint(tr("stup_prescriber_hint"))),
                             );
                         }
                         if kind == Kind::Entree {
@@ -33743,18 +33756,18 @@ impl App {
                             ui.add_sized(
                                 [text_w, Self::button_height(ui)],
                                 egui::TextEdit::singleline(&mut session.stup_new_supplier)
-                                    .hint_text(tr("stup_supplier_hint")),
+                                    .hint_text(motif::hint(tr("stup_supplier_hint"))),
                             );
                             ui.add_sized(
                                 [text_w, Self::button_height(ui)],
                                 egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                    .hint_text(tr("stup_reference_hint")),
+                                    .hint_text(motif::hint(tr("stup_reference_hint"))),
                             );
                         }
                         ui.add_sized(
                             [text_w, Self::button_height(ui)],
                             egui::TextEdit::singleline(&mut batch.query)
-                                .hint_text(tr("batch_filter_hint")),
+                                .hint_text(motif::hint(tr("batch_filter_hint"))),
                         );
                         if motif::toggle(ui, tr("batch_all_products"), batch.show_all)
                             .on_hover_text(tr("batch_all_products_tooltip"))
@@ -33942,7 +33955,7 @@ impl App {
                                         egui::TextEdit::singleline(
                                             batch.typed.entry(id).or_default(),
                                         )
-                                        .hint_text(tr("batch_qty_hint")),
+                                        .hint_text(motif::hint(tr("batch_qty_hint"))),
                                     );
                                     // **Le motif n'apparaît que sur une
                                     // ligne qui écrira quelque chose.**
@@ -33992,7 +34005,11 @@ impl App {
                                             egui::TextEdit::singleline(
                                                 batch.reasons.entry(id).or_default(),
                                             )
-                                            .hint_text(if owed { reason_hint } else { "" }),
+                                            .hint_text(motif::hint(if owed {
+                                                reason_hint
+                                            } else {
+                                                ""
+                                            })),
                                         );
                                     } else {
                                         Self::grid_cell(ui, reason_w, egui::RichText::new(""));
@@ -34243,7 +34260,7 @@ impl App {
             let resp = ui.add_sized(
                 [w, Self::button_height(ui)],
                 egui::TextEdit::singleline(&mut session.stup_file_query)
-                    .hint_text(tr("stup_file_hint")),
+                    .hint_text(motif::hint(tr("stup_file_hint"))),
             );
             focus |= resp.has_focus();
             let typed = session.stup_file_query.trim().to_owned();
@@ -34336,7 +34353,7 @@ impl App {
                 .add_sized(
                     [cell, Self::button_height(ui)],
                     egui::TextEdit::singleline(&mut session.stup_count_boxes)
-                        .hint_text(tr("stup_count_boxes")),
+                        .hint_text(motif::hint(tr("stup_count_boxes"))),
                 )
                 .has_focus();
             ui.label(dim(ui, "×"));
@@ -34344,7 +34361,7 @@ impl App {
                 .add_sized(
                     [cell, Self::button_height(ui)],
                     egui::TextEdit::singleline(&mut session.stup_count_per_box)
-                        .hint_text(tr("stup_count_per_box")),
+                        .hint_text(motif::hint(tr("stup_count_per_box"))),
                 )
                 .on_hover_text(tr("stup_per_box_tooltip"))
                 .has_focus();
@@ -34353,7 +34370,7 @@ impl App {
                 .add_sized(
                     [cell, Self::button_height(ui)],
                     egui::TextEdit::singleline(&mut session.stup_count_loose)
-                        .hint_text(tr("stup_count_loose")),
+                        .hint_text(motif::hint(tr("stup_count_loose"))),
                 )
                 .has_focus();
             // Le total ne s'annonce que s'il y a quelque chose à
@@ -34609,7 +34626,7 @@ impl App {
                                 .add_sized(
                                     [(w * 0.28).max(56.0), Self::button_height(ui)],
                                     egui::TextEdit::singleline(&mut session.stup_new_qty)
-                                        .hint_text(product.unit.as_str()),
+                                        .hint_text(motif::hint(product.unit.as_str())),
                                 )
                                 .has_focus();
                             // Ce qui reste de la rangée, mesuré et non
@@ -34665,7 +34682,7 @@ impl App {
                                 .add_sized(
                                     [(w * 0.4).max(80.0), Self::button_height(ui)],
                                     egui::TextEdit::singleline(&mut session.stup_new_day)
-                                        .hint_text(tr("stup_day_hint")),
+                                        .hint_text(motif::hint(tr("stup_day_hint"))),
                                 )
                                 .has_focus();
                         });
@@ -34678,7 +34695,7 @@ impl App {
                                         egui::TextEdit::singleline(
                                             &mut session.stup_new_prescriber,
                                         )
-                                        .hint_text(tr("stup_prescriber_hint")),
+                                        .hint_text(motif::hint(tr("stup_prescriber_hint"))),
                                     )
                                     .has_focus();
                                 // Les derniers prescripteurs rencontrés
@@ -34740,14 +34757,14 @@ impl App {
                                     .add_sized(
                                         [w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut session.stup_new_supplier)
-                                            .hint_text(tr("stup_supplier_hint")),
+                                            .hint_text(motif::hint(tr("stup_supplier_hint"))),
                                     )
                                     .has_focus();
                                 focus_here |= ui
                                     .add_sized(
                                         [w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                            .hint_text(tr("stup_reference_hint")),
+                                            .hint_text(motif::hint(tr("stup_reference_hint"))),
                                     )
                                     .has_focus();
                                 // **Le lot est un champ à lui.** Il
@@ -34761,7 +34778,7 @@ impl App {
                                     .add_sized(
                                         [w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut session.stup_new_lot)
-                                            .hint_text(tr("stup_lot_hint")),
+                                            .hint_text(motif::hint(tr("stup_lot_hint"))),
                                     )
                                     .on_hover_text(tr("stup_lot_tooltip"))
                                     .has_focus();
@@ -34826,7 +34843,7 @@ impl App {
                                     .add_sized(
                                         [w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                            .hint_text(tr("stup_pv_hint")),
+                                            .hint_text(motif::hint(tr("stup_pv_hint"))),
                                     )
                                     .on_hover_text(tr("stup_pv_tooltip"))
                                     .has_focus();
@@ -34845,7 +34862,7 @@ impl App {
                                     .add_sized(
                                         [w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(&mut session.stup_new_lot)
-                                            .hint_text(tr("stup_lot_hint")),
+                                            .hint_text(motif::hint(tr("stup_lot_hint"))),
                                     )
                                     .on_hover_text(tr("stup_lot_tooltip"))
                                     .has_focus();
@@ -34912,7 +34929,7 @@ impl App {
                             .add_sized(
                                 [w, Self::button_height(ui)],
                                 egui::TextEdit::singleline(&mut session.stup_new_remark).hint_text(
-                                    match kind {
+                                    motif::hint(match kind {
                                         Kind::Perte => tr("stup_loss_hint"),
                                         // Obligatoire, et l'invite le
                                         // dit avant qu'on presse
@@ -34925,7 +34942,7 @@ impl App {
                                         Kind::Retour => tr("stup_return_reason_hint"),
                                         _ if gap_needs_reason => tr("stup_gap_reason_hint"),
                                         _ => tr("stup_remark_hint"),
-                                    },
+                                    }),
                                 ),
                             )
                             .has_focus();
@@ -35139,7 +35156,7 @@ impl App {
             );
             ui.add_sized(
                 [field_w, Self::button_height(ui)],
-                egui::TextEdit::singleline(lab).hint_text(tr("stup_lab_hint")),
+                egui::TextEdit::singleline(lab).hint_text(motif::hint(tr("stup_lab_hint"))),
             )
             .on_hover_text(tr("stup_lab_tooltip"));
             for name in fitting {
@@ -35719,7 +35736,7 @@ impl App {
                                 Self::row_height(ui),
                             ],
                             egui::TextEdit::singleline(reason)
-                                .hint_text(tr("stup_cancel_reason_hint")),
+                                .hint_text(motif::hint(tr("stup_cancel_reason_hint"))),
                         );
                         if motif::button_enabled(
                             ui,
@@ -36834,7 +36851,7 @@ impl App {
                         24.0,
                     ],
                     egui::TextEdit::singleline(&mut session.dispo_new_name)
-                        .hint_text(tr("dispo_new_hint")),
+                        .hint_text(motif::hint(tr("dispo_new_hint"))),
                 );
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("dispo_print_all_tooltip"))
@@ -36891,8 +36908,9 @@ impl App {
             let w = ui.available_width();
             let field = ui.add_sized(
                 [w, 24.0],
-                egui::TextEdit::singleline(&mut session.dispo_query)
-                    .hint_text(Self::hint_that_fits(ui, w, tr("dispo_search_hint"))),
+                egui::TextEdit::singleline(&mut session.dispo_query).hint_text(motif::hint(
+                    Self::hint_that_fits(ui, w, tr("dispo_search_hint")),
+                )),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -37291,7 +37309,7 @@ impl App {
                         24.0,
                     ],
                     egui::TextEdit::singleline(&mut session.protocol_new_title)
-                        .hint_text(tr("proto_new_hint")),
+                        .hint_text(motif::hint(tr("proto_new_hint"))),
                 );
                 if motif::button(ui, tr("proto_new")).clicked()
                     && !session.protocol_new_title.trim().is_empty()
@@ -37360,8 +37378,9 @@ impl App {
             let w = ui.available_width();
             let field = ui.add_sized(
                 [w, 24.0],
-                egui::TextEdit::singleline(&mut session.protocol_query)
-                    .hint_text(Self::hint_that_fits(ui, w, tr("proto_search_hint"))),
+                egui::TextEdit::singleline(&mut session.protocol_query).hint_text(motif::hint(
+                    Self::hint_that_fits(ui, w, tr("proto_search_hint")),
+                )),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -38173,8 +38192,10 @@ impl App {
             // nobody reads again.
             let field = ui.add_sized(
                 [ui.available_width().min(420.0), 24.0],
-                egui::TextEdit::singleline(&mut session.table_query)
-                    .hint_text(trf("tables_search_hint", crate::tables::TABLES.len())),
+                egui::TextEdit::singleline(&mut session.table_query).hint_text(motif::hint(trf(
+                    "tables_search_hint",
+                    crate::tables::TABLES.len(),
+                ))),
             );
             if std::mem::take(&mut session.focus_list_search) {
                 field.request_focus();
@@ -39333,7 +39354,7 @@ impl App {
             };
             ui.add_sized(
                 [w, Self::row_height(ui) * 2.0],
-                egui::TextEdit::multiline(buf).hint_text(*shipped),
+                egui::TextEdit::multiline(buf).hint_text(motif::hint(*shipped)),
             );
             match state {
                 // Ce que la phrase disait avant d'être réécrite : c'est
@@ -40545,17 +40566,17 @@ impl App {
                                         ui.add_sized(
                                             [poso_w * 0.3, 22.0],
                                             egui::TextEdit::singleline(&mut session.poso_new.0)
-                                                .hint_text(tr("poso_indication")),
+                                                .hint_text(motif::hint(tr("poso_indication"))),
                                         );
                                         ui.add_sized(
                                             [poso_w * 0.38, 22.0],
                                             egui::TextEdit::singleline(&mut session.poso_new.1)
-                                                .hint_text(tr("poso_dose")),
+                                                .hint_text(motif::hint(tr("poso_dose"))),
                                         );
                                         ui.add_sized(
                                             [poso_w * 0.32, 22.0],
                                             egui::TextEdit::singleline(&mut session.poso_new.2)
-                                                .hint_text(tr("poso_remark")),
+                                                .hint_text(motif::hint(tr("poso_remark"))),
                                         );
                                         if motif::button(ui, tr("notes_add")).clicked()
                                             && !session.poso_new.0.trim().is_empty()
@@ -40983,7 +41004,7 @@ impl App {
             let search = ui.add_sized(
                 [ui.available_width(), 32.0],
                 egui::TextEdit::singleline(&mut session.drug_query)
-                    .hint_text(tr("drug_search_hint")),
+                    .hint_text(motif::hint(tr("drug_search_hint"))),
             );
             motif::bevel(ui.painter(), search.rect.expand(2.0), false);
             if !ctx.wants_keyboard_input() {
@@ -41416,7 +41437,7 @@ impl App {
                 ui.add_sized(
                     [w, Self::button_height(ui)],
                     egui::TextEdit::singleline(&mut session.script_name)
-                        .hint_text(tr("script_name_hint")),
+                        .hint_text(motif::hint(tr("script_name_hint"))),
                 );
             });
             ui.add(
@@ -41535,7 +41556,7 @@ impl App {
                             [ui.available_width().max(80.0), rect.height().max(60.0)],
                             egui::TextEdit::multiline(&mut session.script_text)
                                 .code_editor()
-                                .hint_text(tr("script_hint")),
+                                .hint_text(motif::hint(tr("script_hint"))),
                         );
                     });
             });
@@ -41935,7 +41956,7 @@ impl App {
                             ui.add_sized(
                                 [chars_wide(ui, 18.0), 24.0],
                                 egui::TextEdit::singleline(label)
-                                    .hint_text(tr("caisse_other_hint")),
+                                    .hint_text(motif::hint(tr("caisse_other_hint"))),
                             );
                             ui.add_sized(
                                 [chars_wide(ui, 10.0), 24.0],
@@ -42101,11 +42122,11 @@ impl App {
                     ui.add_sized(
                         [motif::visible_rect(ui).width() - 12.0, 3.0 * line + 12.0],
                         egui::TextEdit::multiline(&mut session.caisse_remark).hint_text(
-                            if want_expected {
+                            motif::hint(if want_expected {
                                 tr("caisse_remark_hint")
                             } else {
                                 tr("caisse_remark_hint_no_gap")
-                            },
+                            }),
                         ),
                     );
                     if let Some((bad, msg)) = &session.caisse_note {
@@ -43801,8 +43822,9 @@ impl App {
                 // without going back to a list.
                 let resp = ui.add_sized(
                     [search_w, Self::button_height(ui)],
-                    egui::TextEdit::singleline(&mut session.graph_query)
-                        .hint_text(Self::hint_that_fits(ui, search_w, tr("graph_hint"))),
+                    egui::TextEdit::singleline(&mut session.graph_query).hint_text(motif::hint(
+                        Self::hint_that_fits(ui, search_w, tr("graph_hint")),
+                    )),
                 );
                 motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
                 typed_changed = resp.changed();
@@ -44154,7 +44176,8 @@ impl App {
             ui.add_space(10.0);
             let search = ui.add_sized(
                 [ui.available_width(), 32.0],
-                egui::TextEdit::singleline(&mut session.mono_query).hint_text(tr("mono_hint")),
+                egui::TextEdit::singleline(&mut session.mono_query)
+                    .hint_text(motif::hint(tr("mono_hint"))),
             );
             motif::bevel(ui.painter(), search.rect.expand(2.0), false);
             if !ctx.wants_keyboard_input() {
@@ -44851,7 +44874,7 @@ impl App {
             let field = ui.add_sized(
                 [ui.available_width(), Self::button_height(ui)],
                 egui::TextEdit::singleline(&mut self.companion_query)
-                    .hint_text(tr("companion_hint")),
+                    .hint_text(motif::hint(tr("companion_hint"))),
             );
             // Le foyer, repris à chaque image tant que rien d'autre ne
             // le demande : c'est une fenêtre à un seul champ, et devoir
@@ -46167,7 +46190,7 @@ impl eframe::App for App {
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.am_number,
                                             )
-                                            .hint_text(tr("opts_am_number_hint")),
+                                            .hint_text(motif::hint(tr("opts_am_number_hint"))),
                                         );
                                         ui.end_row();
                                     });
@@ -46250,8 +46273,9 @@ impl eframe::App for App {
                                                 });
                                             ui.add_sized(
                                                 [chars_wide(ui, 22.0), 24.0],
-                                                egui::TextEdit::singleline(&mut op.role)
-                                                    .hint_text(tr("opts_op_role_hint")),
+                                                egui::TextEdit::singleline(&mut op.role).hint_text(
+                                                    motif::hint(tr("opts_op_role_hint")),
+                                                ),
                                             )
                                             .on_hover_text(tr("opts_op_role_tooltip"));
                                             if motif::button(ui, tr("itv_delete"))
@@ -46613,7 +46637,7 @@ impl eframe::App for App {
                                         egui::TextEdit::multiline(&mut script)
                                             .desired_rows(3)
                                             .desired_width(f32::INFINITY)
-                                            .hint_text(tr("opts_vitale_apdu_hint")),
+                                            .hint_text(motif::hint(tr("opts_vitale_apdu_hint"))),
                                     )
                                     .changed()
                                 {
@@ -46679,7 +46703,7 @@ impl eframe::App for App {
                                     ui.add_sized(
                                         [ui.available_width().min(520.0), 44.0],
                                         egui::TextEdit::multiline(value)
-                                            .hint_text(tr("opts_mention_hint")),
+                                            .hint_text(motif::hint(tr("opts_mention_hint"))),
                                     );
                                     ui.add_space(6.0);
                                 }
@@ -46740,7 +46764,9 @@ impl eframe::App for App {
                                                         24.0,
                                                     ],
                                                     egui::TextEdit::singleline(&mut shown)
-                                                        .hint_text(tr("opts_font_default")),
+                                                        .hint_text(motif::hint(tr(
+                                                            "opts_font_default",
+                                                        ))),
                                                 )
                                                 .changed()
                                             {
@@ -47003,7 +47029,7 @@ impl eframe::App for App {
                                 ui.add(
                                     egui::TextEdit::singleline(&mut editor.cfg.scans.command)
                                         .desired_width(f32::INFINITY)
-                                        .hint_text(tr("opts_scan_command_hint")),
+                                        .hint_text(motif::hint(tr("opts_scan_command_hint"))),
                                 );
                                 if let Some((count, bytes, legacy)) = scan_weight {
                                     if count > 0 {
@@ -48288,6 +48314,57 @@ mod tests {
         assert_eq!(seen[2], "Dupont");
         assert!(seen[..3].iter().all(|f| !f.contains('…')));
         assert!(seen[3].ends_with('…'));
+    }
+
+    /// **Une invite n'est pas une valeur, et ne s'écrit pas dans la
+    /// même encre.**
+    ///
+    /// `motif::apply` pose un `override_text_color` sur tout le
+    /// contexte, et egui lit celui-ci avant la couleur affaiblie qu'il
+    /// destine à l'invite d'un champ. Les cent vingt-huit invites de
+    /// l'application sortaient donc dans l'encre pleine, à l'octet près
+    /// celle d'une valeur tapée — mesuré sur une capture de la trame :
+    /// « 14h » d'un après-midi vide et « 14:00 » d'un après-midi posé,
+    /// tous deux en (1, 1, 1) sur le même fond. Les champs semblaient
+    /// dire huit heures et demie, la colonne des totaux disait 3 h 30,
+    /// et c'est le total qui avait raison.
+    ///
+    /// `motif::hint` pose la couleur explicitement, ce qui passe devant
+    /// l'override. Le test lit le texte de ce fichier, comme les quatre
+    /// lints qui l'entourent : la prochaine invite écrite nue est
+    /// refusée ici plutôt que découverte sur une capture.
+    #[test]
+    fn a_hint_is_never_written_in_the_ink_of_a_value() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Sur le texte entier et non ligne à ligne : `cargo fmt` renvoie
+        // l'argument à la ligne suivante dès que l'appel est long, et
+        // trois des cent vingt-huit y sont. Un lint qui lit une ligne
+        // dirait « nue » de la seule chose que la mise en forme a
+        // déplacée.
+        const CALL: &str = ".hint_text(";
+        let mut bare = Vec::new();
+        for (i, _) in SOURCE.match_indices(CALL) {
+            // Le test se lit lui-même : ses propres occurrences sont
+            // entre guillemets, jamais appelées.
+            if SOURCE[..i].ends_with('"') {
+                continue;
+            }
+            let rest = SOURCE[i + CALL.len()..].trim_start();
+            if !rest.starts_with("motif::hint(") {
+                let n = SOURCE[..i].lines().count();
+                bare.push(format!(
+                    "{}: {}",
+                    n,
+                    SOURCE[..i].lines().next_back().unwrap_or("")
+                ));
+            }
+        }
+        assert!(
+            bare.is_empty(),
+            "invite écrite dans l'encre d'une valeur — passer par \
+             `motif::hint` :\n{}",
+            bare.join("\n")
+        );
     }
 
     /// **La largeur d'un champ de saisie ne s'écrit pas en pixels.**
@@ -50781,7 +50858,7 @@ mod tests {
                                     ui.add_sized(
                                         [field, 24.0],
                                         egui::TextEdit::singleline(&mut text)
-                                            .hint_text(tr("codex_new_hint")),
+                                            .hint_text(motif::hint(tr("codex_new_hint"))),
                                     );
                                     motif::button(ui, tr("dash_print"));
                                     motif::button(ui, tr("codex_new"));

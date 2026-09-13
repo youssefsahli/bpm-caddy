@@ -100,6 +100,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paroxétine désarme — et la codéine.
 
 ### Changed
+- **La passe de fumée couvre enfin la quatrième forme exigée.**
+  `CLAUDE.md` demande que toute mise en page survive à quatre choses,
+  dont « les deux volets tirés larges » — ils se plafonnent l'un contre
+  l'autre pour que le centre garde `WORK_MIN`, c'est-à-dire que la vue y
+  travaille à sa largeur minimale. Aucun script ne produisait cette
+  forme, ni pour l'œil ni pour les paniques ; le premier balayage y a
+  trouvé un vrai défaut, chaque ligne du registre valant deux rangées
+  dont une vide. Un défaut de mise en page se voit sur une capture, une
+  panique non — et c'est un `f32::clamp` à sa largeur minimale qui
+  tombe. Les formes portent donc un quatrième champ, écrit dans
+  `layout.toml` : c'est là que vit la forme du plan de travail, et non
+  dans la configuration.
 - **Trois réponses et non deux : « sans voie connue » n'est pas
   « inconnue ».** Une ligne peut croiser, être inconnue de la table, ou
   être connue et ne passer par aucune des enzymes suivies. « On ne sait
@@ -264,6 +276,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Une invite de champ était écrite dans l'encre d'une valeur, cent
+  vingt-huit fois.** `motif::apply` pose un `override_text_color` sur
+  tout le contexte, et egui lit celui-ci *avant* la couleur affaiblie
+  qu'il destine à l'invite : toutes sortaient donc dans l'encre pleine.
+
+  Mesuré sur une capture de la trame de la semaine : « 14h », l'invite
+  d'un après-midi que personne n'a posé, et « 14:00 », un après-midi
+  réellement posé, étaient tous deux en (1, 1, 1) sur le même fond. La
+  ligne du mercredi semblait dire « 9 h – 12 h 30, puis 14 h – 19 h 30 »,
+  sa colonne de total disait 3 h 30, et c'est le total qui avait raison.
+  C'est le piège que `CLAUDE.md` nomme déjà pour la grille du planning —
+  deux choses différentes sous une même apparence —, un cran plus haut :
+  là c'était une élision, ici c'est une couleur.
+
+  Les invites passent par `motif::hint`, qui pose la couleur
+  explicitement — ce qui passe devant l'override. `text_faint` est le
+  bon cran (les légendes, les unités) et le seul dont
+  `every_palette_can_be_read` garantisse déjà la lisibilité **dans un
+  creux**, c'est-à-dire sur la surface où l'on tape, sur les huit
+  palettes. Pas `weak()`, qui teinte vers le fond du panneau quand c'est
+  du fond du champ qu'il faudrait s'éloigner.
+
+  Deux tests : la prochaine invite écrite nue est refusée en lisant le
+  texte de `app.rs`, comme les quatre lints qui l'entourent ; et le
+  mécanisme lui-même est vérifié plutôt que supposé — un style dont
+  l'override est rouge, et l'on regarde ce que la section porte.
 - **Un fragment court attrapait des produits qu'il ne visait pas, dans
   cinq tables cliniques.** Les mots cherchés sont des sous-chaînes, et
   une sous-chaîne vit aussi **à l'intérieur d'un autre mot** :

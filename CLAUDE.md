@@ -650,6 +650,25 @@ add clicking and typing; it is not the price of entry.
   two rules that stayed directional — the bevel and the hover tint —
   are directional in the *look*: a Motif widget is lit from the top
   left whatever the hour.
+- **An override wins over the colour a widget picks for itself, so a
+  hint reached the screen in the ink of a value** — all hundred and
+  twenty-eight of them. `motif::apply` sets `override_text_color` on the
+  whole context, and egui reads that *before* the weak colour it means
+  to draw a field's placeholder in. Measured on a capture of the trame:
+  « 14h », the hint of an afternoon nobody entered, and « 14:00 », one
+  actually entered, both at (1, 1, 1) on the same ground — the fields
+  read « 9 h – 12 h 30, then 14 h – 19 h 30 », the total column said
+  3 h 30, and the total was right. It is the trap this file already
+  names for the planning grid — two different things under one
+  appearance — one level up: there an elision, here a colour. Hints go
+  through `motif::hint`, which sets the colour explicitly (an explicit
+  colour passes in front of the override); `text_faint` is the right
+  step and the only one `every_palette_can_be_read` already guarantees
+  legible **in a trough** — the surface one types on — across the eight
+  palettes. Not `RichText::weak()`, which tints toward the panel's fill
+  when it is the *field's* fill one has to move away from.
+  `a_hint_is_never_written_in_the_ink_of_a_value` reads the text of
+  `app.rs` and refuses the next bare one.
 - **A colour written down for one ground is adapted before it is drawn
   on another.** `on_fill(fill)` is the ink a badge carries (black or
   white, decided by the fill actually painted — thirty call sites wrote

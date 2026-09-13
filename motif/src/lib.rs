@@ -339,6 +339,35 @@ pub fn text_dim() -> Color32 {
 pub fn text_faint() -> Color32 {
     palette().text_faint
 }
+/// L'invite d'un champ : **ce qu'on peut y écrire, et non ce qui y est
+/// écrit**.
+///
+/// egui peint l'invite dans sa couleur affaiblie, et
+/// [`apply`] pose un `override_text_color` sur tout le contexte — or
+/// celui-ci l'emporte sur la couleur que le widget propose. Toutes les
+/// invites de l'application sortaient donc dans **l'encre pleine**, à
+/// l'octet près celle d'une valeur tapée : mesuré sur une capture de la
+/// trame, « 14h » d'un après-midi vide et « 14:00 » d'un après-midi
+/// posé étaient tous deux en (1, 1, 1) sur le même fond. La colonne des
+/// totaux disait 3 h 30 et les champs semblaient dire huit heures et
+/// demie ; c'est le total qui avait raison. C'est le piège que
+/// `CLAUDE.md` nomme déjà pour la grille du planning — deux choses
+/// différentes sous une même apparence —, un cran plus haut.
+///
+/// Une couleur explicite, elle, passe devant l'override (egui la lit en
+/// premier). [`text_faint`] est le bon cran — les légendes, les unités,
+/// les horodatages — et c'est le seul dont `every_palette_can_be_read`
+/// garantisse déjà la lisibilité **dans un creux**, c'est-à-dire sur la
+/// surface où l'on tape, sur les huit palettes.
+///
+/// Pas `RichText::weak()`, qui l'emporterait aussi : il teinte vers
+/// `window_fill`, c'est-à-dire vers le fond du panneau et non vers celui
+/// du champ — sur les palettes claires le creux est plus sombre que le
+/// panneau, donc affaiblir vers le panneau *rapproche* l'invite de son
+/// propre fond. Et aucun test ne tient cette couleur-là.
+pub fn hint(text: impl Into<String>) -> egui::RichText {
+    egui::RichText::new(text).color(crate::text_faint())
+}
 /// Errors and destructive warnings.
 #[inline]
 pub fn alert() -> Color32 {
@@ -1757,6 +1786,51 @@ mod tests {
     /// meant every time. The two that stayed directional — the bevel and
     /// the hover tint — are directional in the *look*: a Motif widget is
     /// lit from the top left whatever the hour.
+    /// **Une invite garde sa couleur sous l'override du contexte**, et
+    /// se tient plus près du champ que l'encre d'une valeur.
+    ///
+    /// Les deux moitiés comptent. La première est le mécanisme :
+    /// [`apply`] pose un `override_text_color`, egui le lit avant la
+    /// couleur qu'il destine à l'invite, et c'est *pour cela* que les
+    /// cent vingt-huit invites sortaient dans l'encre pleine. Une
+    /// couleur explicite passe devant — mais c'est une affirmation sur
+    /// egui, donc elle se vérifie plutôt qu'elle ne se suppose : le
+    /// test monte un style dont l'override est rouge et regarde ce que
+    /// la section porte.
+    ///
+    /// La seconde est la raison d'être : l'invite doit être **plus près
+    /// du fond du champ que l'encre**, sur les huit palettes, sinon on
+    /// a changé la teinte sans lever la confusion. C'est une distance
+    /// et jamais une direction — les deux palettes de nuit écrivent
+    /// clair sur sombre.
+    #[test]
+    fn a_hint_keeps_its_colour_and_stays_nearer_the_field_than_an_ink() {
+        use eframe::egui::{self, Color32};
+        let mut style = egui::Style::default();
+        style.visuals.override_text_color = Some(Color32::RED);
+        let job = egui::WidgetText::from(super::hint("9h30")).into_layout_job(
+            &style,
+            egui::FontSelection::Default,
+            egui::Align::Center,
+        );
+        assert_eq!(
+            job.sections[0].format.color,
+            super::text_faint(),
+            "l'override du contexte a mangé la couleur de l'invite"
+        );
+
+        let lum = super::luminance;
+        for t in super::THEMES {
+            let p = t.palette;
+            let d = |a: Color32, b: Color32| (lum(a) - lum(b)).abs();
+            assert!(
+                d(p.text_faint, p.trough) < d(p.text, p.trough),
+                "{} : l'invite est aussi loin du champ que l'encre",
+                t.key
+            );
+        }
+    }
+
     #[test]
     fn every_palette_can_be_read() {
         let lum = super::luminance;
