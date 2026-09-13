@@ -11219,15 +11219,22 @@ impl App {
         Self::nav_list(ui, |ui| {
             for (i, p) in results.iter().enumerate() {
                 let pending = session.pending.get(&p.id).copied().unwrap_or(0);
-                let mut text = p.full_name();
-                if pending > 0 {
-                    text.push_str(&format!("   ({pending})"));
-                }
                 // The open file stays marked; the keyboard cursor marks
                 // where Enter would go, which is not always the same row.
                 let selected = cursor == Some(i) || (cursor.is_none() && open == Some(p.id));
-                let row = motif::list_row(ui, egui::RichText::new(text), selected)
-                    .on_hover_text(db::format_french_date(&p.birth_date));
+                // **Le compte est réservé avant le nom, pas collé
+                // après.** Collé, il est la fin de la ligne et donc la
+                // première chose que l'élision mange : « Paul /
+                // Bernard … » avait perdu le seul chiffre qu'il portait,
+                // et ressemblait à un dossier sans entretien en cours.
+                // C'est la règle déjà écrite sur `list_row_count`, et ce
+                // volet-ci ne l'employait pas.
+                let row = if pending > 0 {
+                    motif::list_row_count(ui, &p.full_name(), &pending.to_string(), selected, false)
+                } else {
+                    motif::list_row(ui, egui::RichText::new(p.full_name()), selected)
+                }
+                .on_hover_text(db::format_french_date(&p.birth_date));
                 if cursor == Some(i) {
                     row.scroll_to_me(None);
                 }
@@ -43997,10 +44004,24 @@ impl App {
                                 if !hit.dci.is_empty() {
                                     head = format!("{}   ·   {}", hit.dci, head);
                                 }
-                                ui.label(
-                                    egui::RichText::new(head)
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
+                                // **Bornée à ce qui reste de la
+                                // rangée.** Un `Label` sans limite
+                                // s'étale, et le volet le coupe sans
+                                // rien dire : « Posologies par
+                                // indication — Conc » finissait au bord
+                                // du panneau, sans ellipse, ce qui se
+                                // lit comme un défaut de rendu et non
+                                // comme un texte plus long qu'on ne
+                                // voit pas. Le nom du champ est du
+                                // contexte — la phrase trouvée est en
+                                // dessous, entière.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(head)
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .truncate(),
                                 );
                             });
                             ui.scope(|ui| {
@@ -45548,7 +45569,25 @@ impl eframe::App for App {
                     // propre `id_salt` — une deuxième `ScrollArea`
                     // sans nom dans la même vue peint ses bannières
                     // rouges en travers.
-                    let picker_cap = (screen.y * 0.30).max(2.0 * Self::button_height(ui));
+                    // **Et le plafond tombe sur une rangée entière.**
+                    // Il tombait où il tombait, et « Liste d'appel » et
+                    // « Liste des rendez-vous » sortaient tranchées par
+                    // le milieu — une porte coupée en deux se lit
+                    // « cassé », pas « il y en a d'autres ». La zone
+                    // défile toujours ; elle défile seulement entre deux
+                    // rangées entières, comme les portes de
+                    // l'explorateur et la légende de l'agenda.
+                    let picker_rows = Self::wrapped_rows(
+                        ui,
+                        ui.available_width(),
+                        crate::pdf::DOCS.iter().map(|d| tr(d.label)),
+                    );
+                    let picker_cap = whole_rows(
+                        (screen.y * 0.30).max(2.0 * Self::button_height(ui)),
+                        Self::row_height(ui),
+                        ui.spacing().item_spacing.y,
+                        picker_rows,
+                    );
                     egui::ScrollArea::vertical()
                         .id_salt("tpl_docs")
                         .max_height(picker_cap)

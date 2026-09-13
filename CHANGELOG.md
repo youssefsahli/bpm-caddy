@@ -163,6 +163,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **« Demi-vie pla… »** dans l'explorateur : une colonne qui a perdu le
   mot qui qualifie *et* se lit cassée, là où « Demi-vie » n'en dit pas
   moins et se lit entière.
+- **Le compte d'un dossier était collé après le nom, donc mangé le
+  premier.** Dans le tiroir des patients, « Paul / Bernard … » avait
+  perdu le seul chiffre qu'il portait et ressemblait à un dossier sans
+  entretien en cours. C'est la règle déjà écrite sur
+  `motif::list_row_count` — la figure se réserve avant le libellé — et
+  ce volet-là ne l'employait pas.
+- **Le sélecteur de la fenêtre « Modèles » tranchait sa dernière
+  rangée** : « Liste d'appel » et « Liste des rendez-vous » coupées par
+  le milieu. Il défile toujours, mais entre deux rangées entières.
+- **Le nom du champ, dans la recherche en texte intégral, finissait au
+  bord du panneau sans ellipse** — « Posologies par indication — Conc »,
+  qui se lit comme un défaut de rendu et non comme un texte plus long
+  qu'on ne voit pas.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.
