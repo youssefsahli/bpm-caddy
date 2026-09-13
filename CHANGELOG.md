@@ -183,6 +183,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Le plancher de couverture du workspace monte de 45 à 47 %.** Mesuré
+  à 49,3 % ce jour-là, contre 89,8 % pour la logique métier — dont le
+  plancher reste à 89, faute d'assez de marge : un module pur de plus le
+  ferait tomber le jour où il arrive avec ses premiers tests.
 - **Le manuel avait perdu deux des onze genres que « Aller à… »
   cherche** : les vues elles-mêmes et les textes imprimés. Une liste
   recopiée à la main vieillit là où personne ne la relit ; celle-ci est

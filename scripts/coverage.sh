@@ -25,7 +25,13 @@ set -uo pipefail
 # des lignes que rien ne couvre, par construction — l'a fait tomber au
 # dixième de point près. Un plancher sans marge n'est pas un plancher,
 # c'est un cliquet qui casse.
-TOTAL_FLOOR=45
+# Mesuré le 13/09/2026 : 49,3 % le workspace, 89,8 % la logique. Le
+# plancher du workspace monte de 45 à 47 — deux points et demi de marge,
+# ce qui laisse la place d'un lot de vues sans casser le cliquet. Celui
+# de la logique reste à 89 : huit dixièmes de marge ne suffisent pas
+# pour le monter, un module pur de plus le ferait tomber le jour où il
+# arrive avec ses premiers tests.
+TOTAL_FLOOR=47
 LOGIC_FLOOR=89
 
 # The modules that carry the decisions: pure, or nearly so, and the ones
