@@ -774,7 +774,10 @@ add clicking and typing; it is not the price of entry.
   where what is hidden is the control you came to use. Four regions set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture: the planning's entry row (« Poser », the gesture that
-  writes), the file's acts table (the cross that removes an act), and
+  writes), the register's own write form (at 1024x700 × 1.25 it showed
+  its natures and nothing else — the quantity, the date and the
+  prescriber are below, and « Inscrire » writes nothing without them),
+  the file's acts table (the cross that removes an act), and
   the file's identity band — which at 1024x700 × 1.6 stopped after the
   treatments, so « + médicament », « 2 interaction(s) entre ces
   traitements » and the whole revue d'ordonnance read as not existing.
