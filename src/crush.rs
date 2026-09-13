@@ -423,13 +423,22 @@ pub const TABLE: &[Rule] = &[
         instead: "",
         source: "RCP donépézil",
     },
+    // **« Sous condition » et non « oui ».** La règle disait « peut être
+    // écrasé » et sa propre raison disait « sans être écrasées » : le
+    // verdict contredisait son explication, et la feuille imprimait donc
+    // à une infirmière d'EHPAD l'inverse de ce qu'elle lui expliquait
+    // deux lignes plus bas. La table de référence « Broyage » écrit de
+    // son côté « Ne pas écraser — il se délite déjà dans la bouche,
+    // l'écraser n'apporte rien ». C'est exactement ce que « sous
+    // condition » existe pour dire : le geste n'est pas l'écrasement,
+    // c'en est un autre.
     Rule {
         needs: &["orodispersible", "lyoc", "effervescent"],
         label: "Formes orodispersibles et effervescentes",
-        verdict: Verdict::Yes,
-        why: "Elles sont faites pour cela : sur la langue ou dans un verre d'eau, sans être écrasées.",
-        instead: "",
-        source: "RCP des présentations",
+        verdict: Verdict::Conditional,
+        why: "Elles ne s'écrasent pas — elles se délitent. L'orodispersible se dépose sur la langue et fond ; l'effervescent se dissout dans un verre d'eau. Les écraser n'apporte rien et les lyophilisats se brisent au moindre appui.",
+        instead: "Le geste prévu par la forme : sur la langue, ou dans l'eau. Les garder en plaquette jusqu'au dernier moment, l'humidité suffisant à les abîmer.",
+        source: "RCP des présentations ; SFPC — liste nationale des médicaments écrasables ; table « Broyage » : « Ne pas écraser — il se délite déjà dans la bouche ».",
     },
     Rule {
         needs: &["doliprane", "paracetamol", "dafalgan", "efferalgan"],
@@ -726,6 +735,55 @@ mod tests {
         // Et « à vérifier » se lit autrement que « oui » : le libellé
         // est ce que la feuille imprime.
         assert_eq!(Verdict::Unknown.label(), "À vérifier");
+    }
+
+    /// **Un verdict ne contredit pas sa propre explication.**
+    ///
+    /// La règle des formes orodispersibles a vécu ainsi : verdict
+    /// « peut être écrasé », raison « sans être écrasées ». La feuille
+    /// imprimait donc à une infirmière d'EHPAD l'inverse de ce qu'elle
+    /// lui expliquait deux lignes plus bas, et la table de référence
+    /// « Broyage » disait de son côté « Ne pas écraser ». Aucun test ne
+    /// pouvait le voir : chacune des deux moitiés était correcte.
+    ///
+    /// Le contrôle est volontairement grossier — il ne lit que des
+    /// tournures de refus — mais c'est exactement celle-là qui s'était
+    /// glissée.
+    #[test]
+    fn a_verdict_never_contradicts_its_own_reason() {
+        // Le singulier **et** le pluriel : la formulation qui a servi à
+        // vérifier ce test disait « ne s'écrasent pas », et la liste ne
+        // portait que « ne s'écrase pas ». Le test passait donc sur le
+        // cas même pour lequel il était écrit.
+        const REFUSALS: [&str; 8] = [
+            "sans être écras",
+            "ne pas écraser",
+            "ne s'écrase pas",
+            "ne s'écrasent pas",
+            "ne doit pas être écras",
+            "ne doivent pas être écras",
+            "jamais écras",
+            "ne jamais écraser",
+        ];
+        for r in TABLE.iter().filter(|r| r.verdict == Verdict::Yes) {
+            // **La première phrase, et elle seule.** C'est elle qui
+            // énonce le verdict ; les suivantes ont le droit de mettre
+            // en garde contre une *autre* forme, et celle des
+            // antihypertenseurs le fait — « la plupart existent aussi en
+            // forme à libération prolongée, qui, elle, ne s'écrase
+            // pas ». La lire comme une contradiction serait crier au
+            // loup, et un test qui crie au loup finit désactivé.
+            let first = r.why.split_inclusive('.').next().unwrap_or(r.why);
+            let why = crate::fuzzy::sort_key(first);
+            for w in REFUSALS {
+                assert!(
+                    !why.contains(&crate::fuzzy::sort_key(w)),
+                    "{} : le verdict dit « {} » et la raison dit « {w} »",
+                    r.label,
+                    r.verdict.label()
+                );
+            }
+        }
     }
 
     /// **Le filet ne prend pas la place de ce qui est nommé.**

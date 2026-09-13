@@ -117,6 +117,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Un verdict contredisait sa propre explication.** Sur la feuille
+  « peut-on écraser ? », les formes orodispersibles et effervescentes
+  étaient marquées « Peut être écrasé » — et la ligne du dessous, dans
+  la même règle, disait « sans être écrasées ». Une infirmière d'EHPAD
+  lisait donc l'inverse de ce qu'on lui expliquait deux lignes plus bas.
+  La table de référence « Broyage » écrit de son côté « Ne pas écraser :
+  il se délite déjà dans la bouche, l'écraser n'apporte rien ». C'est
+  « sous condition » qu'il fallait — le geste existe, mais ce n'est pas
+  l'écrasement : sur la langue, ou dans un verre d'eau, et en plaquette
+  jusqu'au dernier moment.
+
+  Un test refuse désormais qu'un « oui » porte une tournure de refus
+  dans sa **première phrase** — celle qui énonce le verdict ; les
+  suivantes gardent le droit de mettre en garde contre une *autre*
+  forme, ce que fait celle des antihypertenseurs. Et la liste des
+  tournures porte le singulier **et** le pluriel : écrite au singulier
+  seul, elle laissait passer le cas même pour lequel elle était faite.
 - **Une association ne se lit pas sur son composant le plus
   rassurant.** Un Codoliprane, un Ixprim, un Izalgi contiennent du
   paracétamol, et la ligne du paracétamol les attrapait : le verdict
