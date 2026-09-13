@@ -330,6 +330,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Le terme de contre-indication des AINS était écrit trois fois
+  différemment**, dont une fois faux. Une dizaine de fiches d'AINS, la
+  table « Grossesse et allaitement », la table « Antalgiques » et
+  `gravidity.rs` disent toutes 24 semaines d'aménorrhée, soit le début
+  du 6e mois ; la table « Automédication — refus au comptoir » écrivait
+  « AINS après **15 semaines d'aménorrhée** », un seuil que rien d'autre
+  ne porte. C'était le tableau du refus au comptoir, c'est-à-dire celui
+  qu'on ouvre au moment de dire non. Et la glose divergeait aussi :
+  `gravidity.rs` écrivait « 5 mois et demi » là où l'ANSM et les fiches
+  écrivent « début du 6e mois ». Le chiffre était partout le même ; ce
+  sont les mots autour qui s'étaient séparés.
+- **La table de la contraception ne disait rien des inducteurs**, quand
+  la règle de revue et la table « Interactions » le disent toutes deux :
+  sous rifampicine, millepertuis ou antiépileptique inducteur, la
+  pilule, l'implant, le patch et l'anneau échouent, l'échec est
+  silencieux jusqu'au test de grossesse, et en urgence le lévonorgestrel
+  est inefficace à la dose habituelle. C'est pourtant le tableau qu'on
+  ouvre quand la question porte justement sur la contraception. Il porte
+  la ligne, avec les deux méthodes que l'induction ne touche pas.
 - **Deux astérisques partaient à l'écran et sur le papier.** Les trois
   tables cliniques ont un test qui refuse le balisage — `RichText`
   n'interprète rien, une astérisque tapée pour appuyer un mot arrive

@@ -395,7 +395,11 @@ pub const TABLE: &[Advice] = &[
         ],
         label: "AINS",
         pregnancy: Level::Interdit,
-        term: "À partir de 24 semaines d'aménorrhée (5 mois et demi) : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        // « Début du 6e mois » et non « 5 mois et demi » : c'est la
+        // formulation de l'ANSM, celle des dix fiches d'AINS livrées et
+        // celle des deux autres tables. Le chiffre — 24 SA — était
+        // partout le même ; c'est la glose qui divergeait.
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
         pregnancy_note: "Après 24 SA, ils ferment le canal artériel du fœtus et atteignent son rein — l'accident est décrit après une seule prise. Le paracétamol est l'antalgique de la grossesse.",
         breastfeeding: Level::Compatible,
         breastfeeding_note: "L'ibuprofène passe très peu dans le lait : c'est l'AINS de l'allaitement.",
