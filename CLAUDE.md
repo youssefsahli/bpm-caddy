@@ -768,28 +768,30 @@ add clicking and typing; it is not the price of entry.
   twelve pixels is exactly what `App::scrolled_width` exists to account
   for: it would reflow rows all over the application.
 - **`spacing.scroll.floating` is egui's default and nothing here changes
-  it *globally* — but where the tail carries a gesture, that one region
-  turns it off.** Saying the total works for a band of doors (« 13 axes
-  en tout »); it says nothing useful about a form or a table of records,
-  where what is hidden is the control you came to use. Four regions set
+  it *globally* — but where the hidden tail carries a gesture or the
+  subject itself, that one region turns it off.** Saying the total works
+  for a band of doors (« 13 axes en tout »); it says nothing useful
+  about a form, a dialog or a table of records, where what is under the
+  fold is the control you came to use. Nine regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
-  capture: the planning's entry row (« Poser », the gesture that
-  writes), the register's own write form (at 1024x700 × 1.25 it showed
-  its natures and nothing else — the quantity, the date and the
-  prescriber are below, and « Inscrire » writes nothing without them),
-  the file's acts table (the cross that removes an act), the quick-act
-  picker (nine acts of ten, « 0 · Prévention » under the fold on a
-  screen whose printed guide promises that digit), and
-  the file's identity band — which at 1024x700 × 1.6 stopped after the
-  treatments, so « + médicament », « 2 interaction(s) entre ces
-  traitements » and the whole revue d'ordonnance read as not existing.
-  A solid bar **takes twelve pixels off the content**, so each of those
-  measures with `App::scrolled_width`; converting a region without that
-  is how a row that used to fit starts wrapping. A `ScrollArea::both` pays twice **only when
-  it really overflows sideways**: the Options dialog takes the solid bar
-  happily (no horizontal ribbon appears, because nothing overflows), the
-  trame dialog does not — there it cost a column *and* a row, the totals
-  came out « 8 h 3 » and the ribbon ate the very line it was meant to
+  capture at 1024x700: the planning's entry row (« Poser »), the
+  register's write form (its natures and nothing else — the quantity,
+  the date and the prescriber are below), the file's acts table (the
+  cross that removes an act), the file's identity band (« +
+  médicament », « 2 interaction(s) », the whole revue d'ordonnance), the
+  quick-act picker (nine acts of ten, on a screen whose printed guide
+  promises the tenth digit), the shortcut window (eight of twenty-six),
+  a checklist's items (one of five, each with its buttons), the Options
+  dialog (the eight skins, which is what that page exists to show) and
+  the protocol ordonnance (the adjuvant, the advice and the free
+  lines — all of them printed).
+  A solid bar **takes twelve pixels off the content**, so a region that
+  measures its own rows does it with `App::scrolled_width`; converting
+  one without that is how a row that used to fit starts wrapping. A
+  `ScrollArea::both` pays twice **only when it really overflows
+  sideways**: Options takes it happily (no ribbon appears), the trame
+  dialog does not — there it cost a column *and* a row, the totals came
+  out « 8 h 3 » and the ribbon ate the very line it was meant to
   announce. Tried, looked at, taken back out. And do not reach for
   `ScrollBarVisibility::AlwaysVisible` on a floating bar instead: egui
   paints that handle from `widgets.*.bg_fill`, which `motif::apply` sets
