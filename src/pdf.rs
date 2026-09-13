@@ -4228,11 +4228,23 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 ..Default::default()
             },
             "60 g",
-            &[(
-                "Oxyde de zinc".to_owned(),
-                "15 g".to_owned(),
-                "9 g".to_owned(),
-            )],
+            // **L'excipient est une matière première.** La feuille
+            // n'avait que le principe actif, alors que son propre mode
+            // opératoire dit « puis compléter » — compléter avec quoi,
+            // la table ne le disait pas. Et le « qsp » est justement ce
+            // que la colonne « À peser » ne recalcule pas.
+            &[
+                (
+                    "Oxyde de zinc".to_owned(),
+                    "15 g".to_owned(),
+                    "9 g".to_owned(),
+                ),
+                (
+                    "Vaseline".to_owned(),
+                    "qsp 100 g".to_owned(),
+                    "qsp 60 g".to_owned(),
+                ),
+            ],
             &pharmacy,
             "CL",
         ),

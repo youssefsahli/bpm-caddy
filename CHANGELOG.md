@@ -373,6 +373,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
   c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
   enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
+- **La fiche de fabrication d'exemple oubliait son excipient.** Elle ne
+  portait que le principe actif, quand son propre mode opératoire dit
+  « puis compléter » — compléter avec quoi, la table ne le disait pas.
+  Le « qsp » y figure maintenant, et c'est justement la ligne que la
+  colonne « À peser » ne recalcule pas.
 - **Et l'aperçu du comptage de caisse se lisait comme un doublon.**
   Avec une seule ligne hors tiroir, la feuille écrivait « Carte
   450,75 € » puis « Autres encaissements 450,75 € » — la ligne et son
