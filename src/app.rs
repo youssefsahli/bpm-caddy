@@ -2694,8 +2694,8 @@ impl Default for Batch {
     }
 }
 
-/// Les quatre colonnes de la feuille de saisie groupée. Voir
-/// [`App::batch_columns`].
+/// Les colonnes de la feuille de saisie groupée — quatre au large,
+/// trois au comptoir. Voir [`App::batch_columns`].
 struct BatchCols {
     /// Le libellé du produit : il prend ce que les trois autres
     /// laissent, sans descendre sous son plancher.
@@ -2707,6 +2707,15 @@ struct BatchCols {
     reason: f32,
     /// La gouttière entre deux colonnes, celle que la grille pose.
     gap: f32,
+    /// **Le solde passe sous le nom plutôt que de sortir de l'écran.**
+    /// Les quatre colonnes demandent six cent soixante-neuf pixels à
+    /// `text_scale = 1,6` et le volet du comptoir en offre cinq cent
+    /// soixante-dix : ce qui sortait par la droite était « Motif de
+    /// l'écart », c'est-à-dire la case que la feuille demande de
+    /// remplir quand elle refuse de partir. Repliée, la fiche tient ce
+    /// qu'elle *est* sur deux lignes et garde à droite ce qu'on en
+    /// *fait* — la même règle que l'acte du dossier.
+    folded: bool,
 }
 
 /// Les colonnes du carnet de vaccination : combien, et larges de
@@ -18920,6 +18929,32 @@ impl App {
         .inner
     }
 
+    /// Deux lignes dans une cellule de grille, sous une largeur annoncée.
+    ///
+    /// La forme repliée d'une table en a besoin : ce qu'une fiche *est*
+    /// tient sous son nom, ce qu'on en *fait* reste à droite. La largeur
+    /// est annoncée comme pour [`App::grid_cell`] — une cellule qui ne
+    /// dit pas la sienne élargit sa colonne et pousse la suivante hors
+    /// du volet.
+    fn grid_cell_stacked(
+        ui: &mut egui::Ui,
+        width: f32,
+        top: egui::RichText,
+        under: egui::RichText,
+    ) {
+        let h = ui.text_style_height(&egui::TextStyle::Body);
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, h * 2.0),
+            egui::Layout::top_down(egui::Align::LEFT),
+            |ui| {
+                ui.set_width(width);
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.add(egui::Label::new(top).truncate());
+                ui.add(egui::Label::new(under).truncate());
+            },
+        );
+    }
+
     /// [`wrapped_rows_of`] for a row that is all buttons.
     fn wrapped_rows<'a>(ui: &egui::Ui, width: f32, labels: impl Iterator<Item = &'a str>) -> f32 {
         Self::wrapped_rows_of(ui, width, labels.map(|l| Self::button_width(ui, l)))
@@ -34071,6 +34106,7 @@ impl App {
                     qty: qty_w,
                     reason: reason_w,
                     gap,
+                    folded,
                 } = Self::batch_columns(ui, ui.available_width());
                 let reason_hint = match kind {
                     Kind::Perte => tr("stup_loss_hint"),
@@ -34101,7 +34137,9 @@ impl App {
                                     egui::RichText::new(t).size(dim_pt).color(motif::text_dim())
                                 };
                                 Self::grid_cell(ui, name_w, dim(tr("stup_col_product")));
-                                Self::grid_cell(ui, state_w, dim(tr("batch_col_stock")));
+                                if !folded {
+                                    Self::grid_cell(ui, state_w, dim(tr("batch_col_stock")));
+                                }
                                 Self::grid_cell(ui, qty_w, dim(tr("batch_col_qty")));
                                 Self::grid_cell(ui, reason_w, dim(tr("batch_col_reason")));
                                 ui.end_row();
@@ -34125,7 +34163,7 @@ impl App {
                                     if s.product.archived {
                                         name = name.color(motif::text_dim());
                                     }
-                                    Self::grid_cell(ui, name_w, name);
+                                    let name_cell = name;
                                     // Une seule colonne pour deux
                                     // choses, et jamais les deux à la
                                     // fois : ce que le registre dit du
@@ -34182,7 +34220,16 @@ impl App {
                                             }
                                         }
                                     };
-                                    Self::grid_cell(ui, state_w, state);
+                                    // Repliée, la fiche porte sur deux
+                                    // lignes ce qu'elle est : son nom,
+                                    // puis ce que le registre en dit ou
+                                    // ce qui retient la case.
+                                    if folded {
+                                        Self::grid_cell_stacked(ui, name_w, name_cell, state);
+                                    } else {
+                                        Self::grid_cell(ui, name_w, name_cell);
+                                        Self::grid_cell(ui, state_w, state);
+                                    }
                                     ui.add_sized(
                                         [qty_w, Self::button_height(ui)],
                                         egui::TextEdit::singleline(
@@ -34357,9 +34404,17 @@ impl App {
         );
         let name_floor =
             Self::widest(ui, 11.5, [tr("stup_col_product")].into_iter()).max(chars_wide(ui, 16.0));
-        let fixed = state + qty + gap * 3.0;
+        // La forme large d'abord : les quatre colonnes, chacune à son
+        // plancher. Si elle ne tient pas, le solde passe sous le nom et
+        // il ne reste que trois colonnes — jamais une quatrième qui sort
+        // par la droite derrière une barre flottante.
+        let reason_floor = chars_wide(ui, 8.0);
+        let folded = name_floor + state + qty + reason_floor + gap * 3.0 > avail;
+        let state = if folded { 0.0 } else { state };
+        let cols = if folded { 3.0 } else { 4.0 };
+        let fixed = state + qty + gap * (cols - 1.0);
         let left_over = (avail - fixed - name_floor).max(0.0);
-        let reason = chars_wide(ui, 20.0).min(left_over.max(chars_wide(ui, 8.0)));
+        let reason = chars_wide(ui, 20.0).min(left_over.max(reason_floor));
         let name = (avail - fixed - reason).max(name_floor);
         BatchCols {
             name,
@@ -34367,6 +34422,7 @@ impl App {
             qty,
             reason,
             gap,
+            folded,
         }
     }
 
@@ -48239,19 +48295,29 @@ mod tests {
     #[test]
     fn the_batch_sheet_keeps_its_name_and_its_reason_at_every_scale() {
         for scale in [1.0_f32, 1.25, 1.6] {
-            for avail in [1200.0_f32, 560.0, 380.0] {
+            // **Les largeurs sont en caractères, pas en pixels.** Un
+            // échantillon de 560 px ne dit pas la même chose à
+            // l'échelle 1 et à 1,6 — il y porte deux tiers du texte —,
+            // et c'est exactement pourquoi le défaut vivait entre les
+            // mailles : la table tenait à toutes les largeurs testées et
+            // débordait au comptoir. Quarante-six caractères est la
+            // forme la plus étroite où une feuille se remplit ; en
+            // dessous, le volet est trop étroit pour quoi que ce soit,
+            // et c'est un plancher de garde, pas une disposition.
+            for chars in [100.0_f32, 60.0, 52.0, 46.0] {
                 let ctx = egui::Context::default();
                 motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
                 let seen = std::cell::RefCell::new(None);
                 let _ = ctx.run(Default::default(), |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
+                        let avail = super::chars_wide(ui, chars);
                         let cols = App::batch_columns(ui, avail);
                         let floor16 = super::chars_wide(ui, 16.0);
                         let floor8 = super::chars_wide(ui, 8.0);
-                        *seen.borrow_mut() = Some((cols, floor16, floor8));
+                        *seen.borrow_mut() = Some((cols, floor16, floor8, avail));
                     });
                 });
-                let Some((cols, floor16, floor8)) = seen.into_inner() else {
+                let Some((cols, floor16, floor8, avail)) = seen.into_inner() else {
                     panic!("échelle {scale} : rien mesuré");
                 };
                 // Le nom garde de quoi désigner un produit.
@@ -48271,13 +48337,23 @@ mod tests {
                 // sans la faire déborder : c'est le cas courant, et
                 // c'est celui où la barre horizontale ne doit pas
                 // apparaître.
-                let total = cols.name + cols.state + cols.qty + cols.reason + cols.gap * 3.0;
-                if avail >= 1200.0 {
-                    assert!(
-                        total <= avail + 0.5,
-                        "échelle {scale} : {total} px pour {avail} disponibles"
-                    );
-                }
+                // **Et la table ne déborde à aucune des formes.**
+                // L'assertion ne valait qu'à 1200 px, c'est-à-dire nulle
+                // part : à `text_scale = 1,6` les quatre colonnes
+                // demandaient six cent soixante-neuf pixels quand le
+                // volet du comptoir en offre cinq cent soixante-dix, et
+                // « Motif de l'écart » — la case que la feuille exige
+                // quand elle refuse de partir — sortait par la droite
+                // derrière une barre flottante, donc invisible.
+                let total = cols.name
+                    + cols.state
+                    + cols.qty
+                    + cols.reason
+                    + cols.gap * if cols.folded { 2.0 } else { 3.0 };
+                assert!(
+                    total <= avail + 0.5,
+                    "échelle {scale}, {avail} px : la feuille en demande {total}"
+                );
             }
         }
     }

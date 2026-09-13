@@ -183,6 +183,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **La feuille de saisie groupée perdait la case qu'elle exige.** Ses
+  quatre colonnes demandent six cent soixante-neuf pixels à
+  `text_scale = 1,6` quand le volet du comptoir en offre cinq cent
+  soixante-dix : ce qui sortait par la droite était « Motif de
+  l'écart », c'est-à-dire précisément la case sans laquelle la feuille
+  refuse de partir — la ligne disait « Écart à motiver » en rouge et
+  « 1 case à corriger avant d'inscrire », et la case était hors de
+  l'écran derrière une barre flottante. Repliée, la fiche porte sur deux
+  lignes ce qu'elle *est* — son nom, puis le solde ou l'embarras — et
+  garde à droite ce qu'on en *fait*, comme l'acte du dossier. Le test
+  qui tient ces colonnes n'assertait qu'à 1200 px, c'est-à-dire nulle
+  part : ses largeurs sont maintenant **en caractères**, comme tous les
+  seuils de cette application, et il refuse le débordement à chacune.
 - **L'historique de caisse perdait la colonne pour laquelle il
   existe.** Il avait deux formes, et la resserrée était *supposée*
   tenir : à 1024x700 en `text_scale = 1,6` elle débordait son volet, la
