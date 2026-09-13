@@ -360,6 +360,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   date les redit — et la colonne du jour se mesure sur la date seule,
   puisque « (recompté) » y pesait la moitié d'une colonne d'argent quand
   la ligne éteinte le dit déjà.
+- **Ni celle du formulaire du registre.** À 1024x700 en
+  `text_scale = 1,25` la bande ne montrait que les natures — la
+  quantité, la date, le prescripteur sont dessous, et « Inscrire », qui
+  a sa rangée à lui, n'écrit rien tant qu'ils ne sont pas remplis :
+  l'écran se lisait « choisir une nature, puis inscrire ».
 - **Ni celle du tableau des entretiens.** Le volet est court par
   construction — le journal, celui où l'on tape, garde sa rangée — et la
   table défile donc ; à 1024x700 en `text_scale = 1,6` elle montrait une

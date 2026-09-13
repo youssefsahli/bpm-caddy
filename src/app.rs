@@ -35088,6 +35088,14 @@ impl App {
             let btn_h = Self::button_height(ui) + 6.0;
             let split = motif::split_rows(body, &[0.0, btn_h], 4.0);
             motif::inside(ui, split[0], |ui| {
+                // **Et la barre de ce formulaire-là ne flotte pas.** À
+                // 1024x700 en `text_scale = 1,25` la bande ne montre que
+                // les natures — la quantité, la date, le prescripteur
+                // sont dessous, et « Inscrire », qui a sa rangée à lui,
+                // n'écrit rien tant qu'ils ne sont pas remplis. Une
+                // barre flottante est invisible au repos : l'écran se
+                // lisait « choisir une nature, puis inscrire ».
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("stup_form")
                     .auto_shrink([false, false])
