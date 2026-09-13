@@ -360,6 +360,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   date les redit — et la colonne du jour se mesure sur la date seule,
   puisque « (recompté) » y pesait la moitié d'une colonne d'argent quand
   la ligne éteinte le dit déjà.
+- **L'échantillon du bilan partagé se contredisait.** Il portait deux
+  traitements et ses propres lectures en nommaient quatre autres — un
+  AINS pour la revue, un IEC pour la kaliémie, une statine et un
+  diurétique pour les examens à refaire — qui ne figuraient nulle part
+  sur la feuille. C'est pourtant cet exemple que l'officine lit dans
+  l'éditeur de modèles pour comprendre le sien. Les six traitements y
+  sont désormais.
 - **Ni celle du formulaire du registre.** À 1024x700 en
   `text_scale = 1,25` la bande ne montrait que les natures — la
   quantité, la date, le prescripteur sont dessous, et « Inscrire », qui

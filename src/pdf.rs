@@ -7204,6 +7204,32 @@ mod tests {
                     "azithromycine — macrolide".to_owned(),
                     "500 mg/j".to_owned(),
                 ),
+                // **Et les quatre traitements que les lectures citent.**
+                // L'échantillon n'en portait que deux, et ses propres
+                // lectures nommaient un AINS, un IEC, une statine et un
+                // diurétique qui ne figuraient nulle part : une feuille
+                // qui se contredit, et c'est celle que l'officine lit
+                // dans l'éditeur de modèles pour comprendre la sienne.
+                (
+                    "Advil".to_owned(),
+                    "ibuprofène — AINS".to_owned(),
+                    "400 mg si douleur".to_owned(),
+                ),
+                (
+                    "Coversyl".to_owned(),
+                    "périndopril — IEC".to_owned(),
+                    "5 mg/j".to_owned(),
+                ),
+                (
+                    "Tahor".to_owned(),
+                    "atorvastatine — statine".to_owned(),
+                    "20 mg le soir".to_owned(),
+                ),
+                (
+                    "Lasilix".to_owned(),
+                    "furosémide — diurétique de l'anse".to_owned(),
+                    "40 mg le matin".to_owned(),
+                ),
             ],
             interactions: vec![(
                 "Eliquis ↔ Zithromax".to_owned(),
