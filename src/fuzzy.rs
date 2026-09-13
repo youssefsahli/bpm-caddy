@@ -22,7 +22,7 @@ fn fold(c: char) -> char {
 /// initials ("jd") and prefixes rank naturally.
 ///
 /// This is the hottest function in the application: a keystroke in the
-/// medicine search asks it about 850 fiches on four fields each, the
+/// medicine search asks it about every fiche on four fields each, the
 /// codex and the dispositifs do the same on their own lists, and the
 /// tables ask it about every cell. It therefore allocates **nothing** —
 /// it walks both sides as iterators rather than collecting them into

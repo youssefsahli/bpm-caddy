@@ -2218,7 +2218,7 @@ enum MainView {
     /// et les fiches de chacune.
     ///
     /// Le champ `class` d'une fiche est du texte libre et il a dérivé —
-    /// 495 libellés pour 851 fiches, dont 331 pour une seule. Une liste
+    /// 495 libellés pour 862 fiches, dont 330 pour une seule. Une liste
     /// à plat de 495 lignes n'apprend rien ; `crate::classes` les replie
     /// en 383 classes rangées sous seize familles, et cette vue est ce
     /// qui rend le rangement consultable. On descend de l'appareil à la
@@ -3743,7 +3743,7 @@ struct Session {
     ///
     /// Refait quand la base des médicaments change (`drugs_rev`) et
     /// jamais par image : le compte demande de résoudre la classe des
-    /// 851 fiches, ce qui est une passe sur toute la base et pas un
+    /// toutes les fiches, ce qui est une passe sur toute la base et pas un
     /// travail d'affichage.
     class_counts: std::collections::HashMap<&'static str, Vec<usize>>,
     class_counts_rev: u64,
@@ -4659,7 +4659,7 @@ impl Session {
     ///
     /// The jump box is an `egui::Window`, so it is repainted with the
     /// rest of the frame: scoring the standing views, every patient, all
-    /// 850 fiches, the tables, the préparations, the dispositifs and the
+    /// every fiche, the tables, the préparations, the dispositifs and the
     /// protocoles, and building a `String` label for each hit — sixty
     /// times a second, while somebody types three letters into it. Every
     /// list behind it carries a revision, and all of them are in the key.
@@ -5080,7 +5080,7 @@ impl Session {
 
     /// Ranger les fiches sous leur classe canonique.
     ///
-    /// Une passe sur les 851 fiches, gardée contre `drugs_rev` : la vue
+    /// Une passe sur toutes les fiches, gardée contre `drugs_rev` : la vue
     /// la redemande à chaque image et la base ne bouge qu'aux douze
     /// endroits qui appellent `set_drugs`. Une ligne porte un **indice**
     /// dans `self.drugs` et jamais une copie de la fiche.
@@ -5619,7 +5619,7 @@ impl Session {
     /// (Re)compter ce que la base sait d'elle-même.
     ///
     /// Appelé à l'ouverture de la vue et jamais par image : la
-    /// couverture est une passe sur huit cent cinquante fiches et treize
+    /// couverture est une passe sur toutes les fiches et treize
     /// champs, et le reste tient en quatre requêtes d'agrégat.
     fn refresh_stats(&mut self) {
         let mut s = Stats {
@@ -15540,7 +15540,7 @@ impl App {
                 // Elle ne coûte **rien par image** : les lignes non
                 // rapprochées sont ce que `conciliation` a déjà répondu,
                 // mémoïsé contre le texte collé. Refaire la passe floue
-                // sur huit cent cinquante fiches dans un `layouter`
+                // sur toutes les fiches dans un `layouter`
                 // serait la refaire soixante fois par seconde.
                 let unmatched: Vec<&str> = session
                     .concil_rows
@@ -16018,7 +16018,7 @@ impl App {
     ///
     /// Rien n'est ajouté d'une ligne que la base n'a pas su rapprocher :
     /// une fiche inventée à partir d'un mot mal lu est une fiche de plus
-    /// dans un référentiel de huit cent cinquante, et personne ne la
+    /// dans un référentiel de huit cent soixante-deux, et personne ne la
     /// retrouvera pour la corriger. Ces lignes-là restent affichées comme
     /// « non rapprochée », qui est le seul motif demandant un geste avant
     /// tous les autres.
@@ -19094,7 +19094,7 @@ impl App {
             // de médicaments plus « créer la fiche » : elles enveloppent
             // sur un dossier étroit, et la bande n'en comptait qu'une.
             // On ne peut pas les mesurer ici sans refaire la passe floue
-            // sur huit cent cinquante fiches — soixante fois par
+            // sur toutes les fiches — soixante fois par
             // seconde —, alors on réserve la place du pire cas. Réserver
             // trop fait défiler ; réserver trop peu coupe.
             h += row * 2.0;
@@ -31637,7 +31637,7 @@ impl App {
             // « Organes altérés » sortait par la droite.
             //
             // Les largeurs sont en **caractères** et non mesurées sur
-            // huit cent cinquante et un noms : une passe de mesure par
+            // huit cent soixante-deux noms : une passe de mesure par
             // fiche, soixante fois par seconde, est exactement ce que ce
             // fichier refuse ailleurs. Le nom s'élide, la liste
             // enveloppe.
@@ -41967,7 +41967,7 @@ impl App {
     /// Ce sont des chiffres qu'on regarde deux fois par an et qui
     /// décident du semestre suivant. Ils sont calculés au chargement de
     /// la vue et pas par image : la couverture de la base est une passe
-    /// sur huit cent cinquante fiches et treize champs.
+    /// sur toutes les fiches et treize champs.
     /// Le comptage de la caisse.
     ///
     /// Deux volets : à gauche on compte, à droite on lit ce que le

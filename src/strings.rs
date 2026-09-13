@@ -815,6 +815,14 @@ livre = "Une phrase qui n'est plus livrée"
     /// dérivé, dont un que la barre d'état de l'application dément à
     /// chaque instant (851 fiches contre 862).
     ///
+    /// **Et le papier compte aussi.** Le même jour, le README — dont
+    /// trois chiffres seulement étaient tenus — en portait six autres
+    /// qui avaient dérivé, deux se contredisant à l'intérieur d'une même
+    /// phrase ; et le mode d'emploi **imprimé** annonçait six onglets au
+    /// dossier, qui en a sept. Une liste recopiée à la main vieillit là
+    /// où personne ne la relit, et celle-là se pose près du poste. Les
+    /// sources de ce test incluent donc `src/pdf.rs`.
+    ///
     /// Chaque ligne ci-dessous est cherchée **telle quelle**. Une
     /// reformulation la fait donc échouer, et c'est voulu : un filet
     /// qui ne trouve plus sa phrase et se tait est un filet mort, comme

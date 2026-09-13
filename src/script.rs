@@ -107,8 +107,8 @@ pub struct Snapshot {
 
 /// Combien d'opérations un script a le droit de faire.
 ///
-/// Assez pour parcourir huit cent cinquante fiches et mille dossiers
-/// plusieurs fois ; pas assez pour une boucle infinie. Un compte
+/// Assez pour parcourir toutes les fiches et mille dossiers plusieurs
+/// fois ; pas assez pour une boucle infinie. Un compte
 /// d'opérations et non un délai : une horloge ferait passer le même
 /// script sur un poste et échouer sur l'autre.
 const MAX_OPERATIONS: u64 = 20_000_000;
@@ -235,9 +235,9 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
             })
             .collect::<rhai::Array>()
     });
-    // La prose d'une fiche, demandée une par une : la charger pour les
-    // huit cent cinquante recopierait quelques mégaoctets à chaque
-    // exécution pour une question qui porte presque toujours sur le nom.
+    // La prose d'une fiche, demandée une par une : la charger pour
+    // toutes recopierait quelques mégaoctets à chaque exécution, pour
+    // une question qui porte presque toujours sur le nom.
     let prose = data.prose.clone();
     engine.register_fn("fiche", move |id: i64| {
         let mut m = rhai::Map::new();
@@ -322,9 +322,9 @@ pub const API: &[Call] = &[
             ("tags", "les étiquettes de la fiche"),
             ("statut", "commercialisé, arrêté…"),
         ],
-        note: "Sans la prose : huit cent cinquante monographies entières \
-               seraient quelques mégaoctets recopiés à chaque exécution. \
-               La prose se demande fiche par fiche, par `fiche(id)`.",
+        note: "Sans la prose : les monographies entières seraient \
+               quelques mégaoctets recopiés à chaque exécution. La prose \
+               se demande fiche par fiche, par `fiche(id)`.",
         example: "let sans = [];\n\
                   for d in medicaments() { if d.classe == \"\" { sans.push(d.nom); } }\n\
                   `${sans.len} fiche(s) sans classe`\n",

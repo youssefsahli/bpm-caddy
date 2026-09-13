@@ -2,8 +2,8 @@
 //! grandes familles elles se rangent.
 //!
 //! Le champ `class` d'une fiche est du texte libre, et il a dérivé. Sur
-//! les 851 fiches livrées, on comptait **495 libellés distincts, dont
-//! 331 pour une seule fiche** : ce n'est plus une
+//! les 862 fiches livrées, on comptait **495 libellés distincts, dont
+//! 330 pour une seule fiche** : ce n'est plus une
 //! classification, c'est une étiquette. Et la dérive n'était pas
 //! seulement cosmétique — trois exemples relevés en la mesurant :
 //!
@@ -2240,7 +2240,7 @@ pub fn classes_of(family_key: &str) -> impl Iterator<Item = &'static Class> {
 /// Le libellé plié → la classe, construit une fois.
 ///
 /// 224 classes et leurs alias font quelque 280 comparaisons par
-/// résolution ; la vue en demande une par fiche, sur 851 fiches, à
+/// résolution ; la vue en demande une par fiche, sur 862 fiches, à
 /// chaque image. C'est le calcul que cette maison interdit dans un
 /// chemin de dessin, et la table est statique : l'index se construit au
 /// premier accès et répond ensuite en une recherche.

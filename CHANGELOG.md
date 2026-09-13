@@ -333,6 +333,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Les commentaires du code comptaient encore 851 fiches.** Douze
+  endroits portaient l'ancien chiffre ou son écriture en toutes
+  lettres — dont l'en-tête de `classes.rs`, qui annonçait « 495 libellés
+  distincts, dont 331 pour une seule » quand il y en a 330, et la note
+  de la console, qui est **affichée** dans le manuel. Les comptes qui
+  disent l'échelle plutôt qu'un fait ne sont plus chiffrés : « toutes
+  les fiches » ne dérivera pas.
 - **« Recherche dans les mon… »** — une tête de page élidée, là où la
   règle de la maison dit de raccourcir. `motif::panel_forms` l'applique
   depuis longtemps aux légendes de panneau ; les deux têtes de page ne
