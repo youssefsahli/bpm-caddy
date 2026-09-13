@@ -157,6 +157,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   l'autre ne voulait rien dire. La configuration de démonstration est
   écrite une fois, dans `scripts/demo-config.sh`, et les deux la
   sourcent — c'est le défaut que ce dépôt nomme partout ailleurs.
+- **La bande de saisie du planning finissait sur une rangée coupée, et
+  la grille y perdait sa ligne des totaux.** Elle valait les rangées
+  entières *plus quatorze pixels* — une marge intérieure qu'on croyait
+  payer à `motif::inside`, qui n'en prend aucune : elle donne le
+  rectangle entier. Ces quatorze pixels étaient donc le haut de la
+  rangée suivante, c'est-à-dire l'exacte chose que `whole_rows` existe
+  pour empêcher, et ils se prenaient sur la grille : à 1024x700 en
+  `text_scale = 1,6`, la ligne « Total » — celle où le rouge dit qu'un
+  creux reste pendant l'ouverture — n'était pas dessinée du tout.
+- **Et la barre de cette bande-là ne flotte plus.** Le formulaire est
+  plafonné à la moitié du volet et défile, ce qui est la règle de la
+  maison ; mais la barre flottante d'egui est invisible tant que le
+  pointeur n'en approche pas, si bien que « Poser » — le geste qui
+  écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Le manuel annonçait le rouge du planning pour le mauvais jour.** Il
+  disait « quand l'officine est ouverte et que personne n'est inscrit » ;
+  le total passe au rouge dès qu'un **creux reste pendant l'ouverture**,
+  et une journée tenue le matin et vide l'après-midi en est un — c'est
+  même celui qu'on ne voit pas en lisant la grille.
+- **Trois comptes du manuel sont désormais confrontés au code**, comme
+  ceux de `CLAUDE.md`, du README et du mode d'emploi imprimé : les cinq
+  lectures rangées sous la biologie — la sixième attend, le foie n'a pas
+  de panneau côté patient —, les six lectures de la conciliation, et la
+  liste des prodrogues, nommées une par une dans les deux sens. Une
+  prodrogue est la seule ligne dont le croisement se lit à l'envers, et
+  cette phrase est ce qui l'explique. `Change::ALL` porte l'ordre
+  d'affichage une seule fois, `rank` le lit plutôt que de le redire, et
+  la bande d'onglets de la biologie tient sa borne de son propre tableau
+  — deux `min(4)` écrits à côté auraient rendu un sixième onglet
+  insélectionnable sans que rien ne le dise.
 - **Et la vue Vitale de la passe large se capturait sur son erreur.**
   `eyeball.sh` écrivait « ceci n'est pas une carte » là où `smoke.sh`
   pose une carte rejouable — et ne branchait même pas

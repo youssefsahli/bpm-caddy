@@ -54,17 +54,23 @@ pub enum Change {
 }
 
 impl Change {
+    /// Les six lectures, dans l'ordre où elles se lisent. Hissée hors
+    /// de l'affichage pour que le manuel, qui en annonce le nombre,
+    /// puisse être confronté à elle.
+    pub const ALL: [Change; 6] = [
+        Change::Unmatched,
+        Change::Switched,
+        Change::Stopped,
+        Change::DoseChanged,
+        Change::Added,
+        Change::Kept,
+    ];
+
     /// L'ordre d'affichage : ce qui demande une décision d'abord, ce qui
-    /// n'a pas bougé en dernier.
+    /// n'a pas bougé en dernier — **le rang de la ligne dans `ALL`**, et
+    /// non une seconde liste à tenir d'accord avec elle.
     fn rank(self) -> u8 {
-        match self {
-            Change::Unmatched => 0,
-            Change::Switched => 1,
-            Change::Stopped => 2,
-            Change::DoseChanged => 3,
-            Change::Added => 4,
-            Change::Kept => 5,
-        }
+        Change::ALL.iter().position(|c| *c == self).unwrap_or(0) as u8
     }
 }
 

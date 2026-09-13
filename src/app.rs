@@ -9439,6 +9439,13 @@ pub fn key_rows() -> [(&'static str, &'static str); 26] {
     ]
 }
 
+/// Les lectures de l'ordonnance rangées sous la biologie : ce que les
+/// valeurs disent, ce qui n'a pas été mesuré, le rein, la grossesse,
+/// les cytochromes. Le manuel en annonce le nombre en toutes lettres,
+/// et `the_documentation_counts_what_the_code_holds` le confronte à
+/// celui-ci.
+pub const BIO_SIDE_TABS: usize = 5;
+
 impl App {
     pub fn new() -> Self {
         let mut config = Config::load();
@@ -14641,17 +14648,22 @@ impl App {
             } else {
                 format!("{} ({major})", tr("cyp_tab"))
             };
-            let tabs = [
+            let tabs: [motif::Tab; BIO_SIDE_TABS] = [
                 motif::Tab::new(tr("bio_reading")),
                 motif::Tab::new(tr("watch_section")),
                 motif::Tab::new(&renal),
                 motif::Tab::new(&gravid),
                 motif::Tab::new(&cyp),
             ];
+            // La borne se lit sur le tableau, jamais écrite à côté : un
+            // sixième onglet — le foie attend le sien — laisserait deux
+            // `min(4)` derrière lui, et l'onglet ajouté serait
+            // insélectionnable sans que rien ne le dise.
+            let last = tabs.len() - 1;
             if let Some(motif::TabAction::Select(i)) =
-                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(4))
+                motif::tab_strip(ui, "bio_side_tabs", &tabs, session.bio_side_tab.min(last))
             {
-                session.bio_side_tab = i.min(4);
+                session.bio_side_tab = i.min(last);
             }
         });
         match session.bio_side_tab {
@@ -24989,8 +25001,16 @@ impl App {
         let mut copy_week = false;
         let mut undo = false;
         motif::inside(ui, rect, |ui| {
-            // Une deuxième région défilante sans nom dans la même vue
-            // peint ses deux bannières rouges en travers de l'écran.
+            // **La barre de cette région-là ne flotte pas.** Le
+            // formulaire est plafonné à la moitié du volet et défile —
+            // c'est la règle de la maison —, mais la barre flottante
+            // d'egui est invisible tant que le pointeur n'en approche
+            // pas : au comptoir, « Poser » se trouvait sous la bande
+            // sans que rien ne le dise, et c'est le geste qui écrit. Une
+            // barre pleine coûte douze pixels de largeur à une rangée
+            // qui sait se replier ; elle ne coûte rien à personne
+            // ailleurs, parce qu'elle ne vaut que pour cette région.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("planning_form")
                 .show(ui, |ui| {
@@ -25911,17 +25931,21 @@ impl App {
         let cap = (rect.height() * 0.5)
             .max(2.0 * pitch)
             .min((rect.height() - pitch - 6.0).max(pitch));
-        // Les quatorze pixels de marge intérieure sont **retirés avant**
-        // de compter les rangées et rendus après : ajoutés au résultat,
-        // la bande dépassait son propre plafond de leur hauteur, et ce
-        // qui déborde ici se prend sur la grille.
-        let inner = 14.0;
+        // **Et aucune marge intérieure ne s'ajoute au compte.** La bande
+        // valait les rangées entières *plus quatorze pixels* — une marge
+        // qu'on croyait payer à `motif::inside`, qui n'en prend aucune :
+        // elle donne le rectangle entier. Ces quatorze pixels étaient
+        // donc le haut de la rangée suivante, et la bande se terminait
+        // sur une tranche de boutons coupés dans leur hauteur, c'est-à-
+        // dire l'exacte chose que `whole_rows` est là pour empêcher. Ils
+        // coûtaient en plus à la grille sa ligne des totaux, celle où le
+        // rouge dit qu'un creux reste pendant l'ouverture.
         let form_h = whole_rows(
-            (cap - inner).max(Self::row_height(ui)),
+            cap.max(Self::row_height(ui)),
             Self::row_height(ui),
             ui.spacing().item_spacing.y,
             form_rows,
-        ) + inner;
+        );
         let split = motif::split_rows(rect, &[0.0, form_h], 6.0);
         let (rect, form_rect) = (split[0], split[1]);
         Self::planning_form(ui, session, config, form_rect);

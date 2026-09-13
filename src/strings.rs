@@ -805,6 +805,78 @@ livre = "Une phrase qui n'est plus livrée"
         );
     }
 
+    /// **Le manuel nomme les prodrogues une par une**, et une liste
+    /// recopiée vieillit là où personne ne la relit — c'est la règle que
+    /// ce dépôt applique déjà au mode d'emploi imprimé. Celle-ci compte
+    /// double : une prodrogue est la seule ligne dont le croisement se
+    /// lit **à l'envers**, et la phrase du manuel est ce qui l'explique.
+    /// Les deux sens, parce qu'une molécule retirée de la table laisse
+    /// le manuel promettant une lecture qui n'a plus lieu.
+    #[test]
+    fn every_prodrug_the_table_turns_round_is_named_in_the_manual() {
+        const AIDE: &str = include_str!("../assets/aide.md");
+        let sentence = AIDE
+            .split("Une prodrogue s'y lit à l'envers")
+            .nth(1)
+            .expect("la phrase des prodrogues a disparu du manuel")
+            .split("\n\n")
+            .next()
+            .unwrap_or_default();
+        let folded = crate::fuzzy::sort_key(sentence);
+        let named: Vec<&str> = crate::cyp::TABLE
+            .iter()
+            .filter(|p| p.actions.iter().any(|a| a.prodrug))
+            .map(|p| p.needs[0])
+            .collect();
+        for molecule in &named {
+            assert!(
+                crate::fuzzy::contains_folded(&folded, &crate::fuzzy::sort_key(molecule)),
+                "« {molecule} » est une prodrogue de la table et le manuel ne la \
+                 nomme pas : le croisement qui s'y lit à l'envers n'est expliqué \
+                 nulle part"
+            );
+        }
+        // Et le sens inverse : chaque nom cité est bien une prodrogue.
+        // La phrase les énumère après « le métabolite actif », séparés
+        // par des virgules et un « ou » : c'est cette énumération-là
+        // qu'on lit, et non les mots de la phrase, pour n'avoir aucune
+        // liste de mots de prose à tenir à jour à côté.
+        let list = sentence
+            .split("le métabolite actif")
+            .nth(1)
+            .expect("l'énumération des prodrogues a changé de forme")
+            .split("ne les fait pas")
+            .next()
+            .unwrap_or_default();
+        let mut cited = 0;
+        for piece in list.replace(" ou ", ", ").split(',') {
+            let word = piece
+                .trim()
+                .split([' ', '\n', '\''])
+                .next_back()
+                .unwrap_or_default();
+            if word.is_empty() {
+                continue;
+            }
+            cited += 1;
+            let folded_word = crate::fuzzy::sort_key(word);
+            assert!(
+                named.iter().any(|m| crate::fuzzy::contains_folded(
+                    &crate::fuzzy::sort_key(m),
+                    &folded_word
+                )),
+                "le manuel nomme « {word} » parmi les prodrogues et la table ne \
+                 le connaît pas ainsi"
+            );
+        }
+        assert_eq!(
+            cited,
+            named.len(),
+            "le manuel cite {cited} prodrogues, la table en porte {}",
+            named.len()
+        );
+    }
+
     /// **Les chiffres que la documentation affirme, le code les tient.**
     ///
     /// `CLAUDE.md` et `docs/CONTENU.md` sont lus avant chaque décision,
@@ -951,6 +1023,39 @@ livre = "Une phrase qui n'est plus livrée"
                         n => panic!(
                             "la table porte {n} cytochromes : l'écrire en toutes \
                              lettres dans le manuel et ici"
+                        ),
+                    }
+                ),
+            ),
+            // Le manuel annonce **cinq** lectures sous la biologie, et
+            // la sixième attend — le foie n'a pas de panneau côté
+            // patient. Le jour où il en aura un, c'est cette phrase-là
+            // qui mentira, sur l'écran que l'officine lit pour
+            // apprendre ce que l'application sait faire.
+            (
+                "assets/aide.md",
+                AIDE,
+                format!(
+                    "{} lectures de la même ordonnance",
+                    match crate::app::BIO_SIDE_TABS {
+                        5 => "cinq",
+                        n => panic!(
+                            "la biologie porte {n} lectures : l'écrire en toutes \
+                             lettres dans le manuel et ici"
+                        ),
+                    }
+                ),
+            ),
+            (
+                "assets/aide.md",
+                AIDE,
+                format!(
+                    "{} lectures, et la première passe avant les autres",
+                    match crate::conciliation::Change::ALL.len() {
+                        6 => "Six",
+                        n => panic!(
+                            "la conciliation porte {n} lectures : l'écrire en \
+                             toutes lettres dans le manuel et ici"
                         ),
                     }
                 ),

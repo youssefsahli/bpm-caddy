@@ -217,8 +217,10 @@ d'aujourd'hui : posé sur un autre jour, il dirait l'heure d'un jour
 qu'on ne regarde pas.
 
 « Planning » est la quatrième lecture : l'équipe, une ligne par
-personne, sept colonnes de jours. Le total d'un jour passe au rouge
-quand l'officine est ouverte et que personne n'est inscrit.
+personne, sept colonnes de jours. Le total d'un jour passe au rouge dès
+qu'un **creux reste pendant l'ouverture** — pas seulement quand
+personne n'est inscrit : une journée tenue le matin et vide l'après-midi
+est un creux, et c'est celui-là qu'on ne voit pas en lisant la grille.
 
 ## Les rythmes
 
