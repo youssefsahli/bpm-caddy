@@ -484,6 +484,17 @@ add clicking and typing; it is not the price of entry.
   day they were written, and it came out in the ordinary ink. Its font
   was a hardcoded 14 px too, so lists never grew with `[ui] text_scale`.
   Both now come from egui's own layout and the style.
+- **A guard that reads the source covers the module nobody has written
+  yet.** Five clinical tables each had their own « refuse markup » test;
+  two tables had none, and that is exactly where the two faults were —
+  a stupéfiants catalogue note drawn in a tooltip, and a surveillance
+  phrase that **prints**. A sixth module would have had the same hole.
+  `no_static_table_writes_markup_in_what_it_draws` (in `strings.rs`)
+  reads the *text* of fifteen modules through `include_str!`, the way
+  `no_font_size_is_written_in_pixels` reads `app.rs`, and refuses
+  markup in a drawn field value. Comments and doc-comments write plenty
+  of it, and should: they go nowhere. When a rule holds across modules,
+  write the guard across modules.
 - **The application ships no font.** It draws with egui's own faces, and
   the proportional one has no arrows (U+2192 and friends) — the
   monospace one does. So an arrow may appear in a key chip and never in

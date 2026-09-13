@@ -338,9 +338,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   infobulle (« l'inscription au registre n'est \*\*pas\*\* exigée »), et le
   plan de surveillance, dont les phrases **s'impriment** (« se corrigent
   \*\*avant\*\* l'injection »). Les deux phrases sont réécrites sans
-  balisage, et les deux tables ont désormais leur test. Une relecture de
-  toutes les chaînes dessinées des dix-huit modules n'en a pas trouvé
-  d'autre.
+  balisage. Et plutôt qu'un sixième test par module — celui qu'on
+  oubliera au module suivant, comme on l'a oublié à ces deux-là —, la
+  question se pose une fois pour toutes :
+  `no_static_table_writes_markup_in_what_it_draws` lit le **texte** de
+  quinze modules, comme `no_font_size_is_written_in_pixels` lit celui de
+  `app.rs`, et couvre donc le module qu'on n'a pas encore écrit. Les
+  commentaires et la documentation en écrivent, du balisage, et c'est
+  très bien : ils ne vont nulle part.
 - **Deux tables portent le même titre à un mot près, et disaient de la
   metformine le contraire l'une de l'autre.** « Fonction rénale — stades
   et conséquences pratiques » écrit « dose réduite » au stade G3a ;

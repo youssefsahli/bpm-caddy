@@ -555,4 +555,86 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Aucune table statique n'écrit de balisage dans ce qu'elle
+    /// dessine**, et la question se pose une fois pour toutes plutôt
+    /// qu'une fois par module.
+    ///
+    /// `RichText` n'interprète rien et le modèle Typst pas davantage :
+    /// une astérisque tapée pour appuyer un mot arrive à l'écran, et
+    /// parfois sur le papier de l'officine, comme une astérisque.
+    /// Cinq modules avaient chacun leur propre test ; deux ne l'avaient
+    /// pas, et c'est là qu'étaient les deux fautes — la note de famille
+    /// du catalogue des stupéfiants et une phrase du plan de
+    /// surveillance, qui s'imprime. Le sixième module écrit un jour
+    /// aurait eu le même trou.
+    ///
+    /// Ce test-ci lit le **texte** de tous les modules, comme
+    /// `no_font_size_is_written_in_pixels` lit celui de `app.rs`, et il
+    /// couvre donc celui qu'on n'a pas encore écrit. Les commentaires
+    /// et la documentation en écrivent, du balisage, et c'est très
+    /// bien : ils ne vont nulle part. Seules les valeurs de champ sont
+    /// lues.
+    #[test]
+    fn no_static_table_writes_markup_in_what_it_draws() {
+        // Chaque fichier est lu par `include_str!` : le test suit donc
+        // la source, et non ce qui se trouve sur le disque à l'exécution.
+        const SOURCES: &[(&str, &str)] = &[
+            ("biology.rs", include_str!("biology.rs")),
+            ("crush.rs", include_str!("crush.rs")),
+            ("entretien.rs", include_str!("entretien.rs")),
+            ("gravidity.rs", include_str!("gravidity.rs")),
+            ("hepatic.rs", include_str!("hepatic.rs")),
+            ("insulin.rs", include_str!("insulin.rs")),
+            ("ordonnance.rs", include_str!("ordonnance.rs")),
+            ("ordonnancier.rs", include_str!("ordonnancier.rs")),
+            ("renal.rs", include_str!("renal.rs")),
+            ("revue.rs", include_str!("revue.rs")),
+            ("selfcheck.rs", include_str!("selfcheck.rs")),
+            ("surveillance.rs", include_str!("surveillance.rs")),
+            ("tables.rs", include_str!("tables.rs")),
+            ("vaccines.rs", include_str!("vaccines.rs")),
+            ("vigilance.rs", include_str!("vigilance.rs")),
+        ];
+        // Les champs qui finissent sous les yeux de quelqu'un.
+        const FIELDS: &[&str] = &[
+            "note",
+            "why",
+            "text",
+            "detail",
+            "conduct",
+            "label",
+            "instead",
+            "title",
+            "source",
+            "term",
+            "pregnancy_note",
+            "breastfeeding_note",
+        ];
+        // Assemblée, sinon le test se trouve lui-même.
+        let markup = concat!("*", "*");
+        let mut offenders: Vec<String> = Vec::new();
+        for (file, src) in SOURCES {
+            for (i, line) in src.lines().enumerate() {
+                let t = line.trim_start();
+                if t.starts_with("//") {
+                    continue;
+                }
+                let Some(rest) = FIELDS.iter().find_map(|f| {
+                    t.strip_prefix(f)
+                        .and_then(|r| r.strip_prefix(':'))
+                        .map(str::trim_start)
+                }) else {
+                    continue;
+                };
+                if rest.starts_with('"') && rest.contains(markup) {
+                    offenders.push(format!("{file}:{}", i + 1));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "du balisage dans ce qui se dessine, et rien ne l'interprète :\n{}",
+            offenders.join("\n")
+        );
+    }
 }
