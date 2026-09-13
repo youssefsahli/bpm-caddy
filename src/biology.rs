@@ -294,10 +294,17 @@ pub const DOC: &str = "biologie";
 ///
 /// Le repère est le **code de l'analyte** et le rang de la règle parmi
 /// celles de cet analyte. Le rang seul se décalerait dès qu'on insère
-/// n'importe où ; par analyte, il ne bouge que si l'on insère une règle
-/// pour ce même analyte — et trois règles partagent déjà leur seuil,
-/// leur sens et leur premier traitement, donc l'identité ne suffit pas
-/// à les séparer.
+/// n'importe où ; par analyte, il ne bouge que si l'on insère — ou
+/// retire — une règle pour ce même analyte, et trois règles partagent
+/// déjà leur seuil, leur sens et leur premier traitement, donc
+/// l'identité ne suffit pas à les séparer.
+///
+/// Ce décalage-là arrive : six règles en double ont été fondues le
+/// 13/09/2026, sur six analytes. Ce qui rend l'opération sûre n'est pas
+/// l'adresse, c'est que **la réécriture se souvient de la phrase
+/// livrée** qu'elle remplaçait — décalée sur une autre règle, elle ne
+/// s'y applique pas, elle est montrée à relire. L'adresse dit où
+/// chercher ; la phrase dit si c'est bien la bonne.
 fn addressed() -> Vec<(String, &'static Rule)> {
     let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     RULES
