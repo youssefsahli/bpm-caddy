@@ -489,6 +489,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **La date du fil du dossier sortait « 13/09/20… ».** La colonne se
+  peint en chasse fixe et sa largeur était mesurée en proportionnelle :
+  trop étroite, elle élidait la date au milieu de l'année — ce qui a
+  perdu deux chiffres *et* se lit cassé, quand « 13/09 » n'aurait perdu
+  que l'année et se lirait entier. C'est la faute exacte pour laquelle
+  `widest_in` existe, et que le registre des stupéfiants a déjà connue :
+  la mesure se fait dans la fonte qui dessine, et la fonte est la
+  famille autant que la taille. Des six colonnes en chasse fixe, c'était
+  la seule qui se trompait ; l'avertissement est maintenant écrit sur la
+  fonction dont on se sert à tort.
 - **Trente-neuf « obligatoire » pour rien sur une feuille de comptage.**
   Sur la feuille de saisie groupée, le motif d'un inventaire n'est dû
   que pour la boîte qui ne tombe pas juste ; l'invite du champ, elle,

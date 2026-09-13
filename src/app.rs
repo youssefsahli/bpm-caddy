@@ -13619,7 +13619,18 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
-                        let day_w = Self::widest(ui, 11.0, ["00/00/0000"].into_iter());
+                        // **Mesurée dans la fonte qui dessine.** La
+                        // colonne se peint en chasse fixe, et une mesure
+                        // proportionnelle la rend trop étroite : la date
+                        // sortait « 13/09/20… », qui a perdu deux
+                        // chiffres de l'année et se lit cassée. C'est la
+                        // faute exacte que `widest_in` existe pour
+                        // éviter, et que le registre a déjà connue.
+                        let day_w = Self::widest_in(
+                            ui,
+                            egui::FontId::monospace(motif::pt(ui, 11.0)),
+                            ["00/00/0000"].into_iter(),
+                        );
                         let mut last_day = String::new();
                         for (i, e) in fil.iter().enumerate() {
                             // Les deux intertitres : ce qui vient, et ce
@@ -18473,6 +18484,13 @@ impl App {
         // celle qui dessinera : une colonne mesurée à onze pixels et
         // peinte à dix-huit élide tout ce qu'elle contient, et la mesure
         // se fait toujours dans la fonte qui dessine.
+        //
+        // **Et la fonte, c'est la famille autant que la taille.** Cette
+        // fonction mesure en proportionnelle : une colonne peinte en
+        // `.monospace()` prend [`widest_in`], sans quoi elle est mesurée
+        // trop étroite et élide. C'est arrivé deux fois — au registre,
+        // puis au fil du dossier, où la date sortait « 13/09/20… »,
+        // ayant perdu deux chiffres de l'année et lisible cassée.
         Self::widest_in(ui, egui::FontId::proportional(motif::pt(ui, size)), texts)
     }
 
