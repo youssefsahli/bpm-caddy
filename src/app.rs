@@ -45744,7 +45744,7 @@ impl App {
     /// Sorti de la rangée pour pouvoir être dessiné **ailleurs** : sur
     /// une barre trop étroite il descend d'une rangée au lieu de se
     /// peindre par-dessus le groupe de gauche.
-    fn toolbar_right(&mut self, ui: &mut egui::Ui) {
+    fn toolbar_right(&mut self, ui: &mut egui::Ui, short: bool) {
         // Optional pictograms: painted, not typed (the
         // bundled font has almost no symbols). They cost
         // width, so they are off by default.
@@ -45765,7 +45765,16 @@ impl App {
             }
         }
         if matches!(self.state, State::Unlocked(_))
-            && motif::icon_button(ui, pict(motif::Pict::Cog), tr("toolbar_options")).clicked()
+            && motif::icon_button(
+                ui,
+                pict(motif::Pict::Cog),
+                if short {
+                    tr("toolbar_options_short")
+                } else {
+                    tr("toolbar_options")
+                },
+            )
+            .clicked()
         {
             self.options = if self.options.is_some() {
                 None
@@ -45793,7 +45802,16 @@ impl App {
             };
         }
         if matches!(self.state, State::Unlocked(_))
-            && motif::icon_button(ui, pict(motif::Pict::Template), tr("toolbar_template")).clicked()
+            && motif::icon_button(
+                ui,
+                pict(motif::Pict::Template),
+                if short {
+                    tr("toolbar_template_short")
+                } else {
+                    tr("toolbar_template")
+                },
+            )
+            .clicked()
         {
             self.tpl_editor = if self.tpl_editor.is_some() {
                 None
@@ -46271,7 +46289,7 @@ impl eframe::App for App {
             // Ce que les deux groupes demandent, mesuré avant de les
             // dessiner : le nom, les quatre bascules de gauche, les
             // trois boutons de droite, et les gouttières entre eux.
-            let (show_name, two_rows) = {
+            let (show_name, two_rows, short_bar) = {
                 // **Les gouttières se comptent entre les boutons, pas
                 // derrière chacun.** Comptées derrière, deux de trop
                 // font trente-deux pixels, et la barre passait à deux
@@ -46321,6 +46339,37 @@ impl eframe::App for App {
                 // moins. On le retire d'abord ; on ne passe à deux
                 // rangées que si cela ne suffit pas.
                 let room = ui.available_width();
+                // **On raccourcit avant de passer à la ligne.** Une
+                // seconde rangée coûte quarante-six pixels au volet
+                // central à `text_scale = 1,6`, et cette bande-là est
+                // déjà si courte que le panneau de biologie y perdait
+                // son formulaire. « Docs (F1) » devient « Docs »,
+                // « Aller à… » devient « Aller… » : le raccourci est
+                // dans l'infobulle et dans la fenêtre F12, la place de
+                // travail ne se remplace pas.
+                let short_left = group(
+                    ui,
+                    &[
+                        tr("toolbar_nav"),
+                        tr("toolbar_docs_short"),
+                        tr("toolbar_keys"),
+                        tr("toolbar_goto_short"),
+                    ],
+                );
+                let short_right = group(
+                    ui,
+                    &[
+                        tr("toolbar_lock"),
+                        tr("toolbar_options_short"),
+                        tr("toolbar_template_short"),
+                    ],
+                );
+                let short = left + gap + right > room;
+                let (left, right) = if short {
+                    (short_left, short_right)
+                } else {
+                    (left, right)
+                };
                 let two_rows = left + gap + right > room;
                 // Sur deux rangées, la première a de la place : le nom
                 // revient. Il ne disparaît que lorsqu'il est ce qui
@@ -46330,7 +46379,7 @@ impl eframe::App for App {
                 } else {
                     name + left + gap + right <= room
                 };
-                (show_name, two_rows)
+                (show_name, two_rows, short)
             };
             ui.horizontal(|ui| {
                 if show_name {
@@ -46357,7 +46406,12 @@ impl eframe::App for App {
                     {
                         self.show_nav = !self.show_nav;
                     }
-                    if motif::toggle(ui, tr("toolbar_docs"), self.show_docs)
+                    let docs_label = if short_bar {
+                        tr("toolbar_docs_short")
+                    } else {
+                        tr("toolbar_docs")
+                    };
+                    if motif::toggle(ui, docs_label, self.show_docs)
                         .on_hover_text(tr("toolbar_docs_tooltip"))
                         .clicked()
                     {
@@ -46372,7 +46426,12 @@ impl eframe::App for App {
                     // The jump box has a button too: a shortcut nobody
                     // is told about is a shortcut nobody uses.
                     let goto_on = matches!(&self.state, State::Unlocked(s) if s.goto_open);
-                    if motif::toggle(ui, tr("toolbar_goto"), goto_on)
+                    let goto_label = if short_bar {
+                        tr("toolbar_goto_short")
+                    } else {
+                        tr("toolbar_goto")
+                    };
+                    if motif::toggle(ui, goto_label, goto_on)
                         .on_hover_text(tr("toolbar_goto_tooltip"))
                         .clicked()
                     {
@@ -46385,7 +46444,7 @@ impl eframe::App for App {
                 }
                 if !two_rows {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.toolbar_right(ui);
+                        self.toolbar_right(ui, short_bar);
                     });
                 }
             });
@@ -46401,7 +46460,7 @@ impl eframe::App for App {
             if two_rows {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.toolbar_right(ui);
+                        self.toolbar_right(ui, short_bar);
                     });
                 });
             }

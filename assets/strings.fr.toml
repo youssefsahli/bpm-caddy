@@ -16,6 +16,12 @@ lock_stored_refused = "Mot de passe mémorisé refusé : {}"
 
 # --- Barre d'outils ---
 toolbar_docs = "Docs (F1)"
+# Les formes courtes : une barre trop étroite raccourcit plutôt que de
+# passer à deux rangées, qui coûteraient une bande de travail.
+toolbar_docs_short = "Docs"
+toolbar_goto_short = "Aller…"
+toolbar_template_short = "Modèles"
+toolbar_options_short = "Options"
 toolbar_lock = "Verrouiller"
 toolbar_template = "Modèles…"
 toolbar_options = "Options…"

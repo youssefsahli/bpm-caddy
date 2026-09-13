@@ -231,10 +231,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pourquoi quatre passes de captures l'avaient laissé passer. Les deux
   groupes sont mesurés — gouttières **entre** les boutons et non
   derrière chacun, faute de quoi deux de trop font trente-deux pixels —
-  et la barre prend une seconde rangée plutôt que d'en écraser un. Le
-  nom de l'application, lui, ne disparaît que s'il est ce qui empêche
-  une seule rangée : sur deux rangées, la première a la place de le
-  reprendre.
+  et la barre **raccourcit** ses libellés avant de passer à la ligne :
+  « Docs (F1) » devient « Docs », « Aller à… » devient « Aller… », le
+  raccourci restant dans l'infobulle et dans la fenêtre F12. Essayée
+  d'abord, la seconde rangée coûtait quarante-six pixels au volet
+  central à `text_scale = 1,6` — et cette bande-là est si courte que le
+  panneau de biologie y perdait son formulaire : la place de travail ne
+  se remplace pas. Le nom de l'application cède en dernier, et la
+  seconde rangée reste là pour les barres vraiment trop étroites.
 - **Et l'échelle du texte s'arrête où la glissière s'arrête.**
   `motif::apply_scale` acceptait de 0,7 à 1,8 quand l'application offre
   de 0,8 à 1,6 : au-delà, sur un écran de 1024, la barre du haut et la
