@@ -551,7 +551,15 @@ pub const TABLE: &[Rule] = &[
         source: "Circadin : « Avalez le comprimé entier, sans le couper ni le croquer ».",
     },
     Rule {
-        needs: &["effexor", "venlafaxine"],
+        // Comme la nifédipine : la marque et la molécule seules ne
+        // disent pas la forme, et la fiche livrée couvre les deux —
+        // « jusqu'à 375 mg par jour avec les formes à libération
+        // immédiate en plusieurs prises ». La ligne se contredisait
+        // d'ailleurs elle-même, puisqu'elle propose en remplacement
+        // « la forme à libération immédiate », à laquelle elle
+        // s'appliquait aussi. Toutes les autres lignes LP de cette
+        // table nomment déjà la forme ; celle-ci était la dernière.
+        needs: &["effexor lp", "venlafaxine lp"],
         label: "Venlafaxine à libération prolongée",
         verdict: Verdict::No,
         why: "La gélule à libération prolongée ne s'ouvre pas et ne se croque pas : la dose de la journée partirait d'un coup.",
@@ -858,6 +866,14 @@ mod tests {
             read(&[treat("Adalate 10 mg")])[0].verdict,
             Verdict::Unknown,
             "sans « LP » sur la boîte, ce module ne sait pas — et le dit"
+        );
+        // Et la venlafaxine, dont la ligne se contredisait : elle
+        // proposait « la forme à libération immédiate » en remplacement
+        // d'elle-même.
+        assert_eq!(read(&[treat("Effexor LP 75 mg")])[0].verdict, Verdict::No);
+        assert_eq!(
+            read(&[treat("Venlafaxine 37,5 mg")])[0].verdict,
+            Verdict::Unknown
         );
     }
 

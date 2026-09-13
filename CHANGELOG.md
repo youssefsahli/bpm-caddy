@@ -481,6 +481,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   est inefficace à la dose habituelle. C'est pourtant le tableau qu'on
   ouvre quand la question porte justement sur la contraception. Il porte
   la ligne, avec les deux méthodes que l'induction ne touche pas.
+- **Et la venlafaxine, qui se contredisait elle-même.** La ligne
+  « Venlafaxine à libération prolongée » réclamait « effexor » et
+  « venlafaxine » — ni l'un ni l'autre ne dit la forme —, et proposait
+  en remplacement « la forme à libération immédiate », c'est-à-dire
+  celle à laquelle elle s'appliquait aussi. Sa fiche couvre les deux :
+  « jusqu'à 375 mg par jour avec les formes à libération immédiate en
+  plusieurs prises ». Toutes les autres lignes LP de la table nommaient
+  déjà la forme ; c'était la dernière.
 - **Une gélule d'Adalate à libération immédiate lisait « ne s'écrase
   pas ».** La ligne « Nifédipine LP » réclamait « adalate » tout court,
   et la fiche livrée couvre explicitement les deux formes — « formes à
