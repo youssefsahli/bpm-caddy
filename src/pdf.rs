@@ -5627,6 +5627,37 @@ mod tests {
         assert!(doc("inexistant").is_none());
     }
 
+    /// **Ce qui va sur le papier porte la ponctuation française.**
+    ///
+    /// Trois documents commençaient une ligne par un guillemet fermant
+    /// ou par un deux-points : sur deux colonnes justifiées, Typst coupe
+    /// où il peut, et `lang: "fr"` ne règle que la coupure des mots.
+    /// Le lien se fait dans `typst_str`, par où passe tout ce qui entre
+    /// dans une page — un seul appel oublié est une ligne qui
+    /// recommence.
+    #[test]
+    fn every_string_laid_into_a_page_binds_its_french_punctuation() {
+        for (loose, bound) in [
+            (
+                "le panneau « Interprétation » la relit",
+                "«\u{202f}Interprétation\u{202f}»",
+            ),
+            ("Prochaine : 18/11/2026", "Prochaine\u{202f}:"),
+            ("une question ; une réponse", "question\u{202f};"),
+            ("que dit l'ordonnance ?", "ordonnance\u{202f}?"),
+        ] {
+            let laid = typst_str(loose);
+            assert!(
+                laid.contains(bound),
+                "« {loose} » entre dans la page sans lier sa ponctuation : {laid}"
+            );
+        }
+        // Et rien d'autre ne bouge : une heure, un rapport, un chemin
+        // n'ont pas d'espace devant leur deux-points.
+        assert!(typst_str("14:30").contains("14:30"));
+        assert!(typst_str("1:2").contains("1:2"));
+    }
+
     /// Chaque modèle par défaut compile avec ses valeurs d'exemple, et
     /// il ne reste pas un seul `{{` dedans — un marqueur non substitué
     /// s'imprime en toutes lettres au milieu de la page.
