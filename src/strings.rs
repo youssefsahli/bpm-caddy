@@ -573,6 +573,8 @@ livre = "Une phrase qui n'est plus livrée"
     fn the_documentation_counts_what_the_code_holds() {
         const CLAUDE: &str = include_str!("../CLAUDE.md");
         const CONTENU: &str = include_str!("../docs/CONTENU.md");
+        // Le manuel aussi : celui-là, l'officine le lit à l'écran.
+        const AIDE: &str = include_str!("../assets/aide.md");
         let cards = crate::db::STARTER_DRUG_COUNT;
         let labels = {
             let mut v: Vec<&str> = crate::db::STARTER_DRUGS
@@ -637,6 +639,20 @@ livre = "Une phrase qui n'est plus livrée"
                 "docs/CONTENU.md",
                 CONTENU,
                 format!("{labels} libellés pour {cards}"),
+            ),
+            (
+                "assets/aide.md",
+                AIDE,
+                format!(
+                    "ne connaît que {} cytochromes",
+                    match crate::cyp::Enzyme::ALL.len() {
+                        7 => "sept",
+                        n => panic!(
+                            "la table porte {n} cytochromes : l'écrire en toutes \
+                             lettres dans le manuel et ici"
+                        ),
+                    }
+                ),
             ),
         ];
         let mut wrong: Vec<String> = Vec::new();

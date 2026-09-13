@@ -500,7 +500,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   en 13 ; 772 phrases imprimables réécrivables contre 950 — le foie en a
   apporté 134 à lui seul.
 
-  `the_documentation_counts_what_the_code_holds` les tient désormais.
+  `the_documentation_counts_what_the_code_holds` les tient désormais, y
+  compris ceux du **manuel** — « il ne connaît que sept cytochromes »
+  est une phrase que l'officine lit à l'écran, et une huitième enzyme la
+  rendrait fausse sans que rien ne le dise.
   Il cherche chaque phrase **telle quelle**, de sorte qu'une
   reformulation le fait échouer aussi : un filet qui ne trouve plus sa
   phrase et se tait est un filet mort, exactement comme un test à qui
