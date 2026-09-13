@@ -960,6 +960,11 @@ tpl_target_etiquettes = "Étiquettes de posologie"
 tpl_target_surveillance = "Plan de surveillance"
 tpl_target_ordonnance = "Ordonnance"
 tpl_path = "Enregistré vers : {}"
+# Ce que le sélecteur ne montre pas. Trente-deux documents, trois
+# rangées visibles : la barre de défilement d'egui est flottante, donc
+# invisible tant qu'on ne la survole pas, et la liste se lisait « il y
+# en a sept ». Une troncature muette se lit comme un inventaire complet.
+tpl_docs_more = "{} documents en tout — la liste défile"
 tpl_saved = "Modèle enregistré : {}"
 tpl_save_error = "Enregistrement impossible : {}"
 tpl_markers = "Marqueurs disponibles : {}"

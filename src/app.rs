@@ -46130,6 +46130,28 @@ impl eframe::App for App {
                                 }
                             });
                         });
+                    // **Et ce que le sélecteur ne montre pas se dit.**
+                    // Trente-deux documents, trois rangées visibles : la
+                    // barre de défilement d'egui est flottante, donc
+                    // invisible tant qu'on ne la survole pas, et la
+                    // liste se lisait « il y en a sept ». C'est la règle
+                    // de la carte de voisinage, qui nomme déjà ce que
+                    // ses anneaux n'ont pas pu prendre : une troncature
+                    // muette se lit comme un inventaire complet.
+                    if Self::wrapped_band_height(
+                        ui,
+                        ui.available_width(),
+                        crate::pdf::DOCS
+                            .iter()
+                            .map(|d| Self::button_width(ui, tr(d.label))),
+                    ) > picker_cap
+                    {
+                        ui.label(
+                            egui::RichText::new(trf("tpl_docs_more", crate::pdf::DOCS.len()))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                    }
                     ui.label(
                         egui::RichText::new(trf("tpl_path", path.display()))
                             .size(motif::pt(ui, 11.0))

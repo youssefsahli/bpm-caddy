@@ -326,6 +326,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Le sélecteur de modèles montrait sept documents sur trente-deux,
+  sans le dire.** Sa zone est plafonnée à trois rangées entières et
+  défile — mais la barre de défilement d'egui est flottante, donc
+  invisible tant qu'on ne la survole pas, et la liste se lisait « il y en
+  a sept ». Une troncature muette se lit comme un inventaire complet.
+  Elle dit maintenant combien il y en a, et seulement quand elle en
+  cache — la règle est déjà celle de la carte de voisinage, qui nomme ce
+  que ses anneaux n'ont pas pu prendre.
 - **Six chiffres du README que le code démentait.** La page que lisent
   ceux qui n'ont pas encore installé comptait le catalogue des
   stupéfiants deux fois dans la même phrase — 158 puis 106 —, les lignes
