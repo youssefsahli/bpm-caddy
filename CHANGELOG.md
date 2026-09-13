@@ -371,6 +371,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sur la feuille. C'est pourtant cet exemple que l'officine lit dans
   l'éditeur de modèles pour comprendre le sien. Les six traitements y
   sont désormais.
+- **Et la liste des antidotes porte son compte.** « ANTIDOTES (106) » :
+  la liste est alphabétique et défile, sa dernière ligne visible est
+  coupée par le bas, et un intitulé ne coûte pas une ligne — c'est la
+  réponse de la maison chaque fois qu'une liste continue sous le pli.
 - **Ni celle d'un carnet de suivi.** La feuille est faite de quatre
   choses — comment mesurer, ce qu'on vise, ce sur quoi ne pas attendre,
   la grille — et c'est la première des quatre qui s'arrêtait en plein

@@ -39509,7 +39509,17 @@ impl App {
             .iter()
             .filter(|d| !d.antidote.trim().is_empty())
             .collect();
-        motif::panel(ui, rects[1], Some(tr("drug_home_antidotes")), |ui| {
+        // **Le compte est dans la légende.** La liste est alphabétique
+        // et défile ; sa dernière ligne visible est coupée par le bas et
+        // la barre d'egui, flottante, ne dit rien. Un intitulé ne coûte
+        // pas une ligne — c'est la réponse de la maison chaque fois
+        // qu'une liste continue sous le pli.
+        let antidotes_title = if antidotes.is_empty() {
+            tr("drug_home_antidotes").to_owned()
+        } else {
+            trf("drug_home_antidotes_n", antidotes.len())
+        };
+        motif::panel(ui, rects[1], Some(&antidotes_title), |ui| {
             let rect = ui.max_rect();
             if antidotes.is_empty() {
                 ui.painter().text(
