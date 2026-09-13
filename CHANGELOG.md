@@ -142,6 +142,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
   dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
   nomme le produit fautif.
+- **Quatre boîtes s'annonçaient compatibles avec la grossesse quand leur
+  propre fiche les contre-indiquait.** Une ligne de classe parle de la
+  classe, et une association parle de son composant le plus
+  inquiétant — les deux textes étaient dans le logiciel, et rien ne les
+  mettait face à face :
+  - **Actifed Rhume** et **Dérinox**, rangés sous le paracétamol et sous
+    les corticoïdes, alors que c'est le vasoconstricteur qui décide —
+    et ce sont des boîtes qu'on achète sans ordonnance. Une ligne
+    « Vasoconstricteurs du rhume » passe maintenant devant les AINS, le
+    paracétamol et les corticoïdes ; elle prend aussi le **Rhinadvil**,
+    qui porte les deux, parce que le vasoconstricteur est
+    contre-indiqué à tout terme là où l'AINS l'est à partir de 24 SA.
+  - **Lamaline**, annoncée compatible parce qu'elle contient du
+    paracétamol, quand sa fiche écrit « à éviter pendant la grossesse »
+    et « contre-indiqué pendant l'allaitement en raison du passage des
+    opiacés dans le lait ».
+  - **Xigduo**, annoncé compatible parce qu'il contient de la
+    metformine, quand c'est la dapagliflozine qui décide et que le
+    relais par l'insuline s'impose dès le projet de grossesse.
+  - **Pariet**, dont le RCP contre-indique le rabéprazole pendant la
+    grossesse là où la classe est utilisable.
+
+  Un test les tient désormais tous, et il est volontairement étroit : il
+  ne se déclenche que si la ligne est compatible **des deux côtés** et
+  que la fiche écrit une contre-indication — un test qui crie au loup
+  finit désactivé.
 - **L'onglet « Biologie » ne faisait plus rien de ce pour quoi il
   existe** à 1024x700 avec `text_scale = 1,6` : aucun résultat affiché,
   et le bouton « Ajouter » coupé par le cadre. Ni lire un résultat, ni

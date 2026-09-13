@@ -324,6 +324,40 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT ; ANSM",
     },
     // --- Ce que le terme change ---------------------------------------
+    // **Avant les AINS, le paracétamol et les corticoïdes.** Un remède du
+    // rhume porte un paracétamol ou une prednisolone, et c'est le
+    // vasoconstricteur qui décide : l'Actifed Rhume est
+    // « contre-indiqué pendant la grossesse » pour sa pseudoéphédrine,
+    // le Dérinox pour sa naphazoline. Rangés sous leur composant
+    // rassurant, ils s'annonçaient compatibles — et ce sont des boîtes
+    // qu'on achète sans ordonnance. Le Rhinadvil porte les deux — un
+    // AINS *et* une pseudoéphédrine — et c'est pourquoi cette ligne
+    // passe aussi devant celle des AINS : le vasoconstricteur est
+    // contre-indiqué à tout terme, là où l'AINS l'est à partir de 24 SA.
+    Advice {
+        needs: &[
+            "pseudoephedrine",
+            "naphazoline",
+            "oxymetazoline",
+            "ephedrine",
+            "tuaminoheptane",
+            "phenylephrine",
+            "actifed",
+            "dolirhume",
+            "humexrhume",
+            "rhinadvil",
+            "derinox",
+            "deturgylone",
+            "aturgyl",
+        ],
+        label: "Vasoconstricteurs du rhume",
+        pregnancy: Level::Interdit,
+        term: "",
+        pregnancy_note: "C'est le vasoconstricteur qui décide, pas le paracétamol ni le corticoïde qui l'accompagne. Le lavage de nez au sérum physiologique est l'alternative de première intention, et le paracétamol seul pour la douleur ou la fièvre.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Déconseillé. Le lavage de nez reste le premier geste.",
+        source: "CRAT ; Actifed Rhume : « Contre-indiqué pendant la grossesse et déconseillé pendant l'allaitement. » ; Dérinox : « Contre-indiqué ou fortement déconseillé pendant la grossesse et l'allaitement, du fait de l'effet vasoconstricteur systémique des sympathomimétiques. »",
+    },
     Advice {
         needs: &[
             // **Jamais « ains » tout court.** Les mots cherchés sont des
@@ -466,6 +500,25 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT",
     },
     // --- Ce qu'on peut rassurer ---------------------------------------
+    //
+    // **Avant le paracétamol, parce qu'une association n'est pas son
+    // composant le plus rassurant.** La Lamaline porte du paracétamol,
+    // mais aussi de la poudre d'opium : sa propre fiche écrit « à éviter
+    // pendant la grossesse » et « contre-indiqué pendant l'allaitement en
+    // raison du passage des opiacés dans le lait ». Annoncée
+    // « compatible » parce qu'elle contient du paracétamol, elle disait
+    // le contraire de sa fiche — et les deux textes étaient dans le
+    // logiciel sans que rien ne les mette face à face.
+    Advice {
+        needs: &["lamaline", "poudredopium", "opium"],
+        label: "Paracétamol + opium",
+        pregnancy: Level::Eviter,
+        term: "En fin de grossesse, une utilisation prolongée expose le nouveau-né à un syndrome de sevrage et à une dépression respiratoire.",
+        pregnancy_note: "C'est l'opium qui décide, pas le paracétamol. Si un antalgique est nécessaire, le paracétamol seul, à la dose efficace la plus faible et le moins longtemps possible.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué : les opiacés passent dans le lait. Le paracétamol seul est le premier choix.",
+        source: "CRAT ; Lamaline : « À éviter pendant la grossesse […] Contre-indiqué pendant l'allaitement en raison du passage des opiacés dans le lait. »",
+    },
     Advice {
         needs: &["paracetamol", "doliprane", "dafalgan", "efferalgan"],
         label: "Paracétamol",
@@ -506,6 +559,21 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Utilisable ; surveiller les hypoglycémies maternelles, plus fréquentes pendant les tétées.",
         source: "CRAT",
     },
+    // **Avant la metformine, et pour la même raison.** Le Xigduo est une
+    // association metformine + dapagliflozine, et c'est la gliflozine qui
+    // décide : sa fiche écrit « contre-indiqué ou déconseillé pendant la
+    // grossesse selon les composants […] le relais par l'insuline
+    // s'impose dès le projet de grossesse ».
+    Advice {
+        needs: &["dapagliflozine", "empagliflozine", "gliflozine", "xigduo", "forxiga", "jardiance"],
+        label: "Gliflozines (et leurs associations)",
+        pregnancy: Level::Interdit,
+        term: "La dapagliflozine ne doit pas être utilisée aux deuxième et troisième trimestres.",
+        pregnancy_note: "Le relais par l'insuline s'impose dès le projet de grossesse ou dès sa découverte. Dans une association, c'est la gliflozine qui décide et non la metformine.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Allaitement déconseillé.",
+        source: "CRAT ; Xigduo : « Contre-indiqué ou déconseillé pendant la grossesse selon les composants […] le relais par l'insuline s'impose dès le projet de grossesse ou dès sa découverte. Allaitement déconseillé. »",
+    },
     Advice {
         needs: &["metformine", "glucophage", "stagid"],
         label: "Metformine",
@@ -536,6 +604,23 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Le métoclopramide est utilisable en cure courte.",
         source: "CRAT",
     },
+    // **Avant la ligne de classe, parce que le membre dit autre chose
+    // qu'elle.** La classe est compatible et l'oméprazole est le mieux
+    // documenté ; le RCP du rabéprazole, lui, le contre-indique pendant
+    // la grossesse et l'allaitement. Sa propre fiche l'écrit, et la
+    // ligne de classe la contredisait en silence — c'est le genre de
+    // désaccord qu'on ne voit qu'en confrontant la table aux fiches
+    // livrées.
+    Advice {
+        needs: &["rabeprazole", "pariet"],
+        label: "Rabéprazole",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Son RCP le contre-indique pendant la grossesse, là où la classe est utilisable : l'oméprazole, mieux documenté, lui est préféré. Le reflux de la grossesse est fréquent et se traite.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Contre-indiqué par son RCP ; l'oméprazole lui est préféré.",
+        source: "CRAT — les IPP sont utilisables et l'oméprazole est le mieux documenté ; RCP du rabéprazole, qui le contre-indique. Pariet : « Le résumé des caractéristiques du produit contre-indique le rabéprazole pendant la grossesse et l'allaitement. Lorsqu'un inhibiteur de la pompe à protons est réellement nécessaire chez la femme enceinte, l'oméprazole, mieux documenté, lui est préféré. »",
+    },
     Advice {
         needs: &[
             // Et jamais « ipp » : « grippe » le contient, si bien que le
@@ -544,7 +629,6 @@ pub const TABLE: &[Advice] = &[
             "esomeprazole",
             "pantoprazole",
             "lansoprazole",
-            "rabeprazole",
             "inexium",
         ],
         label: "Inhibiteurs de la pompe à protons",
@@ -639,6 +723,64 @@ mod tests {
     /// astérisque écrite pour insister sort à l'écran comme une
     /// astérisque, et « **à partir de 24 SA** » se lit avec ses quatre
     /// étoiles. Trouvé sur une capture, corrigé ici pour de bon.
+    /// **Aucune ligne « compatible » ne contredit la fiche qu'elle
+    /// revendique.**
+    ///
+    /// Une ligne de classe parle de la classe, et un membre peut dire
+    /// autre chose : le RCP du rabéprazole le contre-indique pendant la
+    /// grossesse là où les IPP sont utilisables, et sa propre fiche
+    /// l'écrit. La table l'annonçait « compatible » — les deux textes
+    /// étaient dans le logiciel, personne ne les mettait face à face, et
+    /// aucun test ne pouvait le voir puisque la table était cohérente
+    /// avec elle-même.
+    ///
+    /// Le contrôle est volontairement étroit : il ne se déclenche que
+    /// lorsque la ligne est compatible **des deux côtés** et que la
+    /// fiche écrit une contre-indication. Une ligne compatible d'un côté
+    /// et prudente de l'autre n'a rien à se reprocher, et un test qui
+    /// crie au loup finit désactivé.
+    ///
+    /// Vérifié en retirant la ligne du rabéprazole : la ligne de classe
+    /// reprend le Pariet, et le test le nomme.
+    #[test]
+    fn no_compatible_row_contradicts_the_card_it_claims() {
+        let cards: Vec<(String, String)> = crate::db::STARTER_DETAILS
+            .iter()
+            .map(|d| (crate::fuzzy::sort_key(d.name), d.pregnancy.to_lowercase()))
+            .collect();
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+            let Some(a) = TABLE.iter().find(|a| {
+                a.needs
+                    .iter()
+                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+            }) else {
+                continue;
+            };
+            if a.pregnancy != Level::Compatible || a.breastfeeding != Level::Compatible {
+                continue;
+            }
+            let Some((_, said)) = cards
+                .iter()
+                .find(|(n, _)| *n == crate::fuzzy::sort_key(name))
+            else {
+                continue;
+            };
+            if ["contre-indi", "tératog", "teratog", "abortif", "proscrit"]
+                .iter()
+                .any(|w| said.contains(w))
+            {
+                wrong.push(format!("{} → {name} : « {} »", a.label, said.trim()));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "lignes annoncées compatibles que leur propre fiche contredit :\n{}",
+            wrong.join("\n")
+        );
+    }
+
     #[test]
     fn the_table_writes_no_markup() {
         for a in TABLE {
