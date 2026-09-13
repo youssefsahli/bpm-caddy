@@ -7,7 +7,7 @@
 # found: nine digit keys for ten acts, panicking on the first frame the
 # picker was drawn.
 #
-# Every view is opened in **three shapes**, because the panic this is
+# Every view is opened in **four shapes**, because the panic this is
 # looking for does not happen in the first one. `f32::clamp` takes the
 # whole application down when a computed floor crosses a computed cap,
 # and floors only cross caps on a short pane at large text — which is
@@ -16,7 +16,7 @@
 # this is that check, run every time.
 #
 # Requires xvfb-run. Run from the repo root:
-#   ./scripts/smoke.sh            # les trois formes
+#   ./scripts/smoke.sh            # les quatre formes
 #   ./scripts/smoke.sh loupe      # une seule
 #
 # **Une forme à la fois, au besoin.** Les trois passes font deux cent
@@ -105,11 +105,23 @@ shapes=(
     # réglage que l'interface ne propose pas, et coûterait le même temps
     # que les deux autres réunies.
     "loupe|1024x700|text_scale = 1.6"
+    # La quatrième forme que CLAUDE.md exige, et qu'aucune passe ne
+    # produisait : **les deux volets tirés larges**. Ils se plafonnent
+    # l'un contre l'autre pour que le centre garde `App::WORK_MIN`,
+    # c'est-à-dire que la vue y travaille à sa largeur minimale — là où
+    # une bande mesurée en rangées de boutons demande plus que ce qu'on
+    # peut lui donner, et où un `f32::clamp` tombe.
+    #
+    # Ce n'est pas une précaution théorique : le premier balayage de
+    # cette forme a montré que chaque ligne du registre valait deux
+    # rangées, dont une vide. Un défaut de mise en page se voit sur une
+    # capture ; une panique, non — c'est ce que cette passe-ci attrape.
+    "volets|1024x700|text_scale = 1.25|nav_width = 360\ndocs_width = 360"
 )
 
 failed=0
 for shape in "${shapes[@]}"; do
-    IFS="|" read -r shape_name size ui <<< "$shape"
+    IFS="|" read -r shape_name size ui layout <<< "$shape"
     if [ -n "$only" ] && [ "$only" != "$shape_name" ]; then
         continue
     fi
@@ -117,6 +129,9 @@ for shape in "${shapes[@]}"; do
     cfg="$tmp/config-$shape_name"
     mkdir -p "$cfg/bpm-caddy"
     printf '[ui]\n%s\n' "$ui" > "$cfg/bpm-caddy/config.toml"
+    # La forme du plan de travail vit dans `layout.toml`, pas dans la
+    # configuration : c'est là que se règlent les largeurs de volets.
+    printf '%b\n' "${layout:-}" > "$cfg/bpm-caddy/layout.toml"
     export XDG_CONFIG_HOME="$cfg"
     printf '\n  --- %s (%s%s) ---\n' "$shape_name" "$size" \
         "${ui:+, $ui}"
@@ -154,4 +169,4 @@ if [ "$failed" -ne 0 ]; then
     echo "Smoke test failed."
     exit 1
 fi
-echo "Every view opened without panicking, in all three shapes."
+echo "Every view opened without panicking, in all four shapes."

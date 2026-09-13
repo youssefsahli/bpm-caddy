@@ -713,10 +713,14 @@ add clicking and typing; it is not the price of entry.
   found by looking, and looking is only cheap when the pictures are one
   command away. Every layout
   must survive 1024x700 with both docks open — `scripts/smoke.sh` opens
-  every view **three times**: at 1400x900, at 1024x700 with
-  `text_scale = 1.25`, and at 1024x700 with `text_scale = 1.6`, which is
-  where a computed floor crosses a computed cap. A screenshot at those
-  sizes is the eye check the panics test cannot do.
+  every view **four times**: at 1400x900, at 1024x700 with
+  `text_scale = 1.25`, at 1024x700 with `text_scale = 1.6`, which is
+  where a computed floor crosses a computed cap, and at 1024x700 with
+  **both docks dragged wide** — the fourth of the required shapes, and
+  the one no script produced until the sweep of 2026-09-13 showed a real
+  defect living there (every register line was costing two rows, one of
+  them empty). A screenshot at those sizes is the eye check the panics
+  test cannot do.
 - **And the shape that finds things is `eyeball.sh <dir> 1024x700 1.6`,
   looked at.** One pass over those fifty pictures found, in a single
   sitting: « Plan de prise » running off the band (a `horizontal` that
@@ -1263,7 +1267,7 @@ edge, and crops back — do the same in any new capture script.
 
 Headless runs: `./scripts/screenshots.sh` regenerates the README
 screenshots from a fresh demo seed, and `./scripts/smoke.sh` opens every
-view in three shapes and fails on any panic — that is how the Ctrl+N crash
+view in four shapes and fails on any panic — that is how the Ctrl+N crash
 (nine digit keys for ten acts) was found. The second shape is the point:
 `f32::clamp` panics when a computed floor crosses a computed cap, and
 floors only cross caps on a short pane at large text. A deliberately
