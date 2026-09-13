@@ -785,11 +785,16 @@ add clicking and typing; it is not the price of entry.
   traitements » and the whole revue d'ordonnance read as not existing.
   A solid bar **takes twelve pixels off the content**, so each of those
   measures with `App::scrolled_width`; converting a region without that
-  is how a row that used to fit starts wrapping. And it is for
-  *vertical* areas only: tried on the trame dialog, which scrolls both
-  ways, it cost a column **and** a row — the totals column came out
-  « 8 h 3 » and the horizontal ribbon ate the very line it was meant to
-  announce. Tried, looked at, taken back out.
+  is how a row that used to fit starts wrapping. A `ScrollArea::both` pays twice **only when
+  it really overflows sideways**: the Options dialog takes the solid bar
+  happily (no horizontal ribbon appears, because nothing overflows), the
+  trame dialog does not — there it cost a column *and* a row, the totals
+  came out « 8 h 3 » and the ribbon ate the very line it was meant to
+  announce. Tried, looked at, taken back out. And do not reach for
+  `ScrollBarVisibility::AlwaysVisible` on a floating bar instead: egui
+  paints that handle from `widgets.*.bg_fill`, which `motif::apply` sets
+  to `bg()`, so it is invisible even when shown — the same trap as every
+  other recess egui draws for itself.
 - **When a pane is too short for everything in it, the garnish goes
   first.** The register's stock curve is dropped below a floor expressed
   in lines so the register's own *lines* survive; a chart kept at the

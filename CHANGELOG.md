@@ -371,6 +371,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sur la feuille. C'est pourtant cet exemple que l'officine lit dans
   l'éditeur de modèles pour comprendre le sien. Les six traitements y
   sont désormais.
+- **Ni celle des Options.** À 1024x700 en `text_scale = 1,6`, la page
+  « Interface » s'arrête sous la taille du texte : les huit peaux — ce
+  que cette page existe pour montrer, et la seule chose qu'une capture
+  puisse vérifier — étaient sous le pli, sans rien pour le dire.
 - **Ni celle d'une liste de contrôle.** Le volet montrait le titre, son
   enregistrement et *une* case sur cinq, chacune avec ses boutons, le
   champ qui en ajoute une étant tout en bas. Une liste de contrôle

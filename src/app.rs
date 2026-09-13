@@ -47017,6 +47017,22 @@ impl eframe::App for App {
                     // rangées dès qu'on grossit le texte — et la rangée
                     // des boutons sortait alors par le bas.
                     let bottom = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0 + 8.0;
+                    // **Et la barre se voit au repos.** À 1024x700 en
+                    // `text_scale = 1,6`, « Interface » s'arrête sous la
+                    // taille du texte : les huit peaux — ce que cette
+                    // page existe pour montrer, et la seule chose qu'une
+                    // capture puisse vérifier — sont sous le pli, sans
+                    // rien pour le dire. La région défile dans les deux
+                    // sens, et la barre pleine y coûte donc une colonne
+                    // et une rangée — ce que la fenêtre peut payer, elle
+                    // qui fait mille pixels de large et dont les boutons
+                    // sont taillés hors du défilement. La barre
+                    // flottante « toujours affichée » a été essayée
+                    // d'abord : sous cette peau elle est peinte dans la
+                    // couleur du panneau, donc invisible même affichée —
+                    // c'est le piège que ce dépôt nomme déjà pour tout
+                    // ce qu'egui dessine à partir de `widgets.*.bg_fill`.
+                    ui.spacing_mut().scroll.floating = false;
                     egui::ScrollArea::both()
                         .id_salt("opts_body")
                         .max_height((ui.available_height() - bottom).max(160.0))
