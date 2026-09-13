@@ -586,6 +586,21 @@ add clicking and typing; it is not the price of entry.
   deliberately: a guard that can no longer find its phrase and says
   nothing is a dead guard. Adding a count to these files means adding a
   line there.
+
+  **And it reads the paper too.** The same day, the README — which only
+  had three of its figures held — carried **six more that had drifted**,
+  two of them contradicting the README itself (158 presentations at the
+  start of a sentence and 106 at its end; 1 736 posology lines in one
+  bullet and 1 319 in another). And the `mode d'emploi` that `pdf.rs`
+  *prints* announced « six onglets » on a file that has seven, and
+  recopied the shortcut list by hand, missing `F2`, `F9`,
+  `Ctrl+Shift+Tab` and the quick-act digits. A list recopied by hand
+  ages where nobody re-reads it, and that one is printed and left beside
+  the post. `assets/aide.md` solved it by **generating** its lists off
+  the registers; printed prose cannot without becoming unreadable, so it
+  is **confronted** — which is why `PatientTab::ALL` and
+  `app::key_rows` are hoisted out of the draw functions, and why the
+  test's sources include `src/pdf.rs`.
 - **A test without `#[test]` is a dead guard, and it dies silently** —
   the suite goes green with one test fewer and nobody reads the number.
   It happened here: inserting one lint directly above another swallowed
