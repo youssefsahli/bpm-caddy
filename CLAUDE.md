@@ -899,6 +899,18 @@ add clicking and typing; it is not the price of entry.
   patient band, the drug card, the vaccine map and the scans form all
   depend on it. This is the cheap shape for the next one: a helper that
   measures, a headless draw, and an assertion in both directions.
+- **Both directions, and the counter's own width among the samples.**
+  `a_title_band_is_as_tall_as_what_it_holds` had the right shape and
+  still missed a 70 px hole, twice over: it asserted only `band >=
+  drawn` — the direction that *cuts* — and an over-reserve cuts nothing,
+  it makes blank, which reads as an intention rather than a fault; and
+  its three widths (420, 700, 1100) jumped clean over the window where
+  the fault lived. That window was about forty pixels wide, because a
+  row only tips when the last control lands within the missing margin of
+  the edge. It contained 640, which is what a 1024 screen leaves between
+  two open docks — the width almost every counter runs at. Sample the
+  shapes people actually use, not round numbers, and assert the slack as
+  well as the shortfall.
 - **Never subtract the layout's own gutter from a constant.** A width
   written as "the mark plus the air after it" has to give the air back,
   because `ui.horizontal` already inserts `item_spacing.x` — and that
