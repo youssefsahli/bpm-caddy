@@ -1883,6 +1883,7 @@ classes_outside = "Hors référentiel"
 classes_outside_title = "Hors référentiel"
 classes_outside_tooltip = "Les fiches dont la classe a été écrite par l'officine"
 classes_outside_note = "Ces fiches portent une classe que le référentiel ne connaît pas. Elles se lisent telles quelles ; rien n'est réécrit."
+classes_outside_none = "Aucune fiche hors du référentiel : toutes les classes de cette base s'y rangent."
 drugs_classes = "Classes…"
 drugs_classes_tooltip = "Parcourir le référentiel par famille et par classe thérapeutique"
 

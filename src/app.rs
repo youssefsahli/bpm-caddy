@@ -29771,10 +29771,25 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         if rows.is_empty() {
-                            ui.label(
-                                egui::RichText::new(tr("classes_empty"))
+                            // **Vide ne veut pas dire la même chose des
+                            // deux côtés.** Sous une classe, « aucune
+                            // fiche dans cette classe » ; sous « hors
+                            // référentiel », aucune classe n'est
+                            // choisie — la phrase parlait d'une
+                            // sélection qui n'existe pas, alors que ce
+                            // qu'elle a à dire est une bonne nouvelle :
+                            // tout se range.
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(if outside {
+                                        tr("classes_outside_none")
+                                    } else {
+                                        tr("classes_empty")
+                                    })
                                     .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
+                                )
+                                .wrap(),
                             );
                         }
                         for i in rows {

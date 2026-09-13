@@ -183,6 +183,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **« Hors référentiel » disait « Aucune fiche dans cette classe ».**
+  Sous une classe, la phrase est juste ; sous « hors référentiel »,
+  aucune classe n'est choisie — elle parlait d'une sélection qui
+  n'existe pas, là où ce qu'elle a à dire est une bonne nouvelle :
+  « Aucune fiche hors du référentiel : toutes les classes de cette base
+  s'y rangent. »
 - **« Libellés » s'ouvrait sur la moitié d'un écran.** La vue existe
   pour relire et réécrire ce que l'application dit d'elle-même, et le
   panneau de droite — celui où la réécriture se fait — affichait
