@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-12
 
 ### Added
-- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, quarante-
-  six molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
+- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, soixante-
+  cinq molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
   livrées nomment le foie dans leurs contre-indications, et il fallait
   les ouvrir une par une pour savoir ce que devenait une ordonnance chez
   un cirrhotique. Le panneau « Croisement » le dit maintenant d'un coup.
@@ -42,6 +42,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   réalité leur section « adaptation posologique ». C'est pour cela que la
   moitié hépatique est restée invisible si longtemps — elle vivait sous
   le nom de l'autre organe.
+
+  **Et il vérifie *toutes* les fiches qu'une ligne attrape**, pas
+  seulement la première. C'est le piège de `crush.rs` et de `cyp.rs` —
+  « actiskenan » contient « skenan » — et il mord ici aussi :
+  « desloratadine » contient « loratadine », si bien qu'une ligne écrite
+  pour la Clarityne prêterait sa conduite à l'Aerius, dont la fiche ne
+  dit pas un mot du foie. La version qui ne regardait que la première
+  fiche aurait laissé passer exactement cela, en silence et pour le seul
+  produit qu'elle ne visait pas. Renforcé, il a trouvé deux dépassements
+  dans la table déjà écrite — et ce sont deux fiches à corriger, pas deux
+  lignes à retirer : **Actifed Rhume** contient du paracétamol sans que
+  sa fiche le dise du côté du foie, et c'est précisément ainsi qu'on
+  dépasse trois grammes sans le voir ; **Coveram** contient de
+  l'amlodipine, qui se titre lentement chez l'insuffisant hépatique là où
+  le périndopril, lui, ne demande rien. Les deux fiches le disent
+  maintenant.
+
+  Une limite est écrite avec le reste : **cette table est indexée sur la
+  molécule, non sur la présentation**. L'azithromycine n'y est pas, parce
+  qu'« azithromycine » attrape aussi l'Azyter, qui est un collyre — une
+  contre-indication hépatique systémique prêtée à deux gouttes dans un
+  œil est le genre d'alerte qui apprend à ignorer les alertes.
 - **La table des cytochromes passe de cinquante et une molécules à cent
   douze**, cent quatre-vingt-seize actions, six prodrogues. Chaque rôle
   et chaque force viennent de la fiche, citée.

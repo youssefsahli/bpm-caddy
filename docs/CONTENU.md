@@ -628,9 +628,19 @@ Deux règles valent partout :
   jour »). Le test d'adossement le lit avec les autres.
 - **Ce qui ne s'y met pas** : une molécule contre-indiquée en
   « affection hépatique évolutive » — les statines, le léflunomide,
-  l'agomélatine. C'est une maladie en cours, quel que soit le
+  l'agomélatine, et le valproate, dont la fiche parle d'« hépatite aiguë
+  ou chronique ». C'est une maladie en cours, quel que soit le
   Child-Pugh ; la ranger sous un palier dirait la chose à un stade et la
   tairait aux autres. Un test exige leur absence.
+- **Le piège du mot cherché** : le test d'adossement vérifie **toutes**
+  les fiches qu'une ligne attrape, pas seulement la première.
+  « desloratadine » contient « loratadine », « actiskenan » contient
+  « skenan » : une ligne écrite pour la Clarityne prêterait sa conduite à
+  l'Aerius, dont la fiche ne dit pas un mot du foie. C'est aussi pourquoi
+  l'azithromycine n'y est pas — **la table est indexée sur la molécule,
+  non sur la présentation**, et « azithromycine » attrape l'Azyter, qui
+  est un collyre. Le jour où la molécule ne suffira plus, c'est le type
+  qui devra changer, pas la ligne qui devra ruser.
 - **Ce qui reste ouvert** : il n'y a pas de volet hépatique côté
   dossier, parce qu'il faudrait un Child-Pugh rangé par patient — et un
   stade tapé une fois, contrairement à un chiffre de laboratoire daté,

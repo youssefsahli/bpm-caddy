@@ -24,6 +24,18 @@
 //! stade et la tairait aux autres, ce qui est faux des deux côtés. Ils
 //! ne sont pas dans cette table, et leur fiche le dit là où c'est vrai.
 //!
+//! **Et cette table est indexée sur la molécule, non sur la
+//! présentation.** C'est une limite, et elle a un nom : l'azithromycine
+//! n'y est pas, parce qu'« azithromycine » attrape aussi l'Azyter, qui
+//! est un collyre. Une contre-indication hépatique systémique prêtée à
+//! deux gouttes dans un œil est le genre d'alerte qui apprend à ignorer
+//! les alertes — c'est la leçon du kétoconazole local dans `cyp.rs`, et
+//! celle de `crush.rs`, qui s'indexe justement sur la présentation parce
+//! qu'une table par DCI s'y tromperait une fois sur deux. Ici la
+//! molécule suffit pour les soixante-cinq lignes de la table ; le jour
+//! où elle ne suffira plus, c'est le type qui devra changer, pas la
+//! ligne qui devra ruser.
+//!
 //! ## Ce que le module tient
 //!
 //! Six règles, une par test :
@@ -701,6 +713,157 @@ pub const TABLE: &[Adaptation] = &[
         source: "Vesicare : contre-indication en « insuffisance hépatique sévère ».",
     },
     Adaptation {
+        needs: &["edoxaban"],
+        label: "Édoxaban",
+        steps: &[step(Severe, Contraindicated, "Coagulopathie hépatique : contre-indiqué.")],
+        source: "Lixiana : contre-indication en « coagulopathie hépatique ».",
+    },
+    Adaptation {
+        needs: &["acetylsalicylique"],
+        label: "Acide acétylsalicylique",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Kardégic : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["pantoprazole"],
+        label: "Pantoprazole",
+        steps: &[step(
+            Severe,
+            Reduce,
+            "Ne pas dépasser 20 mg par jour, et surveiller les transaminases.",
+        )],
+        source: "Inipomp : « En insuffisance hépatique sévère, ne pas dépasser 20 mg par jour et surveiller les transaminases ».",
+    },
+    Adaptation {
+        needs: &["ivabradine"],
+        label: "Ivabradine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Procoralan : « Prudence en cas d'insuffisance hépatique modérée, contre-indication en cas d'atteinte sévère ».",
+    },
+    Adaptation {
+        needs: &["sildenafil"],
+        label: "Sildénafil",
+        steps: &[
+            step(Mild, Reduce, "Dose initiale réduite de moitié."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Viagra : « Chez le sujet âgé, l'insuffisant hépatique, l'insuffisant rénal sévère ou en cas d'association à un inhibiteur du CYP3A4, la dose initiale doit être de 25 mg » ; contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["candesartan"],
+        label: "Candésartan",
+        steps: &[step(
+            Severe,
+            Contraindicated,
+            "Insuffisance hépatique sévère et cholestase : contre-indiqué.",
+        )],
+        source: "Atacand : contre-indication en « insuffisance hépatique sévère et cholestase ».",
+    },
+    // **Le produit qui traite l'ascite du cirrhotique, et que le stade
+    // sévère retire.** Les deux phrases sont dans la même fiche, et
+    // c'est exactement le genre de rapprochement qu'on ne fait pas en
+    // lisant une monographie de haut en bas.
+    Adaptation {
+        needs: &["spironolactone"],
+        label: "Spironolactone",
+        steps: &[step(
+            Severe,
+            Contraindicated,
+            "Insuffisance hépatique sévère : contre-indiqué — alors même qu'elle traite l'ascite du cirrhotique à un stade plus précoce.",
+        )],
+        source: "Aldactone : contre-indication en « insuffisance hépatique sévère » ; posologie : « Ascite cirrhotique : 100 mg par jour en moyenne » ; surveillance : « Natrémie, en particulier chez le cirrhotique ».",
+    },
+    Adaptation {
+        needs: &["diclofenac"],
+        label: "Diclofénac",
+        steps: &[step(
+            Severe,
+            Contraindicated,
+            "Insuffisance hépatique sévère : contre-indiqué. C'est l'AINS le plus hépatotoxique de sa classe.",
+        )],
+        source: "Voltarène : contre-indication en « insuffisance rénale ou hépatique sévère » ; surveillance : « le diclofénac étant le plus hépatotoxique de la classe ».",
+    },
+    Adaptation {
+        needs: &["metopimazine"],
+        label: "Métopimazine",
+        steps: &[step(
+            Mild,
+            Reduce,
+            "Réduire la dose et espacer les prises : la sédation et la confusion sont majorées.",
+        )],
+        source: "Vogalène : « Prudence en cas d'insuffisance rénale ou hépatique : réduire la dose et espacer les prises, le risque de sédation et de confusion étant majoré ».",
+    },
+    Adaptation {
+        needs: &["amitriptyline"],
+        label: "Amitriptyline",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Laroxyl : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["sumatriptan"],
+        label: "Sumatriptan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Imigrane : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["nicardipine"],
+        label: "Nicardipine",
+        steps: &[step(
+            Mild,
+            Reduce,
+            "Instaurer à posologie réduite et augmenter progressivement.",
+        )],
+        source: "Loxen : « L'instauration se fait à posologie réduite chez le sujet âgé, l'insuffisant hépatique et l'insuffisant rénal, avec augmentation progressive ».",
+    },
+    Adaptation {
+        needs: &["ropinirole"],
+        label: "Ropinirole",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Requip : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["olanzapine"],
+        label: "Olanzapine",
+        steps: &[step(Moderate, Reduce, "Débuter à la moitié de la dose usuelle.")],
+        source: "Zyprexa : « il est toutefois recommandé de débuter à 5 mg par jour en cas d'insuffisance rénale, comme en cas d'insuffisance hépatique modérée ».",
+    },
+    Adaptation {
+        needs: &["prazepam"],
+        label: "Prazépam",
+        steps: &[
+            step(Mild, Reduce, "Posologie réduite de moitié environ."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère avec risque d'encéphalopathie : contre-indiqué."),
+        ],
+        source: "Lysanxia : « Chez le sujet âgé, l'insuffisant rénal ou l'insuffisant hépatique, la posologie doit être réduite de moitié environ » ; contre-indication en « insuffisance hépatique sévère du fait du risque d'encéphalopathie ».",
+    },
+    Adaptation {
+        needs: &["clobazam"],
+        label: "Clobazam",
+        steps: &[
+            step(Mild, Reduce, "Réduire de moitié la posologie initiale."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Urbanyl : « Chez le sujet âgé et l'insuffisant hépatique, réduire de moitié la posologie initiale » ; contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["tamsulosine"],
+        label: "Tamsulosine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Josir : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["dutasteride"],
+        label: "Dutastéride",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Avodart : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["eplerenone"],
+        label: "Éplérénone",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Inspra : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
         needs: &["dronedarone"],
         label: "Dronédarone",
         steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
@@ -858,21 +1021,38 @@ mod tests {
             })
             .collect();
         let mut orphans: Vec<&str> = Vec::new();
-        let mut unbacked: Vec<&str> = Vec::new();
+        let mut unbacked: Vec<String> = Vec::new();
         for a in TABLE {
-            let Some((card, _)) = drugs.iter().find(|(_, hay)| {
-                a.needs
-                    .iter()
-                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
-            }) else {
+            // **Toutes les fiches que la ligne attrape, et pas seulement
+            // la première.** C'est le piège de `crush.rs` et de
+            // `cyp.rs` — « actiskenan » contient « skenan »,
+            // « esomeprazole » contient « omeprazole » — et il mord ici
+            // aussi : « desloratadine » contient « loratadine », si bien
+            // qu'une ligne écrite pour la Clarityne prêterait sa conduite
+            // à l'Aerius, dont la fiche ne dit pas un mot du foie. La
+            // version qui ne regardait que la première fiche trouvée
+            // aurait laissé passer exactement cela, en silence et pour
+            // le seul produit qu'elle ne visait pas.
+            let caught: Vec<&String> = drugs
+                .iter()
+                .filter(|(_, hay)| {
+                    a.needs
+                        .iter()
+                        .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+                })
+                .map(|(name, _)| name)
+                .collect();
+            if caught.is_empty() {
                 orphans.push(a.label);
                 continue;
-            };
-            let Some((_, body)) = cards.iter().find(|(n, _)| n == card) else {
-                continue;
-            };
-            if !["hepat", "cirrhos"].iter().any(|w| body.contains(w)) {
-                unbacked.push(a.label);
+            }
+            for card in caught {
+                let Some((_, body)) = cards.iter().find(|(n, _)| n == card) else {
+                    continue;
+                };
+                if !["hepat", "cirrhos"].iter().any(|w| body.contains(w)) {
+                    unbacked.push(format!("{} → {card}", a.label));
+                }
             }
         }
         assert!(
@@ -881,7 +1061,8 @@ mod tests {
         );
         assert!(
             unbacked.is_empty(),
-            "molécules dont la fiche ne parle pas du foie : {unbacked:?}"
+            "lignes qui prêtent leur conduite à une fiche qui ne parle pas \
+             du foie : {unbacked:?}"
         );
     }
 
