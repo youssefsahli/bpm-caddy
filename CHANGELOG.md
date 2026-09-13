@@ -184,7 +184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
   dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
   nomme le produit fautif.
-- **Quatre boîtes s'annonçaient compatibles avec la grossesse quand leur
+- **Cinq boîtes s'annonçaient compatibles avec la grossesse quand leur
   propre fiche les contre-indiquait.** Une ligne de classe parle de la
   classe, et une association parle de son composant le plus
   inquiétant — les deux textes étaient dans le logiciel, et rien ne les
