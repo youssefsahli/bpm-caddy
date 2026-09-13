@@ -4177,18 +4177,70 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &BilanData {
                 patient: &patient,
                 today: "24/08/2026",
-                treatments: vec![(
-                    "Eliquis 5 mg".to_owned(),
-                    "apixaban — anticoagulant oral direct".to_owned(),
-                    "1 comprimé matin et soir".to_owned(),
+                // Les quatre traitements que les lectures ci-dessous
+                // citent : une feuille qui nomme un AINS, un IEC et une
+                // statine absents de sa propre liste se contredit.
+                treatments: vec![
+                    (
+                        "Eliquis 5 mg".to_owned(),
+                        "apixaban — anticoagulant oral direct".to_owned(),
+                        "1 comprimé matin et soir".to_owned(),
+                    ),
+                    (
+                        "Advil 400 mg".to_owned(),
+                        "ibuprofène — AINS".to_owned(),
+                        "si douleur, sans dépasser trois jours".to_owned(),
+                    ),
+                    (
+                        "Coversyl 5 mg".to_owned(),
+                        "périndopril — IEC".to_owned(),
+                        "1 comprimé le matin".to_owned(),
+                    ),
+                    (
+                        "Tahor 20 mg".to_owned(),
+                        "atorvastatine — statine".to_owned(),
+                        "1 comprimé le soir".to_owned(),
+                    ),
+                ],
+                // **Le bilan est fait de ses huit sections**, et le
+                // modèle ne montre que celles qui portent quelque
+                // chose : un aperçu vide de sept d'entre elles ne dit
+                // rien de la mise en page qu'on vient y régler. Une
+                // ligne par section suffit.
+                interactions: vec![(
+                    "Eliquis ↔ Zeclar".to_owned(),
+                    "Les macrolides augmentent l'exposition à l'apixaban.".to_owned(),
                 )],
-                interactions: Vec::new(),
-                review: Vec::new(),
-                biology: Vec::new(),
-                findings: Vec::new(),
-                watch: Vec::new(),
+                review: vec![(
+                    "ALERTE".to_owned(),
+                    "Anticoagulant + AINS".to_owned(),
+                    "Le risque hémorragique digestif est multiplié.".to_owned(),
+                    "Eliquis · Advil".to_owned(),
+                )],
+                biology: vec![(
+                    "20/08/2026".to_owned(),
+                    "Kaliémie".to_owned(),
+                    "5,4 mmol/L".to_owned(),
+                    "élevé".to_owned(),
+                )],
+                findings: vec![(
+                    "ALERTE".to_owned(),
+                    "Kaliémie élevée sous IEC.".to_owned(),
+                )],
+                watch: vec![(
+                    "À REFAIRE".to_owned(),
+                    "LDL-cholestérol".to_owned(),
+                    "une fois par an".to_owned(),
+                    "12/02/2024 (30 mois)".to_owned(),
+                    "Tahor".to_owned(),
+                )],
                 vaccines: vec!["Grippe saisonnière".to_owned()],
-                acts: Vec::new(),
+                acts: vec![(
+                    "20/08/2026".to_owned(),
+                    "BPM".to_owned(),
+                    "Observance".to_owned(),
+                    "Réalisé".to_owned(),
+                )],
                 signature: &pharmacy.pharmacist,
             },
             &pharmacy,

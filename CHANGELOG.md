@@ -385,6 +385,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   des modèles comme les cellules que l'officine écrit —, parce qu'un
   seul appel oublié est une ligne qui recommence : les tables de
   conversion et la liste des dispositifs avaient la même orpheline.
+- **L'aperçu du bilan partagé montrait une section sur huit.** Le modèle
+  n'imprime que les sections qui portent quelque chose — ce qui est
+  juste —, mais l'exemple n'en portait qu'une : rien de la mise en page
+  qu'on vient y régler ne s'y voyait. Une ligne par section, et les
+  quatre traitements que ces lignes citent.
 - **La conciliation d'exemple annonçait trois divergences et n'en
   montrait qu'une**, et le registre d'exemple n'avait aucune ligne
   annulée alors que son pied de page explique longuement qu'une ligne ne
