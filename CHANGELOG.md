@@ -330,6 +330,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Deux dermocorticoïdes étaient rangés d'un cran à côté, dans les
+  deux sens.** Le Betneval, « dermocorticoïde fort » sur sa propre
+  fiche, figurait en classe III — modérée, dont la case des zones porte
+  « visage de l'adulte, plis, corps de l'enfant » ; et la désonide, que
+  sa fiche dit modérée et de classe III, figurait en classe II — forte.
+  La classe d'un dermocorticoïde n'est pas une étiquette : c'est elle
+  qui décide où le tube peut aller et combien de temps, et un cran de
+  trop sur une paupière, c'est l'atrophie cutanée et la dermite
+  péri-orale. Au passage, le Locapred était donné pour de la désonide à
+  0,05 % ; il est à 0,1 %.
+
+  `no_dermocorticoid_row_contradicts_the_card_it_names` refuse le
+  prochain — c'est la discipline de
+  `no_row_contradicts_the_card_it_claims` du rein et de la grossesse,
+  portée à un tableau qui n'en avait pas. Étroit : il ne lit que les
+  fiches dont la classe porte le mot « dermocorticoïde », et il ne dit
+  rien de celles qu'aucune ligne ne nomme.
 - **Le terme de contre-indication des AINS était écrit trois fois
   différemment**, dont une fois faux. Une dizaine de fiches d'AINS, la
   table « Grossesse et allaitement », la table « Antalgiques » et

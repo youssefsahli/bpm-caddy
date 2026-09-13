@@ -690,8 +690,8 @@ pub const TABLES: &[ConvTable] = &[
         columns: &["Classe", "Molécules et spécialités", "Zones d'application", "Durée usuelle", "Quantité pour un adulte", "Effets indésirables"],
         rows: &[
             &["I — très forte", "Clobétasol (Dermoval, Clarelux)", "Paumes, plantes, cuir chevelu, lichénifications épaisses ; jamais le visage ni les plis", "Deux à quatre semaines, puis relais par une classe plus faible", "Moins de 50 g par semaine", "Atrophie cutanée, vergetures définitives, et freinage surrénalien sur grande surface"],
-            &["II — forte", "Bétaméthasone dipropionate (Diprosone), désonide 0,1 %, difluprednate (Épitopic 0,05 %)", "Corps, membres, poussée de dermatite atopique de l'adulte", "Une à trois semaines par poussée", "30 à 60 g par mois selon l'étendue", "Rebond à l'arrêt brutal : espacer plutôt qu'arrêter net"],
-            &["III — modérée", "Bétaméthasone valérate 0,05 % (Betneval), désonide 0,05 % (Locapred, Tridésonit)", "Visage de l'adulte, plis, corps de l'enfant", "Une à deux semaines", "15 à 30 g par mois", "Sur le visage, dermite péri-orale et couperose après quelques semaines"],
+            &["II — forte", "Bétaméthasone dipropionate (Diprosone), bétaméthasone valérate (Betneval), difluprednate (Épitopic 0,05 %)", "Corps, membres, poussée de dermatite atopique de l'adulte", "Une à trois semaines par poussée", "30 à 60 g par mois selon l'étendue", "Rebond à l'arrêt brutal : espacer plutôt qu'arrêter net"],
+            &["III — modérée", "Désonide (Locapred 0,1 %, Tridésonit 0,05 %)", "Visage de l'adulte, plis, corps de l'enfant", "Une à deux semaines", "15 à 30 g par mois", "Sur le visage, dermite péri-orale et couperose après quelques semaines"],
             &["IV — faible", "Hydrocortisone", "Paupières, nourrisson, entretien court", "Quelques jours", "Quelques grammes", "Peu efficace : une classe trop faible fait échouer le traitement et prolonger l'exposition"],
             &["Règle de l'unité phalangette", "Un ruban de crème du pli de la première phalange à l'extrémité de l'index", "Couvre deux paumes de main d'adulte, soit environ 0,5 g", "—", "Visage et cou : 2,5 unités. Un bras : 3. Une jambe : 6. Tronc face avant : 7", "La sous-utilisation est plus fréquente que l'excès : un tube qui dure six mois est un tube qu'on n'applique pas"],
             &["Rythme d'application", "Une fois par jour suffit pour presque tous", "Le soir, sur peau propre", "Jusqu'à disparition des lésions, puis arrêt", "—", "Deux applications par jour n'améliorent rien et doublent l'exposition"],
@@ -1326,6 +1326,69 @@ mod tests {
         for f in FAMILIES {
             assert!(TABLES.iter().any(|t| t.family == f), "famille vide : {f}");
         }
+    }
+
+    /// **La classe d'un dermocorticoïde ne contredit pas sa fiche.**
+    ///
+    /// La classe décide où le produit peut aller — visage, plis,
+    /// nourrisson — et combien de temps. Une erreur d'un cran y met un
+    /// corticoïde fort sur une paupière, et c'est l'atrophie cutanée et
+    /// la dermite péri-orale. Deux cases se trompaient d'un cran, dans
+    /// les deux sens : le Betneval, « dermocorticoïde fort » sur sa
+    /// fiche, était rangé en classe III avec le visage de l'adulte dans
+    /// ses zones ; et la désonide, modérée, figurait en classe II.
+    ///
+    /// Le test est volontairement étroit. Il ne lit que les fiches dont
+    /// la classe porte le mot « dermocorticoïde » — une quinzaine —, et
+    /// il ne dit rien de celles qu'aucune ligne ne nomme : le tableau
+    /// n'a jamais prétendu les citer toutes.
+    #[test]
+    fn no_dermocorticoid_row_contradicts_the_card_it_names() {
+        let table = TABLES
+            .iter()
+            .find(|t| t.short == "Dermocorticoïdes")
+            .expect("la table des dermocorticoïdes");
+        // Du plus fort au plus faible : « très fort » contient « fort ».
+        let rank = |s: &str| {
+            let s = crate::fuzzy::sort_key(s);
+            if s.contains("tres fort") {
+                Some(1)
+            } else if s.contains("fort") {
+                Some(2)
+            } else if s.contains("moder") {
+                Some(3)
+            } else if s.contains("faible") {
+                Some(4)
+            } else {
+                None
+            }
+        };
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, _dci, class, _tags) in crate::db::STARTER_DRUGS {
+            if !crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(class), "dermocorticoide") {
+                continue;
+            }
+            let Some(card) = rank(class) else { continue };
+            for row in table.rows {
+                let (Some(cell), Some(molecules)) = (row.first(), row.get(1)) else {
+                    continue;
+                };
+                if !crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(molecules), name) {
+                    continue;
+                }
+                let Some(row_rank) = rank(cell) else { continue };
+                if row_rank != card {
+                    wrong.push(format!(
+                        "« {name} » est « {class} » sur sa fiche et se lit « {cell} » dans le tableau"
+                    ));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "une classe de dermocorticoïde contredit la fiche :\n{}",
+            wrong.join("\n")
+        );
     }
 
     #[test]
