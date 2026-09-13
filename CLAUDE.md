@@ -767,6 +767,20 @@ add clicking and typing; it is not the price of entry.
   solid instead would cost `bar_width` off every scrolling area, and
   twelve pixels is exactly what `App::scrolled_width` exists to account
   for: it would reflow rows all over the application.
+- **`spacing.scroll.floating` is egui's default and nothing here changes
+  it *globally* — but where the tail carries a gesture, that one region
+  turns it off.** Saying the total works for a band of doors (« 13 axes
+  en tout »); it says nothing useful about a form or a table of records,
+  where what is hidden is the control you came to use. Four regions set
+  `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
+  capture: the planning's entry row (« Poser », the gesture that
+  writes), the file's acts table (the cross that removes an act), and
+  the file's identity band — which at 1024x700 × 1.6 stopped after the
+  treatments, so « + médicament », « 2 interaction(s) entre ces
+  traitements » and the whole revue d'ordonnance read as not existing.
+  A solid bar **takes twelve pixels off the content**, so each of those
+  measures with `App::scrolled_width`; converting a region without that
+  is how a row that used to fit starts wrapping.
 - **When a pane is too short for everything in it, the garnish goes
   first.** The register's stock curve is dropped below a floor expressed
   in lines so the register's own *lines* survive; a chart kept at the
