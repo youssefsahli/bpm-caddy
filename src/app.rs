@@ -15020,7 +15020,15 @@ impl App {
         let due = std::mem::take(&mut session.surveillance);
         let mut pick: Option<&'static str> = None;
         let mut print = false;
-        motif::panel(ui, rect, Some(tr("watch_section")), |ui| {
+        // **Sans légende : l'onglet au-dessus la dit déjà.** Ce bandeau
+        // vaut quatre-vingt-dix pixels à 1024x700, une ligne de légende
+        // et son filet en valent près de trente, et chaque constat tient
+        // en deux lignes — la pastille avec le code, puis la phrase.
+        // L'une des deux passait donc à la trappe, et c'était la phrase :
+        // on lisait « ALERTE  K » sans savoir ce qui alertait. Les trois
+        // autres volets de la même bande (rein, grossesse, CYP) n'ont
+        // jamais porté de légende ; ces deux-là répétaient la leur.
+        motif::panel(ui, rect, None, |ui| {
             // La feuille qu'on emporte au laboratoire part d'ici, où la
             // liste est : c'est là qu'on la regarde, et la bande du
             // dossier porte déjà quatre boutons.
@@ -17265,7 +17273,15 @@ impl App {
         // Answered by `Session::refresh_bio_findings` when a value is
         // written or a treatment changes, not here.
         let findings = &session.bio_findings;
-        motif::panel(ui, rect, Some(tr("bio_reading")), |ui| {
+        // **Sans légende : l'onglet au-dessus la dit déjà.** Ce bandeau
+        // vaut quatre-vingt-dix pixels à 1024x700, une ligne de légende
+        // et son filet en valent près de trente, et chaque constat tient
+        // en deux lignes — la pastille avec le code, puis la phrase.
+        // L'une des deux passait donc à la trappe, et c'était la phrase :
+        // on lisait « ALERTE  K » sans savoir ce qui alertait. Les trois
+        // autres volets de la même bande (rein, grossesse, CYP) n'ont
+        // jamais porté de légende ; ces deux-là répétaient la leur.
+        motif::panel(ui, rect, None, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("bio_reading")
                 .auto_shrink([false, false])

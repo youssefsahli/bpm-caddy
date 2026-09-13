@@ -276,6 +276,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« ALERTE  K », et rien d'autre.** Dans la bande du bas de l'onglet
+  Biologie, chaque constat tient en deux lignes : la pastille de gravité
+  avec le code de l'analyte, puis la phrase qui dit ce qu'il faut en
+  penser. À 1024x700 le volet vaut quatre-vingt-dix pixels, sa légende
+  et son filet près de trente — et c'est la phrase qui passait sous la
+  ligne de flottaison. On lisait une alerte sans savoir ce qui alertait.
+
+  La légende partait : l'onglet juste au-dessus dit déjà
+  « Interprétation », et les trois autres volets de la même bande
+  (rein, grossesse, CYP) n'en ont jamais porté. On lit maintenant
+  « Kaliémie élevée sous bloqueur du système… » sous la pastille.
 - **La seule glissière d'egui de l'application ne se voyait pas.** Elle
   peint son rail avec `widgets.inactive.bg_fill`, et `motif::apply` met
   ce champ au fond du panneau pour tous les états de widget — ce qu'il
