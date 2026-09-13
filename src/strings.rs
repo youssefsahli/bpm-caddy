@@ -827,6 +827,9 @@ livre = "Une phrase qui n'est plus livrée"
         const AIDE: &str = include_str!("../assets/aide.md");
         // Et le README, que lisent ceux qui n'ont pas encore installé.
         const README: &str = include_str!("../README.md");
+        // Le mode d'emploi imprimé vit dans le code, pas dans un
+        // fichier de documentation : on le lit donc à la source.
+        const PDF_SOURCE: &str = include_str!("pdf.rs");
         let cards = crate::db::STARTER_DRUG_COUNT;
         let labels = {
             let mut v: Vec<&str> = crate::db::STARTER_DRUGS
@@ -926,6 +929,25 @@ livre = "Une phrase qui n'est plus livrée"
                         n => panic!(
                             "la table porte {n} cytochromes : l'écrire en toutes \
                              lettres dans le manuel et ici"
+                        ),
+                    }
+                ),
+            ),
+            // **Le mode d'emploi imprimé compte les onglets du dossier.**
+            // Il en annonçait six et les énumérait sans le fil : il avait
+            // été écrit avant lui, et rien ne reliait la phrase à la
+            // liste. C'est une feuille qu'une officine imprime et pose
+            // près du poste — elle vieillit là où personne ne la relit.
+            (
+                "src/pdf.rs",
+                PDF_SOURCE,
+                format!(
+                    "{} onglets",
+                    match crate::app::PatientTab::ALL.len() {
+                        7 => "sept",
+                        n => panic!(
+                            "le dossier porte {n} onglets : l'écrire en toutes \
+                             lettres dans le mode d'emploi et ici"
                         ),
                     }
                 ),

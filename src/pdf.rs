@@ -1098,6 +1098,17 @@ const DEFAULT_GUIDE_TEMPLATE: &str = r##"
 {{SECTIONS}}
 "##;
 
+/// Les raccourcis, sur le mode d'emploi imprimé.
+///
+/// **Une liste recopiée vieillit là où personne ne la relit.** Celle-ci
+/// en oubliait quatre — `F2`, `F9`, `Ctrl+Shift+Tab` et les chiffres du
+/// choix rapide — parce qu'elle avait été écrite à la main et que rien
+/// ne la reliait à la fenêtre `F12`. Le manuel de l'écran dit déjà de
+/// cette liste-là qu'elle est « tenue par l'application elle-même, et
+/// non recopiée ici » ; `every_shortcut_the_app_answers_to_is_on_the_
+/// printed_guide` le rend vrai du papier aussi.
+const GUIDE_SHORTCUTS: &str = "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab et Ctrl+Shift+Tab onglet suivant et précédent · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F2 tableau de bord · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F9 la fenêtre réduite en barre · F12 cette liste · Échap ferme l'élément ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre ; sur un dossier, Alt et les flèches changent d'onglet, et dans le choix rapide les chiffres 1 … 9, 0 posent l'acte. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08, l'année étant déduite du champ.";
+
 fn guide_values(pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
     let mut sections = String::new();
     for (title, body) in GUIDE_SECTIONS {
@@ -1137,7 +1148,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le dossier patient",
-        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, six onglets : les entretiens, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie et les pièces numérisées.",
+        "Le bandeau du haut porte l'identité, les traitements rattachés au référentiel médicaments (une puce par médicament, cliquable), et les éléments relevés automatiquement : les interactions entre ces traitements, et la revue d'ordonnance. En dessous, sept onglets : les entretiens, le fil du dossier, le carnet de vaccination, la biologie, les locations de matériel, la conciliation de sortie et les pièces numérisées.",
     ),
     (
         "Créer et suivre un entretien",
@@ -1185,7 +1196,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Raccourcis",
-        "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab onglet suivant · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F12 cette liste · Échap ferme l'élément ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08, l'année étant déduite du champ.",
+        GUIDE_SHORTCUTS,
     ),
     (
         "En cas de doute",
@@ -5797,6 +5808,41 @@ mod tests {
     /// qui s'arrête, et un traitement sans phrase d'oubli donne une
     /// étiquette sans ligne vide plutôt qu'une étiquette avec « Oubli :
     /// » et rien derrière.
+    /// **Tout raccourci auquel l'application répond est sur le mode
+    /// d'emploi imprimé.**
+    ///
+    /// La feuille recopiait la liste à la main, et il en manquait
+    /// quatre : `F2`, `F9`, `Ctrl+Shift+Tab` et les chiffres du choix
+    /// rapide. Une liste recopiée vieillit là où personne ne la relit —
+    /// et celle-ci s'imprime et se pose près du poste, c'est-à-dire à
+    /// l'endroit exact où on la croit à jour.
+    ///
+    /// Le manuel de l'écran a résolu le problème en ne recopiant rien ;
+    /// le papier ne peut pas faire pareil, alors il est confronté.
+    #[test]
+    fn every_shortcut_the_app_answers_to_is_on_the_printed_guide() {
+        let mut missing: Vec<&str> = crate::app::key_rows()
+            .into_iter()
+            .map(|(key, _)| key)
+            .filter(|key| !key.is_empty())
+            // Les flèches nues sont décrites en toutes lettres sur la
+            // feuille — « les flèches parcourent » —, pas par leur
+            // glyphe : les chercher tels quels dirait faux.
+            .filter(|key| !key.contains('\u{2191}') && !key.contains('\u{2190}'))
+            // Une case qui porte deux formes — « 230826 · 2308 » — est
+            // tenue si la feuille porte les deux, chacune dans sa
+            // phrase ; la chercher d'un bloc exigerait que le papier
+            // recopie jusqu'au point médian.
+            .flat_map(|key| key.split(" \u{b7} ").collect::<Vec<_>>())
+            .filter(|part| !GUIDE_SHORTCUTS.contains(part))
+            .collect();
+        missing.sort_unstable();
+        assert!(
+            missing.is_empty(),
+            "raccourcis absents du mode d'emploi imprimé : {missing:?}"
+        );
+    }
+
     #[test]
     fn the_labels_carry_the_dose_and_shorten_only_what_they_must() {
         let patient = sample_patient();

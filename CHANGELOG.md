@@ -326,6 +326,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Le mode d'emploi imprimé était en retard sur l'application.** Il
+  annonçait « six onglets » au dossier et les énumérait sans le fil — il
+  avait été écrit avant lui —, et sa liste de raccourcis, recopiée à la
+  main, en oubliait quatre : `F2`, `F9`, `Ctrl+Shift+Tab` et les
+  chiffres du choix rapide. Une liste recopiée vieillit là où personne
+  ne la relit, et celle-ci s'imprime et se pose près du poste,
+  c'est-à-dire à l'endroit exact où on la croit à jour.
+
+  Le manuel de l'écran avait résolu le problème en ne recopiant rien ;
+  le papier ne peut pas faire pareil, alors il est **confronté** : les
+  onglets du dossier sont sortis dans `PatientTab::ALL` et les
+  raccourcis dans `app::key_rows`, et deux tests refusent que la feuille
+  et l'écran divergent.
 - **« Ebixa … » : un nom entier suivi d'un point de suspension.** Les
   deux moitiés d'une rangée — le nom et sa mention tranquille — étaient
   posées dans une seule galée et s'élidaient donc ensemble. Sur un volet

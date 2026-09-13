@@ -2518,7 +2518,7 @@ struct GotoHit {
 /// of buttons on one side, a dose table on the other — so they take
 /// turns behind a notebook strip rather than share a split.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-enum PatientTab {
+pub enum PatientTab {
     #[default]
     Acts,
     Vaccins,
@@ -2544,6 +2544,24 @@ enum PatientTab {
     /// vaccin, le dernier résultat : chacun est une ligne, et il fallait
     /// trois clics pour lire trois lignes.
     Fil,
+}
+
+impl PatientTab {
+    /// Les onglets du dossier, dans l'ordre où ils se lisent.
+    ///
+    /// Hissée hors de la fonction qui les dessine pour que le compte
+    /// soit **lisible d'ailleurs** : le mode d'emploi imprimé annonçait
+    /// « six onglets » et les énumérait sans le fil, parce qu'il avait
+    /// été écrit avant lui et que rien ne reliait la phrase à la liste.
+    pub const ALL: [PatientTab; 7] = [
+        PatientTab::Acts,
+        PatientTab::Fil,
+        PatientTab::Vaccins,
+        PatientTab::Bio,
+        PatientTab::Locations,
+        PatientTab::Conciliation,
+        PatientTab::Scans,
+    ];
 }
 
 /// Laquelle des trois moitiés des registres est à l'écran.
@@ -9379,6 +9397,47 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
     }
     session.view = view;
 }
+/// Les raccourcis auxquels l'application répond, **écrits une fois**.
+///
+/// La fenêtre `F12` les montre, et le mode d'emploi imprimé les
+/// recopiait à la main : il y en manquait quatre — `F2`, `F9`,
+/// `Ctrl+Shift+Tab` et les chiffres du choix rapide —, parce qu'une
+/// liste recopiée vieillit là où personne ne la relit. Le manuel de
+/// l'écran, lui, dit déjà que cette liste est « tenue par l'application
+/// elle-même, et non recopiée ici » ; c'est vrai maintenant du papier
+/// aussi.
+///
+/// Une clé vide ouvre un groupe.
+pub fn key_rows() -> [(&'static str, &'static str); 26] {
+    [
+        ("", tr("keys_group_workspace")),
+        ("F1", tr("toolbar_docs_tooltip")),
+        ("F6", tr("toolbar_nav_tooltip")),
+        ("F12", tr("keys_this")),
+        ("Ctrl+Tab", tr("keys_next_tab")),
+        ("Ctrl+Shift+Tab", tr("keys_prev_tab")),
+        ("Ctrl+W", tr("keys_close_tab")),
+        ("", tr("keys_group_views")),
+        ("F2", tr("tab_dashboard")),
+        ("F3", tr("tab_drugs")),
+        ("F4", tr("tab_agenda")),
+        ("F5", tr("tab_carnet")),
+        ("F7", tr("tab_map")),
+        ("F9", tr("keys_companion")),
+        ("Ctrl+K", tr("keys_goto")),
+        ("Ctrl+F", tr("keys_search")),
+        ("Échap", tr("keys_back")),
+        ("", tr("keys_group_work")),
+        ("↑ ↓", tr("keys_updown")),
+        ("Entrée", tr("keys_enter")),
+        ("Ctrl+N", tr("keys_new_act")),
+        ("1 … 9, 0", tr("keys_act_digit")),
+        ("← →", tr("keys_arrows")),
+        ("Alt + ← →", tr("keys_patient_tabs")),
+        ("", tr("keys_group_dates")),
+        ("230826 · 2308", tr("keys_dates")),
+    ]
+}
 
 impl App {
     pub fn new() -> Self {
@@ -12100,35 +12159,7 @@ impl App {
     /// told. Every shortcut it answers to, on one page, grouped by what
     /// it acts on.
     fn keys_window(&mut self, ctx: &egui::Context) {
-        // (key, what it does). An empty key starts a new group.
-        let rows: [(&str, &str); 26] = [
-            ("", tr("keys_group_workspace")),
-            ("F1", tr("toolbar_docs_tooltip")),
-            ("F6", tr("toolbar_nav_tooltip")),
-            ("F12", tr("keys_this")),
-            ("Ctrl+Tab", tr("keys_next_tab")),
-            ("Ctrl+Shift+Tab", tr("keys_prev_tab")),
-            ("Ctrl+W", tr("keys_close_tab")),
-            ("", tr("keys_group_views")),
-            ("F2", tr("tab_dashboard")),
-            ("F3", tr("tab_drugs")),
-            ("F4", tr("tab_agenda")),
-            ("F5", tr("tab_carnet")),
-            ("F7", tr("tab_map")),
-            ("F9", tr("keys_companion")),
-            ("Ctrl+K", tr("keys_goto")),
-            ("Ctrl+F", tr("keys_search")),
-            ("Échap", tr("keys_back")),
-            ("", tr("keys_group_work")),
-            ("↑ ↓", tr("keys_updown")),
-            ("Entrée", tr("keys_enter")),
-            ("Ctrl+N", tr("keys_new_act")),
-            ("1 … 9, 0", tr("keys_act_digit")),
-            ("← →", tr("keys_arrows")),
-            ("Alt + ← →", tr("keys_patient_tabs")),
-            ("", tr("keys_group_dates")),
-            ("230826 · 2308", tr("keys_dates")),
-        ];
+        let rows = key_rows();
         let mut open = true;
         let mut print_guide = false;
         egui::Window::new(tr("keys_title"))
@@ -12953,15 +12984,7 @@ impl App {
         // Ctrl+Tab walks the workspace's. Three of them had no keyboard
         // route at all. Alt, so the bare arrows keep driving the acts
         // table and the agenda; and not while a field has the keyboard.
-        const TABS: [PatientTab; 7] = [
-            PatientTab::Acts,
-            PatientTab::Fil,
-            PatientTab::Vaccins,
-            PatientTab::Bio,
-            PatientTab::Locations,
-            PatientTab::Conciliation,
-            PatientTab::Scans,
-        ];
+        const TABS: [PatientTab; 7] = PatientTab::ALL;
         let mut active = TABS
             .iter()
             .position(|t| *t == session.patient_tab)
