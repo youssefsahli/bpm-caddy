@@ -584,6 +584,48 @@ pub const TABLE: &[Rule] = &[
     // vérifier » qui devient « ne pas écraser » sur une forme à
     // libération prolongée ne coûte qu'un appel ; l'inverse casse la
     // libération.
+    // **Une forme qui ne passe pas par la bouche n'a rien à écraser.**
+    //
+    // Ce filet-ci vient avant les deux autres parce qu'une voie est plus
+    // précise qu'une mention sur la boîte : Extencilline est une
+    // benzathine benzylpénicilline **intramusculaire**, et sa classe dit
+    // « pénicilline retard IM » — le filet des libérations prolongées
+    // l'attrapait par « retard » et lui répondait « écrasée, elle rend
+    // d'un coup ce qu'elle devait rendre sur la journée », ce qui ne
+    // veut rien dire d'une injection. Les autres — Arixtra, Rocéphine,
+    // Calciparine, Aclasta, Nexplanon — tombaient dans « à vérifier »,
+    // c'est-à-dire qu'elles envoyaient lire un RCP pour savoir si l'on
+    // peut écraser une seringue.
+    //
+    // Les mots ont été confrontés aux 862 fiches livrées avant d'être
+    // écrits, comme le demande la règle des fragments : ils en
+    // en attrapent douze, toutes parentérales, et aucune autre :
+    // Arixtra, Calciparine, Venofer, Ferinject, Extencilline,
+    // Céfazoline, Rocéphine, Apokinon, Xeplion, Aclasta, Nexplanon,
+    // Zometa.
+    //
+    // Le verdict reste « non » : c'est vrai, et une feuille où une ligne
+    // manque se lit « celle-là, oui ».
+    Rule {
+        needs: &[
+            // « retard im » et non « im » : une espace de tête borne un
+            // mot, une espace en queue n'en borne pas — c'est la règle
+            // de la table, et sans elle « im » serait dans
+            // « imipramine » et deux cents autres. Le couple, lui, ne
+            // désigne qu'une chose.
+            "retard im",
+            "injectable",
+            "intramusculaire",
+            "sous-cutan",
+            "perfusion",
+            "implant",
+        ],
+        label: "Forme injectable ou implantable",
+        verdict: Verdict::No,
+        why: "Ce n'est pas une forme orale : il n'y a rien à écraser. La question ne se pose pas pour cette ligne-là.",
+        instead: "Rien à remplacer ici. Si le patient ne peut plus avaler, c'est le reste de l'ordonnance qu'il faut revoir — cette ligne-ci ne passe déjà pas par la bouche.",
+        source: "Règle générale des voies parentérales",
+    },
     Rule {
         needs: &[
             // Avec l'espace : « alprazolam » contient « lp » et n'est

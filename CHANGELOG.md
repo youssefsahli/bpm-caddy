@@ -286,6 +286,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« Peut-on écraser une seringue ? »** La table répondait à une
+  question orale pour douze produits qui ne passent pas par la bouche.
+  Extencilline — une benzathine benzylpénicilline **intramusculaire** —
+  était attrapée par le filet des libérations prolongées, via le mot
+  « retard » de sa classe, et s'entendait répondre « écrasée, elle rend
+  d'un coup ce qu'elle devait rendre sur la journée » : le verdict était
+  juste et la raison ne voulait rien dire. Les onze autres — Arixtra,
+  Calciparine, Venofer, Ferinject, Céfazoline, Rocéphine, Apokinon,
+  Xeplion, Aclasta, Nexplanon, Zometa — tombaient dans « à vérifier »,
+  c'est-à-dire qu'elles envoyaient lire un RCP pour savoir si l'on peut
+  écraser une injection.
+
+  Un filet de **voie** passe maintenant avant les deux filets de forme,
+  parce qu'une voie est plus précise qu'une mention sur la boîte. Ses
+  mots ont été confrontés aux 862 fiches avant d'être écrits, comme la
+  règle des fragments le demande : ils en attrapent douze, toutes
+  parentérales, et aucune autre. Xeplion n'y entrait pas — sa classe ne
+  nommait pas la voie alors que le produit n'existe qu'en injection
+  mensuelle —, et c'est la fiche qui a été corrigée, pas la règle
+  élargie.
 - **Une bande de titre mesurait vingt-quatre pixels plus étroit qu'elle
   ne dessine**, et gardait soixante-dix pixels de blanc au comptoir.
   `title_band_height` retranchait ce retrait sans raison écrite, alors

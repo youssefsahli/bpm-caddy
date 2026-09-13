@@ -643,7 +643,15 @@ pub const CLASSES: &[Class] = &[
     Class {
         name: "antipsychotique retard",
         family: "psy",
-        aliases: &["antipsychotique atypique retard"],
+        // La forme livrée nomme la voie — un antipsychotique retard
+        // n'existe qu'en injection, et « peut-on écraser ? » ne lit
+        // d'une fiche que son nom, sa DCI, sa classe et ses étiquettes.
+        // L'ancien libellé reste lu : une fiche tapée à la main l'écrit
+        // encore.
+        aliases: &[
+            "antipsychotique atypique retard injectable",
+            "antipsychotique atypique retard",
+        ],
     },
     Class {
         name: "antipsychotique typique",

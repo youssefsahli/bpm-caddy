@@ -28099,7 +28099,13 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     (
         "Xeplion",
         "palipéridone",
-        "antipsychotique atypique retard",
+        // La voie est dans la classe parce qu'elle décide : Xeplion
+        // n'existe qu'en injection intramusculaire mensuelle, et la
+        // table « peut-on écraser ? » ne voit d'une fiche que son nom,
+        // sa DCI, sa classe et ses étiquettes. Sans ce mot, elle
+        // l'attrapait par « retard » et lui répondait « écrasée, elle
+        // rend d'un coup ce qu'elle devait rendre sur la journée ».
+        "antipsychotique atypique retard injectable",
         "",
     ),
     ("Latuda", "lurasidone", "antipsychotique atypique", ""),
