@@ -4748,10 +4748,22 @@ fn caisse_history_values(
     let gap = match (summary.gap, summary.with_expected) {
         _ if !want_expected => String::new(),
         (Some(g), n) => {
-            let sign = if g > 0 { "+" } else { "" };
+            // **Le même moins que dans le tableau, au-dessus.** Les
+            // montants des cellules sont posés en markup Typst, qui
+            // rend le trait d'union d'un nombre négatif par le vrai
+            // signe moins (U+2212) ; cette phrase-ci passe par
+            // `typst_str`, donc littéralement, et gardait le trait
+            // d'union. Une même page écrivait « −4,75 € » dans la
+            // colonne et « -4,75 € » dans le récapitulatif juste
+            // dessous.
+            //
+            // C'est le papier qui prend le signe typographique et
+            // l'écran qui garde le tiret : les fontes d'egui n'ont pas
+            // toutes U+2212, et `caisse::euros` sert aux deux.
+            let sign = if g > 0 { "+" } else { "\u{2212}" };
             format!(
                 "Écart cumulé : {sign}{} € — sur {n} {}, {} en moins, {} en plus, {} juste.",
-                euros(g),
+                euros(g.abs()),
                 if n > 1 { "soirs" } else { "soir" },
                 summary.short,
                 summary.over,
@@ -4764,11 +4776,12 @@ fn caisse_history_values(
     };
     let worst = match summary.worst.as_ref().filter(|_| want_expected) {
         Some((day, gap)) => {
-            let sign = if *gap > 0 { "+" } else { "" };
+            // Le même signe moins que le tableau, comme au-dessus.
+            let sign = if *gap > 0 { "+" } else { "\u{2212}" };
             format!(
                 "Le soir le plus loin du compte : {} ({sign}{} €).",
                 crate::db::format_french_date(day),
-                euros(*gap)
+                euros(gap.abs())
             )
         }
         None => String::new(),
@@ -5650,6 +5663,27 @@ mod tests {
         // dit : sans ce nombre à côté, la somme se lirait comme si elle
         // couvrait le mois.
         assert!(of("{{GAP}}").contains("sur 1 soir"), "{}", of("{{GAP}}"));
+        // **Le même signe moins que dans le tableau.** Les cellules
+        // sont posées en markup Typst, qui rend le trait d'union d'un
+        // nombre négatif par U+2212 ; ces phrases-ci passent par
+        // `typst_str`, littéralement, et gardaient le trait d'union —
+        // une même page écrivait « −4,75 € » dans la colonne et
+        // « -4,75 € » dans le récapitulatif juste dessous.
+        assert!(
+            of("{{GAP}}").contains("\u{2212}4,75 €"),
+            "le récapitulatif doit porter le signe moins du tableau : {}",
+            of("{{GAP}}")
+        );
+        assert!(
+            !of("{{GAP}}").contains("-4,75"),
+            "et pas le trait d'union : {}",
+            of("{{GAP}}")
+        );
+        assert!(
+            of("{{WORST}}").contains("\u{2212}4,75 €"),
+            "{}",
+            of("{{WORST}}")
+        );
         let src = fill(DEFAULT_CAISSES_TEMPLATE, &values);
         assert!(src.contains("recompté"));
         assert!(!src.contains("{{"));

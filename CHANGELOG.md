@@ -296,6 +296,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Deux signes moins différents sur une même page de caisse.** Les
+  montants des cellules sont posés en markup Typst, qui rend le trait
+  d'union d'un nombre négatif par le vrai signe moins (U+2212) ; le
+  récapitulatif juste dessous passe par `typst_str`, donc littéralement,
+  et gardait le trait d'union. L'historique écrivait « −4,75 € » dans la
+  colonne et « -4,75 € » deux lignes plus bas. Le papier prend le signe
+  typographique — c'est la forme juste en français — et l'écran garde le
+  tiret, parce que les fontes d'egui n'ont pas toutes U+2212 et que
+  `caisse::euros` sert aux deux.
 - **« 14 gélule », « 12 comprimé », « -2 gélule ».** Le registre des
   stupéfiants et ses deux pièces — le procès-verbal de destruction et la
   feuille de contrôle — écrivaient l'unité au singulier quelle que soit
