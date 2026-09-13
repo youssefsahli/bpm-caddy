@@ -381,6 +381,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   des dispositifs n'avait qu'une ligne, alors qu'elle range par famille.
   Un aperçu qui ne montre pas ce que le cadre fait ne sert à rien à qui
   vient l'éditer.
+- **« Copier la base… » prend trois fichiers, pas deux.** La phrase des
+  Options le disait encore au temps où il n'y en avait que deux — avant
+  que le registre des stupéfiants ait le sien.
 - **Le récapitulatif de facturation écrivait « EUR ».** L'écran, les
   feuilles de caisse et le registre écrivent « € » : le même chiffre
   sous deux graphies, sur les deux documents qu'une officine met côte à
