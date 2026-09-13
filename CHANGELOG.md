@@ -276,6 +276,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **L'anneau rouge du voisinage n'était expliqué nulle part.** La carte
+  cercle d'alerte les voisins à marge thérapeutique étroite — la seule
+  propriété capable de changer ce qu'on fait d'un médicament qu'on
+  allait proposer —, et ni la légende, qui ne portait que les trois
+  liens, ni l'infobulle ne le disaient. Sur la carte d'Eliquis, sept
+  nœuds sur neuf le portent, dans la couleur la plus alarmante de la
+  palette, sans clé. La légende le keye maintenant, et **seulement quand
+  un nœud le porte** : keyer une couleur absente de l'image serait le
+  défaut inverse. L'infobulle du nœud le dit aussi, parce qu'elle peut
+  être exacte là où une légende ne montre qu'une pastille pleine.
 - **Deux tiers de l'écran d'accueil n'existaient pas sur un poste de
   comptoir.** `motif::split_rows` prend `0.0` pour « la hauteur qui
   reste », et chaque rangée qui le demandait prenait le reste **entier**.

@@ -44174,13 +44174,19 @@ impl App {
                 } else {
                     format!("{} · ", n.name)
                 };
-                let tip = head
+                // L'infobulle dit l'anneau **exactement** — la légende
+                // ne peut le montrer que par une pastille pleine, là où
+                // la carte trace un cerclage.
+                let mut tip = head
                     + if n.dci.is_empty() {
                         trf("graph_node_tooltip", tr(n.tie.label_key()))
                     } else {
                         trn("graph_node_tooltip_dci", &[&n.dci, &tr(n.tie.label_key())])
                     }
                     .as_str();
+                if n.narrow {
+                    tip = format!("{tip}\n{}", tr("graph_narrow"));
+                }
                 if resp.on_hover_text(tip).clicked() {
                     recentre = Some(n.id);
                 }
@@ -44218,13 +44224,25 @@ impl App {
                     nodes: Vec::new(),
                     omitted: Vec::new(),
                 });
-            motif::chart::legend(
-                ui,
-                &Tie::ALL
-                    .iter()
-                    .map(|t| (tr(t.label_key()), motif::chart::series_color(t.series())))
-                    .collect::<Vec<_>>(),
-            );
+            // **L'anneau rouge a sa clé, et seulement quand il est
+            // dessiné.** Il dit « marge thérapeutique étroite », qui est
+            // la seule propriété capable de changer ce qu'on fait d'un
+            // voisin qu'on allait proposer — et il n'était expliqué
+            // nulle part : ni dans la légende, qui ne portait que les
+            // trois liens, ni dans l'infobulle. Sept nœuds sur neuf le
+            // portaient sur la carte d'Eliquis, dans la couleur la plus
+            // alarmante de la palette, sans clé.
+            //
+            // Keyer une couleur absente de l'image serait le défaut
+            // inverse, d'où la condition.
+            let mut keys: Vec<(&str, egui::Color32)> = Tie::ALL
+                .iter()
+                .map(|t| (tr(t.label_key()), motif::chart::series_color(t.series())))
+                .collect();
+            if map.nodes.iter().any(|n| n.narrow) {
+                keys.push((tr("graph_narrow"), motif::alert()));
+            }
+            motif::chart::legend(ui, &keys);
             // What the rings could not take, never in silence: twelve of
             // forty drawn with nothing said would read as « il y en a
             // douze », a wrong answer that looks complete.

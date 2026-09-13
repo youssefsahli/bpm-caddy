@@ -774,6 +774,11 @@ graph_tie_molecule = "même molécule"
 graph_tie_class = "même classe"
 graph_tie_interaction = "interaction citée"
 graph_omitted = "{} de plus en « {} » non dessinés"
+# Clé de l'anneau rouge de la carte de voisinage, et ce que son
+# infobulle ajoute. Mesuré : à 1024x700 en texte 1,6 la quatrième entrée
+# passe à la ligne quelle que soit sa longueur — « marge étroite » ne
+# rachetait pas la rangée —, donc autant écrire la phrase entière.
+graph_narrow = "marge thérapeutique étroite"
 graph_node_tooltip = "{} — cliquer pour mettre au centre"
 graph_node_tooltip_dci = "{} · {} — cliquer pour mettre au centre"
 dispo_title = "Dispositifs médicaux"
