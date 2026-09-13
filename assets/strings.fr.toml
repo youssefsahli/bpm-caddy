@@ -101,7 +101,7 @@ status_operator = "Opérateur : {}"
 # d'écrire, repris sans qu'on ait rien à faire.
 sync_refreshed = "· actualisé depuis un autre poste"
 home_today = "Aujourd'hui"
-home_today_empty = " —"
+home_today_empty = "Aucun rendez-vous aujourd'hui, ni en retard."
 nav_search_hint = "Rechercher un patient…"
 nav_search_short = "Rechercher…"
 nav_count = "{} résultat(s)"

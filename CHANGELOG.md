@@ -278,6 +278,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   le `clip_rect`, comme `motif::panel` pose la sienne, et ce qui était
   perdu était le facteur d'accumulation : le second des deux chiffres
   que la phrase donne.
+- **Le panneau « Aujourd'hui » répondait par un tiret.** Ses deux
+  voisins écrivent « Aucun entretien enregistré. » et « Aucune note
+  aujourd'hui. » ; celui-là centrait un « — » dans un cadre vide. Sur
+  une base neuve — le premier écran qu'une officine voit — cela se lit
+  comme un panneau cassé plutôt que comme une journée libre.
 - **« Hors référentiel » disait « Aucune fiche dans cette classe ».**
   Sous une classe, la phrase est juste ; sous « hors référentiel »,
   aucune classe n'est choisie — elle parlait d'une sélection qui

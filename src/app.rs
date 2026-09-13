@@ -12985,6 +12985,12 @@ impl App {
             .filter(|a| !session.today.is_empty() && a.date <= session.today)
             .collect();
         if today.is_empty() {
+            // **Un vide se dit en toutes lettres.** Ce panneau
+            // répondait par un tiret centré quand ses deux voisins
+            // écrivent « Aucun entretien enregistré. » et « Aucune note
+            // aujourd'hui. » : sur une base neuve — le premier écran
+            // qu'une officine voit — le tableau du jour se lisait comme
+            // un panneau cassé plutôt que comme une journée libre.
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
