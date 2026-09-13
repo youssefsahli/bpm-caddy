@@ -13801,7 +13801,14 @@ impl App {
             let band_floor = Self::row_height(ui) + line + 20.0;
             let band = (work.height() - form_need - table_floor - 8.0)
                 .min(work.height() * 0.40)
-                .clamp(band_floor.min(work.height() * 0.40), 320.0);
+                // Le plafond monte au plancher plutôt que de lui faire
+                // confiance : `f32::clamp` panique quand le minimum
+                // dépasse le maximum, et ce plancher-là grandit avec
+                // l'échelle du texte.
+                .clamp(
+                    band_floor.min(work.height() * 0.40),
+                    320.0_f32.max(band_floor),
+                );
             let stack = motif::split_rows(work, &[0.0, band], 8.0);
             (stack[0], stack[1])
         };
@@ -23343,7 +23350,15 @@ impl App {
             } else {
                 ui.horizontal(|ui| {
                     category(ui, session);
-                    let field = title(ui, session, (avail - reserve).clamp(title_min, 420.0));
+                    // `title_min` est la largeur que réclame l'invite,
+                    // et l'invite se **réécrit** dans « Libellés ». Une
+                    // officine qui l'allonge ferait passer le plancher
+                    // au-dessus du plafond, et `f32::clamp` panique.
+                    let field = title(
+                        ui,
+                        session,
+                        (avail - reserve).clamp(title_min, 420.0_f32.max(title_min)),
+                    );
                     entered = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
                     repeat(ui, session);
                     if (motif::button(ui, tr("agenda_event_add")).clicked() || entered)
@@ -40245,7 +40260,11 @@ impl App {
                     + line * 2.0
                     + (Self::row_height(ui) + ui.spacing().item_spacing.y) * 2.0
                     + 10.0;
-                let band = (body.height() * 0.26).clamp(band_floor.min(body.height() * 0.5), 240.0);
+                // À l'échelle de texte maximale ce plancher vaut déjà
+                // deux cent trente-huit contre un plafond de deux cent
+                // quarante : deux pixels. Le plafond monte au plancher.
+                let floor = band_floor.min(body.height() * 0.5);
+                let band = (body.height() * 0.26).clamp(floor, 240.0_f32.max(floor));
                 let rows = motif::split_rows(body.shrink2(egui::vec2(0.0, 3.0)), &[0.0, band], 8.0);
                 (rows[0], rows[1])
             };
@@ -48577,6 +48596,61 @@ mod tests {
     /// Et **la mesure passe par la même fonction que le dessin** :
     /// mesurée à onze et peinte à dix-huit, une colonne élide tout ce
     /// qu'elle porte.
+
+    /// **Un plafond constant ne se fie jamais à un plancher calculé.**
+    ///
+    /// `f32::clamp` **panique** quand le minimum dépasse le maximum, et
+    /// les planchers d'ici grandissent tous avec `[ui] text_scale` :
+    /// hauteur de rangée, hauteur de ligne, largeur d'une invite. Trois
+    /// sites écrivaient `clamp(plancher_calculé, 240.0)` et l'un d'eux
+    /// arrivait à deux cent trente-huit à l'échelle maximale — deux
+    /// pixels. Un autre mesurait la largeur d'une invite que l'officine
+    /// **réécrit** dans « Libellés » : il suffisait d'un libellé long
+    /// pour faire tomber l'application au comptoir.
+    ///
+    /// La forme juste est `constante.max(plancher)`, qui ne coûte rien
+    /// et ne dépend d'aucune arithmétique qu'il faudrait tenir à jour.
+    /// C'est déjà ce que dit CLAUDE.md ; ceci le tient.
+    #[test]
+    fn no_constant_ceiling_trusts_a_computed_floor() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblé, sinon le test se trouve lui-même.
+        let call = concat!(".cla", "mp(");
+        let mut offenders: Vec<String> = Vec::new();
+        for (i, l) in SOURCE.lines().enumerate() {
+            let t = l.trim_start();
+            if t.starts_with("//") {
+                continue;
+            }
+            let Some(rest) = t.split(call).nth(1) else {
+                continue;
+            };
+            let Some((min, tail)) = rest.split_once(", ") else {
+                continue;
+            };
+            let max = tail.trim_end_matches([')', ';', ',']);
+            // Le plancher est calculé dès qu'il porte autre chose que
+            // des chiffres ; le plafond est constant s'il n'est qu'un
+            // nombre, éventuellement suffixé.
+            let computed_floor = min.chars().any(|c| c.is_alphabetic());
+            let constant_ceiling = !max.is_empty()
+                && max
+                    .trim_end_matches("_f32")
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == '.');
+            if computed_floor && constant_ceiling {
+                offenders.push(format!("app.rs:{} — {t}", i + 1));
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "un plafond constant au-dessus d'un plancher calculé : écrire \
+             `constante.max(plancher)`, car `f32::clamp` panique si le \
+             minimum dépasse le maximum.\n{}",
+            offenders.join("\n")
+        );
+    }
+
     #[test]
     fn no_font_size_is_written_in_pixels() {
         const SOURCE: &str = include_str!("app.rs");

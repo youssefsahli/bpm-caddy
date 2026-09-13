@@ -489,6 +489,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Trois `clamp` pouvaient faire tomber l'application, dont un qu'une
+  officine déclenchait elle-même.** `f32::clamp` panique quand le
+  minimum dépasse le maximum, et les planchers de cette interface
+  grandissent tous avec `[ui] text_scale`. L'un d'eux arrivait à deux
+  cent trente-huit contre un plafond de deux cent quarante à l'échelle
+  maximale : deux pixels. Un autre mesurait la largeur de l'invite du
+  titre d'un rendez-vous — une invite qui se **réécrit** dans
+  « Libellés », de sorte qu'un libellé assez long suffisait à faire
+  tomber l'application au comptoir.
+
+  La forme juste, `constante.max(plancher)`, était déjà écrite dans
+  CLAUDE.md ; elle est maintenant tenue par
+  `no_constant_ceiling_trusts_a_computed_floor`, qui lit le texte de
+  `app.rs` comme les trois filets d'à côté. En l'écrivant, le filet des
+  tailles de police a perdu son `#[test]` — l'insertion l'avait
+  avalé — et la suite est passée au vert avec un gardien en moins. Les
+  deux sont vérifiés par morsure maintenant.
 - **Une gélule d'Adalate à libération immédiate lisait « ne s'écrase
   pas ».** La ligne « Nifédipine LP » réclamait « adalate » tout court,
   et la fiche livrée couvre explicitement les deux formes — « formes à

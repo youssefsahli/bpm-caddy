@@ -922,6 +922,14 @@ add clicking and typing; it is not the price of entry.
 - `f32::clamp` **panics** when min > max, and computed floors do cross
   computed caps on a short pane. Raise the cap to the floor
   (`cap.max(floor)`) rather than trusting one to sit above the other.
+  This is now a test — `no_constant_ceiling_trusts_a_computed_floor`
+  reads the text of `app.rs` and refuses `clamp(<computed>, <literal>)`,
+  like the three lints beside it. It found three, and one of them was
+  two pixels from the edge at `text_scale = 1.8` (238 against a 240
+  cap). Another measured a hint the officine **rewrites** in
+  « Libellés » — a long enough label and the application falls over at
+  the counter. A floor here grows with the text scale, always: row
+  height, line height, the width of a prompt.
 - Every layout must survive four things, not one: 1024x700, 1280x800,
   `[ui] text_scale = 1.25`, and both docks dragged wide (the docks cap
   against each other so the middle keeps `App::WORK_MIN`).
