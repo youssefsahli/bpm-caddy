@@ -380,7 +380,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bind_french` l'attache au mot qu'elle accompagne, avec l'espace fine
   que la typographie française demande : le PDF n'est pas dessiné avec
   les fontes d'egui, qui n'ont pas ce glyphe et obligent le volet d'aide
-  à se contenter de l'insécable ordinaire.
+  à se contenter de l'insécable ordinaire. Le lien se fait dans
+  `typst_str`, par où passe **tout** ce qui va sur le papier — la prose
+  des modèles comme les cellules que l'officine écrit —, parce qu'un
+  seul appel oublié est une ligne qui recommence : les tables de
+  conversion et la liste des dispositifs avaient la même orpheline.
 - **La conciliation d'exemple annonçait trois divergences et n'en
   montrait qu'une**, et le registre d'exemple n'avait aucune ligne
   annulée alors que son pied de page explique longuement qu'une ligne ne

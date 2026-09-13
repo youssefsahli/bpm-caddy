@@ -1137,8 +1137,8 @@ fn guide_values(pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
     for (title, body) in GUIDE_SECTIONS {
         sections.push_str(&format!(
             "#sec[#{}]\n#text(9pt)[#{}]\n",
-            typst_str(&bind_french(title)),
-            typst_str(&bind_french(body))
+            typst_str(title),
+            typst_str(body)
         ));
     }
     vec![
@@ -2962,6 +2962,13 @@ fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
 /// Escape arbitrary text as a Typst string literal, so patient names
 /// can never inject markup into the generated document.
 fn typst_str(s: &str) -> String {
+    // **Et la ponctuation double tient à son mot.** Tout ce qui va sur
+    // le papier passe par ici : la prose des modèles comme les cellules
+    // que l'officine écrit. Sans cela une ligne justifiée commence par
+    // « » » ou par « : », ce que la typographie française ne fait pas —
+    // trois documents le faisaient. Lier ici plutôt qu'à chaque appel,
+    // parce qu'un seul appel oublié est une ligne qui recommence.
+    let s = bind_french(s);
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
@@ -7839,7 +7846,11 @@ mod tests {
             dtp < flu,
             "le carnet imprimé se lit du plus ancien au plus récent"
         );
-        assert!(source.contains("Prochaine : 18/11/2026 — Carnet papier"));
+        // La ponctuation double est liée au mot qui la précède avant
+        // d'entrer dans la page : c'est `typst_str` qui le fait, pour
+        // tout le monde, et l'attendu doit donc passer par la même
+        // fonction.
+        assert!(source.contains(&bind_french("Prochaine : 18/11/2026 — Carnet papier")));
         assert!(source.contains("Mention de l'officine"));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
