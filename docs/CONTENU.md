@@ -656,6 +656,9 @@ Deux règles valent partout :
   non sur la présentation**, et « azithromycine » attrape l'Azyter, qui
   est un collyre. Le jour où la molécule ne suffira plus, c'est le type
   qui devra changer, pas la ligne qui devra ruser.
+- **Le cliquet** : `the_table_only_ever_grows`, un plancher sur le
+  nombre de molécules, écrit une fois dans une constante que le message
+  relit. Il monte quand on ajoute, jamais pour faire passer un test.
 - **Ce qui reste ouvert** : il n'y a pas de volet hépatique côté
   dossier, parce qu'il faudrait un Child-Pugh rangé par patient — et un
   stade tapé une fois, contrairement à un chiffre de laboratoire daté,

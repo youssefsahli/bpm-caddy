@@ -1437,6 +1437,29 @@ mod tests {
         }
     }
 
+    /// **Le cliquet : la table ne perd pas de molécules.**
+    ///
+    /// La règle de la maison pour tout catalogue clinique — une ligne
+    /// retirée est une question à laquelle le comptoir ne sait plus
+    /// répondre, et sans plancher cela arrive sans que personne le
+    /// voie. Le nombre est écrit **une fois**, dans une constante que
+    /// le message relit : écrit deux fois, en chiffres dans
+    /// l'assertion et en lettres dans le message, il finit par se
+    /// contredire — c'est arrivé dans `biology.rs`, dans `revue.rs` et
+    /// dans le plancher de toxicité de `db.rs`.
+    ///
+    /// Il ne monte que lorsqu'une ligne est ajoutée, et jamais pour
+    /// faire passer un test.
+    #[test]
+    fn the_table_only_ever_grows() {
+        const FLOOR: usize = 109;
+        assert!(
+            TABLE.len() >= FLOOR,
+            "{} molécules hépatiques, il y en avait {FLOOR}",
+            TABLE.len()
+        );
+    }
+
     /// Chaque ligne cite sa source, ne se répète pas, et ses paliers
     /// vont du plus léger au plus grave — c'est l'ordre de lecture, et
     /// deux paliers du même stade rendraient le plus grave dépendant de
