@@ -7211,8 +7211,13 @@ type DdiKey = (Vec<i64>, String, Option<crate::hepatic::Stage>, u64);
 /// Ce que les quatre modules répondent d'une même liste.
 struct DdiReading {
     cyp: crate::cyp::Reading,
-    revue: Vec<crate::revue::Point>,
-    renal: Vec<crate::renal::Finding>,
+    /// **Résolues**, c'est-à-dire avec les réécritures de l'officine
+    /// déjà appliquées. L'écran ne les appliquait pas : une phrase
+    /// corrigée dans « Textes imprimés » changeait sur le dossier
+    /// patient et restait celle d'origine ici, ce qui est pire qu'une
+    /// phrase non réécrite — on la croit corrigée partout.
+    revue: Vec<crate::revue::Resolved>,
+    renal: Vec<crate::renal::Resolved>,
     hepatic: Vec<crate::hepatic::Finding>,
 }
 
@@ -29980,8 +29985,8 @@ impl App {
                 key,
                 DdiReading {
                     cyp: crate::cyp::cross(&terms),
-                    revue: crate::revue::review(&terms),
-                    renal: crate::renal::read(&terms, dfg),
+                    revue: crate::revue::resolve(crate::revue::review(&terms), &session.content),
+                    renal: crate::renal::resolve(crate::renal::read(&terms, dfg), &session.content),
                     hepatic: crate::hepatic::read(&terms, session.ddi_stage),
                 },
             )
@@ -30328,7 +30333,7 @@ impl App {
     /// Elle ne passe par aucune enzyme — deux sédatifs ne se rencontrent
     /// nulle part et s'additionnent quand même —, et c'est précisément
     /// ce que le panneau des cytochromes dit ne pas savoir.
-    fn ddi_revue_section(ui: &mut egui::Ui, points: &[crate::revue::Point]) {
+    fn ddi_revue_section(ui: &mut egui::Ui, points: &[crate::revue::Resolved]) {
         motif::section(ui, tr("ddi_revue"));
         ui.add_space(4.0);
         if points.is_empty() {
@@ -30340,7 +30345,7 @@ impl App {
         }
         for p in points {
             ui.label(
-                egui::RichText::new(p.title)
+                egui::RichText::new(p.title.as_str())
                     .size(motif::pt(ui, 12.0))
                     .color(match p.severity {
                         crate::biology::Severity::Alert => motif::alert(),
@@ -30349,7 +30354,7 @@ impl App {
                     }),
             );
             ui.label(
-                egui::RichText::new(p.detail)
+                egui::RichText::new(p.detail.as_str())
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
@@ -30367,7 +30372,7 @@ impl App {
     fn ddi_renal_section(
         ui: &mut egui::Ui,
         session: &mut Session,
-        findings: &[crate::renal::Finding],
+        findings: &[crate::renal::Resolved],
     ) {
         motif::section(ui, tr("renal_tab"));
         ui.add_space(4.0);
@@ -30412,7 +30417,7 @@ impl App {
             )
             .on_hover_text(f.source);
             ui.label(
-                egui::RichText::new(f.conduct)
+                egui::RichText::new(f.conduct.as_str())
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );

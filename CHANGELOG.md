@@ -117,6 +117,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **L'écran « Croisement » montrait les phrases livrées et non celles
+  que l'officine a réécrites.** La revue et le rein passent par
+  `resolve`, comme sur le dossier patient : une phrase corrigée dans
+  « Textes imprimés » changeait là-bas et restait d'origine ici — ce qui
+  est pire qu'une phrase non réécrite, puisqu'on la croit corrigée
+  partout. C'est la faute que `docs/CONTENU.md` nomme depuis le début,
+  arrivée dans un écran neuf.
 - **L'écran « Croisement » ne refait plus ses quatre lectures à chaque
   image.** Le dossier patient a sa règle et son test depuis longtemps —
   les moteurs tournent quand le dossier s'ouvre, pas quand il se
