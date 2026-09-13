@@ -140,6 +140,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paroxétine désarme — et la codéine.
 
 ### Changed
+- **Le bandeau du dossier dit combien de traitements il porte.** La
+  rangée des puces se plafonne avec la bande et défile ; la barre
+  d'egui étant flottante, trois traitements sur six se lisaient comme
+  l'ordonnance entière. « Traitements (6) : » ne coûte pas une ligne —
+  et le zéro se dit aussi, parce qu'un dossier sans traitement est une
+  information et non un oubli. La bande est mesurée sur le libellé tel
+  qu'il sera écrit, compte compris.
 - **Les deux scripts de capture montraient deux états de la même vue.**
   `shot.sh` posait un bloc `[pharmacy]` — l'équipe, les horaires
   d'ouverture — et `eyeball.sh` non : la grille du planning y rangeait

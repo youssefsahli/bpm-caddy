@@ -1054,7 +1054,12 @@ patient_stale = "Fiche modifiée depuis un autre poste — l'en-tête montre les
 patient_physician = "MT : {}"
 
 # --- Traitements en cours ---
-treat_label = "Traitements :"
+# Le compte est dans le libellé, qui ne coûte pas une ligne. La rangée
+# des puces se plafonne avec la bande du dossier et défile — et la barre
+# d'egui est flottante, donc invisible au repos : sans ce chiffre, trois
+# traitements sur six se lisaient comme l'ordonnance entière. Le zéro se
+# dit aussi : « Traitements (0) » est une information, pas un oubli.
+treat_label = "Traitements ({}) :"
 treat_add_hint = "+ médicament…"
 treat_open_tooltip = "Ouvrir la fiche médicament"
 treat_remove_tooltip = "Retirer ce traitement"

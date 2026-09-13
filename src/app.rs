@@ -19001,7 +19001,10 @@ impl App {
         let treat_lines = Self::wrapped_rows_of(
             ui,
             w,
-            std::iter::once(Self::button_width(ui, tr("treat_label")))
+            // Mesuré sur le libellé tel qu'il sera écrit, compte
+            // compris : « Traitements (12) : » est plus large que
+            // « Traitements ({}) : », et c'est le dessin qui décide.
+            std::iter::once(Self::button_width(ui, &trf("treat_label", n.treats.len())))
                 .chain(n.treats.iter().flat_map(|t| {
                     // **Le libellé que le dessin emploiera**, dosage
                     // compris : mesurée sur le seul nom, la rangée
@@ -19531,7 +19534,10 @@ impl App {
             // the right of the band at a counter width, and the field
             // that adds the sixth was the part that disappeared.
             ui.horizontal_wrapped(|ui| {
-                ui.label(egui::RichText::new(tr("treat_label")).color(motif::text_dim()));
+                ui.label(
+                    egui::RichText::new(trf("treat_label", session.patient_treats.len()))
+                        .color(motif::text_dim()),
+                );
                 for t in &session.patient_treats {
                     // **Le dosage sur la puce, avec le nom.** « Amlor »
                     // ne dit pas si c'est le 5 ou le 10, et c'est la
