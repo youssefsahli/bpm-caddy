@@ -107,6 +107,26 @@ pub struct Advice {
     /// Cherchés dans le nom, la DCI, la classe et les étiquettes.
     /// **Les plus précis d'abord** : la table est lue dans l'ordre.
     pub needs: &'static [&'static str],
+    /// Ce que la ligne **ne réclame pas**, bien que ses mots l'attrapent.
+    ///
+    /// Même veto que dans `renal.rs`, et pour la même raison : la table
+    /// est indexée sur la molécule, et une forme locale de la même
+    /// molécule y tombe. L'Exocine — collyre à l'ofloxacine —, le
+    /// Lithioderm — gel au gluconate de lithium — et l'Auréomycine
+    /// Evans — pommade à la chlortétracycline — recevaient le niveau de
+    /// la voie générale, quand leurs fiches écrivent l'inverse en
+    /// toutes lettres : « utilisable pendant la grossesse […] compte
+    /// tenu du passage systémique négligeable », « contrairement au
+    /// lithium administré par voie générale », « l'usage local […] est
+    /// acceptable ».
+    ///
+    /// Ce n'est pas vrai de toute forme locale, et le veto se pose donc
+    /// boîte par boîte : le Sterdex, pommade ophtalmique, garde son
+    /// « à éviter » parce que sa propre fiche le déconseille à partir
+    /// du deuxième trimestre, « même si l'exposition par voie locale
+    /// est très faible ». Et les vasoconstricteurs nasaux restent dans
+    /// leur ligne, qui est écrite pour eux.
+    pub never: &'static [&'static str],
     pub label: &'static str,
     pub pregnancy: Level,
     /// Ce que le terme change, quand il change quelque chose. Vide
@@ -148,17 +168,28 @@ impl Finding {
 ///
 /// L'ordre est celui de la gravité, puis celui du nom, pour qu'une
 /// lecture faite deux fois soit deux fois la même.
+/// Cette ligne réclame-t-elle cette boîte ?
+///
+/// Écrit **une fois**, comme dans `renal.rs`, et appelé par `read` comme
+/// par le test qui confronte la table aux fiches livrées. Les deux
+/// avaient chacun leur copie.
+fn claims(a: &Advice, hay: &str) -> bool {
+    a.needs
+        .iter()
+        .any(|n| crate::fuzzy::contains_folded(hay, n))
+        && !a
+            .never
+            .iter()
+            .any(|n| crate::fuzzy::contains_folded(hay, n))
+}
+
 pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
     let mut out: Vec<Finding> = treatments
         .iter()
         .map(|t| {
             let hay =
                 crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
-            let hit = TABLE.iter().find(|a| {
-                a.needs
-                    .iter()
-                    .any(|n| crate::fuzzy::contains_folded(&hay, n))
-            });
+            let hit = TABLE.iter().find(|a| claims(a, &hay));
             match hit {
                 Some(a) => Finding {
                     treatment: t.name.trim().to_owned(),
@@ -290,6 +321,7 @@ pub const TABLE: &[Advice] = &[
     // --- Ce qui ne se discute pas -------------------------------------
     Advice {
         needs: &["valproate", "depakine", "depakote", "micropakine"],
+        never: &[],
         label: "Valproate",
         pregnancy: Level::Interdit,
         term: "Sur toute la grossesse, et avant elle.",
@@ -300,6 +332,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["isotretinoine", "acitretine", "curacne", "procuta", "soriatane"],
+        never: &[],
         label: "Rétinoïdes oraux",
         pregnancy: Level::Interdit,
         term: "Sur toute la grossesse, et un mois après l'arrêt pour l'isotrétinoïne, deux ans pour l'acitrétine.",
@@ -318,6 +351,7 @@ pub const TABLE: &[Advice] = &[
             "methotrexate",
             "novatrex",
         ],
+        never: &[],
         label: "Méthotrexate",
         pregnancy: Level::Interdit,
         term: "Sur toute la grossesse.",
@@ -328,6 +362,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["mycophenolate", "cellcept", "myfortic"],
+        never: &[],
         label: "Mycophénolate",
         pregnancy: Level::Interdit,
         term: "Sur toute la grossesse.",
@@ -363,6 +398,7 @@ pub const TABLE: &[Advice] = &[
             "deturgylone",
             "aturgyl",
         ],
+        never: &[],
         label: "Vasoconstricteurs du rhume",
         pregnancy: Level::Interdit,
         term: "",
@@ -393,6 +429,7 @@ pub const TABLE: &[Advice] = &[
             "advil",
             "nurofen",
         ],
+        never: &[],
         label: "AINS",
         pregnancy: Level::Interdit,
         // « Début du 6e mois » et non « 5 mois et demi » : c'est la
@@ -407,6 +444,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["aspirine", "acide acetylsalicylique", "kardegic", "aspegic"],
+        never: &[],
         label: "Aspirine",
         pregnancy: Level::Prudence,
         term: "À dose antalgique (500 mg et plus) : contre-indiquée à partir de 24 SA, comme les AINS. À dose antiagrégante (75 à 160 mg), elle est au contraire prescrite dans la prévention de la prééclampsie.",
@@ -417,6 +455,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["ramipril", "perindopril", "coversyl", "enalapril", "lisinopril", "captopril", "valsartan", "losartan", "candesartan", "irbesartan", "sartan"],
+        never: &[],
         label: "IEC et sartans",
         pregnancy: Level::Interdit,
         term: "Aux deuxième et troisième trimestres : contre-indication. Au premier, à remplacer dès que la grossesse est connue.",
@@ -427,6 +466,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["codeine", "codoliprane", "dafalgan codeine", "tramadol", "contramal", "topalgic"],
+        never: &[],
         label: "Codéine et tramadol",
         pregnancy: Level::Prudence,
         term: "En fin de grossesse : syndrome de sevrage et dépression respiratoire du nouveau-né si la prise est prolongée ou proche de l'accouchement.",
@@ -445,6 +485,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["nitrofurantoine", "furadantine"],
+        never: &[],
         label: "Nitrofurantoïne",
         pregnancy: Level::Prudence,
         term: "En fin de grossesse et à l'accouchement : à éviter, risque d'hémolyse néonatale.",
@@ -455,6 +496,11 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["doxycycline", "tetracycline", "minocycline", "tolexine"],
+        // La pommade à la chlortétracycline n'est pas une cycline
+        // générale : sa fiche écrit que « l'usage local sur une petite
+        // surface et pour une durée brève est acceptable ». Le Sterdex,
+        // lui, reste dedans : sa propre fiche le déconseille.
+        never: &["aureomycine"],
         label: "Cyclines",
         pregnancy: Level::Eviter,
         term: "À partir du deuxième trimestre : coloration des dents de lait. Avant, l'exposition n'a pas d'effet connu.",
@@ -466,6 +512,7 @@ pub const TABLE: &[Advice] = &[
     // --- Ce qui se remplace -------------------------------------------
     Advice {
         needs: &["atorvastatine", "simvastatine", "rosuvastatine", "pravastatine", "vastatine", "tahor", "crestor"],
+        never: &[],
         label: "Statines",
         pregnancy: Level::Eviter,
         term: "",
@@ -476,6 +523,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["warfarine", "coumadine", "fluindione", "previscan", "acenocoumarol", "avk"],
+        never: &[],
         label: "AVK",
         pregnancy: Level::Interdit,
         term: "Entre 6 et 9 semaines d'aménorrhée surtout : embryopathie. Et risque hémorragique fœtal sur toute la grossesse.",
@@ -486,6 +534,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["apixaban", "rivaroxaban", "edoxaban", "dabigatran", "eliquis", "xarelto", "pradaxa", "lixiana"],
+        never: &[],
         label: "Anticoagulants oraux directs",
         pregnancy: Level::Interdit,
         term: "",
@@ -496,6 +545,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["fluconazole", "triflucan"],
+        never: &[],
         label: "Fluconazole",
         pregnancy: Level::Prudence,
         term: "",
@@ -506,6 +556,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["ciprofloxacine", "ofloxacine", "levofloxacine", "norfloxacine", "quinolone"],
+        never: &["collyre", "exocine"],
         label: "Fluoroquinolones",
         pregnancy: Level::Prudence,
         term: "",
@@ -516,6 +567,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["lithium", "teralithe"],
+        never: &["lithioderm", "gluconate de lithium"],
         label: "Lithium",
         pregnancy: Level::Prudence,
         term: "Au premier trimestre : légère augmentation du risque de malformation cardiaque. À l'accouchement : imprégnation du nouveau-né.",
@@ -530,6 +582,7 @@ pub const TABLE: &[Advice] = &[
             "gliclazide", "glimépiride", "glibenclamide", "glipizide",
             "diamicron", "amarel", "daonil",
         ],
+        never: &[],
         label: "Sulfamides hypoglycémiants",
         pregnancy: Level::Interdit,
         term: "",
@@ -543,6 +596,7 @@ pub const TABLE: &[Advice] = &[
             "furosémide", "lasilix", "hydrochlorothiazide", "esidrex",
             "indapamide", "fludex", "bumétanide", "burinex",
         ],
+        never: &[],
         label: "Diurétiques",
         pregnancy: Level::Eviter,
         term: "",
@@ -553,6 +607,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["cotrimoxazole", "bactrim", "triméthoprime", "sulfaméthoxazole"],
+        never: &[],
         label: "Cotrimoxazole",
         term: "Au premier trimestre : à éviter, l'effet antifolique portant sur la fermeture du tube neural. En fin de grossesse : contre-indiqué, du fait de l'ictère nucléaire chez le nouveau-né.",
         pregnancy: Level::Eviter,
@@ -563,6 +618,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["amiodarone", "cordarone"],
+        never: &[],
         label: "Amiodarone",
         pregnancy: Level::Interdit,
         term: "",
@@ -573,6 +629,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["hydroxyzine", "atarax"],
+        never: &[],
         label: "Hydroxyzine",
         pregnancy: Level::Interdit,
         term: "En fin de grossesse surtout : effets atropiniques et sédation chez le nouveau-né.",
@@ -583,6 +640,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["alendronate", "fosamax", "risédronate", "actonel", "acide zolédronique", "biphosphonate", "bisphosphonate"],
+        never: &[],
         label: "Bisphosphonates",
         pregnancy: Level::Interdit,
         term: "",
@@ -593,6 +651,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["clozapine", "leponex"],
+        never: &[],
         label: "Clozapine",
         pregnancy: Level::Prudence,
         term: "",
@@ -621,6 +680,7 @@ pub const TABLE: &[Advice] = &[
             "izalgi",
             "poudre d'opium",
         ],
+        never: &[],
         label: "Paracétamol + opium",
         pregnancy: Level::Eviter,
         term: "En fin de grossesse, une utilisation prolongée expose le nouveau-né à un syndrome de sevrage et à une dépression respiratoire.",
@@ -631,6 +691,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["paracetamol", "doliprane", "dafalgan", "efferalgan"],
+        never: &[],
         label: "Paracétamol",
         pregnancy: Level::Compatible,
         term: "",
@@ -641,6 +702,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["amoxicilline", "clamoxyl", "augmentin", "penicilline"],
+        never: &[],
         label: "Amoxicilline",
         pregnancy: Level::Compatible,
         term: "",
@@ -651,6 +713,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["levothyrox", "levothyroxine", "l-thyroxine", "euthyrox"],
+        never: &[],
         label: "Lévothyroxine",
         pregnancy: Level::Compatible,
         term: "",
@@ -661,6 +724,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["insuline", "lantus", "novorapid", "humalog", "tresiba", "levemir"],
+        never: &[],
         label: "Insuline",
         pregnancy: Level::Compatible,
         term: "",
@@ -676,6 +740,7 @@ pub const TABLE: &[Advice] = &[
     // s'impose dès le projet de grossesse ».
     Advice {
         needs: &["dapagliflozine", "empagliflozine", "gliflozine", "xigduo", "forxiga", "jardiance"],
+        never: &[],
         label: "Gliflozines (et leurs associations)",
         pregnancy: Level::Interdit,
         term: "La dapagliflozine ne doit pas être utilisée aux deuxième et troisième trimestres.",
@@ -686,6 +751,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["metformine", "glucophage", "stagid"],
+        never: &[],
         label: "Metformine",
         pregnancy: Level::Compatible,
         term: "",
@@ -714,6 +780,7 @@ pub const TABLE: &[Advice] = &[
             // d'elle seule : « dermocorticoïde » ne la contient pas.
             "corticoïde substitutif",
         ],
+        never: &[],
         label: "Corticoïdes par voie générale",
         pregnancy: Level::Compatible,
         term: "",
@@ -724,6 +791,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["ondansetron", "zophren", "metoclopramide", "primperan", "doxylamine", "cariban"],
+        never: &[],
         label: "Antiémétiques",
         pregnancy: Level::Prudence,
         term: "",
@@ -741,6 +809,7 @@ pub const TABLE: &[Advice] = &[
     // livrées.
     Advice {
         needs: &["rabeprazole", "pariet"],
+        never: &[],
         label: "Rabéprazole",
         pregnancy: Level::Eviter,
         term: "",
@@ -759,6 +828,7 @@ pub const TABLE: &[Advice] = &[
             "lansoprazole",
             "inexium",
         ],
+        never: &[],
         label: "Inhibiteurs de la pompe à protons",
         pregnancy: Level::Compatible,
         term: "",
@@ -769,6 +839,7 @@ pub const TABLE: &[Advice] = &[
     },
     Advice {
         needs: &["sertraline", "fluoxetine", "paroxetine", "citalopram", "escitalopram", "venlafaxine"],
+        never: &[],
         label: "Antidépresseurs (ISRS et IRSNA)",
         pregnancy: Level::Prudence,
         term: "En fin de grossesse : syndrome d'adaptation du nouveau-né, transitoire, à surveiller les premiers jours.",
@@ -899,11 +970,7 @@ mod tests {
         let mut wrong: Vec<String> = Vec::new();
         for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
             let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
-            let Some(a) = TABLE.iter().find(|a| {
-                a.needs
-                    .iter()
-                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
-            }) else {
+            let Some(a) = TABLE.iter().find(|a| claims(a, &hay)) else {
                 continue;
             };
             if a.pregnancy != Level::Compatible || a.breastfeeding != Level::Compatible {
@@ -1123,5 +1190,85 @@ mod tests {
         assert_eq!(names[0], "Dépakine", "l'interdit d'abord");
         assert_eq!(names.last(), Some(&"Zoltruc"), "l'inconnu en dernier");
         assert_eq!(found[0].worst(), Level::Interdit);
+    }
+    /// **Une forme locale ne porte pas le niveau de la voie générale.**
+    ///
+    /// La table est indexée sur la molécule, si bien qu'un collyre, une
+    /// pommade ou un gel de la même molécule y tombe. Trois le
+    /// faisaient : l'Exocine, collyre à l'ofloxacine, lisait la prudence
+    /// des fluoroquinolones ; le Lithioderm, gel pour la dermite
+    /// séborrhéique, lisait celle du lithium ; l'Auréomycine Evans,
+    /// pommade, lisait l'interdit des cyclines. Les trois fiches
+    /// écrivent l'inverse, et par contraste avec la voie générale —
+    /// « contrairement au lithium administré par voie générale ».
+    ///
+    /// Le repère est la **classe** et non la prose : « passage
+    /// systémique négligeable » se trouve aussi dans des fiches d'ISRS
+    /// que « prudence » qualifie très bien. Deux exceptions, chacune
+    /// avec sa raison, et ce sont les deux seules que la base livrée
+    /// présente.
+    #[test]
+    fn a_local_form_does_not_wear_the_systemic_level() {
+        // « sous-cutané » et « gel intestinal » ne sont pas des formes
+        // locales : l'héparine et le Duodopa passent bien dans le sang.
+        // « percutané » non plus — un gel d'estradiol est un estrogène
+        // général. Le vocabulaire est donc étroit.
+        const LOCAL: &[&str] = &[
+            "collyre",
+            "topique",
+            "nasal",
+            "auriculaire",
+            "dermocorticoide",
+            "pommade ophtalmique",
+            "gel ophtalmique",
+            "ovule",
+            "lotion",
+            "shampoing",
+        ];
+        // Une ligne écrite **pour** les formes locales : les
+        // vasoconstricteurs du rhume sont nasaux, et c'est justement
+        // par cette voie qu'ils sont contre-indiqués à tout terme.
+        const ABOUT_LOCAL_FORMS: &[&str] = &["Vasoconstricteurs du rhume"];
+        // Et une boîte dont la fiche est elle-même prudente : le
+        // Sterdex est « déconseillé à partir du deuxième trimestre […]
+        // même si l'exposition par voie locale est très faible ».
+        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] = &["Sterdex"];
+
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+            let folded_class = crate::fuzzy::sort_key(class);
+            if !LOCAL
+                .iter()
+                .any(|v| crate::fuzzy::contains_folded(&folded_class, v))
+            {
+                continue;
+            }
+            if ITS_OWN_CARD_IS_CAUTIOUS.contains(name) {
+                continue;
+            }
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+            let Some(a) = TABLE.iter().find(|a| claims(a, &hay)) else {
+                continue;
+            };
+            if ABOUT_LOCAL_FORMS.contains(&a.label) {
+                continue;
+            }
+            // **Tout ce qui n'est pas « compatible »**, et non
+            // `worrying()` : celui-ci laisse passer « prudence », qui
+            // est justement le niveau que lisait l'Exocine. La morsure
+            // l'a montré — écrite avec `worrying()`, elle ne mordait
+            // pas.
+            if a.pregnancy != Level::Compatible || a.breastfeeding != Level::Compatible {
+                wrong.push(format!(
+                    "« {name} » ({class}) lit « {} », écrite pour la voie générale",
+                    a.label
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "une forme locale porte le niveau de la voie générale :\n{}",
+            wrong.join("\n")
+        );
     }
 }

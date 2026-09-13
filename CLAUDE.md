@@ -114,7 +114,19 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   keep the day it was written — « actiskenan » contains « skenan », and
   immediate-release Actiskenan was getting Skenan LP's answer),
   `src/gravidity.rs` (pregnancy and breastfeeding as a level: thirty-five
-  molecules, **two levels each** — they are two questions, and codeine is
+  molecules, each with a `never` — the same veto as `renal.rs`, for the
+  same reason: a collyre, a pommade or a gel of a systemic molecule
+  falls into its row and wears a level written for the general route.
+  Exocine, Lithioderm and Auréomycine Evans did, and all three fiches
+  say the opposite *by contrast with* the general route.
+  `a_local_form_does_not_wear_the_systemic_level` keys on the **class**
+  and never on the prose — « passage systémique négligeable » is also in
+  ISRS cards that « prudence » describes perfectly — and carries two
+  named exemptions: the vasoconstricteurs row, which is written *for*
+  nasal forms, and Sterdex, whose own card is cautious. The condition is
+  « anything but compatible », not `worrying()`: that one lets
+  `Prudence` through, which is exactly the level Exocine was reading,
+  and the bite test is what showed it. And **two levels each** — they are two questions, and codeine is
   usable pregnant and contraindicated while nursing, the AVKs the exact
   reverse.
   **It does not replace the CRAT**, and the panel says so in its footer:

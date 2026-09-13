@@ -330,6 +330,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Et la grossesse portait le même défaut, trois fois.** L'Exocine —
+  collyre à l'ofloxacine — lisait la prudence des fluoroquinolones ; le
+  Lithioderm — gel pour la dermite séborrhéique — celle du lithium ;
+  l'Auréomycine Evans — pommade — l'interdit des cyclines. Les trois
+  fiches disent l'inverse, et le disent **par contraste avec la voie
+  générale** : « contrairement au lithium administré par voie
+  générale », « le passage systémique négligeable qui écarte en pratique
+  le risque articulaire attribué aux quinolones générales », « l'usage
+  local sur une petite surface et pour une durée brève est acceptable ».
+
+  Même veto, et un test qui refuse le prochain. Il se règle sur la
+  **classe** de la fiche et jamais sur sa prose : « passage systémique
+  négligeable » figure aussi dans des fiches d'ISRS que « prudence »
+  qualifie très bien, et un test qui se déclencherait sur elles finirait
+  désactivé. Deux exceptions, chacune avec sa raison — la ligne des
+  vasoconstricteurs, écrite *pour* les formes nasales, et le Sterdex,
+  dont la fiche est elle-même prudente.
+
+  Écrit une première fois avec `worrying()`, il ne mordait pas : cette
+  fonction laisse passer « prudence », qui est justement le niveau que
+  lisait l'Exocine. C'est la morsure qui l'a dit.
 - **Un collyre et un gel recevaient une conduite rénale systémique.**
   La table du rein est indexée sur la molécule, si bien qu'une forme
   locale y tombe : l'Exocine est un collyre à l'ofloxacine et le
