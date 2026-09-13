@@ -183,6 +183,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **« Libellés » s'ouvrait sur la moitié d'un écran.** La vue existe
+  pour relire et réécrire ce que l'application dit d'elle-même, et le
+  panneau de droite — celui où la réécriture se fait — affichait
+  « Choisissez un texte dans la liste ». Elle s'ouvre désormais sur un
+  texte choisi, comme la caisse s'ouvre sur un tiroir déjà compté.
 - **La démonstration ne posait aucune question au registre, et la vue
   qui les écrit n'avait donc jamais été regardée.** L'onglet
   « Vigilance » s'ouvrait sur « Rien à signaler » : trois règles, un

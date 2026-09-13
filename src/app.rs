@@ -10017,6 +10017,19 @@ impl App {
                         Ok("libelles") => {
                             session.view = MainView::UiTexts;
                             session.ui_text_query = "rendez-vous".to_owned();
+                            // **Et un texte choisi**, sinon la moitié
+                            // droite de l'écran s'ouvre sur
+                            // « Choisissez un texte dans la liste » :
+                            // l'écran existe pour réécrire, et la
+                            // réécriture est justement ce qu'aucune
+                            // capture ne montrait. Même raison que le
+                            // tiroir déjà compté de la caisse.
+                            let key = "agenda_day_summary";
+                            let value = crate::strings::shipped()
+                                .get(key)
+                                .cloned()
+                                .unwrap_or_default();
+                            session.ui_text_edit = Some((key.to_owned(), value));
                         }
                         Ok("ddi") => {
                             if let Ok(list) = session.db.drugs() {
