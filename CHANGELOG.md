@@ -373,6 +373,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
   c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
   enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
+- **L'ordonnancier d'exemple n'avait pas de ligne annulée.** Sur une
+  seule délivrance ordinaire, la colonne « État » reste vide et le barré
+  ne se voit nulle part — or c'est exactement ce que cet ordonnancier-là
+  doit savoir montrer, puisqu'une ligne ne se rature jamais. L'exemple
+  porte maintenant les deux, et l'on y voit que le numéro d'une ligne
+  annulée reste debout quand tout le reste est barré : c'est ce que dit
+  la phrase du pied.
 - **La fiche de fabrication d'exemple oubliait son excipient.** Elle ne
   portait que le principe actif, quand son propre mode opératoire dit
   « puis compléter » — compléter avec quoi, la table ne le disait pas.

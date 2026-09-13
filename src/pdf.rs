@@ -4206,14 +4206,28 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             "Document remis à titre informatif.",
         ),
         "facturation" => billing_recap_values(&[], &[], "Août 2026", "24/08/2026"),
-        "ordonnancier" => ordonnancier_values(
-            &[sample_stup_move()],
-            &std::collections::HashMap::from([(1_i64, "Skenan LP 30 mg".to_owned())]),
-            &std::collections::HashSet::new(),
-            2026,
-            &pharmacy,
-            "2026-08-29",
-        ),
+        // **Deux lignes, dont une annulée.** Sur une seule délivrance
+        // ordinaire, la colonne « État » reste vide et le barré ne se
+        // voit nulle part : or c'est exactement ce que cet
+        // ordonnancier-là doit savoir montrer, puisqu'une ligne ne se
+        // rature jamais. Le numéro de la ligne annulée reste le sien, et
+        // la suite continue après lui — la phrase du pied le dit, et
+        // l'exemple le montre.
+        "ordonnancier" => {
+            let mut cancelled = sample_stup_move();
+            cancelled.id = 2;
+            cancelled.ordo_no = 38;
+            cancelled.happened_on = "2026-08-29".to_owned();
+            cancelled.quantity = 28.0;
+            ordonnancier_values(
+                &[sample_stup_move(), cancelled],
+                &std::collections::HashMap::from([(1_i64, "Skenan LP 30 mg".to_owned())]),
+                &std::collections::HashSet::from([2_i64]),
+                2026,
+                &pharmacy,
+                "2026-08-29",
+            )
+        }
         "tables" => conversion_tables_values(&TableEdits::new()),
         "preparation" => preparation_values(
             &crate::db::Preparation {
