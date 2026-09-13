@@ -373,6 +373,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
   c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
   enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
+- **La conciliation d'exemple annonçait trois divergences et n'en
+  montrait qu'une**, et le registre d'exemple n'avait aucune ligne
+  annulée alors que son pied de page explique longuement qu'une ligne ne
+  se rature pas, qu'elle reste barrée et qu'une autre la désigne. Les
+  deux montrent maintenant ce qu'elles décrivent — et la conciliation
+  porte ses trois statuts, la ligne que personne n'a pu rapprocher en
+  tête.
 - **L'ordonnancier d'exemple n'avait pas de ligne annulée.** Sur une
   seule délivrance ordinaire, la colonne « État » reste vide et le barré
   ne se voit nulle part — or c'est exactement ce que cet ordonnancier-là

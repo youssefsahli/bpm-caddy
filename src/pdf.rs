@@ -4108,16 +4108,38 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             ],
             &pharmacy,
         ),
+        // **Une ligne annulée, puisque le pied en parle.** Le bas de
+        // page explique longuement qu'une ligne ne se rature pas, qu'elle
+        // reste barrée et qu'une autre la désigne — et l'exemple n'en
+        // montrait aucune.
         "registre" => stup_register_values(
             "Skenan LP 30 mg",
             "gélule",
-            &[sample_stup_move()],
-            &[crate::ordonnancier::Balance {
-                stock: 24.0,
-                to_destroy: 0.0,
-                expired: 0.0,
+            &[sample_stup_move(), {
+                let mut m = sample_stup_move();
+                m.id = 2;
+                m.ordo_no = 38;
+                m.quantity = 28.0;
+                // La mention porte déjà « annulée » : la remarque dit
+                // ce que cela corrige, et ne le répète pas.
+                m.remark = "quantité fautive".to_owned();
+                m
             }],
-            &std::collections::HashSet::new(),
+            &[
+                crate::ordonnancier::Balance {
+                    stock: 24.0,
+                    to_destroy: 0.0,
+                    expired: 0.0,
+                },
+                // La ligne annulée n'a pas bougé le solde : c'est tout
+                // ce que « annulée » veut dire.
+                crate::ordonnancier::Balance {
+                    stock: 24.0,
+                    to_destroy: 0.0,
+                    expired: 0.0,
+                },
+            ],
+            &std::collections::HashSet::from([2_i64]),
             &pharmacy,
             "2026-08-29",
         ),
@@ -4366,13 +4388,36 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 patient: &patient,
                 today: "24/08/2026",
                 summary: "3 divergences sur 7 lignes.",
-                rows: vec![(
-                    "Arrêté".to_owned(),
-                    "Furosémide 40 mg".to_owned(),
-                    "1 le matin".to_owned(),
-                    String::new(),
-                    "Absent de l'ordonnance de sortie.".to_owned(),
-                )],
+                // **Trois divergences annoncées, trois divergences
+                // montrées.** La feuille en comptait trois et n'en
+                // listait qu'une : un exemple qui se contredit est
+                // celui-là même que l'officine lit pour comprendre le
+                // sien. Et les trois statuts que le prescripteur doit
+                // distinguer sont là — la ligne que personne n'a pu
+                // rapprocher passe devant les autres.
+                rows: vec![
+                    (
+                        "Non rapproché".to_owned(),
+                        "Zorglub lyoc".to_owned(),
+                        String::new(),
+                        "1 le soir".to_owned(),
+                        "Ligne non retrouvée dans la base : à vérifier à la main.".to_owned(),
+                    ),
+                    (
+                        "Remplacé".to_owned(),
+                        "Coversyl remplacé par Acuitel".to_owned(),
+                        "5 mg le matin".to_owned(),
+                        "5 mg le matin".to_owned(),
+                        "Même classe (IEC).".to_owned(),
+                    ),
+                    (
+                        "Arrêté".to_owned(),
+                        "Furosémide 40 mg".to_owned(),
+                        "1 le matin".to_owned(),
+                        String::new(),
+                        "Absent de l'ordonnance de sortie.".to_owned(),
+                    ),
+                ],
                 physician: "Docteur Martin",
                 mention: "Document remis à titre informatif.",
                 signature: &pharmacy.pharmacist,
