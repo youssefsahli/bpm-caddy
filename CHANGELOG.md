@@ -489,18 +489,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
-- **Quatre préparations du codex s'appelaient toutes « Bain de bouche
-  … »** dans une liste faite pour les distinguer. Une ligne prend deux
-  lignes quand elle peut se couper proprement, et le mot le plus long
-  décidait — or « lidocaïne-bicarbonate-nystatine » était compté comme un
-  seul mot de trente et un caractères, qui ne tient dans aucune colonne,
-  donc ellipse pour toute la ligne. **Mais egui coupe au trait
-  d'union** : mesuré sur un contexte sans écran, il rend
-  « lidocaine-bicarbonate- » puis « nystatine », ce qui se lit très
-  bien. Les segments se mesurent donc entre les unions comme entre les
-  espaces, et le nom montre enfin ce qui le distingue. L'inverse ne
-  bouge pas : « Benzodiazépines » n'a pas d'union, egui le couperait
-  n'importe où, et « Benzodiazép / ines » se lit plus mal que l'ellipse.
+- **La ligne d'un matériel loué sortait tranchée par le milieu.** Sur un
+  volet étroit, la cellule du nom porte deux lignes — le matériel, puis
+  la date de pose, l'état et le montant que la largeur n'a pas permis de
+  mettre en colonnes — et elle n'en réservait qu'une.
+  `allocate_ui_with_layout` réserve ce qu'on lui donne ; ce qui dépasse
+  **déborde**, cela ne pousse rien. La seconde ligne passait donc sous
+  la rangée de boutons, coupée à mi-hauteur. Le commentaire d'à côté
+  disait « la hauteur passée est un plancher : deux lignes la dépassent
+  et la rangée grandit » — c'était l'intention, pas ce que fait la
+  fonction. La hauteur se mesure maintenant, enveloppe de l'italique
+  comprise. Sur un volet large, où ces valeurs ont leurs colonnes et où
+  la seconde ligne n'existe pas, rien ne change.
 - **Quatre préparations du codex s'appelaient toutes « Bain de bouche
   … »** dans une liste faite pour les distinguer. Une ligne prend deux
   lignes quand elle peut se couper proprement, et le mot le plus long
