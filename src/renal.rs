@@ -361,13 +361,30 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &[
-            "ains",
+            // **Jamais « ains » tout court.** Les mots cherchés sont
+            // des sous-chaînes d'un texte replié sans espaces, et un
+            // fragment de quatre lettres attrape ce qu'il ne vise pas :
+            // « Apidra insuline glulisine » se replie en
+            // « apidrainsulineglulisine », qui contient « ains ». Deux
+            // insulines recevaient ainsi la conduite des AINS — dont
+            // « au-dessous de 30 : contre-indication », c'est-à-dire, lu
+            // au comptoir, d'arrêter l'insuline. Le Tresiba aussi. Les
+            // molécules sont donc nommées une à une.
             "ibuprofene",
             "diclofenac",
             "ketoprofene",
             "naproxene",
             "celecoxib",
+            "etoricoxib",
             "piroxicam",
+            "acideniflumique",
+            "acidetiaprofenique",
+            "acidemefenamique",
+            // L'indométacine n'y est pas : elle existe en collyre
+            // (Indocollyre), et cette table est indexée sur la molécule.
+            // Une conduite rénale systémique prêtée à deux gouttes dans
+            // un œil est le genre d'alerte qui apprend à ignorer les
+            // alertes — la leçon du kétoconazole local dans `cyp.rs`.
         ],
         label: "AINS",
         steps: &[
@@ -412,7 +429,15 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP colchicine ; ANSM, mise au point 2016",
     },
     Adaptation {
-        needs: &["methotrexate", "novatrex", "imeth"],
+        needs: &[
+            // **Jamais « imeth ».** Aucune fiche livrée ne porte ce
+            // nom de spécialité, et le fragment attrape en revanche le
+            // « diméthylfumarate » du Skilarence — d-i-m-e-t-h. Les
+            // mots cherchés sont des sous-chaînes d'un texte replié sans
+            // espaces : un fragment court attrape ce qu'il ne vise pas.
+            "methotrexate",
+            "novatrex",
+        ],
         label: "Méthotrexate",
         steps: &[
             Step {
@@ -835,6 +860,67 @@ mod tests {
                 assert_eq!(*n, n.trim(), "{} : « {n} » a une espace en trop", a.label);
             }
         }
+    }
+
+    /// **Aucune ligne ne prête sa conduite à une fiche qui dit n'avoir
+    /// besoin d'aucune adaptation.**
+    ///
+    /// Le piège est celui du mot trop court. Les mots cherchés sont des
+    /// sous-chaînes d'un texte replié **sans espaces**, si bien qu'un
+    /// fragment de quatre lettres attrape ce qu'il ne vise pas :
+    /// « Apidra insuline glulisine » devient
+    /// « apidrainsulineglulisine », qui contient « ains ». Deux
+    /// insulines recevaient donc la conduite des AINS, dont
+    /// « au-dessous de 30 : contre-indication » — lu au comptoir, cela
+    /// dit d'arrêter l'insuline. Aucun test ne pouvait le voir : la
+    /// table était cohérente avec elle-même, et c'est la **rencontre**
+    /// avec les fiches livrées qui le montre.
+    ///
+    /// Vérifié en remettant « ains » dans la ligne des AINS : le test
+    /// nomme l'Apidra, le Tresiba et le Tantum.
+    #[test]
+    fn no_row_contradicts_the_card_it_claims() {
+        let cards: Vec<(String, String)> = crate::db::STARTER_DETAILS
+            .iter()
+            .map(|d| (crate::fuzzy::sort_key(d.name), d.renal.to_lowercase()))
+            .collect();
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+            // La ligne qui **revendique** cette fiche est la première
+            // qui l'attrape, celle que `read` retiendra.
+            let Some(a) = TABLE.iter().find(|a| {
+                a.needs
+                    .iter()
+                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+            }) else {
+                continue;
+            };
+            let Some((_, renal)) = cards
+                .iter()
+                .find(|(n, _)| *n == crate::fuzzy::sort_key(name))
+            else {
+                continue;
+            };
+            // « Pas d'adaptation **en usage local** » et « pas
+            // d'adaptation » tout court disent tous deux que le rein ne
+            // change rien ; une fiche qui chiffre un palier ailleurs
+            // dans la même phrase, elle, ne dit pas cela.
+            let flat = [
+                "pas d'adaptation.",
+                "aucune adaptation.",
+                "pas d'adaptation en usage",
+            ];
+            if flat.iter().any(|w| renal.contains(w)) && !renal.contains("ml/min") {
+                wrong.push(format!("{} → {name} : « {} »", a.label, renal.trim()));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "lignes prêtées à une fiche qui ne demande aucune adaptation \
+             rénale :\n{}",
+            wrong.join("\n")
+        );
     }
 
     /// Deux entrées ne doivent pas se disputer la même ligne : la

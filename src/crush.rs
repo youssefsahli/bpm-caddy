@@ -327,7 +327,15 @@ pub const TABLE: &[Rule] = &[
     },
     // --- Ce qui protège celui qui écrase, et non le patient ----------
     Rule {
-        needs: &["methotrexate", "novatrex", "imeth"],
+        needs: &[
+            // **Jamais « imeth ».** Aucune fiche livrée ne porte ce
+            // nom de spécialité, et le fragment attrape en revanche le
+            // « diméthylfumarate » du Skilarence — d-i-m-e-t-h. Les
+            // mots cherchés sont des sous-chaînes d'un texte replié sans
+            // espaces : un fragment court attrape ce qu'il ne vise pas.
+            "methotrexate",
+            "novatrex",
+        ],
         label: "Méthotrexate",
         verdict: Verdict::No,
         why: "Cytotoxique : la poussière expose la personne qui écrase, pas le patient qui avale. C'est une manipulation à éviter au domicile comme en établissement.",

@@ -117,6 +117,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Fixed
+- **Un fragment de quatre lettres attrapait des produits qu'il ne visait
+  pas, dans trois tables cliniques.** Les mots cherchés sont des
+  sous-chaînes d'un texte replié **sans espaces**, et c'est ce repli qui
+  fabrique les collisions : « Apidra insuline glulisine » devient
+  « apidrainsulineglulisine », qui contient « ains ». Deux insulines —
+  Apidra et Tresiba — recevaient donc la conduite des AINS : au rein,
+  « au-dessous de 30 : contre-indication » ; à la grossesse,
+  « contre-indication formelle à partir de 24 SA ». Lu au comptoir chez
+  une diabétique enceinte, cela dit d'arrêter l'insuline.
+
+  Deux autres du même genre : « grippe » contient « ipp », si bien que le
+  Tamiflu et le Relenza recevaient la ligne des inhibiteurs de la pompe à
+  protons ; et « diméthylfumarate » contient « imeth », si bien que le
+  Skilarence recevait celle du méthotrexate — dans trois modules à la
+  fois, dont « tératogène et abortif » sur le panneau grossesse et
+  « cytotoxique » sur la feuille d'écrasement. Aucune fiche livrée ne
+  s'appelle Imeth : le fragment ne visait rien et n'attrapait que cela.
+
+  Les molécules sont nommées une à une. Les AINS locaux — un collyre à
+  l'indométacine, un bain de bouche à la benzydamine — restent dehors :
+  une conduite rénale systémique prêtée à deux gouttes dans un œil est
+  le genre d'alerte qui apprend à ignorer les alertes.
+- **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
+  dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
+  nomme le produit fautif.
 - **L'onglet « Biologie » ne faisait plus rien de ce pour quoi il
   existe** à 1024x700 avec `text_scale = 1,6` : aucun résultat affiché,
   et le bouton « Ajouter » coupé par le cadre. Ni lire un résultat, ni

@@ -296,7 +296,15 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT ; ANSM, programme de prévention des grossesses",
     },
     Advice {
-        needs: &["methotrexate", "novatrex", "imeth"],
+        needs: &[
+            // **Jamais « imeth ».** Aucune fiche livrée ne porte ce
+            // nom de spécialité, et le fragment attrape en revanche le
+            // « diméthylfumarate » du Skilarence — d-i-m-e-t-h. Les
+            // mots cherchés sont des sous-chaînes d'un texte replié sans
+            // espaces : un fragment court attrape ce qu'il ne vise pas.
+            "methotrexate",
+            "novatrex",
+        ],
         label: "Méthotrexate",
         pregnancy: Level::Interdit,
         term: "Sur toute la grossesse.",
@@ -317,7 +325,27 @@ pub const TABLE: &[Advice] = &[
     },
     // --- Ce que le terme change ---------------------------------------
     Advice {
-        needs: &["ains", "ibuprofene", "diclofenac", "ketoprofene", "naproxene", "celecoxib", "advil", "nurofen"],
+        needs: &[
+            // **Jamais « ains » tout court.** Les mots cherchés sont des
+            // sous-chaînes d'un texte replié sans espaces : « Apidra
+            // insuline glulisine » devient « apidrainsulineglulisine »,
+            // qui contient « ains ». Deux insulines recevaient ainsi la
+            // ligne des AINS — « contre-indication formelle à partir de
+            // 24 SA », c'est-à-dire, lue chez une diabétique enceinte,
+            // d'arrêter son insuline. Les molécules sont nommées.
+            "ibuprofene",
+            "diclofenac",
+            "ketoprofene",
+            "naproxene",
+            "celecoxib",
+            "etoricoxib",
+            "piroxicam",
+            "acideniflumique",
+            "acidetiaprofenique",
+            "acidemefenamique",
+            "advil",
+            "nurofen",
+        ],
         label: "AINS",
         pregnancy: Level::Interdit,
         term: "À partir de 24 semaines d'aménorrhée (5 mois et demi) : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
@@ -509,7 +537,16 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT",
     },
     Advice {
-        needs: &["omeprazole", "esomeprazole", "pantoprazole", "lansoprazole", "inexium", "ipp"],
+        needs: &[
+            // Et jamais « ipp » : « grippe » le contient, si bien que le
+            // Tamiflu et le Relenza recevaient la ligne des IPP.
+            "omeprazole",
+            "esomeprazole",
+            "pantoprazole",
+            "lansoprazole",
+            "rabeprazole",
+            "inexium",
+        ],
         label: "Inhibiteurs de la pompe à protons",
         pregnancy: Level::Compatible,
         term: "",
