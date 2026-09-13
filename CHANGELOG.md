@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **L'ordonnance sous protocole et les questions du registre entrent au
+  manuel.** La section des entretiens portait déjà « rien n'est jamais
+  sélectionné d'office et toute posologie proposée est modifiable » —
+  une phrase sur l'ordonnance TROD, dans une section qui ne disait nulle
+  part ce qu'est cette ordonnance. Elle a maintenant son paragraphe : ce
+  qu'un test rapide positif autorise, pourquoi les doses sont celles des
+  tables de conversion et non une seconde liste, d'où viennent les
+  adjuvants, et que l'application propose quand le pharmacien décide.
+
+  Et l'onglet « Vigilance » a le sien, sous le registre : trois
+  questions, jamais des verdicts, et surtout **ce que le registre ne
+  sait pas** — ni dose quotidienne ni durée prescrite, donc pas de date
+  de fin calculée. La durée maximale de la famille ne sert qu'à se
+  taire : s'en servir pour déduire un rythme ferait d'une ordonnance de
+  sept jours sous plafond de vingt-huit un signalement, et une règle qui
+  crie au loup est une règle qu'on éteint.
 - **Deux fonctionnalités n'étaient dans le manuel nulle part** : la
   feuille « peut-on écraser ? » et la conciliation de sortie. Le mot
   « écraser » n'y apparaissait que pour parler d'écraser le travail d'un

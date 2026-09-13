@@ -178,8 +178,26 @@ Un acte porte sa thématique, son état, sa date, sa durée et les
 initiales de qui l'a fait. « Tout imprimer » rend la fiche d'entretien,
 le bilan et le plan de prise en un seul document.
 
+## L'ordonnance sous protocole
+
+Après un test rapide positif — angine à streptocoque, cystite simple —,
+l'écran compose l'ordonnance que le protocole autorise : l'antibiotique,
+sa posologie, l'adjuvant et les conseils.
+
+Les molécules, les doses et les durées sont **celles des tables de
+conversion** qu'on lit au comptoir, dans le même ordre et les mêmes
+mots : la table qu'on consulte et le document qu'on remet ne peuvent pas
+dire deux choses différentes, et un test le tient.
+
 Rien n'est jamais sélectionné d'office et toute posologie proposée est
-modifiable.
+modifiable : l'application propose, le pharmacien décide.
+
+Les adjuvants ne sont pas une liste du programme. Ce sont les fiches
+portant l'étiquette voulue, avec leurs propres lignes de posologie :
+ajouter un produit, c'est ajouter une fiche.
+
+Aucune mention n'est imprimée d'office ; celles que l'officine veut voir
+s'écrivent dans Options › Mentions.
 
 # L'agenda et le planning
 
@@ -268,6 +286,32 @@ produits qu'on a réellement comptés sont inscrits.
 
 Une ligne porte le **numéro de dossier** et jamais le nom : un registre
 s'imprime et se laisse sur un comptoir.
+
+Le numéro de délivrance est attribué au moment de l'écriture et n'est
+jamais réattribué : une ligne annulée garde le sien, et la suite
+continue après lui.
+
+## Les questions que le registre pose
+
+L'onglet « Vigilance » relit le registre et pose trois questions :
+rapprochement des délivrances, pluralité de prescripteurs, escalade des
+quantités. Ce sont **des questions et non des verdicts** : chacune cite
+les lignes qui la motivent, et se vérifie en les relisant.
+
+Ce que le registre ne sait pas, il ne l'invente pas. Une ligne porte un
+jour, une quantité, un dossier et un prescripteur — ni la dose
+quotidienne, ni la durée prescrite. « Ce traitement aurait dû durer
+jusqu'au » ne se calcule donc pas.
+
+La durée maximale de la famille ne sert qu'à **se taire** : au-delà,
+deux ordonnances ne peuvent pas se chevaucher, et la question ne se pose
+pas. Elle ne sert jamais à déduire un rythme — une ordonnance de sept
+jours sous un plafond de vingt-huit passerait pour quatre fois trop
+lente, et chaque délivrance légitime deviendrait un signalement. Une
+règle qui crie au loup est une règle qu'on éteint.
+
+Sous trois délivrances précédentes, rien n'est dit : il n'y a pas encore
+de cadence à laquelle comparer.
 
 # La caisse
 
