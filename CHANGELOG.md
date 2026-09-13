@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
-- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`,
-  soixante-dix-sept molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
+- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, cent neuf
+  molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
   livrées nomment le foie dans leurs contre-indications, et il fallait
   les ouvrir une par une pour savoir ce que devenait une ordonnance chez
   un cirrhotique. Le panneau « Croisement » le dit maintenant d'un coup.

@@ -32,7 +32,7 @@
 //! les alertes — c'est la leçon du kétoconazole local dans `cyp.rs`, et
 //! celle de `crush.rs`, qui s'indexe justement sur la présentation parce
 //! qu'une table par DCI s'y tromperait une fois sur deux. Ici la
-//! molécule suffit pour les soixante-dix-sept lignes de la table ; le jour
+//! molécule suffit pour les cent neuf lignes de la table ; le jour
 //! où elle ne suffira plus, c'est le type qui devra changer, pas la
 //! ligne qui devra ruser.
 //!
@@ -970,6 +970,201 @@ pub const TABLE: &[Adaptation] = &[
             ),
         ],
         source: "Betmiga : « La posologie est réduite en cas […] d'insuffisance hépatique modérée » ; « L'utilisation n'est pas recommandée en cas […] d'insuffisance hépatique sévère ».",
+    },
+    // **La trimipramine avant l'imipramine**, parce que la seconde est
+    // une sous-chaîne de la première : la table est lue dans l'ordre, et
+    // sans cela le Surmontil citerait la fiche du Tofranil.
+    Adaptation {
+        needs: &["trimipramine"],
+        label: "Trimipramine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Surmontil : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["imipramine"],
+        label: "Imipramine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Tofranil : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["clomipramine"],
+        label: "Clomipramine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Anafranil : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["doxepine"],
+        label: "Doxépine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Quitaxon : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["miansérine"],
+        label: "Miansérine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Mianserine : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["clonazepam"],
+        label: "Clonazépam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Rivotril : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["loprazolam"],
+        label: "Loprazolam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Havlane : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["lormetazepam"],
+        label: "Lormétazépam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Noctamide : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["triazolam"],
+        label: "Triazolam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Halcion : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["doxylamine"],
+        label: "Doxylamine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Donormyl : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["buspirone"],
+        label: "Buspirone",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Buspirone : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["carvedilol"],
+        label: "Carvédilol",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Kredex : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["lercanidipine"],
+        label: "Lercanidipine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Lercanidipine : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["felodipine"],
+        label: "Félodipine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Flodil : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["bumetanide"],
+        label: "Bumétanide",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Burinex : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["prasugrel"],
+        label: "Prasugrel",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Efient : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["ticlopidine"],
+        label: "Ticlopidine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Ticlopidine : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["glibenclamide"],
+        label: "Glibenclamide",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Daonil : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["glipizide"],
+        label: "Glipizide",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Glipizide : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["finerenone"],
+        label: "Finérénone",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Kerendia : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["moxifloxacine"],
+        label: "Moxifloxacine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Izilox : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["itraconazole"],
+        label: "Itraconazole",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Sporanox : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["cotrimoxazole"],
+        label: "Cotrimoxazole",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Bactrim : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["dextromethorphane"],
+        label: "Dextrométhorphane",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Tussidane : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["zonisamide"],
+        label: "Zonisamide",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Zonegran : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["perampanel"],
+        label: "Pérampanel",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Fycompa : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["phenobarbital"],
+        label: "Phénobarbital",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Gardénal : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["frovatriptan"],
+        label: "Frovatriptan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Frovatriptan : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["hydromorphone"],
+        label: "Hydromorphone",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Sophidone : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["nalbuphine"],
+        label: "Nalbuphine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Nalbuphine : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["naproxene"],
+        label: "Naproxène",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Apranax : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["etoricoxib"],
+        label: "Étoricoxib",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Arcoxia : contre-indication en « insuffisance hépatique sévère ».",
     },
     Adaptation {
         needs: &["dronedarone"],
