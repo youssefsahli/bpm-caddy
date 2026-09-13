@@ -390,6 +390,15 @@ pub fn note(analyte: &Analyte, over: &crate::content::Overrides) -> String {
     .to_owned()
 }
 
+/// Combien de règles la table porte — lue par la documentation, qui
+/// affirme ce nombre.
+/// Elle n'existe que pour le test de la documentation : le README
+/// affirme ce nombre, et une phrase qui affirme se tient.
+#[cfg(test)]
+pub fn rule_count() -> usize {
+    RULES.len()
+}
+
 pub const CATALOGUE: &[Analyte] = &[
     Analyte {
         code: "DFG",

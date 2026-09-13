@@ -841,6 +841,20 @@ livre = "Une phrase qui n'est plus livrée"
             v.dedup();
             v.len()
         };
+        // Les milliers séparés comme le README les écrit — « 1 736 » et
+        // non « 1736 ». Espace ordinaire : c'est celle qui y est, et le
+        // test suit le texte plutôt que de le corriger en passant.
+        fn thousands(n: usize) -> String {
+            let digits = n.to_string();
+            let mut out = String::new();
+            for (i, c) in digits.chars().enumerate() {
+                if i > 0 && (digits.len() - i).is_multiple_of(3) {
+                    out.push(' ');
+                }
+                out.push(c);
+            }
+            out
+        }
         let presentations: usize = crate::ordonnancier::CATALOGUE
             .iter()
             .map(|f| f.items.len())
@@ -930,6 +944,70 @@ livre = "Une phrase qui n'est plus livrée"
                             "la table porte {n} cytochromes : l'écrire en toutes \
                              lettres dans le manuel et ici"
                         ),
+                    }
+                ),
+            ),
+            // **Le README affirmait six chiffres que le code démentait.**
+            // Le catalogue des stupéfiants y était compté deux fois dans
+            // la même phrase — 158 puis 106 —, les lignes de posologie
+            // deux fois à deux endroits — 1 736 et 1 319 —, et quatre
+            // tables avaient grandi sans que la phrase bouge. C'est la
+            // page que lisent ceux qui n'ont pas encore installé : elle
+            // vieillit sans que personne la relise contre le code.
+            (
+                "README.md",
+                README,
+                format!("all {presentations} followed would be {presentations} zero balances"),
+            ),
+            (
+                "README.md",
+                README,
+                format!(
+                    "and so are the {} posology lines",
+                    thousands(crate::db::STARTER_POSOLOGIES.len())
+                ),
+            ),
+            (
+                "README.md",
+                README,
+                format!(
+                    "{} counter references browsable in-app",
+                    match crate::tables::TABLES.len() {
+                        46 => "forty-six",
+                        n => panic!("{n} tables de conversion : l'écrire ici et au README"),
+                    }
+                ),
+            ),
+            (
+                "README.md",
+                README,
+                format!(
+                    "{} of them.",
+                    match crate::surveillance::WATCHES.len() {
+                        65 => "Sixty-five",
+                        n => panic!("{n} surveillances : l'écrire ici et au README"),
+                    }
+                ),
+            ),
+            (
+                "README.md",
+                README,
+                format!(
+                    "applies {} rules that tie a value",
+                    match crate::biology::rule_count() {
+                        103 => "a hundred and three",
+                        n => panic!("{n} règles de biologie : l'écrire ici et au README"),
+                    }
+                ),
+            ),
+            (
+                "README.md",
+                README,
+                format!(
+                    "{} sections in two columns on one sheet",
+                    match crate::pdf::guide_section_count() {
+                        16 => "sixteen",
+                        n => panic!("{n} sections au mode d'emploi : l'écrire ici et au README"),
                     }
                 ),
             ),

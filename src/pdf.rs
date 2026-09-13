@@ -1137,6 +1137,15 @@ fn guide_values(pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
 /// The guide itself: one paragraph per thing the counter does. Written
 /// for someone who has never opened the application, and short enough
 /// to be read standing up.
+/// Combien de sections le mode d'emploi porte — lu par le README, qui
+/// affirme ce nombre.
+/// Elle n'existe que pour le test de la documentation : le README
+/// affirme ce nombre.
+#[cfg(test)]
+pub fn guide_section_count() -> usize {
+    GUIDE_SECTIONS.len()
+}
+
 const GUIDE_SECTIONS: &[(&str, &str)] = &[
     (
         "Ouvrir la base",

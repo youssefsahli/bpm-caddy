@@ -326,6 +326,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Six chiffres du README que le code démentait.** La page que lisent
+  ceux qui n'ont pas encore installé comptait le catalogue des
+  stupéfiants deux fois dans la même phrase — 158 puis 106 —, les lignes
+  de posologie deux fois à deux endroits — 1 736 et 1 319 —, et quatre
+  tables avaient grandi sans que la phrase bouge : quarante-trois tables
+  de conversion pour quarante-six, quarante-neuf surveillances pour
+  soixante-cinq, quatre-vingt-quinze règles de biologie pour cent trois,
+  quinze sections au mode d'emploi pour seize. Les six sont maintenant
+  tenues par `the_documentation_counts_what_the_code_holds`, comme les
+  trois qui l'étaient déjà.
 - **Le mode d'emploi imprimé était en retard sur l'application.** Il
   annonçait « six onglets » au dossier et les énumérait sans le fil — il
   avait été écrit avant lui —, et sa liste de raccourcis, recopiée à la
