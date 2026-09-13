@@ -330,6 +330,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Deux astérisques partaient à l'écran et sur le papier.** Les trois
+  tables cliniques ont un test qui refuse le balisage — `RichText`
+  n'interprète rien, une astérisque tapée pour appuyer un mot arrive
+  comme une astérisque —, mais deux tables ne l'avaient pas : le
+  catalogue des stupéfiants, dont la note de famille s'affiche en
+  infobulle (« l'inscription au registre n'est \*\*pas\*\* exigée »), et le
+  plan de surveillance, dont les phrases **s'impriment** (« se corrigent
+  \*\*avant\*\* l'injection »). Les deux phrases sont réécrites sans
+  balisage, et les deux tables ont désormais leur test. Une relecture de
+  toutes les chaînes dessinées des dix-huit modules n'en a pas trouvé
+  d'autre.
 - **Deux tables portent le même titre à un mot près, et disaient de la
   metformine le contraire l'une de l'autre.** « Fonction rénale — stades
   et conséquences pratiques » écrit « dose réduite » au stade G3a ;

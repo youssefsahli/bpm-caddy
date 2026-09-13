@@ -555,7 +555,7 @@ pub const WATCHES: &[Watch] = &[
         needs: &["bisphosphonate", "alendronate", "risédronate", "zolédronique", "dénosumab"],
         code: "CA",
         every_months: 12,
-        why: "La calcémie et la vitamine D se corrigent **avant** l'injection et jamais après : sous dénosumab l'hypocalcémie peut être sévère, surtout si la clairance est basse.",
+        why: "La calcémie et la vitamine D se corrigent avant l'injection, jamais après : sous dénosumab l'hypocalcémie peut être sévère, surtout si la clairance est basse.",
     },
     Watch {
         needs: &["bisphosphonate", "dénosumab", "vitamine D", "cholécalciférol", "calcifédiol"],
@@ -957,5 +957,24 @@ mod tests {
         assert_eq!(rhythm_text(24), "tous les deux ans");
         assert_eq!(rhythm_text(36), "tous les 3 ans");
         assert_eq!(rhythm_text(4), "tous les 4 mois");
+    }
+    /// Le plan de surveillance n'écrit pas de balisage.
+    ///
+    /// Ces phrases s'affichent **et s'impriment** : `RichText`
+    /// n'interprète rien, et le modèle Typst pas davantage, si bien
+    /// qu'une astérisque tapée pour appuyer un mot part sur le papier
+    /// de l'officine. Les tables cliniques avaient ce test ; celle-ci
+    /// n'en avait pas, et portait « se corrigent **avant**
+    /// l'injection ».
+    #[test]
+    fn the_plan_writes_no_markup() {
+        for w in WATCHES {
+            assert!(
+                !w.why.contains("**") && !w.why.contains('`'),
+                "{} : « {} » porte du balisage",
+                w.code,
+                w.why
+            );
+        }
     }
 }

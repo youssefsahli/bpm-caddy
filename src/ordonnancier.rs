@@ -369,7 +369,7 @@ pub const CATALOGUE: &[Family] = &[
         name: "Buprénorphine haut dosage",
         status: "ASSIMILE",
         max_days: 28,
-        note: "Assimilé stupéfiant : ordonnance sécurisée, 28 jours, chevauchement interdit, délivrance fractionnée par 7 jours sauf mention expresse. L'inscription au registre n'est **pas** exigée pour cette classe — l'officine la tient si elle le choisit, et beaucoup le font.",
+        note: "Assimilé stupéfiant : ordonnance sécurisée, 28 jours, chevauchement interdit, délivrance fractionnée par 7 jours sauf mention expresse. Une seule chose n'est pas exigée pour cette classe : l'inscription au registre — l'officine la tient si elle le choisit, et beaucoup le font.",
         items: &[
             ("Subutex 0,4 mg", "comprimé sublingual"),
             ("Subutex 2 mg", "comprimé sublingual"),
@@ -2549,5 +2549,35 @@ mod tests {
         let p = plan(Kind::Inventaire, &[slot(1, "", 40.0, "")]);
         assert!(!p.ready(), "rien à écrire n'est pas prêt à écrire");
         assert!(p.lines.is_empty() && p.snags.is_empty());
+    }
+    /// Le catalogue non plus n'écrit pas de balisage.
+    ///
+    /// La note d'une famille est dessinée telle quelle, dans une
+    /// infobulle : `RichText` n'interprète rien, si bien qu'une
+    /// astérisque tapée pour appuyer un mot arrive à l'écran comme une
+    /// astérisque. Les trois tables cliniques avaient ce test ; le
+    /// catalogue, non, et il portait « n'est **pas** exigée ».
+    ///
+    /// Les commentaires de ce fichier en écrivent, eux, et c'est très
+    /// bien : ils ne vont nulle part. Ce test ne lit que ce qui est
+    /// dessiné.
+    #[test]
+    fn the_catalogue_writes_no_markup() {
+        for f in CATALOGUE {
+            for text in [f.name, f.note] {
+                assert!(
+                    !text.contains("**") && !text.contains('`'),
+                    "{} : « {text} » porte du balisage",
+                    f.name
+                );
+            }
+            for (label, unit) in f.items {
+                assert!(
+                    !label.contains("**") && !unit.contains("**"),
+                    "{} : « {label} » porte du balisage",
+                    f.name
+                );
+            }
+        }
     }
 }
