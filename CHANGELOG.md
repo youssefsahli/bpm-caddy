@@ -330,6 +330,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **La table des insulines ne connaissait pas la Fiasp**, et c'est
+  justement celle qui contredit son conseil. La ligne des analogues
+  rapides dit « juste avant le repas » ; la Fiasp se pique au début du
+  repas ou jusqu'à vingt minutes après l'avoir commencé — c'est la seule
+  qui rattrape une assiette déjà entamée, et `insulin.rs` le sait depuis
+  toujours. Elle a sa ligne. Les onze autres profils concordent avec le
+  module, début, pic et durée compris.
 - **La codéine était « à éviter » pendant l'allaitement, quand les trois
   autres textes de l'application la disent contre-indiquée.** La table
   de référence « Grossesse et allaitement » l'écrit dans sa colonne

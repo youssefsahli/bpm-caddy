@@ -249,6 +249,7 @@ pub const TABLES: &[ConvTable] = &[
         columns: &["Type (spécialités)", "Début", "Pic", "Durée", "Moment de l'injection", "Conservation"],
         rows: &[
             &["Analogue rapide (Humalog, NovoRapid, Apidra)", "10 à 20 min", "1 à 3 h", "3 à 5 h", "Juste avant le repas ; chez le jeune enfant, juste après si la prise alimentaire est incertaine", "2 à 8 °C non entamé ; stylo en cours à température ambiante 4 semaines"],
+            &["Analogue ultra-rapide (Fiasp)", "Environ 5 min", "30 min à 1 h", "3 à 4 h", "Au début du repas, ou jusqu'à 20 minutes après l'avoir commencé : c'est la seule qui rattrape une assiette déjà entamée", "2 à 8 °C non entamé ; stylo en cours à température ambiante 4 semaines"],
             &["Humaine rapide (Actrapid, Umuline Rapide)", "30 à 60 min", "2 à 4 h", "6 à 8 h", "20 à 30 min avant le repas", "2 à 8 °C non entamé ; durée d'utilisation après ouverture selon le RCP"],
             &["Prémix biphasique (NovoMix, Humalog Mix)", "10 à 20 min (fraction rapide)", "Double : rapide puis prolongé", "10 à 16 h", "Juste avant le repas, après homogénéisation", "2 à 8 °C non entamé ; remettre en suspension avant chaque injection"],
             &["NPH intermédiaire (Insulatard, Umuline NPH)", "1 à 2 h", "4 à 8 h", "12 à 16 h", "Indépendante du repas, souvent au coucher ; retourner le stylo une dizaine de fois", "2 à 8 °C non entamé ; durée après ouverture selon le RCP"],
