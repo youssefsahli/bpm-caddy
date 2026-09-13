@@ -2125,9 +2125,23 @@ pub const CLASSES: &[Class] = &[
 /// ralentit le cœur —, si bien que la réponse n'est jamais qu'une
 /// réponse : c'est à l'appelant de décider ce qu'il en fait.
 pub fn is_local_form(class: &str) -> bool {
+    // « localisé » n'est pas une voie : un cancer localisé se traite
+    // par la voie générale, et le mot ne doit pas faire taire ses
+    // lignes. Aucune classe livrée ne le porte aujourd'hui ; c'est une
+    // précaution, et elle coûte une comparaison.
+    if crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(class), "localis") {
+        return false;
+    }
     const LOCAL: &[&str] = &[
         "collyre",
         "topique",
+        // **« local » autant que « topique ».** Les fiches disent les
+        // deux — « antifongique local », « anesthésique local »,
+        // « corticoïde à action locale », « estrogène local vaginal » —
+        // et dix-neuf boîtes échappaient au filtre pour ce seul mot,
+        // dont le Kétoderm que `cyp.rs` nomme depuis toujours comme
+        // l'exemple à ne pas mettre face à une simvastatine.
+        "local",
         "nasal",
         "auriculaire",
         "dermocorticoide",
@@ -2431,6 +2445,13 @@ mod tests {
             "collyre antibiotique",
             "dermocorticoïde fort",
             "antifongique topique",
+            // Les fiches disent « local » autant que « topique », et
+            // dix-neuf boîtes échappaient au filtre pour ce seul mot :
+            // le Kétoderm, cinq anesthésiques, un estrogène vaginal.
+            "antifongique local",
+            "anesthésique local",
+            "corticoïde à action locale",
+            "estrogène local vaginal",
             "vasoconstricteur nasal",
             "gouttes auriculaires antibiotiques",
             "pommade ophtalmique corticoïde + antibiotique",
@@ -2444,5 +2465,8 @@ mod tests {
         // « Roaccutane » contient « cutane », et c'est de
         // l'isotrétinoïne orale.
         assert!(!is_local_form("rétinoïde — tératogène"));
+        // « localisé » n'est pas une voie : un cancer localisé se traite
+        // par la voie générale.
+        assert!(!is_local_form("anticancéreux — cancer localisé"));
     }
 }

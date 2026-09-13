@@ -230,7 +230,24 @@ fn ties(centre: &Known, other: &Known, folded_ddi: &str, tie: Tie) -> bool {
             !centre.class.trim().is_empty() && fuzzy::eq_folded(centre.class, other.class)
         }
         // Named in the centre's own interactions, by brand or by DCI.
-        Tie::Interaction => named_in(folded_ddi, other.name) || named_in(folded_ddi, other.dci),
+        //
+        // **Sauf une forme locale**, et pour la raison que `cyp.rs`
+        // écrit déjà : un kétoconazole local n'est pas un kétoconazole.
+        // La section « interactions » de l'Eliquis nomme les azolés —
+        // elle parle des azolés **généraux** —, et la carte mettait donc
+        // le Kétoderm, qui est un shampooing, face à un anticoagulant.
+        // C'est le genre de lien qui apprend à ignorer les liens.
+        //
+        // La parenté de **molécule** n'est pas concernée : un
+        // kétoconazole topique et un kétoconazole oral sont bien la même
+        // molécule, et le voir vaut la peine. Et si le centre est
+        // lui-même une forme locale, deux topiques se citent
+        // légitimement.
+        Tie::Interaction => {
+            (crate::classes::is_local_form(centre.class)
+                || !crate::classes::is_local_form(other.class))
+                && (named_in(folded_ddi, other.name) || named_in(folded_ddi, other.dci))
+        }
     }
 }
 
@@ -565,5 +582,67 @@ mod tests {
         // empty one as a class-mate.
         let map = around(&b[2], &b, Caps::default());
         assert!(map.is_empty(), "{map:?}");
+    }
+    /// **Un kétoconazole local n'est pas un kétoconazole**, et la carte
+    /// ne le met pas face à un anticoagulant.
+    ///
+    /// La section « interactions » d'un AOD nomme les azolés — elle
+    /// parle des azolés **généraux**. Lue au mot près, elle faisait du
+    /// Kétoderm, qui est un shampooing, un voisin cité de l'Eliquis :
+    /// le genre de lien qui apprend à ignorer les liens, et c'est
+    /// exactement ce que `cyp.rs` refuse depuis toujours.
+    ///
+    /// La parenté de **molécule** n'est pas concernée : un kétoconazole
+    /// topique et un kétoconazole oral sont la même molécule, et le voir
+    /// vaut la peine.
+    #[test]
+    fn a_topical_is_not_a_cited_interaction() {
+        let mut b = base();
+        // La classe **que la fiche livrée porte vraiment** : elle dit
+        // « antifongique local » et non « topique », et c'est ce seul
+        // mot qui faisait échapper dix-neuf boîtes au filtre.
+        b.push(card(8, "Kétoderm", "kétoconazole", "antifongique local"));
+        let map = around(&b[0], &b, Caps::default());
+        let cited: Vec<&str> = map
+            .nodes
+            .iter()
+            .filter(|n| n.tie == Tie::Interaction)
+            .map(|n| n.name.as_str())
+            .collect();
+        assert!(
+            !cited.contains(&"Kétoderm"),
+            "un shampooing n'est pas une interaction citée : {cited:?}"
+        );
+        // Le Nizoral, lui, est bien cité : c'est le même mot, et c'est
+        // la voie générale.
+        assert!(cited.contains(&"Nizoral"), "{cited:?}");
+
+        // Et si le centre est lui-même topique, deux topiques se citent.
+        // Avec une **autre** molécule que la sienne : le même
+        // kétoconazole tomberait dans l'anneau de la molécule, qui est
+        // plus proche, et une fiche n'appartient qu'à un anneau.
+        let ketoderm = Known {
+            id: 8,
+            name: "Kétoderm",
+            dci: "kétoconazole",
+            class: "antifongique local",
+            ddi: "À ne pas appliquer en même temps que le Diprosone.",
+            narrow: false,
+        };
+        let mut b2 = base();
+        b2.insert(0, ketoderm);
+        b2.push(card(
+            9,
+            "Diprosone",
+            "bétaméthasone",
+            "dermocorticoïde fort",
+        ));
+        let map = around(&b2[0], &b2, Caps::default());
+        assert!(
+            map.nodes
+                .iter()
+                .any(|n| n.tie == Tie::Interaction && n.name == "Diprosone"),
+            "un centre topique cite encore le topique qu'il nomme"
+        );
     }
 }

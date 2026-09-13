@@ -489,6 +489,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **La carte du voisinage mettait un shampooing face à un
+  anticoagulant.** La section « interactions » d'un AOD nomme les
+  azolés — elle parle des azolés **généraux** —, et `graph.rs`, qui est
+  la septième lecture indexée sur la molécule et la dernière à n'avoir
+  pas été balayée, en tirait un lien « interaction citée » vers le
+  Kétoderm. C'est mot pour mot ce que `cyp.rs` refuse depuis toujours.
+  Seul le lien d'interaction filtre : deux fiches de la même **molécule**
+  le sont vraiment, quelle que soit la voie, et un centre local cite
+  encore les formes locales qu'il nomme.
+
+  En le corrigeant, un trou dans le filtre lui-même : les fiches disent
+  « local » autant que « topique », et `classes::is_local_form` ne
+  connaissait que le second. **Dix-neuf boîtes** lui échappaient pour ce
+  seul mot — cinq anesthésiques locaux, un estrogène vaginal, un
+  corticoïde à action locale, le bain de bouche à la benzydamine. Aucune
+  ne produisait de fausse lecture dans les trois modules que les filets
+  tiennent, mais la carte, elle, en produisait une. Le mot est ajouté,
+  avec une garde contre « localisé » : un cancer localisé se traite par
+  la voie générale.
 - **Une pastille de revue se coupait en deux, et sa moitié sortait
   tranchée.** Dans une rangée qui enveloppe, egui coupe le **texte** de
   l'étiquette et pas seulement entre les étiquettes : « AOD
