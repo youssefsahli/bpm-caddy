@@ -45738,6 +45738,106 @@ impl App {
         }
     }
 
+    /// La forme de la barre du haut : le nom, une rangée ou deux, et
+    /// les libellés courts.
+    ///
+    /// **Sortie de la boucle de dessin pour être mesurable.** C'est la
+    /// même discipline que `wrapped_band_height` ou `acts_widths` : une
+    /// arithmétique qui décide d'une mise en page se teste sans ouvrir
+    /// de fenêtre.
+    fn toolbar_shape(ui: &egui::Ui, unlocked: bool) -> (bool, bool, bool) {
+        // **Les gouttières se comptent entre les boutons, pas
+        // derrière chacun.** Comptées derrière, deux de trop
+        // font trente-deux pixels, et la barre passait à deux
+        // rangées là où elle tenait sur une. C'est le modèle de
+        // `wrapped_band_height` : *n* choses valent leurs
+        // largeurs plus *n − 1* espacements.
+        let gap = ui.spacing().item_spacing.x;
+
+        let group = |ui: &egui::Ui, labels: &[&str]| -> f32 {
+            let n = labels.len() as f32;
+            labels
+                .iter()
+                .map(|l| Self::button_width(ui, l))
+                .sum::<f32>()
+                + (n - 1.0).max(0.0) * gap
+        };
+        let name = Self::widest(ui, 14.0, ["BPM-Caddy"].into_iter()) + 10.0;
+        let left = if unlocked {
+            group(
+                ui,
+                &[
+                    tr("toolbar_nav"),
+                    tr("toolbar_docs"),
+                    tr("toolbar_keys"),
+                    tr("toolbar_goto"),
+                ],
+            )
+        } else {
+            0.0
+        };
+        let right = if unlocked {
+            group(
+                ui,
+                &[
+                    tr("toolbar_lock"),
+                    tr("toolbar_options"),
+                    tr("toolbar_template"),
+                ],
+            )
+        } else {
+            group(ui, &[tr("toolbar_docs")])
+        };
+        // **Le nom de l'application cède avant la place de
+        // travail.** Il est décoratif — le titre de la fenêtre
+        // le porte —, là où une seconde rangée coûte quarante-six
+        // pixels au volet central, sur les écrans qui en ont le
+        // moins. On le retire d'abord ; on ne passe à deux
+        // rangées que si cela ne suffit pas.
+        let room = ui.available_width();
+        // **On raccourcit avant de passer à la ligne.** Une
+        // seconde rangée coûte quarante-six pixels au volet
+        // central à `text_scale = 1,6`, et cette bande-là est
+        // déjà si courte que le panneau de biologie y perdait
+        // son formulaire. « Docs (F1) » devient « Docs »,
+        // « Aller à… » devient « Aller… » : le raccourci est
+        // dans l'infobulle et dans la fenêtre F12, la place de
+        // travail ne se remplace pas.
+        let short_left = group(
+            ui,
+            &[
+                tr("toolbar_nav"),
+                tr("toolbar_docs_short"),
+                tr("toolbar_keys"),
+                tr("toolbar_goto_short"),
+            ],
+        );
+        let short_right = group(
+            ui,
+            &[
+                tr("toolbar_lock"),
+                tr("toolbar_options_short"),
+                tr("toolbar_template_short"),
+            ],
+        );
+        let short = left + gap + right > room;
+        let (left, right) = if short {
+            (short_left, short_right)
+        } else {
+            (left, right)
+        };
+        let two_rows = left + gap + right > room;
+        // Sur deux rangées, la première a de la place : le nom
+        // revient. Il ne disparaît que lorsqu'il est ce qui
+        // empêche la barre de tenir sur une seule.
+        let show_name = if two_rows {
+            name + left <= room
+        } else {
+            name + left + gap + right <= room
+        };
+        (show_name, two_rows, short)
+    }
+
     /// Le groupe de droite de la barre du haut : verrouiller, les
     /// options, les modèles — et, base fermée, la documentation.
     ///
@@ -46289,98 +46389,8 @@ impl eframe::App for App {
             // Ce que les deux groupes demandent, mesuré avant de les
             // dessiner : le nom, les quatre bascules de gauche, les
             // trois boutons de droite, et les gouttières entre eux.
-            let (show_name, two_rows, short_bar) = {
-                // **Les gouttières se comptent entre les boutons, pas
-                // derrière chacun.** Comptées derrière, deux de trop
-                // font trente-deux pixels, et la barre passait à deux
-                // rangées là où elle tenait sur une. C'est le modèle de
-                // `wrapped_band_height` : *n* choses valent leurs
-                // largeurs plus *n − 1* espacements.
-                let gap = ui.spacing().item_spacing.x;
-                let unlocked = matches!(self.state, State::Unlocked(_));
-                let group = |ui: &egui::Ui, labels: &[&str]| -> f32 {
-                    let n = labels.len() as f32;
-                    labels
-                        .iter()
-                        .map(|l| Self::button_width(ui, l))
-                        .sum::<f32>()
-                        + (n - 1.0).max(0.0) * gap
-                };
-                let name = Self::widest(ui, 14.0, ["BPM-Caddy"].into_iter()) + 10.0;
-                let left = if unlocked {
-                    group(
-                        ui,
-                        &[
-                            tr("toolbar_nav"),
-                            tr("toolbar_docs"),
-                            tr("toolbar_keys"),
-                            tr("toolbar_goto"),
-                        ],
-                    )
-                } else {
-                    0.0
-                };
-                let right = if unlocked {
-                    group(
-                        ui,
-                        &[
-                            tr("toolbar_lock"),
-                            tr("toolbar_options"),
-                            tr("toolbar_template"),
-                        ],
-                    )
-                } else {
-                    group(ui, &[tr("toolbar_docs")])
-                };
-                // **Le nom de l'application cède avant la place de
-                // travail.** Il est décoratif — le titre de la fenêtre
-                // le porte —, là où une seconde rangée coûte quarante-six
-                // pixels au volet central, sur les écrans qui en ont le
-                // moins. On le retire d'abord ; on ne passe à deux
-                // rangées que si cela ne suffit pas.
-                let room = ui.available_width();
-                // **On raccourcit avant de passer à la ligne.** Une
-                // seconde rangée coûte quarante-six pixels au volet
-                // central à `text_scale = 1,6`, et cette bande-là est
-                // déjà si courte que le panneau de biologie y perdait
-                // son formulaire. « Docs (F1) » devient « Docs »,
-                // « Aller à… » devient « Aller… » : le raccourci est
-                // dans l'infobulle et dans la fenêtre F12, la place de
-                // travail ne se remplace pas.
-                let short_left = group(
-                    ui,
-                    &[
-                        tr("toolbar_nav"),
-                        tr("toolbar_docs_short"),
-                        tr("toolbar_keys"),
-                        tr("toolbar_goto_short"),
-                    ],
-                );
-                let short_right = group(
-                    ui,
-                    &[
-                        tr("toolbar_lock"),
-                        tr("toolbar_options_short"),
-                        tr("toolbar_template_short"),
-                    ],
-                );
-                let short = left + gap + right > room;
-                let (left, right) = if short {
-                    (short_left, short_right)
-                } else {
-                    (left, right)
-                };
-                let two_rows = left + gap + right > room;
-                // Sur deux rangées, la première a de la place : le nom
-                // revient. Il ne disparaît que lorsqu'il est ce qui
-                // empêche la barre de tenir sur une seule.
-                let show_name = if two_rows {
-                    name + left <= room
-                } else {
-                    name + left + gap + right <= room
-                };
-                (show_name, two_rows, short)
-            };
+            let (show_name, two_rows, short_bar) =
+                Self::toolbar_shape(ui, matches!(self.state, State::Unlocked(_)));
             ui.horizontal(|ui| {
                 if show_name {
                     ui.label(egui::RichText::new("BPM-Caddy").strong())
@@ -49467,6 +49477,93 @@ mod tests {
         assert_eq!(seen[2], "Dupont");
         assert!(seen[..3].iter().all(|f| !f.contains('…')));
         assert!(seen[3].ends_with('…'));
+    }
+
+    /// **La barre du haut tient dans la rangée qu'on lui donne.**
+    ///
+    /// Son groupe de droite est posé en `right_to_left` dans ce qui
+    /// reste : quand il ne reste pas assez, il déborde vers la gauche et
+    /// recouvre le dernier bouton du groupe de gauche — à 1024 de large
+    /// et `text_scale = 1,6`, « Aller à… » s'y réduisait à six pixels,
+    /// ce qui se lit comme un séparateur. Aucune capture ne l'avait
+    /// montré en quatre passes.
+    ///
+    /// Le test rejoue le calcul aux trois échelles et aux largeurs d'un
+    /// comptoir, et exige que la forme retenue tienne.
+    #[test]
+    fn the_toolbar_fits_the_row_it_is_given() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            // **La largeur d'un écran n'est pas celle de la barre.** Le
+            // panneau du haut garde ses marges : sur une fenêtre de
+            // 1024, la rangée en reçoit 1008, et les seize pixels de
+            // différence sont précisément ceux qui décident ici.
+            for width in [1008.0_f32, 1264.0, 1384.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new(None);
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        // `set_max_width` ne borne pas `available_width`
+                        // dans un contexte sans écran : on taille un
+                        // rectangle, comme les autres tests de mesure.
+                        let rect =
+                            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 60.0));
+                        motif::inside(ui, rect, |ui| {
+                            let (name, two_rows, short) = App::toolbar_shape(ui, true);
+                            let gap = ui.spacing().item_spacing.x;
+                            let w = |l: &str| App::button_width(ui, l);
+                            let left = if short {
+                                w(tr("toolbar_nav"))
+                                    + w(tr("toolbar_docs_short"))
+                                    + w(tr("toolbar_keys"))
+                                    + w(tr("toolbar_goto_short"))
+                            } else {
+                                w(tr("toolbar_nav"))
+                                    + w(tr("toolbar_docs"))
+                                    + w(tr("toolbar_keys"))
+                                    + w(tr("toolbar_goto"))
+                            } + 3.0 * gap;
+                            let right = if short {
+                                w(tr("toolbar_lock"))
+                                    + w(tr("toolbar_options_short"))
+                                    + w(tr("toolbar_template_short"))
+                            } else {
+                                w(tr("toolbar_lock"))
+                                    + w(tr("toolbar_options"))
+                                    + w(tr("toolbar_template"))
+                            } + 2.0 * gap;
+                            let name_w = App::widest(ui, 14.0, ["BPM-Caddy"].into_iter()) + 10.0;
+                            let asked = if two_rows {
+                                left.max(right)
+                            } else {
+                                left + gap + right
+                            } + if name { name_w } else { 0.0 };
+                            *seen.borrow_mut() = Some((asked, ui.available_width(), two_rows));
+                        });
+                    });
+                });
+                let Some((asked, room, two_rows)) = seen.into_inner() else {
+                    panic!("échelle {scale}, {width} px : rien mesuré");
+                };
+                println!(
+                    "TBT scale={scale} width={width} asked={asked} room={room} two_rows={two_rows}"
+                );
+                assert!(
+                    asked <= room + 0.5,
+                    "échelle {scale}, {width} px : la barre demande {asked} pour {room}"
+                );
+                // **Et elle raccourcit avant de passer à la ligne.** Une
+                // seconde rangée coûte quarante-six pixels au volet
+                // central à `text_scale = 1,6`, où le panneau de
+                // biologie perd alors son formulaire : à partir de 1024
+                // de large, la barre doit tenir sur une rangée, quitte à
+                // écrire « Docs » au lieu de « Docs (F1) ».
+                assert!(
+                    !two_rows,
+                    "échelle {scale}, {width} px : deux rangées là où raccourcir suffisait"
+                );
+            }
+        }
     }
 
     /// **Un bouton qui se dessine se mesure.**

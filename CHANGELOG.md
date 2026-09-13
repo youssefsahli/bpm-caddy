@@ -239,6 +239,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panneau de biologie y perdait son formulaire : la place de travail ne
   se remplace pas. Le nom de l'application cède en dernier, et la
   seconde rangée reste là pour les barres vraiment trop étroites.
+  `App::toolbar_shape` porte ce calcul hors de la boucle de dessin et
+  `the_toolbar_fits_the_row_it_is_given` le rejoue aux trois échelles
+  sur les largeurs qu'une barre reçoit vraiment — **pas** celles de la
+  fenêtre : le panneau du haut garde ses marges, et les seize pixels de
+  différence sont précisément ceux qui décidaient.
 - **Et l'échelle du texte s'arrête où la glissière s'arrête.**
   `motif::apply_scale` acceptait de 0,7 à 1,8 quand l'application offre
   de 0,8 à 1,6 : au-delà, sur un écran de 1024, la barre du haut et la
