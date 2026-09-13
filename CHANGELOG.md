@@ -360,6 +360,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   date les redit — et la colonne du jour se mesure sur la date seule,
   puisque « (recompté) » y pesait la moitié d'une colonne d'argent quand
   la ligne éteinte le dit déjà.
+- **Les trente-deux aperçus de l'éditeur de modèles s'écrivent enfin sur
+  disque, et trois d'entre eux disaient faux.** C'est ce que l'officine
+  lit pour comprendre son propre modèle, et aucun n'avait jamais été
+  *regardé* — les fichiers que `BPM_CADDY_TEST_PDF_OUT` produisait
+  venaient des autres tests, dont plusieurs remplissent leurs pages de
+  texte hostile pour prouver l'échappement. Une lettre au médecin pleine
+  de « #eval » est le gardien qui fonctionne, pas un aperçu. Trouvés en
+  les ouvrant : le planning imprimé datait sa semaine en ISO
+  (« semaine du 2026-09-07 »), sa note de bas de page décrivait un
+  « — » que la feuille n'écrit nulle part, et deux de ses totaux
+  portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
+  c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
+  enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
 - **Le récapitulatif de facturation écrivait « EUR ».** L'écran, les
   feuilles de caisse et le registre écrivent « € » : le même chiffre
   sous deux graphies, sur les deux documents qu'une officine met côte à

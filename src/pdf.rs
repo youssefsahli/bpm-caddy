@@ -4336,6 +4336,13 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             "24/08/2026",
             &pharmacy.name,
         ),
+        // **L'aperçu ne montre pas ce que l'application refuse de
+        // faire.** Deux totaux y étaient écrits « 31 h 30 / 35 h 00 » :
+        // une semaine contractuelle, c'est-à-dire précisément la notion
+        // retirée en 0.185.0 avec `heures_semaine` et le « Relevé
+        // d'heures ». Cette colonne compte une **présence**, et rien qui
+        // s'en déduise ; un exemple qui promet l'autre chose est un
+        // exemple qui la fera demander.
         "planning" => planning_values(
             &["2026-09-07".to_owned(), "2026-09-13".to_owned()],
             &[
@@ -4359,7 +4366,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                         String::new(),
                         String::new(),
                     ],
-                    "31 h 30 / 35 h 00".to_owned(),
+                    "31 h 30".to_owned(),
                 ),
                 (
                     "YS".to_owned(),
@@ -4372,7 +4379,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                         "9 h–12 h 30".to_owned(),
                         String::new(),
                     ],
-                    "26 h 00 / 35 h 00".to_owned(),
+                    "26 h 00".to_owned(),
                 ),
                 (
                     "MB".to_owned(),
@@ -4901,7 +4908,7 @@ const DEFAULT_ECRASER_TEMPLATE: &str = r##"
 
 #v(4mm)
 #block(width: 100%, stroke: 0.4pt, inset: 6pt)[
-  #text(weight: "bold")[Trois choses avant d'écraser quoi que ce soit]   Un comprimé écrasé se donne *aussitôt* : broyé à l'avance, il s'oxyde et se perd.   Un mortier se lave entre deux traitements, sans quoi la poussière du précédent part avec le suivant.   Et « à vérifier » ne veut pas dire « oui » : cette ligne-là demande d'ouvrir le résumé des caractéristiques.
+  #text(weight: "bold")[Trois choses avant d'écraser quoi que ce soit.]   Un comprimé écrasé se donne *aussitôt* : broyé à l'avance, il s'oxyde et se perd.   Un mortier se lave entre deux traitements, sans quoi la poussière du précédent part avec le suivant.   Et « à vérifier » ne veut pas dire « oui » : cette ligne-là demande d'ouvrir le résumé des caractéristiques.
 ]
 
 #v(3mm)
@@ -4936,7 +4943,7 @@ const DEFAULT_PLANNING_TEMPLATE: &str = r##"
 #text(9pt)[Total de la semaine : *{{TOTAL}}*]
 
 #v(3mm)
-#text(8pt, style: "italic")[Un poste sans heure de fin est écrit « — » : ce n'est pas un poste de zéro heure. Une garde qui franchit minuit est comptée en entier au jour qui la commence.]
+#text(8pt, style: "italic")[Un poste dont la fin n'a pas été notée s'écrit « 9 h–… » et n'entre pas dans le total : « 34 h 15 +1 » se lit trente-quatre heures un quart, plus un poste sans fin. Un total « — » veut dire qu'aucune heure n'est connue — ce n'est pas zéro heure. Une garde qui franchit minuit est comptée en entier au jour qui la commence.]
 "##;
 
 fn crush_values(
@@ -4995,8 +5002,17 @@ fn planning_values(
     total: &str,
     pharmacy: &str,
 ) -> Vec<(&'static str, String)> {
+    // **Les dates s'écrivent à la française sur le papier.** Le
+    // `week` arrive en ISO, comme tout ce que la base stocke, et le
+    // sous-titre le recopiait tel quel : « semaine du 2026-09-07 au
+    // 2026-09-13 » sur une feuille où toutes les autres dates sont en
+    // jj/mm/aaaa.
     let period = match (week.first(), week.last()) {
-        (Some(a), Some(b)) => format!("semaine du {a} au {b}"),
+        (Some(a), Some(b)) => format!(
+            "semaine du {} au {}",
+            crate::db::format_french_date(a),
+            crate::db::format_french_date(b)
+        ),
         _ => String::new(),
     };
     // Les valeurs sont posées en littéraux Typst (`#"…"`), comme
@@ -5380,8 +5396,17 @@ mod tests {
     /// Chaque modèle par défaut compile avec ses valeurs d'exemple, et
     /// il ne reste pas un seul `{{` dedans — un marqueur non substitué
     /// s'imprime en toutes lettres au milieu de la page.
+    ///
+    /// **Et sous `BPM_CADDY_TEST_PDF_OUT`, chaque aperçu est écrit.**
+    /// C'est ce que l'officine lit dans l'éditeur de modèles pour
+    /// comprendre le sien, et aucun des trente-deux n'avait jamais été
+    /// *regardé* : les fichiers que cette variable produisait venaient
+    /// des autres tests, dont plusieurs remplissent leurs pages de texte
+    /// hostile pour prouver l'échappement — une lettre au médecin pleine
+    /// de « #eval » est le gardien qui fonctionne, pas un aperçu.
     #[test]
     fn every_default_template_compiles_with_its_sample_values() {
+        let out = std::env::var("BPM_CADDY_TEST_PDF_OUT").ok();
         for d in DOCS {
             let filled = fill(d.default, &sample_values(d.key));
             assert!(
@@ -5390,6 +5415,17 @@ mod tests {
                 d.key
             );
             check_doc(d.key, d.default).unwrap_or_else(|e| panic!("modèle « {} » : {e}", d.key));
+            let Some(dir) = out.as_deref() else { continue };
+            let world = PdfWorld::new(filled);
+            let document: PagedDocument = typst::compile(&world)
+                .output
+                .unwrap_or_else(|_| panic!("aperçu « {} » : la compilation a échoué", d.key));
+            if let Ok(pdf) = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()) {
+                let _ = std::fs::write(
+                    std::path::Path::new(dir).join(format!("apercu_{}.pdf", d.key)),
+                    &pdf,
+                );
+            }
         }
     }
 
