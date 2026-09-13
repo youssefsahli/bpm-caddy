@@ -512,6 +512,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   d'officine.** Options › Officine se capturait sur cinq champs vides,
   c'est-à-dire sur rien de ce que l'écran fait, et les documents
   imprimés depuis la base de démonstration ne se signaient pas.
+- **Et une capture lisait le dossier de données de l'opérateur.** Les
+  scripts ne redirigeaient que `XDG_CONFIG_HOME` ; « À propos » lit la
+  version du lanceur dans `XDG_DATA_HOME`, si bien que la page affichait
+  ce que *la machine qui capture* a installé — « v0.3.0 » sur une
+  application en 0.200.0. `demo_home` pose les trois dossiers XDG,
+  jetables. Et `screenshots.sh`, qui gardait encore sa propre
+  configuration écrite à la main — troisième construction d'une même
+  chose, déjà divergée : ni identité d'officine, ni carte Vitale —,
+  source maintenant la même que les deux autres. Les images du README
+  sont pourtant celles que tout le monde regarde en premier.
 - **Et chaque capture dépendait de la vue d'avant.** L'application
   enregistre la forme du plan de travail en quittant ; `eyeball.sh`
   écrivait `layout.toml` une fois pour toute la passe, si bien que

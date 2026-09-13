@@ -64,6 +64,20 @@ horaires = [
 EOF
 }
 
+# `demo_home <dossier>` : les trois dossiers XDG, jetables.
+#
+# **`XDG_CONFIG_HOME` ne suffit pas.** « À propos » lit la version du
+# lanceur dans `dirs::data_dir()`, c'est-à-dire `XDG_DATA_HOME` : sur une
+# capture prise sans le rediriger, la page affiche ce que *la machine de
+# l'opérateur* a installé — « v0.3.0 » sur une application en 0.200.0 —,
+# ce qui n'est ni reproductible ni à montrer.
+demo_home() {
+    export XDG_CONFIG_HOME="$1"
+    export XDG_DATA_HOME="$1/data"
+    export XDG_CACHE_HOME="$1/cache"
+    mkdir -p "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+}
+
 demo_vitale_card() {
     printf '\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00' > "$1"
 }

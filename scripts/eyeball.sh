@@ -61,7 +61,7 @@ layout() {
 }
 layout "$@"
 demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$THEME"
-export XDG_CONFIG_HOME="$tmp/config"
+demo_home "$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 
 BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null

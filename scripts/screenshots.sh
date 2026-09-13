@@ -3,6 +3,7 @@
 # Requires xvfb-run and ImageMagick (import). Run from the repo root:
 #   ./scripts/screenshots.sh
 set -euo pipefail
+. "$(dirname "$0")/demo-config.sh"
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -13,35 +14,15 @@ export BPM_CADDY_NO_KEYRING=1
 # Shoot against a throwaway configuration, never the operator's own:
 # discreet mode would otherwise mask every figure on the dashboard, and
 # the run would leave the real config.toml rewritten.
+#
+# **La même configuration que les deux autres scripts de capture.** Ce
+# script-ci gardait la sienne, écrite à la main : troisième construction
+# d'une même chose, et elle avait déjà divergé — ni identité d'officine,
+# ni carte Vitale. Les images du README sont pourtant celles que tout le
+# monde regarde en premier.
 mkdir -p "$tmp/config/bpm-caddy"
-cat > "$tmp/config/bpm-caddy/config.toml" <<'EOF'
-[ui]
-discreet_finances = false
-[pharmacy]
-# L'équipe que la démo sème au planning. Sans elle, la grille range CL,
-# YS et MB parmi « les personnes que la liste ne connaît pas » : lisible,
-# mais ce n'est pas la forme qu'une officine voit, et le sélecteur de la
-# trame devient un champ libre au lieu d'un menu.
-operators = [
-  { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
-  { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint" },
-  { initials = "MB", name = "Maya Bertrand", role = "Préparatrice" },
-]
-horaires = [
-  { jour = "lundi", de = "09:00", a = "12:30" },
-  { jour = "lundi", de = "14:00", a = "19:30" },
-  { jour = "mardi", de = "09:00", a = "12:30" },
-  { jour = "mardi", de = "14:00", a = "19:30" },
-  { jour = "mercredi", de = "09:00", a = "12:30" },
-  { jour = "mercredi", de = "14:00", a = "19:30" },
-  { jour = "jeudi", de = "09:00", a = "12:30" },
-  { jour = "jeudi", de = "14:00", a = "19:30" },
-  { jour = "vendredi", de = "09:00", a = "12:30" },
-  { jour = "vendredi", de = "14:00", a = "19:30" },
-  { jour = "samedi", de = "09:00", a = "12:30" },
-]
-EOF
-export XDG_CONFIG_HOME="$tmp/config"
+demo_config "$tmp/config/bpm-caddy/config.toml" 1.0 motif
+demo_home "$tmp/config"
 
 # The workspace is three docks and a notebook around the work: shoot it
 # at the width a counter screen actually has, not at 1024x700.

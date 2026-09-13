@@ -134,7 +134,7 @@ for shape in "${shapes[@]}"; do
     # La forme du plan de travail vit dans `layout.toml`, pas dans la
     # configuration : c'est là que se règlent les largeurs de volets.
     printf '%b\n' "${layout:-}" > "$cfg/bpm-caddy/layout.toml"
-    export XDG_CONFIG_HOME="$cfg"
+    demo_home "$cfg"
     printf '\n  --- %s (%s%s) ---\n' "$shape_name" "$size" \
         "${ui:+, $ui}"
     for view in "${views[@]}"; do
