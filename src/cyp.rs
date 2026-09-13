@@ -1579,6 +1579,37 @@ mod tests {
     /// « esomeprazole » contient « omeprazole » une fois replié : sans
     /// l'ordre, l'Inexium serait annoncé comme du Mopral. C'est la leçon
     /// de `crush.rs`, où « actiskenan » contient « skenan », et elle
+    /// **Aucun mot cherché n'est mangé par un mot placé plus haut.**
+    ///
+    /// La table est lue dans l'ordre et la première ligne qui répond
+    /// gagne : c'est ce qui fait tenir l'ésoméprazole avant
+    /// l'oméprazole et la trimipramine avant l'imipramine. Le corollaire
+    /// est qu'une ligne dont le mot contient celui d'une ligne
+    /// antérieure ne répondra **jamais** — et cela ne se voit pas à
+    /// l'écran, puisqu'elle se contente de citer la mauvaise fiche. Le
+    /// cas de la trimipramine a vécu des mois ainsi.
+    ///
+    /// Cette table en compte plus de cent : la prochaine collision ne se
+    /// verra pas à l'œil.
+    #[test]
+    fn no_need_is_eaten_by_one_placed_above_it() {
+        for (i, p) in TABLE.iter().enumerate() {
+            for n in p.needs {
+                let folded = crate::fuzzy::sort_key(n);
+                for earlier in TABLE.iter().take(i) {
+                    for m in earlier.needs {
+                        assert!(
+                            !folded.contains(&crate::fuzzy::sort_key(m)),
+                            "« {n} » ({}) est mangé par « {m} » ({})",
+                            p.label,
+                            earlier.label
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// porte son test là-bas comme ici.
     #[test]
     fn a_name_that_contains_another_is_read_for_itself() {

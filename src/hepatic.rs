@@ -1356,6 +1356,35 @@ mod tests {
         assert!(verdicts.contains(&Verdict::Adapt(Level::Reduce)));
     }
 
+    /// **Aucun mot cherché n'est mangé par un mot placé plus haut.**
+    ///
+    /// La table est lue dans l'ordre et la première ligne qui répond
+    /// gagne. Si le mot d'une ligne contient celui d'une ligne
+    /// antérieure, la seconde ne répondra jamais : « esomeprazole »
+    /// contient « omeprazole », « trimipramine » contient
+    /// « imipramine », « apomorphine » contient « morphine ». À cent
+    /// neuf lignes, la prochaine collision ne se verra pas à l'œil — et
+    /// elle ne se verrait pas non plus à l'écran, puisque la ligne
+    /// mangée se contente de citer la mauvaise fiche.
+    #[test]
+    fn no_need_is_eaten_by_one_placed_above_it() {
+        for (i, a) in TABLE.iter().enumerate() {
+            for n in a.needs {
+                let folded = crate::fuzzy::sort_key(n);
+                for earlier in TABLE.iter().take(i) {
+                    for m in earlier.needs {
+                        assert!(
+                            !folded.contains(&crate::fuzzy::sort_key(m)),
+                            "« {n} » ({}) est mangé par « {m} » ({})",
+                            a.label,
+                            earlier.label
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     /// **Le plus précis d'abord** : « esomeprazole » contient
     /// « omeprazole ».
     ///
