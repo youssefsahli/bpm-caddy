@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **La carte vaccinale et les carnets du patient entrent au manuel.**
+  Six feuilles à emporter — automesure, glycémie, poids, débit de
+  pointe, INR, douleur — avec la règle qui les gouverne : ce qui manque
+  à une grille photocopiée n'est pas la grille, c'est le protocole, et
+  aucun chiffre individuel n'est imprimé à la place du patient. Et deux
+  tables indicatives qui nomment leur source, sur une carte qui est un
+  cartogramme et non une projection.
 - **L'ordonnance sous protocole et les questions du registre entrent au
   manuel.** La section des entretiens portait déjà « rien n'est jamais
   sélectionné d'office et toute posologie proposée est modifiable » —

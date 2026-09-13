@@ -272,6 +272,52 @@ cas-là » et se lit en descendant un arbre ; une liste répond à
 d'ouverture écrite ailleurs qu'à l'officine est une liste que personne
 ne coche.
 
+# La carte vaccinale
+
+Deux tables, toutes deux **indicatives**, et chacune nomme sa source à
+l'écran : le calendrier vaccinal, qui dit ce qu'un adulte doit
+aujourd'hui, et la table du voyageur, qui porte les recommandations du
+BEH par pays.
+
+Ni l'une ni l'autre ne remplace le texte dont elle vient. Elles rendent
+d'un coup d'œil une question que le comptoir pose vingt fois par jour,
+et c'est tout ce qu'elles prétendent.
+
+La carte est un **cartogramme et non une projection** : chaque pays
+reçoit le même carré, rangé dans le bloc de sa région. C'est ce qu'on
+demande à une table de référence — trouver un pays, pas mesurer une
+distance.
+
+Le carnet de vaccination d'un dossier s'imprime avec ses doses, leurs
+dates, le lot et le site d'injection, et la date du prochain rappel
+quand elle est connue. Ce qui **manque**, c'est l'écran du dossier qui
+le dit, en lisant le calendrier contre les doses déjà portées.
+
+# Les carnets que le patient emporte
+
+Six feuilles à remplir chez soi : automesure tensionnelle, glycémie,
+poids, débit de pointe, INR, douleur.
+
+**Ce qui manque à une grille photocopiée n'est pas la grille, c'est le
+protocole.** Une tension prise après le café, debout, sur le bras qui
+traîne ne veut rien dire ; une glycémie notée le soir de mémoire non
+plus. Chaque feuille porte donc quatre choses, et la grille n'est que la
+quatrième : comment mesurer, ce qu'on vise, ce qui s'appelle sans
+attendre, et où écrire.
+
+**Aucun chiffre inventé.** Là où l'objectif est individuel — la
+glycémie, la zone d'INR, la meilleure valeur personnelle de souffle —,
+la feuille dit qu'il est individuel et laisse la ligne à remplir,
+plutôt que d'imprimer une valeur que le patient prendrait pour la
+sienne. La seule cible chiffrée est celle de l'automesure tensionnelle,
+qui est une recommandation publique et non la décision d'un médecin.
+
+**Rien qui remplace le prescripteur.** Aucune feuille n'adapte une
+dose ; toutes disent à qui téléphoner et quand.
+
+Le texte de chaque feuille se réécrit, comme tout ce qui part sur du
+papier au nom de l'officine.
+
 # Le registre des stupéfiants
 
 Il vit dans son propre fichier, chiffré comme la base, et **il ne
