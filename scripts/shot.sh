@@ -9,6 +9,9 @@
 # Comme `eyeball.sh`, contre un `XDG_CONFIG_HOME` jetable et jamais
 # celui de l'opérateur.
 set -euo pipefail
+# La configuration de démonstration est écrite une fois, pour les deux
+# scripts de capture.
+. "$(dirname "$0")/demo-config.sh"
 
 view=${1:?usage: shot.sh <vue> [out.png] [taille] [échelle] [clé=valeur…]}
 out=${2:-/tmp/bpm-caddy-shot.png}
@@ -35,36 +38,7 @@ for kv in "$@"; do
         printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
     fi
 done
-cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
-[ui]
-discreet_finances = false
-text_scale = $SCALE
-theme = "$theme"
-[pharmacy]
-# L'équipe que la démo sème au planning. Sans elle, la grille range CL,
-# YS et MB en « personnes que la liste ne connaît pas » : lisible, mais
-# ce n'est pas la forme qu'une officine voit.
-operators = [
-  { initials = "CL", name = "Claire Leroy", role = "Pharmacien titulaire" },
-  { initials = "YS", name = "Yanis Saïd", role = "Pharmacien adjoint" },
-  { initials = "MB", name = "Maya Bertrand", role = "Préparatrice" },
-]
-# Les horaires d'ouverture : sans eux, aucun creux ne se dessine, et la
-# bande de couverture du plan de journée n'aurait pas de rouge à montrer.
-horaires = [
-  { jour = "lundi", de = "09:00", a = "12:30" },
-  { jour = "lundi", de = "14:00", a = "19:30" },
-  { jour = "mardi", de = "09:00", a = "12:30" },
-  { jour = "mardi", de = "14:00", a = "19:30" },
-  { jour = "mercredi", de = "09:00", a = "12:30" },
-  { jour = "mercredi", de = "14:00", a = "19:30" },
-  { jour = "jeudi", de = "09:00", a = "12:30" },
-  { jour = "jeudi", de = "14:00", a = "19:30" },
-  { jour = "vendredi", de = "09:00", a = "12:30" },
-  { jour = "vendredi", de = "14:00", a = "19:30" },
-  { jour = "samedi", de = "09:00", a = "12:30" },
-]
-EOF
+demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$theme"
 export XDG_CONFIG_HOME="$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 

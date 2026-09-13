@@ -100,6 +100,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paroxétine désarme — et la codéine.
 
 ### Changed
+- **Les deux scripts de capture montraient deux états de la même vue.**
+  `shot.sh` posait un bloc `[pharmacy]` — l'équipe, les horaires
+  d'ouverture — et `eyeball.sh` non : la grille du planning y rangeait
+  CL, YS et MB en « personnes que la liste ne connaît pas », et le plan
+  de journée n'avait aucune plage d'ouverture, donc aucun creux à
+  peindre. La passe large, celle qui trouve les défauts, était la moins
+  représentative des deux, et comparer une image de l'une à une image de
+  l'autre ne voulait rien dire. La configuration de démonstration est
+  écrite une fois, dans `scripts/demo-config.sh`, et les deux la
+  sourcent — c'est le défaut que ce dépôt nomme partout ailleurs.
 - **La passe de fumée couvre enfin la quatrième forme exigée.**
   `CLAUDE.md` demande que toute mise en page survive à quatre choses,
   dont « les deux volets tirés larges » — ils se plafonnent l'un contre

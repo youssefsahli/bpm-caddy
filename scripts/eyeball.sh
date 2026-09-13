@@ -26,6 +26,9 @@
 #
 # Requires xvfb-run and ImageMagick. Run from the repo root.
 set -euo pipefail
+# La même configuration de démonstration que `shot.sh` : les deux
+# scripts regardent les mêmes vues, ils doivent en montrer le même état.
+. "$(dirname "$0")/demo-config.sh"
 
 out=${1:-/tmp/bpm-caddy-eyeball}
 SIZE=${2:-1024x700}
@@ -47,12 +50,7 @@ mkdir -p "$tmp/config/bpm-caddy"
 for kv in "$@"; do
     printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
 done
-cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
-[ui]
-discreet_finances = false
-text_scale = $SCALE
-theme = "$THEME"
-EOF
+demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$THEME"
 export XDG_CONFIG_HOME="$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 
