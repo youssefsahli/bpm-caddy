@@ -188,10 +188,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prenait la largeur de la colonne du *nom* dans les deux formes ; sur
   la forme large elle est la sixième colonne, à qui sa propre largeur
   avait justement été réservée.
-- **Et la configuration de démonstration porte enfin une identité
-  d'officine.** Options › Officine se capturait sur cinq champs vides,
-  c'est-à-dire sur rien de ce que l'écran fait, et les documents
-  imprimés depuis la base de démonstration ne se signaient pas.
 - **Le formulaire de fiche coupait ses champs pharmacocinétiques.** La
   largeur d'un champ y était « ce qui reste une fois cent trente-huit
   pixels retirés » — un nombre écrit à la main pour une colonne
@@ -388,6 +384,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   la bande d'onglets de la biologie tient sa borne de son propre tableau
   — deux `min(4)` écrits à côté auraient rendu un sixième onglet
   insélectionnable sans que rien ne le dise.
+- **Et la configuration de démonstration porte enfin une identité
+  d'officine.** Options › Officine se capturait sur cinq champs vides,
+  c'est-à-dire sur rien de ce que l'écran fait, et les documents
+  imprimés depuis la base de démonstration ne se signaient pas.
 - **Et chaque capture dépendait de la vue d'avant.** L'application
   enregistre la forme du plan de travail en quittant ; `eyeball.sh`
   écrivait `layout.toml` une fois pour toute la passe, si bien que
