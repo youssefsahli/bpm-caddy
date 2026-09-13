@@ -18919,8 +18919,33 @@ impl App {
             h += 20.0;
         }
         if !n.review.is_empty() {
-            let titles = n.review.iter().map(|p| p.title.as_str());
-            h += 6.0 + 22.0 * Self::wrapped_rows(ui, w - 130.0, titles);
+            // **Trois mesures devinées, et elles se cumulaient toutes
+            // dans le même sens.** Le libellé « Revue d'ordonnance : »
+            // était compté cent trente pixels — un nombre, donc il ne
+            // suit pas `[ui] text_scale` —, les pastilles étaient
+            // mesurées sur leur titre nu alors qu'elles se dessinent
+            // avec deux espaces de chaque côté, et la rangée valait
+            // vingt-deux pixels en dur. La bande réservait donc moins
+            // qu'elle ne dessine, et la seconde rangée de pastilles
+            // sortait **tranchée** : à 1280x800 avec les deux volets
+            // tirés larges, il n'en restait qu'un liseré orange.
+            //
+            // Tout se mesure maintenant dans la fonte qui dessine, y
+            // compris le gabarit exact des pastilles.
+            let label = Self::widest(ui, 11.5, std::iter::once(tr("revue_label")));
+            let chips = n.review.iter().map(|p| {
+                Self::widest(
+                    ui,
+                    11.0,
+                    std::iter::once(format!("  {}  ", p.title).as_str()),
+                )
+            });
+            let rows = Self::wrapped_rows_of(ui, w, std::iter::once(label).chain(chips));
+            // La hauteur d'une pastille vient de sa fonte, et les
+            // gouttières se comptent **entre** les rangées.
+            let chip_h =
+                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5))));
+            h += 4.0 + rows * chip_h + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y;
         }
         // Whatever the band would like, the acts and the journal keep
         // their half of the file: the band scrolls instead.
@@ -19871,12 +19896,30 @@ impl App {
                 );
                 for point in &session.patient_review {
                     let color = severity_color(point.severity);
-                    ui.label(
-                        egui::RichText::new(format!("  {}  ", point.title))
-                            .size(motif::pt(ui, 11.0))
-                            .strong()
-                            .color(motif::on_fill(color))
-                            .background_color(color),
+                    // **Une pastille ne se coupe pas en deux.** Dans une
+                    // rangée qui enveloppe, egui coupe le **texte** de
+                    // l'étiquette et pas seulement entre les étiquettes :
+                    // « AOD potentialisé » finissait la rangée sur
+                    // « AOD » et reprenait « potentialisé » à la ligne,
+                    // avec son fond coloré derrière — deux pastilles là
+                    // où il y en a une. Et comme la bande compte des
+                    // rangées entières, la seconde sortait tranchée : à
+                    // 1280x800 avec les deux volets tirés larges, il
+                    // n'en restait qu'un liseré orange sous le libellé,
+                    // que rien n'expliquait.
+                    //
+                    // En `Extend`, l'étiquette reste entière et c'est la
+                    // rangée qui passe à la ligne — ce qu'elle sait
+                    // faire, et ce que la note du crayon disait déjà.
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("  {}  ", point.title))
+                                .size(motif::pt(ui, 11.0))
+                                .strong()
+                                .color(motif::on_fill(color))
+                                .background_color(color),
+                        )
+                        .wrap_mode(egui::TextWrapMode::Extend),
                     )
                     .on_hover_text(format!(
                         "{}\n\n{}",

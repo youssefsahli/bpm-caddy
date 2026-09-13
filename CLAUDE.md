@@ -755,6 +755,17 @@ add clicking and typing; it is not the price of entry.
   what the grid writes for a shift whose end nobody noted — two
   different things under one appearance. That column is measured on what
   it carries.
+- **A chip in a wrapping row does not break in two.** `horizontal_wrapped`
+  wraps the **text inside** a label, not only between labels: « AOD
+  potentialisé » ended one row on « AOD » and resumed « potentialisé »
+  on the next, each half carrying the chip's coloured background — two
+  chips where there is one. And since the band counts whole rows, the
+  second came out sliced: at 1280x800 with both docks dragged wide, all
+  that remained was an amber sliver under the label that nothing
+  explained. `egui::Label::new(…).wrap_mode(TextWrapMode::Extend)` keeps
+  the label whole and lets the *row* wrap, which is what it knows how to
+  do. The same remedy was already written a few hundred lines away, with
+  the same reasoning.
 - **A list row takes two lines when it can break cleanly, one when it
   cannot.** `list_row` and `list_row_pair` were one line with an
   ellipsis, and on a narrow dock that cost the information the row was

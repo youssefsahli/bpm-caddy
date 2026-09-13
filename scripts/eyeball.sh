@@ -8,11 +8,21 @@
 # or eight doors reflowing into four lines. Those are found by looking,
 # and looking is only cheap if the pictures are one command away.
 #
-#   ./scripts/eyeball.sh [outdir] [size] [scale] [peau]
+#   ./scripts/eyeball.sh [outdir] [size] [scale] [peau] [clé=valeur…]
 #
 # La peau est le quatrième argument parce que la couleur se regarde comme
 # la mise en page : rien ne dit dans un test qu'une teinte s'est perdue
 # dans son fond.
+#
+# Les `clé=valeur` en trop vont dans `layout.toml`, comme pour `shot.sh` :
+# c'est là que vit la forme du plan de travail. Sans eux, les volets
+# prennent leur largeur par défaut, et **les deux volets tirés larges**
+# — l'une des quatre formes que CLAUDE.md exige de toute mise en page —
+# n'était produite par aucun script. Elle se balaie maintenant d'une
+# commande :
+#
+#   ./scripts/eyeball.sh /tmp/larges 1280x800 1.0 motif \
+#       nav_width=420 docs_width=420
 #
 # Requires xvfb-run and ImageMagick. Run from the repo root.
 set -euo pipefail
@@ -21,6 +31,7 @@ out=${1:-/tmp/bpm-caddy-eyeball}
 SIZE=${2:-1024x700}
 SCALE=${3:-1.25}
 THEME=${4:-motif}
+shift 4 2>/dev/null || shift $#
 mkdir -p "$out"
 
 tmp=$(mktemp -d)
@@ -31,6 +42,11 @@ export BPM_CADDY_NO_KEYRING=1
 
 # A throwaway configuration, never the operator's own.
 mkdir -p "$tmp/config/bpm-caddy"
+# La forme du plan de travail : vide par défaut, sinon ce qu'on a demandé.
+: > "$tmp/config/bpm-caddy/layout.toml"
+for kv in "$@"; do
+    printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
+done
 cat > "$tmp/config/bpm-caddy/config.toml" <<EOF
 [ui]
 discreet_finances = false

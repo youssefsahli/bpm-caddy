@@ -489,6 +489,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Une pastille de revue se coupait en deux, et sa moitié sortait
+  tranchée.** Dans une rangée qui enveloppe, egui coupe le **texte** de
+  l'étiquette et pas seulement entre les étiquettes : « AOD
+  potentialisé » finissait la rangée sur « AOD » et reprenait
+  « potentialisé » à la ligne, chaque moitié portant le fond coloré de
+  la pastille — deux pastilles là où il y en a une. Et comme la bande
+  compte des rangées entières, la seconde sortait coupée : à 1280x800
+  avec les deux volets tirés larges, il n'en restait qu'un liseré orange
+  sous le libellé, que rien n'expliquait.
+
+  L'étiquette reste entière désormais, et c'est la rangée qui passe à la
+  ligne. Au passage, la hauteur que la bande réserve pour ces pastilles
+  était devinée trois fois — le libellé compté cent trente pixels en
+  dur, les pastilles mesurées sur leur titre nu alors qu'elles se
+  dessinent avec deux espaces de chaque côté, la rangée à vingt-deux
+  pixels — et les trois erreurs allaient dans le même sens. Tout se
+  mesure maintenant dans la fonte qui dessine.
 - **Trois vues que personne ne regardait jamais.** `smoke.sh` prouve
   que rien n'a paniqué ; il ne dit rien d'un titre qui déborde, d'une
   bande coupée ou d'une table vide — cela se voit en **regardant**, et
