@@ -2406,4 +2406,43 @@ mod tests {
             labels.len() - resolved.len()
         );
     }
+    /// **Ce que « forme locale » exclut, et pourquoi.**
+    ///
+    /// Le vocabulaire est étroit à dessein, et c'est son étroitesse qui
+    /// se casse en silence : élargi d'un mot de trop, il fait taire de
+    /// vraies surveillances. Trois pièges sont donc épinglés ici, parce
+    /// qu'ils portent tous un mot qui *ressemble* à une voie locale et
+    /// désignent un médicament qui passe dans le sang.
+    #[test]
+    fn a_route_that_reaches_the_blood_is_not_a_local_form() {
+        // « sous-cutané » contient « cutané » : l'héparine est générale.
+        assert!(!is_local_form("héparine (voie sous-cutanée)"));
+        // « percutané » aussi, et un gel d'estradiol est un estrogène
+        // général — c'est même tout son intérêt.
+        assert!(!is_local_form("estrogène en gel percutané"));
+        // Et « gel » seul dirait du Duodopa qu'il ne passe pas, alors
+        // qu'il se perfuse dans le jéjunum.
+        assert!(!is_local_form("antiparkinsonien — gel intestinal"));
+
+        // Ce qu'elle doit reconnaître, dans les mots que les fiches
+        // livrées emploient réellement.
+        for class in [
+            "collyre — AINS",
+            "collyre antibiotique",
+            "dermocorticoïde fort",
+            "antifongique topique",
+            "vasoconstricteur nasal",
+            "gouttes auriculaires antibiotiques",
+            "pommade ophtalmique corticoïde + antibiotique",
+            "topique — dermite séborrhéique",
+        ] {
+            assert!(is_local_form(class), "« {class} » est une forme locale");
+        }
+
+        // Et toute fiche livrée que la fonction reconnaît doit porter un
+        // de ces mots dans sa **classe** — jamais dans son nom : le
+        // « Roaccutane » contient « cutane », et c'est de
+        // l'isotrétinoïne orale.
+        assert!(!is_local_form("rétinoïde — tératogène"));
+    }
 }
