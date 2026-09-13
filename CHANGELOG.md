@@ -489,6 +489,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Le manuel dit ce que les formes locales ne reçoivent pas.** C'est un
+  silence, et un silence ne se remarque pas : un collyre, une pommade,
+  un gel ou une pulvérisation nasale n'ont ni palier rénal, ni niveau de
+  grossesse, ni demande d'examen, et personne ne s'étonne de ce qui
+  n'apparaît pas. La phrase dit pourquoi — ces tables sont rangées par
+  molécule, et la même molécule ne fait pas la même chose selon la voie
+  — et où lire le reste : sur la fiche du produit.
 - **Écrire le rappel éteignait la règle qui le donne.** Une règle
   `Without` — « opioïde sans laxatif », « isoniazide sans vitamine B6 »
   — cherchait l'absence sur **toute** l'ordonnance, ligne déclenchante

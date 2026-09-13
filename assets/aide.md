@@ -62,6 +62,14 @@ des résultats, ce qui n'a pas été demandé depuis trop longtemps, ce que
 la clairance du jour change, ce que la grossesse et l'allaitement
 changent, et les croisements sur les cytochromes.
 
+**Une forme locale n'est pas lue comme la voie générale.** Un collyre,
+une pommade, un gel ou une pulvérisation nasale ne reçoivent ni palier
+rénal, ni niveau de grossesse, ni demande d'examen : ces tables sont
+rangées par molécule, et la même molécule ne fait pas la même chose
+selon la voie. Un collyre à la ciclosporine ne croise rien, un gel au
+lithium ne demande pas de lithiémie. Ce qui vaut pour la voie locale
+reste écrit sur la fiche du produit, qui est l'endroit où le lire.
+
 Le dernier répond à « ces deux lignes se rencontrent-elles sur une
 enzyme ? ». Il **ne connaît que sept cytochromes** : ni la glycoprotéine
 P, ni les transporteurs hépatiques, ni les additions d'effets — deux
