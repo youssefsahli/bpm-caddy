@@ -555,6 +555,105 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Les chiffres que la documentation affirme, le code les tient.**
+    ///
+    /// `CLAUDE.md` et `docs/CONTENU.md` sont lus avant chaque décision,
+    /// et ils donnent des comptes pour vrais : tant de fiches livrées,
+    /// tant de présentations au catalogue, tant de phrases imprimables.
+    /// Ce sont des phrases et non des assertions, si bien qu'ils
+    /// vieillissent sans bruit — le 13/09/2026, **six sur dix** avaient
+    /// dérivé, dont un que la barre d'état de l'application dément à
+    /// chaque instant (851 fiches contre 862).
+    ///
+    /// Chaque ligne ci-dessous est cherchée **telle quelle**. Une
+    /// reformulation la fait donc échouer, et c'est voulu : un filet
+    /// qui ne trouve plus sa phrase et se tait est un filet mort, comme
+    /// un test sans son attribut.
+    #[test]
+    fn the_documentation_counts_what_the_code_holds() {
+        const CLAUDE: &str = include_str!("../CLAUDE.md");
+        const CONTENU: &str = include_str!("../docs/CONTENU.md");
+        let cards = crate::db::STARTER_DRUG_COUNT;
+        let labels = {
+            let mut v: Vec<&str> = crate::db::STARTER_DRUGS
+                .iter()
+                .map(|(_, _, class, _)| *class)
+                .filter(|c| !c.trim().is_empty())
+                .collect();
+            v.sort_unstable();
+            v.dedup();
+            v.len()
+        };
+        let presentations: usize = crate::ordonnancier::CATALOGUE
+            .iter()
+            .map(|f| f.items.len())
+            .sum();
+        let families = crate::ordonnancier::CATALOGUE.len();
+        let printed: usize = crate::content::documents()
+            .iter()
+            .map(|d| d.phrases.len())
+            .sum();
+        let expected: &[(&str, &str, String)] = &[
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!("{labels} distinct labels over {cards} cards"),
+            ),
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!("the {printed} printed phrases the officine may rewrite"),
+            ),
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!("{presentations} presentations of the French market"),
+            ),
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!("in {families} families, each with its dosage"),
+            ),
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "pregnancy and breastfeeding as a level: {}",
+                    match crate::gravidity::TABLE.len() {
+                        36 => "thirty-six",
+                        n => panic!(
+                            "la table de grossesse porte {n} molécules : écrire le \
+                             nombre en toutes lettres dans CLAUDE.md et ici"
+                        ),
+                    }
+                ),
+            ),
+            (
+                "docs/CONTENU.md",
+                CONTENU,
+                format!("{presentations} présentations du marché français"),
+            ),
+            (
+                "docs/CONTENU.md",
+                CONTENU,
+                format!("{labels} libellés pour {cards}"),
+            ),
+        ];
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, text, phrase) in expected {
+            if !text.contains(phrase.as_str()) {
+                wrong.push(format!("{name} ne dit pas « {phrase} »"));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "la documentation affirme un compte que le code dément — ou sa \
+             phrase a été reformulée, auquel cas c'est ici qu'il faut la \
+             suivre :\n{}",
+            wrong.join("\n")
+        );
+    }
+
     /// **Un test sans `#[test]` est un gardien mort**, et il meurt sans
     /// bruit : la suite repasse au vert avec un test de moins, et le
     /// nombre affiché ne se lit pas.

@@ -552,6 +552,17 @@ add clicking and typing; it is not the price of entry.
   files a local form under **unknown** rather than inert, because that
   module names what it does not rule on instead of handing out a
   clean bill of health.
+- **The numbers this file asserts are held by a test.** `CLAUDE.md` and
+  `docs/CONTENU.md` are read before every decision and they state counts
+  as fact — so many cards, so many presentations, so many printable
+  phrases. Being prose, they age in silence: on 2026-09-13 **six of ten
+  checked had drifted**, one of them contradicted by the application's
+  own status bar (851 cards against 862).
+  `the_documentation_counts_what_the_code_holds` (in `strings.rs`) looks
+  for each sentence **verbatim**, so rewording it fails the test too —
+  deliberately: a guard that can no longer find its phrase and says
+  nothing is a dead guard. Adding a count to these files means adding a
+  line there.
 - **A test without `#[test]` is a dead guard, and it dies silently** —
   the suite goes green with one test fewer and nobody reads the number.
   It happened here: inserting one lint directly above another swallowed

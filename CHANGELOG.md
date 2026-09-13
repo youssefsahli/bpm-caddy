@@ -489,6 +489,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Six chiffres que la documentation affirmait, le code les dément.**
+  `CLAUDE.md` et la carte du contenu donnent des comptes pour vrais —
+  tant de fiches livrées, tant de présentations au catalogue, tant de
+  phrases imprimables — et ce sont des phrases, pas des assertions : ils
+  vieillissent sans bruit. 851 fiches contre 862, alors que la barre
+  d'état de l'application l'affiche à chaque instant ; 331 libellés de
+  classe sur une seule fiche contre 330 ; 35 molécules de grossesse
+  contre 36 ; 106 présentations de stupéfiants en 12 familles contre 158
+  en 13 ; 772 phrases imprimables réécrivables contre 950 — le foie en a
+  apporté 134 à lui seul.
+
+  `the_documentation_counts_what_the_code_holds` les tient désormais.
+  Il cherche chaque phrase **telle quelle**, de sorte qu'une
+  reformulation le fait échouer aussi : un filet qui ne trouve plus sa
+  phrase et se tait est un filet mort, exactement comme un test à qui
+  l'on a pris son attribut.
 - **Trois `clamp` pouvaient faire tomber l'application, dont un qu'une
   officine déclenchait elle-même.** `f32::clamp` panique quand le
   minimum dépasse le maximum, et les planchers de cette interface
