@@ -575,6 +575,8 @@ livre = "Une phrase qui n'est plus livrée"
         const CONTENU: &str = include_str!("../docs/CONTENU.md");
         // Le manuel aussi : celui-là, l'officine le lit à l'écran.
         const AIDE: &str = include_str!("../assets/aide.md");
+        // Et le README, que lisent ceux qui n'ont pas encore installé.
+        const README: &str = include_str!("../README.md");
         let cards = crate::db::STARTER_DRUG_COUNT;
         let labels = {
             let mut v: Vec<&str> = crate::db::STARTER_DRUGS
@@ -639,6 +641,30 @@ livre = "Une phrase qui n'est plus livrée"
                 "docs/CONTENU.md",
                 CONTENU,
                 format!("{labels} libellés pour {cards}"),
+            ),
+            (
+                "README.md",
+                README,
+                format!("A fresh base starts with {cards} common drugs"),
+            ),
+            (
+                "README.md",
+                README,
+                format!("A catalogue of {presentations} presentations"),
+            ),
+            (
+                "README.md",
+                README,
+                format!(
+                    "the officine's magistral and officinal formulas, {} to start with",
+                    match crate::db::STARTER_PREPARATIONS.len() {
+                        80 => "eighty",
+                        n => panic!(
+                            "le codex porte {n} préparations : l'écrire en toutes \
+                             lettres dans le README et ici"
+                        ),
+                    }
+                ),
             ),
             (
                 "assets/aide.md",
