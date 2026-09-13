@@ -965,6 +965,17 @@ add clicking and typing; it is not the price of entry.
   `f32::clamp` with a computed min: all of them take the whole
   application down at the counter. Prefer `total_cmp`, an `if let`, and
   a cap raised to its floor.
+- **The haystack a rule matches is not quite the one the tests build.**
+  At run time a `revue::Treatment` carries the card's name, DCI, class
+  and the officine's own free `tags` — which are **empty on every
+  shipped card**, since `INSERT INTO drugs` seeds only `(name, dci,
+  class, antidote)`. The confrontation tests build theirs from the
+  `STARTER_DRUGS` 4-tuple, whose fourth field is the **antidote**. So a
+  rule reachable in a test through « naloxone » or « pyridoxine » would
+  be dead at the counter. None is today — the only rule naming an
+  antidote word is the isoniazid `Without`, and it names it as what must
+  be *absent*, which is why an officine writing « pyridoxine à
+  associer » on the Rimifon card used to switch that rule off.
 - **A `needs` fragment is a substring, and a substring lives inside
   other words.** Every clinical table (`renal`, `gravidity`, `crush`,
   `cyp`, `hepatic`, `biology`, `surveillance`) matches by
