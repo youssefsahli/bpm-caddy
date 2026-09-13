@@ -388,6 +388,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `every_menu_path_written_in_prose_leads_somewhere` exige désormais que
   ce qui suit « Options › » soit un libellé que l'application écrit
   vraiment, onglet ou bouton.
+- **Un bouton cité entre guillemets porte son nom exact.** Une phrase
+  renvoyait à « Copier la base… » quand le bouton dit « Copier la base
+  vers… » ; `every_button_quoted_in_a_string_is_named_as_it_is_drawn`
+  refuse le prochain, en ne jugeant que ce qui ressemble à un libellé —
+  une capitale, quatre mots au plus, pas de point final — et en nommant
+  les rares libellés que Rust compose au lieu de les lire dans la table.
 - **« Copier la base… » prend trois fichiers, pas deux.** La phrase des
   Options le disait encore au temps où il n'y en avait que deux — avant
   que le registre des stupéfiants ait le sien.

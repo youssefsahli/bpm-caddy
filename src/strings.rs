@@ -820,6 +820,67 @@ livre = "Une phrase qui n'est plus livrée"
         );
     }
 
+    /// **Un bouton cité entre guillemets porte son nom exact.**
+    ///
+    /// Une phrase qui renvoie à « Copier la base… » quand le bouton dit
+    /// « Copier la base vers… » envoie chercher un bouton qui n'existe
+    /// pas sous ce nom. Le test ne juge que ce qui *ressemble* à un
+    /// libellé — une capitale, quatre mots au plus, pas de point final —
+    /// parce qu'une valeur de la table cite aussi des mots ordinaires
+    /// entre guillemets, et que ceux-là ne sont pas des boutons.
+    ///
+    /// Les libellés qui ne viennent pas de la table des chaînes — ceux
+    /// que le code compose (l'état d'un acte, le nom d'un vaccin) — sont
+    /// nommés ici avec leur origine.
+    #[test]
+    fn every_button_quoted_in_a_string_is_named_as_it_is_drawn() {
+        // Des libellés que Rust compose et que la table ne porte pas.
+        const ELSEWHERE: &[&str] = &[
+            // `InterviewState::label`
+            "CR envoyé",
+            "Réalisés",
+            // `InterviewKind::label`
+            "Vaccination",
+            // Le compte des entrées masquées, écrit « {} masqué(s) ».
+            "Masqués",
+        ];
+        let labels: std::collections::HashSet<&str> =
+            shipped().values().map(|v| v.trim()).collect();
+        let mut wrong: Vec<String> = Vec::new();
+        for value in shipped().values() {
+            let mut rest = value.as_str();
+            while let Some(i) = rest.find('«') {
+                let after = &rest[i + '«'.len_utf8()..];
+                let Some(j) = after.find('»') else { break };
+                let quoted = after[..j].trim();
+                rest = &after[j + '»'.len_utf8()..];
+                let words = quoted.split_whitespace().count();
+                if quoted.is_empty()
+                    || words > 4
+                    || quoted.ends_with('.')
+                    || !quoted.starts_with(|c: char| c.is_uppercase())
+                {
+                    continue;
+                }
+                // Le pluriel d'un libellé reste ce libellé : la note
+                // d'équipe livrée parle des entretiens « Réalisés »,
+                // l'état s'écrit « Réalisé ».
+                let singular = quoted.strip_suffix('s').unwrap_or(quoted);
+                if labels.contains(quoted)
+                    || labels.contains(singular)
+                    || ELSEWHERE.contains(&quoted)
+                {
+                    continue;
+                }
+                wrong.push(quoted.to_owned());
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "bouton cité sous un nom que l'application n'écrit pas : {wrong:?}"
+        );
+    }
+
     /// **Un chemin de menu écrit en toutes lettres doit mener quelque
     /// part.**
     ///
