@@ -89,6 +89,49 @@ suivies, ce qui est la réponse qu'on cherche en se demandant par quoi
 remplacer un traitement —, ou être **inconnue de la table**, ce qui
 n'est pas la même chose et ne l'innocente pas.
 
+## Peut-on écraser ?
+
+Le bouton « Écraser ? » du dossier imprime une feuille pour l'EHPAD ou
+l'infirmière : toute l'ordonnance, ligne par ligne, la conduite pour
+chaque forme et l'alternative quand il y en a une.
+
+**Le silence n'est pas une permission.** Un produit que la table ne
+connaît pas reçoit « à vérifier », et jamais une ligne absente : une
+feuille qui ne montrerait que les interdits se lirait « tout le reste,
+oui ».
+
+Trois réponses et non deux, pour ce que la table connaît : oui, non, et
+« oui en ouvrant la gélule » — les microgranules s'avalent et ne se
+croquent pas, c'est le cas le plus fréquent en gériatrie, et le réduire
+à « non » ferait changer une ordonnance qui n'en avait pas besoin.
+
+**C'est la forme qui décide, pas la molécule.** La morphine s'écrase ou
+ne s'écrase pas selon la boîte : Moscontin jamais, Skenan en ouvrant la
+gélule. Une forme qui ne passe pas par la bouche — injectable,
+implantable — reçoit sa ligne elle aussi, pour dire qu'il n'y a rien à
+écraser.
+
+Chaque refus dit par quoi remplacer, ou dit qu'il n'y a rien et qu'il
+faut appeler le prescripteur. Certains refus protègent celui qui écrase
+plutôt que le patient : un cytotoxique, un tératogène — c'est la
+poussière qui est le danger, et la feuille le dit.
+
+## La conciliation de sortie
+
+L'onglet « Conciliation » compare l'ordonnance du dossier à celle qu'un
+patient rapporte de l'hôpital. On colle la liste de sortie ; chaque
+ligne est rapprochée d'une fiche, et l'écran dit ce qui a été arrêté,
+changé, ajouté ou remplacé.
+
+Six lectures, et la première passe avant les autres : la ligne que
+personne n'a pu rapprocher, parce que personne ne l'a vérifiée. Puis le
+remplacement dans la même classe — la divergence dont le patient repart
+avec les deux boîtes —, l'arrêt, le changement de posologie, l'ajout, et
+ce qui est reconduit sans changement.
+
+La feuille s'imprime à l'attention du prescripteur, avec un cadre laissé
+pour sa réponse. Elle ne vaut pas avis médical, et elle l'écrit.
+
 # Croiser une liste
 
 L'écran « Croisement » pose les mêmes questions à une liste qu'on

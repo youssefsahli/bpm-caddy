@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Deux fonctionnalités n'étaient dans le manuel nulle part** : la
+  feuille « peut-on écraser ? » et la conciliation de sortie. Le mot
+  « écraser » n'y apparaissait que pour parler d'écraser le travail d'un
+  autre poste, et « conciliation » pas du tout. Deux sections sous « Le
+  dossier », où elles se trouvent : les quatre réponses de la feuille et
+  pourquoi le silence n'y est pas une permission ; les six lectures de
+  la conciliation et laquelle passe avant les autres.
 - **`crush` confronte enfin sa table aux fiches livrées.** C'est ce que
   `cyp` et `hepatic` font depuis toujours : pour chaque fiche, prendre
   la **première** ligne qui l'accroche — celle que `read` rendra — et la
