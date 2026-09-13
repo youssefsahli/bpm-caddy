@@ -34,7 +34,12 @@ Deux règles valent partout :
    règles, qu'elles peuvent effectivement se déclencher sur la base
    livrée. Du contenu inatteignable est du contenu que personne ne
    corrigera jamais.
-3. **Chaque catalogue a son cliquet.** Un plancher sur le nombre de
+3. **Chaque catalogue a son cliquet.** Il s'appelle
+   `the_table_only_ever_grows` dans les tables cliniques — rein, foie,
+   écrasement, grossesse, cytochromes — et le nombre y est écrit **une
+   fois**, dans une constante que le message relit : écrit deux fois, en
+   chiffres dans l'assertion et en lettres dans le message, il finit par
+   se contredire, ce qui est arrivé trois fois. Un plancher sur le nombre de
    fiches, de tables, de préparations, de dispositifs, de protocoles,
    d'analytes et de règles : il ne peut que monter. Un contenu retiré
    est une question à laquelle le comptoir ne sait plus répondre, et

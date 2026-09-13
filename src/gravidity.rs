@@ -692,6 +692,26 @@ pub const TABLE: &[Advice] = &[
 
 #[cfg(test)]
 mod tests {
+    /// **Le cliquet : la table ne perd pas de lignes.**
+    ///
+    /// La règle de la maison pour tout catalogue clinique — une ligne
+    /// retirée est une question à laquelle le comptoir ne sait plus
+    /// répondre, et sans plancher cela arrive sans que personne le voie.
+    /// Le nombre est écrit **une fois**, dans une constante que le
+    /// message relit : écrit deux fois, en chiffres dans l'assertion et
+    /// en lettres dans le message, il finit par se contredire — c'est
+    /// arrivé dans `biology.rs`, dans `revue.rs` et dans le plancher de
+    /// toxicité de `db.rs`.
+    #[test]
+    fn the_table_only_ever_grows() {
+        const FLOOR: usize = 29;
+        assert!(
+            TABLE.len() >= FLOOR,
+            "{} molécules de la table grossesse, il y en avait {FLOOR}",
+            TABLE.len()
+        );
+    }
+
     use super::*;
 
     /// **Le libellé d'une molécule est son adresse, donc il est unique.**
