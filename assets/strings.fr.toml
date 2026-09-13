@@ -149,6 +149,8 @@ drug_patients_none = "Aucun patient sous ce traitement."
 
 # --- Carnet de transmissions ---
 trans_title = "Carnet de transmissions"
+# La forme courte, pour la même raison.
+trans_title_short = "Transmissions"
 trans_subtitle = "Transmissions de fin de journée, jour par jour"
 trans_prev = "Jour précédent (avec entrées)"
 trans_next = "Jour suivant"
@@ -650,6 +652,12 @@ codex_button = "Codex…"
 mono_button = "Plein texte…"
 mono_button_tooltip = "Chercher un mot dans le texte de toutes les fiches"
 mono_title = "Recherche dans les monographies"
+# La forme courte du même titre, prise quand la riche ne tient pas sur
+# une ligne : « Recherche dans les mon… » a perdu le mot qui dit ce
+# qu'on cherche, là où « Monographies » ne le dit pas mais se lit
+# entier. C'est la règle de `motif::panel_forms`, appliquée à la tête
+# d'une page.
+mono_title_short = "Monographies"
 mono_subtitle = "Occurrences dans le texte des fiches — cliquer le nom ouvre la fiche."
 mono_hint = "Un mot du texte : pamplemousse, QT, allaitement…"
 mono_short = "Trois lettres au moins."

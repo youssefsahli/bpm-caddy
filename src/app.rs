@@ -18463,13 +18463,38 @@ impl App {
     /// plutôt que de sortir — un titre n'a pas de forme plus pauvre à
     /// proposer, c'est le seul endroit où l'ellipse est la bonne
     /// réponse.
-    fn page_title(ui: &mut egui::Ui, title: &str, beside: f32) {
+    /// La tête d'une page, **de la forme la plus riche à la plus
+    /// pauvre**, et la première qui tient.
+    ///
+    /// « Raccourcir, ne pas élider » — la règle de la maison, que
+    /// `motif::panel_forms` applique déjà aux légendes de panneau et
+    /// qui manquait ici : à 1024x700 en texte 1,6, « Recherche dans les
+    /// monographies » sortait « Recherche dans les mon… », ce qui perd
+    /// le mot qui dit *où* l'on cherche, là où « Monographies » ne dit
+    /// pas tout mais se lit entier.
+    ///
+    /// La plus pauvre est élidée si même elle ne tient pas : une tête
+    /// coupée reste plus utile qu'une page sans titre.
+    fn page_title_forms(ui: &mut egui::Ui, forms: &[&str], beside: f32) {
         let gap = if beside > 0.0 {
             ui.spacing().item_spacing.x
         } else {
             0.0
         };
         let room = (ui.available_width() - beside - gap).max(chars_wide(ui, 8.0));
+        let heading = egui::TextStyle::Heading.resolve(ui.style());
+        let title = forms
+            .iter()
+            .find(|f| {
+                ui.fonts(|fo| {
+                    fo.layout_no_wrap((*f).to_string(), heading.clone(), motif::text())
+                        .size()
+                        .x
+                }) <= room
+            })
+            .or_else(|| forms.last())
+            .copied()
+            .unwrap_or_default();
         ui.allocate_ui_with_layout(
             egui::vec2(room, Self::row_height(ui)),
             egui::Layout::left_to_right(egui::Align::Center),
@@ -22112,9 +22137,9 @@ impl App {
         motif::page(ui, 900.0, |ui| {
             ui.add_space(24.0);
             ui.horizontal(|ui| {
-                Self::page_title(
+                Self::page_title_forms(
                     ui,
-                    tr("trans_title"),
+                    &[tr("trans_title"), tr("trans_title_short")],
                     if session.trans_notes.is_empty() {
                         0.0
                     } else {
@@ -44441,9 +44466,9 @@ impl App {
         motif::page(ui, 900.0, |ui| {
             ui.add_space(16.0);
             ui.horizontal(|ui| {
-                Self::page_title(
+                Self::page_title_forms(
                     ui,
-                    tr("mono_title"),
+                    &[tr("mono_title"), tr("mono_title_short")],
                     Self::button_width(ui, tr("patient_back")),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

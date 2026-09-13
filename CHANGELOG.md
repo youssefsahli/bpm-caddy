@@ -333,6 +333,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« Recherche dans les mon… »** — une tête de page élidée, là où la
+  règle de la maison dit de raccourcir. `motif::panel_forms` l'applique
+  depuis longtemps aux légendes de panneau ; les deux têtes de page ne
+  l'avaient pas. Elles prennent maintenant la plus riche des formes qui
+  tient : « Monographies » à 1024x700 en texte 1,6, « Recherche dans les
+  monographies » dès qu'il y a la place, et « Carnet de transmissions »
+  qui tient de toute façon.
 - **La colonne « antidote » se contredisait dans une même classe.**
   Elle était remplie sur quatre insulines et vide sur dix, sur neuf
   bêtabloquants et vide sur un, sur deux sulfamides hypoglycémiants et
