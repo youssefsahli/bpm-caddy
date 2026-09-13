@@ -134,6 +134,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « anti**sep**tique » contient « SEP », d'où « lymphopénie sévère sous
   traitement de fond de la sclérose en plaques » devant un Ercéfuryl.
 
+  **Et la revue d'ordonnance, qui tourne sur chaque dossier et sur le
+  tableau de bord, en portait sept.** La pire tenait à cinq lettres :
+  « ésomépr**azole** », « cotrimox**azole** », « aripipr**azole** »,
+  « méb**endazole** » contiennent « azolé », de sorte que la règle
+  « Statine + inhibiteur enzymatique — c'est la rhabdomyolyse » se
+  déclenchait pour **dix-sept fiches sur vingt-cinq**, dont les six
+  IPP : un Tahor avec un Mopral, c'est-à-dire une ordonnance de tous
+  les jours, levait une alerte de rhabdomyolyse. Les azolés systémiques
+  sont nommés. Et « vaccin gr**ipp**al » contient « ipp » : un patient
+  vacciné contre la grippe recevait les règles des IPP.
+
   Trois de plus du même genre, trouvées en relisant ce que **chaque**
   mot attrape : « nystatine » contient « statine », de sorte que la
   Mycostatine — un antifongique — recevait les lignes des statines, du

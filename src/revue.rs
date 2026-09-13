@@ -237,7 +237,7 @@ const RULES: &[Rule] = &[
         detail: "Bradycardie et troubles de la conduction, d'autant que l'amiodarone allonge aussi le QT et s'élimine sur des mois. L'association existe et se surveille, mais elle n'est jamais anodine : pouls, tolérance à l'effort, et un ECG si le patient dit se sentir ralenti.",
     },
     Rule {
-        kind: Kind::Duplicate(&["codéine", "tramadol", "opium", "dihydrocodéine"], 2),
+        kind: Kind::Duplicate(&["codéine", "tramadol", "lamaline", "izalgi", "poudre d'opium", "dihydrocodéine"], 2),
         severity: Severity::Alert,
         title: "Deux opioïdes faibles",
         detail: "Deux sources d'opioïde faible sur la même ordonnance : les effets s'additionnent — somnolence, constipation, dépression respiratoire — et l'une des deux est souvent cachée dans une association au paracétamol. Faire la somme devant le patient et n'en garder qu'une.",
@@ -262,8 +262,8 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["IPP", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "rabéprazole"],
-            &["fer", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
+            &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "rabéprazole"],
+            &["ferreux", "ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
         ]),
         severity: Severity::Warn,
         title: "IPP + fer oral",
@@ -297,7 +297,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["benzodiazépine", "zolpidem", "zopiclone", "hypnotique"],
-            &["opioïde", "morphine", "oxycodone", "tramadol", "codéine", "fentanyl"],
+            &["opioïde", "skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "tramadol", "codéine", "fentanyl"],
         ]),
         severity: Severity::Alert,
         title: "Benzodiazépine + opioïde",
@@ -347,7 +347,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["statine", "atorvastatine", "simvastatine", "rosuvastatine", "pravastatine"],
+            &["vastatine", "atorvastatine", "simvastatine", "rosuvastatine", "pravastatine"],
             &["fibrate", "gemfibrozil", "fénofibrate"],
         ]),
         severity: Severity::Warn,
@@ -402,7 +402,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["colchicine"],
-            &["macrolide", "clarithromycine", "érythromycine", "statine", "vérapamil", "antifongique azolé", "ciclosporine"],
+            &["macrolide", "clarithromycine", "érythromycine", "vastatine", "vérapamil", "antifongique azolé", "ciclosporine"],
         ]),
         severity: Severity::Alert,
         title: "Colchicine exposée",
@@ -429,7 +429,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["millepertuis"],
-            &["AOD", "AVK", "contraception", "immunosuppresseur", "anticancéreux", "antirétroviral", "statine"],
+            &["AOD", "AVK", "contraception", "immunosuppresseur", "anticancéreux", "antirétroviral", "vastatine"],
         ]),
         severity: Severity::Alert,
         title: "Millepertuis inducteur",
@@ -463,7 +463,7 @@ const RULES: &[Rule] = &[
         detail: "Trois molécules sédatives ou plus : chutes et confusion, surtout après 75 ans. Chacune est justifiable, l'addition ne l'est pas — on hiérarchise et on retire dans l'ordre.",
     },
     Rule {
-        kind: Kind::Duplicate(&["IPP", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"], 2),
+        kind: Kind::Duplicate(&["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"], 2),
         severity: Severity::Warn,
         title: "Deux IPP",
         detail: "Deux inhibiteurs de la pompe à protons : le plus souvent un reliquat d'ordonnance hospitalière. Un seul suffit, et son indication se réévalue.",
@@ -495,7 +495,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["lévothyroxine", "hormone thyroïdienne"],
-            &["fer", "calcium", "IPP", "oméprazole", "pantoprazole", "magnésium"],
+            &["ferreux", "ferrique", "fer saccharose", "calcium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "magnésium"],
         ]),
         severity: Severity::Info,
         title: "Lévothyroxine à distance",
@@ -504,7 +504,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["biphosphonate", "bisphosphonate", "alendronate", "risédronate", "ibandronate"],
-            &["calcium", "fer", "magnésium", "IPP"],
+            &["calcium", "ferreux", "ferrique", "fer saccharose", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         ]),
         severity: Severity::Info,
         title: "Bisphosphonate à distance",
@@ -518,8 +518,8 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["statine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
-            &["macrolide", "clarithromycine", "érythromycine", "azolé", "kétoconazole", "itraconazole", "fluconazole", "vérapamil", "diltiazem"],
+            &["vastatine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
+            &["macrolide", "clarithromycine", "érythromycine", "kétoconazole", "itraconazole", "fluconazole", "voriconazole", "posaconazole", "miconazole", "vérapamil", "diltiazem"],
         ]),
         severity: Severity::Alert,
         title: "Statine + inhibiteur enzymatique",
@@ -603,7 +603,7 @@ const RULES: &[Rule] = &[
         kind: Kind::Without(
             &[&[
                 "opioïde",
-                "morphine",
+                "skenan", "sevredol", "actiskenan", "oramorph", "moscontin",
                 "oxycodone",
                 "tramadol",
                 "codéine",
@@ -654,7 +654,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["lévothyroxine", "hormone thyroïdienne"],
-            &["fer", "calcium", "IPP", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "colestyramine"],
+            &["ferreux", "ferrique", "fer saccharose", "calcium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "colestyramine"],
         ]),
         severity: Severity::Warn,
         title: "Lévothyroxine et chélation",
@@ -698,7 +698,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["statine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
+            &["vastatine", "simvastatine", "atorvastatine", "rosuvastatine", "pravastatine"],
             &["colchicine"],
         ]),
         severity: Severity::Warn,
@@ -807,7 +807,7 @@ const RULES: &[Rule] = &[
         detail: "Une corticothérapie fait monter la glycémie dès les premiers jours, surtout en fin de journée avec une prise matinale, et un diabète équilibré ne l'est plus. Prévenir le patient d'augmenter l'autosurveillance pendant la cure et de ne pas s'inquiéter d'une baisse à l'arrêt : c'est l'adaptation qui suit la corticothérapie, et elle se fait avec le prescripteur. Chez un patient non diabétique connu, une cure prolongée justifie de vérifier la glycémie.",
     },
     Rule {
-        kind: Kind::Duplicate(&["corticoïde", "cortico"], 3),
+        kind: Kind::Duplicate(&["corticoïde", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol"], 3),
         severity: Severity::Info,
         title: "Charge corticoïde cumulée",
         detail: "Trois corticoïdes ou plus sur une même ordonnance — inhalé, nasal, cutané, collyre, oral — s'additionnent : chacun pris isolément est faible, la somme ne l'est pas. La freination surrénalienne, la fragilité cutanée, la cataracte et l'ostéoporose se jugent sur le total et non sur une ligne. Vérifier que chacun garde une indication actuelle et une durée, en particulier le dermocorticoïde renouvelé sans limite.",
@@ -941,7 +941,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["dasatinib", "erlotinib", "géfitinib", "pazopanib"],
-            &["IPP", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
+            &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         ]),
         severity: Severity::Warn,
         title: "Inhibiteur de tyrosine kinase + IPP",
@@ -950,7 +950,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["buprénorphine", "nalbuphine"],
-            &["morphine", "oxycodone", "fentanyl", "hydromorphone", "méthadone"],
+            &["skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "fentanyl", "hydromorphone", "méthadone"],
         ]),
         severity: Severity::Alert,
         title: "Buprénorphine ou nalbuphine + agoniste pur",
@@ -977,7 +977,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["naltrexone", "revia"],
-            &["morphine", "oxycodone", "fentanyl", "hydromorphone", "tramadol", "codéine", "méthadone", "buprénorphine"],
+            &["skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "fentanyl", "hydromorphone", "tramadol", "codéine", "méthadone", "buprénorphine"],
         ]),
         severity: Severity::Alert,
         title: "Naltrexone + opioïde",
@@ -1058,7 +1058,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["gabapentine", "prégabaline", "gabapentinoïde"],
-            &["morphine", "oxycodone", "hydromorphone", "fentanyl", "tramadol", "codéine", "méthadone", "opium"],
+            &["skenan", "sevredol", "actiskenan", "oramorph", "moscontin", "oxycodone", "hydromorphone", "fentanyl", "tramadol", "codéine", "méthadone", "lamaline", "izalgi", "poudre d'opium"],
         ]),
         severity: Severity::Alert,
         title: "Gabapentinoïde + opioïde",
@@ -1280,7 +1280,7 @@ mod tests {
         assert!(review(&[]).is_empty());
         let quiet = [
             t("Doliprane", "paracétamol", "antalgique"),
-            t("Tahor", "atorvastatine", "statine"),
+            t("Tahor", "atorvastatine", "vastatine"),
         ];
         assert!(review(&quiet).is_empty());
     }
