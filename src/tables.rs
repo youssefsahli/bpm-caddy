@@ -1184,7 +1184,7 @@ pub const TABLES: &[ConvTable] = &[
             &[
                 "3A",
                 "45 à 59",
-                "Metformine poursuivie ; AOD à vérifier ; AINS à éviter",
+                "Metformine poursuivie à dose maximale réduite ; AOD à vérifier ; AINS à éviter",
                 "DFG et kaliémie tous les 6 mois",
                 "Boire normalement, et signaler tout épisode de vomissements ou de diarrhée",
             ],

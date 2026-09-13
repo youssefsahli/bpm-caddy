@@ -330,6 +330,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Deux tables portent le même titre à un mot près, et disaient de la
+  metformine le contraire l'une de l'autre.** « Fonction rénale — stades
+  et conséquences pratiques » écrit « dose réduite » au stade G3a ;
+  « Insuffisance rénale chronique — stades et adaptations » écrivait
+  « metformine **poursuivie** » au stade 3A, qui est le même stade et le
+  même intervalle de DFG. C'est le mot que `renal.rs` venait de perdre
+  pour la même raison. Il est complété.
+
+  Et les deux paliers de la metformine comptent maintenant en
+  **fractions de la dose usuelle** — deux tiers, puis un tiers, puis
+  l'arrêt — là où le second disait « réduite de moitié » sans dire de
+  quoi. Une fraction et non un chiffre : ce module refuse les
+  milligrammes dans une conduite, et il a raison, un plafond en
+  milligrammes se lisant comme une posologie. La table porte le chiffre,
+  là où une cellule le peut.
 - **Deux tables de référence parlaient du même sujet et se
   contredisaient.** « Interactions à repérer à la délivrance » et
   « Aliments, boissons et médicaments » traitent l'une et l'autre du

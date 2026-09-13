@@ -282,12 +282,21 @@ pub const TABLE: &[Adaptation] = &[
                 // deux autres textes de l'application.
                 below: 60,
                 level: Level::Reduce,
-                conduct: "Entre 45 et 60 : dose maximale réduite, surveillance rapprochée, et contrôle du DFG tous les trois à six mois.",
+                conduct: "Entre 45 et 60 : dose maximale abaissée aux deux tiers de la dose usuelle, surveillance rapprochée, et contrôle du DFG tous les trois à six mois.",
             },
             Step {
                 below: 45,
                 level: Level::Reduce,
-                conduct: "Entre 30 et 45 : dose maximale réduite de moitié, pas d'instauration à ce niveau, DFG tous les trois à six mois.",
+                // « De moitié » ne disait pas de quoi, et se lisait
+                // contre le palier du dessus. Les deux paliers comptent
+                // désormais en **fractions de la dose usuelle** : deux
+                // tiers, puis un tiers, puis l'arrêt. La fraction plutôt
+                // que le chiffre parce que ce module refuse les
+                // milligrammes dans une conduite, et il a raison — un
+                // plafond en milligrammes se lit comme une posologie.
+                // La table « Insuffisance rénale chronique » porte le
+                // chiffre, là où une cellule le peut.
+                conduct: "Entre 30 et 45 : dose maximale abaissée au tiers de la dose usuelle, pas d'instauration à ce niveau, DFG tous les trois à six mois.",
             },
             Step {
                 below: 30,
