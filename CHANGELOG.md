@@ -117,6 +117,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Sept lignes de plus au panneau grossesse**, pour ce que le comptoir
+  rencontre vraiment. Cent quatre-vingt-huit fiches livrées portaient
+  une contre-indication de grossesse que la table ignorait : elles
+  tombaient toutes sur « à vérifier au CRAT », ce qui est honnête et ne
+  sert à rien devant une femme enceinte. Les sulfamides hypoglycémiants
+  — c'est un **relais** vers l'insuline, organisé avant la conception,
+  pas un arrêt. Les diurétiques, avec le contresens que le panneau
+  existe pour défaire : ils sont prescrits *contre* les œdèmes de la
+  grossesse, qui sont physiologiques. Le cotrimoxazole, dont le terme
+  décide dans les deux sens — antifolique au premier trimestre, ictère
+  nucléaire à la fin. L'amiodarone et sa charge iodée, l'hydroxyzine,
+  les bisphosphonates qui se relarguent de l'os pendant des années et
+  posent donc la question *avant* une grossesse, et la clozapine, qu'on
+  poursuit le plus souvent parce qu'arrêter un antipsychotique pendant
+  une grossesse est un risque en soi.
 - **Huit présentations de plus sur la feuille « peut-on écraser ? »**,
   toutes tirées de ce que leur fiche écrit. Trois qui blessent
   l'œsophage si on les croque — le chlorure de potassium, la

@@ -512,6 +512,83 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Passage important dans le lait.",
         source: "CRAT",
     },
+    // --- Ce que le comptoir rencontre et que la table ignorait ---------
+    Advice {
+        needs: &[
+            "gliclazide", "glimépiride", "glibenclamide", "glipizide",
+            "diamicron", "amarel", "daonil",
+        ],
+        label: "Sulfamides hypoglycémiants",
+        pregnancy: Level::Interdit,
+        term: "",
+        pregnancy_note: "Le diabète s'équilibre à l'insuline, seule option validée, et le relais s'organise avant la conception ou dès la découverte de la grossesse : c'est l'hypoglycémie néonatale sévère qui est en jeu. Un diabète non traité est plus dangereux qu'un relais bien conduit — le relais, pas l'arrêt.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Passage dans le lait et hypoglycémie du nourrisson.",
+        source: "CRAT ; Diamicron et Amarel : « Contre-indiqué pendant la grossesse : le diabète doit être équilibré par l'insuline […] le relais doit être organisé avant la conception ou dès la découverte de la grossesse ».",
+    },
+    Advice {
+        needs: &[
+            "furosémide", "lasilix", "hydrochlorothiazide", "esidrex",
+            "indapamide", "fludex", "bumétanide", "burinex",
+        ],
+        label: "Diurétiques",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Ils réduisent le volume plasmatique et la perfusion placentaire. Jamais pour les œdèmes de la grossesse ni pour l'hypertension gravidique — c'est le contresens le plus fréquent, et les œdèmes des jambes en fin de grossesse sont physiologiques. Une indication cardiologique ou rénale stricte se poursuit, avec le prescripteur.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Passage dans le lait et inhibition de la lactation.",
+        source: "CRAT ; Lasilix : « les diurétiques ne doivent pas être utilisés pour traiter les œdèmes physiologiques ni l'hypertension gravidique » ; Esidrex : « Ils ne doivent jamais être utilisés pour traiter les œdèmes physiologiques de la grossesse ».",
+    },
+    Advice {
+        needs: &["cotrimoxazole", "bactrim", "triméthoprime", "sulfaméthoxazole"],
+        label: "Cotrimoxazole",
+        term: "Au premier trimestre : à éviter, l'effet antifolique portant sur la fermeture du tube neural. En fin de grossesse : contre-indiqué, du fait de l'ictère nucléaire chez le nouveau-né.",
+        pregnancy: Level::Eviter,
+        pregnancy_note: "Le terme décide, et dans les deux sens : ce n'est pas la même raison au début et à la fin. Une cystite de la grossesse a d'autres traitements.",
+        breastfeeding: Level::Prudence,
+        breastfeeding_note: "Déconseillé chez le nouveau-né prématuré, ictérique ou déficitaire en G6PD.",
+        source: "CRAT ; Bactrim : « À éviter au premier trimestre en raison de l'effet antifolique et contre-indiqué en fin de grossesse du fait du risque d'ictère nucléaire ».",
+    },
+    Advice {
+        needs: &["amiodarone", "cordarone"],
+        label: "Amiodarone",
+        pregnancy: Level::Interdit,
+        term: "",
+        pregnancy_note: "Sauf situation exceptionnelle : c'est la charge iodée qui est en cause, et elle donne une dysthyroïdie et un goitre fœtal. La décision appartient au cardiologue, pas au comptoir.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué.",
+        source: "CRAT ; Cordarone : « Contre-indiquée pendant la grossesse sauf situation exceptionnelle, du fait de la charge iodée et du risque de dysthyroïdie et de goitre fœtal ».",
+    },
+    Advice {
+        needs: &["hydroxyzine", "atarax"],
+        label: "Hydroxyzine",
+        pregnancy: Level::Interdit,
+        term: "En fin de grossesse surtout : effets atropiniques et sédation chez le nouveau-né.",
+        pregnancy_note: "Contre-indiqué par son RCP. Pour l'anxiété comme pour le prurit de la grossesse, il existe d'autres réponses — c'est une question de prescripteur, pas de conseil.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "L'hydroxyzine et son métabolite passent dans le lait et sédatent le nourrisson.",
+        source: "CRAT ; Atarax : « Contre-indiqué pendant la grossesse selon le résumé des caractéristiques du produit, notamment en fin de grossesse en raison des effets atropiniques et sédatifs chez le nouveau-né ».",
+    },
+    Advice {
+        needs: &["alendronate", "fosamax", "risédronate", "actonel", "acide zolédronique", "biphosphonate", "bisphosphonate"],
+        label: "Bisphosphonates",
+        pregnancy: Level::Interdit,
+        term: "",
+        pregnancy_note: "Contre-indiqués. Ils se fixent sur l'os et s'en relarguent pendant des années : la question se pose donc aussi avant une grossesse, et c'est au prescripteur d'en juger.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqués.",
+        source: "CRAT ; Fosamax : « Contre-indiqué pendant la grossesse et l'allaitement ».",
+    },
+    Advice {
+        needs: &["clozapine", "leponex"],
+        label: "Clozapine",
+        pregnancy: Level::Prudence,
+        term: "",
+        pregnancy_note: "Poursuivie quand le bénéfice l'emporte, et elle l'emporte souvent : arrêter un antipsychotique pendant une grossesse est un risque en soi. La glycémie maternelle se surveille, l'équipe obstétricale est prévenue d'un risque de syndrome extrapyramidal, de sevrage et d'agranulocytose néonatale, et le nouveau-né a une NFS.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué.",
+        source: "CRAT ; Leponex : « À n'utiliser pendant la grossesse que si le bénéfice est clairement supérieur au risque, en surveillant la glycémie maternelle […] avec NFS du nouveau-né ».",
+    },
     // --- Ce qu'on peut rassurer ---------------------------------------
     //
     // **Avant le paracétamol, parce qu'une association n'est pas son
@@ -704,7 +781,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 29;
+        const FLOOR: usize = 36;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules de la table grossesse, il y en avait {FLOOR}",
@@ -982,6 +1059,42 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **Ce que le comptoir rencontre vraiment n'est plus « à vérifier
+    /// au CRAT ».**
+    ///
+    /// Cent quatre-vingt-huit fiches livrées portent une
+    /// contre-indication de grossesse que la table ignorait : elles
+    /// tombaient toutes sur `SansDonnee`, qui est honnête et ne sert à
+    /// rien devant une femme enceinte. Ces trois-là sont les plus
+    /// fréquentes, et chacune porte un contresens que le panneau existe
+    /// pour défaire.
+    #[test]
+    fn the_everyday_contraindications_are_named() {
+        let one = |name: &str, dci: &str, class: &str| {
+            read(&[crate::revue::Treatment {
+                name,
+                dci,
+                class,
+                tags: "",
+            }])[0]
+                .clone()
+        };
+        // Le contresens du diurétique : il est prescrit *contre* les
+        // œdèmes de la grossesse, qui sont physiologiques.
+        let lasilix = one("Lasilix", "furosémide", "diurétique de l'anse");
+        assert_eq!(lasilix.label, "Diurétiques");
+        assert_eq!(lasilix.pregnancy, Level::Eviter);
+        assert!(lasilix.pregnancy_note.contains("œdèmes"));
+        // Le sulfamide : c'est un relais vers l'insuline, pas un arrêt.
+        let diamicron = one("Diamicron", "gliclazide", "sulfamide hypoglycémiant");
+        assert_eq!(diamicron.pregnancy, Level::Interdit);
+        assert!(diamicron.pregnancy_note.contains("insuline"));
+        // Et le terme décide dans les deux sens pour le cotrimoxazole.
+        let bactrim = one("Bactrim", "cotrimoxazole", "sulfamide antibactérien");
+        assert!(bactrim.term.contains("premier trimestre"));
+        assert!(bactrim.term.contains("fin de grossesse"));
     }
 
     /// L'ordre de lecture est celui du pire des deux niveaux : ce qui
