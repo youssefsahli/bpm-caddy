@@ -1103,7 +1103,12 @@ add clicking and typing; it is not the price of entry.
   process, so two tests sharing a `format!("bpm-caddy-x-{}", pid)` name
   delete each other's database and the loser fails on « disk I/O
   error », at the mercy of the scheduling. Three pairs had drifted into
-  collision.
+  collision. `no_two_temporary_directories_share_a_name` (in
+  `strings.rs`) now refuses the next: it reads seven modules for the
+  literal template — the pid is the same for every test and separates
+  nothing — and there are 88 templates for 88 sites. The failure it
+  prevents is the worst kind, one that does not come back when you go
+  looking for it.
 
 ## Env hooks (demo / e2e / screenshots)
 

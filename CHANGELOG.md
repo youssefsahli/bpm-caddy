@@ -489,6 +489,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Deux tests ne partagent pas un répertoire temporaire**, et rien ne
+  le tenait. Ils tournent en parallèle dans un **seul** processus, si
+  bien que deux `format!("bpm-caddy-x-{}", std::process::id())` donnent
+  le même chemin : chacun efface la base de l'autre et le perdant échoue
+  sur « disk I/O error », au gré de l'ordonnancement. Trois paires
+  avaient dérivé ainsi, et ce défaut-là ne se reproduit pas à la
+  demande. Quatre-vingt-huit gabarits pour quatre-vingt-huit sites
+  aujourd'hui ; le filet refuse le prochain doublon, et se plaint aussi
+  s'il cesse de trouver les gabarits — un filet qui ne lit plus rien ne
+  doit pas passer au vert.
 - **Deux documents réécrivables n'avaient pas leur test apparié.** Sur
   les onze sources du registre, l'ordonnance du TROD et les conseils du
   voyageur étaient les seules sans le test qui vérifie les deux sens :

@@ -555,6 +555,79 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Deux tests ne partagent pas un répertoire temporaire.**
+    ///
+    /// Ils tournent en parallèle **dans un seul processus**, si bien que
+    /// `format!("bpm-caddy-x-{}", std::process::id())` écrit par deux
+    /// tests donne le **même** chemin : chacun efface la base de
+    /// l'autre, et le perdant échoue sur « disk I/O error », au gré de
+    /// l'ordonnancement. Trois paires avaient dérivé ainsi, et le défaut
+    /// ne se reproduit pas à la demande — c'est le pire des deux mondes,
+    /// un échec qui ne revient pas quand on le cherche.
+    ///
+    /// Le gabarit littéral est ce qui compte : le numéro de processus
+    /// est le même pour tous, il ne sépare rien. Quatre-vingt-huit
+    /// gabarits pour quatre-vingt-huit sites aujourd'hui.
+    #[test]
+    fn no_two_temporary_directories_share_a_name() {
+        const SOURCES: &[(&str, &str)] = &[
+            ("app.rs", include_str!("app.rs")),
+            ("config.rs", include_str!("config.rs")),
+            ("db.rs", include_str!("db.rs")),
+            ("maintenance.rs", include_str!("maintenance.rs")),
+            ("pdf.rs", include_str!("pdf.rs")),
+            ("release.rs", include_str!("release.rs")),
+            ("scans.rs", include_str!("scans.rs")),
+        ];
+        // Assemblé, sinon le test se trouve lui-même.
+        let call = concat!("temp_", "dir()");
+        let mut seen: Vec<(String, String)> = Vec::new();
+        let mut clashes: Vec<String> = Vec::new();
+        for (file, src) in SOURCES {
+            for (i, line) in src.lines().enumerate() {
+                let t = line.trim_start();
+                if t.starts_with("//") || !t.contains(call) {
+                    continue;
+                }
+                // Le gabarit est le littéral qui suit l'appel — sur la
+                // même ligne, ou sur la suivante quand `cargo fmt` a
+                // replié l'appel.
+                let after = t.split_once(call).map(|(_, r)| r).unwrap_or("");
+                let literal = after
+                    .split_once('"')
+                    .and_then(|(_, r)| r.split_once('"'))
+                    .map(|(lit, _)| lit.to_owned())
+                    .or_else(|| {
+                        src.lines().nth(i + 1).and_then(|n| {
+                            n.split_once('"')
+                                .and_then(|(_, r)| r.split_once('"'))
+                                .map(|(lit, _)| lit.to_owned())
+                        })
+                    });
+                let Some(literal) = literal else { continue };
+                let here = format!("{file}:{}", i + 1);
+                if let Some((_, first)) = seen.iter().find(|(l, _)| *l == literal) {
+                    clashes.push(format!("« {literal} » : {first} et {here}"));
+                } else {
+                    seen.push((literal, here));
+                }
+            }
+        }
+        assert!(
+            seen.len() > 60,
+            "seulement {} répertoires temporaires lus : le motif a changé \
+             et ce test ne lit plus rien",
+            seen.len()
+        );
+        assert!(
+            clashes.is_empty(),
+            "deux chemins temporaires identiques — les tests tournent dans \
+             un seul processus, donc le numéro de processus ne les sépare \
+             pas :\n{}",
+            clashes.join("\n")
+        );
+    }
+
     /// **Tout document réécrivable a son test apparié.**
     ///
     /// `content::documents()` est le registre des phrases que l'officine
