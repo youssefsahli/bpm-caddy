@@ -371,6 +371,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sur la feuille. C'est pourtant cet exemple que l'officine lit dans
   l'éditeur de modèles pour comprendre le sien. Les six traitements y
   sont désormais.
+- **Ni celle d'une liste de contrôle.** Le volet montrait le titre, son
+  enregistrement et *une* case sur cinq, chacune avec ses boutons, le
+  champ qui en ajoute une étant tout en bas. Une liste de contrôle
+  réduite à sa première ligne n'est pas une liste de contrôle.
 - **Ni celle de la fenêtre des raccourcis.** Huit raccourcis sur
   vingt-six s'y voyaient, sur l'écran même où l'on vient apprendre ce
   que le clavier sait faire.

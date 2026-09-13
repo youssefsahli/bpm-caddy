@@ -31641,6 +31641,13 @@ impl App {
         motif::panel(ui, rect, Some(&list.title), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
+                // **La barre dit qu'il y a une suite.** À
+                // `text_scale = 1,6` le volet montre le titre, son
+                // enregistrement et *une* case sur cinq — chacune avec
+                // ses boutons, et le champ qui en ajoute une est tout en
+                // bas. Une liste de contrôle réduite à sa première ligne
+                // n'est pas une liste de contrôle.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("checklist_detail")
                     .show(ui, |ui| {
