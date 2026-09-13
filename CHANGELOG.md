@@ -330,6 +330,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Le plan de surveillance réclamait une lithiémie pour un gel.** Sept
+  lignes sortaient pour cinq boîtes qui ne passent pas dans le sang :
+  lithiémie, TSH et débit de filtration pour le Lithioderm, gel de la
+  dermite séborrhéique ; débit de filtration pour l'Indocollyre et
+  l'Ikervis, deux collyres ; glycémie sous corticoïde pour le Dérinox,
+  pulvérisation nasale ; triglycérides pour la Differine, crème d'acné.
+  Cette feuille-là s'imprime et s'apporte au laboratoire.
+
+  Écarté **une fois**, en tête de `due`, et non suivi par suivi : aucun
+  de ces suivis ne porte sur une forme locale, et le jour où l'un le
+  fera — un collyre bêta-bloquant ralentit le cœur —, c'est cette ligne
+  qu'il faudra rouvrir, avec un mot dans la règle plutôt qu'un oubli.
+
+  Le vocabulaire vit dans `classes::is_local_form`, parce que c'est une
+  question de voie que porte la classe de la fiche, et que trois modules
+  la posent déjà. Trois mots en sont délibérément absents :
+  « sous-cutané », « percutané » et « gel » seul — l'héparine, un gel
+  d'estradiol et le Duodopa passent tous les trois dans le sang.
 - **Et la grossesse portait le même défaut, trois fois.** L'Exocine —
   collyre à l'ofloxacine — lisait la prudence des fluoroquinolones ; le
   Lithioderm — gel pour la dermite séborrhéique — celle du lithium ;

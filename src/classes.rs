@@ -2103,6 +2103,46 @@ pub const CLASSES: &[Class] = &[
     },
 ];
 
+/// Ce libellé de classe désigne-t-il une **forme locale** ?
+///
+/// Une question de voie et non de classe, mais c'est la classe de la
+/// fiche qui la porte — « collyre — AINS », « dermocorticoïde fort »,
+/// « antifongique topique » —, et c'est ici qu'on lit les classes.
+///
+/// Elle se pose parce que les tables cliniques sont indexées sur la
+/// **molécule** : un collyre à l'indométacine tombe dans la ligne des
+/// AINS, un gel au lithium dans celle du lithium, et ils y prennent une
+/// conduite écrite pour la voie générale. Sur un plan de surveillance,
+/// cela donnait une lithiémie réclamée pour un gel de dermite
+/// séborrhéique, et un débit de filtration pour deux gouttes dans un
+/// œil.
+///
+/// Le vocabulaire est **étroit à dessein**, et trois mots en sont
+/// délibérément absents : « sous-cutané » (l'héparine passe dans le
+/// sang), « percutané » (un gel d'estradiol est un estrogène général)
+/// et « gel » seul (le Duodopa est un gel intestinal). Une forme locale
+/// n'est pas non plus toujours anodine — un collyre bêta-bloquant
+/// ralentit le cœur —, si bien que la réponse n'est jamais qu'une
+/// réponse : c'est à l'appelant de décider ce qu'il en fait.
+pub fn is_local_form(class: &str) -> bool {
+    const LOCAL: &[&str] = &[
+        "collyre",
+        "topique",
+        "nasal",
+        "auriculaire",
+        "dermocorticoide",
+        "pommade ophtalmique",
+        "gel ophtalmique",
+        "ovule",
+        "lotion",
+        "shampoing",
+    ];
+    let folded = crate::fuzzy::sort_key(class);
+    LOCAL
+        .iter()
+        .any(|v| crate::fuzzy::contains_folded(&folded, v))
+}
+
 /// De quel côté ranger un libellé : la classe canonique qu'il désigne,
 /// ou `None` s'il n'est d'aucune que le référentiel connaisse.
 ///

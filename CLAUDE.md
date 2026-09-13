@@ -160,7 +160,16 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/surveillance.rs` (what a treatment asks to have measured and how
   often, read against the dates already in the file — the other half of
   `biology.rs`: that one reads the values that are there, this one names
-  the ones that are not),
+  the ones that are not. **A local form asks for nothing**: the plan is
+  keyed on the molecule, so seven lines came out for five boxes that do
+  not reach the blood — a lithiémie, a TSH and a DFG for Lithioderm, a
+  gel for seborrhoeic dermatitis; a DFG for Indocollyre and Ikervis; a
+  glycaemia for Dérinox; triglycerides for Differine — on a sheet that
+  is printed and taken to the laboratory. Filtered once, at the top of
+  `due`, through `classes::is_local_form`, never Watch by Watch: none
+  of them is about a local form, and the day one is — a beta-blocker
+  collyre does slow the heart — it is that one line to reopen, with a
+  word in the rule rather than an omission),
   There is no `stats` module: the figures the « Statistiques » view
   shows are counts over lists the session already holds (the 851 cards,
   the summaries) plus four aggregate queries, and a module that only

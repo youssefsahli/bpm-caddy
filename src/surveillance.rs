@@ -184,8 +184,23 @@ pub fn due(
     today: &str,
 ) -> Vec<Due> {
     // Chaque traitement replié une fois, avec le nom qu'on affichera.
+    //
+    // **Une forme locale ne réclame pas d'examen.** Ces suivis sont
+    // indexés sur la molécule, si bien qu'un collyre ou un gel de la
+    // même molécule y tombe : le plan réclamait une lithiémie, une TSH
+    // et un débit de filtration pour le Lithioderm — un gel de dermite
+    // séborrhéique —, un débit de filtration pour l'Indocollyre et
+    // l'Ikervis, une glycémie pour le Dérinox et des triglycérides pour
+    // la Differine. Sept lignes, sur une feuille qui s'imprime et qu'on
+    // apporte au laboratoire.
+    //
+    // Écarté ici, une fois, et non suivi par suivi : aucun de ceux-ci ne
+    // porte sur une forme locale, et le jour où l'un le fera — un
+    // collyre bêta-bloquant ralentit le cœur —, c'est cette ligne qu'il
+    // faudra rouvrir, avec un mot dans la règle plutôt qu'un oubli.
     let folded: Vec<(String, String)> = treatments
         .iter()
+        .filter(|t| !crate::classes::is_local_form(t.class))
         .map(|t| {
             (
                 t.name.trim().to_owned(),
@@ -976,5 +991,39 @@ mod tests {
                 w.why
             );
         }
+    }
+    /// **Une forme locale ne réclame aucun examen.**
+    ///
+    /// Le plan est indexé sur la molécule, et sept lignes en sortaient
+    /// pour cinq boîtes qui ne passent pas dans le sang : une lithiémie,
+    /// une TSH et un débit de filtration pour un gel de dermite
+    /// séborrhéique, un débit de filtration pour un collyre à
+    /// l'indométacine et un autre à la ciclosporine, une glycémie pour
+    /// un vasoconstricteur nasal, des triglycérides pour un rétinoïde
+    /// en crème. Cette feuille s'imprime et s'apporte au laboratoire.
+    #[test]
+    fn a_local_form_asks_for_no_test() {
+        let mut wrong: Vec<String> = Vec::new();
+        for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+            if !crate::classes::is_local_form(class) {
+                continue;
+            }
+            let t = crate::revue::Treatment {
+                name,
+                dci,
+                class,
+                tags,
+            };
+            let due = due(&[t], &[], "2026-09-13");
+            if !due.is_empty() {
+                let codes: Vec<&str> = due.iter().map(|d| d.code).collect();
+                wrong.push(format!("« {name} » ({class}) réclame {codes:?}"));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "une forme locale réclame un examen :\n{}",
+            wrong.join("\n")
+        );
     }
 }

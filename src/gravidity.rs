@@ -1209,22 +1209,9 @@ mod tests {
     /// présente.
     #[test]
     fn a_local_form_does_not_wear_the_systemic_level() {
-        // « sous-cutané » et « gel intestinal » ne sont pas des formes
-        // locales : l'héparine et le Duodopa passent bien dans le sang.
-        // « percutané » non plus — un gel d'estradiol est un estrogène
-        // général. Le vocabulaire est donc étroit.
-        const LOCAL: &[&str] = &[
-            "collyre",
-            "topique",
-            "nasal",
-            "auriculaire",
-            "dermocorticoide",
-            "pommade ophtalmique",
-            "gel ophtalmique",
-            "ovule",
-            "lotion",
-            "shampoing",
-        ];
+        // Le vocabulaire est celui de `classes::is_local_form`, écrit
+        // une fois : `surveillance.rs` s'en sert aussi, et deux listes
+        // divergeraient au premier collyre ajouté.
         // Une ligne écrite **pour** les formes locales : les
         // vasoconstricteurs du rhume sont nasaux, et c'est justement
         // par cette voie qu'ils sont contre-indiqués à tout terme.
@@ -1236,11 +1223,7 @@ mod tests {
 
         let mut wrong: Vec<String> = Vec::new();
         for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
-            let folded_class = crate::fuzzy::sort_key(class);
-            if !LOCAL
-                .iter()
-                .any(|v| crate::fuzzy::contains_folded(&folded_class, v))
-            {
+            if !crate::classes::is_local_form(class) {
                 continue;
             }
             if ITS_OWN_CARD_IS_CAUTIOUS.contains(name) {
