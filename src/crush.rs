@@ -455,6 +455,51 @@ pub const TABLE: &[Rule] = &[
         instead: "",
         source: "Liste nationale des médicaments écrasables",
     },
+    // --- Le filet, en dernier -----------------------------------------
+    //
+    // **Ce que la boîte dit d'elle-même, quand aucune règle ne la
+    // connaît.** La table est lue dans l'ordre : ces deux règles sont
+    // les dernières, si bien qu'une présentation nommée plus haut garde
+    // sa réponse — le Skenan LP s'ouvre, et ce n'est pas ici qu'on le
+    // lui refuse.
+    //
+    // Elles ne répondent de rien dans la base livrée, dont les fiches
+    // portent le nom nu (« Skenan », « Diamicron ») ; elles répondent de
+    // ce que l'officine écrit sur ses propres fiches et de ce qu'on tape
+    // au comptoir, qui est le nom de la boîte — « Diamicron LP 30 mg ».
+    // C'est là que le « à vérifier » devenait une réponse pour rien.
+    //
+    // Le sens de la conversion est le seul acceptable : un « à
+    // vérifier » qui devient « ne pas écraser » sur une forme à
+    // libération prolongée ne coûte qu'un appel ; l'inverse casse la
+    // libération.
+    Rule {
+        needs: &[
+            // Avec l'espace : « alprazolam » contient « lp » et n'est
+            // pas une forme à libération prolongée.
+            " lp",
+            " chrono",
+            " continus",
+            " zok",
+            " durules",
+            " retard",
+            "libération prolongée",
+            "libération modifiée",
+        ],
+        label: "Forme à libération prolongée",
+        verdict: Verdict::No,
+        why: "La boîte annonce une libération prolongée : écrasée, elle rend d'un coup ce qu'elle devait rendre sur la journée. Selon la molécule, c'est un surdosage immédiat puis un manque en fin de journée.",
+        instead: "La même molécule en libération immédiate, répartie sur la journée — c'est une décision du prescripteur, pas une équivalence dose pour dose.",
+        source: "Règle générale des formes à libération modifiée",
+    },
+    Rule {
+        needs: &["gastro-résistant", "gastrorésistant", "entérosoluble"],
+        label: "Forme gastro-résistante",
+        verdict: Verdict::No,
+        why: "L'enrobage protège le principe actif de l'acidité de l'estomac, ou l'estomac du principe actif. Écrasé, il ne protège plus ni l'un ni l'autre.",
+        instead: "Une forme orodispersible, buvable ou injectable quand elle existe ; sinon, appeler le prescripteur.",
+        source: "Règle générale des formes gastro-résistantes",
+    },
 ];
 
 #[cfg(test)]
@@ -558,14 +603,54 @@ mod tests {
     /// libération prolongée.
     #[test]
     fn what_the_table_does_not_know_is_never_a_yes() {
-        let found = read(&[treat("Zoltruc 40 mg LP")]);
+        // Un nom que rien ne connaît et qui n'annonce rien de lui-même.
+        let found = read(&[treat("Zoltruc 40 mg")]);
         assert_eq!(found.len(), 1, "toute ligne reçoit une réponse");
         assert_eq!(found[0].verdict, Verdict::Unknown);
         assert_ne!(found[0].verdict, Verdict::Yes);
         assert!(found[0].why.contains("RCP"), "elle dit où chercher");
+        // **Mais une boîte qui s'annonce est lue.** La même molécule
+        // inconnue, écrite « LP », n'est plus « à vérifier » : la
+        // présentation décide, et c'est elle qui parle. Le sens de la
+        // conversion est le seul acceptable — un « à vérifier » devenu
+        // « ne pas écraser » ne coûte qu'un appel, l'inverse casse la
+        // libération.
+        let marked = read(&[treat("Zoltruc 40 mg LP")]);
+        assert_eq!(marked[0].verdict, Verdict::No);
+        assert_eq!(marked[0].label, "Forme à libération prolongée");
         // Et « à vérifier » se lit autrement que « oui » : le libellé
         // est ce que la feuille imprime.
         assert_eq!(Verdict::Unknown.label(), "À vérifier");
+    }
+
+    /// **Le filet ne prend pas la place de ce qui est nommé.**
+    ///
+    /// Les deux règles générales — libération prolongée, forme
+    /// gastro-résistante — sont les dernières de la table, et la table
+    /// est lue dans l'ordre. Placées plus haut, elles répondraient
+    /// « ne pas écraser » du Skenan LP, dont la gélule s'ouvre
+    /// justement, et du Kardégic, qui est gastro-résistant et s'écrase
+    /// quand même parce que sa fiche le dit.
+    ///
+    /// C'est le sens du filet : il répond de ce que personne n'a nommé,
+    /// et de rien d'autre.
+    #[test]
+    fn the_general_rules_come_last_and_shadow_nothing() {
+        let by = |name: &str| read(&[treat(name)])[0].clone();
+        // Nommés : ils gardent leur réponse.
+        let skenan = by("Skenan LP 30 mg");
+        assert_eq!(skenan.verdict, Verdict::Conditional);
+        assert_eq!(skenan.label, "Skenan LP");
+        let kardegic = by("Kardégic 75 mg");
+        assert_eq!(kardegic.verdict, Verdict::Yes);
+        // Pas nommés : le filet répond, et il refuse.
+        let unknown_lp = by("Diamicron LP 30 mg");
+        assert_eq!(unknown_lp.verdict, Verdict::No);
+        assert_eq!(unknown_lp.label, "Forme à libération prolongée");
+        assert!(!unknown_lp.instead.is_empty(), "un refus dit quoi faire");
+        // Et « alprazolam » n'est pas une forme à libération prolongée,
+        // bien qu'il contienne « lp » : c'est l'espace qui le dit.
+        assert_eq!(by("Alprazolam 0,25 mg").verdict, Verdict::Unknown);
     }
 
     /// **La forme décide, pas la molécule.** La morphine s'écrase ou ne
@@ -659,7 +744,23 @@ mod tests {
                 r.label
             );
             for n in r.needs {
-                assert_eq!(*n, n.trim(), "{} : « {n} » a une espace en trop", r.label);
+                // **Une espace de tête est une borne de mot, pas une
+                // coquille.** « alprazolam » contient « lp » et n'est
+                // pas une forme à libération prolongée ; c'est
+                // l'espace qui fait la différence, et c'est pour cela
+                // qu'elle est écrite. Le reste est refusé comme avant :
+                // une espace en queue, elle, ne borne rien.
+                assert_eq!(
+                    *n,
+                    n.trim_end(),
+                    "{} : « {n} » a une espace en queue",
+                    r.label
+                );
+                assert!(
+                    !n.starts_with("  "),
+                    "{} : « {n} » a plus d'une espace de tête",
+                    r.label
+                );
                 assert_eq!(
                     *n,
                     n.to_lowercase(),

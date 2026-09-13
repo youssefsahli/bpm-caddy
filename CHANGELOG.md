@@ -117,6 +117,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Une boîte qui s'annonce « LP » n'est plus « à vérifier ».** La
+  feuille « peut-on écraser ? » répondait d'une cinquantaine des huit
+  cent soixante-deux fiches livrées, et « à vérifier » pour tout le
+  reste — ce qui est honnête, puisque la forme décide et que la base
+  porte des molécules. Deux règles générales, **placées en dernier**,
+  lisent maintenant ce que la boîte dit d'elle-même : « LP », « Chrono »,
+  « Continus », « libération prolongée » d'un côté, « gastro-résistant »
+  et « entérosoluble » de l'autre. Elles ne répondent de rien dans la
+  base livrée, dont les fiches portent le nom nu ; elles répondent de ce
+  que l'officine écrit sur ses propres fiches et de ce qu'on tape au
+  comptoir, qui est le nom de la boîte.
+
+  Elles sont dernières et un test le tient : plus haut, elles
+  refuseraient le Skenan LP, dont la gélule s'ouvre justement, et le
+  Kardégic, qui est gastro-résistant et s'écrase quand même parce que sa
+  fiche le dit. Le sens de la conversion est le seul acceptable — un
+  « à vérifier » devenu « ne pas écraser » ne coûte qu'un appel,
+  l'inverse casse la libération. Et le mot cherché est « LP » **avec son
+  espace**, parce qu'« alprazolam » le contient sans elle.
 - **Les conduites hépatiques se réécrivent, comme les rénales.** Elles
   étaient les seules de cette page à ne pas passer par « Textes
   imprimés » — `phrases()`, `resolve()`, une ligne dans
