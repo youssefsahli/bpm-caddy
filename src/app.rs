@@ -35786,7 +35786,18 @@ impl App {
             ui.horizontal_wrapped(|ui| {
                 Self::stup_day(ui, m, cancelled, date_w);
                 Self::stup_kind_and_amounts(ui, m, cancelled, nature_w, qty_w);
-                Self::stup_balance(ui, balance, cancelled, qty_w);
+                // **Un solde absent ne prend pas de colonne.** Dans la
+                // rangée pliée il n'y a pas de grille à aligner, et la
+                // cellule vide que `stup_balance` dessine pour `None`
+                // réservait quand même sa largeur : la rangée passait à
+                // la ligne, la seconde restait vide, et **chaque ligne
+                // du registre valait deux rangées**. Sur un écran de
+                // comptoir, c'est la moitié des lignes qu'on ne voit
+                // plus. Dans la forme large, la cellule vide reste : là,
+                // elle tient une colonne.
+                if balance.is_some() {
+                    Self::stup_balance(ui, balance, cancelled, qty_w);
+                }
             });
             ui.horizontal_wrapped(|ui| {
                 Self::stup_no(ui, m, cancelled, no_w);

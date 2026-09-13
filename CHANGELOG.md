@@ -489,6 +489,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Chaque ligne du registre valait deux rangées, dont une vide.** Sur
+  un écran de comptoir avec les deux volets tirés larges, la ligne pliée
+  du registre se dessine en deux rangées — ce qui s'additionne, puis ce
+  que cela désigne. La première passait à la ligne et laissait la
+  seconde vide : une cellule de solde **absent** y réservait quand même
+  la largeur de sa colonne. Or dans la rangée pliée il n'y a pas de
+  grille à aligner, donc rien à réserver. C'est la moitié des lignes du
+  registre qu'on ne voyait plus, sur la vue qui existe pour les compter.
+
+  Trouvé en encadrant les deux rangées et en recapturant : le cadre de
+  la première faisait deux fois la hauteur de son texte. Dans la forme
+  large, où la cellule vide tient vraiment une colonne, la capture est
+  identique au pixel près.
 - **La ligne d'un matériel loué sortait tranchée par le milieu.** Sur un
   volet étroit, la cellule du nom porte deux lignes — le matériel, puis
   la date de pose, l'état et le montant que la largeur n'a pas permis de
