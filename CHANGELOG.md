@@ -296,6 +296,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **L'exemple du procès-verbal de destruction comptait un jour de
+  trop.** Du 02/11/2025 au 08/09/2026 il y a 310 jours et l'exemple en
+  écrivait 311 — un nombre recopié à la main à côté d'une date, ce qui
+  est exactement la façon dont deux écritures d'une même chose
+  divergent. L'exemple compte maintenant l'écart au lieu de l'affirmer.
+  Le calcul livré, lui, était juste : c'est une simple différence de
+  jours, et `date.rs` la vérifie sur chaque jour de 1900 à 2100.
 - **L'exemple du plan de surveillance se contredisait.** La case à
   cocher ne se pose que sur ce qui est en retard ou jamais fait — « une
   feuille où tout est à cocher ne dit plus ce qui presse » —, et

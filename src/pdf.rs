@@ -6807,7 +6807,13 @@ mod tests {
                 unit: "gélule".to_owned(),
                 quantity: 14.0,
                 since: "2025-11-02".to_owned(),
-                days: Some(311),
+                // **Compté, pas recopié.** Il y avait 311 ici pour un
+                // écart qui en fait 310 : du 02/11/2025 au 08/09/2026.
+                // Un exemple faux sur un procès-verbal enseigne une
+                // ancienneté fausse, et c'est la pièce qui prouve
+                // depuis combien de temps un stupéfiant rapporté attend
+                // sa destruction.
+                days: crate::date::days_between("2025-11-02", "2026-09-08"),
             },
             // Ce qui attend sans qu'on sache depuis quand : la colonne
             // reste vide plutôt que d'inventer un jour.
@@ -6827,8 +6833,8 @@ mod tests {
         assert!(source.contains("Procès-verbal de destruction"));
         assert!(source.contains("08/09/2026"), "la date se lit en français");
         assert!(
-            source.contains("02/11/2025 (311 j)"),
-            "et l'ancienneté avec"
+            source.contains("02/11/2025 (310 j)"),
+            "et l'ancienneté avec, comptée et non recopiée"
         );
         assert!(source.contains("Au coffre"));
         assert!(source.contains("Détruit"), "une colonne à cocher à mesure");
