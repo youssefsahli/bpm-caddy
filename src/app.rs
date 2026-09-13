@@ -1917,7 +1917,29 @@ fn richest_form(
     width: f32,
     size: f32,
 ) -> Option<String> {
-    let font = egui::FontId::proportional(motif::pt(ui, size));
+    richest_form_in(
+        ui,
+        forms,
+        width,
+        egui::FontId::proportional(motif::pt(ui, size)),
+    )
+}
+
+/// [`richest_form`], mais dans **la fonte qui dessinera** plutôt que
+/// dans une taille en points choisie ici.
+///
+/// Un texte rendu par `ui.label` est écrit dans le style `Body`, qui
+/// n'est pas `pt(12)` : mesurer dans la seconde et peindre dans la
+/// première fait choisir une forme qui ne tient pas, et le `truncate`
+/// qui suit coupe alors ce que le choix voulait sauver — « Dimanche
+/// 13/09/2026 » sortait « Dimanche 13/09/… », c'est-à-dire amputé de la
+/// date, qui est le sujet de la page.
+fn richest_form_in(
+    ui: &egui::Ui,
+    forms: impl IntoIterator<Item = String>,
+    width: f32,
+    font: egui::FontId,
+) -> Option<String> {
     forms.into_iter().find(|form| {
         ui.fonts(|f| {
             f.layout_no_wrap(form.clone(), font.clone(), motif::text())
@@ -22288,10 +22310,24 @@ impl App {
                         }
                     })
                     .collect();
-                let mut title = format!("{cap} {}", db::format_french_date(&session.trans_day));
-                if session.trans_day == session.today {
-                    title.push_str(tr("dash_today"));
-                }
+                let date = db::format_french_date(&session.trans_day);
+                let today = session.trans_day == session.today;
+                let mention = if today { tr("dash_today") } else { "" };
+                // De la plus riche à la plus pauvre, et **la date est la
+                // dernière à céder** : c'est le sujet de la page. Un
+                // `truncate` ne sait pas cela — il coupe par la fin,
+                // c'est-à-dire justement la date, et « Dimanche
+                // 13/09/2026 » sortait « Dimanche 13/09/… ».
+                let forms = [
+                    format!("{cap} {date}{mention}"),
+                    format!("{cap} {date}"),
+                    format!("{} {date}", three_letters(day)),
+                    date.clone(),
+                ];
+                let room = ui.available_width();
+                let title =
+                    richest_form_in(ui, forms, room, egui::TextStyle::Body.resolve(ui.style()))
+                        .unwrap_or(date);
                 // **Ce qui reste de la rangée, et rien de plus.** Trois
                 // boutons de navigation devant, et à l'échelle 1,6 la
                 // date sortait par la droite du panneau : « Mardi

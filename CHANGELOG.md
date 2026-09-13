@@ -183,6 +183,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Le carnet de transmissions élidait sa date.** Le commentaire au-
+  dessus disait la bonne règle depuis toujours — « la mention du jour
+  est du contexte et c'est elle qui s'élide ; la date, jamais, c'est le
+  sujet de la page » — et un `truncate` ne sait pas cela : il coupe par
+  la fin, donc justement la date. « Dimanche 13/09/2026 » se lisait
+  « Dimanche 13/09/… ». Les formes vont maintenant de la plus riche à la
+  plus pauvre, et la première qui tient est prise : « Dim 13/09/2026 »
+  ne dit pas le jour en entier et se lit entière.
+- **Et une forme se choisit dans la fonte qui la dessinera.** Le premier
+  essai mesurait à `pt(12)` un texte peint dans le style `Body` — plus
+  grand — et élidait donc toujours : `richest_form_in` prend la fonte,
+  `richest_form` la compose à partir d'une taille en points comme avant.
 - **La feuille de saisie groupée perdait la case qu'elle exige.** Ses
   quatre colonnes demandent six cent soixante-neuf pixels à
   `text_scale = 1,6` quand le volet du comptoir en offre cinq cent
