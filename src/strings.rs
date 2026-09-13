@@ -555,6 +555,75 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Un test sans `#[test]` est un gardien mort**, et il meurt sans
+    /// bruit : la suite repasse au vert avec un test de moins, et le
+    /// nombre affiché ne se lit pas.
+    ///
+    /// C'est arrivé le 13/09/2026, en insérant un filet juste au-dessus
+    /// d'un autre : l'insertion a avalé le `#[test]` de
+    /// `no_font_size_is_written_in_pixels`, quatre cents littéraux de
+    /// taille de police ont cessé d'être refusés, et tout était vert.
+    ///
+    /// Le repère est étroit : une fonction **sans paramètre et sans
+    /// valeur de retour**, dans un module de tests, n'est rien d'autre
+    /// qu'un test. Les aides en prennent (`treat(name, dci, …)`) ou en
+    /// rendent (`fn over() -> Overrides`), et sortent donc du filet.
+    #[test]
+    fn no_test_has_lost_its_attribute() {
+        const SOURCES: &[(&str, &str)] = &[
+            ("app.rs", include_str!("app.rs")),
+            ("biology.rs", include_str!("biology.rs")),
+            ("classes.rs", include_str!("classes.rs")),
+            ("crush.rs", include_str!("crush.rs")),
+            ("cyp.rs", include_str!("cyp.rs")),
+            ("gravidity.rs", include_str!("gravidity.rs")),
+            ("hepatic.rs", include_str!("hepatic.rs")),
+            ("ordonnancier.rs", include_str!("ordonnancier.rs")),
+            ("renal.rs", include_str!("renal.rs")),
+            ("revue.rs", include_str!("revue.rs")),
+            ("strings.rs", include_str!("strings.rs")),
+            ("surveillance.rs", include_str!("surveillance.rs")),
+            ("tables.rs", include_str!("tables.rs")),
+        ];
+        let mut orphans: Vec<String> = Vec::new();
+        for (file, src) in SOURCES {
+            let lines: Vec<&str> = src.lines().collect();
+            let mut in_tests = false;
+            for (i, l) in lines.iter().enumerate() {
+                let t = l.trim_start();
+                if t.starts_with("mod tests") {
+                    in_tests = true;
+                }
+                if !in_tests {
+                    continue;
+                }
+                // Sans paramètre et sans flèche : un test, et rien
+                // d'autre.
+                let Some(name) = t.strip_prefix("fn ") else {
+                    continue;
+                };
+                let Some(name) = name.strip_suffix("() {") else {
+                    continue;
+                };
+                // L'attribut est sur la dernière ligne qui n'est ni
+                // vide, ni un commentaire, ni de la documentation.
+                let attribute = lines[..i].iter().rev().find(|p| {
+                    let p = p.trim_start();
+                    !p.is_empty() && !p.starts_with("//")
+                });
+                if !attribute.is_some_and(|a| a.trim_start().starts_with("#[")) {
+                    orphans.push(format!("{file}:{} — fn {name}()", i + 1));
+                }
+            }
+        }
+        assert!(
+            orphans.is_empty(),
+            "une fonction de test sans attribut : lui rendre son `#[test]`, \
+             ou lui donner un paramètre ou un retour si c'est une aide.\n{}",
+            orphans.join("\n")
+        );
+    }
+
     /// **Aucune liste de mots cherchés ne se répète.**
     ///
     /// Un doublon dans un `needs` ne casse rien — la règle attrape la

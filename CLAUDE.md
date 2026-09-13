@@ -552,6 +552,15 @@ add clicking and typing; it is not the price of entry.
   files a local form under **unknown** rather than inert, because that
   module names what it does not rule on instead of handing out a
   clean bill of health.
+- **A test without `#[test]` is a dead guard, and it dies silently** —
+  the suite goes green with one test fewer and nobody reads the number.
+  It happened here: inserting one lint directly above another swallowed
+  the `#[test]` of `no_font_size_is_written_in_pixels`, four hundred
+  pixel literals stopped being refused, and everything passed.
+  `no_test_has_lost_its_attribute` (in `strings.rs`) reads thirteen
+  modules and refuses a parameterless, returnless `fn` inside a `mod
+  tests` that carries no attribute — helpers take an argument or return
+  something, so they fall outside it.
 - **A guard that reads the source covers the module nobody has written
   yet.** Five clinical tables each had their own « refuse markup » test;
   two tables had none, and that is exactly where the two faults were —

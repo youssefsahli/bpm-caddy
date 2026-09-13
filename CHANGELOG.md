@@ -505,7 +505,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `app.rs` comme les trois filets d'à côté. En l'écrivant, le filet des
   tailles de police a perdu son `#[test]` — l'insertion l'avait
   avalé — et la suite est passée au vert avec un gardien en moins. Les
-  deux sont vérifiés par morsure maintenant.
+  deux sont vérifiés par morsure maintenant. Et
+  `no_test_has_lost_its_attribute` refuse le prochain : dans un module
+  de tests, une fonction sans paramètre et sans valeur de retour n'est
+  rien d'autre qu'un test, et une aide en prend ou en rend.
 - **Une gélule d'Adalate à libération immédiate lisait « ne s'écrase
   pas ».** La ligne « Nifédipine LP » réclamait « adalate » tout court,
   et la fiche livrée couvre explicitement les deux formes — « formes à
