@@ -530,6 +530,28 @@ add clicking and typing; it is not the price of entry.
   day they were written, and it came out in the ordinary ink. Its font
   was a hardcoded 14 px too, so lists never grew with `[ui] text_scale`.
   Both now come from egui's own layout and the style.
+- **The route is a question every molecule-keyed table has to ask, and
+  it is asked in one place.** `classes::is_local_form` reads a card's
+  *class* — « collyre — AINS », « dermocorticoïde fort », « antifongique
+  topique » — and every clinical table consults it, because all six are
+  keyed on the **molecule** and a local form of a systemic molecule
+  falls straight into its row. Shipped instances found in one sweep on
+  2026-09-13: seven printed surveillance lines (a lithiémie demanded for
+  a seborrhoeic-dermatitis gel), twenty-one biology attributions (a
+  collyre accounting for renal failure), three pregnancy levels, two
+  renal conducts, one CYP crossing. The older remedies were amputation
+  (indométacine lost its renal row so Indocollyre would not have one;
+  kétoconazole left the CYP table for Kétoderm) and they cost a true
+  row each time. Three mots are deliberately **out** of the vocabulary —
+  « sous-cutané », « percutané », « gel » alone — because heparin, an
+  estradiol gel and Duodopa all reach the blood. A local form is not
+  automatically harmless either: a beta-blocker collyre slows the heart,
+  Sterdex keeps its « éviter » because its own card is cautious, and
+  `renal`/`gravidity` carry a per-row `never` for exactly those
+  judgements. Each module decides what to do with the answer: `cyp`
+  files a local form under **unknown** rather than inert, because that
+  module names what it does not rule on instead of handing out a
+  clean bill of health.
 - **A guard that reads the source covers the module nobody has written
   yet.** Five clinical tables each had their own « refuse markup » test;
   two tables had none, and that is exactly where the two faults were —

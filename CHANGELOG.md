@@ -330,6 +330,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Et un collyre croisait sur un cytochrome.** L'Ikervis est de la
+  ciclosporine en émulsion pour la sécheresse oculaire, et il se croisait
+  avec tout ce qui touche au CYP3A4. Le Kétoderm avait été réglé jadis
+  en retirant le kétoconazole de la table ; la ciclosporine ne se retire
+  pas, le Néoral en vit. C'est donc la voie qu'on lit, et l'Ikervis part
+  en **inconnue** comme le Kétoderm — ce module nomme ce sur quoi il ne
+  se prononce pas, et ne délivre pas de certificat de bonne conduite.
+
+  Le test écrit dans la foulée s'est trompé avant de réussir : il
+  vérifiait que la ciclosporine générale croise encore, en la mettant
+  face à une simvastatine. Les deux sont substrats du CYP3A4 et rien
+  d'autre, et deux substrats ne se font rien l'un à l'autre — c'est tout
+  le modèle du module. Face à un inhibiteur, elle croise.
 - **Et vingt et une formes locales expliquaient des résultats de
   biologie.** Un collyre à l'indométacine rendait compte d'une
   insuffisance rénale, d'une anémie et d'une carence martiale ; quatre

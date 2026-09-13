@@ -368,6 +368,18 @@ pub fn cross(treatments: &[crate::revue::Treatment]) -> Reading {
         if name.is_empty() {
             continue;
         }
+        // **Une forme locale ne croise rien**, et sa fiche le dit :
+        // l'Ikervis est de la ciclosporine en collyre, et « ciclosporine »
+        // ne peut pas sortir de la table — le Néoral en vit. Le
+        // Kétoderm, lui, avait été réglé en amputant la molécule ;
+        // celle-ci ne se laisse pas amputer, et c'est la voie qu'il faut
+        // lire. Elle part en **inconnue** plutôt qu'en inerte, comme le
+        // Kétoderm : ce module nomme ce sur quoi il ne se prononce pas,
+        // et ne délivre pas de certificat de bonne conduite.
+        if crate::classes::is_local_form(t.class) {
+            unknown.push(name);
+            continue;
+        }
         match of(t.name, t.dci, t.class, t.tags) {
             // Connue, et sans voie qui compte : elle ne croise rien et
             // ce n'est pas une ignorance. Voir `Reading::inert`.
@@ -1555,6 +1567,40 @@ mod tests {
         let r = cross(&[t("Kétoderm", "kétoconazole"), t("Zocor", "simvastatine")]);
         assert!(r.crossings.is_empty(), "{:?}", r.crossings);
         assert_eq!(r.unknown, vec!["Kétoderm".to_owned()]);
+    }
+
+    /// **Une ciclosporine en collyre n'est pas une ciclosporine.**
+    ///
+    /// Le Kétoderm avait été réglé en retirant le kétoconazole de la
+    /// table ; la ciclosporine ne se retire pas, le Néoral en vit. C'est
+    /// donc la **voie** qu'on lit, par la classe de la fiche, et
+    /// l'Ikervis part en inconnue comme le Kétoderm : ce module nomme ce
+    /// sur quoi il ne se prononce pas, et il ne délivre pas de
+    /// certificat de bonne conduite.
+    #[test]
+    fn a_ciclosporin_collyre_crosses_nothing() {
+        let ik = crate::revue::Treatment {
+            name: "Ikervis",
+            dci: "ciclosporine",
+            class: "collyre — immunomodulateur (sécheresse oculaire sévère)",
+            tags: "",
+        };
+        let zocor = t("Zocor", "simvastatine");
+        let r = cross(&[ik, zocor]);
+        assert!(r.crossings.is_empty(), "{:?}", r.crossings);
+        assert_eq!(r.unknown, vec!["Ikervis".to_owned()]);
+        // Et la ciclosporine générale croise toujours, elle. Face à un
+        // **inhibiteur** et non à une autre statine : la ciclosporine
+        // est substrat du CYP3A4 et rien d'autre, et deux substrats de
+        // la même enzyme ne se font rien l'un à l'autre — c'est tout le
+        // modèle de ce module, et la première version de ce test
+        // l'avait oublié.
+        let r = cross(&[t("Néoral", "ciclosporine"), t("Zeclar", "clarithromycine")]);
+        assert!(
+            r.crossings.iter().any(|c| c.affected == "Néoral"),
+            "la voie générale croise encore : {:?}",
+            r.crossings
+        );
     }
 
     /// **Une molécule n'agit pas sur elle-même**, et deux lignes d'une
