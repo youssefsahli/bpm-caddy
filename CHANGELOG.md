@@ -330,6 +330,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Deux tables de référence parlaient du même sujet et se
+  contredisaient.** « Interactions à repérer à la délivrance » et
+  « Aliments, boissons et médicaments » traitent l'une et l'autre du
+  pamplemousse, du millepertuis, de la chélation, de l'alcool et de la
+  canneberge — écrites par des mains différentes, et jamais mises face à
+  face. Trois écarts :
+  - La ligne de la **canneberge** portait une conduite qui parlait des
+    **légumes verts** : « ni suppression ni interdiction des légumes
+    verts, c'est la régularité des apports qui compte ». Le conseil est
+    juste et il appartient à une autre ligne — celle de la vitamine K,
+    qui n'existe pas dans ce tableau. Et son mécanisme annonçait « INR
+    déséquilibré à la hausse » quand l'autre table écrit « effet discuté
+    et probablement modeste ». La ligne parle de la canneberge, et avec
+    la prudence que l'autre tableau lui donne.
+  - La **chélation** demandait « 2 heures, et 4 heures pour la
+    lévothyroxine et les biphosphonates » quand les trois autres textes
+    de l'application — l'autre table et les deux règles de revue —
+    disent deux heures, qui est le chiffre du RCP. La cellule dit deux
+    heures, et que l'écart y gagne à être plus grand pour des molécules
+    qui se prennent à jeun et seules.
+  - « Les autres agrumes ne posent pas le même problème » était trop
+    large : le pomélo et l'orange amère sont de la même famille et
+    inhibent comme lui. C'est le jus d'orange et le citron qui ne posent
+    pas le problème, et c'est ce que dit l'autre table.
 - **Le plan de surveillance réclamait tous les mois un examen que deux
   textes de l'application déclarent inutile.** Le fondaparinux figurait
   parmi les héparines pour la numération plaquettaire, quand sa propre
