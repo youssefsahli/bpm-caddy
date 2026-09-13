@@ -16319,14 +16319,38 @@ impl App {
                                     // « Renouvellemer » — l'échéance
                                     // étant la seule chose que cette
                                     // table-là est là pour dire. La
-                                    // hauteur passée est un plancher :
-                                    // deux lignes la dépassent et la
-                                    // rangée grandit.
+                                    // hauteur, elle, **se mesure** :
+                                    // `allocate_ui_with_layout` réserve
+                                    // ce qu'on lui donne, et ce qui
+                                    // dépasse déborde — cela ne pousse
+                                    // rien. La cellule réservait une
+                                    // ligne et en peignait deux, si bien
+                                    // que la ligne italique — celle qui
+                                    // porte la date de pose, l'état et
+                                    // le montant — sortait tranchée par
+                                    // le milieu sous la rangée de
+                                    // boutons. On mesure donc
+                                    // l'enveloppe de l'italique à la
+                                    // largeur qu'elle aura, gouttière
+                                    // comprise.
+                                    let body_h = ui.text_style_height(&egui::TextStyle::Body);
+                                    let foot_h = if foot.is_empty() {
+                                        0.0
+                                    } else {
+                                        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
+                                        ui.fonts(|r| {
+                                            r.layout(
+                                                foot.clone(),
+                                                font,
+                                                motif::text_faint(),
+                                                name_w,
+                                            )
+                                        })
+                                        .size()
+                                        .y + ui.spacing().item_spacing.y
+                                    };
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(
-                                            name_w,
-                                            ui.text_style_height(&egui::TextStyle::Body),
-                                        ),
+                                        egui::vec2(name_w, body_h + foot_h),
                                         egui::Layout::top_down(egui::Align::LEFT),
                                         |ui| {
                                             ui.set_width(name_w);
