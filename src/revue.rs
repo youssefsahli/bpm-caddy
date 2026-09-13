@@ -520,6 +520,23 @@ const RULES: &[Rule] = &[
         title: "Statine + inhibiteur enzymatique",
         detail: "Macrolide, azolé ou inhibiteur calcique bradycardisant : la concentration de la statine grimpe et c'est la rhabdomyolyse. Pour une antibiothérapie courte, la statine se suspend le temps du traitement — l'arrêt de quelques jours ne coûte rien, l'association coûte un muscle.",
     },
+    // L'amlodipine et l'amiodarone ne sont **pas** dans la règle
+    // ci-dessus, et c'est voulu : ce qu'elles imposent est un plafond de
+    // dose sur une ordonnance au long cours, pas une suspension le temps
+    // d'une cure. La conduite n'est pas la même, et elle ne vaut que
+    // pour la simvastatine — l'atorvastatine n'a pas ce plafond. Le
+    // vérapamil et le diltiazem restent là-haut : ce sont des
+    // inhibiteurs puissants, et la fiche du Zocor les contre-indique
+    // au-delà du même plafond.
+    Rule {
+        kind: Kind::Combination(&[
+            &["simvastatine", "zocor", "lodales"],
+            &["amlodipine", "amiodarone"],
+        ]),
+        severity: Severity::Warn,
+        title: "Simvastatine au-dessus de son plafond",
+        detail: "L'amlodipine et l'amiodarone limitent la simvastatine à 20 mg par jour. C'est un plafond et non une contre-indication, et le logiciel ne connaît pas la dose : elle se lit sur l'ordonnance, et une amlodipine avec de la simvastatine 40 mg est une ordonnance à corriger. L'atorvastatine et la rosuvastatine n'ont pas ce plafond, et le passage à l'une d'elles est la réponse habituelle du prescripteur.",
+    },
     Rule {
         kind: Kind::Duplicate(
             &["anticoagulant", "AOD", "AVK", "héparine", "apixaban", "rivaroxaban", "dabigatran", "édoxaban", "warfarine", "fluindione", "acénocoumarol", "énoxaparine", "tinzaparine", "fondaparinux"],
@@ -1557,7 +1574,11 @@ mod tests {
         // phrase qui compte : une TSH qui dérive vient plus souvent de
         // là que de la dose. **Aucune question n'a été perdue** ; c'est
         // ce qu'il faut pouvoir écrire ici pour baisser ce chiffre.
-        const RULES_FLOOR: usize = 86;
+        //
+        // Remonté à 87 le même jour par « Simvastatine au-dessus de son
+        // plafond » — une règle ajoutée, une règle de plus au plancher,
+        // dans le même commit.
+        const RULES_FLOOR: usize = 87;
         assert!(
             RULES.len() >= RULES_FLOOR,
             "{} règles de revue, il y en avait {RULES_FLOOR}",

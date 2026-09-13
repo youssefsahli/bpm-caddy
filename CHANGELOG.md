@@ -330,6 +330,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Une amlodipine avec de la simvastatine 40 mg ne levait rien**,
+  alors que l'application l'écrit à deux endroits. La fiche du Zocor va
+  jusqu'à nommer la scène — « une association amlodipine et simvastatine
+  40 mg est une ordonnance à corriger » — et la table « Statines » dit
+  le plafond ; ni la revue ni le croisement ne le disaient. Le
+  croisement ne le pouvait pas : l'amlodipine n'inhibe rien, sa fiche ne
+  le prétend pas, et une table des cytochromes n'accueille pas ce que la
+  fiche nie. La revue le pouvait, et ne le faisait pas.
+
+  La règle est à part de « Statine + inhibiteur enzymatique », pour deux
+  raisons : la conduite n'est pas la même — un plafond de dose sur une
+  ordonnance au long cours, et non une suspension le temps d'une cure —
+  et elle ne vaut que pour la simvastatine, l'atorvastatine n'ayant pas
+  ce plafond. Elle ne connaît pas la dose et le dit : c'est sur
+  l'ordonnance qu'elle se lit.
 - **La table des insulines ne connaissait pas la Fiasp**, et c'est
   justement celle qui contredit son conseil. La ligne des analogues
   rapides dit « juste avant le repas » ; la Fiasp se pique au début du
