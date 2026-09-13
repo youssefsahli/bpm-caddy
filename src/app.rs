@@ -12309,7 +12309,13 @@ impl App {
                 // 1024x700 elle dépassait par le haut *et* par le bas,
                 // titre compris, et une fenêtre centrée qu'on ne peut ni
                 // déplacer ni rapetisser ne laisse alors aucun recours.
-                // Elle défile dans ce que l'écran peut lui donner.
+                // Elle défile dans ce que l'écran peut lui donner —
+                // **et la barre le dit**. À l'échelle 1,6 la fenêtre
+                // montre huit raccourcis sur vingt-six ; une barre
+                // flottante, invisible au repos, laisse croire qu'il n'y
+                // en a que huit, sur l'écran même où l'on vient
+                // apprendre ce que le clavier sait faire.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("keys_body")
                     .max_height((ctx.screen_rect().height() - 160.0).max(240.0))

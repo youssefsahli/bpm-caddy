@@ -371,6 +371,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sur la feuille. C'est pourtant cet exemple que l'officine lit dans
   l'éditeur de modèles pour comprendre le sien. Les six traitements y
   sont désormais.
+- **Ni celle de la fenêtre des raccourcis.** Huit raccourcis sur
+  vingt-six s'y voyaient, sur l'écran même où l'on vient apprendre ce
+  que le clavier sait faire.
 - **Ni celle du choix rapide d'un acte.** À 1024x700 en
   `text_scale = 1,6` la fenêtre montre neuf actes sur dix :
   « 0 · Prévention » est sous le pli, alors que le mode d'emploi imprimé
