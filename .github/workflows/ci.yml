@@ -66,10 +66,12 @@ jobs:
   # The interface has no unit tests — a view cannot be covered without a
   # harness, and egui_kittest needs egui >= 0.30 while this is on 0.29.
   # `smoke.sh` is what stands in for them, and it only ever ran when
-  # somebody remembered. It opens every view in two shapes, and the
-  # second one is the point: `f32::clamp` panics when a computed floor
-  # crosses a computed cap, and floors only cross caps on a short pane
-  # at large text.
+  # somebody remembered. It opens every view in **three** shapes, and
+  # the last two are the point: `f32::clamp` panics when a computed
+  # floor crosses a computed cap, and floors only cross caps on a short
+  # pane at large text. Called with no argument, it runs all three —
+  # naming one runs that one alone, which is for correcting a band, not
+  # for a gate.
   smoke:
     runs-on: ubuntu-latest
     steps:

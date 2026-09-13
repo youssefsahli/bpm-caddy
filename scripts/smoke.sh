@@ -92,11 +92,18 @@ shapes=(
     "ordinaire|1400x900|"
     "comptoir|1024x700|text_scale = 1.25"
     # La troisième est l'extrême : c'est là que les planchers croisent
-    # les plafonds. `[ui] text_scale` monte jusqu'à 1,8 et une officine
-    # dont l'écran se lit debout le règle haut ; à 1,6 sur un écran de
-    # comptoir, chaque bande mesurée en rangées de boutons demande un
-    # tiers de place en plus que ce que la vue peut donner. Si un
-    # `f32::clamp` doit tomber, c'est ici.
+    # les plafonds. 1,6 est le **maximum du curseur** des options
+    # (0,8 à 1,6), c'est-à-dire le plus grand texte qu'une officine
+    # puisse choisir ; à cette taille, sur un écran de comptoir, chaque
+    # bande mesurée en rangées de boutons demande un tiers de place en
+    # plus que ce que la vue peut donner. Si un `f32::clamp` doit
+    # tomber, c'est ici.
+    #
+    # `motif::apply_scale` accepte jusqu'à 1,8, mais seulement pour un
+    # `config.toml` écrit à la main — le curseur n'y va pas. Ne pas
+    # monter cette forme à 1,8 sans le décider : la passe couvrirait un
+    # réglage que l'interface ne propose pas, et coûterait le même temps
+    # que les deux autres réunies.
     "loupe|1024x700|text_scale = 1.6"
 )
 
