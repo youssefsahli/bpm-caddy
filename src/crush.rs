@@ -748,6 +748,86 @@ mod tests {
         }
     }
 
+    /// **Une voie et une forme orale se contredisent, et la table ne
+    /// peut pas dire les deux d'une même fiche.**
+    ///
+    /// C'est la confrontation que `cyp` et `hepatic` font depuis
+    /// toujours et que celle-ci ne faisait pas : pour chaque fiche
+    /// livrée, on prend la **première** ligne qui l'accroche — celle
+    /// que `read` rendra — et on la juge contre cette fiche-là. Vérifier
+    /// une règle sur le produit qu'elle visait valide la règle ; la
+    /// vérifier sur tout ce qu'elle attrape au passage est ce qui trouve
+    /// les erreurs.
+    ///
+    /// Deux sens, et c'est le second qui a fait écrire ce test :
+    ///
+    /// * une fiche que le filet de voie attrape ne doit porter aucun mot
+    ///   de forme orale — sans quoi la table appellerait « injection »
+    ///   quelque chose qui s'avale ;
+    /// * une fiche dont la classe nomme une voie parentérale ne doit
+    ///   **pas** être attrapée par un filet de forme. C'est le défaut
+    ///   trouvé : Extencilline, intramusculaire, recevait « ne pas
+    ///   écraser, forme à libération prolongée » parce que sa classe dit
+    ///   « retard ». Le verdict était bon, la raison ne voulait rien
+    ///   dire — et une raison qui ne colle pas décrédite la feuille.
+    #[test]
+    fn a_route_and_an_oral_form_never_answer_for_one_card() {
+        const ORAL: [&str; 8] = [
+            "comprimé",
+            "gélule",
+            "orodispersible",
+            "buvable",
+            "sirop",
+            "sachet",
+            "solution orale",
+            "suspension orale",
+        ];
+        const PARENTERAL: [&str; 6] = [
+            "injectable",
+            "intramusculaire",
+            "sous-cutan",
+            "perfusion",
+            "implant",
+            "retard im",
+        ];
+        const ROUTE: &str = "Forme injectable ou implantable";
+        let mut seen = 0_usize;
+        for (name, dci, class, _) in crate::db::STARTER_DRUGS {
+            let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} "));
+            let Some(row) = TABLE.iter().find(|r| {
+                r.needs
+                    .iter()
+                    .any(|n| crate::fuzzy::contains_folded(&hay, n))
+            }) else {
+                continue;
+            };
+            let parenteral = PARENTERAL
+                .iter()
+                .any(|w| crate::fuzzy::contains_folded(&hay, w));
+            if row.label == ROUTE {
+                seen += 1;
+                for w in ORAL {
+                    assert!(
+                        !crate::fuzzy::contains_folded(&hay, w),
+                        "{name} : le filet de voie répond, mais la fiche dit « {w} »"
+                    );
+                }
+            } else {
+                assert!(
+                    !parenteral,
+                    "{name} ({class}) est parentérale et c'est « {} » qui répond",
+                    row.label
+                );
+            }
+        }
+        // Et le filet sert : une règle que rien n'atteint est une règle
+        // qu'on croit tenir.
+        assert!(
+            seen >= 12,
+            "le filet de voie n'attrape plus que {seen} fiches livrées"
+        );
+    }
+
     /// **Ce que la table écrit est dessiné tel quel.** Le panneau la
     /// peint avec `RichText`, qui n'interprète aucun balisage : une
     /// astérisque écrite pour insister sort à l'écran comme une

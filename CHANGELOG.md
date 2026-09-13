@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **`crush` confronte enfin sa table aux fiches livrées.** C'est ce que
+  `cyp` et `hepatic` font depuis toujours : pour chaque fiche, prendre
+  la **première** ligne qui l'accroche — celle que `read` rendra — et la
+  juger contre cette fiche-là. Vérifier une règle sur le produit qu'elle
+  visait valide la règle ; la vérifier sur tout ce qu'elle attrape au
+  passage est ce qui trouve les erreurs. Le test tient les deux sens :
+  une fiche que le filet de voie attrape ne porte aucun mot de forme
+  orale, et une fiche dont la classe nomme une voie parentérale n'est
+  jamais attrapée par un filet de forme. Vérifié en retirant le mot qui
+  attrape Extencilline : il tombe en la nommant.
 - **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, cent dix
   molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
   livrées nomment le foie dans leurs contre-indications, et il fallait
