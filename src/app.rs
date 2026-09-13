@@ -16630,12 +16630,24 @@ impl App {
                                     // la droite. Bornée et enveloppante,
                                     // elle passe à la ligne au lieu de
                                     // pousser la colonne d'à côté.
+                                    // **Et au large, c'est la largeur des
+                                    // boutons, pas celle du nom.** La
+                                    // cellule prenait `name_w` dans les
+                                    // deux formes : sur la forme large
+                                    // elle est la sixième colonne, à qui
+                                    // `btn_w` a justement été réservé, et
+                                    // la borner au nom faisait s'empiler
+                                    // « Repris… », « Renouv. » et
+                                    // « Supprimer… » sur trois rangées
+                                    // dans un tableau qui avait la place
+                                    // des trois côte à côte.
+                                    let cell_w = if cols == 2 { name_w } else { btn_w };
                                     ui.allocate_ui_with_layout(
-                                        egui::vec2(name_w, Self::row_height(ui)),
+                                        egui::vec2(cell_w, Self::row_height(ui)),
                                         egui::Layout::left_to_right(egui::Align::Center)
                                             .with_main_wrap(true),
                                         |ui| {
-                                            ui.set_max_width(name_w);
+                                            ui.set_max_width(cell_w);
                                             if l.running() {
                                                 match &mut session.loc_return {
                                                     Some((id, date)) if *id == l.id => {

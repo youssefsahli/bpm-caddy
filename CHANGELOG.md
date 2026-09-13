@@ -183,6 +183,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Les trois boutons d'une location s'empilaient sur trois rangées dans
+  un tableau qui avait la place des trois côte à côte.** La cellule
+  prenait la largeur de la colonne du *nom* dans les deux formes ; sur
+  la forme large elle est la sixième colonne, à qui sa propre largeur
+  avait justement été réservée.
 - **Et la configuration de démonstration porte enfin une identité
   d'officine.** Options › Officine se capturait sur cinq champs vides,
   c'est-à-dire sur rien de ce que l'écran fait, et les documents
