@@ -4043,13 +4043,69 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             "24/08/2026",
         ),
         "guide" => guide_values(&pharmacy),
-        "monographie" => monograph_values(&sample_treatments()[0], &[]),
-        "dispositifs" => dispositifs_values(
-            &[crate::db::Dispositif {
-                id: 1,
-                name: "Bas de compression classe 2".to_owned(),
+        // **Une monographie d'aperçu montre des *sections*.** Elle n'en
+        // portait qu'une — la posologie —, or c'est justement le style
+        // des sections (`#let sec`) que ce modèle-ci laisse régler :
+        // sur une seule, rien ne se juge.
+        "monographie" => monograph_values(
+            &Drug {
+                name: "Eliquis".to_owned(),
+                dci: "apixaban".to_owned(),
+                class: "AOD".to_owned(),
+                dosage: "Fibrillation atriale : 5 mg deux fois par jour ; 2,5 mg deux fois \
+                         par jour si au moins deux critères parmi âge ≥ 80 ans, poids ≤ 60 kg, \
+                         créatininémie ≥ 133 µmol/L."
+                    .to_owned(),
+                contraindications: "Saignement évolutif, valve mécanique, grossesse et \
+                                    allaitement, clairance sous 15 mL/min."
+                    .to_owned(),
+                ddi: "Azolés et macrolides augmentent l'exposition ; la rifampicine et le \
+                      millepertuis la diminuent. AINS : risque hémorragique additionnel."
+                    .to_owned(),
+                monitoring: "Clairance au moins une fois par an, hémogramme en cas de \
+                             saignement ; pas de suivi d'activité en routine."
+                    .to_owned(),
+                missed_dose: "Prendre la dose oubliée dans les six heures ; au-delà, sauter \
+                              la prise et reprendre le rythme habituel — jamais deux doses."
+                    .to_owned(),
+                antidote: "Andexanet alfa".to_owned(),
                 ..Default::default()
-            }],
+            },
+            &[],
+        ),
+        // **Une liste d'aperçu a plus d'une ligne.** Ce modèle-ci range
+        // les fiches par famille : sur un seul dispositif, ni le
+        // regroupement ni l'indication ne se voient.
+        "dispositifs" => dispositifs_values(
+            &[
+                crate::db::Dispositif {
+                    id: 1,
+                    name: "Bas de compression classe 2".to_owned(),
+                    family: "Compression".to_owned(),
+                    indication: "Insuffisance veineuse chronique, prévention de la récidive \
+                                 d'ulcère."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 2,
+                    name: "Pansement hydrocellulaire".to_owned(),
+                    family: "Pansements".to_owned(),
+                    indication: "Plaie exsudative en phase de bourgeonnement ; se change \
+                                 tous les deux à trois jours."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 3,
+                    name: "Autopiqueur et lancettes".to_owned(),
+                    family: "Diabète".to_owned(),
+                    indication: "Autosurveillance glycémique : une lancette par prélèvement, \
+                                 jamais réutilisée."
+                        .to_owned(),
+                    ..Default::default()
+                },
+            ],
             &pharmacy,
         ),
         "registre" => stup_register_values(
@@ -4105,10 +4161,32 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             yield_amount: "100 g".to_owned(),
             ..Default::default()
         }]),
+        // **Un aperçu vide n'apprend rien du cadre.** Cette fiche
+        // n'avait qu'un nom : l'officine ouvrait l'éditeur et voyait une
+        // page blanche sous un titre, sans savoir ce que le modèle fait
+        // des sections. Elles sont toutes remplies, brièvement.
         "dispositif" => dispositif_values(
             &crate::db::Dispositif {
                 id: 1,
                 name: "Bas de compression classe 2".to_owned(),
+                family: "Compression".to_owned(),
+                indication: "Insuffisance veineuse chronique, après un ulcère cicatrisé, \
+                             prévention de la récidive."
+                    .to_owned(),
+                sizes: "Chaussette, bas-cuisse, collant — quatre tailles, mesurées le matin."
+                    .to_owned(),
+                application: "Enfilé au lever, jambe encore non œdématiée ; gant de préhension \
+                              si la main est faible."
+                    .to_owned(),
+                renewal: "Deux paires pour six mois, portées en alternance ; renouvelables \
+                          après un an."
+                    .to_owned(),
+                lpp: "Compression médicale, classe 2 — la ligne et son tarif se vérifient \
+                      à la délivrance."
+                    .to_owned(),
+                caution: "Contre-indiqué en artériopathie sévère : mesurer l'IPS avant. \
+                          Jamais sur une peau lésée sans avis."
+                    .to_owned(),
                 ..Default::default()
             },
             &pharmacy,
@@ -4158,17 +4236,61 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &pharmacy,
             "CL",
         ),
+        // **Un protocole d'aperçu se descend.** Il n'avait qu'un nœud —
+        // sa question racine —, et c'est justement l'arbre que ce
+        // modèle-là met en page : deux branches, un retrait, une action
+        // au bout. Sur un seul nœud, rien ne se juge.
         "protocole" => protocol_values(
             "Rupture d'AOD",
             "Anticoagulants oraux directs",
-            &[crate::db::ProtocolNode {
-                id: 1,
-                parent_id: None,
-                branch: crate::db::Branch::Root,
-                kind: crate::db::NodeKind::Question,
-                text: "Le patient a-t-il une ordonnance en cours ?".to_owned(),
-                position: 0,
-            }],
+            &[
+                crate::db::ProtocolNode {
+                    id: 1,
+                    parent_id: None,
+                    branch: crate::db::Branch::Root,
+                    kind: crate::db::NodeKind::Question,
+                    text: "Le patient a-t-il une ordonnance en cours ?".to_owned(),
+                    position: 0,
+                },
+                crate::db::ProtocolNode {
+                    id: 2,
+                    parent_id: Some(1),
+                    branch: crate::db::Branch::Yes,
+                    kind: crate::db::NodeKind::Question,
+                    text: "La molécule prescrite est-elle disponible chez un confrère ?"
+                        .to_owned(),
+                    position: 0,
+                },
+                crate::db::ProtocolNode {
+                    id: 3,
+                    parent_id: Some(2),
+                    branch: crate::db::Branch::Yes,
+                    kind: crate::db::NodeKind::Action,
+                    text: "Dépanner le nombre de jours nécessaires et noter la délivrance."
+                        .to_owned(),
+                    position: 0,
+                },
+                crate::db::ProtocolNode {
+                    id: 4,
+                    parent_id: Some(2),
+                    branch: crate::db::Branch::No,
+                    kind: crate::db::NodeKind::Action,
+                    text: "Appeler le prescripteur : un AOD ne se substitue pas d'une \
+                           molécule à l'autre sans son accord."
+                        .to_owned(),
+                    position: 1,
+                },
+                crate::db::ProtocolNode {
+                    id: 5,
+                    parent_id: Some(1),
+                    branch: crate::db::Branch::No,
+                    kind: crate::db::NodeKind::Action,
+                    text: "Pas de délivrance sans ordonnance : orienter vers le médecin \
+                           traitant ou la permanence de soins."
+                        .to_owned(),
+                    position: 1,
+                },
+            ],
         ),
         "liste" => checklist_values(
             "Ouverture de l'officine",

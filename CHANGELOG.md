@@ -373,6 +373,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
   c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
   enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
+- **Et quatre aperçus ne montraient pas le document.** La fiche d'un
+  dispositif s'ouvrait sur une page blanche sous son titre ; la
+  monographie n'avait qu'une section, alors que c'est le style des
+  sections que ce modèle-là laisse régler ; le protocole n'avait que sa
+  question racine, alors que c'est l'arbre qu'il met en page ; la liste
+  des dispositifs n'avait qu'une ligne, alors qu'elle range par famille.
+  Un aperçu qui ne montre pas ce que le cadre fait ne sert à rien à qui
+  vient l'éditer.
 - **Le récapitulatif de facturation écrivait « EUR ».** L'écran, les
   feuilles de caisse et le registre écrivent « € » : le même chiffre
   sous deux graphies, sur les deux documents qu'une officine met côte à
