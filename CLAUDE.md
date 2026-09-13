@@ -772,7 +772,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. Nine regions now set
+  fold is the control you came to use. Ten regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -784,7 +784,8 @@ add clicking and typing; it is not the price of entry.
   a checklist's items (one of five, each with its buttons), the Options
   dialog (the eight skins, which is what that page exists to show) and
   the protocol ordonnance (the adjuvant, the advice and the free
-  lines — all of them printed).
+  lines — all of them printed) and a self-monitoring sheet, whose first
+  of four parts stopped mid-word.
   A solid bar **takes twelve pixels off the content**, so a region that
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A

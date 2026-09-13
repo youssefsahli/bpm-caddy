@@ -371,6 +371,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sur la feuille. C'est pourtant cet exemple que l'officine lit dans
   l'éditeur de modèles pour comprendre le sien. Les six traitements y
   sont désormais.
+- **Ni celle d'un carnet de suivi.** La feuille est faite de quatre
+  choses — comment mesurer, ce qu'on vise, ce sur quoi ne pas attendre,
+  la grille — et c'est la première des quatre qui s'arrêtait en plein
+  mot. On la parcourt avec le patient avant de l'imprimer : l'écran le
+  dit en tête.
 - **Ni celle de l'ordonnance sous protocole.** La fenêtre montrait les
   six antibiotiques et s'arrêtait sur le titre « Adjuvant » : l'adjuvant
   lui-même, les conseils à imprimer et les lignes libres sont dessous,

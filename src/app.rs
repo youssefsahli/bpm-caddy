@@ -40559,6 +40559,14 @@ impl App {
                 let btn = Self::wrapped_band_height(ui, rect.width(), items.into_iter()) + 6.0;
                 let split = motif::split_rows(rect, &[0.0, btn], 4.0);
                 motif::inside(ui, split[0], |ui| {
+                    // **La barre dit qu'il y a une suite.** Cette feuille
+                    // est faite de quatre choses — comment mesurer, ce
+                    // qu'on vise, ce sur quoi ne pas attendre, et la
+                    // grille — et c'est le premier des quatre qui
+                    // s'arrête en plein mot à `text_scale = 1,6`. On la
+                    // parcourt avec le patient avant de l'imprimer :
+                    // c'est dit en tête de l'écran.
+                    ui.spacing_mut().scroll.floating = false;
                     egui::ScrollArea::vertical()
                         .id_salt("carnet_sheet")
                         .auto_shrink([false, false])
