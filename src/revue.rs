@@ -71,8 +71,14 @@ enum Kind {
     Combination(&'static [&'static [&'static str]]),
     /// At least `1` distinct treatments carrying one of these words.
     Duplicate(&'static [&'static str], usize),
-    /// Every group matches, **and** nothing on the ordonnance carries
-    /// any of the last words.
+    /// Every group matches, **and** no *other* line of the ordonnance
+    /// carries any of the last words.
+    ///
+    /// « Other » is the whole point: searched over the ordonnance
+    /// entière, the absence was silenced by the very line that triggers
+    /// the rule, whose free tags belong to the officine. A pharmacist
+    /// noting « pyridoxine à associer » on the Rimifon card — the exact
+    /// reminder this rule exists to give — switched the rule off.
     ///
     /// What is *missing* is half of what a bilan finds. An opioid with
     /// no laxative beside it, a corticothérapie with nothing for the
@@ -138,28 +144,38 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
                 }
             }
             Kind::Without(groups, absent) => {
-                if !matches(absent).is_empty() {
-                    Vec::new()
+                let mut named: Vec<String> = Vec::new();
+                let mut complete = true;
+                for group in groups.iter() {
+                    let hit = matches(group);
+                    if hit.is_empty() {
+                        complete = false;
+                        break;
+                    }
+                    for name in hit {
+                        if !named.contains(&name) {
+                            named.push(name);
+                        }
+                    }
+                }
+                // **L'absence se lit sur les *autres* lignes.** Cherchée
+                // sur toute l'ordonnance, elle se laissait éteindre par
+                // la ligne qui déclenche la règle, dont les étiquettes
+                // libres appartiennent à l'officine : un pharmacien qui
+                // note « pyridoxine à associer » sur la fiche du
+                // Rimifon — c'est-à-dire exactement le rappel que cette
+                // règle existe pour donner — faisait taire la règle.
+                // C'est d'ailleurs ce que la phrase veut dire :
+                // « isoniazide sans vitamine B6 » parle d'une seconde
+                // ligne qui n'y est pas.
+                let provided = folded.iter().any(|(name, hay)| {
+                    !named.contains(name)
+                        && absent.iter().any(|w| crate::fuzzy::contains_folded(hay, w))
+                });
+                if complete && !provided {
+                    named
                 } else {
-                    let mut named: Vec<String> = Vec::new();
-                    let mut complete = true;
-                    for group in groups.iter() {
-                        let hit = matches(group);
-                        if hit.is_empty() {
-                            complete = false;
-                            break;
-                        }
-                        for name in hit {
-                            if !named.contains(&name) {
-                                named.push(name);
-                            }
-                        }
-                    }
-                    if complete {
-                        named
-                    } else {
-                        Vec::new()
-                    }
+                    Vec::new()
                 }
             }
         };
@@ -1698,6 +1714,64 @@ mod tests {
         for p in &mine {
             assert!(p.title.starts_with("réécrit:"), "titre : {}", p.title);
             assert!(p.detail.starts_with("réécrit:"), "détail : {}", p.detail);
+        }
+    }
+    /// **Ce qui manque doit manquer sur une *autre* ligne.**
+    ///
+    /// Une règle `Without` cherche l'absence sur toute l'ordonnance, y
+    /// compris sur la ligne qui la déclenche — et cette ligne porte les
+    /// étiquettes libres que l'officine lui a écrites. Un pharmacien
+    /// qui note « pyridoxine à associer » sur la fiche du Rimifon,
+    /// c'est-à-dire exactement le rappel que la règle existe pour
+    /// donner, **éteint la règle** : le mot est là, l'absence n'est
+    /// plus constatée, et plus rien ne le dira.
+    ///
+    /// L'absence se lit donc sur les lignes qui n'ont pas déclenché la
+    /// règle. C'est aussi ce que la phrase veut dire : « isoniazide sans
+    /// vitamine B6 » parle d'une seconde ligne qui n'y est pas.
+    #[test]
+    fn what_is_missing_must_be_missing_from_another_line() {
+        let rimifon = || treat_full("Rimifon", "isoniazide", "antituberculeux", "");
+        // Telle quelle, la règle parle.
+        let points = review(&[rimifon()]);
+        assert!(
+            points
+                .iter()
+                .any(|p| p.title == "Isoniazide sans vitamine B6"),
+            "la règle doit parler sur une ordonnance qui ne porte que l'isoniazide"
+        );
+        // Une vraie seconde ligne la fait taire, et c'est ce qu'on veut.
+        let points = review(&[
+            rimifon(),
+            treat_full("Bécilan", "pyridoxine", "vitamine B6", ""),
+        ]);
+        assert!(
+            !points
+                .iter()
+                .any(|p| p.title == "Isoniazide sans vitamine B6"),
+            "la vitamine B6 délivrée éteint la règle"
+        );
+        // Une étiquette écrite sur la fiche de l'isoniazide, non.
+        let points = review(&[treat_full(
+            "Rimifon",
+            "isoniazide",
+            "antituberculeux",
+            "pyridoxine à associer",
+        )]);
+        assert!(
+            points
+                .iter()
+                .any(|p| p.title == "Isoniazide sans vitamine B6"),
+            "une étiquette sur la ligne qui déclenche n'est pas une délivrance"
+        );
+    }
+
+    fn treat_full<'a>(name: &'a str, dci: &'a str, class: &'a str, tags: &'a str) -> Treatment<'a> {
+        Treatment {
+            name,
+            dci,
+            class,
+            tags,
         }
     }
 }

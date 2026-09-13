@@ -489,6 +489,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Écrire le rappel éteignait la règle qui le donne.** Une règle
+  `Without` — « opioïde sans laxatif », « isoniazide sans vitamine B6 »
+  — cherchait l'absence sur **toute** l'ordonnance, ligne déclenchante
+  comprise. Or cette ligne porte les étiquettes libres que l'officine
+  lui a écrites : un pharmacien qui note « pyridoxine à associer » sur
+  la fiche du Rimifon, c'est-à-dire exactement le rappel que la règle
+  existe pour donner, faisait taire la règle — et rien ne le disait.
+
+  L'absence se lit désormais sur les lignes qui n'ont **pas** déclenché
+  la règle, ce qui est d'ailleurs ce que la phrase veut dire :
+  « isoniazide sans vitamine B6 » parle d'une seconde ligne qui n'y est
+  pas. Une vraie délivrance de pyridoxine éteint toujours la règle ; une
+  note sur la fiche, non.
 - **Six chiffres que la documentation affirmait, le code les dément.**
   `CLAUDE.md` et la carte du contenu donnent des comptes pour vrais —
   tant de fiches livrées, tant de présentations au catalogue, tant de
