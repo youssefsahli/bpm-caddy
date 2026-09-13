@@ -42394,6 +42394,15 @@ mod tests {
         // registre de démonstration dont la dernière ligne date de cinq
         // mois montre un écran vide.
         write(skenan, "SORTIE", 14.0, day(8, 20), pid, 0.0);
+        // **Et une qui revient trop tôt.** L'onglet « Vigilance » pose
+        // trois questions au registre ; sans une délivrance rapprochée,
+        // la démonstration ouvrait cet onglet sur « Rien à signaler »,
+        // c'est-à-dire sur rien de ce qu'il existe pour montrer — et
+        // aucune capture n'a jamais vu une de ces questions écrite.
+        // Treize jours après la précédente, pour une cadence habituelle
+        // de quarante : c'est exactement la forme que le module cherche,
+        // et elle reste une question, pas un verdict.
+        write(skenan, "SORTIE", 14.0, day(9, 2), pid, 0.0);
 
         // Un produit sous son seuil, jamais recompté : la liste de
         // contrôle a de quoi dire.

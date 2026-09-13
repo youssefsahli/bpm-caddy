@@ -18962,6 +18962,28 @@ impl App {
         .inner
     }
 
+    /// De la prose dans une cellule de grille, sous une largeur
+    /// annoncée — elle enveloppe au lieu de s'élider.
+    ///
+    /// Une colonne de `Grid` est aussi large que sa cellule la plus
+    /// large, et une cellule qui n'annonce pas la sienne laisse egui en
+    /// choisir une : sur la table de vigilance, la question — « Délivrance
+    /// au bout de 13 jours, là où ce dossier en compte habituellement
+    /// 40 : que dit l'ordonnance ? » — se repliait sur huit caractères,
+    /// un mot coupé par ligne. Elle est la seule chose que ce tableau
+    /// existe pour écrire.
+    fn grid_cell_prose(ui: &mut egui::Ui, width: f32, text: egui::RichText) -> egui::Response {
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, ui.text_style_height(&egui::TextStyle::Body)),
+            egui::Layout::top_down(egui::Align::LEFT),
+            |ui| {
+                ui.set_width(width);
+                ui.add(egui::Label::new(text).wrap())
+            },
+        )
+        .inner
+    }
+
     /// Deux lignes dans une cellule de grille, sous une largeur annoncée.
     ///
     /// La forme repliée d'une table en a besoin : ce qu'une fiche *est*
@@ -36416,12 +36438,55 @@ impl App {
                             return;
                         }
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
-                        egui::Grid::new("vigilance_grid")
-                            .num_columns(4)
-                            .spacing([8.0, 4.0])
-                            .striped(true)
-                            .show(ui, |ui| {
-                                for f in &findings {
+                        // La question, jamais un verdict : les mots
+                        // viennent de la table des chaînes et les
+                        // nombres de la preuve, et un test exige que
+                        // chacune finisse par un point d'interrogation.
+                        let question = |f: &crate::vigilance::Finding| -> String {
+                            match &f.evidence {
+                                crate::vigilance::Evidence::Interval { days, usual, .. } => {
+                                    trn(f.signal.question_key(), &[days, usual])
+                                }
+                                crate::vigilance::Evidence::Prescribers {
+                                    spellings,
+                                    window_days,
+                                } => trn(f.signal.question_key(), &[&spellings.len(), window_days]),
+                                crate::vigilance::Evidence::Rate { rates, .. } => {
+                                    trf(f.signal.question_key(), rates.len())
+                                }
+                            }
+                        };
+                        // **Chaque colonne annonce sa largeur, et la
+                        // question prend ce qui reste.** Sans cela egui
+                        // en choisit une : la question se repliait sur
+                        // huit caractères, un mot coupé par ligne — et
+                        // c'est la seule chose que ce tableau existe
+                        // pour écrire. Personne ne l'avait vue, parce
+                        // que la base de démonstration ne portait
+                        // aucune délivrance rapprochée : l'onglet
+                        // s'ouvrait sur « Rien à signaler ».
+                        let gap = 8.0;
+                        let file_w = Self::button_width(ui, &trf("stup_file", 9999));
+                        let label_w =
+                            Self::widest(ui, 11.0, findings.iter().map(|f| f.label.as_str()));
+                        let count_w = Self::widest(
+                            ui,
+                            10.5,
+                            [trf("vigilance_lines", 99).as_str()].into_iter(),
+                        );
+                        // **Et sous une largeur de comptoir, la question
+                        // descend sous la ligne qu'elle concerne**
+                        // plutôt que de s'écrire sur treize caractères.
+                        // Une grille ne sait pas faire cela — ses
+                        // colonnes s'alignent d'une rangée à l'autre —,
+                        // donc la forme repliée n'en est pas une : un
+                        // bloc par question, comme la fiche d'un acte.
+                        let floor = chars_wide(ui, 30.0);
+                        let avail = ui.available_width();
+                        let q_w = avail - file_w - label_w - count_w - gap * 3.0;
+                        if q_w < floor {
+                            for f in &findings {
+                                ui.horizontal(|ui| {
                                     if motif::button(ui, &trf("stup_file", f.patient_id))
                                         .on_hover_text(tr("stup_file_tooltip"))
                                         .clicked()
@@ -36433,38 +36498,56 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text()),
                                     );
-                                    // La question, jamais un verdict :
-                                    // les mots viennent de la table des
-                                    // chaînes et les nombres de la
-                                    // preuve, et un test exige que
-                                    // chacune finisse par un point
-                                    // d'interrogation.
-                                    let text = match &f.evidence {
-                                        crate::vigilance::Evidence::Interval {
-                                            days,
-                                            usual,
-                                            ..
-                                        } => trn(f.signal.question_key(), &[days, usual]),
-                                        crate::vigilance::Evidence::Prescribers {
-                                            spellings,
-                                            window_days,
-                                        } => trn(
-                                            f.signal.question_key(),
-                                            &[&spellings.len(), window_days],
-                                        ),
-                                        crate::vigilance::Evidence::Rate { rates, .. } => {
-                                            trf(f.signal.question_key(), rates.len())
-                                        }
-                                    };
-                                    let q = ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(text)
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::chart::series_color(
-                                                    f.signal.series(),
-                                                )),
-                                        )
-                                        .wrap(),
+                                    ui.label(
+                                        egui::RichText::new(trf("vigilance_lines", f.lines.len()))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .on_hover_text(db::format_french_date(&f.last_day));
+                                });
+                                let q = ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(question(f))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::chart::series_color(f.signal.series())),
+                                    )
+                                    .wrap(),
+                                );
+                                if let crate::vigilance::Evidence::Prescribers {
+                                    spellings, ..
+                                } = &f.evidence
+                                {
+                                    q.on_hover_text(spellings.join("\n"));
+                                }
+                                ui.add_space(6.0);
+                            }
+                            return;
+                        }
+                        egui::Grid::new("vigilance_grid")
+                            .num_columns(4)
+                            .spacing([gap, 4.0])
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for f in &findings {
+                                    if motif::button(ui, &trf("stup_file", f.patient_id))
+                                        .on_hover_text(tr("stup_file_tooltip"))
+                                        .clicked()
+                                    {
+                                        open_patient = Some(f.patient_id);
+                                    }
+                                    Self::grid_cell(
+                                        ui,
+                                        label_w,
+                                        egui::RichText::new(f.label.as_str())
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text()),
+                                    );
+                                    let q = Self::grid_cell_prose(
+                                        ui,
+                                        q_w,
+                                        egui::RichText::new(question(f))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::chart::series_color(f.signal.series())),
                                     );
                                     // **Les lignes qui la posent**, sous
                                     // la souris : une question sans
@@ -36477,7 +36560,9 @@ impl App {
                                     {
                                         q.on_hover_text(spellings.join("\n"));
                                     }
-                                    ui.label(
+                                    Self::grid_cell(
+                                        ui,
+                                        count_w,
                                         egui::RichText::new(trf("vigilance_lines", f.lines.len()))
                                             .size(motif::pt(ui, 10.5))
                                             .color(motif::text_dim()),

@@ -183,6 +183,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **La démonstration ne posait aucune question au registre, et la vue
+  qui les écrit n'avait donc jamais été regardée.** L'onglet
+  « Vigilance » s'ouvrait sur « Rien à signaler » : trois règles, un
+  module entier, et pas une capture montrant une seule de leurs
+  questions. Une délivrance rapprochée est semée — treize jours après la
+  précédente, pour une cadence habituelle de quarante —, et la question
+  apparue **était illisible** : sa cellule n'annonçait pas sa largeur,
+  donc egui lui en donnait huit caractères et la question sortait un mot
+  coupé par ligne, « Délivran / ce au / bout de / 13 / jours ». C'est la
+  seule chose que ce tableau existe pour écrire. Les quatre colonnes
+  annoncent maintenant leur largeur, et sous une largeur de comptoir la
+  question descend **sous** la ligne qu'elle concerne plutôt que de
+  s'écrire sur treize caractères — une grille ne sait pas faire cela,
+  puisque ses colonnes s'alignent d'une rangée à l'autre, donc la forme
+  repliée n'est pas une grille : un bloc par question, comme la fiche
+  d'un acte.
 - **La tête du registre coupait le solde en deux.** Trois fautes
   cumulées, toutes dans le même sens : le plafond gardait *trois*
   rangées de contrôles là où il n'y en a que deux — trente pixels
