@@ -489,6 +489,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Note pour les officines qui ont réécrit des phrases imprimées.**
+  Cette version corrige beaucoup de phrases livrées : des conduites
+  rénales, des niveaux et des notes de grossesse, des lectures de
+  biologie, une conduite hépatique, deux lignes d'écrasement. Une
+  réécriture se souvient de la phrase qu'elle remplaçait et **ne se pose
+  jamais sur une autre** : celles qui portaient sur une phrase corrigée
+  sont donc montrées à relire dans « Textes imprimés », et non perdues
+  ni appliquées de travers. C'est le mécanisme qui fonctionne, pas un
+  incident — mais il y aura plus de lignes à relire que d'habitude.
 - **L'infobulle du HPV disait pour qui, pas combien de doses.** Le
   `schedule` du catalogue des vaccins s'affiche au survol du nom, au
   moment précis où l'on **note une dose** ; celui du HPV répondait
