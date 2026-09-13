@@ -1109,13 +1109,36 @@ const DEFAULT_GUIDE_TEMPLATE: &str = r##"
 /// printed_guide` le rend vrai du papier aussi.
 const GUIDE_SHORTCUTS: &str = "Ctrl+K aller à… · Ctrl+F chercher un patient · Ctrl+N nouvel entretien · Ctrl+Tab et Ctrl+Shift+Tab onglet suivant et précédent · Ctrl+W fermer l'onglet · F1 panneau d'équipe · F2 tableau de bord · F3 médicaments · F4 agenda · F5 carnet · F6 liste de gauche · F7 carte vaccinale · F9 la fenêtre réduite en barre · F12 cette liste · Échap ferme l'élément ouvert. Dans une liste — patients, protocoles, préparations, dispositifs — tapez dans son champ de recherche, puis les flèches parcourent et Entrée ouvre ; sur un dossier, Alt et les flèches changent d'onglet, et dans le choix rapide les chiffres 1 … 9, 0 posent l'acte. Dates : 230826 donne 23/08/2026, 2308 donne le 23/08, l'année étant déduite du champ.";
 
+/// Attache la ponctuation double au mot qu'elle accompagne.
+///
+/// Typst justifie et coupe où il veut : dans le mode d'emploi imprimé,
+/// sur deux colonnes et en neuf points, trois lignes commençaient par
+/// « » » — un guillemet fermant en tête de ligne, ce que la typographie
+/// française ne fait pas. `lang: "fr"` règle la coupure des mots, pas
+/// l'espace avant une ponctuation double : celle-là s'écrit, et c'est
+/// une espace **insécable**.
+///
+/// C'est la même règle que `app::help_bound` applique au volet d'aide,
+/// et pour la même raison ; ici l'espace peut être la fine que la
+/// typographie française demande, puisque le PDF n'est pas dessiné avec
+/// les fontes d'egui — celles-là n'ont pas le glyphe, et c'est pourquoi
+/// le volet se contente de l'insécable ordinaire.
+fn bind_french(text: &str) -> String {
+    text.replace(" »", "\u{202f}»")
+        .replace("« ", "«\u{202f}")
+        .replace(" :", "\u{202f}:")
+        .replace(" ;", "\u{202f};")
+        .replace(" ?", "\u{202f}?")
+        .replace(" !", "\u{202f}!")
+}
+
 fn guide_values(pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
     let mut sections = String::new();
     for (title, body) in GUIDE_SECTIONS {
         sections.push_str(&format!(
             "#sec[#{}]\n#text(9pt)[#{}]\n",
-            typst_str(title),
-            typst_str(body)
+            typst_str(&bind_french(title)),
+            typst_str(&bind_french(body))
         ));
     }
     vec![

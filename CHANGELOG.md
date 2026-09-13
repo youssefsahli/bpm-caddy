@@ -373,6 +373,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   portaient « 31 h 30 / 35 h 00 » — une semaine contractuelle,
   c'est-à-dire la notion retirée en 0.185.0. La feuille « Écraser »
   enchaînait son intertitre gras sur la phrase suivante sans ponctuation.
+- **Le mode d'emploi imprimé commençait trois lignes par un guillemet
+  fermant.** Sur deux colonnes justifiées en neuf points, Typst coupe où
+  il peut : `lang: "fr"` règle la coupure des mots, pas l'espace avant
+  une ponctuation double — celle-là s'écrit, et elle est insécable.
+  `bind_french` l'attache au mot qu'elle accompagne, avec l'espace fine
+  que la typographie française demande : le PDF n'est pas dessiné avec
+  les fontes d'egui, qui n'ont pas ce glyphe et obligent le volet d'aide
+  à se contenter de l'insécable ordinaire.
 - **La conciliation d'exemple annonçait trois divergences et n'en
   montrait qu'une**, et le registre d'exemple n'avait aucune ligne
   annulée alors que son pied de page explique longuement qu'une ligne ne
