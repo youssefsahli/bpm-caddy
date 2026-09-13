@@ -7218,7 +7218,7 @@ struct DdiReading {
     /// phrase non réécrite — on la croit corrigée partout.
     revue: Vec<crate::revue::Resolved>,
     renal: Vec<crate::renal::Resolved>,
-    hepatic: Vec<crate::hepatic::Finding>,
+    hepatic: Vec<crate::hepatic::Resolved>,
 }
 
 fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
@@ -29987,7 +29987,10 @@ impl App {
                     cyp: crate::cyp::cross(&terms),
                     revue: crate::revue::resolve(crate::revue::review(&terms), &session.content),
                     renal: crate::renal::resolve(crate::renal::read(&terms, dfg), &session.content),
-                    hepatic: crate::hepatic::read(&terms, session.ddi_stage),
+                    hepatic: crate::hepatic::resolve(
+                        crate::hepatic::read(&terms, session.ddi_stage),
+                        &session.content,
+                    ),
                 },
             )
         });
@@ -30439,7 +30442,7 @@ impl App {
     fn ddi_hepatic_section(
         ui: &mut egui::Ui,
         session: &mut Session,
-        findings: &[crate::hepatic::Finding],
+        findings: &[crate::hepatic::Resolved],
     ) {
         use crate::hepatic::{Level, Stage, Verdict};
         motif::section(ui, tr("hepatic_tab"));
@@ -30470,7 +30473,7 @@ impl App {
         // « Aucun stade » tout seul est une remarque ; « aucun stade, et
         // six lignes en dépendent » est une question à poser au
         // prescripteur. C'est la seule raison d'être du compte.
-        let pending = crate::hepatic::pending(findings);
+        let pending = crate::hepatic::pending(findings.iter().map(|f| f.verdict));
         if pending > 0 {
             ui.label(
                 egui::RichText::new(match pending {
@@ -30517,7 +30520,7 @@ impl App {
             )
             .on_hover_text(f.source);
             ui.label(
-                egui::RichText::new(f.conduct)
+                egui::RichText::new(f.conduct.as_str())
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );

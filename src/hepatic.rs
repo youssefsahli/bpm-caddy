@@ -124,6 +124,19 @@ impl Stage {
         }
     }
 
+    /// Le repère stable d'un stade, pour adresser une conduite.
+    ///
+    /// Trois lettres qui ne bougent pas : ni la casse, ni les accents,
+    /// ni la tournure française ne s'y glissent, parce qu'une adresse
+    /// qui suit la prose se périme quand la prose se corrige.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Stage::Mild => "a",
+            Stage::Moderate => "b",
+            Stage::Severe => "c",
+        }
+    }
+
     /// La forme qui tient dans une phrase, derrière « dès ».
     ///
     /// `label` s'accorde avec « insuffisance » et ne se laisse pas
@@ -303,11 +316,88 @@ pub fn read(treatments: &[crate::revue::Treatment], stage: Option<Stage>) -> Vec
 /// Le même service que `renal::undecided` : « aucun stade » tout seul
 /// est une remarque, « aucun stade, et six lignes en dépendent » est une
 /// question à poser au prescripteur.
-pub fn pending(findings: &[Finding]) -> usize {
-    findings
-        .iter()
-        .filter(|f| f.verdict == Verdict::Unknown)
+pub fn pending(verdicts: impl IntoIterator<Item = Verdict>) -> usize {
+    verdicts
+        .into_iter()
+        .filter(|v| *v == Verdict::Unknown)
         .count()
+}
+
+/// Le document sous lequel les conduites du panneau sont adressées.
+pub const DOC: &str = "foie";
+
+/// Chaque conduite avec son adresse, **calculée une seule fois** et
+/// parcourue par les deux côtés.
+///
+/// Le repère est le libellé de la molécule et le **stade** du palier :
+/// un palier se désigne par le stade à partir duquel il s'applique, qui
+/// vient du RCP et ne bouge pas. Le rang se décalerait dès qu'on insère
+/// un palier au-dessus — et une adresse tirée de la prose deviendrait
+/// introuvable à la première correction de cette prose, ce qui est pire
+/// que périmée.
+fn addressed() -> Vec<(String, &'static str)> {
+    TABLE
+        .iter()
+        .flat_map(|a| {
+            let id = crate::content::slug(a.label);
+            a.steps
+                .iter()
+                .map(move |s| (crate::content::key(DOC, &id, s.from.slug()), s.conduct))
+        })
+        .collect()
+}
+
+/// Toutes les conduites du panneau, avec leur adresse.
+pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
+    addressed()
+        .into_iter()
+        .map(|(key, conduct)| (key, "conduite", conduct))
+        .collect()
+}
+
+/// Ce que le foie impose, avec les mots de l'officine.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Resolved {
+    pub treatment: String,
+    pub label: &'static str,
+    pub verdict: Verdict,
+    pub from: Option<Stage>,
+    pub conduct: String,
+    pub source: &'static str,
+}
+
+/// Appliquer les réécritures de l'officine à ce que le foie impose.
+///
+/// Les deux phrases que le module compose lui-même — « aucun stade au
+/// dossier » et « rien à changer à ce stade » — ne sont pas adressées :
+/// elles ne viennent d'aucune fiche, elles disent l'état de la lecture
+/// et non une conduite. Les réécrire serait réécrire le fonctionnement.
+pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<Resolved> {
+    findings
+        .into_iter()
+        .map(|f| {
+            let id = crate::content::slug(f.label);
+            // Le palier retenu est retrouvé par sa conduite **livrée** :
+            // une conduite déjà réécrite se retrouve donc quand même,
+            // puisque c'est le tableau qu'on interroge.
+            let key = TABLE
+                .iter()
+                .find(|a| a.label == f.label)
+                .and_then(|a| a.steps.iter().find(|s| s.conduct == f.conduct))
+                .map(|s| crate::content::key(DOC, &id, s.from.slug()));
+            Resolved {
+                conduct: match &key {
+                    Some(k) => over.get(k, f.conduct).to_owned(),
+                    None => f.conduct.to_owned(),
+                },
+                treatment: f.treatment,
+                label: f.label,
+                verdict: f.verdict,
+                from: f.from,
+                source: f.source,
+            }
+        })
+        .collect()
 }
 
 use Level::{Contraindicated, Reduce, Watch};
@@ -1220,7 +1310,7 @@ mod tests {
         assert_eq!(found.len(), 2);
         assert!(found.iter().all(|f| f.verdict == Verdict::Unknown));
         assert!(found.iter().all(|f| f.from.is_none()));
-        assert_eq!(pending(&found), 2);
+        assert_eq!(pending(found.iter().map(|f| f.verdict)), 2);
         // Et la phrase dit ce qui manque, pas ce qu'il faut faire.
         assert!(found[0].conduct.contains("aucun stade"));
     }
@@ -1435,6 +1525,73 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **Chaque conduite est réécrivable, et chaque réécriture
+    /// arrive.** Les deux sens, parce qu'ils échouent différemment.
+    ///
+    /// Une phrase absente de `phrases()` ne peut pas être corrigée :
+    /// l'officine ne la voit pas dans « Textes imprimés ». Une phrase
+    /// absente de `resolve()` s'affiche telle qu'elle est livrée
+    /// pendant qu'on la croit corrigée, ce qui est pire — c'est la
+    /// faute exacte que ce panneau a faite le jour où il a été branché
+    /// sur les modules bruts.
+    ///
+    /// Le niveau, lui, ne bouge jamais : c'est un stade de RCP, pas une
+    /// tournure. Et les deux phrases que le module compose lui-même —
+    /// « aucun stade au dossier », « rien à changer à ce stade » — ne
+    /// sont pas adressées : elles disent l'état de la lecture, pas une
+    /// conduite.
+    #[test]
+    fn every_hepatic_conduct_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        assert_eq!(listed.len(), addressed().len());
+
+        let found = read(&[t("Xanax", "alprazolam")], Some(Stage::Severe));
+        assert!(!found.is_empty());
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        for f in resolve(found.clone(), &over) {
+            assert!(f.conduct.starts_with("réécrit:"), "{}", f.conduct);
+        }
+        // Sans réécriture, la conduite est celle du RCP, et le verdict
+        // comme le stade sont inchangés.
+        let plain = resolve(found.clone(), &crate::content::Overrides::default());
+        assert_eq!(plain[0].conduct, found[0].conduct);
+        assert_eq!(plain[0].verdict, found[0].verdict);
+        assert_eq!(plain[0].from, found[0].from);
+
+        // Les deux phrases composées ne sont adressées par personne, et
+        // traversent `resolve` telles quelles.
+        let none = resolve(read(&[t("Xanax", "alprazolam")], None), &over);
+        assert!(
+            none[0].conduct.contains("aucun stade"),
+            "{}",
+            none[0].conduct
+        );
+        let nothing = resolve(read(&[t("Séresta", "oxazépam")], Some(Stage::Mild)), &over);
+        assert!(
+            nothing[0].conduct.contains("ne demande pas"),
+            "{}",
+            nothing[0].conduct
+        );
+    }
+
+    /// **Deux paliers ne partagent jamais une adresse.** Deux conduites
+    /// sous une même clé feraient hériter la seconde de la réécriture de
+    /// la première — sur cette table, la conduite d'un stade appliquée à
+    /// un autre.
+    #[test]
+    fn a_step_is_addressed_by_its_molecule_and_its_stage() {
+        let mut keys: Vec<String> = addressed().into_iter().map(|(k, _)| k).collect();
+        let seen = keys.len();
+        keys.sort();
+        keys.dedup();
+        assert_eq!(seen, keys.len(), "deux paliers partagent une adresse");
     }
 
     /// **Le cliquet : la table ne perd pas de molécules.**

@@ -117,6 +117,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Les conduites hépatiques se réécrivent, comme les rénales.** Elles
+  étaient les seules de cette page à ne pas passer par « Textes
+  imprimés » — `phrases()`, `resolve()`, une ligne dans
+  `content::documents()`, et le test apparié dans les deux sens, parce
+  qu'ils échouent différemment : une phrase absente de `phrases()` ne
+  peut pas être corrigée, une phrase absente de `resolve()` s'affiche
+  telle qu'elle est livrée pendant qu'on la croit corrigée. L'adresse
+  est la molécule **et le stade**, jamais le rang ni la prose : un rang
+  se décale dès qu'on insère un palier au-dessus, et une adresse tirée
+  de la prose devient introuvable à la première correction de cette
+  prose. Les deux phrases que le module compose lui-même — « aucun stade
+  au dossier », « rien à changer à ce stade » — ne sont pas adressées :
+  elles disent l'état de la lecture et non une conduite.
+
 - **L'écran « Croisement » montrait les phrases livrées et non celles
   que l'officine a réécrites.** La revue et le rein passent par
   `resolve`, comme sur le dossier patient : une phrase corrigée dans

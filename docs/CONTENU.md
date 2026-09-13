@@ -656,6 +656,12 @@ Deux règles valent partout :
   non sur la présentation**, et « azithromycine » attrape l'Azyter, qui
   est un collyre. Le jour où la molécule ne suffira plus, c'est le type
   qui devra changer, pas la ligne qui devra ruser.
+- **Réécrivable** : `phrases()` / `resolve()`, document « Adaptation
+  hépatique ». L'adresse est la molécule **et le stade** — pas le rang,
+  qui se décale quand on insère un palier au-dessus, ni la prose, qui
+  rendrait l'adresse introuvable dès qu'on la corrige. Les deux phrases
+  composées par le module (« aucun stade », « rien à changer ») ne sont
+  pas adressées : elles disent l'état de la lecture.
 - **Le cliquet** : `the_table_only_ever_grows`, un plancher sur le
   nombre de molécules, écrit une fois dans une constante que le message
   relit. Il monte quand on ajoute, jamais pour faire passer un test.
