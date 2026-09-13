@@ -117,6 +117,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **L'écran « Croisement » ne refait plus ses quatre lectures à chaque
+  image.** Le dossier patient a sa règle et son test depuis longtemps —
+  les moteurs tournent quand le dossier s'ouvre, pas quand il se
+  dessine — et cet écran-là ne l'avait pas : il refaisait la revue
+  d'ordonnance, le croisement des cytochromes et les deux lectures
+  d'organe soixante fois par seconde. Mesuré : la revue seule coûte
+  deux cent vingt-huit microsecondes sur neuf traitements. La question,
+  c'est la liste, la clairance, le stade et la révision des fiches ;
+  tant qu'elle ne bouge pas, la réponse non plus.
 - **Les quatre tables cliniques ne rallouent plus à chaque image.**
   `hepatic`, `renal`, `crush` et `gravidity` cherchaient leurs mots avec
   `hay.contains(&sort_key(n))`, qui alloue une `String` par mot cherché

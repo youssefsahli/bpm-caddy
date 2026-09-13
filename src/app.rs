@@ -3249,6 +3249,19 @@ struct Session {
     /// fiches à chaque image, c'est les replier soixante fois par
     /// seconde, et c'est précisément pendant qu'on tape.
     ddi_hits: Option<((String, u64), Vec<i64>)>,
+    /// **Les quatre lectures du croisement, calculées quand la question
+    /// change et non à chaque image.**
+    ///
+    /// Le dossier patient a sa règle et son test —
+    /// `the_file_s_rule_engines_are_run_when_it_is_opened_not_when_it_is_drawn` —
+    /// et cet écran-ci ne l'avait pas : il refaisait la revue
+    /// d'ordonnance, le croisement des cytochromes et les deux lectures
+    /// d'organe à chaque image. Mesuré : la revue seule coûte deux cent
+    /// vingt-huit microsecondes sur neuf traitements, soixante fois par
+    /// seconde. La question, c'est la liste, la clairance, le stade et
+    /// la révision des fiches ; tant qu'elle ne bouge pas, la réponse
+    /// non plus.
+    ddi_read: Option<(DdiKey, DdiReading)>,
     /// La clairance, facultative : sans elle le panneau du rein nomme
     /// ce qui en dépend et ne conclut pas — c'est `renal::read` qui le
     /// garantit.
@@ -4112,6 +4125,7 @@ impl Session {
             ddi_list: Vec::new(),
             ddi_query: String::new(),
             ddi_hits: None,
+            ddi_read: None,
             ddi_dfg: String::new(),
             ddi_stage: None,
             ui_text_query: String::new(),
@@ -7191,6 +7205,17 @@ fn link_segments(
 
 /// The treatments as the ordonnance rules read them: the words each
 /// card carries, and nothing else.
+/// Ce qui fait qu'une lecture du croisement est encore valable.
+type DdiKey = (Vec<i64>, String, Option<crate::hepatic::Stage>, u64);
+
+/// Ce que les quatre modules répondent d'une même liste.
+struct DdiReading {
+    cyp: crate::cyp::Reading,
+    revue: Vec<crate::revue::Point>,
+    renal: Vec<crate::renal::Finding>,
+    hepatic: Vec<crate::hepatic::Finding>,
+}
+
 fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
     drugs
         .iter()
@@ -29930,7 +29955,38 @@ impl App {
             return;
         }
         let terms = ordonnance_terms(picked);
-        let reading = crate::cyp::cross(&terms);
+        // **La question, puis la réponse.** Tant que la liste, la
+        // clairance, le stade et la révision des fiches ne bougent pas,
+        // les quatre lectures sont celles de l'image d'avant. Sorties du
+        // champ le temps du dessin : les sections prennent `session` en
+        // mutable pour leurs propres contrôles, et un emprunt sur le
+        // champ les en empêcherait.
+        let dfg: Option<f64> = session
+            .ddi_dfg
+            .trim()
+            .replace(',', ".")
+            .parse::<f64>()
+            .ok()
+            .filter(|v| *v > 0.0);
+        let key: DdiKey = (
+            session.ddi_list.clone(),
+            session.ddi_dfg.clone(),
+            session.ddi_stage,
+            session.drugs_rev,
+        );
+        let mut read = session.ddi_read.take().filter(|(k, _)| *k == key);
+        let read = read.take().unwrap_or_else(|| {
+            (
+                key,
+                DdiReading {
+                    cyp: crate::cyp::cross(&terms),
+                    revue: crate::revue::review(&terms),
+                    renal: crate::renal::read(&terms, dfg),
+                    hepatic: crate::hepatic::read(&terms, session.ddi_stage),
+                },
+            )
+        });
+        let reading = &read.1.cyp;
         // **Côte à côte si les deux tiennent, l'un sous l'autre sinon.**
         // La carte est un carré : sous une certaine largeur elle ne
         // vaut plus la place qu'elle prend, et c'est la liste des
@@ -29966,15 +30022,15 @@ impl App {
                                     egui::vec2(ui.available_width(), side),
                                     egui::Sense::hover(),
                                 );
-                                Self::ddi_map(ui, picked, &reading, r);
+                                Self::ddi_map(ui, picked, reading, r);
                                 ui.add_space(6.0);
                             }
                         }
-                        Self::ddi_cyp_section(ui, &reading);
-                        Self::ddi_half_life_section(ui, picked, &reading);
-                        Self::ddi_revue_section(ui, &terms);
-                        Self::ddi_renal_section(ui, session, &terms);
-                        Self::ddi_hepatic_section(ui, session, &terms);
+                        Self::ddi_cyp_section(ui, reading);
+                        Self::ddi_half_life_section(ui, picked, reading);
+                        Self::ddi_revue_section(ui, &read.1.revue);
+                        Self::ddi_renal_section(ui, session, &read.1.renal);
+                        Self::ddi_hepatic_section(ui, session, &read.1.hepatic);
                     });
             });
         });
@@ -29987,7 +30043,7 @@ impl App {
                 // si rien ne nomme ce qu'ils séparent.
                 let legend_h = motif::chart::legend_row_height(ui) + 6.0;
                 let split = motif::split_rows(inner, &[0.0, legend_h], 4.0);
-                Self::ddi_map(ui, picked, &reading, split[0]);
+                Self::ddi_map(ui, picked, reading, split[0]);
                 motif::inside(ui, split[1], |ui| {
                     motif::chart::legend(
                         ui,
@@ -30000,6 +30056,9 @@ impl App {
                 });
             });
         }
+        // Rendue au champ : sans cela la mémo serait reprise à chaque
+        // image, ce qui est exactement ce qu'elle évite.
+        session.ddi_read = Some(read);
     }
 
     /// La carte : une ligne par point du cercle, une corde par
@@ -30269,8 +30328,7 @@ impl App {
     /// Elle ne passe par aucune enzyme — deux sédatifs ne se rencontrent
     /// nulle part et s'additionnent quand même —, et c'est précisément
     /// ce que le panneau des cytochromes dit ne pas savoir.
-    fn ddi_revue_section(ui: &mut egui::Ui, terms: &[crate::revue::Treatment]) {
-        let points = crate::revue::review(terms);
+    fn ddi_revue_section(ui: &mut egui::Ui, points: &[crate::revue::Point]) {
         motif::section(ui, tr("ddi_revue"));
         ui.add_space(4.0);
         if points.is_empty() {
@@ -30280,7 +30338,7 @@ impl App {
                     .color(motif::text_dim()),
             );
         }
-        for p in &points {
+        for p in points {
             ui.label(
                 egui::RichText::new(p.title)
                     .size(motif::pt(ui, 12.0))
@@ -30309,7 +30367,7 @@ impl App {
     fn ddi_renal_section(
         ui: &mut egui::Ui,
         session: &mut Session,
-        terms: &[crate::revue::Treatment],
+        findings: &[crate::renal::Finding],
     ) {
         motif::section(ui, tr("renal_tab"));
         ui.add_space(4.0);
@@ -30327,14 +30385,6 @@ impl App {
                 egui::TextEdit::singleline(&mut session.ddi_dfg).hint_text(tr("ddi_dfg_hint")),
             );
         });
-        let dfg: Option<f64> = session
-            .ddi_dfg
-            .trim()
-            .replace(',', ".")
-            .parse::<f64>()
-            .ok()
-            .filter(|v| *v > 0.0);
-        let findings = crate::renal::read(terms, dfg);
         ui.add_space(4.0);
         if findings.is_empty() {
             ui.label(
@@ -30343,7 +30393,7 @@ impl App {
                     .color(motif::text_dim()),
             );
         }
-        for f in &findings {
+        for f in findings {
             use crate::renal::Level;
             let ink = match f.level {
                 Some(Level::Contraindicated) => motif::alert(),
@@ -30384,7 +30434,7 @@ impl App {
     fn ddi_hepatic_section(
         ui: &mut egui::Ui,
         session: &mut Session,
-        terms: &[crate::revue::Treatment],
+        findings: &[crate::hepatic::Finding],
     ) {
         use crate::hepatic::{Level, Stage, Verdict};
         motif::section(ui, tr("hepatic_tab"));
@@ -30411,12 +30461,11 @@ impl App {
                 }
             }
         });
-        let findings = crate::hepatic::read(terms, session.ddi_stage);
         ui.add_space(4.0);
         // « Aucun stade » tout seul est une remarque ; « aucun stade, et
         // six lignes en dépendent » est une question à poser au
         // prescripteur. C'est la seule raison d'être du compte.
-        let pending = crate::hepatic::pending(&findings);
+        let pending = crate::hepatic::pending(findings);
         if pending > 0 {
             ui.label(
                 egui::RichText::new(match pending {
@@ -30435,7 +30484,7 @@ impl App {
                     .color(motif::text_dim()),
             );
         }
-        for f in &findings {
+        for f in findings {
             // **Trois réponses et non deux** : « rien à changer » se lit
             // dans l'encre ordinaire, « on ne sait pas » en gris. Les
             // confondre rendrait l'oxazépam aussi muet qu'un produit dont
