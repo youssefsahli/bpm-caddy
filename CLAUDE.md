@@ -533,6 +533,20 @@ add clicking and typing; it is not the price of entry.
   no plotting library — `motif::chart` has bars, hbars, stacked,
   sparkline, `lines` (several series on one shared scale), meter, pips,
   heat strip and legend.
+- **And an egui widget that paints itself from `widgets.*.bg_fill` comes
+  out invisible here.** `apply` sets that field to `bg()` for every
+  widget state — right for a button, which is a raised panel on the
+  panel — so anything egui draws as a *recess* has no recess. The one
+  `egui::Slider` left in the application was exactly that: measured on a
+  capture of Options › Interface, two hundred and thirty pixels of
+  background along the middle of the control and two pixels of thumb
+  edge, on all eight palettes. Nothing said where 0,8 was, where 1,6
+  was, nor where one stood — on « Taille du texte », the setting
+  somebody who cannot read the screen goes to first.
+  `motif::scale_range` is the house scale (sunken groove, raised thumb)
+  and `no_egui_slider_is_drawn_under_a_style_that_hides_it` refuses the
+  next one. A `DragValue` is fine: it carries a `bg_stroke`, so it still
+  reads as a box.
 - **A widget that takes a type must honour it.** `motif::list_row` took
   a `RichText`, kept its string and threw the rest away: three call
   sites had been painting an overdue rendez-vous in `alert()` since the

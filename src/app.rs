@@ -46735,14 +46735,64 @@ impl eframe::App for App {
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
                                         ui.label(dim(tr("opts_text_scale")));
-                                        ui.add(
-                                            egui::Slider::new(
-                                                &mut editor.cfg.ui.text_scale,
-                                                0.8..=1.6,
-                                            )
-                                            .fixed_decimals(2)
-                                            .suffix(" x"),
-                                        );
+                                        // La glissière de la maison, et
+                                        // non celle d'egui : celle-ci
+                                        // peignait son rail avec
+                                        // `widgets.inactive.bg_fill`,
+                                        // que `motif::apply` met au fond
+                                        // du panneau pour tous les états
+                                        // — donc pas de rail du tout, sur
+                                        // les huit palettes. Mesuré sur
+                                        // une capture : deux cent trente
+                                        // pixels de fond et deux pixels
+                                        // de bord de pouce. Rien ne
+                                        // disait où était 0,8, ni 1,6,
+                                        // ni où l'on se trouvait, sur le
+                                        // réglage même que va chercher
+                                        // en premier quelqu'un qui lit
+                                        // mal l'écran.
+                                        ui.horizontal(|ui| {
+                                            let scale = f64::from(editor.cfg.ui.text_scale);
+                                            let shown = format!(
+                                                "{} ×",
+                                                format!("{scale:.2}").replace('.', ",")
+                                            );
+                                            // La valeur d'abord, à
+                                            // largeur fixe : lue après
+                                            // la glissière elle serait
+                                            // la première chose que
+                                            // l'élision mange, et c'est
+                                            // la seule que cette rangée
+                                            // existe pour dire.
+                                            // Mesurée à la taille qui
+                                            // la dessine, et sur le
+                                            // gabarit le plus large —
+                                            // « 0,00 × » — pour que le
+                                            // pouce ne se déplace pas
+                                            // quand le chiffre change.
+                                            let value_w =
+                                                Self::widest(ui, 11.5, ["0,00 ×"].into_iter());
+                                            ui.allocate_ui_with_layout(
+                                                egui::vec2(value_w, Self::button_height(ui)),
+                                                egui::Layout::left_to_right(egui::Align::Center),
+                                                |ui| {
+                                                    ui.label(
+                                                        egui::RichText::new(shown)
+                                                            .size(motif::pt(ui, 11.5)),
+                                                    );
+                                                },
+                                            );
+                                            let room = (ui.available_width() - 8.0)
+                                                .min(chars_wide(ui, 24.0));
+                                            if room >= 60.0 {
+                                                let (resp, dragged) = motif::scale_range(
+                                                    ui, room, scale, 0.8, 1.6, 0.05,
+                                                );
+                                                if resp.dragged() || resp.clicked() {
+                                                    editor.cfg.ui.text_scale = dragged as f32;
+                                                }
+                                            }
+                                        });
                                         ui.end_row();
                                         ui.label(dim(tr("opts_font")));
                                         ui.horizontal(|ui| {
@@ -48314,6 +48364,40 @@ mod tests {
         assert_eq!(seen[2], "Dupont");
         assert!(seen[..3].iter().all(|f| !f.contains('…')));
         assert!(seen[3].ends_with('…'));
+    }
+
+    /// **La glissière d'egui ne se voit pas sous le style Motif.**
+    ///
+    /// Elle peint son rail avec `widgets.inactive.bg_fill`, et
+    /// `motif::apply` met ce champ au fond du panneau pour tous les
+    /// états de widget — c'est ce qu'il faut pour un bouton, et cela
+    /// rend le rail invisible sur les huit palettes. Mesuré sur une
+    /// capture d'Options › Interface : le long du milieu du réglage,
+    /// deux cent trente pixels de fond et deux pixels de bord de pouce.
+    /// Rien ne disait où était 0,8, où était 1,6, ni où l'on se
+    /// trouvait — sur le réglage même que va chercher en premier
+    /// quelqu'un qui lit mal l'écran.
+    ///
+    /// `motif::scale_range` est la glissière de la maison : un creux
+    /// biseauté et un pouce en relief. Le test lit le texte de ce
+    /// fichier, comme les lints qui l'entourent ; un défaut qui ne se
+    /// voit sur aucune capture prise à l'échelle 1 est exactement ce
+    /// qu'une relecture ne rattrape pas.
+    #[test]
+    fn no_egui_slider_is_drawn_under_a_style_that_hides_it() {
+        const SOURCE: &str = include_str!("app.rs");
+        let mut found = Vec::new();
+        for (i, _) in SOURCE.match_indices("egui::Slider") {
+            if SOURCE[..i].ends_with('"') {
+                continue;
+            }
+            found.push(SOURCE[..i].lines().count());
+        }
+        assert!(
+            found.is_empty(),
+            "glissière egui — son rail est invisible sous Motif, \
+             passer par `motif::scale_range` (ligne(s) {found:?})"
+        );
     }
 
     /// **Une invite n'est pas une valeur, et ne s'écrit pas dans la

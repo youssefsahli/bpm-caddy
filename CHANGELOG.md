@@ -276,6 +276,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **La seule glissière d'egui de l'application ne se voyait pas.** Elle
+  peint son rail avec `widgets.inactive.bg_fill`, et `motif::apply` met
+  ce champ au fond du panneau pour tous les états de widget — ce qu'il
+  faut pour un bouton, et ce qui rend le rail invisible sur les huit
+  palettes. Mesuré sur une capture d'Options › Interface : le long du
+  milieu du réglage, deux cent trente pixels de fond et deux pixels de
+  bord de pouce. Rien ne disait où était 0,8, où était 1,6, ni où l'on
+  se trouvait — sur « Taille du texte », c'est-à-dire sur le réglage que
+  va chercher en premier quelqu'un qui lit mal l'écran.
+
+  C'est maintenant la glissière de la maison, `motif::scale_range` : un
+  creux biseauté, un pouce en relief, et la valeur écrite à côté, à
+  largeur fixe pour que le pouce ne bouge pas quand le chiffre change.
+  `scale` existait déjà mais partait de zéro, ce qui aurait dépensé la
+  moitié du parcours en tailles que l'interface refuse. Un lint lit le
+  texte de `app.rs` et refuse la prochaine.
 - **Une invite de champ était écrite dans l'encre d'une valeur, cent
   vingt-huit fois.** `motif::apply` pose un `override_text_color` sur
   tout le contexte, et egui lit celui-ci *avant* la couleur affaiblie

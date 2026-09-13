@@ -1572,16 +1572,50 @@ pub fn scale(
     max: f64,
     step: f64,
 ) -> (egui::Response, f64) {
+    scale_range(ui, width, value, 0.0, max, step)
+}
+
+/// The same scale over a range that **does not start at zero**.
+///
+/// A quantity at the counter runs from nothing upwards, which is why
+/// [`scale`] takes a ceiling alone. A setting often does not: the text
+/// scale runs from 0,8 to 1,6, and a scale from zero would spend half
+/// its travel on sizes the interface refuses.
+///
+/// Written the day the only `egui::Slider` left in the application was
+/// replaced. That slider painted its rail with
+/// `widgets.inactive.bg_fill`, and [`apply`] sets that to [`bg`] for
+/// every widget state — so on the eight palettes alike the rail was the
+/// panel's own ground and the thumb floated on nothing. Measured on a
+/// capture of Options › Interface: along the middle of the control,
+/// two hundred and thirty pixels of background and two pixels of thumb
+/// edge. Nothing said where 0,8 was, where 1,6 was, nor where one
+/// stood — on the very control someone who cannot read the screen goes
+/// to first.
+pub fn scale_range(
+    ui: &mut egui::Ui,
+    width: f32,
+    value: f64,
+    min: f64,
+    max: f64,
+    step: f64,
+) -> (egui::Response, f64) {
     let h = ui.spacing().interact_size.y.max(18.0);
     let (rect, resp) =
         ui.allocate_exact_size(Vec2::new(width.max(24.0), h), egui::Sense::click_and_drag());
-    let max = if max > 0.0 { max } else { 1.0 };
+    // Une étendue nulle ou à l'envers donnerait une division par zéro
+    // plus bas, et un pouce collé à gauche : la borne haute cède.
+    let (min, max) = if max > min {
+        (min, max)
+    } else {
+        (min, min + 1.0)
+    };
     // The groove: a shallow sunken channel across the middle, the full
     // height being the thumb's travel.
     let groove = egui::Rect::from_center_size(rect.center(), Vec2::new(rect.width(), 6.0));
     ui.painter().rect_filled(groove, 0.0, crate::trough());
     bevel(ui.painter(), groove, false);
-    let mut out = value.clamp(0.0, max);
+    let mut out = value.clamp(min, max);
     if let Some(pos) = resp.interact_pointer_pos() {
         // The thumb has width, so the travel is shorter than the trough:
         // mapping the pointer to the full width would make the last
@@ -1589,17 +1623,20 @@ pub fn scale(
         let thumb_w = (h * 0.5).max(10.0);
         let travel = (rect.width() - thumb_w).max(1.0);
         let t = ((pos.x - rect.left() - thumb_w / 2.0) / travel).clamp(0.0, 1.0) as f64;
-        let raw = t * max;
+        let raw = min + t * (max - min);
         out = if step > 0.0 {
-            (raw / step).round() * step
+            // Les crans se comptent **depuis la borne basse**, sinon un
+            // pas de 0,05 sur 0,8–1,6 tomberait sur 0,80 par hasard et
+            // sur 1,575 partout ailleurs.
+            min + ((raw - min) / step).round() * step
         } else {
             raw
         };
-        out = out.clamp(0.0, max);
+        out = out.clamp(min, max);
     }
     let thumb_w = (h * 0.5).max(10.0);
     let travel = (rect.width() - thumb_w).max(1.0);
-    let t = (out / max).clamp(0.0, 1.0) as f32;
+    let t = (((out - min) / (max - min)) as f32).clamp(0.0, 1.0);
     let thumb = egui::Rect::from_min_size(
         egui::pos2(rect.left() + travel * t, rect.top()),
         Vec2::new(thumb_w, rect.height()),
@@ -1806,6 +1843,13 @@ mod tests {
     #[test]
     fn a_hint_keeps_its_colour_and_stays_nearer_the_field_than_an_ink() {
         use eframe::egui::{self, Color32};
+        // La palette est globale, et les tests tournent en parallèle :
+        // sans ce verrou, la couleur posée par `hint` et celle relue
+        // pour la comparer peuvent venir de deux palettes différentes.
+        // Écrit sans, le test passait — et a échoué au troisième
+        // lancement, ce qui est la pire façon de l'apprendre.
+        let _guard = theme_lock();
+        let expected = super::text_faint();
         let mut style = egui::Style::default();
         style.visuals.override_text_color = Some(Color32::RED);
         let job = egui::WidgetText::from(super::hint("9h30")).into_layout_job(
@@ -1814,8 +1858,7 @@ mod tests {
             egui::Align::Center,
         );
         assert_eq!(
-            job.sections[0].format.color,
-            super::text_faint(),
+            job.sections[0].format.color, expected,
             "l'override du contexte a mangé la couleur de l'invite"
         );
 
