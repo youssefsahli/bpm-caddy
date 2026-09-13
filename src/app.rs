@@ -8796,18 +8796,45 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
                     );
                 }
                 let fg = if active { motif::bg() } else { motif::text() };
-                ui.painter().text(
-                    rect.left_center() + egui::vec2(6.0, 0.0),
-                    egui::Align2::LEFT_CENTER,
-                    &hit.label,
-                    egui::FontId::proportional(motif::pt(ui, 13.0)),
+                // **Le libellé s'arrête avant la nature.** Les deux
+                // étaient peints sans borne, l'un depuis la gauche et
+                // l'autre depuis la droite, et un `Painter` peint où on
+                // lui dit : « Colposeptine — chlorquinaldol et
+                // promestriène » passait sous « fiche », et ni l'un ni
+                // l'autre ne se lisait. La nature est courte et se
+                // mesure ; c'est le libellé qui cède la place, et il
+                // s'élide plutôt que de sortir.
+                let kind_font = egui::FontId::proportional(motif::pt(ui, 10.0));
+                let kind_w = ui.fonts(|f| {
+                    f.layout_no_wrap(hit.kind.to_owned(), kind_font.clone(), motif::text_dim())
+                        .size()
+                        .x
+                });
+                let mut job = egui::text::LayoutJob::single_section(
+                    hit.label.clone(),
+                    egui::TextFormat {
+                        font_id: egui::FontId::proportional(motif::pt(ui, 13.0)),
+                        color: fg,
+                        ..Default::default()
+                    },
+                );
+                job.wrap = egui::text::TextWrapping {
+                    max_width: (row - kind_w - 18.0).max(8.0),
+                    max_rows: 1,
+                    break_anywhere: false,
+                    overflow_character: Some('…'),
+                };
+                let galley = ui.fonts(|f| f.layout_job(job));
+                ui.painter().galley(
+                    egui::pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0),
+                    galley,
                     fg,
                 );
                 ui.painter().text(
                     rect.right_center() - egui::vec2(6.0, 0.0),
                     egui::Align2::RIGHT_CENTER,
                     hit.kind,
-                    egui::FontId::proportional(motif::pt(ui, 10.0)),
+                    kind_font,
                     if active {
                         motif::bg()
                     } else {

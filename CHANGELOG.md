@@ -183,6 +183,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   le cas fréquent. Le choix se fait dans `motif::panel_forms`, où la
   légende est déjà mesurée : dehors, ce serait une seconde mesure de la
   même chose.
+- **Dans « Aller à… », le libellé passait sous la nature.** Les deux
+  étaient peints sans borne, l'un depuis la gauche et l'autre depuis la
+  droite : « Colposeptine — chlorquinaldol et promestriène » se peignait
+  sous « fiche », et ni l'un ni l'autre ne se lisait. La nature est
+  courte et se mesure ; c'est le libellé qui cède la place.
 - **Deux têtes coupaient leur phrase par le milieu.** « Textes de
   l'interface » et « Textes imprimés » estimaient leur hauteur à « deux
   rangées plus dix-huit pixels » ; à 1,6 la phrase prend trois lignes.
