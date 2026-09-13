@@ -330,6 +330,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Une ferritine à 22 µg/L sous anticoagulant ne disait rien.** La
+  carence martiale se déclenchait au-dessous de 15 µg/L, quand la table
+  de référence « Unités » écrit le seuil qui fait agir : 30 µg/L, dans
+  les deux sexes. Quinze est la borne basse de l'intervalle usuel **de
+  la femme**, et l'application ne sait pas le sexe de qui elle lit ; le
+  chiffre retenu est donc celui de la carence. Un patient sous Eliquis
+  avec une ferritine à 22 lisait « normale », là où c'est un saignement
+  digestif occulte jusqu'à preuve du contraire. Et la note de l'analyte
+  dit maintenant ce que le seuil seul ne peut pas dire : l'inflammation
+  fait monter la ferritine, le seuil passe alors à 100 — comme dans
+  l'insuffisance cardiaque —, et c'est le coefficient de saturation de
+  la transferrine qu'il faut lire à côté.
+- **La magnésémie avait une borne usuelle et un seuil de règle au même
+  chiffre.** 0,70 mmol/L était écrit aux deux endroits ; la table
+  « Unités » donne 0,75 à 1,00 pour l'intervalle usuel et garde 0,70
+  pour l'hypomagnésémie sous IPP au long cours. Les deux sont séparés.
 - **Le bilan biologique disait six fois deux fois la même chose.**
   `read` ne s'arrête pas à la première règle qui répond — il parcourt
   toute la table —, de sorte que deux règles posées sur le même

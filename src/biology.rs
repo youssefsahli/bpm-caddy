@@ -566,7 +566,10 @@ pub const CATALOGUE: &[Analyte] = &[
         code: "MG",
         label: "Magnésémie",
         unit: "mmol/L",
-        low: Some(0.7),
+        // 0,75 et non 0,70 : c'est ce qu'écrit la table « Unités », et
+        // 0,70 y est le seuil de la règle sous IPP, pas la borne de
+        // l'intervalle usuel. Les deux se lisaient au même chiffre.
+        low: Some(0.75),
         high: Some(1.0),
         critical_low: Some(0.5),
         critical_high: None,
@@ -576,11 +579,17 @@ pub const CATALOGUE: &[Analyte] = &[
         code: "FERR",
         label: "Ferritine",
         unit: "µg/L",
-        low: Some(15.0),
+        // Trente et non quinze : quinze est la borne basse de
+        // l'intervalle usuel **de la femme**, et l'application ne sait
+        // pas le sexe de qui elle lit. Le chiffre qui fait agir est le
+        // seuil de carence, et il est de 30 µg/L dans les deux sexes —
+        // c'est celui qu'écrit la table de référence « Unités ». À 15,
+        // une ferritine à 22 sous anticoagulant ne disait rien.
+        low: Some(30.0),
         high: Some(300.0),
         critical_low: None,
         critical_high: None,
-        note: "Une ferritine basse signe une carence martiale ; normale ou haute, elle ne l'exclut pas en cas d'inflammation — regarder la CRP à côté.",
+        note: "Au-dessous de 30 µg/L, c'est une carence martiale. Normale ou haute, elle ne l'exclut pas : l'inflammation la fait monter, et le seuil passe alors à 100 µg/L, comme dans l'insuffisance cardiaque. Lire la CRP et le coefficient de saturation de la transferrine à côté.",
     },
     Analyte {
         code: "VITD",
@@ -1293,7 +1302,7 @@ const RULES: &[Rule] = &[
     Rule {
         code: "FERR",
         side: Side::Below,
-        threshold: 15.0,
+        threshold: 30.0,
         needs: &["AOD", "AVK", "antiagrégant", "aspirine", "AINS"],
         severity: Severity::Alert,
         text: "Carence martiale sous antithrombotique ou AINS : c'est un saignement digestif occulte jusqu'à preuve du contraire. La supplémentation ne dispense pas de chercher la cause, et l'exploration se demande avant de renouveler.",
@@ -1301,7 +1310,7 @@ const RULES: &[Rule] = &[
     Rule {
         code: "FERR",
         side: Side::Below,
-        threshold: 15.0,
+        threshold: 30.0,
         needs: &["Tardyferon", "ferreux", "fumarate ferreux"],
         severity: Severity::Warn,
         text: "Ferritine toujours basse sous fer oral : reprendre la prise avant tout. Le fer s'absorbe à jeun, jamais avec le thé, le café, le calcium ou un IPP, et un comprimé un jour sur deux est mieux absorbé que deux le même jour.",
