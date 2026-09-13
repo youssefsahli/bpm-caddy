@@ -183,6 +183,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **« Tout » se dessinait sur chaque acte et ne se mesurait pas.** Les
+  trois seuils du tableau des entretiens étaient donc courts d'un bouton
+  depuis le jour où il a été ajouté : la rangée entière et la fiche
+  pliée en deux étaient choisies un cran trop tôt, et la dernière ligne
+  de la fiche serrée débordait — à 1280x800 avec les deux volets tirés
+  larges, le champ de l'heure du rendez-vous sortait par la droite,
+  coupé net. Il n'aurait pas dû, puisque la ligne enveloppe, mais la
+  date et l'heure vivent dans un `ui.horizontal` imbriqué qui ne
+  s'enveloppe pas et ne se laisse pas clipper : le défaut que ce dépôt
+  nomme déjà pour `ui.columns` et pour les trois boutons d'une cellule
+  de location. La dernière ligne est mesurée à son tour et se coupe en
+  deux plutôt que de déborder ; un test l'exige.
 - **Et la bande du dossier cachait ce que l'ordonnance dit
   d'elle-même.** Elle est plafonnée à une part du dossier et défile —
   c'est ce qui protège le tableau des actes —, mais la barre flottante

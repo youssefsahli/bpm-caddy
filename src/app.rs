@@ -20516,10 +20516,11 @@ impl App {
         ui: &egui::Ui,
         interviews: &[Interview],
         ranks: &std::collections::HashMap<i64, (usize, usize)>,
-    ) -> (f32, f32) {
+    ) -> (f32, f32, f32) {
         let gap = 8.0;
         let mut widest: f32 = 0.0;
         let mut half: f32 = 0.0;
+        let mut last: f32 = 0.0;
         for itv in interviews {
             let (year, rank) = ranks.get(&itv.id).copied().unwrap_or((0, 0));
             let code = itv.kind.act_code(year).unwrap_or("—");
@@ -20539,8 +20540,14 @@ impl App {
             } else {
                 Self::widest(ui, 12.0, ["—"].into_iter())
             };
-            let mut sheet =
-                Self::button_width(ui, tr("itv_pdf")) + Self::button_width(ui, tr("itv_cr"));
+            // « Tout » se dessine sur chaque acte et ne se mesurait
+            // pas : les trois seuils étaient courts d'un bouton depuis
+            // le jour où il a été ajouté, si bien que la rangée entière
+            // et la fiche pliée en deux étaient choisies un cran trop
+            // tôt — et la dernière ligne de la fiche serrée débordait.
+            let mut sheet = Self::button_width(ui, tr("itv_pdf"))
+                + Self::button_width(ui, tr("itv_cr"))
+                + Self::button_width(ui, tr("itv_bundle"));
             if crate::bulletin::has_bulletin(itv.kind) {
                 sheet += Self::button_width(ui, tr("itv_bulletin"));
             }
@@ -20593,8 +20600,20 @@ impl App {
             let top = kind + act + theme + made + state + gap * 4.0;
             let bottom = advance + sheet + duration + rdv + del + gap * 4.0;
             half = half.max(top.max(bottom));
+            // **Et la troisième disposition se mesure elle aussi.** Sa
+            // dernière ligne — les feuilles, la durée, le rendez-vous —
+            // était *supposée* tenir, et à 1280x800 avec les deux volets
+            // tirés larges elle dépassait : le champ de l'heure du
+            // rendez-vous sortait par la droite, coupé net. Il n'aurait
+            // pas dû, puisque la ligne enveloppe — mais la date et
+            // l'heure sont dans un `ui.horizontal` imbriqué, qui ne
+            // s'enveloppe pas et ne se fait pas clipper : c'est le
+            // défaut que ce dépôt nomme déjà pour `ui.columns` et pour
+            // les trois boutons d'une cellule de location. Mesuré ici,
+            // la ligne se coupe en deux plutôt que de déborder.
+            last = last.max(sheet + duration + rdv + gap * 2.0);
         }
-        (widest, half)
+        (widest, half, last)
     }
 
     /// Le type de l'acte, et rien d'autre : le code de la convention et
@@ -21112,7 +21131,7 @@ impl App {
         // Trois dispositions, et deux seuils mesurés : la rangée
         // entière, puis sa moitié la plus large. En dessous des deux, la
         // fiche se plie en trois.
-        let (full, half) = Self::acts_widths(ui, &interviews, &ranks);
+        let (full, half, last_row) = Self::acts_widths(ui, &interviews, &ranks);
         let lines = if avail >= full {
             1
         } else if avail >= half {
@@ -21120,6 +21139,10 @@ impl App {
         } else {
             3
         };
+        // La dernière ligne de la fiche serrée se coupe en deux quand
+        // elle ne tient pas : les feuilles d'un côté, la durée et le
+        // rendez-vous de l'autre.
+        let split_last = lines == 3 && avail < last_row;
         let mut out = ActsOut::default();
         egui::ScrollArea::vertical()
             .id_salt("interviews")
@@ -21236,11 +21259,21 @@ impl App {
                         let made = Self::acts_theme(ui, &row, &mut out);
                         Self::acts_made(ui, &row, &made, session, &mut out);
                     });
-                    ui.horizontal_wrapped(|ui| {
-                        Self::acts_sheet(ui, &row, &mut out);
-                        Self::acts_duration(ui, &row, &mut out);
-                        Self::acts_rdv(ui, &row, session, &mut out);
-                    });
+                    if split_last {
+                        ui.horizontal_wrapped(|ui| {
+                            Self::acts_sheet(ui, &row, &mut out);
+                        });
+                        ui.horizontal_wrapped(|ui| {
+                            Self::acts_duration(ui, &row, &mut out);
+                            Self::acts_rdv(ui, &row, session, &mut out);
+                        });
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            Self::acts_sheet(ui, &row, &mut out);
+                            Self::acts_duration(ui, &row, &mut out);
+                            Self::acts_rdv(ui, &row, session, &mut out);
+                        });
+                    }
                     ui.add_space(4.0);
                 }
             });
@@ -51390,13 +51423,13 @@ mod tests {
         for scale in [1.0_f32, 1.25, 1.6] {
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
-            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32));
             let _ = ctx.run(Default::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     *seen.borrow_mut() = App::acts_widths(ui, &interviews, &ranks);
                 });
             });
-            let (full, half) = seen.into_inner();
+            let (full, half, last) = seen.into_inner();
             // La moitié tient dans la rangée entière, et la rangée
             // entière dans deux moitiés : sans cela le seuil du milieu
             // ne voudrait rien dire.
@@ -51407,6 +51440,13 @@ mod tests {
             assert!(
                 full <= half * 2.0 + 1.0,
                 "échelle {scale} : {full} > 2 × {half}"
+            );
+            // La dernière ligne de la fiche serrée tient dans la
+            // moitié la plus large : sans cela, la disposition qui
+            // existe pour rattraper l'étroitesse déborderait à son tour.
+            assert!(
+                last <= half + 0.5,
+                "échelle {scale} : une dernière ligne de {last} px pour une moitié de {half}"
             );
             // Et les seuils grandissent avec le texte : c'est tout
             // l'intérêt de les mesurer.
