@@ -345,6 +345,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   la bande d'onglets de la biologie tient sa borne de son propre tableau
   — deux `min(4)` écrits à côté auraient rendu un sixième onglet
   insélectionnable sans que rien ne le dise.
+- **Et chaque capture dépendait de la vue d'avant.** L'application
+  enregistre la forme du plan de travail en quittant ; `eyeball.sh`
+  écrivait `layout.toml` une fois pour toute la passe, si bien que
+  chaque image héritait de la précédente — « aide », qui n'est pas une
+  vue mais un onglet du volet droit, s'ouvrait sur ce que la vue d'avant
+  avait laissé, et réordonner la liste changeait des images. Le fichier
+  est réécrit avant chaque vue.
 - **Et la vue Vitale de la passe large se capturait sur son erreur.**
   `eyeball.sh` écrivait « ceci n'est pas une carte » là où `smoke.sh`
   pose une carte rejouable — et ne branchait même pas

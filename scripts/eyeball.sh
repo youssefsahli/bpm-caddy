@@ -46,10 +46,20 @@ export BPM_CADDY_NO_KEYRING=1
 # A throwaway configuration, never the operator's own.
 mkdir -p "$tmp/config/bpm-caddy"
 # La forme du plan de travail : vide par défaut, sinon ce qu'on a demandé.
-: > "$tmp/config/bpm-caddy/layout.toml"
-for kv in "$@"; do
-    printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
-done
+#
+# **Réécrite avant chaque vue.** L'application enregistre la forme du
+# plan de travail en quittant : sans remise à zéro, chaque capture
+# héritait de la précédente — « aide », qui n'est pas une vue mais un
+# onglet du volet droit, s'ouvrait sur ce que la vue d'avant avait
+# laissé, et réordonner la liste changeait des images. Une capture doit
+# ne dépendre que de sa vue.
+layout() {
+    : > "$tmp/config/bpm-caddy/layout.toml"
+    for kv in "$@"; do
+        printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
+    done
+}
+layout "$@"
 demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$THEME"
 export XDG_CONFIG_HOME="$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
@@ -78,6 +88,7 @@ for view in "${views[@]}"; do
     # sits at its left edge: Xvfb parks the pointer in the middle, which
     # on a screen the size of the window is *inside* it, and every shot
     # came back with whatever tooltip happened to be under it.
+    layout "$@"
     view="$view" out="$out" w="$w" h="$h" card="$card" \
     xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
         unset WAYLAND_DISPLAY
