@@ -330,6 +330,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Le plan de surveillance réclamait tous les mois un examen que deux
+  textes de l'application déclarent inutile.** Le fondaparinux figurait
+  parmi les héparines pour la numération plaquettaire, quand sa propre
+  fiche écrit que « la surveillance systématique de la numération
+  plaquettaire imposée aux héparines n'est pas requise sous
+  fondaparinux, du fait de l'absence d'interaction avec le facteur
+  plaquettaire 4 », et que la table « HBPM » écrit « Pas de risque de
+  TIH : pas de surveillance plaquettaire ». Il en sort. Une numération
+  de référence reste utile — c'est une fois, pas un rythme.
+- **Et le rein ne disait rien du fondaparinux**, dont tout le risque est
+  pourtant l'accumulation rénale, avec une demi-vie longue, un effet qui
+  persiste plusieurs jours et aucun antidote. Il n'est pas une HBPM et
+  ne se rangeait pas dans leur ligne : il a la sienne, avec ses trois
+  seuils — prophylaxie réduite de 20 à 50, curatif non recommandé
+  au-dessous de 30, contre-indication au-dessous de 20.
+- **La tinzaparine paraissait délivrable à une clairance de 25.** La
+  table « HBPM » écrivait « utilisable jusqu'à ClCr 20 mL/min selon le
+  RCP » ; c'est vrai du RCP, et la fiche de l'Innohep ajoute ce que la
+  cellule taisait — la pratique française garde le seuil de 30 pour
+  toute HBPM à dose curative, « et c'est le prescripteur qui tranche —
+  pas le comptoir ». Lue au comptoir, la cellule ressemblait à une
+  permission. Elle dit les deux maintenant.
 - **Ce qu'une règle de revue ne peut pas savoir est écrit en tête du
   module.** La confrontation avec « Sujet âgé — médicaments à réévaluer »
   (Laroche, STOPP/START) n'a rien trouvé à corriger : tout ce que le

@@ -713,6 +713,32 @@ pub const TABLE: &[Adaptation] = &[
         ],
         source: "Lovenox : « Clairance de 30 à 50 mL/min : surveillance clinique renforcée, réduction de dose à envisager selon l'indication. Clairance de 15 à 30 mL/min : doses curatives contre-indiquées ».",
     },
+    // Le fondaparinux n'est pas une HBPM et ne se range pas dans la
+    // ligne du dessus : ses seuils sont les siens, et le module ne
+    // disait rien d'un produit dont tout le risque est l'accumulation
+    // rénale — avec une demi-vie qui fait durer l'effet plusieurs jours.
+    Adaptation {
+        needs: &["fondaparinux", "arixtra"],
+        label: "Fondaparinux",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Watch,
+                conduct: "Entre 20 et 50 : dose prophylactique réduite selon le RCP. La clairance se calcule avant d'instaurer et se recontrôle à chaque épisode intercurrent — fièvre, diarrhée, canicule.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30 : la dose curative n'est pas recommandée ; la prophylaxie reste possible à dose réduite.",
+            },
+            Step {
+                below: 20,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 20 : contre-indication quelle que soit l'indication. La demi-vie est longue et l'effet anticoagulant persiste plusieurs jours en cas d'accumulation, sans antidote — la protamine est inefficace.",
+            },
+        ],
+        source: "Arixtra : « Clairance entre 20 et 50 mL/min : dose prophylactique réduite selon le RCP et prudence en curatif, où le traitement n'est pas recommandé en dessous de 30 mL/min. Clairance inférieure à 20 mL/min : contre-indiqué quelle que soit l'indication ».",
+    },
     Adaptation {
         needs: &["thiazidique", "hydrochlorothiazide", "esidrex", "indapamide", "fludex"],
         label: "Diurétiques thiazidiques",
@@ -803,7 +829,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 34;
+        const FLOOR: usize = 35;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",

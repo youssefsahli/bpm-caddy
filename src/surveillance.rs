@@ -325,7 +325,16 @@ pub const WATCHES: &[Watch] = &[
         why: "La dose d'un AOD se décide sur la clairance : au moins une fois par an, tous les six mois au-delà de 75 ans, en cas de poids faible ou de clairance sous 60, et à chaque épisode aigu — fièvre, diarrhée, canicule.",
     },
     Watch {
-        needs: &["héparine", "HBPM", "énoxaparine", "tinzaparine", "daltéparine", "fondaparinux"],
+        // **Sans le fondaparinux.** Sa fiche écrit que « la surveillance
+        // systématique de la numération plaquettaire imposée aux
+        // héparines n'est pas requise sous fondaparinux, du fait de
+        // l'absence d'interaction avec le facteur plaquettaire 4 », et
+        // la table de référence « HBPM » écrit « Pas de risque de TIH :
+        // pas de surveillance plaquettaire ». Il était ici, et le plan
+        // réclamait tous les mois un examen que deux textes de
+        // l'application déclarent inutile. Une numération de référence
+        // reste utile — c'est une fois, pas un rythme.
+        needs: &["héparine", "HBPM", "énoxaparine", "tinzaparine", "daltéparine"],
         code: "PLQ",
         every_months: 1,
         why: "La thrombopénie induite par l'héparine survient entre le cinquième et le vingt et unième jour : la numération plaquettaire la trouve, et elle se surveille pendant tout le traitement.",
