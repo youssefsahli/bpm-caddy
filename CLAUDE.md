@@ -665,8 +665,8 @@ add clicking and typing; it is not the price of entry.
   are directional in the *look*: a Motif widget is lit from the top
   left whatever the hour.
 - **An override wins over the colour a widget picks for itself, so a
-  hint reached the screen in the ink of a value** — all hundred and
-  twenty-eight of them. `motif::apply` sets `override_text_color` on the
+  hint reached the screen in the ink of a value** — every one of them.
+  `motif::apply` sets `override_text_color` on the
   whole context, and egui reads that *before* the weak colour it means
   to draw a field's placeholder in. Measured on a capture of the trame:
   « 14h », the hint of an afternoon nobody entered, and « 14:00 », one
