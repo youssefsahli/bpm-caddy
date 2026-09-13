@@ -9,6 +9,27 @@
 //!
 //! Static, pure and tested, like the calendrier vaccinal and the
 //! biology rules. It says what is worth looking at; it decides nothing.
+//!
+//! **What a rule here cannot know, and must not pretend to.** A
+//! `Treatment` is a name, a DCI, a class and some tags — and nothing
+//! else. No age, no dose, no duration, no diagnosis. That boundary is
+//! not a gap to be filled: it decides what belongs here and what
+//! belongs in a reference table of `tables.rs`.
+//!
+//! Confronted with « Sujet âgé — médicaments à réévaluer » (Laroche,
+//! STOPP/START) on 13/09/2026, everything the module *can* express was
+//! already there — la charge anticholinergique, trois sédatifs, les
+//! AINS, la digoxine, l'opioïde sans laxatif. Everything missing was
+//! missing for one of those four reasons: « benzodiazépine à demi-vie
+//! longue **après 75 ans** » needs an age, « digoxine **au-delà de
+//! 0,125 mg/j** » a dose, « IPP **sans indication réévaluée** » a
+//! duration, « anticoagulant **dans la fibrillation atriale** » a
+//! diagnosis. Writing them anyway would fire on every diazépam and
+//! every Previscan, which is how a bilan stops being read.
+//!
+//! A rule that names a dose does so as a **ceiling to check on the
+//! ordonnance** — « Simvastatine au-dessus de son plafond » says so in
+//! its own sentence — never as a verdict on a dose it has not seen.
 
 use crate::biology::Severity;
 

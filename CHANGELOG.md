@@ -330,6 +330,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Ce qu'une règle de revue ne peut pas savoir est écrit en tête du
+  module.** La confrontation avec « Sujet âgé — médicaments à réévaluer »
+  (Laroche, STOPP/START) n'a rien trouvé à corriger : tout ce que le
+  module *peut* exprimer y était déjà — la charge anticholinergique,
+  trois sédatifs, les AINS, la digoxine, l'opioïde sans laxatif. Tout ce
+  qui manquait manquait pour une seule raison, et c'est elle qui vaut
+  d'être notée : un traitement, ici, est un nom, une DCI, une classe et
+  des étiquettes. Ni âge, ni dose, ni durée, ni diagnostic. « Benzo-
+  diazépine à demi-vie longue **après 75 ans** » demande un âge,
+  « digoxine **au-delà de 0,125 mg/j** » une dose, « IPP **sans
+  indication réévaluée** » une durée, « anticoagulant **dans la
+  fibrillation atriale** » un diagnostic. Les écrire quand même, c'est
+  se déclencher sur chaque diazépam et chaque Previscan, et c'est ainsi
+  qu'un bilan cesse d'être lu. La limite décide de ce qui est une règle
+  et de ce qui est une table de référence.
 - **Une amlodipine avec de la simvastatine 40 mg ne levait rien**,
   alors que l'application l'écrit à deux endroits. La fiche du Zocor va
   jusqu'à nommer la scène — « une association amlodipine et simvastatine
